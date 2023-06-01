@@ -93,7 +93,7 @@ impl MainReactor {
                 }
                 CatchUpInstruction::ShutdownForUpgrade => {
                     info!("CatchUp: shutting down for upgrade");
-                    self.state = ReactorState::new_shutdown_for_upgrade();
+                    self.switch_to_shutdown_for_upgrade();
                     (Duration::ZERO, Effects::new())
                 }
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
@@ -150,7 +150,7 @@ impl MainReactor {
                 }
                 KeepUpInstruction::ShutdownForUpgrade => {
                     info!("KeepUp: switch to ShutdownForUpgrade");
-                    self.state = ReactorState::new_shutdown_for_upgrade();
+                    self.switch_to_shutdown_for_upgrade();
                     (Duration::ZERO, Effects::new())
                 }
                 KeepUpInstruction::CheckLater(msg, wait) => {
@@ -182,7 +182,7 @@ impl MainReactor {
                 }
                 ValidateInstruction::ShutdownForUpgrade => {
                     info!("Validate: switch to ShutdownForUpgrade");
-                    self.state = ReactorState::new_shutdown_for_upgrade();
+                    self.switch_to_shutdown_for_upgrade();
                     (Duration::ZERO, Effects::new())
                 }
                 ValidateInstruction::NonSwitchBlock => {
@@ -202,8 +202,8 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
             },
-            ReactorState::ShutdownForUpgrade { time_switched } => {
-                match self.upgrade_shutdown_instruction(effect_builder, time_switched) {
+            ReactorState::ShutdownForUpgrade => {
+                match self.upgrade_shutdown_instruction(effect_builder) {
                     UpgradeShutdownInstruction::Fatal(msg) => (
                         Duration::ZERO,
                         fatal!(effect_builder, "ShutdownForUpgrade: {}", msg).ignore(),
@@ -580,5 +580,10 @@ impl MainReactor {
                 self.attempts += 1;
             }
         }
+    }
+
+    fn switch_to_shutdown_for_upgrade(&mut self) {
+        self.state = ReactorState::ShutdownForUpgrade;
+        self.switched_to_shutdown_for_upgrade = Timestamp::now();
     }
 }

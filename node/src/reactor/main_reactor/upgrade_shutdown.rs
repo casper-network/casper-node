@@ -9,7 +9,7 @@ use crate::{
     types::{BlockHash, EraValidatorWeights, FinalitySignatureId},
 };
 
-use casper_types::{EraId, Timestamp};
+use casper_types::EraId;
 
 const DELAY_BEFORE_SHUTDOWN: Duration = Duration::from_secs(2);
 
@@ -79,9 +79,8 @@ impl MainReactor {
     pub(super) fn upgrade_shutdown_instruction(
         &self,
         effect_builder: EffectBuilder<MainEvent>,
-        time_switched: Timestamp,
     ) -> UpgradeShutdownInstruction {
-        if time_switched.elapsed() > self.shutdown_for_upgrade_timeout {
+        if self.switched_to_shutdown_for_upgrade.elapsed() > self.shutdown_for_upgrade_timeout {
             return self.schedule_shutdown_for_upgrade(effect_builder);
         }
         let recent_switch_block_headers = match self.storage.read_highest_switch_block_headers(1) {

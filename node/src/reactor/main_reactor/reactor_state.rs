@@ -1,8 +1,7 @@
 use datasize::DataSize;
 use derive_more::Display;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-
-use casper_types::Timestamp;
 
 /// The state of the reactor.
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -54,8 +53,11 @@ use casper_types::Timestamp;
 ///     Leap --> F[initiate SyncLeap<br/>and retry later]
 ///     BlockSync --> G[initiate BlockSync<br/>and retry later]
 /// ```
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display)]
-pub(crate) enum ReactorState {
+#[derive(
+    Copy, Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Display, JsonSchema,
+)]
+#[schemars(description = "The state of the reactor.")]
+pub enum ReactorState {
     /// Get all components and reactor state set up on start.
     Initialize,
     /// Orient to the network and attempt to catch up to tip.
@@ -67,16 +69,5 @@ pub(crate) enum ReactorState {
     /// Node is currently caught up and is an active validator.
     Validate,
     /// Node should be shut down for upgrade.
-    ShutdownForUpgrade {
-        /// Timestamp at which the node switched to this state.
-        time_switched: Timestamp,
-    },
-}
-
-impl ReactorState {
-    pub(crate) fn new_shutdown_for_upgrade() -> ReactorState {
-        ReactorState::ShutdownForUpgrade {
-            time_switched: Timestamp::now(),
-        }
-    }
+    ShutdownForUpgrade,
 }
