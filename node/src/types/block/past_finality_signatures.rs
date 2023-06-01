@@ -1,7 +1,7 @@
-use std::{collections::BTreeSet, convert::TryInto};
+use std::collections::BTreeSet;
 
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
     PublicKey,
 };
 
@@ -81,13 +81,7 @@ impl PastFinalitySignatures {
 impl ToBytes for PastFinalitySignatures {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        let length_32: u32 = self
-            .0
-            .len()
-            .try_into()
-            .map_err(|_| bytesrepr::Error::NotRepresentable)?;
-        buffer.append(&mut length_32.to_bytes()?);
-        buffer.extend(self.0.iter().copied());
+        buffer.extend(Bytes::from(self.0.as_ref()).to_bytes()?);
         Ok(buffer)
     }
 
@@ -98,14 +92,8 @@ impl ToBytes for PastFinalitySignatures {
 
 impl FromBytes for PastFinalitySignatures {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (count, bytes) = u32::from_bytes(bytes)?;
-        let count = count as usize;
-        let vector = Vec::from(
-            bytes
-                .get(0..count)
-                .ok_or(bytesrepr::Error::EarlyEndOfStream)?,
-        );
-        Ok((PastFinalitySignatures(vector), &bytes[count..]))
+        let (inner, rest) = Bytes::from_bytes(bytes)?;
+        Ok((PastFinalitySignatures(inner.into()), rest))
     }
 }
 
@@ -171,9 +159,10 @@ mod tests {
         assert_eq!(serialized.len(), data.0.len() + 4);
         assert_eq!(data.serialized_length(), data.0.len() + 4);
 
-        let deserialized = PastFinalitySignatures::from_bytes(&serialized).unwrap().0;
+        let (deserialized, rest) = PastFinalitySignatures::from_bytes(&serialized).unwrap();
 
         assert_eq!(data, deserialized);
+        assert_eq!(rest, &[0u8; 0]);
     }
 
     #[test]
@@ -184,9 +173,22 @@ mod tests {
         assert_eq!(serialized, &[0; 4]);
         assert_eq!(data.serialized_length(), 4);
 
-        let deserialized = PastFinalitySignatures::from_bytes(&serialized).unwrap().0;
+        let (deserialized, rest) = PastFinalitySignatures::from_bytes(&serialized).unwrap();
 
         assert_eq!(data, deserialized);
+        assert_eq!(rest, &[0u8; 0]);
+    }
+
+    #[test]
+    fn serialization_roundtrip_of_random_data() {
+        let rng = &mut TestRng::new();
+        let data = PastFinalitySignatures::random(rng, 123);
+
+        let serialized = data.to_bytes().unwrap();
+        let (deserialized, rest) = PastFinalitySignatures::from_bytes(&serialized).unwrap();
+
+        assert_eq!(data, deserialized);
+        assert_eq!(rest, &[0u8; 0]);
     }
 }
 
@@ -195,6 +197,25 @@ impl crate::utils::specimen::LargestSpecimen for PastFinalitySignatures {
         estimator: &E,
         _cache: &mut crate::utils::specimen::Cache,
     ) -> Self {
-        PastFinalitySignatures(vec![u8::MAX; estimator.parameter("validator_count")])
+        PastFinalitySignatures(vec![
+            u8::MAX;
+            div_by_8_ceil(estimator.parameter("validator_count"))
+        ])
     }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl PastFinalitySignatures {
+    pub fn random(rng: &mut casper_types::testing::TestRng, n_validators: usize) -> Self {
+        let mut bytes = vec![0; div_by_8_ceil(n_validators)];
+
+        rand::RngCore::fill_bytes(rng, bytes.as_mut());
+
+        PastFinalitySignatures(bytes)
+    }
+}
+
+/// Divides by 8 but round to the higher integer.
+fn div_by_8_ceil(n: usize) -> usize {
+    n / 8 + usize::from(n % 8 != 0)
 }

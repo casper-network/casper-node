@@ -32,7 +32,8 @@ use tracing::error;
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
+    crypto, AsymmetricType, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp,
+    U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
@@ -68,7 +69,12 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];
 
-    let rewards = BTreeMap::new();
+    let rewards = IntoIterator::into_iter([
+        (PublicKey::ed25519_from_bytes([69; 32]).unwrap(), 1500),
+        (PublicKey::ed25519_from_bytes([70; 32]).unwrap(), 4800),
+        (PublicKey::ed25519_from_bytes([71; 32]).unwrap(), 9000),
+    ])
+    .collect();
 
     EraReport {
         equivocators,
@@ -371,7 +377,7 @@ impl BlockPayload {
         let accusations = (0..num_accusations)
             .map(|_| PublicKey::random(rng))
             .collect();
-        let past_finality_signatures = Default::default();
+        let past_finality_signatures = PastFinalitySignatures::random(rng, 20);
 
         Self {
             deploys,
@@ -554,8 +560,13 @@ impl FinalizedBlock {
             );
         }
         let random_bit = rng.gen();
-        let block_payload =
-            BlockPayload::new(deploys, vec![], vec![], Default::default(), random_bit);
+        let block_payload = BlockPayload::new(
+            deploys,
+            vec![],
+            vec![],
+            PastFinalitySignatures::random(rng, 20),
+            random_bit,
+        );
 
         let era_report = if is_switch {
             let equivocators_count = rng.gen_range(0..5);
