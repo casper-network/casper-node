@@ -663,6 +663,12 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
+        if peers.is_empty() {
+            // We asked for peers but none were provided. Exit early without
+            // clearing the latch so that we don't ask again needlessly.
+            trace!("BlockSynchronizer: no peers available");
+            return;
+        }
         if !(self.is_finished() || self.is_failed()) {
             peers
                 .into_iter()

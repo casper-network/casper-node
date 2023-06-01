@@ -35,9 +35,25 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
-        if self.switch_block_header.is_none() {
-            // validate status is only checked at switch blocks
-            return ValidateInstruction::NonSwitchBlock;
+
+        match self.storage.read_highest_complete_block() {
+            Ok(Some(highest_complete_block)) => {
+                if !highest_complete_block.header().is_switch_block() {
+                    return ValidateInstruction::NonSwitchBlock;
+                }
+            }
+            Ok(None) => {
+                return ValidateInstruction::CheckLater(
+                    "no complete block found in storage".to_string(),
+                    self.control_logic_default_delay.into(),
+                );
+            }
+            Err(error) => {
+                return ValidateInstruction::Fatal(format!(
+                    "Could not read highest complete block from storage due to storage error: {}",
+                    error
+                ));
+            }
         }
 
         if self.should_shutdown_for_upgrade() {

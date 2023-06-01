@@ -31,6 +31,7 @@ current_node_count = 5
 path_to_client = ""
 huge_deploy_path = "./utils/nctl/sh/scenarios/smart_contracts/named_keys_bloat.wasm"
 huge_deploy_payment_amount = 10000000000000000
+test_shutting_down = False
 
 
 # Kill a random node, wait one minute, restart node
@@ -66,9 +67,11 @@ def invoke(command, quiet=False):
         log("invoking command: {}".format(command))
     invoke_lock.acquire()
     try:
-        result = subprocess.check_output(['/bin/bash', '-c',
-                                          'shopt -s expand_aliases\nsource $NCTL/activate\n{}'
-                                         .format(command)]).decode("utf-8").rstrip()
+        result = subprocess.check_output([
+            '/bin/bash', '-c',
+            'shopt -s expand_aliases\nsource $NCTL/activate\n{}'.format(
+                command)
+        ]).decode("utf-8").rstrip()
         return result
     except subprocess.CalledProcessError as e:
         log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"
@@ -90,7 +93,8 @@ def start_network():
     invoke(command)
 
     for node in range(1, 11):
-        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(node)
+        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(
+            node)
         chainspec = toml.load(path_to_chainspec)
         chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
         toml.dump(chainspec, open(path_to_chainspec, 'w'))
@@ -133,22 +137,25 @@ def wait_for_height(target_height):
 
 
 def deploy_sender_thread(count, interval):
-    global current_node_count
+    global current_node_count, test_shutting_down
+
     command = "nctl-transfer-wasm node={} transfers=1"
-    while True:
+    while not test_shutting_down:
         for i in range(count):
             nctl_call = command.format(random.randint(1, current_node_count))
             invoke(nctl_call, True)
         log("sent " + str(count) + " deploys and sleeping " + str(interval) +
             " seconds")
         sleep(interval)
+
+    log("*** deploy_sender_thread finishing ***")
     return
 
 
 def huge_deploy_sender_thread(count, interval):
-    global current_node_count
+    global current_node_count, test_shutting_down
 
-    while True:
+    while not test_shutting_down:
         for i in range(count):
             random_node = random.randint(1, current_node_count)
             huge_deploy_path = make_huge_deploy(random_node)
@@ -160,6 +167,8 @@ def huge_deploy_sender_thread(count, interval):
         log("sent " + str(count) + " huge deploys and sleeping " +
             str(interval) + " seconds")
         sleep(interval)
+
+    log("*** huge_deploy_sender_thread finishing ***")
     return
 
 
@@ -192,9 +201,46 @@ def start_sending_huge_deploys():
     return handle
 
 
-def test_timer_thread(secs):
+def disturbance_thread(disturbance_interval_secs):
+    global current_node_count, test_shutting_down
+
+    while not test_shutting_down:
+        disturbance_1(current_node_count)
+        assert_network_is_progressing(current_node_count)
+        sleep(disturbance_interval_secs)
+
+        disturbance_2(current_node_count)
+        assert_network_is_progressing(current_node_count)
+        sleep(disturbance_interval_secs)
+
+        current_node_count = join_node(current_node_count)
+        assert_network_is_progressing(current_node_count)
+
+    log("*** disturbance_thread finishing ***")
+    return
+
+
+def start_disturbance_thread():
+    log("*** starting disturbance thread ***")
+    handle = threading.Thread(target=disturbance_thread,
+                              args=(DISTURBANCE_INTERVAL_SECS, ))
+    handle.daemon = True
+    handle.start()
+    return handle
+
+
+def test_timer_thread(secs, deploy_sender_handle, huge_deploy_sender_handle,
+                      disturbance_thread):
+    global test_shutting_down
+
     sleep(secs)
-    log("*** " + str(secs) + " secs passed - running health checks ***")
+    log("*** " + str(secs) +
+        " secs passed - waiting for worker threads to finish ***")
+    test_shutting_down = True
+    deploy_sender_handle.join()
+    huge_deploy_sender_handle.join()
+    disturbance_thread.join()
+    log("*** running health checks ***")
     run_health_checks()
     log("*** test finished successfully ***")
     invoke("nctl-stop")
@@ -229,9 +275,13 @@ def run_health_checks():
     return
 
 
-def start_test_timer(secs):
+def start_test_timer(secs, deploy_sender_handle, huge_deploy_sender_handle,
+                     disturbance_thread):
     log("*** starting test timer (" + str(secs) + " secs) ***")
-    handle = threading.Thread(target=test_timer_thread, args=(secs, ))
+    handle = threading.Thread(target=test_timer_thread,
+                              args=(secs, deploy_sender_handle,
+                                    huge_deploy_sender_handle,
+                                    disturbance_thread))
     handle.daemon = True
     handle.start()
     return handle
@@ -250,19 +300,22 @@ def make_huge_deploy(node):
     if os.path.exists(output):
         os.remove(output)
     command = "{} make-deploy --output {} --chain-name {} --payment-amount {} --ttl {} --secret-key {} --session-path {} > /dev/null 2>&1".format(
-        path_to_client, output, chain_name, huge_deploy_payment_amount, ttl, secret_key,
-        session_path)
+        path_to_client, output, chain_name, huge_deploy_payment_amount, ttl,
+        secret_key, session_path)
     invoke(command)
     return output
 
 
-def prepare_test_env():
+def start_test():
     compile_node()
     start_network()
     wait_for_height(2)
-    timer_thread = start_test_timer(TEST_DURATION_SECS)
     deploy_sender_handle = start_sending_deploys()
     huge_deploy_sender_handle = start_sending_huge_deploys()
+    disturbance_thread = start_disturbance_thread()
+    main_test_thread = start_test_timer(TEST_DURATION_SECS, deploy_sender_handle,
+                     huge_deploy_sender_handle, disturbance_thread)
+    main_test_thread.join()
     return
 
 
@@ -336,16 +389,4 @@ def join_node(current_node_count):
 
 path_to_client = invoke("get_path_to_client")
 
-prepare_test_env()
-
-while True:
-    disturbance_1(current_node_count)
-    assert_network_is_progressing(current_node_count)
-    sleep(DISTURBANCE_INTERVAL_SECS)
-
-    disturbance_2(current_node_count)
-    assert_network_is_progressing(current_node_count)
-    sleep(DISTURBANCE_INTERVAL_SECS)
-
-    current_node_count = join_node(current_node_count)
-    assert_network_is_progressing(current_node_count)
+start_test()
