@@ -40,13 +40,14 @@ use std::{
     env,
     path::{Path, PathBuf},
     process::Command,
-    str::FromStr,
 };
 
-use clap::{crate_version, App, Arg};
+use clap::{
+    builder::{PathBufValueParser, PossibleValue, RangedU64ValueParser},
+    crate_version, Arg, ArgAction, Command as App,
+};
 use once_cell::sync::Lazy;
-
-use casper_types::SemVer;
+use semver::Version;
 
 use chainspec::Chainspec;
 use package::Package;
@@ -54,13 +55,13 @@ use package::Package;
 const APP_NAME: &str = "Casper Updater";
 
 const ROOT_DIR_ARG_NAME: &str = "root-dir";
-const ROOT_DIR_ARG_SHORT: &str = "r";
+const ROOT_DIR_ARG_SHORT: char = 'r';
 const ROOT_DIR_ARG_VALUE_NAME: &str = "PATH";
 const ROOT_DIR_ARG_HELP: &str =
     "Path to casper-node root directory.  If not supplied, assumes it is at ../..";
 
 const BUMP_ARG_NAME: &str = "bump";
-const BUMP_ARG_SHORT: &str = "b";
+const BUMP_ARG_SHORT: char = 'b';
 const BUMP_ARG_VALUE_NAME: &str = "VERSION-COMPONENT";
 const BUMP_ARG_HELP: &str =
     "Increases all crates' versions automatically without asking for user input.  For a crate at \
@@ -72,14 +73,14 @@ const MINOR: &str = "minor";
 const PATCH: &str = "patch";
 
 const ACTIVATION_POINT_ARG_NAME: &str = "activation-point";
-const ACTIVATION_POINT_ARG_SHORT: &str = "a";
+const ACTIVATION_POINT_ARG_SHORT: char = 'a';
 const ACTIVATION_POINT_ARG_VALUE_NAME: &str = "INTEGER";
 const ACTIVATION_POINT_ARG_HELP: &str =
     "Sets the activation point for the new version.  If this option is specified, --bump must also \
     be specified.";
 
 const DRY_RUN_ARG_NAME: &str = "dry-run";
-const DRY_RUN_ARG_SHORT: &str = "d";
+const DRY_RUN_ARG_SHORT: char = 'd';
 const DRY_RUN_ARG_HELP: &str = "Checks all regexes get matches in current casper-node repo";
 
 const ALLOW_EARLIER_VERSION_NAME: &str = "allow-earlier-version";
@@ -93,11 +94,11 @@ pub(crate) enum BumpVersion {
 }
 
 impl BumpVersion {
-    pub(crate) fn update(self, current_version: SemVer) -> SemVer {
+    pub(crate) fn update(self, current_version: &Version) -> Version {
         match self {
-            BumpVersion::Major => SemVer::new(current_version.major + 1, 0, 0),
-            BumpVersion::Minor => SemVer::new(current_version.major, current_version.minor + 1, 0),
-            BumpVersion::Patch => SemVer::new(
+            BumpVersion::Major => Version::new(current_version.major + 1, 0, 0),
+            BumpVersion::Minor => Version::new(current_version.major, current_version.minor + 1, 0),
+            BumpVersion::Patch => Version::new(
                 current_version.major,
                 current_version.minor,
                 current_version.patch + 1,
@@ -145,53 +146,52 @@ fn get_args() -> Args {
     let arg_matches = App::new(APP_NAME)
         .version(crate_version!())
         .arg(
-            Arg::with_name(ROOT_DIR_ARG_NAME)
+            Arg::new(ROOT_DIR_ARG_NAME)
                 .long(ROOT_DIR_ARG_NAME)
                 .short(ROOT_DIR_ARG_SHORT)
                 .value_name(ROOT_DIR_ARG_VALUE_NAME)
                 .help(ROOT_DIR_ARG_HELP)
-                .takes_value(true),
+                .value_parser(PathBufValueParser::new()),
         )
         .arg(
-            Arg::with_name(BUMP_ARG_NAME)
+            Arg::new(BUMP_ARG_NAME)
                 .long(BUMP_ARG_NAME)
                 .short(BUMP_ARG_SHORT)
                 .value_name(BUMP_ARG_VALUE_NAME)
                 .help(BUMP_ARG_HELP)
-                .takes_value(true)
-                .possible_values(&[MAJOR, MINOR, PATCH])
+                .value_parser([
+                    PossibleValue::new(MAJOR),
+                    PossibleValue::new(MINOR),
+                    PossibleValue::new(PATCH),
+                ])
                 .requires(ACTIVATION_POINT_ARG_NAME),
         )
         .arg(
-            Arg::with_name(ACTIVATION_POINT_ARG_NAME)
+            Arg::new(ACTIVATION_POINT_ARG_NAME)
                 .long(ACTIVATION_POINT_ARG_NAME)
                 .short(ACTIVATION_POINT_ARG_SHORT)
                 .value_name(ACTIVATION_POINT_ARG_VALUE_NAME)
                 .help(ACTIVATION_POINT_ARG_HELP)
-                .takes_value(true)
-                .validator(|value| {
-                    value
-                        .parse::<u64>()
-                        .map(drop)
-                        .map_err(|error| error.to_string())
-                })
+                .value_parser(RangedU64ValueParser::<u64>::new())
                 .requires(BUMP_ARG_NAME),
         )
         .arg(
-            Arg::with_name(DRY_RUN_ARG_NAME)
+            Arg::new(DRY_RUN_ARG_NAME)
                 .long(DRY_RUN_ARG_NAME)
                 .short(DRY_RUN_ARG_SHORT)
+                .action(ArgAction::SetTrue)
                 .help(DRY_RUN_ARG_HELP),
         )
         .arg(
-            Arg::with_name(ALLOW_EARLIER_VERSION_NAME)
+            Arg::new(ALLOW_EARLIER_VERSION_NAME)
                 .long(ALLOW_EARLIER_VERSION_NAME)
+                .action(ArgAction::SetTrue)
                 .help(ALLOW_EARLIER_VERSION_HELP),
         )
         .get_matches();
 
-    let root_dir = match arg_matches.value_of(ROOT_DIR_ARG_NAME) {
-        Some(path) => PathBuf::from_str(path).expect("should be a valid unicode path"),
+    let root_dir = match arg_matches.get_one::<PathBuf>(ROOT_DIR_ARG_NAME) {
+        Some(path) => path.clone(),
         None => env::current_dir()
             .expect("should be able to access current working dir")
             .parent()
@@ -202,8 +202,8 @@ fn get_args() -> Args {
     };
 
     let bump_version = arg_matches
-        .value_of(BUMP_ARG_NAME)
-        .map(|value| match value {
+        .get_one::<&str>(BUMP_ARG_NAME)
+        .map(|value| match *value {
             MAJOR => BumpVersion::Major,
             MINOR => BumpVersion::Minor,
             PATCH => BumpVersion::Patch,
@@ -211,15 +211,12 @@ fn get_args() -> Args {
         });
 
     let activation_point = arg_matches
-        .value_of(ACTIVATION_POINT_ARG_NAME)
-        .map(|value| {
-            // Safe to unwrap, as the arg is validated as being able to be parsed as a `u64`.
-            value.parse().unwrap()
-        });
+        .get_one::<u64>(ACTIVATION_POINT_ARG_NAME)
+        .copied();
 
-    let dry_run = arg_matches.is_present(DRY_RUN_ARG_NAME);
+    let dry_run = arg_matches.get_flag(DRY_RUN_ARG_NAME);
 
-    let allow_earlier_version = arg_matches.is_present(ALLOW_EARLIER_VERSION_NAME);
+    let allow_earlier_version = arg_matches.get_flag(ALLOW_EARLIER_VERSION_NAME);
 
     Args {
         root_dir,
@@ -231,29 +228,28 @@ fn get_args() -> Args {
 }
 
 fn main() {
-    let types = Package::cargo("types", &regex_data::types::DEPENDENT_FILES);
-    types.update();
+    let rust_packages = [
+        Package::cargo("types", &regex_data::types::DEPENDENT_FILES),
+        Package::cargo("hashing", &regex_data::hashing::DEPENDENT_FILES),
+        Package::cargo(
+            "execution_engine",
+            &regex_data::execution_engine::DEPENDENT_FILES,
+        ),
+        Package::cargo("json_rpc", &regex_data::json_rpc::DEPENDENT_FILES),
+        Package::cargo("node", &regex_data::node::DEPENDENT_FILES),
+        Package::cargo(
+            "smart_contracts/contract",
+            &regex_data::smart_contracts_contract::DEPENDENT_FILES,
+        ),
+        Package::cargo(
+            "execution_engine_testing/test_support",
+            &regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
+        ),
+    ];
 
-    let hashing = Package::cargo("hashing", &regex_data::hashing::DEPENDENT_FILES);
-    hashing.update();
-
-    let execution_engine = Package::cargo(
-        "execution_engine",
-        &regex_data::execution_engine::DEPENDENT_FILES,
-    );
-    execution_engine.update();
-
-    let json_rpc = Package::cargo("json_rpc", &regex_data::json_rpc::DEPENDENT_FILES);
-    json_rpc.update();
-
-    let node = Package::cargo("node", &regex_data::node::DEPENDENT_FILES);
-    node.update();
-
-    let smart_contracts_contract = Package::cargo(
-        "smart_contracts/contract",
-        &regex_data::smart_contracts_contract::DEPENDENT_FILES,
-    );
-    smart_contracts_contract.update();
+    for rust_package in &rust_packages {
+        rust_package.update()
+    }
 
     let smart_contracts_contract_as = Package::assembly_script(
         "smart_contracts/contract_as",
@@ -261,23 +257,22 @@ fn main() {
     );
     smart_contracts_contract_as.update();
 
-    let execution_engine_testing_test_support = Package::cargo(
-        "execution_engine_testing/test_support",
-        &regex_data::execution_engine_testing_test_support::DEPENDENT_FILES,
-    );
-    execution_engine_testing_test_support.update();
-
     let chainspec = Chainspec::new();
     chainspec.update();
 
     // Update Cargo.lock if this isn't a dry run.
     if !is_dry_run() {
-        let status = Command::new(env!("CARGO"))
-            .arg("generate-lockfile")
-            .arg("--offline")
+        let mut command = Command::new(env!("CARGO"));
+        let _ = command
             .current_dir(root_dir())
+            .arg("update")
+            .arg("--offline");
+        for rust_package in &rust_packages {
+            let _ = command.arg("--package").arg(rust_package.name());
+        }
+        let status = command
             .status()
-            .expect("Failed to execute 'cargo generate-lockfile'");
+            .unwrap_or_else(|error| panic!("Failed to execute '{:?}': {}", command, error));
         assert!(status.success(), "Failed to update Cargo.lock");
     }
 }

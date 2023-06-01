@@ -23,6 +23,7 @@ pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 100_000_000;
 /// This structure contains the costs of all the system contract's entry points and, additionally,
 /// it defines a wasmless transfer cost.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
     wasmless_transfer_cost: u32,

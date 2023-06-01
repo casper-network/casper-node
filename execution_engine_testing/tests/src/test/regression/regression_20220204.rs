@@ -292,7 +292,6 @@ fn regression_20220204_as_session_attenuated() {
     .build();
     builder.exec(exec_request_2).commit();
     let error = builder.get_error().expect("should have returned an error");
-    println!("{:?}", error);
     assert!(
         matches!(
             error,

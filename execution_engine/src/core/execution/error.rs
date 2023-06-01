@@ -184,8 +184,8 @@ impl From<wasm_prep::PreprocessingError> for Error {
     }
 }
 
-impl From<pwasm_utils::OptimizerError> for Error {
-    fn from(_optimizer_error: pwasm_utils::OptimizerError) -> Self {
+impl From<casper_wasm_utils::OptimizerError> for Error {
+    fn from(_optimizer_error: casper_wasm_utils::OptimizerError) -> Self {
         Error::WasmOptimizer
     }
 }

@@ -1,20 +1,25 @@
 #[cfg(test)]
 mod tests;
 
-use std::{cmp, collections::VecDeque, convert::TryInto, mem};
+#[cfg(test)]
+use std::collections::HashSet;
+use std::{borrow::Cow, cmp, collections::VecDeque, convert::TryInto, mem};
 
+use either::Either;
+use num_traits::FromPrimitive;
 use tracing::{error, warn};
 
 use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 use crate::global_state::{
     shared::CorrelationId,
     storage::{
         transaction_source::{Readable, Writable},
         trie::{
+            self,
             merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-            Parents, Pointer, PointerBlock, Trie, RADIX, USIZE_EXCEEDS_U8,
+            Parents, Pointer, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8,
         },
         trie_store::TrieStore,
     },
@@ -245,7 +250,7 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     // Optimization: Don't deserialize leaves as they have no descendants.
-    if let Some(&Trie::<K, V>::LEAF_TAG) = trie_raw.first() {
+    if let Some(TrieTag::Leaf) = trie_raw.first().copied().and_then(TrieTag::from_u8) {
         return Ok(vec![]);
     }
 
@@ -300,12 +305,47 @@ impl<K, V> TrieScan<K, V> {
 /// "tip", along the with the parents of that variant. Parents are ordered by
 /// their depth from the root (shallow to deep).
 fn scan<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     key_bytes: &[u8],
     root: &Trie<K, V>,
-) -> Result<Option<TrieScan<K, V>>, E>
+) -> Result<TrieScan<K, V>, E>
+where
+    K: ToBytes + FromBytes + Clone,
+    V: ToBytes + FromBytes + Clone,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    let root_bytes = root.to_bytes()?;
+    let TrieScanRaw { tip, parents } =
+        scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
+    let tip = match tip {
+        Either::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
+        Either::Right(tip) => tip,
+    };
+    Ok(TrieScan::new(tip, parents))
+}
+
+struct TrieScanRaw<K, V> {
+    tip: Either<Bytes, Trie<K, V>>,
+    parents: Parents<K, V>,
+}
+
+impl<K, V> TrieScanRaw<K, V> {
+    fn new(tip: Either<Bytes, Trie<K, V>>, parents: Parents<K, V>) -> Self {
+        TrieScanRaw { tip, parents }
+    }
+}
+
+/// Just like scan, however we don't parse the tip.
+fn scan_raw<K, V, T, S, E>(
+    txn: &T,
+    store: &S,
+    key_bytes: &[u8],
+    root_bytes: Bytes,
+) -> Result<TrieScanRaw<K, V>, E>
 where
     K: ToBytes + FromBytes + Clone,
     V: ToBytes + FromBytes + Clone,
@@ -316,14 +356,22 @@ where
 {
     let path = key_bytes;
 
-    let mut current = root.to_owned();
+    let mut current_trie;
+    let mut current = root_bytes;
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
 
     loop {
-        match current {
-            leaf @ Trie::Leaf { .. } => {
-                return Ok(Some(TrieScan::new(leaf, acc)));
+        let maybe_trie_leaf = trie::lazy_trie_deserialize(current)?;
+        current_trie = match maybe_trie_leaf {
+            leaf_bytes @ Either::Left(_) => return Ok(TrieScanRaw::new(leaf_bytes, acc)),
+            Either::Right(trie_object) => trie_object,
+        };
+        match current_trie {
+            _leaf @ Trie::Leaf { .. } => {
+                // since we are checking if this is a leaf and skipping, we do not expect to ever
+                // hit this.
+                unreachable!()
             }
             Trie::Node { pointer_block } => {
                 let index = {
@@ -338,31 +386,36 @@ where
                 let pointer = match maybe_pointer {
                     Some(pointer) => pointer,
                     None => {
-                        return Ok(Some(TrieScan::new(Trie::Node { pointer_block }, acc)));
+                        return Ok(TrieScanRaw::new(
+                            Either::Right(Trie::Node { pointer_block }),
+                            acc,
+                        ));
                     }
                 };
-                match store.get(txn, pointer.hash())? {
+                match store.get_raw(txn, pointer.hash())? {
                     Some(next) => {
                         current = next;
                         depth += 1;
                         acc.push((index, Trie::Node { pointer_block }))
                     }
                     None => {
-                        warn!(
+                        panic!(
                             "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
                             path
                         );
-                        return Ok(None);
                     }
                 }
             }
             Trie::Extension { affix, pointer } => {
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path != affix.as_slice() {
-                    return Ok(Some(TrieScan::new(Trie::Extension { affix, pointer }, acc)));
+                    return Ok(TrieScanRaw::new(
+                        Either::Right(Trie::Extension { affix, pointer }),
+                        acc,
+                    ));
                 }
-                match store.get(txn, pointer.hash())? {
+                match store.get_raw(txn, pointer.hash())? {
                     Some(next) => {
                         let index = {
                             assert!(depth < path.len(), "depth must be < {}", path.len());
@@ -373,12 +426,11 @@ where
                         acc.push((index, Trie::Extension { affix, pointer }))
                     }
                     None => {
-                        warn!(
+                        panic!(
                             "No trie value at key: {:?} (reading from path: {:?})",
                             pointer.hash(),
                             path
                         );
-                        return Ok(None);
                     }
                 }
             }
@@ -393,9 +445,9 @@ pub enum DeleteResult {
     RootNotFound,
 }
 
-#[allow(unused)]
-fn delete<K, V, T, S, E>(
-    correlation_id: CorrelationId,
+/// Delete provided key from a global state so it is not reachable from a resulting state root hash.
+pub(crate) fn delete<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -409,21 +461,32 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let root_trie = match store.get(txn, root)? {
+    let root_trie_bytes = match store.get_raw(txn, root)? {
         None => return Ok(DeleteResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
     let key_bytes = key_to_delete.to_bytes()?;
-    let TrieScan { tip, mut parents } =
-        match scan::<_, _, _, _, E>(correlation_id, txn, store, &key_bytes, &root_trie)? {
-            Some(trie_scan) => trie_scan,
-            None => return Ok(DeleteResult::DoesNotExist),
-        };
+    let TrieScanRaw { tip, mut parents } =
+        scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
 
     // Check that tip is a leaf
     match tip {
-        Trie::Leaf { key, .. } if key == *key_to_delete => {}
+        Either::Left(bytes)
+            if {
+                // Partially deserialize a key of a leaf node to ensure that we can only continue if
+                // the key matches what we're looking for.
+                let ((tag_u8, key), _rem): ((u8, K), _) = FromBytes::from_bytes(&bytes)?;
+                let trie_tag = TrieTag::from_u8(tag_u8);
+                // _rem contains bytes of serialized V, but we don't need to inspect it.
+                assert_eq!(
+                    trie_tag,
+                    Some(TrieTag::Leaf),
+                    "Tip should contain leaf bytes, but has tag {:?}",
+                    trie_tag
+                );
+                key == *key_to_delete
+            } => {}
         _ => return Ok(DeleteResult::DoesNotExist),
     }
 
@@ -604,6 +667,7 @@ where
         .pop()
         .map(|(hash, _)| hash)
         .unwrap_or_else(|| root.to_owned());
+
     Ok(DeleteResult::Deleted(new_root))
 }
 
@@ -843,7 +907,7 @@ pub enum WriteResult {
 }
 
 pub fn write<K, V, T, S, E>(
-    correlation_id: CorrelationId,
+    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -867,13 +931,7 @@ where
             };
             let path: Vec<u8> = key.to_bytes()?;
             let TrieScan { tip, parents } =
-                match scan::<K, V, T, S, E>(correlation_id, txn, store, &path, &current_root)? {
-                    Some(trie_scan) => trie_scan,
-                    // If we are scanning the trie and it's not complete under the given root, then
-                    // in the context of a write we must consider this root to "not exist".
-                    // This can happen when a trie is being sync'd or is incomplete.
-                    None => return Ok(WriteResult::RootNotFound),
-                };
+                scan::<K, V, T, S, E>(txn, store, &path, &current_root)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.
@@ -954,7 +1012,7 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let trie_hash = Digest::hash_into_chunks_if_necessary(trie_bytes);
-    store.put_raw(txn, &trie_hash, trie_bytes)?;
+    store.put_raw(txn, &trie_hash, Cow::from(trie_bytes))?;
     Ok(trie_hash)
 }
 
@@ -1102,26 +1160,6 @@ where
     }
 }
 
-/// Returns the iterator over the keys at a given root hash.
-///
-/// The root should be the apex of the trie.
-#[cfg(test)]
-pub fn keys<'a, 'b, K, V, T, S>(
-    correlation_id: CorrelationId,
-    txn: &'b T,
-    store: &'a S,
-    root: &Digest,
-) -> KeysIterator<'a, 'b, K, V, T, S>
-where
-    K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-    V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
-    T: Readable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-{
-    keys_with_prefix(correlation_id, txn, store, root, &[])
-}
-
 /// Returns the iterator over the keys in the subtrie matching `prefix`.
 ///
 /// The root should be the apex of the trie.
@@ -1159,4 +1197,110 @@ where
         txn,
         state: init_state,
     }
+}
+
+/// Returns the iterator over the keys at a given root hash.
+///
+/// The root should be the apex of the trie.
+#[cfg(test)]
+pub fn keys<'a, 'b, K, V, T, S>(
+    correlation_id: CorrelationId,
+    txn: &'b T,
+    store: &'a S,
+    root: &Digest,
+) -> KeysIterator<'a, 'b, K, V, T, S>
+where
+    K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+{
+    keys_with_prefix(correlation_id, txn, store, root, &[])
+}
+
+#[cfg(test)]
+pub fn check_integrity<K, V, T, S, E>(
+    _correlation_id: CorrelationId,
+    txn: &T,
+    store: &S,
+    trie_keys_to_visit: Vec<Digest>,
+) -> Result<(), E>
+where
+    K: ToBytes + FromBytes + Eq + std::fmt::Debug,
+    V: ToBytes + FromBytes + std::fmt::Debug,
+    T: Readable<Handle = S::Handle>,
+    S: TrieStore<K, V>,
+    S::Error: From<T::Error>,
+    E: From<S::Error> + From<bytesrepr::Error>,
+{
+    for state_root in &trie_keys_to_visit {
+        match store.get(txn, state_root)? {
+            Some(Trie::Node { .. }) => {}
+            other => panic!(
+                "Should have a pointer block node as state root but received {:?} instead",
+                other
+            ),
+        }
+    }
+    let mut trie_keys_to_visit: Vec<(Vec<u8>, Digest)> = trie_keys_to_visit
+        .iter()
+        .map(|blake2b_hash| (Vec::new(), *blake2b_hash))
+        .collect();
+    let mut visited = HashSet::new();
+    while let Some((mut path, trie_key)) = trie_keys_to_visit.pop() {
+        if !visited.insert(trie_key) {
+            continue;
+        }
+        let maybe_retrieved_trie: Option<Trie<K, V>> = store.get(txn, &trie_key)?;
+        if let Some(trie_value) = &maybe_retrieved_trie {
+            let hash_of_trie_value = {
+                let node_bytes = trie_value.to_bytes()?;
+                Digest::hash(&node_bytes)
+            };
+            if trie_key != hash_of_trie_value {
+                panic!(
+                    "Trie key {:?} has corrupted value {:?} (hash of value is {:?})",
+                    trie_key, trie_value, hash_of_trie_value
+                );
+            }
+        }
+        match maybe_retrieved_trie {
+            // If we can't find the trie_key; it is missing and we'll return it
+            None => {
+                panic!("Missing trie key: {:?}", trie_key)
+            }
+            // If we could retrieve the node and it is a leaf, the search can move on
+            Some(Trie::Leaf { key, .. }) => {
+                let key_bytes = key.to_bytes()?;
+                if !key_bytes.starts_with(&path) {
+                    panic!(
+                                "Trie key {:?} belongs to a leaf with a corrupted affix. Key bytes: {:?}, Path: {:?}.",
+                                trie_key, key_bytes, path
+                            );
+                }
+            }
+            // If we hit a pointer block, queue up all of the nodes it points to
+            Some(Trie::Node { pointer_block }) => {
+                for (byte, pointer) in pointer_block.as_indexed_pointers() {
+                    let mut new_path = path.clone();
+                    new_path.push(byte);
+                    match pointer {
+                        Pointer::LeafPointer(descendant_leaf_trie_key) => {
+                            trie_keys_to_visit.push((new_path, descendant_leaf_trie_key))
+                        }
+                        Pointer::NodePointer(descendant_node_trie_key) => {
+                            trie_keys_to_visit.push((new_path, descendant_node_trie_key))
+                        }
+                    }
+                }
+            }
+            // If we hit an extension block, add its pointer to the queue
+            Some(Trie::Extension { pointer, affix }) => {
+                path.extend_from_slice(affix.as_slice());
+                trie_keys_to_visit.push((path, pointer.into_hash()))
+            }
+        }
+    }
+    Ok(())
 }

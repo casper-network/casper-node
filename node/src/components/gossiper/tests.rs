@@ -17,7 +17,7 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
-use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff};
+use casper_types::{testing::TestRng, EraId, ProtocolVersion, TimeDiff};
 
 use super::*;
 use crate::{
@@ -162,6 +162,7 @@ impl reactor::Reactor for Reactor {
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
+            EraId::default(),
             "test",
             MAX_TTL,
             RECENT_ERA_COUNT,

@@ -11,13 +11,6 @@ use crate::components::fetcher::{EmptyValidationMetadata, FetchItem, Tag};
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Debug)]
 pub(crate) struct LegacyDeploy(Deploy);
 
-impl LegacyDeploy {
-    #[cfg(test)]
-    pub(crate) fn inner(&self) -> &Deploy {
-        &self.0
-    }
-}
-
 impl FetchItem for LegacyDeploy {
     type Id = DeployHash;
     type ValidationError = DeployConfigurationFailure;

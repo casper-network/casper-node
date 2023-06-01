@@ -235,12 +235,6 @@ impl MainReactor {
         maybe_block_height: Option<u64>,
         last_progress: Timestamp,
     ) -> Either<SyncIdentifier, CatchUpInstruction> {
-        // if any progress has been made, reset attempts
-        if last_progress > self.last_progress {
-            debug!(%last_progress, "CatchUp: syncing");
-            self.last_progress = last_progress;
-            self.attempts = 0;
-        }
         // if we have not made progress on our attempt to catch up with the network, increment
         // attempts counter and try again; the crank logic will shut the node down on the next
         // crank if we've exceeded our reattempts

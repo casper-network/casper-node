@@ -90,10 +90,11 @@ use crate::{
             BlockContext, ConsensusProtocol, FinalizedBlock, ProposedBlock, ProtocolOutcome,
             ProtocolOutcomes, TerminalBlockData,
         },
+        era_supervisor::SerializedMessage,
         protocols,
         traits::{ConsensusValueT, Context},
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
-        ActionId, EraMessage, EraRequest, LeaderSequence, TimerId,
+        ActionId, LeaderSequence, TimerId,
     },
     types::{Chainspec, NodeId},
     utils, NodeRng,
@@ -428,7 +429,9 @@ impl<C: Context + 'static> Zug<C> {
             .choose(rng)
             .unwrap_or(self.current_round);
         let payload = self.create_sync_request(first_validator_idx, round_id);
-        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(payload.into())];
+        let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(
+            SerializedMessage::from_message(&payload),
+        )];
         // Periodically sync the state with a random peer.
         if let Some(interval) = self.config.sync_state_interval {
             outcomes.push(ProtocolOutcome::ScheduleTimer(
@@ -676,7 +679,7 @@ impl<C: Context + 'static> Zug<C> {
             .into_iter()
             .map(|signed_msg| {
                 let message = Message::Signed(signed_msg);
-                ProtocolOutcome::CreatedGossipMessage(message.into())
+                ProtocolOutcome::CreatedGossipMessage(SerializedMessage::from_message(&message))
             })
             .collect()
     }
@@ -770,7 +773,7 @@ impl<C: Context + 'static> Zug<C> {
         &self,
         sync_request: SyncRequest<C>,
         sender: NodeId,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>) {
         let SyncRequest {
             round_id,
             mut proposal_hash,
@@ -914,7 +917,12 @@ impl<C: Context + 'static> Zug<C> {
             evidence,
             instance_id,
         };
-        (outcomes, Some(Message::SyncResponse(sync_response).into()))
+        (
+            outcomes,
+            Some(SerializedMessage::from_message(&Message::SyncResponse(
+                sync_response,
+            ))),
+        )
     }
 
     /// The response containing the parts from the sender's protocol state that we were missing.
@@ -1044,7 +1052,9 @@ impl<C: Context + 'static> Zug<C> {
             let evidence_msg = Message::Evidence(signed_msg.clone(), content2, signature2);
             let mut outcomes =
                 self.handle_fault(signed_msg, validator_id, content2, signature2, now);
-            outcomes.push(ProtocolOutcome::CreatedGossipMessage(evidence_msg.into()));
+            outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+                SerializedMessage::from_message(&evidence_msg),
+            ));
             return outcomes;
         }
 
@@ -1900,7 +1910,9 @@ impl<C: Context + 'static> Zug<C> {
             vec![]
         } else if self.round_mut(round_id).insert_proposal(hashed_prop) {
             self.mark_dirty(round_id);
-            vec![ProtocolOutcome::CreatedGossipMessage(prop_msg.into())]
+            vec![ProtocolOutcome::CreatedGossipMessage(
+                SerializedMessage::from_message(&prop_msg),
+            )]
         } else {
             vec![]
         }
@@ -2078,13 +2090,13 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraMessage<C>,
+        msg: SerializedMessage,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
         let our_idx = self.our_idx();
-        match msg.try_into_zug() {
-            Err(_msg) => {
-                warn!(our_idx, %sender, "received a message for the wrong consensus protocol");
+        match msg.deserialize_incoming() {
+            Err(err) => {
+                warn!(%sender, %err, "failed to deserialize Zug message");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(zug_msg) if zug_msg.instance_id() != self.instance_id() => {
@@ -2119,16 +2131,17 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraRequest<C>,
+        msg: SerializedMessage,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>) {
         let our_idx = self.our_idx();
-        match msg.try_into_zug() {
-            Err(_msg) => {
+        match msg.deserialize_incoming::<SyncRequest<C>>() {
+            Err(err) => {
                 warn!(
                     our_idx,
                     %sender,
-                    "received a request for the wrong consensus protocol"
+                    %err,
+                    "could not deserialize Zug message"
                 );
                 (vec![ProtocolOutcome::Disconnect(sender)], None)
             }
@@ -2344,7 +2357,7 @@ where
             .map(|fault| match fault {
                 Fault::Direct(msg, content, sign) => {
                     vec![ProtocolOutcome::CreatedTargetedMessage(
-                        Message::Evidence(msg, content, sign).into(),
+                        SerializedMessage::from_message(&Message::Evidence(msg, content, sign)),
                         peer,
                     )]
                 }

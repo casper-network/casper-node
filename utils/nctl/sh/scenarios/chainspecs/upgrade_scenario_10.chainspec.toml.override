@@ -1,0 +1,2 @@
+[core]
+prune_batch_size = 50

@@ -111,6 +111,7 @@ fn should_observe_stack_height_limit() {
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             DEFAULT_STRICT_ARGUMENT_CHECKING,
             DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+            None,
             WasmConfig::new(
                 DEFAULT_WASM_MAX_MEMORY,
                 NEW_WASM_STACK_HEIGHT,

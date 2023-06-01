@@ -10,7 +10,7 @@
     )),
     no_std
 )]
-#![doc(html_root_url = "https://docs.rs/casper-types/1.5.0")]
+#![doc(html_root_url = "https://docs.rs/casper-types/3.0.0")]
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
@@ -38,7 +38,7 @@ mod execution_result;
 #[cfg(any(feature = "std", test))]
 pub mod file_utils;
 mod gas;
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens;
 mod json_pretty_printer;
 mod key;

@@ -21,6 +21,7 @@ pub const DEFAULT_MINT_INTO_EXISTING_PURSE_COST: u32 = 2_500_000_000;
 
 /// Description of the costs of calling mint entry points.
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[serde(deny_unknown_fields)]
 pub struct MintCosts {
     /// Cost of calling the `mint` entry point.
     pub mint: u32,

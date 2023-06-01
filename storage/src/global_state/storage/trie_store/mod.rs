@@ -2,7 +2,7 @@
 //!
 //! See the [lmdb](lmdb/index.html#usage) modules for usage examples.
 pub mod lmdb;
-pub(crate) mod operations;
+pub mod operations;
 #[cfg(test)]
 mod tests;
 

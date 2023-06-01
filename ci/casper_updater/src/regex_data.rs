@@ -28,6 +28,11 @@ pub mod types {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
+                "hashing/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
                 "execution_engine/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -258,6 +263,11 @@ pub mod chainspec_protocol_version {
                 "node/src/components/rpc_server/rpcs/docs.rs",
                 Regex::new(r#"(?m)(DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =\s*ProtocolVersion::from_parts)\((\d+,\s*\d+,\s*\d+)\)"#).unwrap(),
                 rpcs_docs_rs_replacement,
+            ),
+            DependentFile::new(
+                "resources/test/rpc_schema_hashing.json",
+                Regex::new(r#"(?m)("version":\s*|"api_version":\s*)"([^"]+)"#).unwrap(),
+                replacement,
             ),
         ]
     });

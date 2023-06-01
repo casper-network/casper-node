@@ -213,6 +213,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         WasmConfig::default(),
         new_system_config,
     );
@@ -510,6 +511,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         WasmConfig::default(),
         new_system_config,
     );
@@ -1026,6 +1028,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         new_wasm_config,
         new_system_config,
     );

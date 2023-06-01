@@ -6,40 +6,40 @@ version = 3
 name = "activate-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-associated-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-gas-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "add-update-associated-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -59,9 +59,9 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "aho-corasick"
-version = "0.7.20"
+version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc936419f96fa211c1b9166887b38e5e40b19958e5b895be7c1f93adec7071ac"
+checksum = "67fc08ce920c31afb70f013dcce1bfc3a3195de6a228474e45e1f145b36f8d04"
 dependencies = [
  "memchr",
 ]
@@ -91,10 +91,59 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyhow"
-version = "1.0.70"
+name = "anstream"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7de8ce5e0f9f8d88245311066a578d72b7af3e7088f32783804676302df237e4"
+checksum = "0ca84f3628370c59db74ee214b3263d58f9aadd9b4fe7e711fd87dc452b7f163"
+dependencies = [
+ "anstyle",
+ "anstyle-parse",
+ "anstyle-query",
+ "anstyle-wincon",
+ "colorchoice",
+ "is-terminal",
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41ed9a86bf92ae6580e0a31281f65a1b1d867c0cc68d5346e2ae128dddfa6a7d"
+
+[[package]]
+name = "anstyle-parse"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e765fd216e48e067936442276d1d57399e37bce53c264d6fefbe298080cb57ee"
+dependencies = [
+ "utf8parse",
+]
+
+[[package]]
+name = "anstyle-query"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ca11d4be1bab0c8bc8734a9aa7bf4ee8316d462a08c6ac5052f888fef5b494b"
+dependencies = [
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "anstyle-wincon"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "180abfa45703aebe0093f79badacc01b8fd4ea2e35118747e5811127f926e188"
+dependencies = [
+ "anstyle",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "anyhow"
+version = "1.0.71"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c7d0618f0e0b7e8ff11427422b64564d5fb0be1940354bfe2e0529b18a9d9b8"
 
 [[package]]
 name = "aquamarine"
@@ -104,7 +153,7 @@ checksum = "a941c39708478e8eea39243b5983f1c42d2717b3620ee91f4a52115fd02ac43f"
 dependencies = [
  "itertools 0.9.0",
  "proc-macro-error",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -141,13 +190,13 @@ dependencies = [
 
 [[package]]
 name = "async-trait"
-version = "0.1.67"
+version = "0.1.68"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86ea188f25f0255d8f92797797c97ebf5631fa88178beb1a46fdf5622c9a00e4"
+checksum = "b9ccdd8f2a161be9bd5c023df56f1b2a0bd1d83872ae53b71a84a12c9bf6e842"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 2.0.8",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -174,16 +223,16 @@ dependencies = [
 name = "auction-bidding"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "auction-bids"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -202,7 +251,7 @@ dependencies = [
  "cc",
  "cfg-if 1.0.0",
  "libc",
- "miniz_oxide",
+ "miniz_oxide 0.6.2",
  "object",
  "rustc-demangle",
 ]
@@ -281,8 +330,8 @@ dependencies = [
 name = "blake2b"
 version = "0.8.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -325,20 +374,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "buf_redux"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b953a6887648bb07a535631f2bc00fbdb2a2216f135552cb3f534ed136b9c07f"
-dependencies = [
- "memchr",
- "safemem",
-]
-
-[[package]]
 name = "bumpalo"
-version = "3.12.0"
+version = "3.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d261e256854913907f67ed06efbc3338dfe6179796deefc1ff763fc1aee5535"
+checksum = "9b1ce199063694f33ffb7dd4e0ee620741495c32833cde5aa08f02a0bf96f0c8"
 
 [[package]]
 name = "byteorder"
@@ -354,33 +393,22 @@ checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
 
 [[package]]
 name = "casper-contract"
-version = "1.4.4"
+version = "3.0.0"
 dependencies = [
- "casper-types 1.5.0",
+ "casper-types",
  "hex_fmt",
  "version-sync",
  "wee_alloc",
 ]
 
 [[package]]
-name = "casper-contract"
-version = "1.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "790b76807d64788758208757b0a17970bf756cb7c392f55b1a22021a34f95991"
-dependencies = [
- "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hex_fmt",
- "wee_alloc",
-]
-
-[[package]]
 name = "casper-engine-test-support"
-version = "3.0.0"
+version = "5.0.0"
 dependencies = [
  "casper-execution-engine",
  "casper-hashing",
  "casper-storage",
- "casper-types 1.5.0",
+ "casper-types",
  "filesize",
  "humantime",
  "lmdb-rkv",
@@ -405,7 +433,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-hashing",
  "casper-storage",
- "casper-types 1.5.0",
+ "casper-types",
  "clap 2.34.0",
  "criterion",
  "dictionary",
@@ -419,7 +447,7 @@ dependencies = [
  "num-rational 0.4.1",
  "num-traits",
  "once_cell",
- "parity-wasm",
+ "parity-wasm 0.41.0",
  "rand 0.8.5",
  "regex",
  "serde",
@@ -432,16 +460,18 @@ dependencies = [
 
 [[package]]
 name = "casper-execution-engine"
-version = "3.0.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
  "base16",
  "casper-hashing",
  "casper-storage",
- "casper-types 1.5.0",
+ "casper-types",
+ "casper-wasm-utils",
  "criterion",
  "datasize",
+ "either",
  "hex-buffer-serde 0.2.2",
  "hex_fmt",
  "hostname",
@@ -454,10 +484,10 @@ dependencies = [
  "num-derive",
  "num-rational 0.4.1",
  "num-traits",
+ "num_cpus",
  "once_cell",
- "parity-wasm",
+ "parity-wasm 0.42.2",
  "proptest",
- "pwasm-utils",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "schemars",
@@ -469,18 +499,19 @@ dependencies = [
  "thiserror",
  "tracing",
  "uint",
+ "walrus",
  "wasmi",
 ]
 
 [[package]]
 name = "casper-hashing"
-version = "1.4.3"
+version = "2.0.0"
 dependencies = [
  "assert_matches",
  "base16",
  "bincode",
  "blake2",
- "casper-types 1.5.0",
+ "casper-types",
  "criterion",
  "datasize",
  "hex",
@@ -500,7 +531,7 @@ dependencies = [
 
 [[package]]
 name = "casper-json-rpc"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bytes",
  "env_logger",
@@ -517,7 +548,7 @@ dependencies = [
 
 [[package]]
 name = "casper-node"
-version = "1.4.13"
+version = "1.5.0-rc.1"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -534,7 +565,7 @@ dependencies = [
  "casper-hashing",
  "casper-json-rpc",
  "casper-storage",
- "casper-types 1.5.0",
+ "casper-types",
  "datasize",
  "derive_more",
  "ed25519-dalek",
@@ -617,10 +648,13 @@ dependencies = [
  "anyhow",
  "bincode",
  "casper-hashing",
- "casper-types 1.5.0",
+ "casper-types",
  "datasize",
+ "either",
  "lmdb-rkv",
  "num",
+ "num-derive",
+ "num-traits",
  "proptest",
  "rand 0.8.5",
  "serde",
@@ -633,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "casper-types"
-version = "1.5.0"
+version = "3.0.0"
 dependencies = [
  "base16",
  "base64 0.13.1",
@@ -676,39 +710,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "casper-types"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a13e82a13d1784104fd021a38da56c69da94e84b26b03c2cf3d8da3895a16c8c"
-dependencies = [
- "base16",
- "base64 0.13.1",
- "bitflags",
- "blake2",
- "ed25519-dalek",
- "hex",
- "hex_fmt",
- "k256",
- "num",
- "num-derive",
- "num-integer",
- "num-rational 0.4.1",
- "num-traits",
- "rand 0.8.5",
- "serde",
- "serde_bytes",
- "serde_json",
- "uint",
-]
-
-[[package]]
 name = "casper-updater"
 version = "0.3.0"
 dependencies = [
- "casper-types 1.5.0",
- "clap 2.34.0",
+ "clap 4.2.7",
  "once_cell",
  "regex",
+ "semver",
 ]
 
 [[package]]
@@ -717,13 +725,24 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base16",
- "casper-types 1.5.0",
- "clap 3.2.23",
+ "casper-types",
+ "clap 3.2.25",
  "derive_more",
  "hex",
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "casper-wasm-utils"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e9c4208106e8a95a83ab3cb5f4e800114bfc101df9e7cb8c2160c7e298c6397"
+dependencies = [
+ "byteorder",
+ "log",
+ "parity-wasm 0.42.2",
 ]
 
 [[package]]
@@ -770,14 +789,14 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.2.23"
+version = "3.2.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71655c45cb9845d3270c9d6df84ebe72b4dad3c2ba3f7023ad47c144e4e473a5"
+checksum = "4ea181bf566f71cb9a5d17a59e1871af638180a18fb0035c92ae62b705207123"
 dependencies = [
  "atty",
  "bitflags",
- "clap_derive",
- "clap_lex",
+ "clap_derive 3.2.25",
+ "clap_lex 0.2.4",
  "indexmap",
  "once_cell",
  "strsim 0.10.0",
@@ -786,16 +805,53 @@ dependencies = [
 ]
 
 [[package]]
-name = "clap_derive"
-version = "3.2.18"
+name = "clap"
+version = "4.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea0c8bce528c4be4da13ea6fead8965e95b6073585a2f05204bd8f4119f82a65"
+checksum = "34d21f9bf1b425d2968943631ec91202fe5e837264063503708b83013f8fc938"
+dependencies = [
+ "clap_builder",
+ "clap_derive 4.2.0",
+]
+
+[[package]]
+name = "clap_builder"
+version = "4.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "914c8c79fb560f238ef6429439a30023c862f7a28e688c58f7203f12b29970bd"
+dependencies = [
+ "anstream",
+ "anstyle",
+ "bitflags",
+ "clap_lex 0.4.1",
+ "once_cell",
+ "strsim 0.10.0",
+ "terminal_size",
+]
+
+[[package]]
+name = "clap_derive"
+version = "3.2.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ae6371b8bdc8b7d3959e9cf7b22d4435ef3e79e138688421ec654acf8c81b008"
 dependencies = [
  "heck 0.4.1",
  "proc-macro-error",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "clap_derive"
+version = "4.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9644cd56d6b87dbe899ef8b053e331c0637664e9e21a33dfcdc36093f5c5c4"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2 1.0.56",
+ "quote 1.0.26",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -808,20 +864,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "cmake"
-version = "0.1.49"
+name = "clap_lex"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db34956e100b30725f2eb215f90d4871051239535632f84fea3bc92722c66b7c"
+checksum = "8a2dd5a6fe8c6e3502f568a6353e5273bbb15193ad9a89e457b9970798efbea1"
+
+[[package]]
+name = "cmake"
+version = "0.1.50"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31c789563b815f77f4250caee12365734369f942439b7defd71e18a48197130"
 dependencies = [
  "cc",
 ]
 
 [[package]]
+name = "colorchoice"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
+
+[[package]]
 name = "contract-context"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -842,23 +910,23 @@ dependencies = [
 
 [[package]]
 name = "core-foundation-sys"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
+checksum = "e496a50fda8aacccc86d7529e2c1e0892dbd0f898a6b5645b5561b89c3210efa"
 
 [[package]]
 name = "counter-installer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.5"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28d997bd5e24a5928dd43e46dc529867e207907fe0b239c3477d924f7f2ca320"
+checksum = "3e4c1eaa2012c47becbbad2ab175484c2a84d1185b566fb2cc5b8707343dfe58"
 dependencies = [
  "libc",
 ]
@@ -876,24 +944,24 @@ dependencies = [
 name = "create-accounts"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "create-purse-01"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "create-purses"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -922,8 +990,8 @@ name = "create-test-node-shared"
 version = "0.1.0"
 dependencies = [
  "base16",
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -988,9 +1056,9 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.5.7"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf2b3e8478797446514c91ef04bafcb59faba183e621ad488df88983cc14128c"
+checksum = "a33c2bf77f2df06183c3aa30d1e96c0695a313d4f9c453cc3762a6db39f99200"
 dependencies = [
  "cfg-if 1.0.0",
  "crossbeam-utils 0.8.15",
@@ -1176,7 +1244,7 @@ version = "0.2.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b0415ec81945214410892a00d4b5dd4566f6263205184248e018a3fe384a61e"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -1185,8 +1253,8 @@ dependencies = [
 name = "delegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1196,7 +1264,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
 dependencies = [
  "convert_case",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "rustc_version",
  "syn 1.0.109",
@@ -1215,24 +1283,24 @@ dependencies = [
 name = "deserialize-error"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "dictionary"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "dictionary-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "dictionary",
 ]
 
@@ -1240,16 +1308,16 @@ dependencies = [
 name = "dictionary-item-key-length"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "dictionary-read"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1281,31 +1349,31 @@ dependencies = [
 name = "do-nothing"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
+ "casper-contract",
 ]
 
 [[package]]
 name = "do-nothing-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "do-nothing-stored-caller"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "do-nothing-stored-upgrader"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "create-purse-01",
 ]
 
@@ -1359,12 +1427,12 @@ dependencies = [
 
 [[package]]
 name = "educe"
-version = "0.4.20"
+version = "0.4.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb0188e3c3ba8df5753894d54461f0e39bc91741dc5b22e1c46999ec2c71f4e4"
+checksum = "079044df30bb07de7d846d41a184c4b00e66ebdac93ee459253474f3a47e50ae"
 dependencies = [
  "enum-ordinalize",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -1373,175 +1441,175 @@ dependencies = [
 name = "ee-1071-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-1129-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-1217-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-1225-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-221-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-401-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-401-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-441-rng-state"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-460-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-532-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
+ "casper-contract",
 ]
 
 [[package]]
 name = "ee-536-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-539-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-549-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-550-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-572-regression-create"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-572-regression-escalate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-584-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-597-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-598-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-599-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-601-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "ee-771-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1587,8 +1655,8 @@ dependencies = [
 name = "endless-loop"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1615,7 +1683,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e94aa31f7c0dc764f57896dc615ddd76fc13b0d5dca7eb6cc5e018a5a09ec06"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -1626,7 +1694,7 @@ version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "355f93763ef7b0ae1c43c4d8eccc9d5848d84ad1a1d8ce61c421d1ac85a19d05"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -1639,7 +1707,7 @@ checksum = "a62bb1df8b45ecb7ffa78dca1c17a438fb193eb083db0b1b494d2a61bcb5096a"
 dependencies = [
  "num-bigint 0.4.3",
  "num-traits",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "rustc_version",
  "syn 1.0.109",
@@ -1669,13 +1737,13 @@ dependencies = [
 
 [[package]]
 name = "errno"
-version = "0.2.8"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f639046355ee4f37944e44f60642c6f3a7efa3cf6b78c78a0d989a8ce6c396a1"
+checksum = "4bcfec3a70f97c962c307b2d2c56e358cf1d00b558d74262b5f929ee8cc7e73a"
 dependencies = [
  "errno-dragonfly",
  "libc",
- "winapi",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -1692,8 +1760,8 @@ dependencies = [
 name = "expensive-calculation"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -1715,16 +1783,16 @@ dependencies = [
 name = "faucet"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "faucet-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "faucet",
 ]
 
@@ -1752,18 +1820,18 @@ dependencies = [
 name = "finalize-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "flate2"
-version = "1.0.25"
+version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8a2db397cb1c8772f31494cb8917e48cd1e64f0fa7efac59fbd741a0a8ce841"
+checksum = "3b9429470923de8e8cbd4d2dc513535400b4b3fef0319fb5c4e1f520a7bef743"
 dependencies = [
  "crc32fast",
- "miniz_oxide",
+ "miniz_oxide 0.7.1",
 ]
 
 [[package]]
@@ -1820,9 +1888,9 @@ checksum = "fed34cd105917e91daa4da6b3728c47b068749d6a62c59811f06ed2ac71d9da7"
 
 [[package]]
 name = "futures"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "531ac96c6ff5fd7c62263c5e3c67a603af4fcaee2e1a0ae5565ba3a11e69e549"
+checksum = "23342abe12aba583913b2e62f22225ff9c950774065e4bfb61a19cd9770fec40"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -1835,9 +1903,9 @@ dependencies = [
 
 [[package]]
 name = "futures-channel"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "164713a5a0dcc3e7b4b1ed7d3b433cabc18025386f9339346e8daf15963cf7ac"
+checksum = "955518d47e09b25bbebc7a18df10b81f0c766eaf4c4f1cccef2fca5f2a4fb5f2"
 dependencies = [
  "futures-core",
  "futures-sink",
@@ -1845,15 +1913,15 @@ dependencies = [
 
 [[package]]
 name = "futures-core"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "86d7a0c1aa76363dac491de0ee99faf6941128376f1cf96f07db7603b7de69dd"
+checksum = "4bca583b7e26f571124fe5b7561d49cb2868d79116cfa0eefce955557c6fee8c"
 
 [[package]]
 name = "futures-executor"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1997dd9df74cdac935c76252744c1ed5794fac083242ea4fe77ef3ed60ba0f83"
+checksum = "ccecee823288125bd88b4d7f565c9e58e41858e47ab72e8ea2d64e93624386e0"
 dependencies = [
  "futures-core",
  "futures-task",
@@ -1862,38 +1930,38 @@ dependencies = [
 
 [[package]]
 name = "futures-io"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89d422fa3cbe3b40dca574ab087abb5bc98258ea57eea3fd6f1fa7162c778b91"
+checksum = "4fff74096e71ed47f8e023204cfd0aa1289cd54ae5430a9523be060cdb849964"
 
 [[package]]
 name = "futures-macro"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3eb14ed937631bd8b8b8977f2c198443447a8355b6e3ca599f38c975e5a963b6"
+checksum = "89ca545a94061b6365f2c7355b4b32bd20df3ff95f02da9329b34ccc3bd6ee72"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
 name = "futures-sink"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec93083a4aecafb2a80a885c9de1f0ccae9dbd32c2bb54b0c3a65690e0b8d2f2"
+checksum = "f43be4fe21a13b9781a69afa4985b0f6ee0e1afab2c6f454a8cf30e2b2237b6e"
 
 [[package]]
 name = "futures-task"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd65540d33b37b16542a0438c12e6aeead10d4ac5d05bd3f805b8f35ab592879"
+checksum = "76d3d132be6c0e6aa1534069c705a74a5997a356c0dc2f86a47765e5617c5b65"
 
 [[package]]
 name = "futures-util"
-version = "0.3.27"
+version = "0.3.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ef6b17e481503ec85211fed8f39d1970f128935ca1f814cd32ac4a6842e84ab"
+checksum = "26b01e40b772d54cf6c6d721c1d1abd0647a0106a12ecaa1c186273392a69533"
 dependencies = [
  "futures-channel",
  "futures-core",
@@ -1909,9 +1977,9 @@ dependencies = [
 
 [[package]]
 name = "generic-array"
-version = "0.14.6"
+version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bff49e947297f3312447abdca79f45f4738097cc82b06e72054d2223f601f1b9"
+checksum = "85649ca51fd72272d7821adaf274ad91c288277713d9c18820d8499a7ff69e9a"
 dependencies = [
  "typenum",
  "version_check",
@@ -1921,24 +1989,24 @@ dependencies = [
 name = "get-arg"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-blocktime"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-call-stack-call-recursive-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "get-call-stack-recursive-subcall",
 ]
 
@@ -1946,55 +2014,55 @@ dependencies = [
 name = "get-call-stack-recursive-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-caller"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-caller-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-payment-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-phase"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "get-phase-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "getrandom"
-version = "0.2.8"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c05aeb6a22b8f62540c194aac980f2115af067bfe15a0734d7277a768d396b31"
+checksum = "c85e1d9ab2eadba7e5040d4e09cbd6d072b76a557ad64e797c2cb9d4da21d7e4"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
@@ -2008,7 +2076,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e45727250e75cc04ff2846a66397da8ef2b3db8e40e0cef4df67950a07621eb9"
 dependencies = [
  "proc-macro-error",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -2017,16 +2085,16 @@ dependencies = [
 name = "gh-1470-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-1470-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "gh-1470-regression",
 ]
 
@@ -2034,40 +2102,40 @@ dependencies = [
 name = "gh-1688-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-2280-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-2280-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-3097-regression"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "gh-3097-regression-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2111,7 +2179,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-hashing",
  "casper-storage",
- "casper-types 1.5.0",
+ "casper-types",
  "clap 2.34.0",
  "lmdb-rkv",
  "rand 0.8.5",
@@ -2134,15 +2202,15 @@ dependencies = [
 name = "groups"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "h2"
-version = "0.3.17"
+version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66b91535aa35fea1523ad1b86cb6b53c28e0ae566ba4a460f4457e936cad7c6f"
+checksum = "17f8a914c2987b688368b5138aa05321db91f4090cf26118185672ad588bce21"
 dependencies = [
  "bytes",
  "fnv",
@@ -2153,7 +2221,7 @@ dependencies = [
  "indexmap",
  "slab",
  "tokio",
- "tokio-util 0.7.7",
+ "tokio-util 0.7.8",
  "tracing",
 ]
 
@@ -2213,8 +2281,8 @@ checksum = "95505c38b4572b2d910cecb0281560f54b440a19336cbbcb27bf6ce6adc6f5a8"
 name = "hello-world"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2290,16 +2358,16 @@ dependencies = [
 name = "host-function-costs"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "host-function-metrics"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "rand 0.8.5",
 ]
 
@@ -2411,15 +2479,15 @@ dependencies = [
 name = "increment-counter"
 version = "1.0.0"
 dependencies = [
- "casper-contract 1.4.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "casper-types 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "indexmap"
-version = "1.9.2"
+version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1885e79c1fc4b10f0e172c475f458b7f7b93061064d98c3293e98c5ba0c8b399"
+checksum = "bd070e393353796e801d209ad339e89596eb4c8d430d18ede6a1cced8fafbd99"
 dependencies = [
  "autocfg",
  "hashbrown",
@@ -2437,20 +2505,20 @@ dependencies = [
 
 [[package]]
 name = "io-lifetimes"
-version = "1.0.9"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09270fd4fa1111bc614ed2246c7ef56239a3063d5be0d1ec3b589c505d400aeb"
+checksum = "9c66c74d2ae7e79a5a8f7ac924adbe38ee42a859c6539ad869eb51f0b52dc220"
 dependencies = [
  "hermit-abi 0.3.1",
  "libc",
- "windows-sys 0.45.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
 name = "ipnet"
-version = "2.7.1"
+version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "30e22bd8629359895450b59ea7a776c850561b96a3b1d31321c1949d9e6c9146"
+checksum = "12b6ee2129af8d4fb011108c73d99a1b83a85977f23b82460c0ae2e25bb4b57f"
 
 [[package]]
 name = "ipnetwork"
@@ -2459,6 +2527,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4088d739b183546b239688ddbc79891831df421773df95e236daf7867866d355"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "is-terminal"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adcf93614601c8129ddf72e2d5633df827ba6551541c6d8c59520a371475be1f"
+dependencies = [
+ "hermit-abi 0.3.1",
+ "io-lifetimes",
+ "rustix",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2519,8 +2599,8 @@ dependencies = [
 name = "key-management-thresholds"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2537,9 +2617,9 @@ checksum = "884e2677b40cc8c339eaefcb701c32ef1fd2493d71118dc0ca4b6a736c93bd67"
 
 [[package]]
 name = "libc"
-version = "0.2.140"
+version = "0.2.142"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "99227334921fae1a979cf0bfdfcc6b3e5ce376ef57e16fb6fb3ea2ed6095f80c"
+checksum = "6a987beff54b60ffa6d51982e1aa1146bc42f19bd26be28b0586f252fccf5317"
 
 [[package]]
 name = "libgit2-sys"
@@ -2561,9 +2641,9 @@ checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
 
 [[package]]
 name = "libz-sys"
-version = "1.1.8"
+version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9702761c3935f8cc2f101793272e202c72b99da8f4224a19ddcf1279a6450bbf"
+checksum = "56ee889ecc9568871456d42f603d6a0ce59ff328d291063a45cbdf0036baf6db"
 dependencies = [
  "cc",
  "libc",
@@ -2579,24 +2659,24 @@ checksum = "0717cef1bc8b636c6e1c1bbdefc09e6322da8a9321966e8928ef80d20f7f770f"
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.1.4"
+version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f051f77a7c8e6957c0696eac88f26b0117e54f52d3fc682ab19397a8812846a4"
+checksum = "b64f40e5e03e0d54f03845c8197d0291253cdbedfb1cb46b13c2c117554a9f4c"
 
 [[package]]
 name = "list-authorization-keys"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "list-named-keys"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2656,16 +2736,16 @@ dependencies = [
 name = "main-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "manage-groups"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2693,8 +2773,8 @@ checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 name = "measure-gas-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2759,11 +2839,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "miniz_oxide"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7810e0be55b428ada41041c41f32c9f1a42817901b4ccf45fa3d4b6561e74c7"
+dependencies = [
+ "adler",
+]
+
+[[package]]
 name = "mint-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2779,69 +2868,69 @@ dependencies = [
 ]
 
 [[package]]
-name = "multipart"
-version = "0.18.0"
+name = "multer"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00dec633863867f29cb39df64a397cdf4a6354708ddd7759f70c7fb51c5f9182"
+checksum = "01acbdc23469fd8fe07ab135923371d5f5a422fbf9c522158677c8eb15bc51c2"
 dependencies = [
- "buf_redux",
+ "bytes",
+ "encoding_rs",
+ "futures-util",
+ "http",
  "httparse",
  "log",
+ "memchr",
  "mime",
- "mime_guess",
- "quick-error 1.2.3",
- "rand 0.8.5",
- "safemem",
- "tempfile",
- "twoway",
+ "spin",
+ "version_check",
 ]
 
 [[package]]
 name = "multisig-authorization"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-dictionary-test"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-keys"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-keys-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-keys-stored-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "named-purse-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -2866,15 +2955,15 @@ dependencies = [
 name = "nctl-dictionary"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "new-named-uref"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
+ "casper-contract",
 ]
 
 [[package]]
@@ -2938,7 +3027,7 @@ version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "876a53fff98e03a936a674b29568b0e605f06b29372c2489ff4de23f1949743d"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -3038,9 +3127,9 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 
 [[package]]
 name = "openssl"
-version = "0.10.48"
+version = "0.10.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "518915b97df115dd36109bfa429a48b8f737bd05508cf9588977b599648926d2"
+checksum = "01b8574602df80f7b85fdfc5392fa884a4e3b3f4f35402c070ab34c3d3f78d56"
 dependencies = [
  "bitflags",
  "cfg-if 1.0.0",
@@ -3053,13 +3142,13 @@ dependencies = [
 
 [[package]]
 name = "openssl-macros"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b501e44f11665960c7e7fcf062c7d96a14ade4aa98116c004b2e37b5be7d736c"
+checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -3070,20 +3159,19 @@ checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
 name = "openssl-src"
-version = "111.25.2+1.1.1t"
+version = "111.25.3+1.1.1t"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320708a054ad9b3bf314688b5db87cf4d6683d64cfc835e2337924ae62bf4431"
+checksum = "924757a6a226bf60da5f7dd0311a34d2b52283dd82ddeb103208ddc66362f80c"
 dependencies = [
  "cc",
 ]
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.83"
+version = "0.9.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "666416d899cf077260dac8698d60a60b435a46d57e82acb1be3d0dad87284e5b"
+checksum = "8e17f59264b2809d77ae94f0e1ebabc434773f370d6ca667bd223ea10e06cc7e"
 dependencies = [
- "autocfg",
  "cc",
  "libc",
  "openssl-src",
@@ -3095,8 +3183,8 @@ dependencies = [
 name = "ordered-transforms"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3124,8 +3212,8 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 name = "overwrite-uref-content"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3133,6 +3221,12 @@ name = "parity-wasm"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
+
+[[package]]
+name = "parity-wasm"
+version = "0.42.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be5e13c266502aadf83426d87d81a0f5d1ef45b8027f5a471c360abfe4bfae92"
 
 [[package]]
 name = "parking_lot"
@@ -3154,7 +3248,7 @@ dependencies = [
  "cfg-if 1.0.0",
  "instant",
  "libc",
- "redox_syscall",
+ "redox_syscall 0.2.16",
  "smallvec",
  "winapi",
 ]
@@ -3197,7 +3291,7 @@ version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "069bdb1e05adc7a8990dce9cc75370895fbe4e3d58b9b73bf1aee56359344a55"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -3287,7 +3381,7 @@ version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30490e0852e58402b8fae0d39897b08a24f493023a4d6cf56b2e30f31ed57548"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "regex",
  "syn 1.0.109",
@@ -3361,7 +3455,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
 dependencies = [
  "proc-macro-error-attr",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
  "version_check",
@@ -3373,7 +3467,7 @@ version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "version_check",
 ]
@@ -3384,14 +3478,14 @@ version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf3d2011ab5c909338f7887f4fc896d35932e29146c12c8d01da6b22a80ba759"
 dependencies = [
- "unicode-xid 0.1.0",
+ "unicode-xid",
 ]
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.53"
+version = "1.0.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba466839c78239c09faf015484e5cc04860f88242cff4d03eb038f04b4699b73"
+checksum = "2b63bdb0cd06f1f4dedf69b254734f9b45af66e4a031e42a7480257d9898b435"
 dependencies = [
  "unicode-ident",
 ]
@@ -3426,7 +3520,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_chacha 0.3.1",
  "rand_xorshift",
- "regex-syntax",
+ "regex-syntax 0.6.29",
  "rusty-fork",
  "tempfile",
  "unarray",
@@ -3438,7 +3532,7 @@ version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9fa06db3abc95f048e0afa371db5569b24912bb98a8e2e2e89c75c5b43bc2aa8"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -3475,35 +3569,24 @@ dependencies = [
 name = "purse-holder-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "purse-holder-stored-caller"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "purse-holder-stored-upgrader"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
-]
-
-[[package]]
-name = "pwasm-utils"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c8ac87af529432d3a4f0e2b3bbf08af49f28f09cc73ed7e551161bdaef5f78d"
-dependencies = [
- "byteorder",
- "log",
- "parity-wasm",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3548,7 +3631,7 @@ version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4424af4bf778aae2051a77b60283332f386554255d722233d09fbfc7e30da2fc"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
 ]
 
 [[package]]
@@ -3645,16 +3728,16 @@ dependencies = [
 name = "random-bytes"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "random-bytes-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3682,7 +3765,7 @@ version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4b8f95bd6966f5c87776639160a66bd8ab9895d9d4ab01ddba9fc60661aebe8d"
 dependencies = [
- "crossbeam-channel 0.5.7",
+ "crossbeam-channel 0.5.8",
  "crossbeam-deque 0.8.3",
  "crossbeam-utils 0.8.15",
  "num_cpus",
@@ -3692,16 +3775,16 @@ dependencies = [
 name = "read-from-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "redelegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3714,22 +3797,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "redox_syscall"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "567664f262709473930a4bf9e51bf2ebf3348f2e748ccc50dea20646858f8f29"
+dependencies = [
+ "bitflags",
+]
+
+[[package]]
 name = "refund-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regex"
-version = "1.7.2"
+version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cce168fea28d3e05f158bda4576cf0c844d5045bc2cc3620fa0292ed5bb5814c"
+checksum = "af83e617f331cc6ae2da5443c602dfa5af81e517212d9d611a5b3ba1777b5370"
 dependencies = [
  "aho-corasick",
  "memchr",
- "regex-syntax",
+ "regex-syntax 0.7.1",
 ]
 
 [[package]]
@@ -3738,7 +3830,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
 dependencies = [
- "regex-syntax",
+ "regex-syntax 0.6.29",
 ]
 
 [[package]]
@@ -3748,146 +3840,152 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f162c6dd7b008981e4d40210aca20b4bd0f9b60ca9271061b07f78537722f2e1"
 
 [[package]]
+name = "regex-syntax"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5996294f19bd3aae0453a862ad728f60e6600695733dd5df01da90c54363a3c"
+
+[[package]]
 name = "regression-20210707"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20210831"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220204"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220204-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220204-nontrivial"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220207"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220208"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220211"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220211-call"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-20220222"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-add-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-delegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-payment"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression-transfer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression_20211110"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "regression_20220119"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "remove-associated-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "reqwest"
-version = "0.11.15"
+version = "0.11.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ba30cc2c0cd02af1222ed216ba659cdb2f879dfe3181852fe7c50b1d0005949"
+checksum = "13293b639a097af28fc8a90f22add145a9c954e49d77da06263d58cf44d5fb91"
 dependencies = [
  "base64 0.21.0",
  "bytes",
@@ -3912,7 +4010,7 @@ dependencies = [
  "serde_urlencoded",
  "tokio",
  "tokio-native-tls",
- "tokio-util 0.7.7",
+ "tokio-util 0.7.8",
  "tower-service",
  "url",
  "wasm-bindgen",
@@ -3926,8 +4024,8 @@ dependencies = [
 name = "revert"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3954,9 +4052,9 @@ dependencies = [
 
 [[package]]
 name = "rustc-demangle"
-version = "0.1.22"
+version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4a36c42d1873f9a77c53bde094f9664d9891bc604a45b4798fd2c389ed12e5b"
+checksum = "d626bb9dae77e28219937af045c257c28bfd3f69333c512553507f5f9798cb76"
 
 [[package]]
 name = "rustc_version"
@@ -3969,25 +4067,25 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "0.36.11"
+version = "0.37.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db4165c9963ab29e422d6c26fbc1d37f15bace6b2810221f9d925023480fcf0e"
+checksum = "8bbfc1d1c7c40c01715f47d71444744a81669ca84e8b63e25a55e169b1f86433"
 dependencies = [
  "bitflags",
  "errno",
  "io-lifetimes",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.45.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
 name = "rustls-pemfile"
-version = "0.2.1"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5eebeaeb360c87bfb72e84abdb3447159c0eaececf1bef2aecd65a8be949d1c9"
+checksum = "d194b56d58803a43635bdc398cd17e383d6f71f9182b9a192c127ca42494a59b"
 dependencies = [
- "base64 0.13.1",
+ "base64 0.21.0",
 ]
 
 [[package]]
@@ -4013,12 +4111,6 @@ name = "ryu"
 version = "1.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f91339c0467de62360649f8d3e185ca8de4224ff281f66000de5eb2a77a79041"
-
-[[package]]
-name = "safemem"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef703b7cb59335eae2eb93ceb664c0eb7ea6bf567079d843e09420219668e072"
 
 [[package]]
 name = "same-file"
@@ -4057,7 +4149,7 @@ version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "791c2c848cff1abaeae34fef7e70da5f93171d9eea81ce0fe969a1df627a61a8"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "serde_derive_internals",
  "syn 1.0.109",
@@ -4106,9 +4198,9 @@ checksum = "bebd363326d05ec3e2f532ab7660680f3b02130d780c299bca73469d521bc0ed"
 
 [[package]]
 name = "serde"
-version = "1.0.158"
+version = "1.0.160"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "771d4d9c4163ee138805e12c710dd365e4f44be8be0503cb1bb9eb989425d9c9"
+checksum = "bb2f3770c8bce3bcda7e149193a069a0f4365bda1fa5cd88e03bca26afc1216c"
 dependencies = [
  "serde_derive",
 ]
@@ -4143,13 +4235,13 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.158"
+version = "1.0.160"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e801c1712f48475582b7696ac71e0ca34ebb30e09338425384269d9717c62cad"
+checksum = "291a097c63d8497e00160b166a967a4a79c64f3facdd01cbd7502231688d77df"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 2.0.8",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -4158,16 +4250,16 @@ version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dbab34ca63057a1f15280bdf3c39f2b1eb1b54c17e98360e511637aef7418c6"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
 
 [[package]]
 name = "serde_json"
-version = "1.0.94"
+version = "1.0.96"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c533a59c9d8a93a09c6ab31f0fd5e5f4dd1b8fc9434804029839884765d04ea"
+checksum = "057d394a50403bcac12672b2b18fb387ab6d289d957dab67dd201875391e52f1"
 dependencies = [
  "indexmap",
  "itoa",
@@ -4181,16 +4273,16 @@ version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bcec881020c684085e55a25f7fd888954d56609ef363479dc5a1305eb0d40cab"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 2.0.8",
+ "syn 2.0.15",
 ]
 
 [[package]]
 name = "serde_test"
-version = "1.0.158"
+version = "1.0.160"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6938f32e516ec5ec98e274149de16c0d5f31b463f0927019f5e8a092fc81f6f"
+checksum = "3c95a500e3923258f7fc3a16bf29934e403aef5ca1096e184d85e3b1926675e8"
 dependencies = [
  "serde",
 ]
@@ -4211,19 +4303,8 @@ dependencies = [
 name = "set-action-thresholds"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
-]
-
-[[package]]
-name = "sha-1"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5058ada175748e33390e40e872bd0fe59a19f265d0158daa551c5a88a76009c"
-dependencies = [
- "cfg-if 1.0.0",
- "cpufeatures",
- "digest 0.10.6",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4298,8 +4379,8 @@ dependencies = [
 name = "simple-transfer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4331,11 +4412,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+
+[[package]]
 name = "state-initializer"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4354,8 +4441,8 @@ checksum = "5c0e04424e733e69714ca1bbb9204c1a57f09f5493439520f9f68c132ad25eec"
 name = "storage-costs"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4389,7 +4476,7 @@ checksum = "dcb5ae327f9cc13b68763b5749770cb9e048a99bd9dfdfa58d0cf05d5f64afe0"
 dependencies = [
  "heck 0.3.3",
  "proc-macro-error",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -4410,7 +4497,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e385be0d24f186b4ce2f9982191e7101bb737312ad61c1f2f984f34bcf85d59"
 dependencies = [
  "heck 0.4.1",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "rustversion",
  "syn 1.0.109",
@@ -4430,7 +4517,7 @@ checksum = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
 dependencies = [
  "proc-macro2 0.4.30",
  "quote 0.6.13",
- "unicode-xid 0.1.0",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -4439,32 +4526,20 @@ version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "unicode-ident",
 ]
 
 [[package]]
 name = "syn"
-version = "2.0.8"
+version = "2.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcc02725fd69ab9f26eab07fad303e2497fad6fb9eba4f96c4d1687bdf704ad9"
+checksum = "a34fcf3e8b60f57e6a14301a2e916d323af98b0ea63c599441eec8558660c822"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "unicode-ident",
-]
-
-[[package]]
-name = "synstructure"
-version = "0.12.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36bdaa60a83aca3921b5259d5400cbf5e90fc51931376a9bd4a0eb79aa7210f"
-dependencies = [
- "proc-macro2 1.0.53",
- "quote 1.0.26",
- "syn 1.0.109",
- "unicode-xid 0.2.4",
 ]
 
 [[package]]
@@ -4481,21 +4556,21 @@ dependencies = [
 name = "system-contract-hashes"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "tempfile"
-version = "3.4.0"
+version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af18f7ae1acd354b992402e9ec5864359d693cd8a79dcbef59f76891701c1e95"
+checksum = "b9fbec84f381d5795b08656e4912bec604d162bff9291d6189a78f4c8ab87998"
 dependencies = [
  "cfg-if 1.0.0",
  "fastrand",
- "redox_syscall",
+ "redox_syscall 0.3.5",
  "rustix",
- "windows-sys 0.42.0",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -4508,11 +4583,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e6bf6f19e9f8ed8d4048dc22981458ebcf406d67e94cd422e5ecd73d63b3237"
+dependencies = [
+ "rustix",
+ "windows-sys 0.48.0",
+]
+
+[[package]]
 name = "test-payment-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4545,9 +4630,9 @@ version = "1.0.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9456a42c5b0d803c8cd86e73dd7cc9edd429499f37a3550d286d5e86720569f"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 2.0.8",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -4614,31 +4699,30 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.26.0"
+version = "1.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03201d01c3c27a29c8a5cee5b55a93ddae1ccf6f08f65365c2c918f8c1b76f64"
+checksum = "c3c786bf8134e5a3a166db9b29ab8f48134739014a3eca7bc6bfa95d673b136f"
 dependencies = [
  "autocfg",
  "bytes",
  "libc",
- "memchr",
  "mio",
  "num_cpus",
  "pin-project-lite",
  "socket2",
  "tokio-macros",
- "windows-sys 0.45.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
 name = "tokio-macros"
-version = "1.8.2"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d266c00fde287f55d3f1c3e96c500c362a2b8c695076ec180f27918820bc6df8"
+checksum = "630bdcf245f78637c13ec01ffae6187cca34625e8c63150d424b59e55af2675e"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -4680,21 +4764,21 @@ dependencies = [
 
 [[package]]
 name = "tokio-stream"
-version = "0.1.12"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8fb52b74f05dbf495a8fba459fdc331812b96aa086d9eb78101fa0d4569c3313"
+checksum = "397c988d37662c7dda6d2208364a706264bf3d6138b11d436cbac0ad38832842"
 dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
- "tokio-util 0.7.7",
+ "tokio-util 0.7.8",
 ]
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.17.2"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f714dd15bead90401d77e04243611caec13726c2408afd5b31901dfcdcb3b181"
+checksum = "54319c93411147bced34cb5609a80e0a8e44c5999c93903a81cd866630ec0bfd"
 dependencies = [
  "futures-util",
  "log",
@@ -4718,9 +4802,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-util"
-version = "0.7.7"
+version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5427d89453009325de0d8f342c9490009f76e999cb7672d77e46267448f7e6b2"
+checksum = "806fe8c2c87eccc8b3267cbae29ed3ab2d0bd37fca70ab622e46aaa9375ddb7d"
 dependencies = [
  "bytes",
  "futures-core",
@@ -4748,7 +4832,7 @@ dependencies = [
  "futures-core",
  "pin-project-lite",
  "tokio",
- "tokio-util 0.7.7",
+ "tokio-util 0.7.8",
  "tower-layer",
  "tower-service",
  "tracing",
@@ -4781,13 +4865,13 @@ dependencies = [
 
 [[package]]
 name = "tracing-attributes"
-version = "0.1.23"
+version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4017f8f45139870ca7e672686113917c71c7a6e02d4924eda67186083c03081a"
+checksum = "0f57e3ca2a01450b1a921183a9c9cbfda207fd822cef4ccb00a65402cbba7a74"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 1.0.109",
+ "syn 2.0.15",
 ]
 
 [[package]]
@@ -4833,9 +4917,9 @@ dependencies = [
 
 [[package]]
 name = "tracing-subscriber"
-version = "0.3.16"
+version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6176eae26dd70d0c919749377897b54a9276bd7061339665dd68777926b5a70"
+checksum = "30a651bc37f915e81f087d86e62a18eec5f79550c7faff886f7090b4ea757c77"
 dependencies = [
  "matchers",
  "nu-ansi-term",
@@ -4856,32 +4940,32 @@ dependencies = [
 name = "transfer-main-purse-to-new-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-main-purse-to-two-purses"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-account"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-account-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "transfer-purse-to-account",
 ]
 
@@ -4889,24 +4973,24 @@ dependencies = [
 name = "transfer-purse-to-account-with-id"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-accounts"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-accounts-stored"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
  "transfer-purse-to-accounts",
 ]
 
@@ -4914,72 +4998,72 @@ dependencies = [
 name = "transfer-purse-to-accounts-subcall"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-public-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-purse-to-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-account"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-account-u512"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-existing-account"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-named-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-public-key"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
 name = "transfer-to-purse"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -4990,9 +5074,9 @@ checksum = "3528ecfd12c466c6f163363caf2d02a71161dd5e1cc6ae7b34207ea2d42d81ed"
 
 [[package]]
 name = "tungstenite"
-version = "0.17.3"
+version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e27992fd6a8c29ee7eef28fc78349aa244134e10ad447ce3b9f0ac0ed0fa4ce0"
+checksum = "30ee6ab729cd4cf0fd55218530c4522ed30b7b6081752839b68fcec8d0960788"
 dependencies = [
  "base64 0.13.1",
  "byteorder",
@@ -5001,19 +5085,10 @@ dependencies = [
  "httparse",
  "log",
  "rand 0.8.5",
- "sha-1",
+ "sha1",
  "thiserror",
  "url",
  "utf-8",
-]
-
-[[package]]
-name = "twoway"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59b11b2b5241ba34be09c3cc85a36e56e48f9888862e19cedf23336d35316ed1"
-dependencies = [
- "memchr",
 ]
 
 [[package]]
@@ -5044,8 +5119,8 @@ checksum = "eaea85b334db583fe3274d12b4cd1880032beab409c0d774be044d4480ab9a94"
 name = "undelegate"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -5097,12 +5172,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
 
 [[package]]
-name = "unicode-xid"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
-
-[[package]]
 name = "untrusted"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5124,6 +5193,12 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "utf8parse"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
 
 [[package]]
 name = "uuid"
@@ -5185,7 +5260,7 @@ version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "99d0801cec07737d88cb900e6419f6f68733867f90b3faaa837e84692e101bf0"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "pulldown-cmark",
  "regex",
  "semver",
@@ -5263,7 +5338,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0a6e5bd22c71e77d60140b0bd5be56155a37e5bd14e24f5f87298040d0cc40d7"
 dependencies = [
  "heck 0.3.3",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
 ]
@@ -5280,9 +5355,9 @@ dependencies = [
 
 [[package]]
 name = "warp"
-version = "0.3.3"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed7b8be92646fc3d18b06147664ebc5f48d222686cb11a8755e561a735aacc6d"
+checksum = "ba431ef570df1287f7f8b07e376491ad54f84d26ac473489427231e1718e1f69"
 dependencies = [
  "async-compression",
  "bytes",
@@ -5294,7 +5369,7 @@ dependencies = [
  "log",
  "mime",
  "mime_guess",
- "multipart",
+ "multer",
  "percent-encoding",
  "pin-project",
  "rustls-pemfile",
@@ -5305,7 +5380,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-tungstenite",
- "tokio-util 0.7.7",
+ "tokio-util 0.7.8",
  "tower-service",
  "tracing",
 ]
@@ -5335,7 +5410,7 @@ dependencies = [
  "bumpalo",
  "log",
  "once_cell",
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
  "wasm-bindgen-shared",
@@ -5369,7 +5444,7 @@ version = "0.2.84"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2aff81306fcac3c7515ad4e177f521b5c9a15f2b08f4e32d823066102f35a5f6"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
  "syn 1.0.109",
  "wasm-bindgen-backend",
@@ -5384,9 +5459,9 @@ checksum = "0046fef7e28c3804e5e38bfa31ea2a0f73905319b677e57ebe37e49358989b5d"
 
 [[package]]
 name = "wasm-encoder"
-version = "0.25.0"
+version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4eff853c4f09eec94d76af527eddad4e9de13b11d6286a1ef7134bc30135a2b7"
+checksum = "d05d0b6fcd0aeb98adf16e7975331b3c17222aa815148f5b976370ce589d80ef"
 dependencies = [
  "leb128",
 ]
@@ -5406,26 +5481,26 @@ dependencies = [
 
 [[package]]
 name = "wasmi"
-version = "0.8.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ad7e265153e1010a73e595eef3e2fd2a1fd644ba4e2dd3af4dd6bd7ec692342"
+checksum = "ca00c5147c319a8ec91ec1a0edbec31e566ce2c9cc93b3f9bb86a9efd0eb795d"
 dependencies = [
  "downcast-rs",
  "libc",
  "memory_units 0.3.0",
  "num-rational 0.2.4",
  "num-traits",
- "parity-wasm",
+ "parity-wasm 0.42.2",
  "wasmi-validation",
 ]
 
 [[package]]
 name = "wasmi-validation"
-version = "0.3.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea78c597064ba73596099281e2f4cfc019075122a65cdda3205af94f0b264d93"
+checksum = "165343ecd6c018fc09ebcae280752702c9a2ef3e6f8d02f1cfcbdb53ef6d7937"
 dependencies = [
- "parity-wasm",
+ "parity-wasm 0.42.2",
 ]
 
 [[package]]
@@ -5436,9 +5511,9 @@ checksum = "b35c86d22e720a07d954ebbed772d01180501afe7d03d464f413bb5f8914a8d6"
 
 [[package]]
 name = "wast"
-version = "55.0.0"
+version = "57.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4984d3e1406571f4930ba5cf79bd70f75f41d0e87e17506e0bd19b0e5d085f05"
+checksum = "6eb0f5ed17ac4421193c7477da05892c2edafd67f9639e3c11a82086416662dc"
 dependencies = [
  "leb128",
  "memchr",
@@ -5448,9 +5523,9 @@ dependencies = [
 
 [[package]]
 name = "wat"
-version = "1.0.61"
+version = "1.0.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af2b53f4da14db05d32e70e9c617abdf6620c575bd5dd972b7400037b4df2091"
+checksum = "ab9ab0d87337c3be2bb6fc5cd331c4ba9fd6bcb4ee85048a0dd59ed9ecf92e53"
 dependencies = [
  "wast",
 ]
@@ -5520,13 +5595,13 @@ version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a3e1820f08b8513f676f7ab6c1f99ff312fb97b553d30ff4dd86f9f15728aa7"
 dependencies = [
- "windows_aarch64_gnullvm",
- "windows_aarch64_msvc",
- "windows_i686_gnu",
- "windows_i686_msvc",
- "windows_x86_64_gnu",
- "windows_x86_64_gnullvm",
- "windows_x86_64_msvc",
+ "windows_aarch64_gnullvm 0.42.2",
+ "windows_aarch64_msvc 0.42.2",
+ "windows_i686_gnu 0.42.2",
+ "windows_i686_msvc 0.42.2",
+ "windows_x86_64_gnu 0.42.2",
+ "windows_x86_64_gnullvm 0.42.2",
+ "windows_x86_64_msvc 0.42.2",
 ]
 
 [[package]]
@@ -5535,7 +5610,16 @@ version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75283be5efb2831d37ea142365f009c02ec203cd29a3ebecbc093d52315b66d0"
 dependencies = [
- "windows-targets",
+ "windows-targets 0.42.2",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "677d2418bec65e3338edb076e806bc1ec15693c5d0104683f2efe857f61056a9"
+dependencies = [
+ "windows-targets 0.48.0",
 ]
 
 [[package]]
@@ -5544,13 +5628,28 @@ version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e5180c00cd44c9b1c88adb3693291f1cd93605ded80c250a75d472756b4d071"
 dependencies = [
- "windows_aarch64_gnullvm",
- "windows_aarch64_msvc",
- "windows_i686_gnu",
- "windows_i686_msvc",
- "windows_x86_64_gnu",
- "windows_x86_64_gnullvm",
- "windows_x86_64_msvc",
+ "windows_aarch64_gnullvm 0.42.2",
+ "windows_aarch64_msvc 0.42.2",
+ "windows_i686_gnu 0.42.2",
+ "windows_i686_msvc 0.42.2",
+ "windows_x86_64_gnu 0.42.2",
+ "windows_x86_64_gnullvm 0.42.2",
+ "windows_x86_64_msvc 0.42.2",
+]
+
+[[package]]
+name = "windows-targets"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b1eb6f0cd7c80c79759c929114ef071b87354ce476d9d94271031c0497adfd5"
+dependencies = [
+ "windows_aarch64_gnullvm 0.48.0",
+ "windows_aarch64_msvc 0.48.0",
+ "windows_i686_gnu 0.48.0",
+ "windows_i686_msvc 0.48.0",
+ "windows_x86_64_gnu 0.48.0",
+ "windows_x86_64_gnullvm 0.48.0",
+ "windows_x86_64_msvc 0.48.0",
 ]
 
 [[package]]
@@ -5560,10 +5659,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "597a5118570b68bc08d8d59125332c54f1ba9d9adeedeef5b99b02ba2b0698f8"
 
 [[package]]
+name = "windows_aarch64_gnullvm"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "91ae572e1b79dba883e0d315474df7305d12f569b400fcf90581b06062f7e1bc"
+
+[[package]]
 name = "windows_aarch64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e08e8864a60f06ef0d0ff4ba04124db8b0fb3be5776a5cd47641e942e58c4d43"
+
+[[package]]
+name = "windows_aarch64_msvc"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2ef27e0d7bdfcfc7b868b317c1d32c641a6fe4629c171b8928c7b08d98d7cf3"
 
 [[package]]
 name = "windows_i686_gnu"
@@ -5572,10 +5683,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c61d927d8da41da96a81f029489353e68739737d3beca43145c8afec9a31a84f"
 
 [[package]]
+name = "windows_i686_gnu"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "622a1962a7db830d6fd0a69683c80a18fda201879f0f447f065a3b7467daa241"
+
+[[package]]
 name = "windows_i686_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "44d840b6ec649f480a41c8d80f9c65108b92d89345dd94027bfe06ac444d1060"
+
+[[package]]
+name = "windows_i686_msvc"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4542c6e364ce21bf45d69fdd2a8e455fa38d316158cfd43b3ac1c5b1b19f8e00"
 
 [[package]]
 name = "windows_x86_64_gnu"
@@ -5584,16 +5707,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8de912b8b8feb55c064867cf047dda097f92d51efad5b491dfb98f6bbb70cb36"
 
 [[package]]
+name = "windows_x86_64_gnu"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca2b8a661f7628cbd23440e50b05d705db3686f894fc9580820623656af974b1"
+
+[[package]]
 name = "windows_x86_64_gnullvm"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "26d41b46a36d453748aedef1486d5c7a85db22e56aff34643984ea85514e94a3"
 
 [[package]]
+name = "windows_x86_64_gnullvm"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7896dbc1f41e08872e9d5e8f8baa8fdd2677f29468c4e156210174edc7f7b953"
+
+[[package]]
 name = "windows_x86_64_msvc"
 version = "0.42.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9aec5da331524158c6d1a4ac0ab1541149c0b9505fde06423b02f5ef0106b9f0"
+
+[[package]]
+name = "windows_x86_64_msvc"
+version = "0.48.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a515f5799fe4961cb532f983ce2b23082366b898e52ffbce459c86f67c8378a"
 
 [[package]]
 name = "winreg"
@@ -5608,8 +5749,8 @@ dependencies = [
 name = "withdraw-bid"
 version = "0.1.0"
 dependencies = [
- "casper-contract 1.4.4",
- "casper-types 1.5.0",
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -5629,12 +5770,11 @@ dependencies = [
 
 [[package]]
 name = "zeroize_derive"
-version = "1.3.3"
+version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44bf07cb3e50ea2003396695d58bf46bc9887a1f362260446fad6bc4e79bd36c"
+checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
- "proc-macro2 1.0.53",
+ "proc-macro2 1.0.56",
  "quote 1.0.26",
- "syn 1.0.109",
- "synstructure",
+ "syn 2.0.15",
 ]

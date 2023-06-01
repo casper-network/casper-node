@@ -161,19 +161,15 @@ use announcements::{
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
     FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
     MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UpgradeWatcherAnnouncement,
+    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest, BlockValidationRequest,
-    ChainspecRawBytesRequest, ConsensusRequest, FetcherRequest, MakeBlockExecutableRequest,
-    MarkBlockCompletedRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest,
-    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
-};
-
-use self::{
-    announcements::UnexecutedBlockAnnouncement,
-    requests::{ContractRuntimeRequest, DeployBufferRequest, MetricsRequest, SetNodeStopRequest},
+    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
+    FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
+    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest, StorageRequest,
+    SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -1722,13 +1718,27 @@ impl<REv> EffectBuilder<REv> {
         deploys: Vec<Deploy>,
         meta_block_state: MetaBlockState,
     ) where
-        REv: From<ContractRuntimeRequest>,
+        REv: From<StorageRequest> + From<ContractRuntimeRequest>,
     {
+        // Get the key block height for the current protocol version's activation point, i.e. the
+        // height of the final block of the previous protocol version.
+        let key_block_height_for_activation_point = self
+            .make_request(
+                |responder| StorageRequest::GetKeyBlockHeightForActivationPoint { responder },
+                QueueKind::FromStorage,
+            )
+            .await
+            .unwrap_or_else(|| {
+                warn!("key block height for current activation point unknown");
+                0
+            });
+
         self.event_queue
             .schedule(
                 ContractRuntimeRequest::EnqueueBlockForExecution {
                     finalized_block,
                     deploys,
+                    key_block_height_for_activation_point,
                     meta_block_state,
                 },
                 QueueKind::ContractRuntime,

@@ -291,9 +291,12 @@ impl MainReactor {
         match self.sync_back_instruction(&sync_back_progress) {
             Ok(Some(sync_back_instruction)) => match sync_back_instruction {
                 SyncBackInstruction::TtlSynced | SyncBackInstruction::GenesisSynced => {
-                    // we don't need to sync any historical blocks currently
+                    // we don't need to sync any historical blocks currently, so we clear both the
+                    // historical synchronizer and the sync back leap activity since they will not
+                    // be required anymore
                     debug!("KeepUp: synced to TTL or Genesis");
                     self.block_synchronizer.purge_historical();
+                    self.sync_leaper.purge();
                     None
                 }
                 SyncBackInstruction::Syncing => {

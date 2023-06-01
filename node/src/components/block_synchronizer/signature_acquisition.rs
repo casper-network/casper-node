@@ -279,7 +279,12 @@ mod tests {
 
     #[test]
     fn should_return_weak_when_weight_1_and_1_10_is_required() {
-        test_finality_with_ratio(Ratio::new(1, 10), SignatureWeight::Weak)
+        test_finality_with_ratio(Ratio::new(1, 10), SignatureWeight::Insufficient)
+    }
+
+    #[test]
+    fn should_return_weak_when_weight_1_and_1_11_is_required() {
+        test_finality_with_ratio(Ratio::new(1, 11), SignatureWeight::Weak)
     }
 
     #[test]
@@ -374,7 +379,7 @@ mod tests {
                 .enumerate()
                 .map(|(i, (public, _))| (public.clone(), (i + 1).into()))
                 .collect(),
-            Ratio::new(1, 10), // Low finality threshold
+            Ratio::new(1, 11), // Low finality threshold
         );
         assert_eq!(U512::from(10), weights.get_total_weight());
         let mut signature_acquisition = SignatureAcquisition::new(

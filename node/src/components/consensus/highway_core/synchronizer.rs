@@ -14,6 +14,7 @@ use casper_types::Timestamp;
 use crate::{
     components::consensus::{
         consensus_protocol::{ProposedBlock, ProtocolOutcome, ProtocolOutcomes},
+        era_supervisor::SerializedMessage,
         protocols::highway::{HighwayMessage, ACTION_ID_VERTEX},
         traits::Context,
         utils::ValidatorMap,
@@ -434,7 +435,10 @@ impl<C: Context + 'static> Synchronizer<C> {
                 let uuid = thread_rng().next_u64();
                 debug!(?uuid, dependency = ?transitive_dependency, %sender, "requesting dependency");
                 let msg = HighwayMessage::RequestDependency(uuid, transitive_dependency);
-                outcomes.push(ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender));
+                outcomes.push(ProtocolOutcome::CreatedTargetedMessage(
+                    SerializedMessage::from_message(&msg),
+                    sender,
+                ));
                 continue;
             }
             // We found the next vertex to add.

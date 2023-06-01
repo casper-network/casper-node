@@ -5,6 +5,7 @@ use crate::global_state::{
     storage::{
         state::{CommitProvider, StateProvider},
         trie::TrieRaw,
+        trie_store::operations::DeleteResult,
     },
 };
 
@@ -83,6 +84,15 @@ where
         trie_raw: &[u8],
     ) -> Result<Vec<casper_hashing::Digest>, Self::Error> {
         self.state.missing_children(correlation_id, trie_raw)
+    }
+
+    fn delete_keys(
+        &self,
+        correlation_id: shared::CorrelationId,
+        root: casper_hashing::Digest,
+        keys_to_delete: &[casper_types::Key],
+    ) -> Result<DeleteResult, Self::Error> {
+        self.state.delete_keys(correlation_id, root, keys_to_delete)
     }
 }
 
