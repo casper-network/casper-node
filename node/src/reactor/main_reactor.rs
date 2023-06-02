@@ -185,6 +185,8 @@ pub(crate) struct MainReactor {
     attempts: usize,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
+    shutdown_for_upgrade_timeout: TimeDiff,
+    switched_to_shutdown_for_upgrade: Timestamp,
     upgrade_timeout: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
@@ -1184,11 +1186,13 @@ impl reactor::Reactor for MainReactor {
             max_attempts: config.node.max_attempts,
             idle_tolerance: config.node.idle_tolerance,
             control_logic_default_delay: config.node.control_logic_default_delay,
-            upgrade_timeout: config.node.upgrade_timeout,
             trusted_hash,
             validator_matrix,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
+            shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
+            switched_to_shutdown_for_upgrade: Timestamp::from(0),
+            upgrade_timeout: config.node.upgrade_timeout,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
