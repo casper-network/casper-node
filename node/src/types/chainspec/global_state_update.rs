@@ -1,20 +1,17 @@
-use std::{collections::BTreeMap, convert::TryFrom, path::Path};
+use std::{collections::BTreeMap, convert::TryFrom};
 
 use datasize::DataSize;
 #[cfg(test)]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    file_utils, AsymmetricType, Key, PublicKey, U512,
+    AsymmetricType, Key, PublicKey, U512,
 };
-
-use super::error::GlobalStateUpdateLoadError;
-
-const GLOBAL_STATE_UPDATE_FILENAME: &str = "global_state.toml";
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
@@ -30,28 +27,12 @@ pub struct GlobalStateUpdateValidatorInfo {
     weight: String,
 }
 
+/// Type storing global state update entries.
 #[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateConfig {
     validators: Option<Vec<GlobalStateUpdateValidatorInfo>>,
     entries: Vec<GlobalStateUpdateEntry>,
-}
-
-impl GlobalStateUpdateConfig {
-    /// Returns `Self` and the raw bytes of the file.
-    ///
-    /// If the file doesn't exist, returns `Ok(None)`.
-    pub(super) fn from_dir<P: AsRef<Path>>(
-        path: P,
-    ) -> Result<Option<(Self, Bytes)>, GlobalStateUpdateLoadError> {
-        let update_path = path.as_ref().join(GLOBAL_STATE_UPDATE_FILENAME);
-        if !update_path.is_file() {
-            return Ok(None);
-        }
-        let bytes = file_utils::read_file(update_path)?;
-        let config: GlobalStateUpdateConfig = toml::from_slice(&bytes)?;
-        Ok(Some((config, Bytes::from(bytes))))
-    }
 }
 
 /// Type storing the information about modifications to be applied to the global state.
@@ -62,6 +43,30 @@ impl GlobalStateUpdateConfig {
 pub struct GlobalStateUpdate {
     pub(crate) validators: Option<BTreeMap<PublicKey, U512>>,
     pub(crate) entries: BTreeMap<Key, Bytes>,
+}
+
+impl GlobalStateUpdate {
+    #[cfg(test)]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let mut validators = BTreeMap::new();
+        if rng.gen() {
+            let count = rng.gen_range(5..10);
+            for _ in 0..count {
+                validators.insert(PublicKey::random(rng), rng.gen::<U512>());
+            }
+        }
+
+        let count = rng.gen_range(0..10);
+        let mut entries = BTreeMap::new();
+        for _ in 0..count {
+            entries.insert(rng.gen(), rng.gen());
+        }
+
+        Self {
+            validators: Some(validators),
+            entries,
+        }
+    }
 }
 
 impl ToBytes for GlobalStateUpdate {
@@ -93,8 +98,25 @@ impl FromBytes for GlobalStateUpdate {
     }
 }
 
+/// Error loading global state update file.
+#[derive(Debug, Error)]
+pub enum GlobalStateUpdateError {
+    /// Error while decoding a key from a prefix formatted string.
+    #[error("decoding key from formatted string error: {0}")]
+    DecodingKeyFromStr(String),
+    /// Error while decoding a key from a hex formatted string.
+    #[error("decoding key from hex string error: {0}")]
+    DecodingKeyFromHex(String),
+    /// Error while decoding a public key weight from formatted string.
+    #[error("decoding weight from decimal string error: {0}")]
+    DecodingWeightFromStr(String),
+    /// Error while decoding a serialized value from a base64 encoded string.
+    #[error("decoding from base64 error: {0}")]
+    DecodingFromBase64(#[from] base64::DecodeError),
+}
+
 impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
-    type Error = GlobalStateUpdateLoadError;
+    type Error = GlobalStateUpdateError;
 
     fn try_from(config: GlobalStateUpdateConfig) -> Result<Self, Self::Error> {
         let mut validators: Option<BTreeMap<PublicKey, U512>> = None;
@@ -102,13 +124,13 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
             let mut new_validators = BTreeMap::new();
             for (index, validator) in config_validators.into_iter().enumerate() {
                 let public_key = PublicKey::from_hex(&validator.public_key).map_err(|error| {
-                    GlobalStateUpdateLoadError::DecodingKeyFromStr(format!(
-                        "failed to decode validator public key {}: {}",
+                    GlobalStateUpdateError::DecodingKeyFromHex(format!(
+                        "failed to decode validator public key {}: {:?}",
                         index, error
                     ))
                 })?;
                 let weight = U512::from_dec_str(&validator.weight).map_err(|error| {
-                    GlobalStateUpdateLoadError::DecodingKeyFromStr(format!(
+                    GlobalStateUpdateError::DecodingWeightFromStr(format!(
                         "failed to decode validator weight {}: {}",
                         index, error
                     ))
@@ -121,7 +143,7 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
         let mut entries = BTreeMap::new();
         for (index, entry) in config.entries.into_iter().enumerate() {
             let key = Key::from_formatted_str(&entry.key).map_err(|error| {
-                GlobalStateUpdateLoadError::DecodingKeyFromStr(format!(
+                GlobalStateUpdateError::DecodingKeyFromStr(format!(
                     "failed to decode entry key {}: {}",
                     index, error
                 ))
@@ -134,30 +156,6 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
             validators,
             entries,
         })
-    }
-}
-
-#[cfg(test)]
-impl GlobalStateUpdate {
-    pub fn random(rng: &mut TestRng) -> Self {
-        let mut validators = BTreeMap::new();
-        if rng.gen() {
-            let count = rng.gen_range(5..10);
-            for _ in 0..count {
-                validators.insert(PublicKey::random(rng), rng.gen::<U512>());
-            }
-        }
-
-        let count = rng.gen_range(0..10);
-        let mut entries = BTreeMap::new();
-        for _ in 0..count {
-            entries.insert(rng.gen(), rng.gen());
-        }
-
-        Self {
-            validators: Some(validators),
-            entries,
-        }
     }
 }
 

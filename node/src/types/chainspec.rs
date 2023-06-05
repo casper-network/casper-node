@@ -6,14 +6,12 @@ mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
 mod deploy_config;
-mod error;
 mod global_state_update;
 mod highway_config;
 mod network_config;
-mod parse_toml;
 mod protocol_config;
 
-use std::{fmt::Debug, path::Path, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 #[cfg(test)]
@@ -39,16 +37,11 @@ pub use self::{
     chainspec_raw_bytes::ChainspecRawBytes,
     core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality},
     deploy_config::DeployConfig,
-    error::Error,
-    global_state_update::GlobalStateUpdate,
+    global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError},
     highway_config::HighwayConfig,
     network_config::NetworkConfig,
     protocol_config::ProtocolConfig,
 };
-use crate::utils::Loadable;
-
-/// The name of the chainspec file on disk.
-pub const CHAINSPEC_FILENAME: &str = "chainspec.toml";
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
@@ -207,14 +200,6 @@ impl FromBytes for Chainspec {
             system_costs_config,
         };
         Ok((chainspec, remainder))
-    }
-}
-
-impl Loadable for (Chainspec, ChainspecRawBytes) {
-    type Error = Error;
-
-    fn from_path<P: AsRef<Path>>(path: P) -> Result<Self, Self::Error> {
-        parse_toml::parse_toml(path.as_ref().join(CHAINSPEC_FILENAME))
     }
 }
 

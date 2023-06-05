@@ -4,8 +4,6 @@ mod account_config;
 mod delegator_config;
 mod validator_config;
 
-use std::path::Path;
-
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -13,16 +11,13 @@ use casper_execution_engine::core::engine_state::GenesisAccount;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    file_utils, PublicKey,
+    bytesrepr::{self, FromBytes, ToBytes},
+    PublicKey,
 };
 
-use super::error::ChainspecAccountsLoadError;
 pub use account_config::AccountConfig;
 pub use delegator_config::DelegatorConfig;
 pub use validator_config::ValidatorConfig;
-
-const CHAINSPEC_ACCOUNTS_FILENAME: &str = "accounts.toml";
 
 fn sorted_vec_deserializer<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
@@ -74,23 +69,6 @@ impl AccountsConfig {
             None => false,
             Some(account_config) => account_config.is_genesis_validator(),
         }
-    }
-
-    /// Returns `Self` and the raw bytes of the file.
-    ///
-    /// If the file doesn't exist, returns `Ok` with an empty `AccountsConfig` and `None` bytes.
-    pub(super) fn from_dir<P: AsRef<Path>>(
-        dir_path: P,
-    ) -> Result<(Self, Option<Bytes>), ChainspecAccountsLoadError> {
-        let accounts_path = dir_path.as_ref().join(CHAINSPEC_ACCOUNTS_FILENAME);
-        if !accounts_path.is_file() {
-            let config = AccountsConfig::new(vec![], vec![]);
-            let maybe_bytes = None;
-            return Ok((config, maybe_bytes));
-        }
-        let bytes = file_utils::read_file(accounts_path)?;
-        let config: AccountsConfig = toml::from_slice(&bytes)?;
-        Ok((config, Some(Bytes::from(bytes))))
     }
 
     #[cfg(test)]

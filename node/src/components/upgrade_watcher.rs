@@ -34,10 +34,8 @@ use crate::{
         EffectExt, Effects,
     },
     reactor::main_reactor::MainEvent,
-    types::{
-        chainspec::{ProtocolConfig, CHAINSPEC_FILENAME},
-        ActivationPoint, Chainspec,
-    },
+    types::{chainspec::ProtocolConfig, ActivationPoint, Chainspec},
+    utils::chain_specification::parse_toml::CHAINSPEC_FILENAME,
     NodeRng,
 };
 
@@ -473,7 +471,7 @@ mod tests {
     use casper_types::testing::TestRng;
 
     use super::*;
-    use crate::types::chainspec::CHAINSPEC_FILENAME;
+    use crate::utils::chain_specification::parse_toml::CHAINSPEC_FILENAME;
 
     #[test]
     fn should_get_next_installed_version() {

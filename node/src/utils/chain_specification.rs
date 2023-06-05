@@ -8,6 +8,9 @@ use crate::types::{
     Chainspec,
 };
 
+pub(crate) mod error;
+pub(crate) mod parse_toml;
+
 /// Returns `false` and logs errors if the values set in the config don't make sense.
 #[tracing::instrument(ret, level = "info", skip(chainspec), fields(hash=%chainspec.hash()))]
 pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
@@ -96,6 +99,7 @@ pub(crate) fn validate_core_config(core_config: &CoreConfig) -> bool {
 
     true
 }
+
 /// Validates `DeployConfig` parameters
 pub(crate) fn validate_deploy_config(deploy_config: &DeployConfig) -> bool {
     // the total number of deploys + transfers should not exceed the number of approvals because
