@@ -2326,11 +2326,11 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             execution_journal,
         } => {
             debug!(
-                "{}: success (cost: {}, transfer count: {}, journal entries: {})",
-                preamble,
-                cost,
-                transfers.len(),
-                execution_journal.len()
+                %cost,
+                transfer_count=%transfers.len(),
+                journal_entries=%execution_journal.len(),
+                "{}: execution success",
+                preamble
             );
         }
         ExecutionResult::Failure {
@@ -2340,12 +2340,12 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             execution_journal,
         } => {
             debug!(
-                "{}: failure (error: {}, cost: {}, transfer count: {}, journal entries: {})",
-                preamble,
-                error,
-                cost,
-                transfers.len(),
-                execution_journal.len()
+                %error,
+                %cost,
+                transfer_count=%transfers.len(),
+                journal_entries=%execution_journal.len(),
+                "{}: execution failure",
+                preamble
             );
         }
     }
