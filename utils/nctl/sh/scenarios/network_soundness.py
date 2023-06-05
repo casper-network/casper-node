@@ -333,8 +333,10 @@ def start_test():
     deploy_sender_handle = start_sending_deploys()
     huge_deploy_sender_handle = start_sending_huge_deploys()
     disturbance_thread = start_disturbance_thread()
-    main_test_thread = start_test_timer(TEST_DURATION_SECS, deploy_sender_handle,
-                     huge_deploy_sender_handle, disturbance_thread)
+    main_test_thread = start_test_timer(TEST_DURATION_SECS,
+                                        deploy_sender_handle,
+                                        huge_deploy_sender_handle,
+                                        disturbance_thread)
     main_test_thread.join()
     return
 
