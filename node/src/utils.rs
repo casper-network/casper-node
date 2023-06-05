@@ -2,6 +2,7 @@
 //! being factored out into standalone crates.
 
 mod block_signatures;
+pub(crate) mod chain_specification;
 mod display_error;
 pub(crate) mod ds;
 mod external;

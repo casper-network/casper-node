@@ -60,11 +60,6 @@ impl ProtocolConfig {
             && ActivationPoint::EraId(block_header.next_block_era_id()) == self.activation_point
     }
 
-    /// Checks whether the values set in the config make sense and returns `false` if they don't.
-    pub(super) fn is_valid(&self) -> bool {
-        true
-    }
-
     /// Generates a random instance using a `TestRng`.
     #[cfg(test)]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -122,10 +117,6 @@ impl FromBytes for ProtocolConfig {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::Block;
-
-    use casper_types::EraId;
-
     use super::*;
 
     #[test]
@@ -140,77 +131,5 @@ mod tests {
         let mut rng = crate::new_rng();
         let config = ProtocolConfig::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
-    }
-
-    #[test]
-    fn toml_roundtrip() {
-        let mut rng = crate::new_rng();
-        let config = ProtocolConfig::random(&mut rng);
-        let encoded = toml::to_string_pretty(&config).unwrap();
-        let decoded = toml::from_str(&encoded).unwrap();
-        assert_eq!(config, decoded);
-    }
-
-    #[test]
-    fn should_perform_checks_without_global_state_update() {
-        let mut rng = crate::new_rng();
-        let mut protocol_config = ProtocolConfig::random(&mut rng);
-
-        // We force `global_state_update` to be `None`.
-        protocol_config.global_state_update = None;
-
-        assert!(protocol_config.is_valid());
-    }
-
-    #[test]
-    fn should_perform_checks_with_global_state_update() {
-        let mut rng = crate::new_rng();
-        let mut protocol_config = ProtocolConfig::random(&mut rng);
-
-        // We force `global_state_update` to be `Some`.
-        protocol_config.global_state_update = Some(GlobalStateUpdate::random(&mut rng));
-
-        assert!(protocol_config.is_valid());
-    }
-
-    #[test]
-    fn should_recognize_blocks_before_activation_point() {
-        let past_version = ProtocolVersion::from_parts(1, 0, 0);
-        let current_version = ProtocolVersion::from_parts(2, 0, 0);
-        let future_version = ProtocolVersion::from_parts(3, 0, 0);
-
-        let upgrade_era = EraId::from(5);
-        let previous_era = upgrade_era.saturating_sub(1);
-
-        let mut rng = crate::new_rng();
-        let protocol_config = ProtocolConfig {
-            version: current_version,
-            hard_reset: false,
-            activation_point: ActivationPoint::EraId(upgrade_era),
-            global_state_update: None,
-        };
-
-        // The block before this protocol version: a switch block with previous era and version.
-        let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, past_version, true, None);
-        assert!(protocol_config.is_last_block_before_activation(block.header()));
-
-        // Not the activation point: wrong era.
-        let block =
-            Block::random_with_specifics(&mut rng, upgrade_era, 100, past_version, true, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
-
-        // Not the activation point: wrong version.
-        let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, current_version, true, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
-        let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, future_version, true, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
-
-        // Not the activation point: not a switch block.
-        let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, past_version, false, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
     }
 }

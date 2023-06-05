@@ -14,10 +14,8 @@ use serde::{
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS,
     ProtocolVersion, TimeDiff,
 };
-use tracing::{error, warn};
 
 /// Configuration values associated with the core protocol.
 #[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
@@ -98,49 +96,6 @@ impl CoreConfig {
     pub fn recent_era_count(&self) -> u64 {
         // Safe to use naked `-` operation assuming `CoreConfig::is_valid()` has been checked.
         self.unbonding_delay - self.auction_delay
-    }
-
-    /// Returns `false` if unbonding delay is not greater than auction delay to ensure
-    /// that `recent_era_count()` yields a value of at least 1.
-    pub fn is_valid(&self) -> bool {
-        if self.unbonding_delay <= self.auction_delay {
-            warn!(
-                unbonding_delay = self.unbonding_delay,
-                auction_delay = self.auction_delay,
-                "unbonding delay should be greater than auction delay",
-            );
-            return false;
-        }
-
-        // If the era duration is set to zero, we will treat it as explicitly stating that eras
-        // should be defined by height only.  Warn only.
-        if self.era_duration.millis() > 0
-            && self.era_duration.millis()
-                < self.minimum_era_height * self.minimum_block_time.millis()
-        {
-            warn!("era duration is less than minimum era height * round length!");
-        }
-
-        if self.finality_threshold_fraction <= Ratio::new(0, 1)
-            || self.finality_threshold_fraction >= Ratio::new(1, 1)
-        {
-            error!(
-                ftf = %self.finality_threshold_fraction,
-                "finality threshold fraction is not in the range (0, 1)",
-            );
-            return false;
-        }
-
-        if self.vesting_schedule_period > TimeDiff::from_millis(VESTING_SCHEDULE_LENGTH_MILLIS) {
-            error!(
-                vesting_schedule_millis = self.vesting_schedule_period.millis(),
-                max_millis = VESTING_SCHEDULE_LENGTH_MILLIS,
-                "vesting schedule period too long",
-            );
-            return false;
-        }
-
-        true
     }
 }
 
@@ -461,34 +416,5 @@ mod tests {
         let mut rng = crate::new_rng();
         let config = CoreConfig::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
-    }
-
-    #[test]
-    fn toml_roundtrip() {
-        let mut rng = crate::new_rng();
-        let config = CoreConfig::random(&mut rng);
-        let encoded = toml::to_string_pretty(&config).unwrap();
-        let decoded = toml::from_str(&encoded).unwrap();
-        assert_eq!(config, decoded);
-    }
-
-    #[test]
-    fn should_validate_for_finality_threshold() {
-        let mut rng = crate::new_rng();
-        let mut config = CoreConfig::random(&mut rng);
-        // Should be valid for FTT > 0 and < 1.
-        config.finality_threshold_fraction = Ratio::new(1, u64::MAX);
-        assert!(config.is_valid());
-        config.finality_threshold_fraction = Ratio::new(u64::MAX - 1, u64::MAX);
-        assert!(config.is_valid());
-        // Should be invalid for FTT == 0 or >= 1.
-        config.finality_threshold_fraction = Ratio::new(0, 1);
-        assert!(!config.is_valid());
-        config.finality_threshold_fraction = Ratio::new(1, 1);
-        assert!(!config.is_valid());
-        config.finality_threshold_fraction = Ratio::new(u64::MAX, u64::MAX);
-        assert!(!config.is_valid());
-        config.finality_threshold_fraction = Ratio::new(u64::MAX, u64::MAX - 1);
-        assert!(!config.is_valid());
     }
 }
