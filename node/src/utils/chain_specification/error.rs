@@ -1,6 +1,7 @@
 use thiserror::Error;
 use uint::FromDecStrErr;
 
+use crate::types::chainspec::GlobalStateUpdateError;
 use casper_types::file_utils::ReadFileError;
 
 /// Error returned when loading the chainspec.
@@ -62,11 +63,7 @@ pub enum GlobalStateUpdateLoadError {
     #[error("decoding from TOML error: {0}")]
     DecodingFromToml(#[from] toml::de::Error),
 
-    /// Error while decoding a serialized value from a base64 encoded string.
-    #[error("decoding from base64 error: {0}")]
-    DecodingFromBase64(#[from] base64::DecodeError),
-
-    /// Error while decoding a key from formatted string.
-    #[error("decoding from formatted string error: {0}")]
-    DecodingKeyFromStr(String),
+    /// Error decoding kvp items.
+    #[error("decoding key value entries error: {0}")]
+    DecodingKeyValuePairs(#[from] GlobalStateUpdateError),
 }
