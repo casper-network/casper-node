@@ -12,6 +12,10 @@ from time import sleep
 # How long to keep the test running (assuming errorless run)
 TEST_DURATION_SECS = 30 * 60
 
+# How long to wait before running the health checks, giving the network some time to settle
+# after the disturbances.
+NETWORK_SETTLE_DOWN_TIME_SECS = 2 * 60
+
 # Wasm transfers
 DEPLOY_SPAM_INTERVAL_SECS = 3 * 60
 DEPLOY_SPAM_COUNT = 600
@@ -240,6 +244,11 @@ def test_timer_thread(secs, deploy_sender_handle, huge_deploy_sender_handle,
     deploy_sender_handle.join()
     huge_deploy_sender_handle.join()
     disturbance_thread.join()
+
+    log("*** waiting {} seconds to allow the network to settle ***".format(
+        NETWORK_SETTLE_DOWN_TIME_SECS))
+    sleep(NETWORK_SETTLE_DOWN_TIME_SECS)
+
     log("*** running health checks ***")
     run_health_checks()
     log("*** test finished successfully ***")
