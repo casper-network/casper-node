@@ -383,7 +383,7 @@ impl BlockAccumulator {
             // When there is no acceptor for it, this function returns
             // early, ignoring the signature.
             None => {
-                warn!(%finality_signature, "no acceptor to receive finality_signature");
+                debug!(%finality_signature, "no acceptor to receive finality_signature");
                 return Effects::new();
             }
         };

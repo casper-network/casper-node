@@ -31,7 +31,7 @@ use std::{
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 use casper_hashing::Digest;
 use casper_types::{
@@ -1441,8 +1441,7 @@ where
                 )
             }
         };
-
-        debug!("Payment result: {:?}", payment_result);
+        log_execution_result("payment result", &payment_result);
 
         // the proposer of the block this deploy is in receives the gas from this deploy execution
         let proposer_purse = {
@@ -1635,7 +1634,7 @@ where
                 session_stack,
             )
         };
-        debug!("Session result: {:?}", session_result);
+        log_execution_result("session result", &session_result);
 
         // Create + persist deploy info.
         {
@@ -2315,6 +2314,40 @@ where
             }
         }
         Ok(())
+    }
+}
+
+fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
+    trace!("{}: {:?}", preamble, result);
+    match result {
+        ExecutionResult::Success {
+            transfers,
+            cost,
+            execution_journal,
+        } => {
+            debug!(
+                "{}: success (cost: {}, transfer count: {}, journal entries: {})",
+                preamble,
+                cost,
+                transfers.len(),
+                execution_journal.len()
+            );
+        }
+        ExecutionResult::Failure {
+            error,
+            transfers,
+            cost,
+            execution_journal,
+        } => {
+            debug!(
+                "{}: failure (error: {}, cost: {}, transfer count: {}, journal entries: {})",
+                preamble,
+                error,
+                cost,
+                transfers.len(),
+                execution_journal.len()
+            );
+        }
     }
 }
 
