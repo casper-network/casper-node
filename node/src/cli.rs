@@ -26,7 +26,7 @@ use crate::{
     reactor::{main_reactor, Runner},
     setup_signal_hooks,
     types::{Chainspec, ChainspecRawBytes, ExitCode},
-    utils::{Loadable, WithDir},
+    utils::{chain_specification::validate_chainspec, Loadable, WithDir},
 };
 
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
@@ -168,7 +168,7 @@ impl Cli {
                     "node starting up"
                 );
 
-                if !chainspec.is_valid() {
+                if !validate_chainspec(&chainspec) {
                     bail!("invalid chainspec");
                 }
 
