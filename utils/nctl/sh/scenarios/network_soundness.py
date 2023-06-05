@@ -67,18 +67,29 @@ def log(msg):
 
 
 def invoke(command, quiet=False):
+    global invoke_lock
     if not quiet:
         log("invoking command: {}".format(command))
-    invoke_lock.acquire()
+
+    while True:
+        if not invoke_lock.acquire(timeout=60):
+            log("unable to acquire lock, retrying")
+        else:
+            break
+
     try:
         result = subprocess.check_output([
             '/bin/bash', '-c',
             'shopt -s expand_aliases\nsource $NCTL/activate\n{}'.format(
-                command)
+                command, timeout=60)
         ]).decode("utf-8").rstrip()
         return result
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessError:
         log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"
+            )
+        return ""
+    except subprocess.TimeoutExpired:
+        log("subprocess timeout - this can be a transitory error if the node is temporarily down"
             )
         return ""
     finally:
