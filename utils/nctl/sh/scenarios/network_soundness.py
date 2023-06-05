@@ -133,7 +133,7 @@ def wait_for_height(target_height):
     retries = PROGRESS_WAIT_TIMEOUT_SECS / 2
     while True:
         heights = []
-        for node in range(1, 6):
+        for node in range(1, current_node_count + 1):
             height = get_chain_height(node)
             heights.append(height)
         keep_waiting = len(
