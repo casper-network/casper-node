@@ -21,7 +21,7 @@ use toml::{value::Table, Value};
 use tracing::info;
 
 use crate::{
-    components::network::Identity as NetworkIdentity,
+    components::network::{within_message_size_limit_tolerance, Identity as NetworkIdentity},
     logging,
     reactor::{main_reactor, Runner},
     setup_signal_hooks,
@@ -170,6 +170,12 @@ impl Cli {
 
                 if !chainspec.is_valid() {
                     bail!("invalid chainspec");
+                }
+
+                if !within_message_size_limit_tolerance(&chainspec) {
+                    // Ensure the size of the largest message generated under these
+                    // chainspec settings does not exceed the configured message size limit.
+                    bail!("chainspec configured message limit not within tolerance");
                 }
 
                 let network_identity = NetworkIdentity::from_config(WithDir::new(
