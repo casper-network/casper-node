@@ -84,13 +84,13 @@ def invoke(command, quiet=False):
                 command, timeout=60)
         ]).decode("utf-8").rstrip()
         return result
-    except subprocess.CalledProcessError:
-        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"
-            )
+    except subprocess.CalledProcessError as err:
+        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down: {}"
+            .format(err))
         return ""
-    except subprocess.TimeoutExpired:
-        log("subprocess timeout - this can be a transitory error if the node is temporarily down"
-            )
+    except subprocess.TimeoutExpired as err:
+        log("subprocess timeout - this can be a transitory error if the node is temporarily down: {}"
+            .format(err))
         return ""
     finally:
         invoke_lock.release()
