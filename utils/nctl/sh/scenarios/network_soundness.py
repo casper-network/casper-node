@@ -12,6 +12,10 @@ from time import sleep
 # How long to keep the test running (assuming errorless run)
 TEST_DURATION_SECS = 30 * 60
 
+# How long to wait before running the health checks, giving the network some time to settle
+# after the disturbances.
+NETWORK_SETTLE_DOWN_TIME_SECS = 2 * 60
+
 # Wasm transfers
 DEPLOY_SPAM_INTERVAL_SECS = 3 * 60
 DEPLOY_SPAM_COUNT = 600
@@ -63,19 +67,30 @@ def log(msg):
 
 
 def invoke(command, quiet=False):
+    global invoke_lock
     if not quiet:
         log("invoking command: {}".format(command))
-    invoke_lock.acquire()
+
+    while True:
+        if not invoke_lock.acquire(timeout=60):
+            log("unable to acquire lock, retrying")
+        else:
+            break
+
     try:
         result = subprocess.check_output([
             '/bin/bash', '-c',
             'shopt -s expand_aliases\nsource $NCTL/activate\n{}'.format(
-                command)
+                command, timeout=60)
         ]).decode("utf-8").rstrip()
         return result
-    except subprocess.CalledProcessError as e:
-        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"
-            )
+    except subprocess.CalledProcessError as err:
+        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down: {}"
+            .format(err))
+        return ""
+    except subprocess.TimeoutExpired as err:
+        log("subprocess timeout - this can be a transitory error if the node is temporarily down: {}"
+            .format(err))
         return ""
     finally:
         invoke_lock.release()
@@ -118,7 +133,7 @@ def wait_for_height(target_height):
     retries = PROGRESS_WAIT_TIMEOUT_SECS / 2
     while True:
         heights = []
-        for node in range(1, 6):
+        for node in range(1, current_node_count + 1):
             height = get_chain_height(node)
             heights.append(height)
         keep_waiting = len(
@@ -240,6 +255,11 @@ def test_timer_thread(secs, deploy_sender_handle, huge_deploy_sender_handle,
     deploy_sender_handle.join()
     huge_deploy_sender_handle.join()
     disturbance_thread.join()
+
+    log("*** waiting {} seconds to allow the network to settle ***".format(
+        NETWORK_SETTLE_DOWN_TIME_SECS))
+    sleep(NETWORK_SETTLE_DOWN_TIME_SECS)
+
     log("*** running health checks ***")
     run_health_checks()
     log("*** test finished successfully ***")
@@ -313,8 +333,10 @@ def start_test():
     deploy_sender_handle = start_sending_deploys()
     huge_deploy_sender_handle = start_sending_huge_deploys()
     disturbance_thread = start_disturbance_thread()
-    main_test_thread = start_test_timer(TEST_DURATION_SECS, deploy_sender_handle,
-                     huge_deploy_sender_handle, disturbance_thread)
+    main_test_thread = start_test_timer(TEST_DURATION_SECS,
+                                        deploy_sender_handle,
+                                        huge_deploy_sender_handle,
+                                        disturbance_thread)
     main_test_thread.join()
     return
 
