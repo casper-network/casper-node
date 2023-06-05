@@ -151,7 +151,7 @@ impl BlockAccumulator {
         if leap_instruction.should_leap() {
             return SyncInstruction::Leap { block_hash };
         }
-        match sync_identifier.block_hash_to_sync(self.next_synchable_block_hash(block_hash)) {
+        match sync_identifier.block_hash_to_sync(self.next_syncable_block_hash(block_hash)) {
             Some(block_hash_to_sync) => {
                 self.reset_last_progress();
                 SyncInstruction::BlockSync {
@@ -184,6 +184,7 @@ impl BlockAccumulator {
         if new_local_tip {
             self.purge();
             self.local_tip = Some(LocalTipIdentifier::new(height, era_id));
+            self.reset_last_progress();
             info!(local_tip=?self.local_tip, "new local tip detected");
         }
     }
@@ -383,7 +384,7 @@ impl BlockAccumulator {
             // When there is no acceptor for it, this function returns
             // early, ignoring the signature.
             None => {
-                warn!(%finality_signature, "no acceptor to receive finality_signature");
+                debug!(%finality_signature, "no acceptor to receive finality_signature");
                 return Effects::new();
             }
         };
@@ -590,7 +591,7 @@ impl BlockAccumulator {
         }
     }
 
-    fn next_synchable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+    fn next_syncable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
         let block_acceptor = self.block_acceptors.get(child_hash)?;
         if block_acceptor.has_sufficient_finality() {
