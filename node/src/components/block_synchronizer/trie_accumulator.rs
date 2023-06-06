@@ -14,7 +14,7 @@ use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 
 use casper_storage::global_state::storage::trie::TrieRaw;
-use casper_types::{bytesrepr::Bytes, ChunkWithProof, Digest};
+use casper_types::{bytesrepr::Bytes, ChunkWithProof, Digest, DisplayIter};
 
 use crate::{
     components::{
@@ -29,7 +29,6 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{NodeId, TrieOrChunk, TrieOrChunkId},
-    utils::DisplayIter,
     NodeRng,
 };
 

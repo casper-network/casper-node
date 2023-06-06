@@ -3,10 +3,12 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
+use casper_types::{Deploy, DeployHash};
+
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{Deploy, DeployHash, LegacyDeploy, NodeId},
+    types::{LegacyDeploy, NodeId},
 };
 
 #[async_trait]

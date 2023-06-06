@@ -3,15 +3,12 @@
 
 use alloc::vec::Vec;
 use core::{
+    fmt::{self, Display, Formatter},
     ops::{Add, AddAssign, Div, Mul, Rem, Shl, Shr, Sub, SubAssign},
     time::Duration,
 };
 #[cfg(any(feature = "std", test))]
-use std::{
-    fmt::{self, Display, Formatter},
-    str::FromStr,
-    time::SystemTime,
-};
+use std::{str::FromStr, time::SystemTime};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -103,14 +100,17 @@ impl Timestamp {
     }
 }
 
-#[cfg(any(feature = "std", test))]
 impl Display for Timestamp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(self.0)) {
+        #[cfg(any(feature = "std", test))]
+        return match SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(self.0)) {
             Some(system_time) => write!(f, "{}", humantime::format_rfc3339_millis(system_time))
                 .or_else(|e| write!(f, "Invalid timestamp: {}: {}", e, self.0)),
             None => write!(f, "invalid Timestamp: {} ms after the Unix epoch", self.0),
-        }
+        };
+
+        #[cfg(not(any(feature = "std", test)))]
+        write!(f, "timestamp({}ms)", self.0)
     }
 }
 
@@ -143,7 +143,7 @@ impl AddAssign<TimeDiff> for Timestamp {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl std::ops::Sub<TimeDiff> for Timestamp {
+impl Sub<TimeDiff> for Timestamp {
     type Output = Timestamp;
 
     fn sub(self, diff: TimeDiff) -> Timestamp {
@@ -237,10 +237,13 @@ impl From<u64> for Timestamp {
 )]
 pub struct TimeDiff(u64);
 
-#[cfg(any(feature = "std", test))]
 impl Display for TimeDiff {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", humantime::format_duration(Duration::from(*self)))
+        #[cfg(any(feature = "std", test))]
+        return write!(f, "{}", humantime::format_duration(Duration::from(*self)));
+
+        #[cfg(not(any(feature = "std", test)))]
+        write!(f, "time diff({}ms)", self.0)
     }
 }
 

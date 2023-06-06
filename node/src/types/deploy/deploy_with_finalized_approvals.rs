@@ -5,8 +5,10 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
-use super::Approval;
-use super::{Deploy, FinalizedApprovals};
+use casper_types::Approval;
+use casper_types::Deploy;
+
+use crate::types::FinalizedApprovals;
 
 /// A deploy combined with a potential set of finalized approvals.
 ///
@@ -39,7 +41,7 @@ impl DeployWithFinalizedApprovals {
     pub(crate) fn into_naive(self) -> Deploy {
         let mut deploy = self.deploy;
         if let Some(finalized_approvals) = self.finalized_approvals {
-            deploy.approvals = finalized_approvals.into_inner();
+            deploy = deploy.with_approvals(finalized_approvals.into_inner());
         }
 
         deploy

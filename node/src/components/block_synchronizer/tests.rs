@@ -14,8 +14,9 @@ use rand::{seq::IteratorRandom, Rng};
 
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, Chainspec, EraId, Key, LegacyRequiredFinality,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
+    testing::TestRng, AccessRights, CLValue, Chainspec, DeployId, EraId, Key,
+    LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef,
+    U512,
 };
 
 use super::*;
@@ -27,7 +28,7 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{DeployId, TestBlockBuilder},
+    types::TestBlockBuilder,
     utils,
 };
 
@@ -1462,7 +1463,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         block.hash(),
         deploys
             .iter()
-            .map(|deploy| deploy.approvals_hash().unwrap())
+            .map(|deploy| deploy.compute_approvals_hash().unwrap())
             .collect(),
         dummy_merkle_proof(),
     );
@@ -2375,7 +2376,7 @@ async fn historical_sync_no_legacy_block() {
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
             ApprovalsHashes::new(
                 block.hash(),
-                vec![deploy.approvals_hash().unwrap()],
+                vec![deploy.compute_approvals_hash().unwrap()],
                 dummy_merkle_proof(),
             ),
         )))),

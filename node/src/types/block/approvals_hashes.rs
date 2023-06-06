@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr, Digest, Key, StoredValue};
+use casper_types::{bytesrepr, ApprovalsHash, DeployId, Digest, Key, StoredValue};
 
 use super::{Block, BlockHash};
 use crate::{
@@ -17,7 +17,7 @@ use crate::{
         contract_runtime::APPROVALS_CHECKSUM_NAME,
         fetcher::{FetchItem, Tag},
     },
-    types::{self, ApprovalsHash, DeployId},
+    types,
     utils::ds,
 };
 

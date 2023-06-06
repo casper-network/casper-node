@@ -14,7 +14,7 @@ use thiserror::Error;
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::core::engine_state;
-use casper_types::{Digest, Timestamp};
+use casper_types::{Digest, DisplayIter, Timestamp};
 
 use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent, TrieAccumulatorResponse};
 use crate::{
@@ -28,7 +28,6 @@ use crate::{
     },
     reactor,
     types::{BlockHash, NodeId, TrieOrChunk},
-    utils::DisplayIter,
     NodeRng,
 };
 

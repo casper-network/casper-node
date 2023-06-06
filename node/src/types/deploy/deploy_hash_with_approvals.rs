@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use super::{Approval, Deploy, DeployHash};
+use casper_types::{Approval, Deploy, DeployHash};
 
 /// The hash of a deploy (or transfer) together with signatures approving it for execution.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]

@@ -2,9 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use casper_types::{account::AccountHash, DeployHash};
-
-use crate::core::engine_state::executable_deploy_item::ExecutableDeployItem;
+use casper_types::{account::AccountHash, Deploy, DeployHash, ExecutableDeployItem};
 
 type GasPrice = u64;
 
@@ -46,5 +44,25 @@ impl DeployItem {
             authorization_keys,
             deploy_hash,
         }
+    }
+}
+
+impl From<Deploy> for DeployItem {
+    fn from(deploy: Deploy) -> Self {
+        let address = deploy.header().account().to_account_hash();
+        let authorization_keys = deploy
+            .approvals()
+            .iter()
+            .map(|approval| approval.signer().to_account_hash())
+            .collect();
+
+        DeployItem::new(
+            address,
+            deploy.session().clone(),
+            deploy.payment().clone(),
+            deploy.header().gas_price(),
+            authorization_keys,
+            casper_types::DeployHash::new(*deploy.hash().inner()),
+        )
     }
 }

@@ -3,10 +3,12 @@ use std::fmt::{self, Debug, Display, Formatter};
 use serde::Serialize;
 use tracing::error;
 
+use casper_types::Deploy;
+
 use super::{FetchItem, FetchResponder, FetchResponse};
 use crate::{
     effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest},
-    types::{Deploy, NodeId},
+    types::NodeId,
     utils::Source,
 };
 

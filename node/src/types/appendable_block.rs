@@ -3,12 +3,13 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_types::{DeployConfig, Gas, PublicKey, Timestamp};
 use datasize::DataSize;
 use num_traits::Zero;
 use thiserror::Error;
 
-use crate::types::{deploy::DeployFootprint, BlockPayload, DeployHash, DeployHashWithApprovals};
+use casper_types::{DeployConfig, DeployFootprint, DeployHash, Gas, PublicKey, Timestamp};
+
+use crate::types::{BlockPayload, DeployHashWithApprovals};
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {

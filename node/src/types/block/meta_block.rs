@@ -6,9 +6,9 @@ use std::sync::Arc;
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_types::{ActivationPoint, ExecutionResult};
+use casper_types::{ActivationPoint, DeployHash, DeployHeader, ExecutionResult};
 
-use crate::types::{Block, DeployHash, DeployHeader};
+use crate::types::Block;
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
@@ -82,10 +82,9 @@ mod tests {
 
     use rand::Rng;
 
-    use casper_types::testing::TestRng;
+    use casper_types::{testing::TestRng, Deploy};
 
     use super::*;
-    use crate::types::Deploy;
 
     #[test]
     fn should_merge_when_same_non_empty_execution_results() {

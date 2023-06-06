@@ -2,12 +2,10 @@ use std::{collections::BTreeSet, path::Path};
 
 use rand::Rng;
 
-use casper_execution_engine::core::engine_state::{
-    deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem,
-};
+use casper_execution_engine::core::engine_state::deploy_item::DeployItem;
 use casper_types::{
-    account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash, Digest,
-    HashAddr, RuntimeArgs,
+    account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash,
+    ExecutableDeployItem, HashAddr, RuntimeArgs,
 };
 
 use crate::{utils, DEFAULT_GAS_PRICE};
@@ -255,8 +253,7 @@ impl DeployItemBuilder {
 
     /// Sets the hash of the deploy.
     pub fn with_deploy_hash(mut self, hash: [u8; 32]) -> Self {
-        let digest: Digest = hash.into();
-        self.deploy_item.deploy_hash = Some(DeployHash::new(digest.value()));
+        self.deploy_item.deploy_hash = Some(DeployHash::from_raw(hash));
         self
     }
 
@@ -280,7 +277,7 @@ impl DeployItemBuilder {
             deploy_hash: self
                 .deploy_item
                 .deploy_hash
-                .unwrap_or_else(|| rand::thread_rng().gen()),
+                .unwrap_or_else(|| DeployHash::from_raw(rand::thread_rng().gen())),
         }
     }
 }

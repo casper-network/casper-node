@@ -214,7 +214,7 @@ impl FromBytes for RuntimeArgs {
 /// Macro that makes it easier to construct named arguments.
 ///
 /// NOTE: This macro does not propagate possible errors that could occur while creating a
-/// [`crate::CLValue`]. For such cases creating [`RuntimeArgs`] manually is recommended.
+/// [`CLValue`]. For such cases creating [`RuntimeArgs`] manually is recommended.
 ///
 /// # Example usage
 /// ```

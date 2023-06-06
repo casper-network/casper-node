@@ -674,6 +674,7 @@ dependencies = [
  "strum",
  "tempfile",
  "thiserror",
+ "tracing",
  "uint",
  "untrusted",
  "version-sync",

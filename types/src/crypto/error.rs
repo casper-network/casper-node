@@ -1,13 +1,14 @@
 use alloc::string::String;
-use core::fmt::Debug;
-#[cfg(not(any(feature = "std", test)))]
 use core::fmt::{self, Display, Formatter};
+#[cfg(any(feature = "std", test))]
+use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use ed25519_dalek::ed25519::Error as SignatureError;
 #[cfg(any(feature = "std", test))]
 use pem::PemError;
+use serde::Serialize;
 #[cfg(any(feature = "std", test))]
 use thiserror::Error;
 
@@ -15,41 +16,49 @@ use thiserror::Error;
 use crate::file_utils::{ReadFileError, WriteFileError};
 
 /// Cryptographic errors.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(any(feature = "std", test), derive(Error))]
 #[non_exhaustive]
 pub enum Error {
     /// Error resulting from creating or using asymmetric key types.
-    #[cfg_attr(any(feature = "std", test), error("asymmetric key error: {0}"))]
     AsymmetricKey(String),
 
     /// Error resulting when decoding a type from a hex-encoded representation.
+    #[serde(with = "serde_helpers::Base16DecodeError")]
     #[cfg_attr(feature = "datasize", data_size(skip))]
-    #[cfg_attr(any(feature = "std", test), error("parsing from hex: {0}"))]
     FromHex(base16::DecodeError),
 
     /// Error resulting when decoding a type from a base64 representation.
+    #[serde(with = "serde_helpers::Base64DecodeError")]
     #[cfg_attr(feature = "datasize", data_size(skip))]
-    #[cfg_attr(any(feature = "std", test), error("decoding error: {0}"))]
     FromBase64(base64::DecodeError),
 
     /// Signature error.
-    #[cfg_attr(any(feature = "std", test), error("error in signature"))]
     SignatureError,
 
     /// Error trying to manipulate the system key.
-    #[cfg_attr(
-        any(feature = "std", test),
-        error("invalid operation on system key: {0}")
-    )]
     System(String),
 }
 
-#[cfg(not(any(feature = "std", test)))]
 impl Display for Error {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        Debug::fmt(self, formatter)
+        match self {
+            Error::AsymmetricKey(error_msg) => {
+                write!(formatter, "asymmetric key error: {}", error_msg)
+            }
+            Error::FromHex(error) => {
+                write!(formatter, "decoding from hex: {}", error)
+            }
+            Error::FromBase64(error) => {
+                write!(formatter, "decoding from base 64: {}", error)
+            }
+            Error::SignatureError => {
+                write!(formatter, "error in signature")
+            }
+            Error::System(error_msg) => {
+                write!(formatter, "invalid operation on system key: {}", error_msg)
+            }
+        }
     }
 }
 
@@ -62,6 +71,17 @@ impl From<base16::DecodeError> for Error {
 impl From<SignatureError> for Error {
     fn from(_error: SignatureError) -> Self {
         Error::SignatureError
+    }
+}
+
+#[cfg(any(feature = "std", test))]
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Error::FromHex(error) => Some(error),
+            Error::FromBase64(error) => Some(error),
+            Error::AsymmetricKey(_) | Error::SignatureError | Error::System(_) => None,
+        }
     }
 }
 
@@ -107,5 +127,29 @@ pub enum ErrorExt {
 impl From<PemError> for ErrorExt {
     fn from(error: PemError) -> Self {
         ErrorExt::FromPem(error.to_string())
+    }
+}
+
+/// This module allows us to derive `Serialize` for the third party error types which don't
+/// themselves derive it.
+///
+/// See <https://serde.rs/remote-derive.html> for more info.
+#[allow(clippy::enum_variant_names)]
+mod serde_helpers {
+    use serde::Serialize;
+
+    #[derive(Serialize)]
+    #[serde(remote = "base16::DecodeError")]
+    pub(super) enum Base16DecodeError {
+        InvalidByte { index: usize, byte: u8 },
+        InvalidLength { length: usize },
+    }
+
+    #[derive(Serialize)]
+    #[serde(remote = "base64::DecodeError")]
+    pub(super) enum Base64DecodeError {
+        InvalidByte(usize, u8),
+        InvalidLength,
+        InvalidLastSymbol(usize, u8),
     }
 }

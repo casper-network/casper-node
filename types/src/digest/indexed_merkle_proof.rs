@@ -5,7 +5,7 @@ use core::convert::TryInto;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use itertools::Itertools;
-#[cfg(feature = "once_cell")]
+#[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
@@ -23,9 +23,12 @@ pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
     merkle_proof: Vec<Digest>,
-    #[cfg_attr(feature = "once_cell", serde(skip))]
-    #[cfg_attr(all(feature = "once_cell", feature = "datasize"), data_size(skip))]
-    #[cfg(feature = "once_cell")]
+    #[cfg_attr(any(feature = "once_cell", test), serde(skip))]
+    #[cfg_attr(
+        all(any(feature = "once_cell", test), feature = "datasize"),
+        data_size(skip)
+    )]
+    #[cfg(any(feature = "once_cell", test))]
     root_hash: OnceCell<Digest>,
 }
 
@@ -56,7 +59,7 @@ impl FromBytes for IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
-                #[cfg(feature = "once_cell")]
+                #[cfg(any(feature = "once_cell", test))]
                 root_hash: OnceCell::new(),
             },
             remainder,
@@ -111,7 +114,7 @@ impl IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
-                #[cfg(feature = "once_cell")]
+                #[cfg(any(feature = "once_cell", test))]
                 root_hash: OnceCell::new(),
             }),
         }
@@ -133,10 +136,10 @@ impl IndexedMerkleProof {
     /// feature), the root hash is memoized, and hence calling this method is cheap after the first
     /// call.  Without `once_cell` enabled, every call to this method calculates the root hash.
     pub fn root_hash(&self) -> Digest {
-        #[cfg(feature = "once_cell")]
+        #[cfg(any(feature = "once_cell", test))]
         return *self.root_hash.get_or_init(|| self.compute_root_hash());
 
-        #[cfg(not(feature = "once_cell"))]
+        #[cfg(not(any(feature = "once_cell", test)))]
         self.compute_root_hash()
     }
 

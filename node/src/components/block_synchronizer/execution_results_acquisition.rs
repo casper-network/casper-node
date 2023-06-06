@@ -13,12 +13,11 @@ use tracing::{debug, error};
 
 use casper_types::{
     bytesrepr::{self},
-    ChunkWithProof, Digest, ExecutionResult,
+    ChunkWithProof, DeployHash, Digest, ExecutionResult,
 };
 
 use crate::types::{
-    BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, DeployHash,
-    ValueOrChunk,
+    BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, ValueOrChunk,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Serialize, Deserialize)]

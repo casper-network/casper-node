@@ -11,7 +11,7 @@ use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
 
-use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes};
+use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId};
 
 use super::*;
 use crate::{
@@ -39,7 +39,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeDeployAcceptor,
     },
-    types::{Block, Deploy, DeployHash, DeployId, FinalitySignature, NodeId},
+    types::{Block, FinalitySignature, NodeId},
     utils::WithDir,
 };
 

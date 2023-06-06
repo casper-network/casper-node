@@ -11,7 +11,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use casper_types::{ChainspecRawBytes, EraId, ExecutionResult, ProtocolVersion, PublicKey};
+use casper_types::{
+    ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionResult, ProtocolVersion, PublicKey,
+};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -21,10 +23,7 @@ use crate::{
     components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{
-        Block, BlockHash, BlockHashAndHeight, Deploy, DeployHash, DeployMetadataExt,
-        GetStatusResult, PeersMap,
-    },
+    types::{Block, BlockHash, BlockHashAndHeight, DeployMetadataExt, GetStatusResult, PeersMap},
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {

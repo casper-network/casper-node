@@ -3,7 +3,7 @@ use derive_more::Display;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::DeployHash;
+use casper_types::{Deploy, DeployHash};
 
 /// The [`DeployHash`] stored in a way distinguishing between Wasm deploys and transfers.
 #[derive(
@@ -32,16 +32,20 @@ pub enum DeployOrTransferHash {
 }
 
 impl DeployOrTransferHash {
-    /// Gets the inner `DeployHash`.
-    pub fn deploy_hash(&self) -> &DeployHash {
-        match self {
-            DeployOrTransferHash::Deploy(hash) | DeployOrTransferHash::Transfer(hash) => hash,
+    /// Returns the hash of `deploy` wrapped in `DeployOrTransferHash`.
+    pub(crate) fn new(deploy: &Deploy) -> DeployOrTransferHash {
+        if deploy.session().is_transfer() {
+            DeployOrTransferHash::Transfer(*deploy.hash())
+        } else {
+            DeployOrTransferHash::Deploy(*deploy.hash())
         }
     }
 
-    /// Returns `true` if this is a transfer hash.
-    pub fn is_transfer(&self) -> bool {
-        matches!(self, DeployOrTransferHash::Transfer(_))
+    #[cfg(test)]
+    pub(crate) fn deploy_hash(&self) -> &DeployHash {
+        match self {
+            DeployOrTransferHash::Deploy(hash) | DeployOrTransferHash::Transfer(hash) => hash,
+        }
     }
 }
 

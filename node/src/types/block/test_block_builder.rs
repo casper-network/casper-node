@@ -1,13 +1,14 @@
 use std::{collections::BTreeMap, iter};
 
-use casper_types::{
-    testing::TestRng, Digest, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
-};
 use rand::Rng;
+
+use casper_types::{
+    testing::TestRng, Deploy, Digest, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+};
 
 use crate::{
     components::consensus::EraReport,
-    types::{Block, BlockHash, BlockPayload, Deploy, DeployHashWithApprovals, FinalizedBlock},
+    types::{Block, BlockHash, BlockPayload, DeployHashWithApprovals, FinalizedBlock},
 };
 
 pub(crate) struct TestBlockBuilder {

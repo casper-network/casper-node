@@ -3,11 +3,11 @@ use std::{io, path::PathBuf};
 use thiserror::Error;
 use tracing::error;
 
-use casper_types::{bytesrepr, crypto, Digest, EraId};
+use casper_types::{bytesrepr, crypto, DeployHash, Digest, EraId};
 
 use super::lmdb_ext::LmdbExtError;
 use crate::types::{
-    error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
+    error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader,
     FinalitySignature, FinalitySignatureId,
 };
 

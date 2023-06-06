@@ -6,11 +6,12 @@ use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
-
-use crate::types::{
-    block::EraReport, Block, BlockHash, Deploy, DeployConfigurationFailure, DeployHash,
+use casper_types::{
+    bytesrepr, CLValueError, Deploy, DeployConfigurationFailure, DeployHash, Digest, EraId,
+    PublicKey, U512,
 };
+
+use crate::types::{block::EraReport, Block, BlockHash};
 
 /// An error that can arise when creating a block from a finalized block and other components.
 #[derive(Error, Debug, Serialize)]

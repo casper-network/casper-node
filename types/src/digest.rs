@@ -21,17 +21,21 @@ use hex_fmt::HexFmt;
 use itertools::Itertools;
 #[cfg(feature = "once_cell")]
 use once_cell::sync::OnceCell;
-#[cfg(test)]
-use rand::{distributions::Standard, prelude::Distribution, Rng};
+#[cfg(any(feature = "testing", test))]
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex, CLType, CLTyped,
 };
-
 pub use chunk_with_proof::ChunkWithProof;
 pub use error::{
     ChunkWithProofVerificationError, Error as DigestError, MerkleConstructionError,
@@ -242,6 +246,18 @@ impl Digest {
             )
         }
     }
+
+    /// Returns a new `Digest` directly initialized with the provided bytes; no hashing is done.
+    #[cfg(any(feature = "testing", test))]
+    pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
+        Digest(raw_digest)
+    }
+
+    /// Returns a random `Digest`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        Digest(rng.gen())
+    }
 }
 
 impl CLTyped for Digest {
@@ -250,10 +266,10 @@ impl CLTyped for Digest {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Distribution<Digest> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Digest {
-        Digest(rng.gen::<[u8; Digest::LENGTH]>())
+        Digest(rng.gen())
     }
 }
 
