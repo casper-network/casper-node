@@ -43,20 +43,13 @@ impl PastFinalitySignatures {
         // Take the validators list
         // Replace the ones who signed with 1 and the ones who didn't with 0
         // Pack everything into bytes
-        let bytes: Vec<_> = all_validators
-            .into_iter()
-            .map(|key| public_keys.contains(key))
-            .chunks(8)
-            .into_iter()
-            .map(|bits| {
-                bits.enumerate()
-                    .fold(0, |accumulated, (index, is_present)| {
-                        accumulated | (u8::from(is_present) << (7 - index))
-                    })
-            })
-            .collect();
+        let result = Self::pack(
+            all_validators
+                .into_iter()
+                .map(|key| u8::from(public_keys.contains(key))),
+        );
 
-        let included_count: u32 = bytes.iter().map(|c| c.count_ones()).sum();
+        let included_count: u32 = result.0.iter().map(|c| c.count_ones()).sum();
         if included_count as usize != public_keys.len() {
             error!(
                 included_count,
@@ -65,7 +58,7 @@ impl PastFinalitySignatures {
             );
         }
 
-        PastFinalitySignatures(bytes)
+        result
     }
 
     #[allow(dead_code)] //TODO remove it when the code is used in a next ticket
@@ -73,28 +66,48 @@ impl PastFinalitySignatures {
         self,
         all_validators: impl IntoIterator<Item = PublicKey>,
     ) -> BTreeSet<PublicKey> {
-        fn active(bits: u8) -> [bool; 8] {
-            [
-                0 != bits & 0b1000_0000,
-                0 != bits & 0b0100_0000,
-                0 != bits & 0b0010_0000,
-                0 != bits & 0b0001_0000,
-                0 != bits & 0b0000_1000,
-                0 != bits & 0b0000_0100,
-                0 != bits & 0b0000_0010,
-                0 != bits & 0b0000_0001,
-            ]
+        self.unpack()
+            .zip(all_validators.into_iter())
+            .filter_map(|(active, validator)| (active != 0).then_some(validator))
+            .collect()
+    }
+
+    /// Packs the bits to bytes, to create a `PastFinalitySignature`
+    /// from an iterator of bits.
+    pub(crate) fn pack(bits: impl Iterator<Item = u8>) -> Self {
+        let inner = bits
+            .chunks(8)
+            .into_iter()
+            .map(|bits_chunk| {
+                bits_chunk
+                    .enumerate()
+                    .fold(0, |acc, (index, value)| acc | (value << (7 - index)))
+            })
+            .collect();
+
+        PastFinalitySignatures(inner)
+    }
+
+    /// Unpacks the bytes to bits,
+    /// to get a human readable representation of `PastFinalitySignature`.
+    pub(crate) fn unpack(&self) -> impl Iterator<Item = u8> + '_ {
+        // Returns the bit at the given position (0 or 1):
+        fn bit_at(byte: u8, position: u8) -> u8 {
+            (byte & (0b1000_0000 >> position)) >> (7 - position)
         }
 
-        self.0
-            .into_iter()
-            .zip(&all_validators.into_iter().chunks(8))
-            .flat_map(|(u, validators_chunk)| {
-                IntoIterator::into_iter(active(u))
-                    .zip(validators_chunk)
-                    .filter_map(|(on, validator)| on.then_some(validator))
-            })
-            .collect()
+        self.0.iter().flat_map(|&byte| {
+            [
+                bit_at(byte, 0),
+                bit_at(byte, 1),
+                bit_at(byte, 2),
+                bit_at(byte, 3),
+                bit_at(byte, 4),
+                bit_at(byte, 5),
+                bit_at(byte, 6),
+                bit_at(byte, 7),
+            ]
+        })
     }
 }
 

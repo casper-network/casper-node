@@ -2232,7 +2232,9 @@ pub(crate) mod json_compatibility {
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
-        past_finality_signatures: PastFinalitySignatures,
+        /// A series of 1s and 0s defining whether the validator at the same index
+        /// has signed or not.
+        past_finality_signatures: Vec<u8>,
     }
 
     impl From<&BlockBody> for JsonBlockBody {
@@ -2241,7 +2243,7 @@ pub(crate) mod json_compatibility {
                 proposer: body.proposer().clone(),
                 deploy_hashes: body.deploy_hashes().clone(),
                 transfer_hashes: body.transfer_hashes().clone(),
-                past_finality_signatures: body.past_finality_signatures().clone(),
+                past_finality_signatures: body.past_finality_signatures().unpack().collect(),
             }
         }
     }
@@ -2252,7 +2254,9 @@ pub(crate) mod json_compatibility {
                 proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
-                past_finality_signatures: json_body.past_finality_signatures,
+                past_finality_signatures: PastFinalitySignatures::pack(
+                    json_body.past_finality_signatures.into_iter(),
+                ),
                 hash: OnceCell::new(),
             }
         }
