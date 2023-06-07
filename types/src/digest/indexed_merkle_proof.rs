@@ -9,10 +9,8 @@ use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    Digest, MerkleConstructionError, MerkleVerificationError,
-};
+use super::{Digest, MerkleConstructionError, MerkleVerificationError};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// A Merkle proof of the given chunk.
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
@@ -275,7 +273,7 @@ mod tests {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 23,
             count: 4,
-            merkle_proof: vec![Digest::new([0u8; 32]); 3],
+            merkle_proof: vec![Digest([0u8; 32]); 3],
             root_hash: OnceCell::new(),
         };
         assert_eq!(
@@ -292,7 +290,7 @@ mod tests {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 1235,
             count: 5647,
-            merkle_proof: vec![Digest::new([0u8; 32]); 13],
+            merkle_proof: vec![Digest([0u8; 32]); 13],
             root_hash: OnceCell::new(),
         };
         assert_eq!(
@@ -311,7 +309,7 @@ mod tests {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 0,
             count: 0,
-            merkle_proof: vec![Digest::new([0u8; 32]); 3],
+            merkle_proof: vec![Digest([0u8; 32]); 3],
             root_hash: OnceCell::new(),
         };
         assert_eq!(
@@ -343,7 +341,7 @@ mod tests {
         let indexed_merkle_proof = IndexedMerkleProof {
             index: 42,
             count: 1 << (PROOF_LENGTH - 1),
-            merkle_proof: vec![Digest::new([0u8; Digest::LENGTH]); PROOF_LENGTH],
+            merkle_proof: vec![Digest([0u8; Digest::LENGTH]); PROOF_LENGTH],
             root_hash: OnceCell::new(),
         };
         let _hash = indexed_merkle_proof.root_hash();
