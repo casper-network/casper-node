@@ -10,10 +10,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{self, Error},
-        execution,
-    },
+    core::{engine_state, execution},
     shared::wasm_prep::{
         PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
         DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
@@ -530,17 +527,7 @@ fn should_verify_max_param_count() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
-
-    let error = builder.get_error().expect("should have error");
-
-    // Here we pass the preprocess stage, but we fail at stack height limiter as we do have very
-    // restrictive default stack height.
-    assert!(
-        matches!(&error, Error::Exec(execution::Error::Interpreter(s)) if s.contains("Unreachable")),
-        "{:?}",
-        error
-    );
+    builder.exec(exec_request).expect_success().commit();
 
     let module_bytes_100_params =
         wasm_utils::make_n_arg_call_bytes(100, "i32").expect("should create wasm bytes");

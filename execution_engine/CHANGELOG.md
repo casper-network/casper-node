@@ -10,6 +10,13 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+## [Unreleased]
+
+### Changed
+* Default value for `max_stack_height` is increased to 500.
+
+
+
 ## 5.0.0
 
 ### Added
