@@ -1,8 +1,7 @@
 use std::{collections::BTreeMap, iter};
 
-use casper_hashing::Digest;
 use casper_types::{
-    testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
+    testing::TestRng, Digest, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp, U512,
 };
 use rand::Rng;
 

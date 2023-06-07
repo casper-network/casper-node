@@ -29,8 +29,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::core::engine_state;
-use casper_hashing::Digest;
-use casper_types::Timestamp;
+use casper_types::{Digest, Timestamp};
 
 use super::network::blocklist::BlocklistJustification;
 use crate::{

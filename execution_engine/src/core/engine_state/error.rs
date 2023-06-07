@@ -2,8 +2,7 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, system::mint, ApiError, ProtocolVersion};
+use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
 
 use crate::{
     core::{

@@ -152,7 +152,7 @@ mod full_tries {
     use casper_types::{
         bytesrepr::{self, FromBytes, ToBytes},
         gens::{colliding_key_arb, stored_value_arb},
-        Key, StoredValue,
+        Digest, Key, StoredValue,
     };
 
     use crate::global_state::{
@@ -163,14 +163,15 @@ mod full_tries {
             trie_store::{
                 operations::{
                     delete,
-                    tests::{LmdbTestContext, TestKey, TestValue, TEST_TRIE_GENERATORS},
+                    tests::{
+                        LmdbTestContext, TestKey, TestOperation, TestValue, TEST_TRIE_GENERATORS,
+                    },
                     write, DeleteResult, WriteResult,
                 },
                 TrieStore,
             },
         },
     };
-    use casper_hashing::Digest;
 
     fn serially_insert_and_delete<'a, K, V, R, S, E>(
         correlation_id: CorrelationId,

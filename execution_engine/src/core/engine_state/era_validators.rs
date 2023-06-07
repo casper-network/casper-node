@@ -3,8 +3,7 @@ use thiserror::Error;
 
 use datasize::DataSize;
 
-use casper_hashing::Digest;
-use casper_types::ProtocolVersion;
+use casper_types::{Digest, ProtocolVersion};
 
 use crate::core::{engine_state::error::Error, runtime::stack::RuntimeStackOverflow};
 

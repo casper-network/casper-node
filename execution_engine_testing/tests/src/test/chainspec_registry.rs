@@ -9,8 +9,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::core::engine_state::{
     ChainspecRegistry, EngineConfig, RunGenesisRequest,
 };
-use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion};
+use casper_types::{Digest, EraId, Key, ProtocolVersion};
 
 use crate::lmdb_fixture;
 

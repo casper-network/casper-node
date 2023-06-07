@@ -1,8 +1,7 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{Digest, EraId, PublicKey};
 
 use crate::{
     components::{

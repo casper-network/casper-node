@@ -4,10 +4,9 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, TimeDiff, Timestamp,
+    Digest, PublicKey, TimeDiff, Timestamp,
 };
 
 #[cfg(doc)]

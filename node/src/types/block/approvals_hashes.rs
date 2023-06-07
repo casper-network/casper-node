@@ -3,14 +3,13 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use datasize::DataSize;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_types::{bytesrepr, Digest, Key, StoredValue};
 
 use super::{Block, BlockHash};
 use crate::{
@@ -170,6 +169,17 @@ pub(crate) enum ApprovalsHashesValidationError {
 }
 
 mod specimen_support {
+    use std::collections::BTreeMap;
+
+    use once_cell::sync::OnceCell;
+
+    use casper_storage::global_state::storage::trie::{
+        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
+        Pointer,
+    };
+    use casper_types::{bytesrepr::Bytes, CLValue, Digest, Key, StoredValue};
+
+    use super::ApprovalsHashes;
     use crate::{
         contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
         utils::specimen::{
@@ -177,16 +187,6 @@ mod specimen_support {
             SizeEstimator,
         },
     };
-
-    use super::ApprovalsHashes;
-    use casper_hashing::Digest;
-    use casper_storage::global_state::storage::trie::{
-        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-        Pointer,
-    };
-    use casper_types::{bytesrepr::Bytes, CLValue, Key, StoredValue};
-    use once_cell::sync::OnceCell;
-    use std::collections::BTreeMap;
 
     impl LargestSpecimen for ApprovalsHashes {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {

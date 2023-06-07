@@ -1,21 +1,28 @@
+//! Chunks with Merkle proofs.
+
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
-
 use crate::{
-    error::{ChunkWithProofVerificationError, MerkleConstructionError},
-    indexed_merkle_proof::IndexedMerkleProof,
-    Digest,
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    ChunkWithProofVerificationError, Digest, IndexedMerkleProof, MerkleConstructionError,
 };
 
 /// Represents a chunk of data with attached proof.
-#[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
-    #[schemars(with = "String", description = "Hex-encoded bytes.")]
+
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(with = "String", description = "Hex-encoded bytes.")
+    )]
     chunk: Bytes,
 }
 
@@ -133,9 +140,10 @@ mod tests {
     use proptest_attr_macro::proptest;
     use rand::Rng;
 
-    use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-
-    use crate::{chunk_with_proof::ChunkWithProof, error::MerkleConstructionError, Digest};
+    use crate::{
+        bytesrepr::{self, FromBytes, ToBytes},
+        ChunkWithProof, Digest, MerkleConstructionError,
+    };
 
     fn prepare_bytes(length: usize) -> Vec<u8> {
         let mut rng = rand::thread_rng();

@@ -1,11 +1,4 @@
-//! A library providing hashing functionality including Merkle Proof utilities.
-#![doc(html_root_url = "https://docs.rs/casper-hashing/2.0.0")]
-#![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
-)]
-#![warn(missing_docs)]
+//! Contains digest and merkle chunking used throughout the system.
 
 mod chunk_with_proof;
 mod error;
@@ -22,30 +15,41 @@ use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,
 };
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
 #[cfg(test)]
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex, CLType, CLTyped,
 };
+
 pub use chunk_with_proof::ChunkWithProof;
 pub use error::{
-    ChunkWithProofVerificationError, Error, MerkleConstructionError, MerkleVerificationError,
+    ChunkWithProofVerificationError, Error as DigestError, MerkleConstructionError,
+    MerkleVerificationError,
 };
 pub use indexed_merkle_proof::IndexedMerkleProof;
 
 /// The output of the hash function.
-#[derive(Copy, Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Default, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Hex-encoded hash digest.")]
-pub struct Digest(#[schemars(skip, with = "String")] [u8; Digest::LENGTH]);
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "json-schema",
+    schemars(with = "String", description = "Hex-encoded hash digest.")
+)]
+#[cfg_attr(feature = "json-schema", serde(deny_unknown_fields))]
+pub struct Digest(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] [u8; Digest::LENGTH],
+);
 
 const CHUNK_DATA_ZEROED: &[u8] = &[0u8; ChunkWithProof::CHUNK_SIZE_BYTES];
 
@@ -59,6 +63,11 @@ impl Digest {
     pub const SENTINEL_RFOLD: Digest = Digest([1u8; Digest::LENGTH]);
     /// Sentinel hash to be used by `hash_merkle_tree` in the case of an empty list.
     pub const SENTINEL_MERKLE_TREE: Digest = Digest([2u8; Digest::LENGTH]);
+
+    /// Creates a new instance of self.
+    pub fn new(hash: [u8; Digest::LENGTH]) -> Self {
+        Self(hash)
+    }
 
     /// Creates a 32-byte BLAKE2b hash digest from a given a piece of data.
     pub fn hash<T: AsRef<[u8]>>(data: T) -> Digest {
@@ -212,11 +221,11 @@ impl Digest {
     }
 
     /// Returns a `Digest` parsed from a hex-encoded `Digest`.
-    pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self, Error> {
-        let bytes = checksummed_hex::decode(&hex_input).map_err(Error::Base16DecodeError)?;
+    pub fn from_hex<T: AsRef<[u8]>>(hex_input: T) -> Result<Self, DigestError> {
+        let bytes = checksummed_hex::decode(&hex_input).map_err(DigestError::Base16DecodeError)?;
         let slice: [u8; Self::LENGTH] = bytes
             .try_into()
-            .map_err(|_| Error::IncorrectDigestLength(hex_input.as_ref().len()))?;
+            .map_err(|_| DigestError::IncorrectDigestLength(hex_input.as_ref().len()))?;
         Ok(Digest(slice))
     }
 
@@ -372,22 +381,23 @@ mod tests {
 
     use proptest_attr_macro::proptest;
 
-    use casper_types::bytesrepr::{self, ToBytes};
-
-    use crate::{ChunkWithProof, Digest};
+    use crate::{
+        bytesrepr::{self, ToBytes},
+        ChunkWithProof, Digest,
+    };
 
     #[proptest]
-    fn bytesrepr_roundtrip(data: [u8; Digest::LENGTH]) {
-        let hash = Digest(data);
-        bytesrepr::test_serialization_roundtrip(&hash);
+    fn bytesrepr_roundtrip(hash: [u8; Digest::LENGTH]) {
+        let digest = Digest::new(hash);
+        bytesrepr::test_serialization_roundtrip(&digest);
     }
 
     #[proptest]
-    fn serde_roundtrip(data: [u8; Digest::LENGTH]) {
-        let original_hash = Digest(data);
-        let serialized = serde_json::to_string(&original_hash).unwrap();
-        let deserialized_hash: Digest = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(original_hash, deserialized_hash);
+    fn serde_roundtrip(hash: [u8; Digest::LENGTH]) {
+        let preser_digest = Digest::new(hash);
+        let serialized = serde_json::to_string(&preser_digest).unwrap();
+        let deser_digest: Digest = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(preser_digest, deser_digest);
     }
 
     #[test]
@@ -462,7 +472,7 @@ mod tests {
 
     #[test]
     fn should_display_digest_in_hex() {
-        let hash = Digest([0u8; 32]);
+        let hash = Digest::new([0u8; 32]);
         let hash_hex = format!("{:?}", hash);
         assert_eq!(
             hash_hex,
@@ -472,7 +482,7 @@ mod tests {
 
     #[test]
     fn should_print_digest_lower_hex() {
-        let hash = Digest([10u8; 32]);
+        let hash = Digest::new([10u8; 32]);
         let hash_lower_hex = format!("{:x}", hash);
         assert_eq!(
             hash_lower_hex,
@@ -482,7 +492,7 @@ mod tests {
 
     #[test]
     fn should_print_digest_upper_hex() {
-        let hash = Digest([10u8; 32]);
+        let hash = Digest::new([10u8; 32]);
         let hash_upper_hex = format!("{:X}", hash);
         assert_eq!(
             hash_upper_hex,
@@ -492,7 +502,7 @@ mod tests {
 
     #[test]
     fn alternate_should_prepend_0x() {
-        let hash = Digest([0u8; 32]);
+        let hash = Digest::new([0u8; 32]);
         let hash_hex_alt = format!("{:#x}", hash);
         assert_eq!(
             hash_hex_alt,
@@ -502,8 +512,8 @@ mod tests {
 
     #[test]
     fn test_hash_pair() {
-        let hash1 = Digest([1u8; 32]);
-        let hash2 = Digest([2u8; 32]);
+        let hash1 = Digest::new([1u8; 32]);
+        let hash2 = Digest::new([2u8; 32]);
 
         let hash = Digest::hash_pair(hash1, hash2);
         let hash_lower_hex = format!("{:x}", hash);
@@ -517,11 +527,11 @@ mod tests {
     #[test]
     fn test_hash_rfold() {
         let hashes = vec![
-            Digest([1u8; 32]),
-            Digest([2u8; 32]),
-            Digest([3u8; 32]),
-            Digest([4u8; 32]),
-            Digest([5u8; 32]),
+            Digest::new([1u8; 32]),
+            Digest::new([2u8; 32]),
+            Digest::new([3u8; 32]),
+            Digest::new([4u8; 32]),
+            Digest::new([5u8; 32]),
         ];
 
         let hash = Digest::hash_slice_rfold(&hashes[..]);
@@ -541,11 +551,11 @@ mod tests {
     #[test]
     fn test_hash_merkle_odd() {
         let hashes = vec![
-            Digest([1u8; 32]),
-            Digest([2u8; 32]),
-            Digest([3u8; 32]),
-            Digest([4u8; 32]),
-            Digest([5u8; 32]),
+            Digest::new([1u8; 32]),
+            Digest::new([2u8; 32]),
+            Digest::new([3u8; 32]),
+            Digest::new([4u8; 32]),
+            Digest::new([5u8; 32]),
         ];
 
         let hash = Digest::hash_merkle_tree(hashes);
@@ -560,12 +570,12 @@ mod tests {
     #[test]
     fn test_hash_merkle_even() {
         let hashes = vec![
-            Digest([1u8; 32]),
-            Digest([2u8; 32]),
-            Digest([3u8; 32]),
-            Digest([4u8; 32]),
-            Digest([5u8; 32]),
-            Digest([6u8; 32]),
+            Digest::new([1u8; 32]),
+            Digest::new([2u8; 32]),
+            Digest::new([3u8; 32]),
+            Digest::new([4u8; 32]),
+            Digest::new([5u8; 32]),
+            Digest::new([6u8; 32]),
         ];
 
         let hash = Digest::hash_merkle_tree(hashes);
@@ -580,11 +590,11 @@ mod tests {
     #[test]
     fn test_hash_btreemap() {
         let mut map = BTreeMap::new();
-        let _ = map.insert(Digest([1u8; 32]), Digest([2u8; 32]));
-        let _ = map.insert(Digest([3u8; 32]), Digest([4u8; 32]));
-        let _ = map.insert(Digest([5u8; 32]), Digest([6u8; 32]));
-        let _ = map.insert(Digest([7u8; 32]), Digest([8u8; 32]));
-        let _ = map.insert(Digest([9u8; 32]), Digest([10u8; 32]));
+        let _ = map.insert(Digest::new([1u8; 32]), Digest::new([2u8; 32]));
+        let _ = map.insert(Digest::new([3u8; 32]), Digest::new([4u8; 32]));
+        let _ = map.insert(Digest::new([5u8; 32]), Digest::new([6u8; 32]));
+        let _ = map.insert(Digest::new([7u8; 32]), Digest::new([8u8; 32]));
+        let _ = map.insert(Digest::new([9u8; 32]), Digest::new([10u8; 32]));
 
         let hash = Digest::hash_btree_map(&map).unwrap();
         let hash_lower_hex = format!("{:x}", hash);
@@ -597,7 +607,7 @@ mod tests {
 
     #[test]
     fn digest_deserialize_regression() {
-        let input = Digest([0; 32]);
+        let input = Digest::new([0; 32]);
         let serialized = bincode::serialize(&input).expect("failed to serialize.");
 
         let expected = vec![
@@ -613,7 +623,7 @@ mod tests {
         let digest_bytes = [0; 32];
 
         assert_eq!(
-            Digest(digest_bytes).to_bytes().unwrap(),
+            Digest::new(digest_bytes).to_bytes().unwrap(),
             digest_bytes.to_vec()
         );
     }

@@ -8,10 +8,9 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
 use casper_types::{
     system::auction::{Bid, Bids, DelegationRate, Delegator, EraValidators},
-    AccessRights, EraId, PublicKey, SecretKey, URef, U512,
+    AccessRights, Digest, EraId, PublicKey, SecretKey, URef, U512,
 };
 
 use crate::rpcs::docs::DocExample;

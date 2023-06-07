@@ -10,8 +10,7 @@ use std::{collections::HashMap, hash::BuildHasher};
 
 use tracing::error;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, Digest, Key, StoredValue};
 
 pub use self::lmdb::make_temporary_global_state;
 use crate::global_state::{

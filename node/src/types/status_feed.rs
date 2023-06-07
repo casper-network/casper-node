@@ -11,8 +11,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::{Digest, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{

@@ -8,8 +8,7 @@ use std::{
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
+use casper_types::{bytesrepr::ToBytes, Digest, TimeDiff, Timestamp};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},

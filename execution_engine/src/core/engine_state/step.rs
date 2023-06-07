@@ -4,8 +4,7 @@
 //! rewards.
 use std::vec::Vec;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, CLValueError, EraId, ProtocolVersion, PublicKey};
+use casper_types::{bytesrepr, CLValueError, Digest, EraId, ProtocolVersion, PublicKey};
 
 use crate::{
     core::{engine_state::Error, execution, runtime::stack::RuntimeStackOverflow},

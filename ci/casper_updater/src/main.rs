@@ -230,7 +230,6 @@ fn get_args() -> Args {
 fn main() {
     let rust_packages = [
         Package::cargo("types", &regex_data::types::DEPENDENT_FILES),
-        Package::cargo("hashing", &regex_data::hashing::DEPENDENT_FILES),
         Package::cargo(
             "execution_engine",
             &regex_data::execution_engine::DEPENDENT_FILES,

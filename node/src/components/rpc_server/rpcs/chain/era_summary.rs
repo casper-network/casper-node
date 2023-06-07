@@ -2,10 +2,9 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
 use casper_types::{
     system::auction::{EraInfo, SeigniorageAllocation},
-    AsymmetricType, EraId, PublicKey, U512,
+    AsymmetricType, Digest, EraId, PublicKey, U512,
 };
 
 use crate::{

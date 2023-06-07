@@ -3,8 +3,7 @@ use std::{io, path::PathBuf};
 use thiserror::Error;
 use tracing::error;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, crypto, EraId};
+use casper_types::{bytesrepr, crypto, Digest, EraId};
 
 use super::lmdb_ext::LmdbExtError;
 use crate::types::{

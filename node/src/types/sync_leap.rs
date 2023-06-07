@@ -10,8 +10,7 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::Digest;
-use casper_types::{crypto, EraId, ProtocolVersion};
+use casper_types::{crypto, Digest, EraId, ProtocolVersion};
 use tracing::error;
 
 use crate::{

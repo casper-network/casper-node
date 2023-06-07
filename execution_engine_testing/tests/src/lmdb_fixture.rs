@@ -13,10 +13,9 @@ use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_execution_engine::core::engine_state::{
     run_genesis_request::RunGenesisRequest, EngineConfig,
 };
-use casper_hashing::Digest;
-use casper_types::ProtocolVersion;
 #[cfg(test)]
 use casper_types::{AccessRights, Key, URef};
+use casper_types::{Digest, ProtocolVersion};
 
 pub const RELEASE_1_2_0: &str = "release_1_2_0";
 pub const RELEASE_1_3_1: &str = "release_1_3_1";

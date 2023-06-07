@@ -9,8 +9,10 @@ use either::Either;
 use num_traits::FromPrimitive;
 use tracing::{error, warn};
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    Digest,
+};
 
 use crate::global_state::{
     shared::CorrelationId,

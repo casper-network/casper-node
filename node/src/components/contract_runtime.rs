@@ -32,7 +32,6 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_hashing::Digest;
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
@@ -43,7 +42,7 @@ use casper_storage::{
         },
     },
 };
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
+use casper_types::{bytesrepr::Bytes, Digest, EraId, ProtocolVersion, Timestamp};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -958,9 +957,11 @@ impl ContractRuntime {
 }
 
 #[cfg(test)]
-mod tests {
+mod trie_chunking_tests {
+    use prometheus::Registry;
+    use tempfile::tempdir;
+
     use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-    use casper_hashing::{ChunkWithProof, Digest};
     use casper_storage::global_state::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
         storage::{
@@ -969,10 +970,9 @@ mod tests {
         },
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, CLValue, EraId, Key, ProtocolVersion, StoredValue,
+        account::AccountHash, bytesrepr, CLValue, ChunkWithProof, Digest, EraId, Key,
+        ProtocolVersion, StoredValue,
     };
-    use prometheus::Registry;
-    use tempfile::tempdir;
 
     use crate::{
         components::fetcher::FetchResponse,

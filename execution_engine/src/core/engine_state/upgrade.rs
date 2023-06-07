@@ -4,12 +4,11 @@ use std::{cell::RefCell, collections::BTreeMap, fmt, rc::Rc};
 use num_rational::Ratio;
 use thiserror::Error;
 
-use casper_hashing::Digest;
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
 use casper_types::{
     bytesrepr::{self},
     system::SystemContractType,
-    Contract, ContractHash, EraId, Key, ProtocolVersion, StoredValue,
+    Contract, ContractHash, Digest, EraId, Key, ProtocolVersion, StoredValue,
 };
 
 use crate::core::{

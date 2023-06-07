@@ -13,8 +13,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::{self, QueryResult};
-use casper_hashing::Digest;
-use casper_types::{Key, ProtocolVersion, Transfer};
+use casper_types::{Digest, DigestError, Key, ProtocolVersion, Transfer};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -112,7 +111,7 @@ pub enum ParseBlockIdentifierError {
     ParseIntError(ParseIntError),
     /// Couldn't parse a blake2bhash.
     #[error("Unable to parse digest from string. {0}")]
-    FromHexError(casper_hashing::Error),
+    FromHexError(DigestError),
 }
 
 /// Params for "chain_get_block" RPC request.

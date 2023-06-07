@@ -3,7 +3,6 @@ use std::{cell::Cell, iter, rc::Rc};
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
-use casper_hashing::Digest;
 use casper_storage::global_state::{
     shared::{transform::Transform, CorrelationId},
     storage::{
@@ -15,7 +14,7 @@ use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
     contracts::NamedKeys,
     gens::*,
-    AccessRights, CLValue, Contract, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
+    AccessRights, CLValue, Contract, Digest, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
     StoredValue, URef, U256, U512,
 };
 

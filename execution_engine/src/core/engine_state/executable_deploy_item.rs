@@ -18,14 +18,13 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use casper_hashing::Digest;
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractVersion, NamedKeys, DEFAULT_ENTRY_POINT_NAME},
     system::mint::ARG_AMOUNT,
-    CLValue, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, Gas, Key,
-    Motes, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
+    CLValue, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey, Digest, Gas,
+    Key, Motes, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::core::{

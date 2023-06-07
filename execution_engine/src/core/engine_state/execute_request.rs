@@ -1,8 +1,7 @@
 //! Code supporting an execution request.
 use std::mem;
 
-use casper_hashing::Digest;
-use casper_types::{ProtocolVersion, PublicKey, SecretKey};
+use casper_types::{Digest, ProtocolVersion, PublicKey, SecretKey};
 
 use super::deploy_item::DeployItem;
 

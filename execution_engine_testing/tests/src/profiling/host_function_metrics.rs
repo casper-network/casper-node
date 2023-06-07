@@ -24,10 +24,9 @@ use casper_execution_engine::{
     core::engine_state::EngineConfig,
     shared::logging::{self, Settings},
 };
-use casper_types::{bytesrepr::Bytes, runtime_args, ApiError, RuntimeArgs, U512};
+use casper_types::{bytesrepr::Bytes, runtime_args, ApiError, Digest, RuntimeArgs, U512};
 
 use casper_engine_tests::profiling;
-use casper_hashing::Digest;
 
 const ABOUT: &str =
     "Executes a contract which logs metrics for all host functions.  Note that the \

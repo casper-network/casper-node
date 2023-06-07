@@ -9,11 +9,8 @@ use std::{
     sync::Arc,
 };
 
-use casper_storage::{
-    data_access_layer::{BlockStore, DataAccessLayer},
-    global_state::storage::lmdb::DatabaseFlags,
-};
 use filesize::PathExt;
+use lmdb::DatabaseFlags;
 use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
@@ -43,17 +40,19 @@ use casper_execution_engine::{
         utils::OS_PAGE_SIZE,
     },
 };
-use casper_hashing::Digest;
-use casper_storage::global_state::{
-    shared::{transform::Transform, AdditiveMap, CorrelationId},
-    storage::{
-        state::{
-            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-            StateReader,
+use casper_storage::{
+    data_access_layer::{BlockStore, DataAccessLayer},
+    global_state::{
+        shared::{transform::Transform, AdditiveMap, CorrelationId},
+        storage::{
+            state::{
+                lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+                StateReader,
+            },
+            transaction_source::lmdb::LmdbEnvironment,
+            trie::{merkle_proof::TrieMerkleProof, Trie},
+            trie_store::lmdb::LmdbTrieStore,
         },
-        transaction_source::lmdb::LmdbEnvironment,
-        trie::{merkle_proof::TrieMerkleProof, Trie},
-        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
@@ -70,8 +69,8 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, Transfer, TransferAddr, URef, U512,
+    DeployHash, DeployInfo, Digest, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use tempfile::TempDir;
 

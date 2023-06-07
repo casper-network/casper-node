@@ -1,6 +1,6 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
-use casper_storage::global_state::storage::lmdb::{Cursor, Transaction};
+use rand::Rng;
 use tempfile::TempDir;
 
 use casper_execution_engine::core::{
@@ -10,10 +10,10 @@ use casper_execution_engine::core::{
     },
     execution,
 };
-use casper_hashing::Digest;
 use casper_storage::global_state::{
     shared::CorrelationId,
     storage::{
+        lmdb::{Cursor, Transaction},
         state::{CommitProvider, StateProvider},
         trie::{Pointer, Trie},
     },
@@ -23,10 +23,8 @@ use casper_types::{
     bytesrepr::{self},
     runtime_args,
     system::auction,
-    Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    Digest, Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
 };
-
-use rand::Rng;
 
 use crate::{
     transfer, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,

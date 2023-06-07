@@ -3,8 +3,7 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_execution_engine::core::engine_state::{ChainspecRegistry, UpgradeConfig};
-use casper_hashing::Digest;
-use casper_types::{EraId, Key, ProtocolVersion, StoredValue};
+use casper_types::{Digest, EraId, Key, ProtocolVersion, StoredValue};
 
 /// Builds an `UpgradeConfig`.
 pub struct UpgradeRequestBuilder {

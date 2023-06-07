@@ -6,8 +6,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::ProtocolVersion;
+use casper_types::{Digest, ProtocolVersion};
 
 use super::{genesis::ExecConfig, ChainspecRegistry};
 

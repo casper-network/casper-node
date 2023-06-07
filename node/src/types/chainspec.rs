@@ -23,12 +23,11 @@ use casper_execution_engine::{
     core::engine_state::{genesis::ExecConfig, ChainspecRegistry, UpgradeConfig},
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    EraId, ProtocolVersion,
+    Digest, EraId, ProtocolVersion,
 };
 
 pub use self::{

@@ -13,12 +13,11 @@ use std::{
 };
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
-    AsymmetricType, ContractPackageHash, EraId, ProtocolVersion, RuntimeArgs, SecretKey, SemVer,
-    TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
+    AsymmetricType, ChunkWithProof, ContractPackageHash, Digest, EraId, ProtocolVersion,
+    RuntimeArgs, SecretKey, SemVer, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 use either::Either;
 use serde::Serialize;

@@ -36,8 +36,9 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_hashing::Digest;
-use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{
+    account::AccountHash, Digest, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+};
 
 use crate::chainspec_config::PRODUCTION_PATH;
 pub use additive_map_diff::AdditiveMapDiff;

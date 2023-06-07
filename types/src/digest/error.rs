@@ -1,7 +1,6 @@
 //! Errors in constructing and validating indexed Merkle proofs, chunks with indexed Merkle proofs.
-use casper_types::bytesrepr;
 
-use crate::{ChunkWithProof, Digest};
+use crate::{bytesrepr, ChunkWithProof, Digest};
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]

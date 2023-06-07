@@ -4,10 +4,9 @@ use std::{collections::BTreeMap, convert::TryFrom};
 
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped,
+    CLType, CLTyped, Digest,
 };
 
 type BytesreprChainspecRegistry = BTreeMap<String, Digest>;

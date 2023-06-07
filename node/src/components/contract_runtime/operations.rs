@@ -18,10 +18,8 @@ use casper_storage::{
         storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     },
 };
-
-use casper_hashing::Digest;
 use casper_types::{
-    CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
+    CLValue, DeployHash, Digest, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{

@@ -3,10 +3,9 @@ use std::{
     convert::TryInto,
 };
 
-use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::ToBytes, checksummed_hex, system::auction::SeigniorageRecipientsSnapshot,
-    AsymmetricType, Key, PublicKey, StoredValue, U512,
+    AsymmetricType, Digest, Key, PublicKey, StoredValue, U512,
 };
 
 /// Parses a Digest from a string. Panics if parsing fails.

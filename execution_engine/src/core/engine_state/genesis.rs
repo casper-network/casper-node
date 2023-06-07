@@ -10,7 +10,6 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
 use casper_types::{
     account::{Account, AccountHash},
@@ -29,7 +28,7 @@ use casper_types::{
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, EntryPoints, EraId, Key, Motes, Phase, ProtocolVersion,
+    ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId, Key, Motes, Phase, ProtocolVersion,
     PublicKey, SecretKey, StoredValue, URef, U512,
 };
 

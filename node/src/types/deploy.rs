@@ -36,7 +36,6 @@ use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_execution_engine::core::engine_state::{
     executable_deploy_item::ExecutableDeployItem, DeployItem,
 };
-use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::bytesrepr::Bytes;
 #[cfg(any(feature = "testing", test))]
@@ -45,7 +44,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512,
+    Digest, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512,
 };
 
 use crate::{

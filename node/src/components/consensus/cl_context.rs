@@ -4,8 +4,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use casper_hashing::Digest;
-use casper_types::{crypto, PublicKey, SecretKey, Signature};
+use casper_types::{crypto, Digest, PublicKey, SecretKey, Signature};
 
 use crate::{
     components::consensus::traits::{ConsensusValueT, Context, ValidatorSecret},

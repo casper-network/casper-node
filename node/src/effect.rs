@@ -122,11 +122,10 @@ use casper_execution_engine::{
     },
     shared::execution_journal::ExecutionJournal,
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
-    EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef,
-    U512,
+    Digest, EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, TimeDiff, Timestamp, Transfer,
+    URef, U512,
 };
 
 use crate::{

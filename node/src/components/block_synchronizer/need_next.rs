@@ -1,8 +1,7 @@
 use datasize::DataSize;
 use derive_more::Display;
 
-use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{Digest, EraId, PublicKey};
 
 use crate::types::{
     Block, BlockExecutionResultsOrChunkId, BlockHash, Deploy, DeployHash, DeployId, FinalizedBlock,

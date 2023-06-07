@@ -23,10 +23,9 @@ use casper_execution_engine::core::engine_state::{
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
 };
-use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    bytesrepr::Bytes, system::auction::EraValidators, Digest, EraId, ExecutionResult, Key,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use crate::{

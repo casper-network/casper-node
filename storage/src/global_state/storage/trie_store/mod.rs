@@ -6,7 +6,7 @@ pub mod operations;
 #[cfg(test)]
 mod tests;
 
-use casper_hashing::Digest;
+use casper_types::Digest;
 
 use crate::global_state::storage::{store::Store, trie::Trie};
 

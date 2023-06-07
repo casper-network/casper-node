@@ -1,6 +1,5 @@
 //! Support for pruning leaf nodes from the merkle trie.
-use casper_hashing::Digest;
-use casper_types::Key;
+use casper_types::{Digest, Key};
 
 /// The result of performing a prune.
 #[derive(Debug, Clone)]

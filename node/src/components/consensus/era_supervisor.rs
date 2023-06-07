@@ -30,8 +30,7 @@ use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_hashing::Digest;
-use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
+use casper_types::{AsymmetricType, Digest, EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{

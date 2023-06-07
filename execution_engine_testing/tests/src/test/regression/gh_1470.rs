@@ -18,13 +18,12 @@ use casper_execution_engine::{
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
-    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion,
-    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::lmdb_fixture;
