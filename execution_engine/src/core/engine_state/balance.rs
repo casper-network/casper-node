@@ -1,6 +1,5 @@
 //! Types for balance queries.
-use casper_hashing::Digest;
-use casper_types::{Key, StoredValue, URef, U512};
+use casper_types::{Digest, Key, StoredValue, URef, U512};
 
 use crate::storage::trie::merkle_proof::TrieMerkleProof;
 

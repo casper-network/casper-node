@@ -6,8 +6,7 @@ use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, CLValueError, EraId, PublicKey, U512};
+use casper_types::{bytesrepr, CLValueError, Digest, EraId, PublicKey, U512};
 
 use crate::types::{
     block::EraReport, Block, BlockHash, Deploy, DeployConfigurationFailure, DeployHash,

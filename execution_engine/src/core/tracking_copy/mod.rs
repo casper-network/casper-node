@@ -16,10 +16,10 @@ use std::{
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self},
-    CLType, CLValue, CLValueError, Key, KeyTag, StoredValue, StoredValueTypeMismatch, Tagged, U512,
+    CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
+    Tagged, U512,
 };
 
 pub use self::ext::TrackingCopyExt;

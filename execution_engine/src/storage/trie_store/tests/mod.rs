@@ -2,8 +2,10 @@ mod concurrent;
 mod proptests;
 mod simple;
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{Bytes, ToBytes};
+use casper_types::{
+    bytesrepr::{Bytes, ToBytes},
+    Digest,
+};
 
 use crate::storage::trie::{Pointer, PointerBlock, Trie};
 

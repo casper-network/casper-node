@@ -68,10 +68,10 @@ use static_assertions::const_assert;
 use tempfile::TempDir;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
+    Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer,
+    Transform,
 };
 
 use crate::{

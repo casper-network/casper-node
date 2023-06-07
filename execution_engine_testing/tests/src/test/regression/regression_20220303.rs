@@ -5,10 +5,9 @@ use std::{
 
 use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_execution_engine::core::engine_state::SystemContractRegistry;
-use casper_hashing::Digest;
 use casper_types::{
     system::{self, mint},
-    AccessRights, CLValue, EraId, Key, ProtocolVersion, StoredValue, URef,
+    AccessRights, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
 };
 use rand::Rng;
 

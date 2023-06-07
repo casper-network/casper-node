@@ -2,8 +2,10 @@ use std::{borrow::Cow, collections::HashSet};
 
 use num_traits::FromPrimitive;
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 use crate::{
     shared::newtypes::CorrelationId,

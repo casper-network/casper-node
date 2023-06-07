@@ -10,8 +10,7 @@ use std::{
 use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::{Digest, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use super::{
     block_acquisition::{Acceptance, BlockAcquisitionState},

@@ -1,4 +1,4 @@
-use casper_hashing::Digest;
+use casper_types::Digest;
 
 use super::*;
 use crate::{

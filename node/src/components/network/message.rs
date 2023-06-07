@@ -12,10 +12,11 @@ use serde::{
 };
 use strum::EnumDiscriminants;
 
-use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{
+    crypto, AsymmetricType, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
+};
 
 use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
 use crate::{

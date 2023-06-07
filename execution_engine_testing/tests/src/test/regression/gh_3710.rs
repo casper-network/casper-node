@@ -12,11 +12,10 @@ use casper_execution_engine::{
     },
     storage::global_state::{CommitProvider, StateProvider},
 };
-use casper_hashing::Digest;
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
-    EraId, Key, KeyTag, ProtocolVersion, RuntimeArgs, U512,
+    Digest, EraId, Key, KeyTag, ProtocolVersion, RuntimeArgs, U512,
 };
 
 use crate::lmdb_fixture;

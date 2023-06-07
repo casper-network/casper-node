@@ -17,8 +17,10 @@ use std::{
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 use crate::{
     shared::newtypes::CorrelationId,

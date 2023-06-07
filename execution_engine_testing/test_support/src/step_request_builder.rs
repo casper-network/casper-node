@@ -2,8 +2,7 @@ use casper_execution_engine::core::engine_state::{
     step::{EvictItem, RewardItem, SlashItem},
     StepRequest,
 };
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion};
+use casper_types::{Digest, EraId, ProtocolVersion};
 
 /// Builder for creating a [`StepRequest`].
 #[derive(Debug, Clone)]

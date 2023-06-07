@@ -33,7 +33,6 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use tracing::{debug, error, warn};
 
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
@@ -49,8 +48,9 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
-    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Digest,
+    EraId, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    URef, U512,
 };
 
 pub use self::{

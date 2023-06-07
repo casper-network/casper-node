@@ -13,8 +13,7 @@ use std::{collections::HashMap, hash::BuildHasher};
 
 use tracing::error;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, Digest, Key, StoredValue};
 
 use crate::{
     shared::{

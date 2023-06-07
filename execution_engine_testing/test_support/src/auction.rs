@@ -17,13 +17,12 @@ use casper_execution_engine::{
         trie::{Pointer, Trie},
     },
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self},
     runtime_args,
     system::auction,
-    Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    Digest, Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
 };
 
 use rand::Rng;

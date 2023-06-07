@@ -15,13 +15,12 @@ use casper_execution_engine::{
     core::engine_state::{self, BalanceResult, GetBidsResult, QueryResult},
     storage::trie::merkle_proof::TrieMerkleProof,
 };
-use casper_hashing::Digest;
 use casper_json_rpc::ReservedErrorCode;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{Bytes, ToBytes},
-    CLValue, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue as DomainStoredValue, URef,
-    U512,
+    CLValue, Digest, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue as DomainStoredValue,
+    URef, U512,
 };
 
 use crate::{

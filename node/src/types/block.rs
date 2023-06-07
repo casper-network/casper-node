@@ -28,10 +28,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
 
-use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
+    crypto, ChunkWithProofVerificationError, Digest, EraId, ProtocolVersion, PublicKey, SecretKey,
+    Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{

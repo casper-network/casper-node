@@ -1,7 +1,6 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use casper_hashing::Digest;
-use casper_types::{Key, StoredValue};
+use casper_types::{Digest, Key, StoredValue};
 
 use crate::{
     shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
@@ -332,8 +331,7 @@ mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, CLValue, Digest};
 
     use super::*;
     use crate::storage::{

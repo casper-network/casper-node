@@ -1,27 +1,30 @@
+//! Constructing and validating indexed Merkle proofs.
 use std::convert::TryInto;
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use itertools::Itertools;
 use once_cell::sync::OnceCell;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-
 use crate::{
-    error::{MerkleConstructionError, MerkleVerificationError},
-    Digest,
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest, MerkleConstructionError, MerkleVerificationError,
 };
 
 /// A Merkle proof of the given chunk.
-#[derive(DataSize, PartialEq, Eq, Debug, Clone, JsonSchema, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
     merkle_proof: Vec<Digest>,
     #[serde(skip)]
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     root_hash: OnceCell<Digest>,
 }
 
@@ -60,15 +63,13 @@ impl FromBytes for IndexedMerkleProof {
 }
 
 impl IndexedMerkleProof {
-    pub(crate) fn new<I>(
-        leaves: I,
-        index: u64,
-    ) -> Result<IndexedMerkleProof, MerkleConstructionError>
+    /// Attempts to construct a new instance.
+    pub fn new<I>(leaves: I, index: u64) -> Result<IndexedMerkleProof, MerkleConstructionError>
     where
         I: IntoIterator<Item = Digest>,
         I::IntoIter: ExactSizeIterator,
     {
-        use HashOrProof::{Hash, Proof};
+        use HashOrProof::{Hash as H, Proof as P};
 
         enum HashOrProof {
             Hash(Digest),
@@ -88,23 +89,23 @@ impl IndexedMerkleProof {
             .enumerate()
             .map(|(i, hash)| {
                 if i as u64 == index {
-                    Proof(vec![hash])
+                    P(vec![hash])
                 } else {
-                    Hash(hash)
+                    H(hash)
                 }
             })
             .tree_fold1(|x, y| match (x, y) {
-                (Hash(hash_x), Hash(hash_y)) => Hash(Digest::hash_pair(hash_x, hash_y)),
-                (Hash(hash), Proof(mut proof)) | (Proof(mut proof), Hash(hash)) => {
+                (H(hash_x), H(hash_y)) => H(Digest::hash_pair(hash_x, hash_y)),
+                (H(hash), P(mut proof)) | (P(mut proof), H(hash)) => {
                     proof.push(hash);
-                    Proof(proof)
+                    P(proof)
                 }
-                (Proof(_), Proof(_)) => unreachable!(),
+                (P(_), P(_)) => unreachable!(),
             });
 
         match maybe_proof {
-            None | Some(Hash(_)) => Err(MerkleConstructionError::IndexOutOfBounds { count, index }),
-            Some(Proof(merkle_proof)) => Ok(IndexedMerkleProof {
+            None | Some(H(_)) => Err(MerkleConstructionError::IndexOutOfBounds { count, index }),
+            Some(P(merkle_proof)) => Ok(IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
@@ -198,7 +199,8 @@ impl IndexedMerkleProof {
         l
     }
 
-    pub(crate) fn verify(&self) -> Result<(), MerkleVerificationError> {
+    /// Attempts to verify self.
+    pub fn verify(&self) -> Result<(), MerkleVerificationError> {
         if self.index >= self.count {
             return Err(MerkleVerificationError::IndexOutOfBounds {
                 count: self.count,
@@ -218,7 +220,7 @@ impl IndexedMerkleProof {
     }
 
     #[cfg(test)]
-    pub(crate) fn inject_merkle_proof(&mut self, merkle_proof: Vec<Digest>) {
+    pub fn inject_merkle_proof(&mut self, merkle_proof: Vec<Digest>) {
         self.merkle_proof = merkle_proof;
     }
 }
@@ -230,9 +232,10 @@ mod tests {
     use proptest_attr_macro::proptest;
     use rand::{distributions::Standard, Rng};
 
-    use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-
-    use crate::{error, indexed_merkle_proof::IndexedMerkleProof, Digest};
+    use crate::{
+        bytesrepr::{self, FromBytes, ToBytes},
+        Digest, IndexedMerkleProof, MerkleVerificationError,
+    };
 
     fn random_indexed_merkle_proof() -> IndexedMerkleProof {
         let mut rng = rand::thread_rng();
@@ -272,12 +275,12 @@ mod tests {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 23,
             count: 4,
-            merkle_proof: vec![Digest([0u8; 32]); 3],
+            merkle_proof: vec![Digest::new([0u8; 32]); 3],
             root_hash: OnceCell::new(),
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(error::MerkleVerificationError::IndexOutOfBounds {
+            Err(MerkleVerificationError::IndexOutOfBounds {
                 count: 4,
                 index: 23
             })
@@ -289,12 +292,12 @@ mod tests {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 1235,
             count: 5647,
-            merkle_proof: vec![Digest([0u8; 32]); 13],
+            merkle_proof: vec![Digest::new([0u8; 32]); 13],
             root_hash: OnceCell::new(),
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(error::MerkleVerificationError::UnexpectedProofLength {
+            Err(MerkleVerificationError::UnexpectedProofLength {
                 count: 5647,
                 index: 1235,
                 expected_proof_length: 14,
@@ -308,12 +311,12 @@ mod tests {
         let out_of_bounds_indexed_merkle_proof = IndexedMerkleProof {
             index: 0,
             count: 0,
-            merkle_proof: vec![Digest([0u8; 32]); 3],
+            merkle_proof: vec![Digest::new([0u8; 32]); 3],
             root_hash: OnceCell::new(),
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(error::MerkleVerificationError::IndexOutOfBounds { count: 0, index: 0 })
+            Err(MerkleVerificationError::IndexOutOfBounds { count: 0, index: 0 })
         )
     }
 
@@ -327,7 +330,7 @@ mod tests {
         };
         assert_eq!(
             out_of_bounds_indexed_merkle_proof.verify(),
-            Err(error::MerkleVerificationError::IndexOutOfBounds {
+            Err(MerkleVerificationError::IndexOutOfBounds {
                 count: 0,
                 index: 23
             })
@@ -340,7 +343,7 @@ mod tests {
         let indexed_merkle_proof = IndexedMerkleProof {
             index: 42,
             count: 1 << (PROOF_LENGTH - 1),
-            merkle_proof: vec![Digest([0u8; Digest::LENGTH]); PROOF_LENGTH],
+            merkle_proof: vec![Digest::new([0u8; Digest::LENGTH]); PROOF_LENGTH],
             root_hash: OnceCell::new(),
         };
         let _hash = indexed_merkle_proof.root_hash();

@@ -1,11 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
 use casper_execution_engine::storage::trie::{Pointer, PointerBlock, Trie};
-use casper_hashing::Digest;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    CLValue, Key, StoredValue,
+    CLValue, Digest, Key, StoredValue,
 };
 
 fn serialize_trie_leaf(b: &mut Bencher) {

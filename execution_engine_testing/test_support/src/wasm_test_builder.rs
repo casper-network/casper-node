@@ -52,7 +52,6 @@ use casper_execution_engine::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes},
@@ -67,8 +66,8 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, Transfer, TransferAddr, URef, U512,
+    DeployHash, DeployInfo, Digest, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 
 use crate::{

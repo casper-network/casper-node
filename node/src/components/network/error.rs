@@ -5,8 +5,7 @@ use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_hashing::Digest;
-use casper_types::{crypto, ProtocolVersion};
+use casper_types::{crypto, Digest, ProtocolVersion};
 
 use crate::{
     tls::{LoadCertError, ValidationError},

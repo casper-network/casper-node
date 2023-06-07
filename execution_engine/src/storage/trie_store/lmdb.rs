@@ -8,7 +8,7 @@
 //! use casper_execution_engine::storage::transaction_source::lmdb::LmdbEnvironment;
 //! use casper_execution_engine::storage::trie::{Pointer, PointerBlock, Trie};
 //! use casper_execution_engine::storage::trie_store::lmdb::LmdbTrieStore;
-//! use casper_hashing::Digest;
+//! use casper_types::Digest;
 //! use casper_types::bytesrepr::{ToBytes, Bytes};
 //! use lmdb::DatabaseFlags;
 //! use tempfile::tempdir;
@@ -111,11 +111,9 @@ use std::{
 
 use casper_types::{
     bytesrepr::{self, Bytes, ToBytes},
-    Key, StoredValue,
+    Digest, Key, StoredValue,
 };
 use lmdb::{Database, DatabaseFlags, Transaction};
-
-use casper_hashing::Digest;
 
 use crate::storage::{
     error,

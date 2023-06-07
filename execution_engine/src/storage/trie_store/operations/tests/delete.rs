@@ -197,7 +197,7 @@ mod full_tries {
     use casper_types::{
         bytesrepr::{self, FromBytes, ToBytes},
         gens::{colliding_key_arb, stored_value_arb},
-        Key, StoredValue,
+        Digest, Key, StoredValue,
     };
 
     use crate::{
@@ -218,7 +218,6 @@ mod full_tries {
             },
         },
     };
-    use casper_hashing::Digest;
 
     fn serially_insert_and_delete<'a, K, V, R, S, E>(
         correlation_id: CorrelationId,

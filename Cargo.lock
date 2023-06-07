@@ -406,7 +406,6 @@ name = "casper-engine-test-support"
 version = "5.0.0"
 dependencies = [
  "casper-execution-engine",
- "casper-hashing",
  "casper-types",
  "filesize",
  "humantime",
@@ -430,7 +429,6 @@ dependencies = [
  "base16",
  "casper-engine-test-support",
  "casper-execution-engine",
- "casper-hashing",
  "casper-types",
  "clap 2.34.0",
  "criterion",
@@ -463,7 +461,6 @@ dependencies = [
  "assert_matches",
  "base16",
  "bincode",
- "casper-hashing",
  "casper-types",
  "casper-wasm-utils",
  "criterion",
@@ -503,32 +500,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "casper-hashing"
-version = "2.0.0"
-dependencies = [
- "assert_matches",
- "base16",
- "bincode",
- "blake2",
- "casper-types",
- "criterion",
- "datasize",
- "hex",
- "hex-buffer-serde 0.3.0",
- "hex_fmt",
- "itertools 0.10.5",
- "once_cell",
- "proptest",
- "proptest-attr-macro",
- "rand 0.8.5",
- "schemars",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
 name = "casper-json-rpc"
 version = "1.0.0"
 dependencies = [
@@ -561,7 +532,6 @@ dependencies = [
  "bincode",
  "bytes",
  "casper-execution-engine",
- "casper-hashing",
  "casper-json-rpc",
  "casper-types",
  "datasize",
@@ -656,6 +626,7 @@ dependencies = [
  "hex",
  "hex_fmt",
  "humantime",
+ "itertools 0.10.5",
  "k256",
  "num",
  "num-derive",
@@ -2151,7 +2122,6 @@ dependencies = [
  "base64 0.13.1",
  "casper-engine-test-support",
  "casper-execution-engine",
- "casper-hashing",
  "casper-types",
  "clap 2.34.0",
  "lmdb-rkv",

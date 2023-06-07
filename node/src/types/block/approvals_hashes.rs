@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_types::{bytesrepr, Digest, Key, StoredValue};
 
 use super::{Block, BlockHash};
 use crate::{
@@ -183,8 +182,7 @@ mod specimen_support {
         merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
         Pointer,
     };
-    use casper_hashing::Digest;
-    use casper_types::{bytesrepr::Bytes, CLValue, Key, StoredValue};
+    use casper_types::{bytesrepr::Bytes, CLValue, Digest, Key, StoredValue};
     use once_cell::sync::OnceCell;
     use std::collections::BTreeMap;
 

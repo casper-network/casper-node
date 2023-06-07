@@ -5,8 +5,7 @@ use thiserror::Error;
 use toml::de::Error as TomlDecodeError;
 use tracing::info;
 
-use casper_hashing::Digest;
-use casper_types::{crypto, ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{crypto, Digest, ProtocolVersion, PublicKey, SecretKey, Signature};
 
 use crate::{
     reactor::main_reactor::Config,

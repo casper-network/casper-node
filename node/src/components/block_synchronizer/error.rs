@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_hashing::Digest;
+use casper_types::Digest;
 
 use super::deploy_acquisition;
 

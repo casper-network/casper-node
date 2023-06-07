@@ -14,8 +14,7 @@ use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 
 use casper_execution_engine::storage::trie::TrieRaw;
-use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::bytesrepr::Bytes;
+use casper_types::{bytesrepr::Bytes, ChunkWithProof, Digest};
 
 use crate::{
     components::{

@@ -1,10 +1,8 @@
 use proptest::{arbitrary, array, collection, prop_oneof, strategy::Strategy};
 
-use casper_hashing::Digest;
-
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    gens, URef,
+    gens, Digest, URef,
 };
 
 use super::{HashedTrie, TestValue};

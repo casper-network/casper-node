@@ -8,7 +8,7 @@ pub(crate) mod operations;
 #[cfg(test)]
 mod tests;
 
-use casper_hashing::Digest;
+use casper_types::Digest;
 
 use crate::storage::{store::Store, trie::Trie};
 

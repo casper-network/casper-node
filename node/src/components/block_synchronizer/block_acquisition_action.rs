@@ -1,8 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use tracing::{debug, info, warn};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{Digest, EraId, PublicKey};
 
 use crate::{
     components::block_synchronizer::{

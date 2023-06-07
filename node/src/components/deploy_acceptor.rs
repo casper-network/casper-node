@@ -18,12 +18,11 @@ use casper_execution_engine::core::engine_state::{
     },
     ExecutableDeployItem, MAX_PAYMENT,
 };
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, Key, ProtocolVersion, Timestamp, U512,
+    ContractVersionKey, Digest, Key, ProtocolVersion, Timestamp, U512,
 };
 
 use crate::{

@@ -21,9 +21,9 @@ use static_assertions::const_assert;
 use tokio_serde::{Deserializer, Serializer};
 use tracing::{trace, warn};
 
-use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
+use casper_types::Digest;
 
 use super::{tls::KeyFingerprint, Message, Metrics, Payload};
 use crate::{types::NodeId, utils};

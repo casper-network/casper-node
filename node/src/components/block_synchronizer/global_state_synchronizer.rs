@@ -13,8 +13,7 @@ use thiserror::Error;
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::{core::engine_state, storage::trie::TrieRaw};
-use casper_hashing::Digest;
-use casper_types::Timestamp;
+use casper_types::{Digest, Timestamp};
 
 use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent, TrieAccumulatorResponse};
 use crate::{

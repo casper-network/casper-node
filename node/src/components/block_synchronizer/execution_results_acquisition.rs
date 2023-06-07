@@ -11,10 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error};
 
-use casper_hashing::{ChunkWithProof, Digest};
 use casper_types::{
     bytesrepr::{self},
-    ExecutionResult,
+    ChunkWithProof, Digest, ExecutionResult,
 };
 
 use crate::types::{

@@ -33,6 +33,8 @@ mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
 mod deploy_info;
+#[cfg(any(feature = "std", test))]
+mod digest;
 mod era_id;
 mod execution_result;
 #[cfg(any(feature = "std", test))]
@@ -76,6 +78,11 @@ pub use contracts::{
 };
 pub use crypto::*;
 pub use deploy_info::DeployInfo;
+#[cfg(any(feature = "std", test))]
+pub use digest::{
+    ChunkWithProof, ChunkWithProofVerificationError, Digest, DigestError, IndexedMerkleProof,
+    MerkleConstructionError, MerkleVerificationError,
+};
 pub use execution_result::{
     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };

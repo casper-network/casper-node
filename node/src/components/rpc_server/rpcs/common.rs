@@ -6,9 +6,8 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
-use casper_hashing::Digest;
 use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
-use casper_types::{bytesrepr::ToBytes, Key};
+use casper_types::{bytesrepr::ToBytes, Digest, Key};
 
 use super::{
     chain::{self, BlockIdentifier},
