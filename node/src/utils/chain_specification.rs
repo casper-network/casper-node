@@ -1,11 +1,9 @@
 use num_rational::Ratio;
 use tracing::{error, info, warn};
 
-use casper_types::{system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, TimeDiff};
-
-use crate::types::{
-    chainspec::{ConsensusProtocolName, CoreConfig, DeployConfig, ProtocolConfig},
-    Chainspec,
+use casper_types::{
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, Chainspec, ConsensusProtocolName, CoreConfig,
+    DeployConfig, ProtocolConfig, TimeDiff,
 };
 
 pub(crate) mod error;
@@ -42,8 +40,15 @@ pub fn validate_chainspec(chainspec: &Chainspec) -> bool {
             );
             return false;
         }
-        if !chainspec.highway_config.is_valid() {
-            return false;
+        match chainspec.highway_config.is_valid() {
+            Ok(_) => return true,
+            Err(msg) => {
+                error!(
+                    rrm = %chainspec.highway_config.reduced_reward_multiplier,
+                    msg,
+                );
+                return false;
+            }
         }
     }
 
@@ -122,24 +127,17 @@ mod tests {
     use once_cell::sync::Lazy;
 
     use casper_types::{
-        bytesrepr::FromBytes, EraId, Motes, ProtocolVersion, StoredValue, TimeDiff, Timestamp, U512,
-    };
-
-    use casper_execution_engine::shared::{
-        host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
-        storage_costs::StorageCosts,
-        wasm_config::WasmConfig,
+        bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
+        CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction,
+        HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
+        StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
     };
 
     use super::*;
 
     use crate::{
         testing::init_logging,
-        types::{
-            chainspec::{CoreConfig, DeployConfig, GlobalStateUpdate, ProtocolConfig},
-            ActivationPoint, Block, ChainspecRawBytes,
-        },
+        types::Block,
         utils::{Loadable, RESOURCES_PATH},
     };
 
@@ -257,6 +255,15 @@ mod tests {
     fn protocol_config_toml_roundtrip() {
         let mut rng = crate::new_rng();
         let config = ProtocolConfig::random(&mut rng);
+        let encoded = toml::to_string_pretty(&config).unwrap();
+        let decoded = toml::from_str(&encoded).unwrap();
+        assert_eq!(config, decoded);
+    }
+
+    #[test]
+    fn highway_config_toml_roundtrip() {
+        let mut rng = crate::new_rng();
+        let config = HighwayConfig::random(&mut rng);
         let encoded = toml::to_string_pretty(&config).unwrap();
         let decoded = toml::from_str(&encoded).unwrap();
         assert_eq!(config, decoded);
@@ -426,28 +433,50 @@ mod tests {
             global_state_update: None,
         };
 
-        // The block before this protocol version: a switch block with previous era and version.
         let block =
             Block::random_with_specifics(&mut rng, previous_era, 100, past_version, true, None);
-        assert!(protocol_config.is_last_block_before_activation(block.header()));
+        assert!(
+            block
+                .header()
+                .is_last_block_before_activation(&protocol_config),
+            "The block before this protocol version: a switch block with previous era and version."
+        );
 
-        // Not the activation point: wrong era.
+        //
         let block =
             Block::random_with_specifics(&mut rng, upgrade_era, 100, past_version, true, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
-
-        // Not the activation point: wrong version.
+        assert!(
+            !block
+                .header()
+                .is_last_block_before_activation(&protocol_config),
+            "Not the activation point: wrong era."
+        );
         let block =
             Block::random_with_specifics(&mut rng, previous_era, 100, current_version, true, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
+        assert!(
+            !block
+                .header()
+                .is_last_block_before_activation(&protocol_config),
+            "Not the activation point: wrong version."
+        );
+
         let block =
             Block::random_with_specifics(&mut rng, previous_era, 100, future_version, true, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
+        assert!(
+            !block
+                .header()
+                .is_last_block_before_activation(&protocol_config),
+            "Alleged upgrade is in the past"
+        );
 
-        // Not the activation point: not a switch block.
         let block =
             Block::random_with_specifics(&mut rng, previous_era, 100, past_version, false, None);
-        assert!(!protocol_config.is_last_block_before_activation(block.header()));
+        assert!(
+            !block
+                .header()
+                .is_last_block_before_activation(&protocol_config),
+            "Not the activation point: not a switch block."
+        );
     }
 
     #[test]
@@ -460,6 +489,7 @@ mod tests {
         assert!(validate_chainspec(&chainspec));
     }
 
+    #[allow(deprecated)]
     fn check_spec(spec: Chainspec, is_first_version: bool) {
         if is_first_version {
             assert_eq!(

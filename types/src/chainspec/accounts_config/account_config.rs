@@ -1,21 +1,27 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::Zero;
-#[cfg(test)]
+
+#[cfg(any(feature = "testing", test))]
 use rand::{distributions::Standard, prelude::*};
+
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::GenesisAccount;
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Motes, PublicKey,
+    GenesisAccount, Motes, PublicKey,
 };
+
 #[cfg(test)]
-use casper_types::{testing::TestRng, SecretKey, U512};
+use crate::testing::TestRng;
+#[cfg(any(feature = "testing", test))]
+use crate::{SecretKey, U512};
 
 use super::ValidatorConfig;
 
 /// Configuration of an individial account in accounts.toml
-#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AccountConfig {
     /// Public Key.
     pub public_key: PublicKey,
@@ -74,7 +80,7 @@ impl AccountConfig {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Distribution<AccountConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AccountConfig {
         let secret_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();

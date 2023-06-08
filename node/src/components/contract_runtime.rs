@@ -25,12 +25,9 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+use casper_execution_engine::core::engine_state::{
+    self, genesis::GenesisError, EngineConfig, EngineState, GenesisSuccess, SystemContractRegistry,
+    UpgradeSuccess,
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
@@ -42,7 +39,10 @@ use casper_storage::{
         },
     },
 };
-use casper_types::{bytesrepr::Bytes, Digest, EraId, ProtocolVersion, Timestamp};
+use casper_types::{
+    bytesrepr::Bytes, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest,
+    EraId, ProtocolVersion, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -58,8 +58,8 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError,
-        Deploy, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
+        BlockHash, BlockHeader, ChunkingError, Deploy, FinalizedBlock, MetaBlock, MetaBlockState,
+        TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -961,7 +961,6 @@ mod trie_chunking_tests {
     use prometheus::Registry;
     use tempfile::tempdir;
 
-    use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
     use casper_storage::global_state::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
         storage::{
@@ -970,17 +969,16 @@ mod trie_chunking_tests {
         },
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, CLValue, ChunkWithProof, Digest, EraId, Key,
-        ProtocolVersion, StoredValue,
-    };
-
-    use crate::{
-        components::fetcher::FetchResponse,
-        contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
-        types::{ActivationPoint, ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+        account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
+        Key, ProtocolVersion, StoredValue, SystemConfig, WasmConfig,
     };
 
     use super::ContractRuntimeError;
+    use crate::{
+        components::fetcher::FetchResponse,
+        contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
+        types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+    };
 
     #[derive(Debug, Clone)]
     struct TestPair(Key, StoredValue);

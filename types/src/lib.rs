@@ -26,6 +26,8 @@ pub mod account;
 pub mod api_error;
 mod block_time;
 pub mod bytesrepr;
+#[cfg(any(feature = "std", test))]
+pub mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
@@ -67,6 +69,34 @@ pub use access_rights::{
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+#[cfg(any(feature = "std", test))]
+pub use chainspec::{
+    AccountConfig, AccountsConfig, ActivationPoint, AuctionCosts, BrTableCost, Chainspec,
+    ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName, ControlFlowCosts, CoreConfig,
+    DelegatorConfig, DeployConfig, GenesisAccount, GenesisValidator, GlobalStateUpdate,
+    GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
+    HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MintCosts,
+    NetworkConfig, OpcodeCosts, ProtocolConfig, StandardPaymentCosts, StorageCosts, SystemConfig,
+    UpgradeConfig, ValidatorConfig, WasmConfig,
+};
+
+#[cfg(any(feature = "testing", test))]
+pub use chainspec::{
+    DEFAULT_ADD_BID_COST, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
+    DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
+    DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
+    DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE, DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE,
+    DEFAULT_CONTROL_FLOW_CALL_OPCODE, DEFAULT_CONTROL_FLOW_DROP_OPCODE,
+    DEFAULT_CONTROL_FLOW_ELSE_OPCODE, DEFAULT_CONTROL_FLOW_END_OPCODE,
+    DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
+    DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
+    DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
+    DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST,
+    DEFAULT_WASM_MAX_MEMORY,
+};
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};

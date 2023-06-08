@@ -1,8 +1,10 @@
 //! Costs of the mint system contract.
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
+
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Default cost of the `mint` mint entry point.
 pub const DEFAULT_MINT_COST: u32 = 2_500_000_000;
@@ -20,7 +22,8 @@ pub const DEFAULT_READ_BASE_ROUND_REWARD_COST: u32 = 10_000;
 pub const DEFAULT_MINT_INTO_EXISTING_PURSE_COST: u32 = 2_500_000_000;
 
 /// Description of the costs of calling mint entry points.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct MintCosts {
     /// Cost of calling the `mint` entry point.
@@ -54,7 +57,7 @@ impl Default for MintCosts {
 }
 
 impl ToBytes for MintCosts {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
         let Self {
@@ -100,7 +103,7 @@ impl ToBytes for MintCosts {
 }
 
 impl FromBytes for MintCosts {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (mint, rem) = FromBytes::from_bytes(bytes)?;
         let (reduce_total_supply, rem) = FromBytes::from_bytes(rem)?;
         let (create, rem) = FromBytes::from_bytes(rem)?;

@@ -17,12 +17,14 @@ use tracing_futures::Instrument;
 
 use casper_types::testing::TestRng;
 
+use casper_types::{Chainspec, ChainspecRawBytes};
+
 use super::ConditionCheckReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner, TryCrankOutcome},
     tls::KeyFingerprint,
-    types::{Chainspec, ChainspecRawBytes, ExitCode, NodeId},
+    types::{ExitCode, NodeId},
     utils::Loadable,
     NodeRng,
 };

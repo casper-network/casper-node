@@ -4,7 +4,7 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::{debug, error, warn};
 
-use casper_types::{EraId, PublicKey, Timestamp};
+use casper_types::{ActivationPoint, EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
@@ -12,8 +12,8 @@ use crate::{
         fetcher::{EmptyValidationMetadata, FetchItem},
     },
     types::{
-        ActivationPoint, BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature,
-        MetaBlock, NodeId, SignatureWeight,
+        BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature, MetaBlock, NodeId,
+        SignatureWeight,
     },
 };
 
@@ -84,18 +84,16 @@ impl BlockAcceptor {
         if let Err(error) = meta_block.block.validate(&EmptyValidationMetadata) {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
-            match peer {
-                Some(node_id) => {
-                    return Err(AcceptorError::InvalidGossip(Box::new(
-                        InvalidGossipError::Block {
-                            block_hash: *meta_block.block.hash(),
-                            peer: node_id,
-                            validation_error: error,
-                        },
-                    )))
-                }
-                None => return Err(AcceptorError::InvalidConfiguration),
-            }
+            return match peer {
+                Some(node_id) => Err(AcceptorError::InvalidGossip(Box::new(
+                    InvalidGossipError::Block {
+                        block_hash: *meta_block.block.hash(),
+                        peer: node_id,
+                        validation_error: error,
+                    },
+                ))),
+                None => Err(AcceptorError::InvalidConfiguration),
+            };
         }
 
         if let Some(node_id) = peer {
@@ -137,18 +135,16 @@ impl BlockAcceptor {
         }
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
-            match peer {
-                Some(node_id) => {
-                    return Err(AcceptorError::InvalidGossip(Box::new(
-                        InvalidGossipError::FinalitySignature {
-                            block_hash: finality_signature.block_hash,
-                            peer: node_id,
-                            validation_error: error,
-                        },
-                    )))
-                }
-                None => return Err(AcceptorError::InvalidConfiguration),
-            }
+            return match peer {
+                Some(node_id) => Err(AcceptorError::InvalidGossip(Box::new(
+                    InvalidGossipError::FinalitySignature {
+                        block_hash: finality_signature.block_hash,
+                        peer: node_id,
+                        validation_error: error,
+                    },
+                ))),
+                None => Err(AcceptorError::InvalidConfiguration),
+            };
         }
 
         let had_sufficient_finality = self.has_sufficient_finality();
@@ -170,17 +166,15 @@ impl BlockAcceptor {
             // if the signature's era does not match the block's era
             // it's malicious / bogus / invalid.
             if meta_block.block.header().era_id() != finality_signature.era_id {
-                match peer {
-                    Some(node_id) => {
-                        return Err(AcceptorError::EraMismatch {
-                            block_hash: finality_signature.block_hash,
-                            expected: meta_block.block.header().era_id(),
-                            actual: finality_signature.era_id,
-                            peer: node_id,
-                        });
-                    }
-                    None => return Err(AcceptorError::InvalidConfiguration),
-                }
+                return match peer {
+                    Some(node_id) => Err(AcceptorError::EraMismatch {
+                        block_hash: finality_signature.block_hash,
+                        expected: meta_block.block.header().era_id(),
+                        actual: finality_signature.era_id,
+                        peer: node_id,
+                    }),
+                    None => Err(AcceptorError::InvalidConfiguration),
+                };
             }
         } else {
             // should have block if self.has_sufficient_finality()

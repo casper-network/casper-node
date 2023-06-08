@@ -31,20 +31,15 @@ use std::{convert::TryFrom, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-use casper_types::{bytesrepr::Bytes, file_utils, ProtocolVersion};
+use casper_types::{
+    bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
+    CoreConfig, DeployConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig,
+    NetworkConfig, ProtocolConfig, ProtocolVersion, SystemConfig, WasmConfig,
+};
 
-use crate::{
-    types::chainspec::{
-        AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes, CoreConfig, DeployConfig,
-        GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig, NetworkConfig, ProtocolConfig,
-    },
-    utils::{
-        chain_specification::error::{
-            ChainspecAccountsLoadError, Error, GlobalStateUpdateLoadError,
-        },
-        Loadable,
-    },
+use crate::utils::{
+    chain_specification::error::{ChainspecAccountsLoadError, Error, GlobalStateUpdateLoadError},
+    Loadable,
 };
 
 // The names of chainspec related files on disk.

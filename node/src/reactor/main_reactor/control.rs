@@ -405,7 +405,7 @@ impl MainReactor {
             Some(header) => header.clone(),
         };
 
-        match self.chainspec.ee_upgrade_config(
+        match self.chainspec.upgrade_config_from_parts(
             *previous_block_header.state_root_hash(),
             previous_block_header.protocol_version(),
             self.chainspec.protocol_config.activation_point.era_id(),
@@ -478,9 +478,7 @@ impl MainReactor {
             Some(header) => header,
         };
 
-        self.chainspec
-            .protocol_config
-            .is_last_block_before_activation(highest_switch_block_header)
+        highest_switch_block_header.is_last_block_before_activation(&self.chainspec.protocol_config)
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {

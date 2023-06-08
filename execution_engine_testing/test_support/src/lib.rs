@@ -30,14 +30,10 @@ pub use casper_execution_engine::core::engine_state::engine_config::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
+use casper_execution_engine::core::engine_state::{ExecConfig, GenesisConfig, RunGenesisRequest};
 use casper_types::{
-    account::AccountHash, Digest, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, Motes, ProtocolVersion,
+    PublicKey, SecretKey, SystemConfig, WasmConfig, U512,
 };
 
 use crate::chainspec_config::PRODUCTION_PATH;

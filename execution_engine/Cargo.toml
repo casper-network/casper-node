@@ -14,7 +14,7 @@ license = "Apache-2.0"
 anyhow = "1.0.33"
 base16 = "0.2.1"
 casper-storage = { version = "1.4.3", path = "../storage" }
-casper-types = { version = "3.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema"] }
+casper-types = { version = "3.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema", "std"] }
 casper-wasm-utils = "1.0.0"
 datasize = "0.2.4"
 either = "1.8.1"

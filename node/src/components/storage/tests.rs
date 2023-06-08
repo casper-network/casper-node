@@ -14,7 +14,8 @@ use smallvec::smallvec;
 
 use casper_types::{
     generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, URef, U512,
+    Chainspec, ChainspecRawBytes, EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey,
+    TimeDiff, URef, U512,
 };
 
 use super::{
@@ -35,8 +36,8 @@ use crate::{
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange, Block,
         BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
+        Deploy, DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };

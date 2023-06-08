@@ -24,7 +24,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     file_utils::{self, ReadFileError},
-    EraId, ProtocolVersion, TimeDiff,
+    ActivationPoint, Chainspec, EraId, ProtocolConfig, ProtocolVersion, TimeDiff,
 };
 
 use crate::{
@@ -34,7 +34,6 @@ use crate::{
         EffectExt, Effects,
     },
     reactor::main_reactor::MainEvent,
-    types::{chainspec::ProtocolConfig, ActivationPoint, Chainspec},
     utils::chain_specification::parse_toml::CHAINSPEC_FILENAME,
     NodeRng,
 };

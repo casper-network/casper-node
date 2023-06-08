@@ -6,9 +6,9 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Digest, ProtocolVersion};
+use casper_types::{ChainspecRegistry, Digest, ProtocolVersion};
 
-use super::{genesis::ExecConfig, ChainspecRegistry};
+use super::genesis::ExecConfig;
 
 /// Represents a genesis request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

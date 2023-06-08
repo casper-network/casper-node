@@ -23,7 +23,7 @@ use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::{info, warn};
 
-use casper_types::Timestamp;
+use casper_types::{Chainspec, Timestamp};
 
 use crate::{
     components::{
@@ -36,8 +36,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Approval, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
+        appendable_block::AppendableBlock, Approval, Deploy, DeployFootprint, DeployHash,
+        DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
     },
     NodeRng,
 };

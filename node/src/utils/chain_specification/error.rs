@@ -1,8 +1,7 @@
 use thiserror::Error;
 use uint::FromDecStrErr;
 
-use crate::types::chainspec::GlobalStateUpdateError;
-use casper_types::file_utils::ReadFileError;
+use casper_types::{file_utils::ReadFileError, GlobalStateUpdateError};
 
 /// Error returned when loading the chainspec.
 #[derive(Debug, Error)]

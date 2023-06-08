@@ -1,8 +1,10 @@
 //! Costs of the `handle_payment` system contract.
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
+
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Default cost of the `get_payment_purse` `handle_payment` entry point.
 pub const DEFAULT_GET_PAYMENT_PURSE_COST: u32 = 10_000;
@@ -14,7 +16,8 @@ pub const DEFAULT_GET_REFUND_PURSE_COST: u32 = 10_000;
 pub const DEFAULT_FINALIZE_PAYMENT_COST: u32 = 10_000;
 
 /// Description of the costs of calling `handle_payment` entrypoints.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct HandlePaymentCosts {
     /// Cost of calling the `get_payment_purse` entry point.
@@ -39,7 +42,7 @@ impl Default for HandlePaymentCosts {
 }
 
 impl ToBytes for HandlePaymentCosts {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
         ret.append(&mut self.get_payment_purse.to_bytes()?);
@@ -59,7 +62,7 @@ impl ToBytes for HandlePaymentCosts {
 }
 
 impl FromBytes for HandlePaymentCosts {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (get_payment_purse, rem) = FromBytes::from_bytes(bytes)?;
         let (set_refund_purse, rem) = FromBytes::from_bytes(rem)?;
         let (get_refund_purse, rem) = FromBytes::from_bytes(rem)?;

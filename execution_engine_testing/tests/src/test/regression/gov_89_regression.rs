@@ -10,25 +10,24 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::core::engine_state::{
-    genesis::GenesisValidator, GenesisAccount, SlashItem, StepSuccess,
-};
+use casper_execution_engine::core::engine_state::{SlashItem, StepSuccess};
 use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
     system::auction::{
         Bids, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    CLValue, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, U512,
 };
 
-static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
+static ACCOUNT_1_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([200; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
 const ACCOUNT_1_BALANCE: u64 = 100_000_000;
 const ACCOUNT_1_BOND: u64 = 100_000_000;
 
-static ACCOUNT_2_PK: Lazy<PublicKey> = Lazy::new(|| {
+static ACCOUNT_2_PUBLIC_KEY: Lazy<PublicKey> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([202; SecretKey::ED25519_LENGTH]).unwrap();
     PublicKey::from(&secret_key)
 });
@@ -41,7 +40,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
     let accounts = {
         let mut tmp: Vec<GenesisAccount> = DEFAULT_ACCOUNTS.clone();
         let account_1 = GenesisAccount::account(
-            ACCOUNT_1_PK.clone(),
+            ACCOUNT_1_PUBLIC_KEY.clone(),
             Motes::new(ACCOUNT_1_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_1_BOND.into()),
@@ -49,7 +48,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
             )),
         );
         let account_2 = GenesisAccount::account(
-            ACCOUNT_2_PK.clone(),
+            ACCOUNT_2_PUBLIC_KEY.clone(),
             Motes::new(ACCOUNT_2_BALANCE.into()),
             Some(GenesisValidator::new(
                 Motes::new(ACCOUNT_2_BOND.into()),
@@ -81,7 +80,7 @@ fn should_not_create_any_purse() {
     let step_request_1 = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
+        .with_slash_item(SlashItem::new(ACCOUNT_1_PUBLIC_KEY.clone()))
         .with_next_era_id(EraId::from(1))
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_1.as_millis().try_into().unwrap())
         .build();
@@ -93,14 +92,14 @@ fn should_not_create_any_purse() {
 
     let bids_before_slashing: Bids = builder.get_bids();
     assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PK),
+        bids_before_slashing.contains_key(&ACCOUNT_1_PUBLIC_KEY),
         "should have entry in the genesis bids table {:?}",
         bids_before_slashing
     );
 
     let bids_before_slashing: Bids = builder.get_bids();
     assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PK),
+        bids_before_slashing.contains_key(&ACCOUNT_1_PUBLIC_KEY),
         "should have entry in bids table before slashing {:?}",
         bids_before_slashing
     );
@@ -111,7 +110,7 @@ fn should_not_create_any_purse() {
     } = builder.step(step_request_1).expect("should execute step");
 
     let bids_after_slashing: Bids = builder.get_bids();
-    let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
+    let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PUBLIC_KEY).unwrap();
     assert!(account_1_bid.inactive());
     assert!(account_1_bid.staked_amount().is_zero());
 
@@ -134,7 +133,7 @@ fn should_not_create_any_purse() {
     let step_request_2 = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
         .with_protocol_version(ProtocolVersion::V1_0_0)
-        .with_slash_item(SlashItem::new(ACCOUNT_1_PK.clone()))
+        .with_slash_item(SlashItem::new(ACCOUNT_1_PUBLIC_KEY.clone()))
         .with_next_era_id(EraId::from(2))
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_2.as_millis().try_into().unwrap())
         .build();

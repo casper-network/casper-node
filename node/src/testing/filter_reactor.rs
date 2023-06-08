@@ -7,12 +7,14 @@ use either::Either;
 use futures::future::BoxFuture;
 use prometheus::Registry;
 
+use casper_types::{Chainspec, ChainspecRawBytes};
+
 use super::network::NetworkedReactor;
 use crate::{
     components::network::Identity as NetworkIdentity,
     effect::{EffectBuilder, Effects},
     reactor::{EventQueueHandle, Finalize, Reactor},
-    types::{Chainspec, ChainspecRawBytes, NodeId},
+    types::NodeId,
     NodeRng,
 };
 

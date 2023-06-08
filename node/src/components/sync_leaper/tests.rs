@@ -1,6 +1,7 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use casper_types::testing::TestRng;
+use casper_types::{testing::TestRng, Chainspec};
+
 use prometheus::Registry;
 
 use crate::{
@@ -8,7 +9,7 @@ use crate::{
         fetcher::{self, FetchResult, FetchedData},
         sync_leaper::{LeapState, PeerState, RegisterLeapAttemptOutcome},
     },
-    types::{Block, BlockHash, Chainspec, NodeId, SyncLeap, SyncLeapIdentifier},
+    types::{Block, BlockHash, NodeId, SyncLeap, SyncLeapIdentifier},
 };
 
 use super::{Error, SyncLeaper};

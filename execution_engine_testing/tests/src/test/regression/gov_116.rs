@@ -8,14 +8,13 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::core::engine_state::{genesis::GenesisValidator, GenesisAccount};
 use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
         mint,
     },
-    Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
 const MINIMUM_BONDED_AMOUNT: u64 = 1_000;

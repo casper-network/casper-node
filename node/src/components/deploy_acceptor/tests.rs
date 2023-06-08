@@ -24,7 +24,7 @@ use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     testing::TestRng,
-    CLValue, EraId, StoredValue, URef, U512,
+    CLValue, Chainspec, ChainspecRawBytes, EraId, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -45,7 +45,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::ConditionCheckReactor,
-    types::{Block, Chainspec, ChainspecRawBytes, Deploy, NodeId},
+    types::{Block, Deploy, NodeId},
     utils::{Loadable, WithDir},
     NodeRng,
 };

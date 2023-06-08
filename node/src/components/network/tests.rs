@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 use tracing::{debug, info};
 
-use casper_types::SecretKey;
+use casper_types::{Chainspec, ChainspecRawBytes, SecretKey};
 
 use super::{
     chain_info::ChainInfo, Config, Event as NetworkEvent, FromIncoming, GossipedAddress, Identity,
@@ -45,7 +45,7 @@ use crate::{
         network::{NetworkedReactor, Nodes, TestingNetwork},
         ConditionCheckReactor,
     },
-    types::{Chainspec, ChainspecRawBytes, NodeId, ValidatorMatrix},
+    types::{NodeId, ValidatorMatrix},
     NodeRng,
 };
 

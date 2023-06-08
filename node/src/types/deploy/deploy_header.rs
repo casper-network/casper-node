@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, PublicKey, TimeDiff, Timestamp,
+    DeployConfig, Digest, PublicKey, TimeDiff, Timestamp,
 };
 
 #[cfg(doc)]
 use super::Deploy;
 use super::DeployHash;
-use crate::{types::chainspec::DeployConfig, utils::DisplayIter};
+use crate::utils::DisplayIter;
 
 /// The header portion of a [`Deploy`].
 #[derive(
@@ -95,6 +95,7 @@ impl DeployHeader {
         let ttl_valid = self.ttl() <= deploy_config.max_ttl;
         let timestamp_valid = self.timestamp() <= current_timestamp;
         let not_expired = !self.expired(current_timestamp);
+        #[allow(deprecated)]
         let num_deps_valid = self.dependencies().len() <= deploy_config.max_dependencies as usize;
         ttl_valid && timestamp_valid && not_expired && num_deps_valid
     }

@@ -5,12 +5,11 @@ use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR,
 };
-use casper_execution_engine::core::engine_state::genesis::{GenesisAccount, GenesisValidator};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate},
-    ApiError, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";

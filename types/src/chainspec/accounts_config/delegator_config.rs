@@ -1,18 +1,21 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::{distributions::Standard, prelude::*};
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::GenesisAccount;
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    Motes, PublicKey,
-};
 #[cfg(test)]
-use casper_types::{testing::TestRng, SecretKey, U512};
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    GenesisAccount, Motes, PublicKey,
+};
+#[cfg(any(feature = "testing", test))]
+use crate::{SecretKey, U512};
 
 /// Configuration values related to a delegator.
-#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct DelegatorConfig {
     /// Validator public key.
     pub validator_public_key: PublicKey,
@@ -59,7 +62,7 @@ impl DelegatorConfig {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Distribution<DelegatorConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DelegatorConfig {
         let validator_secret_key = SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap();

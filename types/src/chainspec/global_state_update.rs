@@ -1,26 +1,28 @@
-use std::{collections::BTreeMap, convert::TryFrom};
-
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, convert::TryFrom};
 use thiserror::Error;
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     AsymmetricType, Key, PublicKey, U512,
 };
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateEntry {
     key: String,
     value: String,
 }
 
-#[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateValidatorInfo {
     public_key: String,
@@ -28,7 +30,8 @@ pub struct GlobalStateUpdateValidatorInfo {
 }
 
 /// Type storing global state update entries.
-#[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct GlobalStateUpdateConfig {
     validators: Option<Vec<GlobalStateUpdateValidatorInfo>>,
@@ -39,14 +42,19 @@ pub struct GlobalStateUpdateConfig {
 ///
 /// It stores the serialized `StoredValue`s corresponding to keys to be modified, and for the case
 /// where the validator set is being modified in any way, the full set of post-upgrade validators.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct GlobalStateUpdate {
-    pub(crate) validators: Option<BTreeMap<PublicKey, U512>>,
-    pub(crate) entries: BTreeMap<Key, Bytes>,
+    /// Some with all validators (including pre-existent), if any change to the set is made.
+    pub validators: Option<BTreeMap<PublicKey, U512>>,
+    /// Global state key value pairs, which will be directly upserted into global state against
+    /// the root hash of the final block of the era before the upgrade.
+    pub entries: BTreeMap<Key, Bytes>,
 }
 
 impl GlobalStateUpdate {
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
+    /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let mut validators = BTreeMap::new();
         if rng.gen() {
@@ -162,10 +170,11 @@ impl TryFrom<GlobalStateUpdateConfig> for GlobalStateUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
 
     #[test]
     fn global_state_update_bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let update = GlobalStateUpdate::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&update);
     }

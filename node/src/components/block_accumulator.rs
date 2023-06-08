@@ -22,7 +22,7 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{ActivationPoint, EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -45,8 +45,8 @@ use crate::{
     },
     fatal,
     types::{
-        ActivationPoint, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState,
-        NodeId, ValidatorMatrix,
+        BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
+        ValidatorMatrix,
     },
     NodeRng,
 };

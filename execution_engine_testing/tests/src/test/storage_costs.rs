@@ -7,27 +7,20 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-#[cfg(not(feature = "use-as-wasm"))]
-use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+use casper_execution_engine::core::engine_state::{
+    engine_config::{
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
     },
-    shared::{
-        host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
-        storage_costs::StorageCosts,
-        system_config::SystemConfig,
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
+    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
+#[cfg(not(feature = "use-as-wasm"))]
+use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    CLValue, ContractHash, EraId, ProtocolVersion, RuntimeArgs, StoredValue, U512,
+    BrTableCost, CLValue, ContractHash, ControlFlowCosts, EraId, HostFunction, HostFunctionCosts,
+    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{

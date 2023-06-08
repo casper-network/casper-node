@@ -10,7 +10,9 @@ use std::{
 use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
-use casper_types::{Digest, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::{
+    Digest, EraId, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
 
 use super::{
     block_acquisition::{Acceptance, BlockAcquisitionState},
@@ -22,9 +24,9 @@ use super::{
 };
 use crate::{
     types::{
-        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights,
-        FinalitySignature, FinalizedBlock, NodeId, ValidatorMatrix,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
+        BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights, FinalitySignature,
+        FinalizedBlock, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };

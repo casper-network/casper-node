@@ -1,9 +1,10 @@
 //! Support for host function gas cost tables.
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     Gas,
 };
@@ -76,16 +77,19 @@ const DEFAULT_DICTIONARY_PUT_COST: u32 = 9_500;
 const DEFAULT_DICTIONARY_PUT_KEY_BYTES_SIZE_WEIGHT: u32 = 1_800;
 const DEFAULT_DICTIONARY_PUT_VALUE_SIZE_WEIGHT: u32 = 520;
 
-const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
+/// Default cost for a new dictionary.
+pub const DEFAULT_NEW_DICTIONARY_COST: u32 = DEFAULT_NEW_UREF_COST;
 
-pub(crate) const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
+/// Host function cost unit for a new dictionary.
+pub const DEFAULT_HOST_FUNCTION_NEW_DICTIONARY: HostFunction<[Cost; 1]> =
     HostFunction::new(DEFAULT_NEW_DICTIONARY_COST, [NOT_USED]);
 
 /// Representation of a host function cost.
 ///
 /// The total gas cost is equal to `cost` + sum of each argument weight multiplied by the byte size
 /// of the data.
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug, DataSize)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Serialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct HostFunction<T> {
     /// How much the user is charged for calling the host function.
@@ -197,7 +201,8 @@ where
 }
 
 /// Definition of a host function cost table.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct HostFunctionCosts {
     /// Cost of calling the `read_value` host function.
@@ -670,10 +675,12 @@ impl Distribution<HostFunctionCosts> for Standard {
 pub mod gens {
     use proptest::prelude::*;
 
-    use super::{Cost, HostFunction, HostFunctionCosts};
+    use crate::{HostFunction, HostFunctionCost, HostFunctionCosts};
 
+    #[allow(unused)]
     pub fn host_function_cost_arb<T: Copy + Arbitrary>() -> impl Strategy<Value = HostFunction<T>> {
-        (any::<Cost>(), any::<T>()).prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
+        (any::<HostFunctionCost>(), any::<T>())
+            .prop_map(|(cost, arguments)| HostFunction::new(cost, arguments))
     }
 
     prop_compose! {
@@ -773,7 +780,7 @@ pub mod gens {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::U512;
+    use crate::U512;
 
     use super::*;
 
@@ -817,7 +824,7 @@ mod tests {
 mod proptests {
     use proptest::prelude::*;
 
-    use casper_types::bytesrepr;
+    use crate::bytesrepr;
 
     use super::*;
 

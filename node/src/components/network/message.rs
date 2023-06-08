@@ -15,14 +15,14 @@ use strum::EnumDiscriminants;
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    crypto, AsymmetricType, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
+    crypto, AsymmetricType, Chainspec, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
 };
 
 use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
 use crate::{
     effect::EffectBuilder,
     protocol,
-    types::{Chainspec, NodeId},
+    types::NodeId,
     utils::{
         opt_display::OptDisplay,
         specimen::{Cache, LargestSpecimen, SizeEstimator},

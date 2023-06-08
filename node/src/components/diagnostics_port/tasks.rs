@@ -590,7 +590,7 @@ mod tests {
         sync::Notify,
     };
 
-    use casper_types::testing::TestRng;
+    use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes};
 
     use crate::{
         components::{
@@ -612,7 +612,6 @@ mod tests {
             self,
             network::{NetworkedReactor, TestingNetwork},
         },
-        types::{Chainspec, ChainspecRawBytes},
         utils::WeightedRoundRobin,
         NodeRng, WithDir,
     };

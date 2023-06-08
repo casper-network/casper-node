@@ -1,9 +1,10 @@
 //! Support for storage costs.
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Gas, U512,
 };
@@ -12,7 +13,8 @@ use casper_types::{
 pub const DEFAULT_GAS_PER_BYTE_COST: u32 = 630_000;
 
 /// Represents a cost table for storage costs.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct StorageCosts {
     /// Gas charged per byte stored in the global state.
@@ -77,7 +79,7 @@ impl FromBytes for StorageCosts {
 
 #[cfg(test)]
 pub mod tests {
-    use casper_types::U512;
+    use crate::U512;
 
     use super::*;
 

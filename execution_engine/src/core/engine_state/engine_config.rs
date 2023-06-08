@@ -1,6 +1,6 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
-use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+use casper_types::{SystemConfig, WasmConfig};
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;

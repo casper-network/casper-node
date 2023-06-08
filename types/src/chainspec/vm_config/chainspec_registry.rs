@@ -4,7 +4,7 @@ use std::{collections::BTreeMap, convert::TryFrom};
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped, Digest,
 };

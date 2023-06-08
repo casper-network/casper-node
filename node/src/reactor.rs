@@ -58,6 +58,8 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+use casper_types::{Chainspec, ChainspecRawBytes};
+
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
@@ -73,9 +75,8 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
-        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, LegacyDeploy, NodeId, SyncLeap,
-        TrieOrChunk,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy, ExitCode,
+        FinalitySignature, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},

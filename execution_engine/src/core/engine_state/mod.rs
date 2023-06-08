@@ -1,6 +1,5 @@
 //!  This module contains all the execution related code.
 pub mod balance;
-pub mod chainspec_registry;
 pub mod checksum_registry;
 pub mod deploy_item;
 pub mod engine_config;
@@ -64,14 +63,13 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, Digest,
-    EraId, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash, DeployHash,
+    DeployInfo, Digest, EraId, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
-    chainspec_registry::ChainspecRegistry,
     checksum_registry::ChecksumRegistry,
     deploy_item::DeployItem,
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
@@ -81,7 +79,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
+    genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
     prune::{PruneConfig, PruneResult},
     query::{QueryRequest, QueryResult},
@@ -89,7 +87,7 @@ pub use self::{
     step::{SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
-    upgrade::{UpgradeConfig, UpgradeSuccess},
+    upgrade::UpgradeSuccess,
 };
 use crate::{
     core::{

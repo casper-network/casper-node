@@ -21,8 +21,8 @@ use casper_execution_engine::core::engine_state::{
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, Digest, Key, ProtocolVersion, Timestamp, U512,
+    Chainspec, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
+    ContractVersionKey, DeployConfig, Digest, Key, ProtocolVersion, Timestamp, U512,
 };
 
 use crate::{
@@ -33,10 +33,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{
-        chainspec::DeployConfig, BlockHash, BlockHeader, Chainspec, Deploy,
-        DeployConfigurationFailure, FinalizedApprovals,
-    },
+    types::{BlockHash, BlockHeader, Deploy, DeployConfigurationFailure, FinalizedApprovals},
     utils::Source,
     NodeRng,
 };

@@ -14,6 +14,8 @@ use prometheus::Registry;
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
 
+use casper_types::Chainspec;
+
 use crate::{
     components::{
         fetcher::{self, FetchResult, FetchedData},
@@ -21,7 +23,7 @@ use crate::{
     },
     effect::{requests::FetcherRequest, EffectBuilder, EffectExt, Effects},
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, Chainspec, NodeId, SyncLeap,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, NodeId, SyncLeap,
         SyncLeapIdentifier,
     },
     NodeRng,

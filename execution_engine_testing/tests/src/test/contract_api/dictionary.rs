@@ -5,12 +5,12 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
-    engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError, GenesisAccount},
+    engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError},
     execution::Error,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
-    ContractHash, Key, Motes, RuntimeArgs, StoredValue, U512,
+    ContractHash, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 

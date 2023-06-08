@@ -1,12 +1,12 @@
 //! Configuration of the Wasm execution engine.
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-
-use super::{
-    host_function_costs::HostFunctionCosts, opcode_costs::OpcodeCosts, storage_costs::StorageCosts,
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    chainspec::vm_config::{HostFunctionCosts, OpcodeCosts, StorageCosts},
 };
 
 /// Default maximum number of pages of the Wasm memory.
@@ -18,7 +18,8 @@ pub const DEFAULT_MAX_STACK_HEIGHT: u32 = 200;
 ///
 /// This structure contains various Wasm execution configuration options, such as memory limits,
 /// stack limits and costs.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct WasmConfig {
     /// Maximum amount of heap memory (represented in 64kB pages) each contract can use.
@@ -139,10 +140,12 @@ impl Distribution<WasmConfig> for Standard {
 pub mod gens {
     use proptest::{num, prop_compose};
 
-    use super::WasmConfig;
-    use crate::shared::{
-        host_function_costs::gens::host_function_costs_arb, opcode_costs::gens::opcode_costs_arb,
-        storage_costs::gens::storage_costs_arb,
+    use crate::{
+        chainspec::vm_config::{
+            host_function_costs::gens::host_function_costs_arb,
+            opcode_costs::gens::opcode_costs_arb, storage_costs::gens::storage_costs_arb,
+        },
+        WasmConfig,
     };
 
     prop_compose! {

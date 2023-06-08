@@ -1,28 +1,28 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-use std::{collections::BTreeMap, str::FromStr};
-
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::{collections::BTreeMap, str::FromStr};
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Key, ProtocolVersion, StoredValue,
 };
 
-use super::{ActivationPoint, GlobalStateUpdate};
-use crate::types::BlockHeader;
+use crate::{ActivationPoint, GlobalStateUpdate};
 
 /// Configuration values associated with the protocol.
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, DataSize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ProtocolConfig {
     /// Protocol version.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     pub version: ProtocolVersion,
     /// Whether we need to clear latest blocks back to the switch block just before the activation
     /// point or not.
@@ -52,16 +52,8 @@ impl ProtocolConfig {
         Ok(update_mapping)
     }
 
-    /// Returns whether the block header belongs to the last block before the upgrade to the
-    /// current protocol version.
-    pub fn is_last_block_before_activation(&self, block_header: &BlockHeader) -> bool {
-        block_header.protocol_version() < self.version
-            && block_header.is_switch_block()
-            && ActivationPoint::EraId(block_header.next_block_era_id()) == self.activation_point
-    }
-
     /// Generates a random instance using a `TestRng`.
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(
             rng.gen_range(0..10),
@@ -118,17 +110,18 @@ impl FromBytes for ProtocolConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
 
     #[test]
     fn activation_point_bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let activation_point = ActivationPoint::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&activation_point);
     }
 
     #[test]
     fn protocol_config_bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let config = ProtocolConfig::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
     }

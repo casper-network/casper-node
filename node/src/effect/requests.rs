@@ -24,8 +24,8 @@ use casper_execution_engine::core::engine_state::{
     query::{QueryRequest, QueryResult},
 };
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, Digest, EraId, ExecutionResult, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    bytesrepr::Bytes, system::auction::EraValidators, ChainspecRawBytes, Digest, EraId,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use crate::{
@@ -50,10 +50,10 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
-        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlockState,
-        NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalitySignatureId,
+        FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlockState, NodeId, StatusFeed,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{DisplayIter, Source},
 };

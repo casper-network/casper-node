@@ -14,22 +14,18 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            engine_config::{
-                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
-                DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-                DEFAULT_STRICT_ARGUMENT_CHECKING, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            genesis::{GenesisAccount, GenesisValidator},
-            run_genesis_request::RunGenesisRequest,
-            EngineConfig, Error,
+use casper_execution_engine::core::{
+    engine_state::{
+        self,
+        engine_config::{
+            DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
+            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            DEFAULT_STRICT_ARGUMENT_CHECKING, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         },
-        execution,
+        run_genesis_request::RunGenesisRequest,
+        EngineConfig, Error,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+    execution,
 };
 use casper_types::{
     self,
@@ -44,7 +40,8 @@ use casper_types::{
             ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
+    SecretKey, SystemConfig, WasmConfig, U256, U512,
 };
 
 use crate::{lmdb_fixture, test::system_contracts::auction::bids::engine_state::ExecConfig};

@@ -20,12 +20,14 @@ use structopt::StructOpt;
 use toml::{value::Table, Value};
 use tracing::info;
 
+use casper_types::{Chainspec, ChainspecRawBytes};
+
 use crate::{
     components::network::{within_message_size_limit_tolerance, Identity as NetworkIdentity},
     logging,
     reactor::{main_reactor, Runner},
     setup_signal_hooks,
-    types::{Chainspec, ChainspecRawBytes, ExitCode},
+    types::ExitCode,
     utils::{chain_specification::validate_chainspec, Loadable, WithDir},
 };
 
