@@ -8,12 +8,11 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::engine_state::{
-    genesis::{ExecConfig, GenesisAccount, GenesisValidator},
-    run_genesis_request::RunGenesisRequest,
+    genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
-    account::AccountHash, system::auction::DelegationRate, Motes, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, U512,
+    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];

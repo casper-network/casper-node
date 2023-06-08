@@ -1,8 +1,5 @@
 pub(crate) mod test_utils;
 
-use assert_matches::assert_matches;
-use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
-use num_rational::Ratio;
 use std::{
     cmp::min,
     collections::{BTreeMap, VecDeque},
@@ -10,14 +7,17 @@ use std::{
     time::Duration,
 };
 
-use casper_types::{
-    AccessRights, CLValue, EraId, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue,
-    TimeDiff, URef, U512,
-};
+use assert_matches::assert_matches;
 use derive_more::From;
+use num_rational::Ratio;
 use rand::{seq::IteratorRandom, Rng};
 
-use casper_types::testing::TestRng;
+use casper_types::{
+    testing::TestRng, AccessRights, CLValue, Chainspec, EraId, Key, LegacyRequiredFinality,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
+};
+
+use casper_execution_engine::storage::trie::merkle_proof::TrieMerkleProof;
 
 use super::*;
 use crate::{
@@ -28,7 +28,7 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{chainspec::LegacyRequiredFinality, DeployId, TestBlockBuilder},
+    types::{DeployId, TestBlockBuilder},
     utils,
 };
 
@@ -258,6 +258,7 @@ impl<I: IntoIterator> OneExt for I {
     }
 }
 
+#[cfg(test)]
 impl BlockSynchronizer {
     fn new_initialized(
         rng: &mut TestRng,

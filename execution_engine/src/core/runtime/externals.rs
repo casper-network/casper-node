@@ -9,15 +9,14 @@ use casper_types::{
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     crypto,
     system::auction::EraInfo,
-    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, Key,
-    StoredValue, URef, U512, UREF_SERIALIZED_LENGTH,
+    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
+    HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
+    UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
 use crate::{
-    core::resolvers::v1_function_index::FunctionIndex,
-    shared::host_function_costs::{Cost, HostFunction, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY},
-    storage::global_state::StateReader,
+    core::resolvers::v1_function_index::FunctionIndex, storage::global_state::StateReader,
 };
 
 impl<'a, R> Externals for Runtime<'a, R>
@@ -220,7 +219,11 @@ where
                 let (account_hash_ptr, account_hash_size, weight_value) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.add_associated_key,
-                    [account_hash_ptr, account_hash_size, weight_value as Cost],
+                    [
+                        account_hash_ptr,
+                        account_hash_size,
+                        weight_value as HostFunctionCost,
+                    ],
                 )?;
                 let value = self.add_associated_key(
                     account_hash_ptr,
@@ -250,7 +253,11 @@ where
                 let (account_hash_ptr, account_hash_size, weight_value) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.update_associated_key,
-                    [account_hash_ptr, account_hash_size, weight_value as Cost],
+                    [
+                        account_hash_ptr,
+                        account_hash_size,
+                        weight_value as HostFunctionCost,
+                    ],
                 )?;
                 let value = self.update_associated_key(
                     account_hash_ptr,
@@ -266,7 +273,7 @@ where
                 let (action_type_value, threshold_value) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.set_action_threshold,
-                    [action_type_value, threshold_value as Cost],
+                    [action_type_value, threshold_value as HostFunctionCost],
                 )?;
                 let value = self.set_action_threshold(action_type_value, threshold_value)?;
                 Ok(Some(RuntimeValue::I32(value)))

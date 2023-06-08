@@ -36,8 +36,9 @@ use casper_types::{
     },
     AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Gas,
-    GrantedAccess, Key, NamedArg, Parameter, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter, Phase, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -48,10 +49,7 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopyExt,
     },
-    shared::{
-        host_function_costs::{Cost, HostFunction},
-        wasm_prep::{self, PreprocessingError},
-    },
+    shared::wasm_prep::{self, PreprocessingError},
     storage::global_state::StateReader,
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
@@ -2693,7 +2691,7 @@ where
         weights: T,
     ) -> Result<(), Trap>
     where
-        T: AsRef<[Cost]> + Copy,
+        T: AsRef<[HostFunctionCost]> + Copy,
     {
         let cost = host_function.calculate_gas_cost(weights);
         self.gas(cost)?;

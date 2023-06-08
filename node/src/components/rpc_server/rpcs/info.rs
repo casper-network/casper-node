@@ -11,7 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey};
+use casper_types::{ChainspecRawBytes, EraId, ExecutionResult, ProtocolVersion, PublicKey};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -22,8 +22,8 @@ use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     types::{
-        Block, BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy, DeployHash,
-        DeployMetadataExt, GetStatusResult, PeersMap,
+        Block, BlockHash, BlockHashAndHeight, Deploy, DeployHash, DeployMetadataExt,
+        GetStatusResult, PeersMap,
     },
 };
 

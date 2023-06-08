@@ -29,16 +29,19 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, DeployItem, EngineConfig, EngineState,
-        GenesisSuccess, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        self, genesis::GenesisError, DeployItem, EngineConfig, EngineState, GenesisSuccess,
+        SystemContractRegistry, UpgradeSuccess,
     },
-    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
+    shared::newtypes::CorrelationId,
     storage::{
         global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::{bytesrepr::Bytes, Digest, EraId, ProtocolVersion, Timestamp};
+use casper_types::{
+    bytesrepr::Bytes, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest,
+    EraId, ProtocolVersion, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -54,8 +57,8 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError,
-        Deploy, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
+        BlockHash, BlockHeader, ChunkingError, Deploy, FinalizedBlock, MetaBlock, MetaBlockState,
+        TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -966,15 +969,12 @@ impl ContractRuntime {
 #[cfg(test)]
 mod trie_chunking_tests {
     use casper_execution_engine::{
-        shared::{
-            additive_map::AdditiveMap, newtypes::CorrelationId, system_config::SystemConfig,
-            transform::Transform, wasm_config::WasmConfig,
-        },
+        shared::{additive_map::AdditiveMap, newtypes::CorrelationId, transform::Transform},
         storage::trie::{Pointer, Trie},
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, CLValue, ChunkWithProof, Digest, EraId, Key,
-        ProtocolVersion, StoredValue,
+        account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
+        Key, ProtocolVersion, StoredValue, SystemConfig, WasmConfig,
     };
     use prometheus::Registry;
     use tempfile::tempdir;
@@ -982,7 +982,7 @@ mod trie_chunking_tests {
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
-        types::{ActivationPoint, ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+        types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
 
     use super::ContractRuntimeError;

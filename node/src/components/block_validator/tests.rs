@@ -7,7 +7,7 @@ use std::{
 use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
-    RuntimeArgs, SecretKey, TimeDiff, U512,
+    Chainspec, ChainspecRawBytes, RuntimeArgs, SecretKey, TimeDiff, U512,
 };
 use derive_more::From;
 use itertools::Itertools;
@@ -15,7 +15,7 @@ use itertools::Itertools;
 use crate::{
     components::{consensus::BlockContext, fetcher},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals},
+    types::{BlockPayload, DeployHashWithApprovals},
     utils::{self, Loadable},
 };
 

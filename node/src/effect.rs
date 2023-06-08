@@ -123,9 +123,9 @@ use casper_execution_engine::{
     storage::trie::TrieRaw,
 };
 use casper_types::{
-    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
-    Digest, EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, TimeDiff, Timestamp, Transfer,
-    URef, U512,
+    account::Account, bytesrepr::Bytes, system::auction::EraValidators, ChainspecRawBytes,
+    Contract, ContractPackage, Digest, EraId, ExecutionEffect, ExecutionResult, Key, PublicKey,
+    TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -148,10 +148,10 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
-        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
-        MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalitySignatureId,
+        FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
+        TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };

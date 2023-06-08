@@ -30,8 +30,8 @@ use tracing::error;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, ChunkWithProofVerificationError, Digest, EraId, ProtocolVersion, PublicKey, SecretKey,
-    Signature, Timestamp, U512,
+    crypto, ActivationPoint, ChunkWithProofVerificationError, Digest, EraId, ProtocolConfig,
+    ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{
@@ -1015,6 +1015,14 @@ impl BlockHeader {
     /// Genesis child block is from era 0 and height 0.
     pub(crate) fn is_genesis(&self) -> bool {
         self.era_id().is_genesis() && self.height() == 0
+    }
+
+    /// Returns whether the block header belongs to the last block before the upgrade to the
+    /// current protocol version.
+    pub fn is_last_block_before_activation(&self, protocol_config: &ProtocolConfig) -> bool {
+        protocol_config.version > self.protocol_version
+            && self.is_switch_block()
+            && ActivationPoint::EraId(self.next_block_era_id()) == protocol_config.activation_point
     }
 
     // Serialize the block header.

@@ -15,7 +15,7 @@ anyhow = "1.0.33"
 base16 = "0.2.1"
 bincode = "1.3.1"
 casper-types = { version = "3.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema", "std"] }
-casper-wasm-utils = "1.0.0"
+casper-wasm-utils = { version = "1.0.0" }
 datasize = "0.2.4"
 either = "1.8.1"
 hex_fmt = "0.3.0"

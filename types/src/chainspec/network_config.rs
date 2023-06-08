@@ -1,16 +1,19 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(test)]
+
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::Serialize;
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-#[cfg(test)]
-use casper_types::testing::TestRng;
+use crate::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 
 use super::AccountsConfig;
 
 /// Configuration values associated with the network.
-#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct NetworkConfig {
     /// The network name.
     pub name: String,
@@ -22,7 +25,7 @@ pub struct NetworkConfig {
     pub accounts_config: AccountsConfig,
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl NetworkConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
@@ -72,11 +75,13 @@ impl FromBytes for NetworkConfig {
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+
     use super::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let config = NetworkConfig::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
     }

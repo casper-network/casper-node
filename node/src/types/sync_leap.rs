@@ -10,7 +10,7 @@ use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_types::{crypto, Digest, EraId, ProtocolVersion};
+use casper_types::{crypto, Digest, EraId, ProtocolConfig, ProtocolVersion};
 use tracing::error;
 
 use crate::{
@@ -22,7 +22,7 @@ use crate::{
     utils::{self, BlockSignatureError},
 };
 
-use super::{chainspec::ProtocolConfig, sync_leap_validation_metadata::SyncLeapValidationMetaData};
+use super::sync_leap_validation_metadata::SyncLeapValidationMetaData;
 
 #[derive(Error, Debug)]
 pub(crate) enum SyncLeapValidationError {
@@ -436,10 +436,6 @@ mod tests {
         iter,
     };
 
-    use casper_types::{
-        crypto, testing::TestRng, EraId, ProtocolVersion, PublicKey, SecretKey, Signature,
-        Timestamp, U512,
-    };
     use num_rational::Ratio;
     use rand::Rng;
 
@@ -447,14 +443,16 @@ mod tests {
     use crate::{
         components::fetcher::FetchItem,
         types::{
-            chainspec::{GlobalStateUpdate, ProtocolConfig},
             sync_leap::SyncLeapValidationError,
-            sync_leap_validation_metadata::SyncLeapValidationMetaData,
-            ActivationPoint, Block, BlockHash, BlockHeader, BlockHeaderWithMetadata,
-            BlockSignatures, EraValidatorWeights, FinalitySignature, FinalizedBlock,
-            SyncLeapIdentifier,
+            sync_leap_validation_metadata::SyncLeapValidationMetaData, Block, BlockHash,
+            BlockHeader, BlockHeaderWithMetadata, BlockSignatures, EraValidatorWeights,
+            FinalitySignature, FinalizedBlock, SyncLeapIdentifier,
         },
         utils::BlockSignatureError,
+    };
+    use casper_types::{
+        crypto, testing::TestRng, ActivationPoint, EraId, GlobalStateUpdate, ProtocolConfig,
+        ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
     };
 
     fn random_block_at_height(rng: &mut TestRng, height: u64) -> Block {

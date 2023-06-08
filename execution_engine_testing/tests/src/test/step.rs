@@ -7,10 +7,7 @@ use casper_engine_test_support::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        genesis::{GenesisAccount, GenesisValidator},
-        RewardItem, SlashItem,
-    },
+    core::engine_state::{RewardItem, SlashItem},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -21,7 +18,8 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, ContractHash, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
+    CLValue, ContractHash, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
+    PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {

@@ -2,21 +2,22 @@
 //! genesis, and set up auction contract with validators and delegators.
 mod account_config;
 mod delegator_config;
+mod genesis;
 mod validator_config;
-
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use casper_execution_engine::core::engine_state::GenesisAccount;
 #[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     PublicKey,
 };
 
 pub use account_config::AccountConfig;
 pub use delegator_config::DelegatorConfig;
+pub use genesis::{GenesisAccount, GenesisValidator};
 pub use validator_config::ValidatorConfig;
 
 fn sorted_vec_deserializer<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
@@ -30,7 +31,8 @@ where
 }
 
 /// Configuration values associated with accounts.toml
-#[derive(PartialEq, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AccountsConfig {
     #[serde(deserialize_with = "sorted_vec_deserializer")]
     accounts: Vec<AccountConfig>,
@@ -64,7 +66,8 @@ impl AccountsConfig {
             .find(|account| &account.public_key == public_key)
     }
 
-    pub(crate) fn is_genesis_validator(&self, public_key: &PublicKey) -> bool {
+    /// Is the provided public key in the set of genesis validator public keys.
+    pub fn is_genesis_validator(&self, public_key: &PublicKey) -> bool {
         match self.account(public_key) {
             None => false,
             Some(account_config) => account_config.is_genesis_validator(),

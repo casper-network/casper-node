@@ -7,13 +7,13 @@ use tracing::debug;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Digest, PublicKey, TimeDiff, Timestamp,
+    DeployConfig, Digest, PublicKey, TimeDiff, Timestamp,
 };
 
 #[cfg(doc)]
 use super::Deploy;
 use super::{DeployConfigurationFailure, DeployHash};
-use crate::{types::chainspec::DeployConfig, utils::DisplayIter};
+use crate::utils::DisplayIter;
 
 /// The header portion of a [`Deploy`].
 #[derive(
@@ -99,6 +99,7 @@ impl DeployHeader {
         at: Timestamp,
         deploy_hash: &DeployHash,
     ) -> Result<(), DeployConfigurationFailure> {
+        #[allow(deprecated)]
         if self.dependencies.len() > config.max_dependencies as usize {
             debug!(
                 %deploy_hash,

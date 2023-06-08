@@ -62,6 +62,7 @@ use tracing_futures::Instrument;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
+use casper_types::{Chainspec, ChainspecRawBytes};
 
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
@@ -80,9 +81,8 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
-        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, LegacyDeploy, NodeId, SyncLeap,
-        TrieOrChunk,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy, ExitCode,
+        FinalitySignature, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},

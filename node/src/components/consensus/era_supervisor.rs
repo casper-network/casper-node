@@ -30,7 +30,10 @@ use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{AsymmetricType, Digest, EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
+use casper_types::{
+    AsymmetricType, Chainspec, ConsensusProtocolName, Digest, EraId, PublicKey, SecretKey,
+    TimeDiff, Timestamp,
+};
 
 use crate::{
     components::{
@@ -54,8 +57,8 @@ use crate::{
     },
     fatal, protocol,
     types::{
-        chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId,
+        BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash, FinalizedApprovals,
+        FinalizedBlock, MetaBlockState, NodeId,
     },
     NodeRng,
 };

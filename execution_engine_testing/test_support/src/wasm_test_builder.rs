@@ -26,7 +26,7 @@ use casper_execution_engine::{
             step::{StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
             PruneConfig, PruneResult, QueryRequest, QueryResult, RewardItem, StepError,
-            SystemContractRegistry, UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+            SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
@@ -35,10 +35,6 @@ use casper_execution_engine::{
         execution_journal::ExecutionJournal,
         logging::{self, Settings, Style},
         newtypes::CorrelationId,
-        system_config::{
-            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts,
-        },
         transform::Transform,
         utils::OS_PAGE_SIZE,
     },
@@ -65,9 +61,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, Digest, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
+    AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
+    MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
+    UpgradeConfig, U512,
 };
 
 use crate::{

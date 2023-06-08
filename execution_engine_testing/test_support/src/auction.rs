@@ -6,8 +6,8 @@ use tempfile::TempDir;
 use casper_execution_engine::{
     core::{
         engine_state::{
-            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
-            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+            self, run_genesis_request::RunGenesisRequest, EngineState, ExecConfig, ExecuteRequest,
+            RewardItem,
         },
         execution,
     },
@@ -22,7 +22,8 @@ use casper_types::{
     bytesrepr::{self},
     runtime_args,
     system::auction,
-    Digest, Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    ChainspecRegistry, Digest, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
+    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
 };
 
 use rand::Rng;

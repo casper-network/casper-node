@@ -44,7 +44,7 @@ use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, runtime_args,
     system::standard_payment::ARG_AMOUNT,
-    Digest, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512,
+    DeployConfig, Digest, PublicKey, RuntimeArgs, SecretKey, TimeDiff, Timestamp, U512,
 };
 
 use crate::{
@@ -54,7 +54,6 @@ use crate::{
     },
     effect::GossipTarget,
     rpcs::docs::DocExample,
-    types::chainspec::DeployConfig,
     utils::{ds, DisplayIter},
 };
 pub use approval::Approval;
@@ -633,7 +632,7 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
 
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(deploy.hash, approval.signature(), approval.signer()) {
-            warn!(?deploy, "failed to verify approval {}: {}", index, error);
+            warn!(?deploy, "failed to verify approval {}: {:?}", index, error);
             return Err(DeployConfigurationFailure::InvalidApproval {
                 index,
                 error_msg: error.to_string(),
@@ -1236,6 +1235,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn is_acceptable() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1259,6 +1259,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_invalid_chain_name() {
         let mut rng = crate::new_rng();
         let expected_chain_name = "net-1";
@@ -1294,6 +1295,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_excessive_dependencies() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1330,6 +1332,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_excessive_ttl() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1366,6 +1369,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_timestamp_in_future() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1400,6 +1404,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_missing_payment_amount() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1445,6 +1450,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_mangled_payment_amount() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1492,6 +1498,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_excessive_payment_amount() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1545,6 +1552,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn transfer_acceptable_regardless_of_excessive_payment_amount() {
         let mut rng = crate::new_rng();
         let secret_key = SecretKey::random(&mut rng);
@@ -1594,6 +1602,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_excessive_approvals() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1623,6 +1632,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_missing_transfer_amount() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1653,6 +1663,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_mangled_transfer_amount() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
@@ -1687,6 +1698,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn not_acceptable_due_to_insufficient_transfer_amount() {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";

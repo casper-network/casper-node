@@ -14,8 +14,7 @@ use casper_execution_engine::core::{
     engine_state::{
         self,
         engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
-        genesis::GenesisValidator,
-        EngineConfig, ExecConfig, GenesisAccount, RunGenesisRequest, DEFAULT_MAX_QUERY_DEPTH,
+        EngineConfig, ExecConfig, RunGenesisRequest, DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
     execution,
@@ -26,7 +25,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         standard_payment,
     },
-    ApiError, Key, Motes, RuntimeArgs, StoredValue, U512,
+    ApiError, GenesisAccount, GenesisValidator, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::lmdb_fixture;

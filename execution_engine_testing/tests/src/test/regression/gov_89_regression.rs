@@ -11,9 +11,7 @@ use casper_engine_test_support::{
     utils, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::{
-    core::engine_state::{
-        genesis::GenesisValidator, GenesisAccount, RewardItem, SlashItem, StepSuccess,
-    },
+    core::engine_state::{RewardItem, SlashItem, StepSuccess},
     shared::transform::Transform,
 };
 use casper_types::{
@@ -21,7 +19,8 @@ use casper_types::{
         Bids, DelegationRate, SeigniorageRecipientsSnapshot, BLOCK_REWARD,
         SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    CLValue, EraId, Key, Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {

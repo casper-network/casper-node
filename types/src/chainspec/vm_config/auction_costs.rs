@@ -1,8 +1,10 @@
 //! Costs of the auction system contract.
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
+
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Default cost of the `get_era_validators` auction entry point.
 pub const DEFAULT_GET_ERA_VALIDATORS_COST: u32 = 10_000;
@@ -34,7 +36,8 @@ pub const DEFAULT_READ_ERA_ID_COST: u32 = 10_000;
 pub const DEFAULT_ACTIVATE_BID_COST: u32 = 10_000;
 
 /// Description of the costs of calling auction entrypoints.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct AuctionCosts {
     /// Cost of calling the `get_era_validators` entry point.
@@ -89,7 +92,7 @@ impl Default for AuctionCosts {
 }
 
 impl ToBytes for AuctionCosts {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
         let Self {
@@ -163,7 +166,7 @@ impl ToBytes for AuctionCosts {
 }
 
 impl FromBytes for AuctionCosts {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (get_era_validators, rem) = FromBytes::from_bytes(bytes)?;
         let (read_seigniorage_recipients, rem) = FromBytes::from_bytes(rem)?;
         let (add_bid, rem) = FromBytes::from_bytes(rem)?;

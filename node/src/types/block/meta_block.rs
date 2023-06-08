@@ -6,9 +6,9 @@ use std::sync::Arc;
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_types::ExecutionResult;
+use casper_types::{ActivationPoint, ExecutionResult};
 
-use crate::types::{ActivationPoint, Block, DeployHash, DeployHeader};
+use crate::types::{Block, DeployHash, DeployHeader};
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;

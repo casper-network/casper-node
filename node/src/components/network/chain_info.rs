@@ -5,7 +5,7 @@
 
 use std::net::SocketAddr;
 
-use casper_types::{Digest, ProtocolVersion};
+use casper_types::{Chainspec, Digest, ProtocolVersion};
 use datasize::DataSize;
 
 use super::{
@@ -13,7 +13,6 @@ use super::{
     message::{ConsensusCertificate, NodeKeyPair},
     Message,
 };
-use crate::types::Chainspec;
 
 /// Data retained from the chainspec by the networking component.
 ///

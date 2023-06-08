@@ -6,12 +6,11 @@ use casper_engine_test_support::{
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::{genesis::GenesisValidator, GenesisAccount};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{DelegationRate, ARG_DELEGATOR, ARG_VALIDATOR},
-    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";

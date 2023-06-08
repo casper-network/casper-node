@@ -1,18 +1,11 @@
-//! Definition of the costs of running code in the system.
-pub mod auction_costs;
-pub mod handle_payment_costs;
-pub mod mint_costs;
-pub mod standard_payment_costs;
-
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-
-use self::{
-    auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts, mint_costs::MintCosts,
-    standard_payment_costs::StandardPaymentCosts,
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    chainspec::vm_config::{AuctionCosts, HandlePaymentCosts, MintCosts, StandardPaymentCosts},
 };
 
 /// Default gas cost for a wasmless transfer.
@@ -22,7 +15,8 @@ pub const DEFAULT_WASMLESS_TRANSFER_COST: u32 = 100_000_000;
 ///
 /// This structure contains the costs of all the system contract's entry points and, additionally,
 /// it defines a wasmless transfer cost.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct SystemConfig {
     /// Wasmless transfer cost expressed in gas.
@@ -110,7 +104,7 @@ impl Distribution<SystemConfig> for Standard {
 }
 
 impl ToBytes for SystemConfig {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
 
         ret.append(&mut self.wasmless_transfer_cost.to_bytes()?);
@@ -132,7 +126,7 @@ impl ToBytes for SystemConfig {
 }
 
 impl FromBytes for SystemConfig {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (wasmless_transfer_cost, rem) = FromBytes::from_bytes(bytes)?;
         let (auction_costs, rem) = FromBytes::from_bytes(rem)?;
         let (mint_costs, rem) = FromBytes::from_bytes(rem)?;
@@ -156,10 +150,13 @@ impl FromBytes for SystemConfig {
 pub mod gens {
     use proptest::{num, prop_compose};
 
-    use super::{
-        auction_costs::gens::auction_costs_arb,
-        handle_payment_costs::gens::handle_payment_costs_arb, mint_costs::gens::mint_costs_arb,
-        standard_payment_costs::gens::standard_payment_costs_arb, SystemConfig,
+    use crate::{
+        chainspec::vm_config::{
+            auction_costs::gens::auction_costs_arb,
+            handle_payment_costs::gens::handle_payment_costs_arb, mint_costs::gens::mint_costs_arb,
+            standard_payment_costs::gens::standard_payment_costs_arb,
+        },
+        SystemConfig,
     };
 
     prop_compose! {

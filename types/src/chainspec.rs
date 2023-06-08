@@ -10,28 +10,24 @@ mod global_state_update;
 mod highway_config;
 mod network_config;
 mod protocol_config;
+mod vm_config;
 
 use std::{fmt::Debug, sync::Arc};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::Serialize;
-use tracing::error;
 
-use casper_execution_engine::{
-    core::engine_state::{genesis::ExecConfig, ChainspecRegistry, UpgradeConfig},
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
-};
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    Digest, EraId, ProtocolVersion,
-};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 
 pub use self::{
-    accounts_config::{AccountConfig, AccountsConfig, DelegatorConfig, ValidatorConfig},
+    accounts_config::{
+        AccountConfig, AccountsConfig, DelegatorConfig, GenesisAccount, GenesisValidator,
+        ValidatorConfig,
+    },
     activation_point::ActivationPoint,
     chainspec_raw_bytes::ChainspecRawBytes,
     core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality},
@@ -40,11 +36,40 @@ pub use self::{
     highway_config::HighwayConfig,
     network_config::NetworkConfig,
     protocol_config::ProtocolConfig,
+    vm_config::{
+        AuctionCosts, BrTableCost, ChainspecRegistry, ControlFlowCosts, HandlePaymentCosts,
+        HostFunction, HostFunctionCost, HostFunctionCosts, MintCosts, OpcodeCosts,
+        StandardPaymentCosts, StorageCosts, SystemConfig, UpgradeConfig, WasmConfig,
+    },
+};
+
+#[cfg(any(feature = "testing", test))]
+pub use self::vm_config::{
+    DEFAULT_ADD_BID_COST, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
+    DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
+    DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
+    DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE, DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE,
+    DEFAULT_CONTROL_FLOW_CALL_OPCODE, DEFAULT_CONTROL_FLOW_DROP_OPCODE,
+    DEFAULT_CONTROL_FLOW_ELSE_OPCODE, DEFAULT_CONTROL_FLOW_END_OPCODE,
+    DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
+    DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
+    DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
+    DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST,
+    DEFAULT_WASM_MAX_MEMORY,
+};
+
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest, EraId, ProtocolVersion,
 };
 
 /// A collection of configuration settings describing the state of the system at genesis and after
 /// upgrades to basic system functionality occurring after genesis.
-#[derive(DataSize, PartialEq, Eq, Serialize, Debug)]
+#[derive(PartialEq, Eq, Serialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Chainspec {
     /// Protocol config.
     #[serde(rename = "protocol")]
@@ -78,11 +103,16 @@ pub struct Chainspec {
 impl Chainspec {
     /// Serializes `self` and hashes the resulting bytes.
     pub fn hash(&self) -> Digest {
-        let serialized_chainspec = self.to_bytes().unwrap_or_else(|error| {
-            error!(%error, "failed to serialize chainspec");
-            vec![]
-        });
+        let serialized_chainspec = self.to_bytes().unwrap_or_else(|_| vec![]);
         Digest::hash(serialized_chainspec)
+    }
+
+    /// Serializes `self` and hashes the resulting bytes, if able.
+    pub fn maybe_hash(&self) -> Result<Digest, String> {
+        let arr = self
+            .to_bytes()
+            .map_err(|_| "failed to serialize chainspec".to_string())?;
+        Ok(Digest::hash(arr))
     }
 
     /// Returns the protocol version of the chainspec.
@@ -98,7 +128,8 @@ impl Chainspec {
             .then(|| self.protocol_config.activation_point.era_id())
     }
 
-    pub(crate) fn ee_upgrade_config(
+    /// Creates an upgrade config instance from parts.
+    pub fn upgrade_config_from_parts(
         &self,
         pre_state_hash: Digest,
         current_protocol_version: ProtocolVersion,
@@ -132,7 +163,7 @@ impl Chainspec {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Chainspec {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
@@ -141,7 +172,7 @@ impl Chainspec {
         let core_config = CoreConfig::random(rng);
         let highway_config = HighwayConfig::random(rng);
         let deploy_config = DeployConfig::random(rng);
-        let wasm_costs_config = rng.gen();
+        let wasm_config = rng.gen();
         let system_costs_config = rng.gen();
 
         Chainspec {
@@ -150,7 +181,7 @@ impl Chainspec {
             core_config,
             highway_config,
             deploy_config,
-            wasm_config: wasm_costs_config,
+            wasm_config,
             system_costs_config,
         }
     }
@@ -202,33 +233,15 @@ impl FromBytes for Chainspec {
     }
 }
 
-impl From<&Chainspec> for ExecConfig {
-    fn from(chainspec: &Chainspec) -> Self {
-        ExecConfig::new(
-            chainspec.network_config.accounts_config.clone().into(),
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.validator_slots,
-            chainspec.core_config.auction_delay,
-            chainspec.core_config.locked_funds_period.millis(),
-            chainspec.core_config.round_seigniorage_rate,
-            chainspec.core_config.unbonding_delay,
-            chainspec
-                .protocol_config
-                .activation_point
-                .genesis_timestamp()
-                .map_or(0, |timestamp| timestamp.millis()),
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use rand::SeedableRng;
+
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let chainspec = Chainspec::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&chainspec);
     }

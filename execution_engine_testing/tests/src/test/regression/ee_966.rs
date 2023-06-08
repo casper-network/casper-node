@@ -7,29 +7,21 @@ use casper_engine_test_support::{
     ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
     DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            engine_config::{
-                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            EngineConfig, Error, ExecuteRequest, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+use casper_execution_engine::core::{
+    engine_state::{
+        engine_config::{
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         },
-        execution::Error as ExecError,
+        EngineConfig, Error, ExecuteRequest, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
-    shared::{
-        host_function_costs::HostFunctionCosts,
-        opcode_costs::OpcodeCosts,
-        storage_costs::StorageCosts,
-        system_config::SystemConfig,
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
+    execution::Error as ExecError,
 };
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, ProtocolVersion,
-    RuntimeArgs,
+    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ApiError, EraId, HostFunctionCosts,
+    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, SystemConfig, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY,
 };
 
 const CONTRACT_EE_966_REGRESSION: &str = "ee_966_regression.wasm";

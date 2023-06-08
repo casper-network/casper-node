@@ -81,7 +81,7 @@ use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
 use tracing::{debug, error, event, info, warn, Level};
 
-use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
+use casper_types::{system::auction::BLOCK_REWARD, Chainspec, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -96,7 +96,7 @@ use crate::{
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, LeaderSequence, TimerId,
     },
-    types::{Chainspec, NodeId},
+    types::NodeId,
     utils, NodeRng,
 };
 use fault::Fault;

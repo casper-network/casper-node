@@ -481,10 +481,8 @@ mod doc_example_impls {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        types::{Chainspec, ChainspecRawBytes},
-        utils::Loadable,
-    };
+    use crate::utils::Loadable;
+    use casper_types::{Chainspec, ChainspecRawBytes};
 
     use super::*;
 

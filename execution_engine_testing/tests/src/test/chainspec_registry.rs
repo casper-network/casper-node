@@ -6,10 +6,8 @@ use casper_engine_test_support::{
     InMemoryWasmTestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_EXEC_CONFIG,
     DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::{
-    ChainspecRegistry, EngineConfig, RunGenesisRequest,
-};
-use casper_types::{Digest, EraId, Key, ProtocolVersion};
+use casper_execution_engine::core::engine_state::{EngineConfig, RunGenesisRequest};
+use casper_types::{ChainspecRegistry, Digest, EraId, Key, ProtocolVersion};
 
 use crate::lmdb_fixture;
 

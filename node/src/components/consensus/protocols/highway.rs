@@ -17,7 +17,7 @@ use itertools::Itertools;
 use rand::RngCore;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
+use casper_types::{system::auction::BLOCK_REWARD, Chainspec, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -41,7 +41,7 @@ use crate::{
         utils::ValidatorIndex,
         ActionId, TimerId,
     },
-    types::{Chainspec, NodeId},
+    types::NodeId,
     NodeRng,
 };
 

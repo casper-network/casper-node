@@ -15,8 +15,8 @@ use thiserror::Error as ThisError;
 use tokio::time;
 
 use casper_types::{
-    generate_ed25519_keypair, testing::TestRng, ProtocolVersion, PublicKey, SecretKey, SemVer,
-    Signature, U512,
+    generate_ed25519_keypair, testing::TestRng, ActivationPoint, Chainspec, ChainspecRawBytes,
+    ProtocolVersion, PublicKey, SecretKey, SemVer, Signature, U512,
 };
 use reactor::ReactorEvent;
 
@@ -35,7 +35,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Reactor, Runner, TryCrankOutcome},
-    types::{Block, Chainspec, ChainspecRawBytes, EraValidatorWeights},
+    types::{Block, EraValidatorWeights},
     utils::{Loadable, WithDir},
     NodeRng,
 };

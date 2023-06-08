@@ -1,19 +1,21 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::rational::Ratio;
-#[cfg(test)]
+
+#[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use tracing::error;
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     TimeDiff,
 };
 
 /// Configuration values relevant to Highway consensus.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct HighwayConfig {
@@ -21,26 +23,22 @@ pub struct HighwayConfig {
     pub maximum_round_length: TimeDiff,
     /// The factor by which rewards for a round are multiplied if the greatest summit has ≤50%
     /// quorum, i.e. no finality.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     pub reduced_reward_multiplier: Ratio<u64>,
 }
 
 impl HighwayConfig {
     /// Checks whether the values set in the config make sense and returns `false` if they don't.
-    pub fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> Result<(), String> {
         if self.reduced_reward_multiplier > Ratio::new(1, 1) {
-            error!(
-                rrm = %self.reduced_reward_multiplier,
-                "reduced reward multiplier is not in the range [0, 1]",
-            );
-            return false;
+            Err("reduced reward multiplier is not in the range [0, 1]".to_string())
+        } else {
+            Ok(())
         }
-
-        true
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl HighwayConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
@@ -82,39 +80,34 @@ impl FromBytes for HighwayConfig {
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+
     use super::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let config = HighwayConfig::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
     }
 
     #[test]
-    fn toml_roundtrip() {
-        let mut rng = crate::new_rng();
-        let config = HighwayConfig::random(&mut rng);
-        let encoded = toml::to_string_pretty(&config).unwrap();
-        let decoded = toml::from_str(&encoded).unwrap();
-        assert_eq!(config, decoded);
-    }
-
-    #[test]
     fn should_validate_for_reduced_reward_multiplier() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let mut highway_config = HighwayConfig::random(&mut rng);
 
         // Should be valid for 0 <= RRM <= 1.
         highway_config.reduced_reward_multiplier = Ratio::new(0, 1);
-        assert!(highway_config.is_valid());
+        assert!(highway_config.is_valid().is_ok());
         highway_config.reduced_reward_multiplier = Ratio::new(1, 1);
-        assert!(highway_config.is_valid());
+        assert!(highway_config.is_valid().is_ok());
         highway_config.reduced_reward_multiplier = Ratio::new(u64::MAX, u64::MAX);
-        assert!(highway_config.is_valid());
+        assert!(highway_config.is_valid().is_ok());
 
-        // Should be invalid for RRM > 1.
         highway_config.reduced_reward_multiplier = Ratio::new(u64::MAX, u64::MAX - 1);
-        assert!(!highway_config.is_valid());
+        assert!(
+            highway_config.is_valid().is_err(),
+            "Should be invalid for RRM > 1."
+        );
     }
 }

@@ -22,13 +22,11 @@ use casper_execution_engine::{
                 DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
                 DEFAULT_STRICT_ARGUMENT_CHECKING, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
             },
-            genesis::{GenesisAccount, GenesisValidator},
             run_genesis_request::RunGenesisRequest,
             EngineConfig, Error, RewardItem,
         },
         execution,
     },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -44,7 +42,8 @@ use casper_types::{
             ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
+    SecretKey, SystemConfig, WasmConfig, U256, U512,
 };
 
 use crate::{lmdb_fixture, test::system_contracts::auction::bids::engine_state::ExecConfig};

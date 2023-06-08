@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::core::engine_state;
-use casper_types::{Digest, Timestamp};
+use casper_types::{Chainspec, Digest, Timestamp};
 
 use super::network::blocklist::BlocklistJustification;
 use crate::{
@@ -52,7 +52,7 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, Block,
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Deploy,
         FinalitySignature, FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock,
         MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },

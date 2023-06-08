@@ -6,10 +6,10 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, Contract, ContractHash,
-    DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr, U512,
+    DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr,
+    DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

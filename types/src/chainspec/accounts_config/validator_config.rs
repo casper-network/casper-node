@@ -1,20 +1,21 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::Zero;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::{distributions::Standard, prelude::*};
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::genesis::GenesisValidator;
-use casper_types::{
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::DelegationRate,
-    Motes,
+    GenesisValidator, Motes,
 };
-#[cfg(test)]
-use casper_types::{testing::TestRng, U512};
+#[cfg(any(feature = "testing", test))]
+use crate::{testing::TestRng, U512};
 
 /// Validator account configuration.
-#[derive(PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, DataSize, Debug, Copy, Clone)]
+#[derive(PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize, Debug, Copy, Clone)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ValidatorConfig {
     bonded_amount: Motes,
     #[serde(default = "DelegationRate::zero")]
@@ -40,7 +41,7 @@ impl ValidatorConfig {
         self.bonded_amount
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let bonded_amount = Motes::new(U512::from(rng.gen::<u64>()));
@@ -53,7 +54,7 @@ impl ValidatorConfig {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Distribution<ValidatorConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorConfig {
         let mut u512_array = [0; 64];

@@ -5,11 +5,12 @@ use thiserror::Error;
 use toml::de::Error as TomlDecodeError;
 use tracing::info;
 
-use casper_types::{crypto, Digest, ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{
+    crypto, Chainspec, ChainspecRawBytes, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
+};
 
 use crate::{
     reactor::main_reactor::Config,
-    types::{Chainspec, ChainspecRawBytes},
     utils::{
         chain_specification::error::Error as LoadChainspecError, LoadError, Loadable, WithDir,
     },

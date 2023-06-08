@@ -11,13 +11,13 @@ use once_cell::sync::Lazy;
 use casper_execution_engine::{
     core::engine_state::{
         execution_result::ExecutionResult,
-        genesis::{ExecConfig, GenesisAccount, GenesisConfig},
+        genesis::{ExecConfig, GenesisConfig},
         run_genesis_request::RunGenesisRequest,
         Error,
     },
     shared::{additive_map::AdditiveMap, transform::Transform},
 };
-use casper_types::{account::Account, Gas, Key, StoredValue};
+use casper_types::{account::Account, Gas, GenesisAccount, Key, StoredValue};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{

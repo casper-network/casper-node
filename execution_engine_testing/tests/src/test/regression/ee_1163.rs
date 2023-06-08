@@ -2,18 +2,15 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_GAS_PRICE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
-        execution,
-    },
-    shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST,
+use casper_execution_engine::core::{
+    engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
+    execution,
 };
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    ApiError, Gas, Motes, RuntimeArgs, U512,
+    ApiError, Gas, Motes, RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;

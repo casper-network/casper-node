@@ -7,29 +7,12 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
     DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        genesis::GenesisValidator,
-        EngineConfig, GenesisAccount, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+use casper_execution_engine::core::engine_state::{
+    engine_config::{
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
     },
-    shared::{
-        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
-        storage_costs::StorageCosts,
-        system_config::{
-            auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST},
-            handle_payment_costs::HandlePaymentCosts,
-            mint_costs::{MintCosts, DEFAULT_TRANSFER_COST},
-            standard_payment_costs::StandardPaymentCosts,
-            SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
-        },
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
+    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
     runtime_args,
@@ -37,7 +20,11 @@ use casper_types::{
         auction::{self, DelegationRate},
         handle_payment, mint, AUCTION,
     },
-    EraId, Gas, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    AuctionCosts, BrTableCost, ControlFlowCosts, EraId, Gas, GenesisAccount, GenesisValidator,
+    HandlePaymentCosts, HostFunction, HostFunctionCost, HostFunctionCosts, MintCosts, Motes,
+    OpcodeCosts, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StandardPaymentCosts,
+    StorageCosts, SystemConfig, WasmConfig, DEFAULT_ADD_BID_COST, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_TRANSFER_COST, DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 use crate::wasm_utils;
@@ -57,7 +44,7 @@ const BOND_AMOUNT: u64 = 42;
 const BID_AMOUNT: u64 = 99 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 const TRANSFER_AMOUNT: u64 = 123;
 const BID_DELEGATION_RATE: DelegationRate = auction::DELEGATION_RATE_DENOMINATOR;
-const UPDATED_CALL_CONTRACT_COST: Cost = 12_345;
+const UPDATED_CALL_CONTRACT_COST: HostFunctionCost = 12_345;
 const NEW_ADD_BID_COST: u32 = 2_500_000_000;
 const NEW_WITHDRAW_BID_COST: u32 = 2_500_000_000;
 const NEW_DELEGATE_COST: u32 = 2_500_000_000;

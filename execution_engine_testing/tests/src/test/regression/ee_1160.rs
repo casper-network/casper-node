@@ -2,12 +2,10 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST,
-};
+use casper_execution_engine::core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE;
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, Gas, Motes, RuntimeArgs, U512,
+    account::AccountHash, runtime_args, system::mint, Gas, Motes, RuntimeArgs,
+    DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);

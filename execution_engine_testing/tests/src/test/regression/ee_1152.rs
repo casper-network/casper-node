@@ -8,14 +8,14 @@ use casper_engine_test_support::{
     TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
-    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator, GenesisAccount,
-    RewardItem,
+    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, RewardItem,
 };
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate, BLOCK_REWARD, INITIAL_ERA_ID},
-    Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

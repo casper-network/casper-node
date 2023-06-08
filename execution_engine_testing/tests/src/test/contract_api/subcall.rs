@@ -1,11 +1,12 @@
-use casper_execution_engine::shared::storage_costs::StorageCosts;
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
+use casper_types::{
+    contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
+};
 
 const ARG_TARGET: &str = "target_contract";
 const ARG_GAS_AMOUNT: &str = "gas_amount";

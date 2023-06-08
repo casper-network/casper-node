@@ -1,14 +1,17 @@
 //! Costs of the standard payment system contract.
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*, Rng};
 use serde::{Deserialize, Serialize};
+
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Default cost of the `pay` standard payment entry point.
 const DEFAULT_PAY_COST: u32 = 10_000;
 
 /// Description of the costs of calling standard payment entry points.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug, DataSize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct StandardPaymentCosts {
     /// Cost of calling the `pay` entry point.
@@ -24,7 +27,7 @@ impl Default for StandardPaymentCosts {
 }
 
 impl ToBytes for StandardPaymentCosts {
-    fn to_bytes(&self) -> Result<Vec<u8>, casper_types::bytesrepr::Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut ret = bytesrepr::unchecked_allocate_buffer(self);
         ret.append(&mut self.pay.to_bytes()?);
         Ok(ret)
@@ -36,7 +39,7 @@ impl ToBytes for StandardPaymentCosts {
 }
 
 impl FromBytes for StandardPaymentCosts {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), casper_types::bytesrepr::Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (pay, rem) = FromBytes::from_bytes(bytes)?;
         Ok((Self { pay }, rem))
     }

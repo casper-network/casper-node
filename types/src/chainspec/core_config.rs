@@ -1,24 +1,27 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::rational::Ratio;
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+
 use serde::{
     de::{Deserializer, Error as DeError},
     Deserialize, Serialize, Serializer,
 };
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     ProtocolVersion, TimeDiff,
 };
 
 /// Configuration values associated with the core protocol.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct CoreConfig {
@@ -35,7 +38,7 @@ pub struct CoreConfig {
     pub validator_slots: u32,
 
     /// Finality threshold fraction.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     pub finality_threshold_fraction: Ratio<u64>,
 
     /// Protocol version from which nodes are required to hold strict finality signatures.
@@ -62,7 +65,7 @@ pub struct CoreConfig {
     pub unbonding_delay: u64,
 
     /// Round seigniorage rate represented as a fractional number.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     pub round_seigniorage_rate: Ratio<u64>,
 
     /// Maximum number of associated keys for a single account.
@@ -99,7 +102,7 @@ impl CoreConfig {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl CoreConfig {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
@@ -257,7 +260,8 @@ impl FromBytes for CoreConfig {
 }
 
 /// Consensus protocol name.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum ConsensusProtocolName {
     /// Highway.
     Highway,
@@ -317,7 +321,7 @@ impl FromBytes for ConsensusProtocolName {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Distribution<ConsensusProtocolName> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusProtocolName {
         if rng.gen() {
@@ -329,7 +333,8 @@ impl Distribution<ConsensusProtocolName> for Standard {
 }
 
 /// Which finality a legacy block needs during a fast sync.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum LegacyRequiredFinality {
     /// Strict finality: more than 2/3rd of validators.
     Strict,
@@ -395,7 +400,7 @@ impl FromBytes for LegacyRequiredFinality {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 impl Distribution<LegacyRequiredFinality> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LegacyRequiredFinality {
         match rng.gen_range(0..3) {
@@ -409,11 +414,13 @@ impl Distribution<LegacyRequiredFinality> for Standard {
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+
     use super::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
+        let mut rng = TestRng::from_entropy();
         let config = CoreConfig::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
     }

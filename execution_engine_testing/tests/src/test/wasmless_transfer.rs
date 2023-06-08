@@ -5,33 +5,24 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            engine_config::{
-                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+use casper_execution_engine::core::{
+    engine_state::{
+        engine_config::{
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         },
-        execution::Error as ExecError,
+        EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
     },
-    shared::{
-        system_config::{
-            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
-            DEFAULT_WASMLESS_TRANSFER_COST,
-        },
-        wasm_config::WasmConfig,
-    },
+    execution::Error as ExecError,
 };
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, ApiError, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, URef, U512,
+    AccessRights, ApiError, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StandardPaymentCosts, SystemConfig, URef,
+    WasmConfig, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

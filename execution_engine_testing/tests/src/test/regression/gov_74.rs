@@ -15,12 +15,9 @@ use casper_execution_engine::{
         },
         execution::Error as ExecError,
     },
-    shared::{
-        wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
-        wasm_prep::DEFAULT_MAX_PARAMETER_COUNT,
-    },
+    shared::wasm_prep::DEFAULT_MAX_PARAMETER_COUNT,
 };
-use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
+use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig, DEFAULT_WASM_MAX_MEMORY};
 
 use crate::wasm_utils;
 

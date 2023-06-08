@@ -7,7 +7,10 @@ use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_types::{runtime_args, EraId, PublicKey, RuntimeArgs, SecretKey, TimeDiff, U512};
+use casper_types::{
+    runtime_args, Chainspec, ChainspecRawBytes, EraId, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
+    U512,
+};
 
 use super::*;
 use crate::{
@@ -20,7 +23,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{BlockPayload, Chainspec, ChainspecRawBytes, Deploy, DeployHashWithApprovals},
+    types::{BlockPayload, Deploy, DeployHashWithApprovals},
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };

@@ -6,7 +6,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{ActivationPoint, EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -21,9 +21,7 @@ use crate::{
         requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{
-        ActivationPoint, BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier,
-    },
+    types::{BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 
