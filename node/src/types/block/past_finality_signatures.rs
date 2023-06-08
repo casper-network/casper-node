@@ -74,14 +74,23 @@ impl PastFinalitySignatures {
 
     /// Packs the bits to bytes, to create a `PastFinalitySignature`
     /// from an iterator of bits.
+    ///
+    /// If a value is neither 1 nor 0, it is interpreted as a 1.
     pub(crate) fn pack(bits: impl Iterator<Item = u8>) -> Self {
+        fn set_bit_at(value: u8, position: usize) -> u8 {
+            // Sanitize the value (must be 0 or 1):
+            let value = u8::from(value != 0);
+
+            value << (7 - position)
+        }
+
         let inner = bits
             .chunks(8)
             .into_iter()
             .map(|bits_chunk| {
                 bits_chunk
                     .enumerate()
-                    .fold(0, |acc, (index, value)| acc | (value << (7 - index)))
+                    .fold(0, |acc, (pos, value)| acc | set_bit_at(value, pos))
             })
             .collect();
 
@@ -96,18 +105,9 @@ impl PastFinalitySignatures {
             (byte & (0b1000_0000 >> position)) >> (7 - position)
         }
 
-        self.0.iter().flat_map(|&byte| {
-            [
-                bit_at(byte, 0),
-                bit_at(byte, 1),
-                bit_at(byte, 2),
-                bit_at(byte, 3),
-                bit_at(byte, 4),
-                bit_at(byte, 5),
-                bit_at(byte, 6),
-                bit_at(byte, 7),
-            ]
-        })
+        self.0
+            .iter()
+            .flat_map(|&byte| (0..8).into_iter().map(move |i| bit_at(byte, i)))
     }
 }
 
