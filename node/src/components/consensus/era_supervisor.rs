@@ -31,7 +31,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{AsymmetricType, EraId, PublicKey, SecretKey, TimeDiff, Timestamp};
+use casper_types::{AsymmetricType, EraId, PublicKey, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -57,6 +57,7 @@ use crate::{
     types::{
         chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
         DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId,
+        PastFinalitySignatures, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -95,8 +96,7 @@ pub struct EraSupervisor {
     /// Since eras at or before the most recent activation point are never instantiated, shortly
     /// after that there can temporarily be fewer than three entries in the map.
     open_eras: BTreeMap<EraId, Era>,
-    secret_signing_key: Arc<SecretKey>,
-    public_signing_key: PublicKey,
+    validator_matrix: ValidatorMatrix,
     chainspec: Arc<Chainspec>,
     config: Config,
     /// The height of the next block to be finalized.
@@ -127,21 +127,19 @@ impl EraSupervisor {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         storage_dir: &Path,
-        secret_signing_key: Arc<SecretKey>,
-        public_signing_key: PublicKey,
+        validator_matrix: ValidatorMatrix,
         config: Config,
         chainspec: Arc<Chainspec>,
         registry: &Registry,
     ) -> Result<Self, Error> {
         let unit_files_folder = storage_dir.join("unit_files");
         std::fs::create_dir_all(&unit_files_folder)?;
-        info!(our_id = %public_signing_key, "EraSupervisor pubkey",);
+        info!(our_id = %validator_matrix.public_signing_key(), "EraSupervisor pubkey",);
         let metrics = Metrics::new(registry)?;
 
         let era_supervisor = Self {
             open_eras: Default::default(),
-            secret_signing_key,
-            public_signing_key,
+            validator_matrix,
             chainspec,
             config,
             next_block_height: 0,
@@ -159,7 +157,7 @@ impl EraSupervisor {
         if let Some(era_id) = self.current_era() {
             return self.open_eras[&era_id]
                 .validators()
-                .contains_key(&self.public_signing_key);
+                .contains_key(self.validator_matrix.public_signing_key());
         }
         false
     }
@@ -477,7 +475,7 @@ impl EraSupervisor {
 
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
-        let our_id = self.public_signing_key.clone();
+        let our_id = self.validator_matrix.public_signing_key().clone();
         if self
             .current_era()
             .map_or(false, |current_era| current_era > era_id)
@@ -502,7 +500,10 @@ impl EraSupervisor {
                 info!(era = era_id.value(), %our_id, "not voting; not a validator");
             } else {
                 info!(era = era_id.value(), %our_id, "start voting");
-                let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
+                let secret = Keypair::new(
+                    self.validator_matrix.secret_signing_key().clone(),
+                    our_id.clone(),
+                );
                 let unit_hash_file = self.unit_file(&instance_id);
                 outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
                     our_id,
@@ -565,7 +566,7 @@ impl EraSupervisor {
         self.unit_files_folder.join(format!(
             "unit_{:?}_{}.dat",
             instance_id,
-            self.public_signing_key.to_hex()
+            self.validator_matrix.public_signing_key().to_hex()
         ))
     }
 
@@ -960,6 +961,22 @@ impl EraSupervisor {
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock(block_context) => {
+                let initial_era_height = self.era(era_id).start_height;
+                let current_block_height =
+                    initial_era_height + block_context.ancestor_values().len() as u64;
+
+                let future_appendable_block =
+                    effect_builder.request_appendable_block(block_context.timestamp());
+                let rewards_lag = self.chainspec.core_config.rewards_lag;
+                let future_block_with_metadata = async move {
+                    if let Some(block_height) = current_block_height.checked_sub(rewards_lag) {
+                        effect_builder
+                            .get_block_at_height_with_metadata_from_storage(block_height, false)
+                            .await
+                    } else {
+                        None
+                    }
+                };
                 let accusations = self
                     .iter_past(era_id, PAST_EVIDENCE_ERAS)
                     .flat_map(|e_id| self.era(e_id).consensus.validators_with_evidence())
@@ -968,16 +985,37 @@ impl EraSupervisor {
                     .cloned()
                     .collect();
                 let random_bit = rng.gen();
-                effect_builder
-                    .request_appendable_block(block_context.timestamp())
-                    .map(move |appendable_block| {
-                        Arc::new(appendable_block.into_block_payload(
+
+                let validator_matrix = self.validator_matrix.clone();
+
+                async move { tokio::join!(future_appendable_block, future_block_with_metadata) }
+                    .event(move |(appendable_block, maybe_past_block_with_metadata)| {
+                        let past_finality_signatures = maybe_past_block_with_metadata
+                            .and_then(|past_block_with_metadata| {
+                                validator_matrix
+                                    .validator_weights(
+                                        past_block_with_metadata.block.header().era_id(),
+                                    )
+                                    .map(|weights| {
+                                        PastFinalitySignatures::from_validator_set(
+                                            &past_block_with_metadata
+                                                .block_signatures
+                                                .proofs
+                                                .keys()
+                                                .cloned()
+                                                .collect(),
+                                            weights.validator_public_keys(),
+                                        )
+                                    })
+                            })
+                            .unwrap_or_default();
+
+                        let block_payload = Arc::new(appendable_block.into_block_payload(
                             accusations,
-                            Default::default(/* TODO: fill with the correct value in the next ticket */),
+                            past_finality_signatures,
                             random_bit,
-                        ))
-                    })
-                    .event(move |block_payload| {
+                        ));
+
                         Event::NewBlockPayload(NewBlockPayload {
                             era_id,
                             block_payload,
@@ -1155,7 +1193,7 @@ impl EraSupervisor {
         &self,
         responder: Responder<Option<(PublicKey, Option<TimeDiff>)>>,
     ) -> Effects<Event> {
-        let public_key = self.public_signing_key.clone();
+        let public_key = self.validator_matrix.public_signing_key().clone();
         let round_length = self
             .open_eras
             .values()
@@ -1171,7 +1209,7 @@ impl EraSupervisor {
 
     /// This node's public signing key.
     pub(crate) fn public_key(&self) -> &PublicKey {
-        &self.public_signing_key
+        self.validator_matrix.public_signing_key()
     }
 }
 
