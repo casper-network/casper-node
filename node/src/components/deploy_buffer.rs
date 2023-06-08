@@ -356,6 +356,13 @@ impl DeployBuffer {
                             );
                             self.dead.insert(deploy_hash);
                         }
+                        AddError::Expired => {
+                            info!(
+                                ?deploy_hash,
+                                "DeployBuffer: expired deploy in deploy buffer"
+                            );
+                            self.dead.insert(deploy_hash);
+                        }
                         AddError::InvalidDeploy => {
                             // it should not be possible for an invalid deploy to get buffered
                             // in the first place, thus this should be unreachable

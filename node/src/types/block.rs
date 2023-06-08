@@ -1945,9 +1945,13 @@ impl FetchItem for BlockExecutionResultsOrChunk {
 
 impl Display for BlockExecutionResultsOrChunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let size = match &self.value {
+            ValueOrChunk::Value(exec_results) => exec_results.serialized_length(),
+            ValueOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
+        };
         write!(
             f,
-            "block execution results (or chunk) for block {}",
+            "block execution results or chunk ({size} bytes) for block {}",
             self.block_hash.inner()
         )
     }

@@ -21,9 +21,6 @@ use crate::{
     NodeRng,
 };
 
-/// Cranking delay when encountered a non-switch block when checking the validator status.
-const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
-
 impl MainReactor {
     pub(super) fn crank(
         &mut self,
@@ -184,9 +181,6 @@ impl MainReactor {
                     self.switch_to_shutdown_for_upgrade();
                     (Duration::ZERO, Effects::new())
                 }
-                ValidateInstruction::NonSwitchBlock => {
-                    (VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK, Effects::new())
-                }
                 ValidateInstruction::CheckLater(msg, wait) => {
                     debug!("Validate: {}", msg);
                     (wait, Effects::new())
@@ -194,6 +188,11 @@ impl MainReactor {
                 ValidateInstruction::Do(wait, effects) => {
                     trace!("Validate: node is processing effects");
                     (wait, effects)
+                }
+                ValidateInstruction::CatchUp => {
+                    info!("Validate: switch to CatchUp");
+                    self.state = ReactorState::CatchUp;
+                    (Duration::ZERO, Effects::new())
                 }
                 ValidateInstruction::KeepUp => {
                     info!("Validate: switch to KeepUp");

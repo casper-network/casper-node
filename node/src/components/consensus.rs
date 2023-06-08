@@ -196,7 +196,12 @@ impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ConsensusMessage::Protocol { era_id, payload } => {
-                write!(f, "protocol message {:?} in {}", payload, era_id)
+                write!(
+                    f,
+                    "protocol message ({} bytes) in {}",
+                    payload.as_raw().len(),
+                    era_id
+                )
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => write!(
                 f,
