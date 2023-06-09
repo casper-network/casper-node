@@ -6,11 +6,9 @@ use casper_types::{EraId, PublicKey, Timestamp};
 
 use crate::{
     components::{
-        block_synchronizer,
-        block_synchronizer::BlockSynchronizerProgress,
-        consensus::{ChainspecConsensusExt, EraReport},
-        contract_runtime::ExecutionPreState,
-        diagnostics_port, event_stream_server, network, rest_server, rpc_server, upgrade_watcher,
+        block_synchronizer, block_synchronizer::BlockSynchronizerProgress, consensus::EraReport,
+        contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
+        rest_server, rpc_server, upgrade_watcher,
     },
     effect::{EffectBuilder, EffectExt, Effects},
     fatal,
@@ -167,18 +165,12 @@ impl MainReactor {
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
                 }
-                KeepUpInstruction::Validate(mut effects) => {
-                    match self.activate_consensus_voting(effect_builder, rng) {
-                        Ok(activation_effects) => {
-                            // purge to avoid polluting the status endpoints w/ stale state
-                            self.block_synchronizer.purge();
-                            info!("KeepUp: switch to Validate");
-                            self.state = ReactorState::Validate;
-                            effects.extend(activation_effects);
-                            (Duration::ZERO, effects)
-                        }
-                        Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
-                    }
+                KeepUpInstruction::Validate(effects) => {
+                    // purge to avoid polluting the status endpoints w/ stale state
+                    self.block_synchronizer.purge();
+                    info!("KeepUp: switch to Validate");
+                    self.state = ReactorState::Validate;
+                    (Duration::ZERO, effects)
                 }
             },
             ReactorState::Validate => match self.validate_instruction(effect_builder, rng) {
@@ -576,54 +568,14 @@ impl MainReactor {
         }
     }
 
-    fn activate_consensus_voting(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> Result<Effects<MainEvent>, String> {
-        if let Some(header) = self.get_local_tip_header()? {
-            let recent_switch_block_headers = self
-                .storage
-                .read_highest_switch_block_headers(
-                    self.chainspec.number_of_past_switch_blocks_needed(),
-                )
-                .map_err(|err| err.to_string())?;
-
-            let in_which_era = header.next_block_era_id();
-            let result = self.consensus.activate_era(
-                in_which_era,
-                &recent_switch_block_headers,
-                effect_builder,
-                rng,
-            );
-            if result.is_ok() {
-                info!(
-                    era_id = %in_which_era,
-                    "{:?}: consensus activated",
-                    self.state
-                );
-            }
-            result.map(|effects| crate::reactor::wrap_effects(MainEvent::Consensus, effects))
-        } else {
-            Ok(Effects::new())
-        }
-    }
-
     fn deactivate_consensus_voting(&mut self) -> Result<(), String> {
-        if let Some(header) = self.get_local_tip_header()? {
-            let in_which_era = header.next_block_era_id();
-            let result = self.consensus.deactivate_era(in_which_era);
-            if result.is_ok() {
-                info!(
-                    era_id = %in_which_era,
-                    "{:?}: consensus deactivated",
-                    self.state
-                );
-            }
-            result
-        } else {
-            Ok(())
-        }
+        let deactivated_era_id = self.consensus.deactivate_current_era()?;
+        info!(
+            era_id = %deactivated_era_id,
+            "{:?}: consensus deactivated",
+            self.state
+        );
+        Ok(())
     }
 
     fn switch_to_shutdown_for_upgrade(&mut self) {

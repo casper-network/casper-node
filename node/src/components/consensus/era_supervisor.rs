@@ -338,9 +338,18 @@ impl EraSupervisor {
             .ok_or(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks)?;
         let era_id = key_block.era_id().successor();
 
+        let chainspec_hash = self.chainspec.hash();
+        let key_block_hash = key_block.block_hash();
+        let instance_id = instance_id(chainspec_hash, era_id, key_block_hash);
+        let now = Timestamp::now();
+
         if self.open_eras.contains_key(&era_id) {
-            debug!(era = era_id.value(), "era already exists");
-            return Ok((era_id, vec![]));
+            debug!(
+                era = era_id.value(),
+                "era already exists - attempt to reactivate"
+            );
+            let outcomes = self.activate_era(era_id, now, instance_id);
+            return Ok((era_id, outcomes));
         }
 
         let era_end = key_block.era_end().ok_or_else(|| {
@@ -409,11 +418,6 @@ impl EraSupervisor {
             .flat_map(|era_end| era_end.era_report().equivocators.clone())
             .collect();
 
-        let chainspec_hash = self.chainspec.hash();
-        let key_block_hash = key_block.block_hash();
-        let instance_id = instance_id(chainspec_hash, era_id, key_block_hash);
-        let now = Timestamp::now();
-
         info!(
             ?validators,
             %start_time,
@@ -475,43 +479,7 @@ impl EraSupervisor {
         );
         let _ = self.open_eras.insert(era_id, era);
 
-        // Activate the era if this node was already running when the era began, it is still
-        // ongoing based on its minimum duration, and we are one of the validators.
-        let our_id = self.public_signing_key.clone();
-        if self
-            .current_era()
-            .map_or(false, |current_era| current_era > era_id)
-        {
-            trace!(
-                era = era_id.value(),
-                current_era = ?self.current_era(),
-                "not voting; initializing past era"
-            );
-            // We're creating an era that's not the current era - which means we're currently
-            // initializing consensus and we want to set all the older eras to be evidence only.
-            if let Some(era) = self.open_eras.get_mut(&era_id) {
-                era.consensus.set_evidence_only();
-            }
-        } else {
-            self.metrics
-                .consensus_current_era
-                .set(era_id.value() as i64);
-            self.next_block_height = self.next_block_height.max(start_height);
-            outcomes.extend(self.era_mut(era_id).consensus.handle_is_current(now));
-            if !self.era(era_id).validators().contains_key(&our_id) {
-                info!(era = era_id.value(), %our_id, "not voting; not a validator");
-            } else {
-                info!(era = era_id.value(), %our_id, "start voting");
-                let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
-                let unit_hash_file = self.unit_file(&instance_id);
-                outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
-                    our_id,
-                    secret,
-                    now,
-                    Some(unit_hash_file),
-                ))
-            };
-        }
+        outcomes.extend(self.activate_era(era_id, now, instance_id));
 
         // Mark validators as faulty for which we have evidence in the previous era.
         for pub_key in validators_with_evidence {
@@ -811,64 +779,67 @@ impl EraSupervisor {
 
     /// Will activate voting for an existing open era.
     /// Does nothing if which_era is a closed / non-supervised era.
-    pub(crate) fn activate_era<REv: ReactorEventT>(
+    pub(crate) fn activate_era(
         &mut self,
-        which_era: EraId,
-        switch_blocks: &[BlockHeader],
-        effect_builder: EffectBuilder<REv>,
-        rng: &mut NodeRng,
-    ) -> Result<Effects<Event>, String> {
-        if false == self.open_eras.contains_key(&which_era) {
-            return Err(format!("attempt to activate non-open era {}", which_era));
-        }
-        let key_block_hash = match switch_blocks.last() {
-            None => {
-                return Err(format!("key block not provided for era {}", which_era));
-            }
-            Some(key_block) if key_block.next_block_era_id() != which_era => {
-                return Err(format!(
-                    "key block is for era {} instead of {}",
-                    key_block.next_block_era_id(),
-                    which_era
-                ));
-            }
-            Some(key_block) => key_block.block_hash(),
-        };
-        let chainspec_hash = self.chainspec.hash();
-        let instance_id = instance_id(chainspec_hash, which_era, key_block_hash);
-
-        let unit_hash_file = self.unit_file(&instance_id);
-
+        era_id: EraId,
+        now: Timestamp,
+        instance_id: Digest,
+    ) -> Vec<ProtocolOutcome<ClContext>> {
+        // Activate the era if this node was already running when the era began, it is still
+        // ongoing based on its minimum duration, and we are one of the validators.
         let our_id = self.public_signing_key.clone();
-        let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
-        let now = Timestamp::now();
+        if self
+            .current_era()
+            .map_or(false, |current_era| current_era > era_id)
+        {
+            trace!(
+                era = era_id.value(),
+                current_era = ?self.current_era(),
+                "not voting; initializing past era"
+            );
+            // We're creating an era that's not the current era - which means we're currently
+            // initializing consensus and we want to set all the older eras to be evidence only.
+            if let Some(era) = self.open_eras.get_mut(&era_id) {
+                era.consensus.set_evidence_only();
+            }
 
-        let era = self.era_mut(which_era);
-        if era.consensus.is_active() {
-            // This can legitimately happen if we call `activate_era` right after
-            // `create_required_eras` in `keep_up_instruction` - so let's just log it and return
-            debug!(era_id = %which_era, "attempt to activate an active era");
-            return Ok(Effects::new());
+            vec![]
+        } else {
+            let start_height = self.era(era_id).start_height;
+            self.metrics
+                .consensus_current_era
+                .set(era_id.value() as i64);
+            self.next_block_height = self.next_block_height.max(start_height);
+            let mut outcomes = self.era_mut(era_id).consensus.handle_is_current(now);
+            if !self.era(era_id).validators().contains_key(&our_id) {
+                info!(era = era_id.value(), %our_id, "not voting; not a validator");
+            } else {
+                info!(era = era_id.value(), %our_id, "start voting");
+                let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
+                let unit_hash_file = self.unit_file(&instance_id);
+                outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
+                    our_id,
+                    secret,
+                    now,
+                    Some(unit_hash_file),
+                ))
+            };
+            outcomes
         }
-
-        let outcomes = era
-            .consensus
-            .activate_validator(our_id, secret, now, Some(unit_hash_file));
-        Ok(self.handle_consensus_outcomes(effect_builder, rng, which_era, outcomes))
     }
 
-    /// Will deactivate voting for an existing open era.
-    /// Does nothing if which_era is a closed / non-supervised era.
-    pub(crate) fn deactivate_era(&mut self, which_era: EraId) -> Result<(), String> {
-        if false == self.open_eras.contains_key(&which_era) {
-            return Err(format!("attempt to deactivate non-open era {}", which_era));
-        }
+    /// Will deactivate voting for the current era.
+    /// Does nothing if the current era doesn't exist or is inactive already.
+    pub(crate) fn deactivate_current_era(&mut self) -> Result<EraId, String> {
+        let which_era = self
+            .current_era()
+            .ok_or_else(|| "attempt to deactivate an era with no eras instantiated!".to_string())?;
         let era = self.era_mut(which_era);
         if false == era.consensus.is_active() {
             return Err(format!("attempt to deactivate inactive era {}", which_era));
         }
         era.consensus.deactivate_validator();
-        Ok(())
+        Ok(which_era)
     }
 
     pub(super) fn resolve_validity<REv: ReactorEventT>(
