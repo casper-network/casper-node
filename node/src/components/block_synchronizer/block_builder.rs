@@ -14,7 +14,7 @@ use casper_hashing::Digest;
 use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use super::{
-    block_acquisition::{Acceptance, BlockAcquisitionState},
+    block_acquisition::{Acceptance, BlockAcquisitionState, RegisterExecResultsOutcome},
     block_acquisition_action::BlockAcquisitionAction,
     execution_results_acquisition::{self, ExecutionResultsChecksum},
     peer_list::{PeerList, PeersStatus},
@@ -571,13 +571,13 @@ impl BlockBuilder {
             block_execution_results_or_chunk,
             self.should_fetch_execution_state,
         ) {
-            Ok(maybe) => {
+            Ok(RegisterExecResultsOutcome {
+                exec_results,
+                acceptance,
+            }) => {
                 debug!("register_fetched_execution_results: Ok(maybe)");
-                self.touch();
-                if let Some(peer) = maybe_peer {
-                    self.promote_peer(peer);
-                }
-                Ok(maybe)
+                self.handle_acceptance(maybe_peer, Ok(acceptance))?;
+                Ok(exec_results)
             }
             Err(BlockAcquisitionError::ExecutionResults(error)) => {
                 match error {
@@ -589,8 +589,14 @@ impl BlockBuilder {
                     // programmer error
                     execution_results_acquisition::Error::BlockHashMismatch { .. }
                     | execution_results_acquisition::Error::InvalidAttemptToApplyChecksum { .. }
-                    | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. } => {
-                        debug!("register_fetched_execution_results: BlockHashMismatch | InvalidAttemptToApplyChecksum | AttemptToApplyDataWhenMissingChecksum");
+                    | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. }
+                    | execution_results_acquisition::Error::InvalidOutcomeFromApplyingChunk { .. }
+                    => {
+                        debug!(
+                            "register_fetched_execution_results: BlockHashMismatch | \
+                            InvalidAttemptToApplyChecksum | AttemptToApplyDataWhenMissingChecksum \
+                            | InvalidOutcomeFromApplyingChunk"
+                        );
                     },
                     // malicious peer if checksum is available.
                     execution_results_acquisition::Error::ChunkCountMismatch { .. } => {
@@ -623,7 +629,6 @@ impl BlockBuilder {
                     // checksum unavailable, so unknown if this peer is malicious
                     execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {
                         debug!("register_fetched_execution_results: ChunksWithDifferentChecksum");
-
                     }
                 }
                 Err(Error::BlockAcquisition(

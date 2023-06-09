@@ -249,6 +249,11 @@ pub(super) enum Acceptance {
     NeededIt,
 }
 
+pub(super) struct RegisterExecResultsOutcome {
+    pub(super) exec_results: Option<HashMap<DeployHash, casper_types::ExecutionResult>>,
+    pub(super) acceptance: Option<Acceptance>,
+}
+
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// sequenceDiagram
@@ -979,12 +984,11 @@ impl BlockAcquisitionState {
         &mut self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
         need_execution_state: bool,
-    ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, BlockAcquisitionError>
-    {
+    ) -> Result<RegisterExecResultsOutcome, BlockAcquisitionError> {
         debug!(state=%self, need_execution_state,
             block_execution_results_or_chunk=%block_execution_results_or_chunk,
             "register_execution_results_or_chunk");
-        let (new_state, ret) = match self {
+        let (new_state, maybe_exec_results, acceptance) = match self {
             BlockAcquisitionState::HaveGlobalState(
                 block,
                 signatures,
@@ -1002,35 +1006,36 @@ impl BlockAcquisitionState {
                         block_execution_results_or_chunk,
                         deploy_hashes,
                     ) {
-                    Ok(new_effects) => match new_effects {
+                    Ok((new_acquistion, acceptance)) => match new_acquistion {
                         ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. } => {
                             debug!("apply_block_execution_results_or_chunk: Needed | Pending");
-                            return Ok(None);
+                            return Ok(RegisterExecResultsOutcome {
+                                exec_results: None,
+                                acceptance: Some(acceptance),
+                            });
                         }
                         ExecutionResultsAcquisition::Complete { ref results, .. } => {
                             debug!("apply_block_execution_results_or_chunk: Complete");
-                            (
-                                BlockAcquisitionState::HaveGlobalState(
-                                    block.clone(),
-                                    signatures.clone(),
-                                    deploys.clone(),
-                                    new_effects.clone(),
-                                ),
-                                Some(results.clone()),
-                            )
+                            let new_state = BlockAcquisitionState::HaveGlobalState(
+                                block.clone(),
+                                signatures.clone(),
+                                deploys.clone(),
+                                new_acquistion.clone(),
+                            );
+                            let maybe_exec_results = Some(results.clone());
+                            (new_state, maybe_exec_results, acceptance)
                         }
                         ExecutionResultsAcquisition::Acquiring { .. } => {
                             debug!("apply_block_execution_results_or_chunk: Acquiring");
-                            (
-                                BlockAcquisitionState::HaveGlobalState(
-                                    block.clone(),
-                                    signatures.clone(),
-                                    deploys.clone(),
-                                    new_effects,
-                                ),
-                                None,
-                            )
+                            let new_state = BlockAcquisitionState::HaveGlobalState(
+                                block.clone(),
+                                signatures.clone(),
+                                deploys.clone(),
+                                new_acquistion,
+                            );
+                            let maybe_exec_results = None;
+                            (new_state, maybe_exec_results, acceptance)
                         }
                     },
                     Err(error) => {
@@ -1051,11 +1056,17 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveFinalizedBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
-                return Ok(None);
+                return Ok(RegisterExecResultsOutcome {
+                    exec_results: None,
+                    acceptance: None,
+                });
             }
         };
         self.set_state(new_state);
-        Ok(ret)
+        Ok(RegisterExecResultsOutcome {
+            exec_results: maybe_exec_results,
+            acceptance: Some(acceptance),
+        })
     }
 
     /// Register execution results stored notification for this block.
