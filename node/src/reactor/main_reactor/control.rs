@@ -1,5 +1,5 @@
 use std::time::Duration;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, trace};
 
 use casper_hashing::Digest;
 use casper_types::{EraId, PublicKey, Timestamp};
@@ -198,26 +198,22 @@ impl MainReactor {
                     trace!("Validate: node is processing effects");
                     (wait, effects)
                 }
-                ValidateInstruction::CatchUp => {
-                    match self.deactivate_consensus_voting(effect_builder, rng) {
-                        Ok(effects) => {
-                            info!("Validate: switch to CatchUp");
-                            self.state = ReactorState::CatchUp;
-                            (Duration::ZERO, effects)
-                        }
-                        Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
+                ValidateInstruction::CatchUp => match self.deactivate_consensus_voting() {
+                    Ok(_) => {
+                        info!("Validate: switch to CatchUp");
+                        self.state = ReactorState::CatchUp;
+                        (Duration::ZERO, Effects::new())
                     }
-                }
-                ValidateInstruction::KeepUp => {
-                    match self.deactivate_consensus_voting(effect_builder, rng) {
-                        Ok(effects) => {
-                            info!("Validate: switch to KeepUp");
-                            self.state = ReactorState::KeepUp;
-                            (Duration::ZERO, effects)
-                        }
-                        Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
+                    Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
+                },
+                ValidateInstruction::KeepUp => match self.deactivate_consensus_voting() {
+                    Ok(_) => {
+                        info!("Validate: switch to KeepUp");
+                        self.state = ReactorState::KeepUp;
+                        (Duration::ZERO, Effects::new())
                     }
-                }
+                    Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
+                },
             },
             ReactorState::ShutdownForUpgrade => {
                 match self.upgrade_shutdown_instruction(effect_builder) {
@@ -585,7 +581,7 @@ impl MainReactor {
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
     ) -> Result<Effects<MainEvent>, String> {
-        let effects = if let Some(header) = self.get_local_tip_header()? {
+        if let Some(header) = self.get_local_tip_header()? {
             let recent_switch_block_headers = self
                 .storage
                 .read_highest_switch_block_headers(
@@ -593,75 +589,41 @@ impl MainReactor {
                 )
                 .map_err(|err| err.to_string())?;
 
-            let in_which_era = header.era_id();
-            let result = self.consensus.toggle_activation(
+            let in_which_era = header.next_block_era_id();
+            let result = self.consensus.activate_era(
                 in_which_era,
-                true,
                 &recent_switch_block_headers,
                 effect_builder,
                 rng,
             );
-            if result.was_active() {
-                warn!(
-                    era_id = %result.era_id(),
-                    "{:?}: attempt to activate consensus for an already activated era", self.state
-                );
-            }
-            if result.is_active() {
+            if result.is_ok() {
                 info!(
-                    era_id = %result.era_id(),
-                    message = result.message(),
+                    era_id = %in_which_era,
                     "{:?}: consensus activated",
                     self.state
                 );
-            } else {
-                return Err(format!(
-                    "failed to activate consensus for era {}",
-                    in_which_era
-                ));
             }
-            result.take_effects()
+            result.map(|effects| crate::reactor::wrap_effects(MainEvent::Consensus, effects))
         } else {
-            Effects::new()
-        };
-        Ok(crate::reactor::wrap_effects(MainEvent::Consensus, effects))
+            Ok(Effects::new())
+        }
     }
 
-    fn deactivate_consensus_voting(
-        &mut self,
-        effect_builder: EffectBuilder<MainEvent>,
-        rng: &mut NodeRng,
-    ) -> Result<Effects<MainEvent>, String> {
-        let effects = if let Some(header) = self.get_local_tip_header()? {
-            let in_which_era = header.era_id();
-            let result =
-                self.consensus
-                    .toggle_activation(in_which_era, false, &[], effect_builder, rng);
-            if false == result.was_active() {
-                warn!(
-                    era_id = %result.era_id(),
-                    "{:?}: attempt to deactivate consensus for an already deactivated era",
-                    self.state
-                );
-            }
-            if false == result.is_active() {
+    fn deactivate_consensus_voting(&mut self) -> Result<(), String> {
+        if let Some(header) = self.get_local_tip_header()? {
+            let in_which_era = header.next_block_era_id();
+            let result = self.consensus.deactivate_era(in_which_era);
+            if result.is_ok() {
                 info!(
-                    era_id = %result.era_id(),
-                    message = result.message(),
+                    era_id = %in_which_era,
                     "{:?}: consensus deactivated",
                     self.state
                 );
-            } else {
-                return Err(format!(
-                    "failed to deactivate consensus for era {}",
-                    in_which_era
-                ));
             }
-            result.take_effects()
+            result
         } else {
-            Effects::new()
-        };
-        Ok(crate::reactor::wrap_effects(MainEvent::Consensus, effects))
+            Ok(())
+        }
     }
 
     fn switch_to_shutdown_for_upgrade(&mut self) {
