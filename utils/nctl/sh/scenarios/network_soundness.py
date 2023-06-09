@@ -33,7 +33,7 @@ DISTURBANCE_INTERVAL_SECS = 5
 PROGRESS_WAIT_TIMEOUT_SECS = 5 * 60
 
 # Alert thresholds
-HUGE_MEMORY_CONSUMPTION_ALERT_THRESHOLD_BYTES = (2**30) * 2.5  # ~2.5Gb
+HUGE_MEMORY_CONSUMPTION_ALERT_THRESHOLD_BYTES = (2**30) * 8.5  # ~8.5Gb
 COMMAND_EXECUTION_TIME_SECS = 3
 
 invoke_lock = threading.Lock()
@@ -209,6 +209,15 @@ def huge_deploy_sender_thread(count, interval):
     return
 
 
+def get_node_metrics_endpoint(node):
+    command = "nctl-view-node-ports node={}".format(node)
+    result = invoke(command, True)
+    m = re.match(r'.*REST @ (\d*).*', result)
+    if m and m.group(1):
+        return "http://localhost:{}/metrics/".format(int(m.group(1)))
+    return
+
+
 def get_node_rpc_endpoint(node):
     command = "nctl-view-node-ports node={}".format(node)
     result = invoke(command, True)
@@ -357,6 +366,15 @@ def make_huge_deploy(node):
     return output
 
 
+def show_node_metrics(node_id):
+    endpoint = get_node_metrics_endpoint(node_id)
+    command = "curl {} | grep -v '#'".format(endpoint)
+    response = invoke(command)
+    if response:
+        log(response)
+    return
+
+
 def show_memory_usage():
     try:
         for p in psutil.process_iter():
@@ -367,11 +385,12 @@ def show_memory_usage():
                     node_id = match[1]
                     mem = p.memory_info().rss
                     if mem > HUGE_MEMORY_CONSUMPTION_ALERT_THRESHOLD_BYTES:
-                        is_high = " - HIGH!"
+                        log("node-{}, pid={}, mem={} bytes ({:.2f} Gb) - HIGH! - dumping metrics"
+                            .format(node_id, p.pid, mem, mem / (2**30)))
+                        show_node_metrics(node_id)
                     else:
-                        is_high = ""
-                    log("node-{}, pid={}, mem={} bytes ({:.2f} Gb){}".format(
-                        node_id, p.pid, mem, mem / (2**30), is_high))
+                        log("node-{}, pid={}, mem={} bytes ({:.2f} Gb)".format(
+                            node_id, p.pid, mem, mem / (2**30)))
                 else:
                     log("can't determine casper node id")
     except psutil.NoSuchProcess:
