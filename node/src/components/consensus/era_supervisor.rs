@@ -81,6 +81,41 @@ pub(super) const PAST_EVIDENCE_ERAS: u64 = 1;
 /// The older half is in evidence-only state, and only used to validate cited evidence.
 pub(super) const PAST_OPEN_ERAS: u64 = 2 * PAST_EVIDENCE_ERAS;
 
+/// Captures outcome of attempting to toggle an era active or inactive.
+pub(crate) struct EraActivationResult {
+    era_id: EraId,
+    is_active: bool,
+    was_active: bool,
+    message: String,
+}
+
+impl EraActivationResult {
+    pub(crate) fn new(era_id: EraId, is_active: bool, was_active: bool, message: String) -> Self {
+        EraActivationResult {
+            era_id,
+            is_active,
+            was_active,
+            message,
+        }
+    }
+
+    pub(crate) fn era_id(&self) -> &EraId {
+        &self.era_id
+    }
+
+    pub(crate) fn is_active(&self) -> bool {
+        self.is_active
+    }
+
+    pub(crate) fn was_active(&self) -> bool {
+        self.was_active
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+}
+
 #[derive(DataSize)]
 pub struct EraSupervisor {
     /// A map of consensus protocol instances.
@@ -807,6 +842,75 @@ impl EraSupervisor {
             };
             effect_builder.set_timeout(delay).event(deactivate_era)
         }
+    }
+
+    /// Will toggle voting on if activate true or off if false for an existing open era.
+    /// Does nothing if in_which_era is a closed / non-supervised era.
+    pub(crate) fn toggle_activation<REv: ReactorEventT>(
+        &mut self,
+        in_which_era: EraId,
+        activate: bool,
+        switch_blocks: &[BlockHeader],
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+    ) -> EraActivationResult {
+        if false == self.open_eras.contains_key(&in_which_era) {
+            return EraActivationResult::new(
+                in_which_era,
+                false,
+                false,
+                "attempt to toggle activation status on or off in non-open era".to_string(),
+            );
+        }
+
+        let (is_active, was_active, message) = if activate {
+            let key_block_hash = match switch_blocks.last() {
+                None => {
+                    let era = self.era_mut(in_which_era);
+                    let is_active = era.consensus.is_active();
+                    return EraActivationResult::new(
+                        in_which_era,
+                        is_active,
+                        is_active,
+                        "key block not provided".to_string(),
+                    );
+                }
+                Some(key_block) => key_block.block_hash(),
+            };
+            let chainspec_hash = self.chainspec.hash();
+            let instance_id = instance_id(chainspec_hash, in_which_era, key_block_hash);
+
+            let unit_hash_file = self.unit_file(&instance_id);
+
+            let our_id = self.public_signing_key.clone();
+            // TODO: do we need to check that this node is definitely a validator in_which_era ?
+            let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
+            let now = Timestamp::now();
+
+            let era = self.era_mut(in_which_era);
+            let was_active = era.consensus.is_active();
+            // TODO: will this actually work?
+            let outcomes =
+                era.consensus
+                    .activate_validator(our_id, secret, now, Some(unit_hash_file));
+            let is_active = era.consensus.is_active();
+            self.handle_consensus_outcomes(effect_builder, rng, in_which_era, outcomes);
+            (
+                is_active,
+                was_active,
+                "toggled voting on in era".to_string(),
+            )
+        } else {
+            let era = self.era_mut(in_which_era);
+            let was_active = era.consensus.is_active();
+            era.consensus.deactivate_validator();
+            (
+                era.consensus.is_active(),
+                was_active,
+                "toggled voting off in era".to_string(),
+            )
+        };
+        EraActivationResult::new(in_which_era, is_active, was_active, message)
     }
 
     pub(super) fn resolve_validity<REv: ReactorEventT>(
