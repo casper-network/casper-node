@@ -87,15 +87,23 @@ pub(crate) struct EraActivationResult {
     is_active: bool,
     was_active: bool,
     message: String,
+    effects: Effects<Event>,
 }
 
 impl EraActivationResult {
-    pub(crate) fn new(era_id: EraId, is_active: bool, was_active: bool, message: String) -> Self {
+    pub(crate) fn new(
+        era_id: EraId,
+        is_active: bool,
+        was_active: bool,
+        message: String,
+        effects: Effects<Event>,
+    ) -> Self {
         EraActivationResult {
             era_id,
             is_active,
             was_active,
             message,
+            effects,
         }
     }
 
@@ -113,6 +121,10 @@ impl EraActivationResult {
 
     pub(crate) fn message(&self) -> &str {
         &self.message
+    }
+
+    pub(crate) fn take_effects(self) -> Effects<Event> {
+        self.effects
     }
 }
 
@@ -860,10 +872,11 @@ impl EraSupervisor {
                 false,
                 false,
                 "attempt to toggle activation status on or off in non-open era".to_string(),
+                Effects::new(),
             );
         }
 
-        let (is_active, was_active, message) = if activate {
+        let (is_active, was_active, message, effects) = if activate {
             let key_block_hash = match switch_blocks.last() {
                 None => {
                     let era = self.era_mut(in_which_era);
@@ -873,6 +886,7 @@ impl EraSupervisor {
                         is_active,
                         is_active,
                         "key block not provided".to_string(),
+                        Effects::new(),
                     );
                 }
                 Some(key_block) => key_block.block_hash(),
@@ -894,11 +908,13 @@ impl EraSupervisor {
                 era.consensus
                     .activate_validator(our_id, secret, now, Some(unit_hash_file));
             let is_active = era.consensus.is_active();
-            self.handle_consensus_outcomes(effect_builder, rng, in_which_era, outcomes);
+            let effects =
+                self.handle_consensus_outcomes(effect_builder, rng, in_which_era, outcomes);
             (
                 is_active,
                 was_active,
                 "toggled voting on in era".to_string(),
+                effects,
             )
         } else {
             let era = self.era_mut(in_which_era);
@@ -908,9 +924,10 @@ impl EraSupervisor {
                 era.consensus.is_active(),
                 was_active,
                 "toggled voting off in era".to_string(),
+                Effects::new(),
             )
         };
-        EraActivationResult::new(in_which_era, is_active, was_active, message)
+        EraActivationResult::new(in_which_era, is_active, was_active, message, effects)
     }
 
     pub(super) fn resolve_validity<REv: ReactorEventT>(

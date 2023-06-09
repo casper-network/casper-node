@@ -167,13 +167,14 @@ impl MainReactor {
                     self.state = ReactorState::CatchUp;
                     (Duration::ZERO, Effects::new())
                 }
-                KeepUpInstruction::Validate(effects) => {
+                KeepUpInstruction::Validate(mut effects) => {
                     match self.activate_consensus_voting(effect_builder, rng) {
-                        Ok(_) => {
+                        Ok(activation_effects) => {
                             // purge to avoid polluting the status endpoints w/ stale state
                             self.block_synchronizer.purge();
                             info!("KeepUp: switch to Validate");
                             self.state = ReactorState::Validate;
+                            effects.extend(activation_effects);
                             (Duration::ZERO, effects)
                         }
                         Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
@@ -199,20 +200,20 @@ impl MainReactor {
                 }
                 ValidateInstruction::CatchUp => {
                     match self.deactivate_consensus_voting(effect_builder, rng) {
-                        Ok(_) => {
+                        Ok(effects) => {
                             info!("Validate: switch to CatchUp");
                             self.state = ReactorState::CatchUp;
-                            (Duration::ZERO, Effects::new())
+                            (Duration::ZERO, effects)
                         }
                         Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
                     }
                 }
                 ValidateInstruction::KeepUp => {
                     match self.deactivate_consensus_voting(effect_builder, rng) {
-                        Ok(_) => {
+                        Ok(effects) => {
                             info!("Validate: switch to KeepUp");
                             self.state = ReactorState::KeepUp;
-                            (Duration::ZERO, Effects::new())
+                            (Duration::ZERO, effects)
                         }
                         Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
                     }
@@ -583,8 +584,8 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-    ) -> Result<(), String> {
-        if let Some(header) = self.get_local_tip_header()? {
+    ) -> Result<Effects<MainEvent>, String> {
+        let effects = if let Some(header) = self.get_local_tip_header()? {
             let recent_switch_block_headers = self
                 .storage
                 .read_highest_switch_block_headers(
@@ -619,16 +620,19 @@ impl MainReactor {
                     in_which_era
                 ));
             }
-        }
-        Ok(())
+            result.take_effects()
+        } else {
+            Effects::new()
+        };
+        Ok(crate::reactor::wrap_effects(MainEvent::Consensus, effects))
     }
 
     fn deactivate_consensus_voting(
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-    ) -> Result<(), String> {
-        if let Some(header) = self.get_local_tip_header()? {
+    ) -> Result<Effects<MainEvent>, String> {
+        let effects = if let Some(header) = self.get_local_tip_header()? {
             let in_which_era = header.era_id();
             let result =
                 self.consensus
@@ -653,8 +657,11 @@ impl MainReactor {
                     in_which_era
                 ));
             }
-        }
-        Ok(())
+            result.take_effects()
+        } else {
+            Effects::new()
+        };
+        Ok(crate::reactor::wrap_effects(MainEvent::Consensus, effects))
     }
 
     fn switch_to_shutdown_for_upgrade(&mut self) {
