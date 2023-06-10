@@ -4,6 +4,7 @@ mod tests;
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
+    sync::atomic::{AtomicU8, Ordering},
     time::Instant,
 };
 
@@ -29,6 +30,64 @@ use crate::{
     },
     NodeRng,
 };
+
+#[derive(Debug, Default, DataSize)]
+struct Latch {
+    #[data_size(skip)]
+    latch: AtomicU8,
+    timestamp: Option<Timestamp>,
+}
+
+impl Latch {
+    fn increment(&mut self, increment_by: u8) {
+        match self.latch.get_mut().checked_add(increment_by) {
+            Some(val) => {
+                self.latch.swap(val, Ordering::SeqCst);
+            }
+            None => {
+                error!("latch increment overflowed.");
+            }
+        }
+        self.touch();
+    }
+
+    fn decrement(&mut self, decrement_by: u8) {
+        match self.latch.get_mut().checked_sub(decrement_by) {
+            Some(val) => {
+                self.latch.swap(val, Ordering::SeqCst);
+            }
+            None => {
+                error!("latch decrement overflowed.");
+            }
+        }
+        self.touch();
+    }
+
+    fn unlatch(&mut self) {
+        self.latch = AtomicU8::new(0);
+        self.timestamp = None;
+    }
+
+    fn check_latch(&mut self, interval: TimeDiff, checked: Timestamp) -> bool {
+        match self.timestamp {
+            None => false,
+            Some(timestamp) => {
+                if checked > timestamp + interval {
+                    self.unlatch()
+                }
+                self.count() > 0
+            }
+        }
+    }
+
+    fn count(&self) -> u8 {
+        self.latch.load(Ordering::SeqCst)
+    }
+
+    fn touch(&mut self) {
+        self.timestamp = Some(Timestamp::now());
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(super) enum Error {
@@ -82,8 +141,7 @@ pub(super) struct BlockBuilder {
     sync_start: Instant,
     execution_progress: ExecutionProgress,
     last_progress: Timestamp,
-    in_flight_latch: Option<Timestamp>,
-    latch_reset_interval: TimeDiff,
+    latch: Latch,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -109,7 +167,6 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
-        latch_reset_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
         strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
@@ -127,8 +184,7 @@ impl BlockBuilder {
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
-            in_flight_latch: None,
-            latch_reset_interval,
+            latch: Latch::default(),
         }
     }
 
@@ -141,7 +197,6 @@ impl BlockBuilder {
         should_fetch_execution_state: bool,
         max_simultaneous_peers: u32,
         peer_refresh_interval: TimeDiff,
-        latch_reset_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
         strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
@@ -175,8 +230,7 @@ impl BlockBuilder {
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
-            in_flight_latch: None,
-            latch_reset_interval,
+            latch: Latch::default(),
         }
     }
 
@@ -229,23 +283,27 @@ impl BlockBuilder {
         self.last_progress
     }
 
-    pub(super) fn in_flight_latch(&mut self) -> Option<Timestamp> {
-        if let Some(timestamp) = self.in_flight_latch {
-            // we put a latch on ourselves the first time we signal we need something specific
-            // if asked again before we get what we need, and latch_reset_interval has not passed,
-            // we signal we need nothing to avoid spamming redundant asks
-            //
-            // if latch_reset_interval has passed, we reset the latch and ask again.
-
-            if Timestamp::now().saturating_diff(timestamp) > self.latch_reset_interval {
-                self.in_flight_latch = None;
-            }
-        }
-        self.in_flight_latch
+    #[cfg(test)]
+    pub fn latched(&self) -> bool {
+        self.latch.count() > 0
     }
 
-    pub(super) fn set_in_flight_latch(&mut self) {
-        self.in_flight_latch = Some(Timestamp::now());
+    pub(super) fn check_latch(&mut self, interval: TimeDiff) -> bool {
+        self.latch.check_latch(interval, Timestamp::now())
+    }
+
+    /// Increments the latch counter by 1.
+    pub(super) fn latch(&mut self) {
+        self.latch.increment(1);
+    }
+
+    pub(super) fn latch_by(&mut self, count: usize) {
+        self.latch.increment(count as u8);
+    }
+
+    /// Decrements the latch counter.
+    pub(super) fn latch_decrement(&mut self) {
+        self.latch.decrement(1);
     }
 
     pub(super) fn is_failed(&self) -> bool {
@@ -706,7 +764,7 @@ impl BlockBuilder {
 
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
-        self.in_flight_latch = None;
+        self.latch.unlatch();
     }
 
     pub(crate) fn peer_list(&self) -> &PeerList {

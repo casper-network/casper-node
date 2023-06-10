@@ -50,10 +50,11 @@ impl MainReactor {
                     highest_complete_block.height(),
                     highest_complete_block.header().era_id(),
                 );
-                match self.block_accumulator.sync_instruction(sync_identifier) {
-                    SyncInstruction::Leap { .. } => return ValidateInstruction::CatchUp,
-                    SyncInstruction::BlockSync { .. } => return ValidateInstruction::KeepUp,
-                    SyncInstruction::CaughtUp { .. } => (),
+
+                if let SyncInstruction::Leap { .. } =
+                    self.block_accumulator.sync_instruction(sync_identifier)
+                {
+                    return ValidateInstruction::CatchUp;
                 }
 
                 if !highest_complete_block.header().is_switch_block() {

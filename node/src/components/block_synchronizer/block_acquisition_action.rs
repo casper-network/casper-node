@@ -19,7 +19,7 @@ use crate::{
 
 use super::block_acquisition::signatures_from_missing_validators;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct BlockAcquisitionAction {
     peers_to_ask: Vec<NodeId>,
     need_next: NeedNext,
