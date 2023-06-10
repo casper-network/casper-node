@@ -1,10 +1,10 @@
+mod latch;
 #[cfg(test)]
 mod tests;
 
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
-    sync::atomic::{AtomicU8, Ordering},
     time::Instant,
 };
 
@@ -23,6 +23,7 @@ use super::{
     BlockAcquisitionError,
 };
 use crate::{
+    components::block_synchronizer::block_builder::latch::Latch,
     types::{
         chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
         BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights,
@@ -30,64 +31,6 @@ use crate::{
     },
     NodeRng,
 };
-
-#[derive(Debug, Default, DataSize)]
-struct Latch {
-    #[data_size(skip)]
-    latch: AtomicU8,
-    timestamp: Option<Timestamp>,
-}
-
-impl Latch {
-    fn increment(&mut self, increment_by: u8) {
-        match self.latch.get_mut().checked_add(increment_by) {
-            Some(val) => {
-                self.latch.swap(val, Ordering::SeqCst);
-            }
-            None => {
-                error!("latch increment overflowed.");
-            }
-        }
-        self.touch();
-    }
-
-    fn decrement(&mut self, decrement_by: u8) {
-        match self.latch.get_mut().checked_sub(decrement_by) {
-            Some(val) => {
-                self.latch.swap(val, Ordering::SeqCst);
-            }
-            None => {
-                error!("latch decrement overflowed.");
-            }
-        }
-        self.touch();
-    }
-
-    fn unlatch(&mut self) {
-        self.latch = AtomicU8::new(0);
-        self.timestamp = None;
-    }
-
-    fn check_latch(&mut self, interval: TimeDiff, checked: Timestamp) -> bool {
-        match self.timestamp {
-            None => false,
-            Some(timestamp) => {
-                if checked > timestamp + interval {
-                    self.unlatch()
-                }
-                self.count() > 0
-            }
-        }
-    }
-
-    fn count(&self) -> u8 {
-        self.latch.load(Ordering::SeqCst)
-    }
-
-    fn touch(&mut self) {
-        self.timestamp = Some(Timestamp::now());
-    }
-}
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(super) enum Error {
