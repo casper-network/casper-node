@@ -100,7 +100,7 @@ fn execution_results_chunks_from_block_with_different_hash_are_not_applied() {
     );
     acquisition = assert_matches!(
         acquisition.apply_block_execution_results_or_chunk(exec_result, vec![]),
-        Ok(acq) => acq
+        Ok((acq, Acceptance::NeededIt)) => acq
     );
     assert_matches!(acquisition, ExecutionResultsAcquisition::Acquiring { .. });
 
@@ -344,7 +344,10 @@ fn acquisition_pending_state_has_correct_transitions() {
             exec_result,
             vec![DeployHash::new(Digest::hash([0; 32]))]
         ),
-        Ok(ExecutionResultsAcquisition::Complete { .. })
+        Ok((
+            ExecutionResultsAcquisition::Complete { .. },
+            Acceptance::NeededIt
+        ))
     );
 
     // Acquisition can transition from `Pending` to `Acquiring` if a single chunk is applied
@@ -364,7 +367,10 @@ fn acquisition_pending_state_has_correct_transitions() {
         .collect();
     assert_matches!(
         acquisition.apply_block_execution_results_or_chunk(exec_result, deploy_hashes),
-        Ok(ExecutionResultsAcquisition::Acquiring { .. })
+        Ok((
+            ExecutionResultsAcquisition::Acquiring { .. },
+            Acceptance::NeededIt
+        ))
     );
 }
 
@@ -401,7 +407,7 @@ fn acquisition_acquiring_state_has_correct_transitions() {
             .response(ValueOrChunk::ChunkWithProof(chunk.clone()));
         acquisition = assert_matches!(
             acquisition.apply_block_execution_results_or_chunk(exec_result, vec![]),
-            Ok(acq) => acq
+            Ok((acq, Acceptance::NeededIt)) => acq
         );
         assert_matches!(acquisition, ExecutionResultsAcquisition::Acquiring { .. });
     }
@@ -416,7 +422,7 @@ fn acquisition_acquiring_state_has_correct_transitions() {
         .collect();
     acquisition = assert_matches!(
         acquisition.apply_block_execution_results_or_chunk(exec_result, deploy_hashes),
-        Ok(acq) => acq
+        Ok((acq, Acceptance::NeededIt)) => acq
     );
     assert_matches!(acquisition, ExecutionResultsAcquisition::Complete { .. });
 }
@@ -440,7 +446,7 @@ fn acquisition_acquiring_state_gets_overridden_by_value() {
     );
     acquisition = assert_matches!(
         acquisition.apply_block_execution_results_or_chunk(exec_result, vec![]),
-        Ok(acq) => acq
+        Ok((acq, Acceptance::NeededIt)) => acq
     );
     assert_matches!(acquisition, ExecutionResultsAcquisition::Acquiring { .. });
 
@@ -463,7 +469,10 @@ fn acquisition_acquiring_state_gets_overridden_by_value() {
             exec_result,
             vec![DeployHash::new(Digest::hash([0; 32]))]
         ),
-        Ok(ExecutionResultsAcquisition::Complete { .. })
+        Ok((
+            ExecutionResultsAcquisition::Complete { .. },
+            Acceptance::NeededIt
+        ))
     );
 }
 
