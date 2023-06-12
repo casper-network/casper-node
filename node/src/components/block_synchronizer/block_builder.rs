@@ -575,7 +575,10 @@ impl BlockBuilder {
                 exec_results,
                 acceptance,
             }) => {
-                debug!("register_fetched_execution_results: Ok(maybe)");
+                debug!(
+                    ?acceptance,
+                    "register_fetched_execution_results: Ok(RegisterExecResultsOutcome)"
+                );
                 self.handle_acceptance(maybe_peer, Ok(acceptance))?;
                 Ok(exec_results)
             }

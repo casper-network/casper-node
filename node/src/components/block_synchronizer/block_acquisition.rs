@@ -1006,7 +1006,7 @@ impl BlockAcquisitionState {
                         block_execution_results_or_chunk,
                         deploy_hashes,
                     ) {
-                    Ok((new_acquistion, acceptance)) => match new_acquistion {
+                    Ok((new_acquisition, acceptance)) => match new_acquisition {
                         ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. } => {
                             debug!("apply_block_execution_results_or_chunk: Needed | Pending");
@@ -1021,7 +1021,7 @@ impl BlockAcquisitionState {
                                 block.clone(),
                                 signatures.clone(),
                                 deploys.clone(),
-                                new_acquistion.clone(),
+                                new_acquisition.clone(),
                             );
                             let maybe_exec_results = Some(results.clone());
                             (new_state, maybe_exec_results, acceptance)
@@ -1032,7 +1032,7 @@ impl BlockAcquisitionState {
                                 block.clone(),
                                 signatures.clone(),
                                 deploys.clone(),
-                                new_acquistion,
+                                new_acquisition,
                             );
                             let maybe_exec_results = None;
                             (new_state, maybe_exec_results, acceptance)
