@@ -4,9 +4,9 @@ mod chunk_with_proof;
 mod error;
 mod indexed_merkle_proof;
 
-use std::{
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use core::{
     array::TryFromSliceError,
-    collections::BTreeMap,
     convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter, LowerHex, UpperHex},
 };
@@ -19,6 +19,7 @@ use blake2::{
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use itertools::Itertools;
+#[cfg(feature = "once_cell")]
 use once_cell::sync::OnceCell;
 #[cfg(test)]
 use rand::{distributions::Standard, prelude::Distribution, Rng};
@@ -102,19 +103,24 @@ impl Digest {
     /// longer item's Merkle tree root)`.
     ///
     /// This function computes the correct final hash by ensuring the hasher used has been
-    /// initialized with padding before. For efficiency reasons it uses a memoized hasher state
-    /// computed on first run and cloned afterwards.
+    /// initialized with padding before.
+    ///
+    /// With `once_cell` feature enabled (generally done by enabling `std` feature), for efficiency
+    /// reasons it uses a memoized hasher state computed on first run and cloned afterwards.
     fn hash_merkle_root(leaf_count: u64, root: Digest) -> Digest {
+        #[cfg(feature = "once_cell")]
         static PAIR_PREFIX_HASHER: OnceCell<VarBlake2b> = OnceCell::new();
 
         let mut result = [0; Digest::LENGTH];
-        let mut hasher = PAIR_PREFIX_HASHER
-            .get_or_init(|| {
-                let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
-                hasher.update(CHUNK_DATA_ZEROED);
-                hasher
-            })
-            .clone();
+        let get_hasher = || {
+            let mut hasher = VarBlake2b::new(Digest::LENGTH).unwrap();
+            hasher.update(CHUNK_DATA_ZEROED);
+            hasher
+        };
+        #[cfg(feature = "once_cell")]
+        let mut hasher = PAIR_PREFIX_HASHER.get_or_init(get_hasher).clone();
+        #[cfg(not(feature = "once_cell"))]
+        let mut hasher = get_hasher();
 
         hasher.update(leaf_count.to_le_bytes());
         hasher.update(root);
@@ -235,12 +241,6 @@ impl Digest {
                     .map(Digest::blake2b_hash),
             )
         }
-    }
-
-    /// Provides the same functionality as [`Digest::hash_merkle_tree`].
-    #[deprecated(since = "1.5.0", note = "use `hash_merkle_tree` instead")]
-    pub fn hash_vec_merkle_tree(vec: Vec<Digest>) -> Digest {
-        Digest::hash_merkle_tree(vec)
     }
 }
 

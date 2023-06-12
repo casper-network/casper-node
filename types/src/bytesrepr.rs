@@ -17,6 +17,8 @@ use core::{
     mem,
     ptr::NonNull,
 };
+#[cfg(feature = "std")]
+use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -144,6 +146,9 @@ impl Display for Error {
         }
     }
 }
+
+#[cfg(feature = "std")]
+impl StdError for Error {}
 
 /// Deserializes `bytes` into an instance of `T`.
 ///

@@ -1,25 +1,56 @@
 //! Errors in constructing and validating indexed Merkle proofs, chunks with indexed Merkle proofs.
 
-use crate::{bytesrepr, ChunkWithProof, Digest};
+use alloc::string::String;
+use core::fmt::{self, Display, Formatter};
+#[cfg(feature = "std")]
+use std::error::Error as StdError;
+
+use super::{ChunkWithProof, Digest};
+use crate::bytesrepr;
 
 /// Possible hashing errors.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("Incorrect digest length {0}, expected length {}.", Digest::LENGTH)]
     /// The digest length was an incorrect size.
     IncorrectDigestLength(usize),
     /// There was a decoding error.
-    #[error("Base16 decode error {0}.")]
     Base16DecodeError(base16::DecodeError),
 }
 
+impl Display for Error {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            Error::IncorrectDigestLength(length) => {
+                write!(
+                    formatter,
+                    "incorrect digest length {}, expected length {}.",
+                    length,
+                    Digest::LENGTH
+                )
+            }
+            Error::Base16DecodeError(error) => {
+                write!(formatter, "base16 decode error: {}", error)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdError for Error {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            Error::IncorrectDigestLength(_) => None,
+            Error::Base16DecodeError(error) => Some(error),
+        }
+    }
+}
+
 /// Error validating a Merkle proof of a chunk.
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum MerkleVerificationError {
     /// Index out of bounds.
-    #[error("Index out of bounds. Count: {count}, index: {index}")]
     IndexOutOfBounds {
         /// Count.
         count: u64,
@@ -28,11 +59,6 @@ pub enum MerkleVerificationError {
     },
 
     /// Unexpected proof length.
-    #[error(
-        "Unexpected proof length. Count: {count}, index: {index}, \
-         expected proof length: {expected_proof_length}, \
-         actual proof length: {actual_proof_length}"
-    )]
     UnexpectedProofLength {
         /// Count.
         count: u64,
@@ -45,33 +71,54 @@ pub enum MerkleVerificationError {
     },
 }
 
+impl Display for MerkleVerificationError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            MerkleVerificationError::IndexOutOfBounds { count, index } => {
+                write!(
+                    formatter,
+                    "index out of bounds - count: {}, index: {}",
+                    count, index
+                )
+            }
+            MerkleVerificationError::UnexpectedProofLength {
+                count,
+                index,
+                expected_proof_length,
+                actual_proof_length,
+            } => {
+                write!(
+                    formatter,
+                    "unexpected proof length - count: {}, index: {}, expected length: {}, actual \
+                    length: {}",
+                    count, index, expected_proof_length, actual_proof_length
+                )
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdError for MerkleVerificationError {}
+
 /// Error validating a chunk with proof.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug)]
 #[non_exhaustive]
 pub enum ChunkWithProofVerificationError {
     /// Indexed Merkle proof verification error.
-    #[error(transparent)]
-    MerkleVerificationError(#[from] MerkleVerificationError),
+    MerkleVerificationError(MerkleVerificationError),
 
     /// Empty Merkle proof for trie with chunk.
-    #[error("Chunk with proof has empty Merkle proof: {chunk_with_proof:?}")]
     ChunkWithProofHasEmptyMerkleProof {
         /// Chunk with empty Merkle proof.
         chunk_with_proof: ChunkWithProof,
     },
     /// Unexpected Merkle root hash.
-    #[error("Merkle proof has an unexpected root hash")]
     UnexpectedRootHash,
     /// Bytesrepr error.
-    #[error("Bytesrepr error computing chunkable hash: {0}")]
     Bytesrepr(bytesrepr::Error),
 
     /// First digest in indexed Merkle proof did not match hash of chunk.
-    #[error(
-        "First digest in Merkle proof did not match hash of chunk. \
-         First digest in indexed Merkle proof: {first_digest_in_indexed_merkle_proof:?}. \
-         Hash of chunk: {hash_of_chunk:?}."
-    )]
     FirstDigestInMerkleProofDidNotMatchHashOfChunk {
         /// First digest in indexed Merkle proof.
         first_digest_in_indexed_merkle_proof: Digest,
@@ -80,14 +127,72 @@ pub enum ChunkWithProofVerificationError {
     },
 }
 
+impl Display for ChunkWithProofVerificationError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            ChunkWithProofVerificationError::MerkleVerificationError(error) => {
+                write!(formatter, "{}", error)
+            }
+            ChunkWithProofVerificationError::ChunkWithProofHasEmptyMerkleProof {
+                chunk_with_proof,
+            } => {
+                write!(
+                    formatter,
+                    "chunk with proof has empty merkle proof: {:?}",
+                    chunk_with_proof
+                )
+            }
+            ChunkWithProofVerificationError::UnexpectedRootHash => {
+                write!(formatter, "merkle proof has an unexpected root hash")
+            }
+            ChunkWithProofVerificationError::Bytesrepr(error) => {
+                write!(
+                    formatter,
+                    "bytesrepr error computing chunkable hash: {}",
+                    error
+                )
+            }
+            ChunkWithProofVerificationError::FirstDigestInMerkleProofDidNotMatchHashOfChunk {
+                first_digest_in_indexed_merkle_proof,
+                hash_of_chunk,
+            } => {
+                write!(
+                    formatter,
+                    "first digest in merkle proof did not match hash of chunk - first digest: \
+                    {:?}, hash of chunk: {:?}",
+                    first_digest_in_indexed_merkle_proof, hash_of_chunk
+                )
+            }
+        }
+    }
+}
+
+impl From<MerkleVerificationError> for ChunkWithProofVerificationError {
+    fn from(error: MerkleVerificationError) -> Self {
+        ChunkWithProofVerificationError::MerkleVerificationError(error)
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdError for ChunkWithProofVerificationError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        match self {
+            ChunkWithProofVerificationError::MerkleVerificationError(error) => Some(error),
+            ChunkWithProofVerificationError::Bytesrepr(error) => Some(error),
+            ChunkWithProofVerificationError::ChunkWithProofHasEmptyMerkleProof { .. }
+            | ChunkWithProofVerificationError::UnexpectedRootHash
+            | ChunkWithProofVerificationError::FirstDigestInMerkleProofDidNotMatchHashOfChunk {
+                ..
+            } => None,
+        }
+    }
+}
+
 /// Error during the construction of a Merkle proof.
-#[derive(thiserror::Error, Debug, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 #[non_exhaustive]
 pub enum MerkleConstructionError {
     /// Chunk index was out of bounds.
-    #[error(
-        "Could not construct Merkle proof. Index out of bounds. Count: {count}, index: {index}"
-    )]
     IndexOutOfBounds {
         /// Total chunks count.
         count: u64,
@@ -95,12 +200,34 @@ pub enum MerkleConstructionError {
         index: u64,
     },
     /// Too many Merkle tree leaves.
-    #[error(
-        "Could not construct Merkle proof. Too many leaves. Count: {count}, max: {} (u64::MAX)",
-        u64::MAX
-    )]
     TooManyLeaves {
         /// Total chunks count.
         count: String,
     },
 }
+
+impl Display for MerkleConstructionError {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            MerkleConstructionError::IndexOutOfBounds { count, index } => {
+                write!(
+                    formatter,
+                    "could not construct merkle proof - index out of bounds - count: {}, index: {}",
+                    count, index
+                )
+            }
+            MerkleConstructionError::TooManyLeaves { count } => {
+                write!(
+                    formatter,
+                    "could not construct merkle proof - too many leaves - count: {}, max: {} \
+                    (u64::MAX)",
+                    count,
+                    u64::MAX
+                )
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdError for MerkleConstructionError {}

@@ -1,9 +1,11 @@
 //! Constructing and validating indexed Merkle proofs.
-use std::convert::TryInto;
+use alloc::{string::ToString, vec::Vec};
+use core::convert::TryInto;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use itertools::Itertools;
+#[cfg(feature = "once_cell")]
 use once_cell::sync::OnceCell;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
@@ -21,8 +23,9 @@ pub struct IndexedMerkleProof {
     index: u64,
     count: u64,
     merkle_proof: Vec<Digest>,
-    #[serde(skip)]
-    #[cfg_attr(feature = "datasize", data_size(skip))]
+    #[cfg_attr(feature = "once_cell", serde(skip))]
+    #[cfg_attr(all(feature = "once_cell", feature = "datasize"), data_size(skip))]
+    #[cfg(feature = "once_cell")]
     root_hash: OnceCell<Digest>,
 }
 
@@ -53,6 +56,7 @@ impl FromBytes for IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
+                #[cfg(feature = "once_cell")]
                 root_hash: OnceCell::new(),
             },
             remainder,
@@ -107,6 +111,7 @@ impl IndexedMerkleProof {
                 index,
                 count,
                 merkle_proof,
+                #[cfg(feature = "once_cell")]
                 root_hash: OnceCell::new(),
             }),
         }
@@ -123,57 +128,86 @@ impl IndexedMerkleProof {
     }
 
     /// Returns the root hash of this proof (i.e. the index hashed with the Merkle root hash).
+    ///
+    /// Note that with the `once_cell` feature enabled (generally done by enabling the `std`
+    /// feature), the root hash is memoized, and hence calling this method is cheap after the first
+    /// call.  Without `once_cell` enabled, every call to this method calculates the root hash.
     pub fn root_hash(&self) -> Digest {
-        let IndexedMerkleProof {
-            index: _,
-            count,
-            merkle_proof,
-            root_hash,
-        } = self;
+        #[cfg(feature = "once_cell")]
+        return *self.root_hash.get_or_init(|| self.compute_root_hash());
 
-        *root_hash.get_or_init(|| {
-            let mut hashes = merkle_proof.iter();
-            let raw_root = if let Some(leaf_hash) = hashes.next().cloned() {
-                // Compute whether to hash left or right for the elements of the Merkle proof.
-                // This gives a path to the value with the specified index.
-                // We represent this path as a sequence of 64 bits. 1 here means "hash right".
-                let mut path: u64 = 0;
-                let mut n = self.count;
-                let mut i = self.index;
-                while n > 1 {
-                    path <<= 1;
-                    let pivot = 1u64 << (63 - (n - 1).leading_zeros());
-                    if i < pivot {
-                        n = pivot;
-                    } else {
-                        path |= 1;
-                        n -= pivot;
-                        i -= pivot;
-                    }
-                }
-
-                // Compute the raw Merkle root by hashing the proof from leaf hash up.
-                hashes.fold(leaf_hash, |acc, hash| {
-                    let digest = if (path & 1) == 1 {
-                        Digest::hash_pair(hash, acc)
-                    } else {
-                        Digest::hash_pair(acc, hash)
-                    };
-                    path >>= 1;
-                    digest
-                })
-            } else {
-                Digest::SENTINEL_MERKLE_TREE
-            };
-
-            // The Merkle root is the hash of the count with the raw root.
-            Digest::hash_merkle_root(*count, raw_root)
-        })
+        #[cfg(not(feature = "once_cell"))]
+        self.compute_root_hash()
     }
 
     /// Returns the full collection of hash digests of the proof.
     pub fn merkle_proof(&self) -> &[Digest] {
         &self.merkle_proof
+    }
+
+    /// Attempts to verify self.
+    pub fn verify(&self) -> Result<(), MerkleVerificationError> {
+        if self.index >= self.count {
+            return Err(MerkleVerificationError::IndexOutOfBounds {
+                count: self.count,
+                index: self.index,
+            });
+        }
+        let expected_proof_length = self.compute_expected_proof_length();
+        if self.merkle_proof.len() != expected_proof_length as usize {
+            return Err(MerkleVerificationError::UnexpectedProofLength {
+                count: self.count,
+                index: self.index,
+                expected_proof_length,
+                actual_proof_length: self.merkle_proof.len(),
+            });
+        }
+        Ok(())
+    }
+
+    fn compute_root_hash(&self) -> Digest {
+        let IndexedMerkleProof {
+            count,
+            merkle_proof,
+            ..
+        } = self;
+
+        let mut hashes = merkle_proof.iter();
+        let raw_root = if let Some(leaf_hash) = hashes.next().cloned() {
+            // Compute whether to hash left or right for the elements of the Merkle proof.
+            // This gives a path to the value with the specified index.
+            // We represent this path as a sequence of 64 bits. 1 here means "hash right".
+            let mut path: u64 = 0;
+            let mut n = self.count;
+            let mut i = self.index;
+            while n > 1 {
+                path <<= 1;
+                let pivot = 1u64 << (63 - (n - 1).leading_zeros());
+                if i < pivot {
+                    n = pivot;
+                } else {
+                    path |= 1;
+                    n -= pivot;
+                    i -= pivot;
+                }
+            }
+
+            // Compute the raw Merkle root by hashing the proof from leaf hash up.
+            hashes.fold(leaf_hash, |acc, hash| {
+                let digest = if (path & 1) == 1 {
+                    Digest::hash_pair(hash, acc)
+                } else {
+                    Digest::hash_pair(acc, hash)
+                };
+                path >>= 1;
+                digest
+            })
+        } else {
+            Digest::SENTINEL_MERKLE_TREE
+        };
+
+        // The Merkle root is the hash of the count with the raw root.
+        Digest::hash_merkle_root(*count, raw_root)
     }
 
     // Proof lengths are never bigger than 65 is because we are using 64 bit counts
@@ -195,26 +229,6 @@ impl IndexedMerkleProof {
             l += 1;
         }
         l
-    }
-
-    /// Attempts to verify self.
-    pub fn verify(&self) -> Result<(), MerkleVerificationError> {
-        if self.index >= self.count {
-            return Err(MerkleVerificationError::IndexOutOfBounds {
-                count: self.count,
-                index: self.index,
-            });
-        }
-        let expected_proof_length = self.compute_expected_proof_length();
-        if self.merkle_proof.len() != expected_proof_length as usize {
-            return Err(MerkleVerificationError::UnexpectedProofLength {
-                count: self.count,
-                index: self.index,
-                expected_proof_length,
-                actual_proof_length: self.merkle_proof.len(),
-            });
-        }
-        Ok(())
     }
 
     #[cfg(test)]
