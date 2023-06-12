@@ -73,7 +73,7 @@ impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
         match announcement {
             DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => {
                 Event::GotRemotely {
-                    item: deploy,
+                    item: Box::new((*deploy).clone()),
                     source,
                 }
             }

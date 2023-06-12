@@ -28,29 +28,24 @@ use casper_execution_engine::core::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
     QueryResult,
 };
-use casper_types::{
-    system::auction::EraValidators, Digest, ExecutionResult, Key, ProtocolVersion, URef,
-};
+use casper_types::{system::auction::EraValidators, Digest, Key, ProtocolVersion, URef};
 
-use self::rpcs::chain::BlockIdentifier;
 use super::Component;
 use crate::{
     components::{
         contract_runtime::EraValidatorsRequest, ComponentState, InitializedComponent,
         PortBoundComponent,
     },
-    contract_runtime::SpeculativeExecutionState,
     effect::{
-        announcements::RpcServerAnnouncement,
         requests::{
-            BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest,
-            ContractRuntimeRequest, MetricsRequest, NetworkInfoRequest, ReactorStatusRequest,
-            RpcRequest, StorageRequest, UpgradeWatcherRequest,
+            AcceptDeployRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
+            ConsensusRequest, ContractRuntimeRequest, MetricsRequest, NetworkInfoRequest,
+            ReactorStatusRequest, RpcRequest, StorageRequest, UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
     reactor::main_reactor::MainEvent,
-    types::{BlockHeader, ChainspecInfo, Deploy, StatusFeed},
+    types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -64,7 +59,7 @@ const COMPONENT_NAME: &str = "rpc_server";
 pub(crate) trait ReactorEventT:
     From<Event>
     + From<RpcRequest>
-    + From<RpcServerAnnouncement>
+    + From<AcceptDeployRequest>
     + From<ChainspecRawBytesRequest>
     + From<UpgradeWatcherRequest>
     + From<ContractRuntimeRequest>
@@ -81,7 +76,7 @@ pub(crate) trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RpcRequest>
-        + From<RpcServerAnnouncement>
+        + From<AcceptDeployRequest>
         + From<ChainspecRawBytesRequest>
         + From<UpgradeWatcherRequest>
         + From<ContractRuntimeRequest>
@@ -187,27 +182,6 @@ impl RpcServer {
                 main_responder: responder,
             })
     }
-
-    fn handle_execute_deploy<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        block_header: BlockHeader,
-        deploy: Deploy,
-        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
-    ) -> Effects<Event> {
-        async move {
-            let execution_prestate = SpeculativeExecutionState {
-                state_root_hash: *block_header.state_root_hash(),
-                block_time: block_header.timestamp(),
-                protocol_version: block_header.protocol_version(),
-            };
-            let result = effect_builder
-                .speculative_execute_deploy(execution_prestate, deploy)
-                .await;
-            responder.respond(result).await
-        }
-        .ignore()
-    }
 }
 
 impl<REv> Component<REv> for RpcServer
@@ -247,7 +221,6 @@ where
                     effects
                 }
                 Event::RpcRequest(_)
-                | Event::GetBlockResult { .. }
                 | Event::GetBlockTransfersResult { .. }
                 | Event::QueryGlobalStateResult { .. }
                 | Event::QueryEraValidatorsResult { .. }
@@ -272,45 +245,6 @@ where
                     );
                     Effects::new()
                 }
-                Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => effect_builder
-                    .announce_deploy_received(deploy, Some(responder))
-                    .ignore(),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: Some(BlockIdentifier::Hash(hash)),
-                    only_from_available_block_range,
-                    responder,
-                }) => effect_builder
-                    .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: Some(BlockIdentifier::Hash(hash)),
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: Some(BlockIdentifier::Height(height)),
-                    only_from_available_block_range,
-                    responder,
-                }) => effect_builder
-                    .get_block_at_height_with_metadata_from_storage(
-                        height,
-                        only_from_available_block_range,
-                    )
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: Some(BlockIdentifier::Height(height)),
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: None,
-                    only_from_available_block_range: _,
-                    responder,
-                }) => effect_builder
-                    .get_highest_block_with_metadata_from_storage()
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: None,
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
                 Event::RpcRequest(RpcRequest::GetBlockTransfers {
                     block_hash,
                     responder,
@@ -437,26 +371,6 @@ where
                         .await
                 }
                 .ignore(),
-                Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
-                    block_header,
-                    deploy,
-                    responder,
-                }) => {
-                    return match self.speculative_exec {
-                        Some(_) => self.handle_execute_deploy(
-                            effect_builder,
-                            *block_header,
-                            *deploy,
-                            responder,
-                        ),
-                        None => Effects::new(),
-                    }
-                }
-                Event::GetBlockResult {
-                    maybe_id: _,
-                    result,
-                    main_responder,
-                } => main_responder.respond(result).ignore(),
                 Event::GetBlockTransfersResult {
                     block_hash: _,
                     result,

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
@@ -40,7 +40,7 @@ impl ItemFetcher<LegacyDeploy> for Fetcher<LegacyDeploy> {
     ) -> StoringState<'a, LegacyDeploy> {
         StoringState::Enqueued(
             effect_builder
-                .put_deploy_to_storage(Box::new(Deploy::from(item)))
+                .put_deploy_to_storage(Arc::new(Deploy::from(item)))
                 .map(|_| ())
                 .boxed(),
         )

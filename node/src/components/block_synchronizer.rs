@@ -1008,8 +1008,10 @@ impl BlockSynchronizer {
         };
         let demote_peer = maybe_sync_leap.is_none();
         if let Some(sync_leap) = maybe_sync_leap {
-            let era_validator_weights =
-                sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
+            let era_validator_weights = sync_leap.era_validator_weights(
+                self.validator_matrix.fault_tolerance_threshold(),
+                &self.chainspec.protocol_config,
+            );
             for evw in era_validator_weights {
                 self.validator_matrix.register_era_validator_weights(evw);
             }

@@ -4,7 +4,7 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -228,7 +228,7 @@ impl DeployAcceptor {
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
@@ -238,6 +238,7 @@ impl DeployAcceptor {
             &self.chain_name,
             &self.deploy_config,
             self.max_associated_keys,
+            verification_start_timestamp,
         );
         // checks chainspec values
         if let Err(error) = acceptable_result {
@@ -251,27 +252,48 @@ impl DeployAcceptor {
         }
 
         // We only perform expiry checks on deploys received from the client.
-        if source.is_client() {
-            let current_node_timestamp = Timestamp::now();
-            if deploy.header().expired(current_node_timestamp) {
-                let time_of_expiry = deploy.header().expires();
-                debug!(%deploy, "deploy has expired");
-                return self.handle_invalid_deploy_result(
-                    effect_builder,
-                    Box::new(EventMetadata::new(deploy, source, maybe_responder)),
-                    Error::ExpiredDeploy {
-                        deploy_expiry_timestamp: time_of_expiry,
-                        current_node_timestamp,
-                    },
+        if source.is_client() && deploy.header().expired(verification_start_timestamp) {
+            let time_of_expiry = deploy.header().expires();
+            debug!(%deploy, "deploy has expired");
+            return self.handle_invalid_deploy_result(
+                effect_builder,
+                Box::new(EventMetadata::new(deploy, source, maybe_responder)),
+                Error::ExpiredDeploy {
+                    deploy_expiry_timestamp: time_of_expiry,
+                    current_node_timestamp: verification_start_timestamp,
+                },
+                verification_start_timestamp,
+            );
+        }
+
+        // If this has been received from the speculative exec server, use the block specified in
+        // the request, otherwise use the highest complete block.
+        if let Source::SpeculativeExec(block_header) = &source {
+            let account_hash = deploy.header().account().to_account_hash();
+            let account_key = Key::from(account_hash);
+            let block_header = block_header.clone();
+            return effect_builder
+                .get_account_from_global_state(*block_header.state_root_hash(), account_key)
+                .event(move |maybe_account| Event::GetAccountResult {
+                    event_metadata: Box::new(EventMetadata::new(
+                        deploy,
+                        source.clone(),
+                        maybe_responder,
+                    )),
+                    maybe_account,
+                    block_header,
                     verification_start_timestamp,
-                );
-            }
+                });
         }
 
         effect_builder
             .get_highest_complete_block_header_from_storage()
             .event(move |maybe_block_header| Event::GetBlockHeaderResult {
-                event_metadata: Box::new(EventMetadata::new(deploy, source, maybe_responder)),
+                event_metadata: Box::new(EventMetadata::new(
+                    deploy,
+                    source.clone(),
+                    maybe_responder,
+                )),
                 maybe_block_header: maybe_block_header.map(Box::new),
                 verification_start_timestamp,
             })
@@ -852,6 +874,18 @@ impl DeployAcceptor {
             );
         }
 
+        // If this has been received from the speculative exec server, we just want to call the
+        // responder and finish.  Otherwise store the deploy and announce it if required.
+        if let Source::SpeculativeExec(_) = event_metadata.source {
+            let effects = if let Some(responder) = event_metadata.maybe_responder {
+                responder.respond(Ok(())).ignore()
+            } else {
+                error!("speculative exec source should always have a responder");
+                Effects::new()
+            };
+            return effects;
+        }
+
         effect_builder
             .put_deploy_to_storage(event_metadata.deploy.clone())
             .event(move |is_new| Event::PutToStorageResult {
@@ -873,18 +907,24 @@ impl DeployAcceptor {
             source,
             maybe_responder,
         } = *event_metadata;
-        self.metrics.observe_rejected(verification_start_timestamp);
+        if !matches!(source, Source::SpeculativeExec(_)) {
+            self.metrics.observe_rejected(verification_start_timestamp);
+        }
         let mut effects = Effects::new();
         if let Some(responder) = maybe_responder {
             // The client has submitted an invalid deploy
             // Return an error to the RPC component via the responder.
             effects.extend(responder.respond(Err(error)).ignore());
         }
-        effects.extend(
-            effect_builder
-                .announce_invalid_deploy(deploy, source)
-                .ignore(),
-        );
+
+        // If this has NOT been received from the speculative exec server, announce it.
+        if !matches!(source, Source::SpeculativeExec(_)) {
+            effects.extend(
+                effect_builder
+                    .announce_invalid_deploy(deploy, source)
+                    .ignore(),
+            );
+        }
         effects
     }
 
