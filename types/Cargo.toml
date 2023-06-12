@@ -76,3 +76,7 @@ gens = ["testing"]
 [[bench]]
 name = "bytesrepr_bench"
 harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustc-args = ["--cfg", "docsrs"]

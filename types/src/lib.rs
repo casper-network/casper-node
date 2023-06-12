@@ -17,6 +17,7 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;

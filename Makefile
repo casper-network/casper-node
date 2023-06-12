@@ -146,8 +146,8 @@ audit: audit-rs
 
 .PHONY: doc
 doc:
-	RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps
-	cd smart_contracts/contract && RUSTDOCFLAGS="-D warnings" $(CARGO) doc $(CARGO_FLAGS) --no-deps
+	RUSTDOCFLAGS="-D warnings --cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
+	cd smart_contracts/contract && RUSTDOCFLAGS="-D warnings --cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
 
 .PHONY: check-rs
 check-rs: \

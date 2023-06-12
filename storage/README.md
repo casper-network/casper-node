@@ -7,7 +7,7 @@
 [![Documentation](https://docs.rs/casper-hashing/badge.svg)](https://docs.rs/casper-hashing)
 [![License](https://img.shields.io/badge/license-Apache-blue)](https://github.com/CasperLabs/casper-node/blob/master/LICENSE)
 
-A library providing hashing functionality including Merkle Proof utilities.
+A library providing storage functionality for Casper nodes.
 
 ## License
 
