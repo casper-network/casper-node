@@ -27,7 +27,7 @@ k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "sha2
 num = { version = "0.4.0", default-features = false, features = ["alloc"] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
-num-rational = { version = "0.4.0", default-features = false }
+num-rational = { version = "0.4.0", default-features = false, features = ["serde"] }
 num-traits = { version = "0.2.10", default-features = false }
 once_cell = { version = "1.5.2", optional = true }
 pem = { version = "0.8.1", optional = true }

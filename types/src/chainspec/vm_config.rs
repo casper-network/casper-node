@@ -14,7 +14,8 @@ pub use auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COS
 pub use chainspec_registry::ChainspecRegistry;
 pub use handle_payment_costs::HandlePaymentCosts;
 pub use host_function_costs::{
-    Cost as HostFunctionCost, HostFunction, HostFunctionCosts, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    Cost as HostFunctionCost, HostFunction, HostFunctionCosts,
+    DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_NEW_DICTIONARY_COST,
 };
 pub use mint_costs::{MintCosts, DEFAULT_TRANSFER_COST};
 pub use opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts};

@@ -94,11 +94,11 @@ pub struct CoreConfig {
     pub max_delegators_per_validator: u32,
 
     /// The split in finality signature rewards between block producer and participating signers.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     pub finders_fee: Ratio<u64>,
 
     /// The proportion of baseline rewards going to reward finality signatures specifically.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     pub finality_signature_proportion: Ratio<u64>,
 
     /// Lookback interval indicating which past block we are looking at to reward.
