@@ -52,7 +52,7 @@ impl RequestState {
         match self {
             RequestState::Ready => {
                 // We have a new segment, which has a variable size.
-                let segment_buf = &buffer[0..Header::SIZE];
+                let segment_buf = &buffer[Header::SIZE..];
 
                 match decode_varint32(segment_buf) {
                     Varint32Result::Incomplete => return Incomplete(1),
@@ -61,12 +61,26 @@ impl RequestState {
                         offset,
                         value: total_payload_size,
                     } => {
-                        // We have a valid varint32. Let's see if we're inside the frame boundary.
+                        // We have a valid varint32.
                         let preamble_size = Header::SIZE as u32 + offset.get() as u32;
                         let max_data_in_frame = (max_frame_size - preamble_size) as u32;
 
-                        // Drop header and length.
+                        // Determine how many additional bytes are needed for frame completion.
+                        let frame_ends_at = (preamble_size as usize
+                            + (max_data_in_frame as usize).min(total_payload_size as usize));
+                        if buffer.remaining() < frame_ends_at {
+                            return Incomplete(buffer.remaining() - frame_ends_at);
+                        }
+
+                        // At this point we are sure to complete a frame, so drop the preamble.
                         buffer.advance(preamble_size as usize);
+
+                        // Pure defensive coding: Drop all now-invalid offsets.
+                        // TODO: Consider wild idea of `AssumeUnchanged<T, S>`.
+                        drop(frame_ends_at);
+                        drop(preamble_size);
+
+                        // Is the payload complete in one frame?
                         if total_payload_size <= max_data_in_frame {
                             let payload = buffer.split_to(total_payload_size as usize);
 
@@ -75,9 +89,9 @@ impl RequestState {
                         }
 
                         // The length exceeds the frame boundary, split to maximum and store that.
-                        let partial_payload =
-                            buffer.split_to((max_frame_size - preamble_size) as usize);
+                        let partial_payload = buffer.split_to(max_frame_size as usize);
 
+                        // We are now in progress of reading a payload.
                         *self = RequestState::InProgress {
                             header,
                             payload: partial_payload,
