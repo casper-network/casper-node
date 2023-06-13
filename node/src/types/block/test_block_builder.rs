@@ -139,7 +139,13 @@ impl TestBlockBuilder {
                 .collect::<Vec<_>>();
 
             let random_bit = rng.gen();
-            let block_payload = BlockPayload::new(deploy_hashes, vec![], vec![], random_bit);
+            let block_payload = BlockPayload::new(
+                deploy_hashes,
+                vec![],
+                vec![],
+                Default::default(),
+                random_bit,
+            );
 
             let era_report = if is_switch {
                 let equivocators_count = rng.gen_range(0..5);

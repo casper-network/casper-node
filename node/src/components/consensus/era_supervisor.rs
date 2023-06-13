@@ -971,7 +971,11 @@ impl EraSupervisor {
                 effect_builder
                     .request_appendable_block(block_context.timestamp())
                     .map(move |appendable_block| {
-                        Arc::new(appendable_block.into_block_payload(accusations, random_bit))
+                        Arc::new(appendable_block.into_block_payload(
+                            accusations,
+                            Default::default(/* TODO: fill with the correct value in the next ticket */),
+                            random_bit,
+                        ))
                     })
                     .event(move |block_payload| {
                         Event::NewBlockPayload(NewBlockPayload {

@@ -106,7 +106,7 @@ fn new_proposed_block(
     // Accusations and ancestors are empty, and the random bit is always true:
     // These values are not checked by the block validator.
     let block_context = BlockContext::new(timestamp, vec![]);
-    let block_payload = BlockPayload::new(deploys, transfers, vec![], true);
+    let block_payload = BlockPayload::new(deploys, transfers, vec![], Default::default(), true);
     ProposedBlock::new(Arc::new(block_payload), block_context)
 }
 
