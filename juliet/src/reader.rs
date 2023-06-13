@@ -36,6 +36,10 @@ enum RequestState {
 impl RequestState {
     /// Accept additional data to be written.
     ///
+    /// If a message payload matching the given header has been succesfully completed, returns it.
+    /// If a starting or intermediate segment was processed without completing the message, returns
+    /// `None` instead. This method will never consume more than one frame.
+    ///
     /// Assumes that `header` is the first [`Header::SIZE`] bytes of `buffer`. Will advance `buffer`
     /// past header and payload only on success.
     fn accept(
@@ -43,7 +47,7 @@ impl RequestState {
         header: Header,
         buffer: &mut BytesMut,
         max_frame_size: u32,
-    ) -> Outcome<BytesMut> {
+    ) -> Outcome<Option<BytesMut>> {
         debug_assert!(
             max_frame_size >= 10,
             "maximum frame size must be enough to hold header and varint"
@@ -85,27 +89,26 @@ impl RequestState {
                             let payload = buffer.split_to(total_payload_size as usize);
 
                             // No need to alter the state, we stay `Ready`.
-                            return Success(payload);
+                            Success(Some(payload))
+                        } else {
+                            // Length exceeds the frame boundary, split to maximum and store that.
+                            let partial_payload = buffer.split_to(max_frame_size as usize);
+
+                            // We are now in progress of reading a payload.
+                            *self = RequestState::InProgress {
+                                header,
+                                payload: partial_payload,
+                            };
+
+                            // We have successfully consumed a frame, but are not finished yet.
+                            Success(None)
                         }
-
-                        // The length exceeds the frame boundary, split to maximum and store that.
-                        let partial_payload = buffer.split_to(max_frame_size as usize);
-
-                        // We are now in progress of reading a payload.
-                        *self = RequestState::InProgress {
-                            header,
-                            payload: partial_payload,
-                        };
-
-                        // TODO: THIS IS WRONG. LOOP READING. AND CONSIDER ACTUAL BUFFER LENGTH
-                        // ABOVE. We need at least a header to proceed further on.
-                        return Incomplete(Header::SIZE);
                     }
                 }
-
+            }
+            RequestState::InProgress { header, payload } => {
                 todo!()
             }
-            RequestState::InProgress { header, payload } => todo!(),
         }
     }
 }
