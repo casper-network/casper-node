@@ -273,7 +273,7 @@ impl BlockAcquisitionAction {
         signatures: &mut SignatureAcquisition,
         needs_deploy: Option<DeployIdentifier>,
         is_historical: bool,
-        max_simultaneous_peers: usize,
+        max_simultaneous_peers: u8,
     ) -> Self {
         match needs_deploy {
             Some(DeployIdentifier::ById(deploy_id)) => {

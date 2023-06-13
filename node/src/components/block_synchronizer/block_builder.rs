@@ -108,7 +108,7 @@ impl BlockBuilder {
     pub(super) fn new(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
-        max_simultaneous_peers: u32,
+        max_simultaneous_peers: u8,
         peer_refresh_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
         strict_finality_protocol_version: ProtocolVersion,
@@ -138,7 +138,7 @@ impl BlockBuilder {
         validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
-        max_simultaneous_peers: u32,
+        max_simultaneous_peers: u8,
         peer_refresh_interval: TimeDiff,
         legacy_required_finality: LegacyRequiredFinality,
         strict_finality_protocol_version: ProtocolVersion,
@@ -388,7 +388,7 @@ impl BlockBuilder {
     pub(super) fn block_acquisition_action(
         &mut self,
         rng: &mut NodeRng,
-        max_simultaneous_peers: usize,
+        max_simultaneous_peers: u8,
     ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {

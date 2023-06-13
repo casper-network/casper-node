@@ -32,7 +32,7 @@ use crate::{
     utils,
 };
 
-const MAX_SIMULTANEOUS_PEERS: usize = 5;
+const MAX_SIMULTANEOUS_PEERS: u8 = 5;
 const TEST_LATCH_RESET_INTERVAL_MILLIS: u64 = 5;
 const SHOULD_FETCH_EXECUTION_STATE: bool = true;
 const STRICT_FINALITY_REQUIRED_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 0);
@@ -196,10 +196,10 @@ async fn need_next(
     rng: &mut TestRng,
     reactor: &MockReactor,
     block_synchronizer: &mut BlockSynchronizer,
-    num_expected_events: usize,
+    num_expected_events: u8,
 ) -> Vec<MockReactorEvent> {
     let effects = block_synchronizer.need_next(reactor.effect_builder(), rng);
-    assert_eq!(effects.len(), num_expected_events);
+    assert_eq!(effects.len() as u8, num_expected_events);
     reactor.process_effects(effects).await
 }
 
@@ -266,7 +266,7 @@ impl BlockSynchronizer {
         let mut block_synchronizer = BlockSynchronizer::new(
             config,
             Arc::new(Chainspec::random(rng)),
-            MAX_SIMULTANEOUS_PEERS as u32,
+            MAX_SIMULTANEOUS_PEERS,
             validator_matrix,
             &prometheus::Registry::new(),
         )
@@ -475,7 +475,7 @@ async fn synchronizer_doesnt_busy_loop_without_peers() {
             MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
                 count,
                 ..
-            }) if count == MAX_SIMULTANEOUS_PEERS
+            }) if count == MAX_SIMULTANEOUS_PEERS as usize
         );
         assert_matches!(
             events[1],
@@ -625,7 +625,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
     let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
     assert_eq!(
         effects.len(),
-        MAX_SIMULTANEOUS_PEERS,
+        MAX_SIMULTANEOUS_PEERS as usize,
         "need next should have an effect per peer when needing sync leap"
     );
     latch_inner_check(
@@ -757,7 +757,7 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
         MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
             count,
             ..
-        }) if count == MAX_SIMULTANEOUS_PEERS
+        }) if count == MAX_SIMULTANEOUS_PEERS as usize
     );
 
     assert_matches!(
@@ -1035,7 +1035,10 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
     // need to get more signatures to reach weak finality.
     assert_eq!(
         effects.len(),
-        min(test_env.validator_keys().len(), MAX_SIMULTANEOUS_PEERS)
+        min(
+            test_env.validator_keys().len(),
+            MAX_SIMULTANEOUS_PEERS as usize
+        )
     );
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
@@ -1103,7 +1106,10 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     // The peer limit should still be in place.
     assert_eq!(
         effects.len(),
-        min(validators_secret_keys.len() - 1, MAX_SIMULTANEOUS_PEERS)
+        min(
+            validators_secret_keys.len() - 1,
+            MAX_SIMULTANEOUS_PEERS as usize
+        )
     );
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
@@ -1155,7 +1161,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
             generated_effects
                 .into_iter()
                 .rev()
-                .take(MAX_SIMULTANEOUS_PEERS),
+                .take(MAX_SIMULTANEOUS_PEERS as usize),
         )
         .await;
     for event in events {
@@ -1183,7 +1189,7 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
     let expected_block_hash = *block.hash();
     let era_id = block.header().era_id();
     let validator_matrix = test_env.gen_validator_matrix();
-    let num_validators = test_env.validator_keys().len();
+    let num_validators = test_env.validator_keys().len() as u8;
     let cfg = Config {
         ..Default::default()
     };
@@ -1620,7 +1626,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
             peer: peers[0],
         })),
     );
-    assert_eq!(effects.len(), MAX_SIMULTANEOUS_PEERS);
+    assert_eq!(effects.len(), MAX_SIMULTANEOUS_PEERS as usize);
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
             event,

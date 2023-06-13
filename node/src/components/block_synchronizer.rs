@@ -202,7 +202,7 @@ pub(crate) struct BlockSynchronizer {
     state: ComponentState,
     config: Config,
     chainspec: Arc<Chainspec>,
-    max_simultaneous_peers: u32,
+    max_simultaneous_peers: u8,
     validator_matrix: ValidatorMatrix,
 
     // execute forward block (do not get global state or execution effects)
@@ -219,7 +219,7 @@ impl BlockSynchronizer {
     pub(crate) fn new(
         config: Config,
         chainspec: Arc<Chainspec>,
-        max_simultaneous_peers: u32,
+        max_simultaneous_peers: u8,
         validator_matrix: ValidatorMatrix,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
@@ -537,7 +537,7 @@ impl BlockSynchronizer {
         let latch_reset_interval = self.config.latch_reset_interval;
         let need_next_interval = self.config.need_next_interval.into();
         let mut results = Effects::new();
-        let max_simultaneous_peers = self.max_simultaneous_peers as usize;
+        let max_simultaneous_peers = self.max_simultaneous_peers;
         let mut builder_needs_next = |builder: &mut BlockBuilder, chainspec: Arc<Chainspec>| {
             if builder.check_latch(latch_reset_interval)
                 || builder.is_finished()
@@ -586,7 +586,7 @@ impl BlockSynchronizer {
                     builder.latch_by(validators.len());
                     for (validator, peer) in validators
                         .into_iter()
-                        .take(max_simultaneous_peers)
+                        .take(max_simultaneous_peers as usize)
                         .zip(peers.into_iter().cycle())
                     {
                         debug!(%validator, %peer, "attempting to fetch FinalitySignature");
@@ -719,7 +719,7 @@ impl BlockSynchronizer {
                         // so we're going to also get a random sampling from networking
                         results.extend(
                             effect_builder
-                                .get_fully_connected_peers(max_simultaneous_peers)
+                                .get_fully_connected_peers(max_simultaneous_peers as usize)
                                 .event(move |peers| Event::NetworkPeers(block_hash, peers)),
                         )
                     }

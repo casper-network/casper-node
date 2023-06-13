@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicU8, Ordering};
-
 use datasize::DataSize;
 
 use tracing::error;
@@ -9,37 +7,37 @@ use casper_types::{TimeDiff, Timestamp};
 #[derive(Debug, Default, DataSize)]
 pub(super) struct Latch {
     #[data_size(skip)]
-    latch: AtomicU8,
+    latch: u8,
     timestamp: Option<Timestamp>,
 }
 
 impl Latch {
     pub(super) fn increment(&mut self, increment_by: u8) {
-        match self.latch.get_mut().checked_add(increment_by) {
+        match self.latch.checked_add(increment_by) {
             Some(val) => {
-                self.latch.store(val, Ordering::SeqCst);
+                self.latch = val;
+                self.touch();
             }
             None => {
                 error!("latch increment overflowed.");
             }
         }
-        self.touch();
     }
 
     pub(super) fn decrement(&mut self, decrement_by: u8) {
-        match self.latch.get_mut().checked_sub(decrement_by) {
+        match self.latch.checked_sub(decrement_by) {
             Some(val) => {
-                self.latch.store(val, Ordering::SeqCst);
+                self.latch = val;
+                self.touch();
             }
             None => {
                 error!("latch decrement overflowed.");
             }
         }
-        self.touch();
     }
 
     pub(super) fn unlatch(&mut self) {
-        self.latch.store(0, Ordering::SeqCst);
+        self.latch = 0;
         self.timestamp = None;
     }
 
@@ -56,7 +54,7 @@ impl Latch {
     }
 
     pub(super) fn count(&self) -> u8 {
-        self.latch.load(Ordering::SeqCst)
+        self.latch
     }
 
     pub(super) fn touch(&mut self) {
