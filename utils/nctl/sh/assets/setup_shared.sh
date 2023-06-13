@@ -408,7 +408,7 @@ function setup_asset_node_configs()
         cp "$PATH_TO_NET/chainspec/chainspec.toml" "$PATH_TO_CONFIG"
         cp "$PATH_TO_TEMPLATE" "$PATH_TO_CONFIG_FILE"
 
-        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_execution_address' $PATH_TO_CONFIG_FILE || true)
+        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_CONFIG_FILE || true)
 
         # Set node configuration settings.
         SCRIPT=(
@@ -426,13 +426,14 @@ function setup_asset_node_configs()
 
         if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
             SCRIPT+=(
-                "cfg['rpc_server']['speculative_execution_address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
+                "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$IDX")';"
             )
         fi
 
         SCRIPT+=(
             "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
         )
+
         python3 -c "${SCRIPT[*]}"
     done
 }

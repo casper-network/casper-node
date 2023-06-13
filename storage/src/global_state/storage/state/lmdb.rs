@@ -1,14 +1,12 @@
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use crate::global_state::storage::lmdb::DatabaseFlags;
-use casper_hashing::Digest;
-use casper_types::{Key, StoredValue};
 use tempfile::TempDir;
 
 use crate::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
     storage::{
         error,
+        lmdb::DatabaseFlags,
         state::{
             commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
             StateReader,
@@ -28,6 +26,7 @@ use crate::global_state::{
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     },
 };
+use casper_types::{Digest, Key, StoredValue};
 
 /// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
@@ -371,8 +370,7 @@ pub fn make_temporary_global_state(
 
 #[cfg(test)]
 mod tests {
-    use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, CLValue, Digest};
 
     use crate::global_state::storage::state::scratch::tests::TestPair;
 
@@ -422,7 +420,7 @@ mod tests {
     #[test]
     fn checkout_fails_if_unknown_hash_is_given() {
         let (state, _, _tempdir) = make_temporary_global_state(create_test_pairs());
-        let fake_hash: Digest = Digest::hash(&[1u8; 32]);
+        let fake_hash: Digest = Digest::hash([1u8; 32]);
         let result = state.checkout(fake_hash).unwrap();
         assert!(result.is_none());
     }

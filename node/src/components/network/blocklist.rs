@@ -4,8 +4,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use casper_hashing::Digest;
-use casper_types::EraId;
+use casper_types::{Digest, EraId};
 use datasize::DataSize;
 use serde::Serialize;
 

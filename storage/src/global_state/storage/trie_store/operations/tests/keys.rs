@@ -49,7 +49,7 @@ mod partial_tries {
 }
 
 mod full_tries {
-    use casper_hashing::Digest;
+    use casper_types::Digest;
 
     use crate::global_state::{
         shared::CorrelationId,
@@ -112,8 +112,7 @@ mod full_tries {
 
 #[cfg(debug_assertions)]
 mod keys_iterator {
-    use casper_hashing::Digest;
-    use casper_types::bytesrepr;
+    use casper_types::{bytesrepr, Digest};
 
     use crate::global_state::{
         shared::CorrelationId,

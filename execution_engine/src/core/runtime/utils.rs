@@ -5,15 +5,12 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
 
 use casper_types::{
     contracts::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
-    RuntimeArgs, URef, URefAddr, U128, U256, U512,
+    RuntimeArgs, URef, URefAddr, WasmConfig, U128, U256, U512,
 };
 
-use crate::{
-    core::{
-        execution::Error,
-        resolvers::{self, memory_resolver::MemoryResolver},
-    },
-    shared::wasm_config::WasmConfig,
+use crate::core::{
+    execution::Error,
+    resolvers::{self, memory_resolver::MemoryResolver},
 };
 
 /// Creates an WASM module instance and a memory instance.

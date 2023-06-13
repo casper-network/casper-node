@@ -10,8 +10,9 @@ use std::{
 use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::{
+    Digest, EraId, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
 
 use super::{
     block_acquisition::{Acceptance, BlockAcquisitionState},
@@ -23,9 +24,9 @@ use super::{
 };
 use crate::{
     types::{
-        chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights,
-        FinalitySignature, FinalizedBlock, NodeId, ValidatorMatrix,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
+        BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights, FinalitySignature,
+        FinalizedBlock, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -663,6 +664,12 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
+        if peers.is_empty() {
+            // We asked for peers but none were provided. Exit early without
+            // clearing the latch so that we don't ask again needlessly.
+            trace!("BlockSynchronizer: no peers available");
+            return;
+        }
         if !(self.is_finished() || self.is_failed()) {
             peers
                 .into_iter()

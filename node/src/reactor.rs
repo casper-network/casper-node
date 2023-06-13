@@ -47,6 +47,8 @@ use std::{
 
 use datasize::DataSize;
 use erased_serde::Serialize as ErasedSerialize;
+#[cfg(test)]
+use fake_instant::FakeClock;
 use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, HistogramOpts, IntCounter, IntGauge, Registry};
@@ -58,9 +60,15 @@ use tokio::time::{Duration, Instant};
 use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+#[cfg(test)]
+use casper_types::testing::TestRng;
+use casper_types::{Chainspec, ChainspecRawBytes};
+
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 
+#[cfg(test)]
+use crate::testing::{network::NetworkedReactor, ConditionCheckReactor};
 use crate::{
     components::{
         block_accumulator, deploy_acceptor,
@@ -73,9 +81,8 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Chainspec,
-        ChainspecRawBytes, Deploy, ExitCode, FinalitySignature, LegacyDeploy, NodeId, SyncLeap,
-        TrieOrChunk,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy, ExitCode,
+        FinalitySignature, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
     },
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
@@ -87,6 +94,8 @@ pub(crate) use queue_kind::QueueKind;
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
 const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
 const DISPATCH_EVENT_THRESHOLD_ENV_VAR: &str = "CL_EVENT_MAX_MICROSECS";
+#[cfg(test)]
+const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
     env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
@@ -842,6 +851,58 @@ where
             tracing::debug!(?ancestor, %event, "drained event");
         }
         self.reactor
+    }
+}
+
+#[cfg(test)]
+impl<R> Runner<ConditionCheckReactor<R>>
+where
+    R: Reactor + NetworkedReactor,
+    R::Event: Serialize,
+    R::Error: From<prometheus::Error>,
+{
+    /// Cranks the runner until `condition` is true or until `within` has elapsed.
+    ///
+    /// Returns `true` if `condition` has been met within the specified timeout.
+    ///
+    /// Panics if cranking causes the node to return an exit code.
+    pub(crate) async fn crank_until<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
+    where
+        F: Fn(&R::Event) -> bool + Send + 'static,
+    {
+        self.reactor.set_condition_checker(Box::new(condition));
+
+        tokio::time::timeout(within, self.crank_and_check_indefinitely(rng))
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Runner::crank_until() timed out after {}s on node {}",
+                    within.as_secs_f64(),
+                    self.reactor.inner().node_id()
+                )
+            })
+    }
+
+    async fn crank_and_check_indefinitely(&mut self, rng: &mut TestRng) {
+        loop {
+            match self.try_crank(rng).await {
+                TryCrankOutcome::NoEventsToProcess => {
+                    FakeClock::advance_time(POLL_INTERVAL.as_millis() as u64);
+                    tokio::time::sleep(POLL_INTERVAL).await;
+                    continue;
+                }
+                TryCrankOutcome::ProcessedAnEvent => {}
+                TryCrankOutcome::ShouldExit(exit_code) => {
+                    panic!("should not exit: {:?}", exit_code)
+                }
+                TryCrankOutcome::Exited => unreachable!(),
+            }
+
+            if self.reactor.condition_result() {
+                info!("{} met condition", self.reactor.inner().node_id());
+                return;
+            }
+        }
     }
 }
 

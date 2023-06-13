@@ -5,8 +5,7 @@ use datasize::DataSize;
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
 };
-use casper_hashing::Digest;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
+use casper_types::{Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
 use crate::types::{ApprovalsHashes, Block, DeployHash, DeployHeader};
 

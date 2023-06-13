@@ -1,7 +1,5 @@
 pub(crate) mod test_utils;
 
-use assert_matches::assert_matches;
-use num_rational::Ratio;
 use std::{
     cmp::min,
     collections::{BTreeMap, VecDeque},
@@ -9,13 +7,15 @@ use std::{
     time::Duration,
 };
 
+use assert_matches::assert_matches;
 use derive_more::From;
+use num_rational::Ratio;
 use rand::{seq::IteratorRandom, Rng};
 
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, EraId, Key, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, TimeDiff, URef, U512,
+    testing::TestRng, AccessRights, CLValue, Chainspec, EraId, Key, LegacyRequiredFinality,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef, U512,
 };
 
 use super::*;
@@ -27,7 +27,7 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{chainspec::LegacyRequiredFinality, DeployId, TestBlockBuilder},
+    types::{DeployId, TestBlockBuilder},
     utils,
 };
 
@@ -257,6 +257,7 @@ impl<I: IntoIterator> OneExt for I {
     }
 }
 
+#[cfg(test)]
 impl BlockSynchronizer {
     fn new_initialized(
         rng: &mut TestRng,
@@ -441,6 +442,92 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
             "{} should be marked unreliable",
             peer
         );
+    }
+}
+
+#[tokio::test]
+async fn synchronizer_doesnt_busy_loop_without_peers() {
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let test_env = TestEnv::random(&mut rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .random_deploys(1, &mut rng)
+            .build(&mut rng),
+    );
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let cfg = Config {
+        latch_reset_interval: TimeDiff::from_millis(TEST_LATCH_RESET_INTERVAL_MILLIS),
+        ..Default::default()
+    };
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, cfg);
+
+    block_synchronizer.register_block_by_hash(*block.hash(), true);
+    {
+        // We registered no peers, so the synchronizer should ask for peers.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::Request(BlockSynchronizerRequest::NeedNext),
+        );
+        assert_eq!(effects.len(), 2);
+        let events = mock_reactor.process_effects(effects).await;
+        // Given this is a historical builder, ask for peers from the network.
+        assert_matches!(
+            events[0],
+            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
+                count,
+                ..
+            }) if count == MAX_SIMULTANEOUS_PEERS
+        );
+        // Ask for peers from the accumulator.
+        assert_matches!(
+            events[1],
+            MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
+                block_hash,
+                ..
+            }) if block_hash == *block.hash()
+        );
+    }
+
+    {
+        // Inject an empty response from the network, simulating no available
+        // peers.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::NetworkPeers(*block.hash(), vec![]),
+        );
+        // The builder should have its latch set and should not ask for peers
+        // until the latch clears itself.
+        assert!(effects.is_empty());
+        assert!(block_synchronizer
+            .historical
+            .as_mut()
+            .unwrap()
+            .in_flight_latch()
+            .is_some());
+    }
+
+    {
+        // Inject an empty response from the accumulator, simulating no
+        // available peers.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::AccumulatedPeers(*block.hash(), Some(vec![])),
+        );
+        // The builder should have its latch set and should not ask for peers
+        // until the latch clears itself.
+        assert!(effects.is_empty());
+        assert!(block_synchronizer
+            .historical
+            .as_mut()
+            .unwrap()
+            .in_flight_latch()
+            .is_some());
     }
 }
 

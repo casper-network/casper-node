@@ -1,11 +1,19 @@
 //! Preprocessing of Wasm modules.
-use casper_wasm_utils::{self, stack_height};
+use std::{convert::TryInto, num::NonZeroU32};
+
+use casper_wasm_utils::{
+    self,
+    rules::{MemoryGrowCost, Rules},
+    stack_height,
+};
+
+use casper_types::{OpcodeCosts, WasmConfig};
+
 use parity_wasm::elements::{
     self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
 };
 use thiserror::Error;
 
-use super::wasm_config::WasmConfig;
 use crate::core::execution;
 
 const DEFAULT_GAS_MODULE_NAME: &str = "env";
@@ -391,13 +399,10 @@ pub fn preprocess(
     ensure_parameter_limit(&module, DEFAULT_MAX_PARAMETER_COUNT)?;
     ensure_valid_imports(&module)?;
 
+    let costs = RuledOpcodeCosts(wasm_config.opcode_costs());
     let module = casper_wasm_utils::externalize_mem(module, None, wasm_config.max_memory);
-    let module = casper_wasm_utils::inject_gas_counter(
-        module,
-        &wasm_config.opcode_costs(),
-        DEFAULT_GAS_MODULE_NAME,
-    )
-    .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
+    let module = casper_wasm_utils::inject_gas_counter(module, &costs, DEFAULT_GAS_MODULE_NAME)
+        .map_err(|_| PreprocessingError::OperationForbiddenByGasRules)?;
     let module = stack_height::inject_limiter(module, wasm_config.max_stack_height)
         .map_err(|_| PreprocessingError::StackLimiter)?;
     Ok(module)
@@ -433,6 +438,221 @@ pub fn get_module_from_entry_points(
             casper_wasm_utils::optimize(&mut module, entry_point_names)?;
             parity_wasm::serialize(module).map_err(execution::Error::ParityWasm)
         }
+    }
+}
+
+struct RuledOpcodeCosts(OpcodeCosts);
+
+impl Rules for RuledOpcodeCosts {
+    fn instruction_cost(&self, instruction: &Instruction) -> Option<u32> {
+        let costs = self.0;
+        match instruction {
+            Instruction::Unreachable => Some(costs.unreachable),
+            Instruction::Nop => Some(costs.nop),
+
+            // Control flow class of opcodes is charged for each of the opcode individually.
+            Instruction::Block(_) => Some(costs.control_flow.block),
+            Instruction::Loop(_) => Some(costs.control_flow.op_loop),
+            Instruction::If(_) => Some(costs.control_flow.op_if),
+            Instruction::Else => Some(costs.control_flow.op_else),
+            Instruction::End => Some(costs.control_flow.end),
+            Instruction::Br(_) => Some(costs.control_flow.br),
+            Instruction::BrIf(_) => Some(costs.control_flow.br_if),
+            Instruction::BrTable(br_table_data) => {
+                // If we're unable to fit table size in `u32` to measure the cost, then such wasm
+                // would be rejected. This is unlikely scenario as we impose a limit
+                // for the amount of targets a `br_table` opcode can contain.
+                let br_table_size: u32 = br_table_data.table.len().try_into().ok()?;
+
+                let br_table_cost = costs.control_flow.br_table.cost;
+
+                let table_size_part =
+                    br_table_size.checked_mul(costs.control_flow.br_table.size_multiplier)?;
+
+                let br_table_cost = br_table_cost.checked_add(table_size_part)?;
+                Some(br_table_cost)
+            }
+            Instruction::Return => Some(costs.control_flow.op_return),
+            Instruction::Call(_) => Some(costs.control_flow.call),
+            Instruction::CallIndirect(_, _) => Some(costs.control_flow.call_indirect),
+            Instruction::Drop => Some(costs.control_flow.drop),
+            Instruction::Select => Some(costs.control_flow.select),
+
+            Instruction::GetLocal(_) | Instruction::SetLocal(_) | Instruction::TeeLocal(_) => {
+                Some(costs.local)
+            }
+            Instruction::GetGlobal(_) | Instruction::SetGlobal(_) => Some(costs.global),
+
+            Instruction::I32Load(_, _)
+            | Instruction::I64Load(_, _)
+            | Instruction::F32Load(_, _)
+            | Instruction::F64Load(_, _)
+            | Instruction::I32Load8S(_, _)
+            | Instruction::I32Load8U(_, _)
+            | Instruction::I32Load16S(_, _)
+            | Instruction::I32Load16U(_, _)
+            | Instruction::I64Load8S(_, _)
+            | Instruction::I64Load8U(_, _)
+            | Instruction::I64Load16S(_, _)
+            | Instruction::I64Load16U(_, _)
+            | Instruction::I64Load32S(_, _)
+            | Instruction::I64Load32U(_, _) => Some(costs.load),
+
+            Instruction::I32Store(_, _)
+            | Instruction::I64Store(_, _)
+            | Instruction::F32Store(_, _)
+            | Instruction::F64Store(_, _)
+            | Instruction::I32Store8(_, _)
+            | Instruction::I32Store16(_, _)
+            | Instruction::I64Store8(_, _)
+            | Instruction::I64Store16(_, _)
+            | Instruction::I64Store32(_, _) => Some(costs.store),
+
+            Instruction::CurrentMemory(_) => Some(costs.current_memory),
+            Instruction::GrowMemory(_) => Some(costs.grow_memory),
+
+            Instruction::I32Const(_) | Instruction::I64Const(_) => Some(costs.op_const),
+
+            Instruction::F32Const(_) | Instruction::F64Const(_) => None, // float_const
+
+            Instruction::I32Eqz
+            | Instruction::I32Eq
+            | Instruction::I32Ne
+            | Instruction::I32LtS
+            | Instruction::I32LtU
+            | Instruction::I32GtS
+            | Instruction::I32GtU
+            | Instruction::I32LeS
+            | Instruction::I32LeU
+            | Instruction::I32GeS
+            | Instruction::I32GeU
+            | Instruction::I64Eqz
+            | Instruction::I64Eq
+            | Instruction::I64Ne
+            | Instruction::I64LtS
+            | Instruction::I64LtU
+            | Instruction::I64GtS
+            | Instruction::I64GtU
+            | Instruction::I64LeS
+            | Instruction::I64LeU
+            | Instruction::I64GeS
+            | Instruction::I64GeU => Some(costs.integer_comparison),
+
+            Instruction::F32Eq
+            | Instruction::F32Ne
+            | Instruction::F32Lt
+            | Instruction::F32Gt
+            | Instruction::F32Le
+            | Instruction::F32Ge
+            | Instruction::F64Eq
+            | Instruction::F64Ne
+            | Instruction::F64Lt
+            | Instruction::F64Gt
+            | Instruction::F64Le
+            | Instruction::F64Ge => None, // Unsupported comparison operators for floats.
+
+            Instruction::I32Clz | Instruction::I32Ctz | Instruction::I32Popcnt => Some(costs.bit),
+
+            Instruction::I32Add | Instruction::I32Sub => Some(costs.add),
+
+            Instruction::I32Mul => Some(costs.mul),
+
+            Instruction::I32DivS
+            | Instruction::I32DivU
+            | Instruction::I32RemS
+            | Instruction::I32RemU => Some(costs.div),
+
+            Instruction::I32And
+            | Instruction::I32Or
+            | Instruction::I32Xor
+            | Instruction::I32Shl
+            | Instruction::I32ShrS
+            | Instruction::I32ShrU
+            | Instruction::I32Rotl
+            | Instruction::I32Rotr
+            | Instruction::I64Clz
+            | Instruction::I64Ctz
+            | Instruction::I64Popcnt => Some(costs.bit),
+
+            Instruction::I64Add | Instruction::I64Sub => Some(costs.add),
+            Instruction::I64Mul => Some(costs.mul),
+
+            Instruction::I64DivS
+            | Instruction::I64DivU
+            | Instruction::I64RemS
+            | Instruction::I64RemU => Some(costs.div),
+
+            Instruction::I64And
+            | Instruction::I64Or
+            | Instruction::I64Xor
+            | Instruction::I64Shl
+            | Instruction::I64ShrS
+            | Instruction::I64ShrU
+            | Instruction::I64Rotl
+            | Instruction::I64Rotr => Some(costs.bit),
+
+            Instruction::F32Abs
+            | Instruction::F32Neg
+            | Instruction::F32Ceil
+            | Instruction::F32Floor
+            | Instruction::F32Trunc
+            | Instruction::F32Nearest
+            | Instruction::F32Sqrt
+            | Instruction::F32Add
+            | Instruction::F32Sub
+            | Instruction::F32Mul
+            | Instruction::F32Div
+            | Instruction::F32Min
+            | Instruction::F32Max
+            | Instruction::F32Copysign
+            | Instruction::F64Abs
+            | Instruction::F64Neg
+            | Instruction::F64Ceil
+            | Instruction::F64Floor
+            | Instruction::F64Trunc
+            | Instruction::F64Nearest
+            | Instruction::F64Sqrt
+            | Instruction::F64Add
+            | Instruction::F64Sub
+            | Instruction::F64Mul
+            | Instruction::F64Div
+            | Instruction::F64Min
+            | Instruction::F64Max
+            | Instruction::F64Copysign => None, // Unsupported math operators for floats.
+
+            Instruction::I32WrapI64 | Instruction::I64ExtendSI32 | Instruction::I64ExtendUI32 => {
+                Some(costs.conversion)
+            }
+
+            Instruction::I32TruncSF32
+            | Instruction::I32TruncUF32
+            | Instruction::I32TruncSF64
+            | Instruction::I32TruncUF64
+            | Instruction::I64TruncSF32
+            | Instruction::I64TruncUF32
+            | Instruction::I64TruncSF64
+            | Instruction::I64TruncUF64
+            | Instruction::F32ConvertSI32
+            | Instruction::F32ConvertUI32
+            | Instruction::F32ConvertSI64
+            | Instruction::F32ConvertUI64
+            | Instruction::F32DemoteF64
+            | Instruction::F64ConvertSI32
+            | Instruction::F64ConvertUI32
+            | Instruction::F64ConvertSI64
+            | Instruction::F64ConvertUI64
+            | Instruction::F64PromoteF32 => None, // Unsupported conversion operators for floats.
+
+            Instruction::I32ReinterpretF32
+            | Instruction::I64ReinterpretF64
+            | Instruction::F32ReinterpretI32
+            | Instruction::F64ReinterpretI64 => None, /* Unsupported reinterpretation operators
+                                                       * for floats. */
+        }
+    }
+
+    fn memory_grow_cost(&self) -> Option<MemoryGrowCost> {
+        NonZeroU32::new(self.0.grow_memory).map(MemoryGrowCost::Linear)
     }
 }
 

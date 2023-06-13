@@ -28,10 +28,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::error;
 
-use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
+    crypto, ActivationPoint, ChunkWithProofVerificationError, Digest, EraId, ProtocolConfig,
+    ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
@@ -1012,6 +1012,14 @@ impl BlockHeader {
         self.era_id().is_genesis() && self.height() == 0
     }
 
+    /// Returns whether the block header belongs to the last block before the upgrade to the
+    /// current protocol version.
+    pub fn is_last_block_before_activation(&self, protocol_config: &ProtocolConfig) -> bool {
+        protocol_config.version > self.protocol_version
+            && self.is_switch_block()
+            && ActivationPoint::EraId(self.next_block_era_id()) == protocol_config.activation_point
+    }
+
     // Serialize the block header.
     fn serialize(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.to_bytes()
@@ -1932,9 +1940,13 @@ impl FetchItem for BlockExecutionResultsOrChunk {
 
 impl Display for BlockExecutionResultsOrChunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let size = match &self.value {
+            ValueOrChunk::Value(exec_results) => exec_results.serialized_length(),
+            ValueOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
+        };
         write!(
             f,
-            "block execution results (or chunk) for block {}",
+            "block execution results or chunk ({size} bytes) for block {}",
             self.block_hash.inner()
         )
     }

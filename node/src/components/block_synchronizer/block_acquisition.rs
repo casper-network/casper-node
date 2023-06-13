@@ -7,8 +7,7 @@ use datasize::DataSize;
 use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_hashing::Digest;
-use casper_types::{ProtocolVersion, PublicKey};
+use casper_types::{Digest, ProtocolVersion, PublicKey};
 
 use crate::{
     components::block_synchronizer::{

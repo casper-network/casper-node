@@ -2,12 +2,10 @@ use std::collections::{btree_map::Entry, BTreeMap};
 
 use datasize::DataSize;
 
-use casper_types::PublicKey;
+use casper_types::{LegacyRequiredFinality, PublicKey};
 
 use super::block_acquisition::Acceptance;
-use crate::types::{
-    chainspec::LegacyRequiredFinality, EraValidatorWeights, FinalitySignature, SignatureWeight,
-};
+use crate::types::{EraValidatorWeights, FinalitySignature, SignatureWeight};
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 enum SignatureState {

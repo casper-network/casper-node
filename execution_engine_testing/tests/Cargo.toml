@@ -9,8 +9,7 @@ base16 = "0.2.1"
 casper-storage = { version = "1.4.3", path = "../../storage" }
 casper-engine-test-support = { path = "../test_support", features = ["test-support"] }
 casper-execution-engine = { path = "../../execution_engine", features = ["test-support"] }
-casper-hashing = { path = "../../hashing" }
-casper-types = { path = "../../types", features = ["datasize", "json-schema"] }
+casper-types = { path = "../../types", default_features = false, features = ["datasize", "json-schema"] }
 clap = "2"
 fs_extra = "1.2.0"
 log = "0.4.8"

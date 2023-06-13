@@ -11,7 +11,7 @@ use serde::Serialize;
 use tempfile::TempDir;
 use thiserror::Error;
 
-use casper_types::testing::TestRng;
+use casper_types::{testing::TestRng, Chainspec, ChainspecRawBytes};
 
 use super::*;
 use crate::{
@@ -23,17 +23,13 @@ use crate::{
         storage::{self, Storage},
     },
     effect::{
-        announcements::{
-            ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement,
-            RpcServerAnnouncement,
-        },
+        announcements::{ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement},
         incoming::{
             ConsensusMessageIncoming, DemandIncoming, FinalitySignatureIncoming, GossiperIncoming,
             NetRequestIncoming, NetResponse, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
-        requests::MarkBlockCompletedRequest,
-        Responder,
+        requests::{AcceptDeployRequest, MarkBlockCompletedRequest},
     },
     fatal,
     protocol::Message,
@@ -43,10 +39,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeDeployAcceptor,
     },
-    types::{
-        Block, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId, FinalitySignature,
-        NodeId,
-    },
+    types::{Block, Deploy, DeployHash, DeployId, FinalitySignature, NodeId},
     utils::WithDir,
 };
 
@@ -106,9 +99,9 @@ enum Event {
     #[from]
     BlockAccumulatorRequest(BlockAccumulatorRequest),
     #[from]
-    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement),
+    AcceptDeployRequest(AcceptDeployRequest),
     #[from]
-    RpcServerAnnouncement(RpcServerAnnouncement),
+    DeployAcceptorAnnouncement(DeployAcceptorAnnouncement),
     #[from]
     FetchedNewFinalitySignatureAnnouncement(FetchedNewFinalitySignatureAnnouncement),
     #[from]
@@ -221,11 +214,23 @@ impl ReactorTrait for Reactor {
                 self.deploy_fetcher
                     .handle_event(effect_builder, rng, announcement.into()),
             ),
-            Event::RpcServerAnnouncement(announcement) => reactor::wrap_effects(
-                Event::FakeDeployAcceptor,
-                self.fake_deploy_acceptor
-                    .handle_event(effect_builder, rng, announcement.into()),
-            ),
+            Event::AcceptDeployRequest(AcceptDeployRequest {
+                deploy,
+                speculative_exec_at_block,
+                responder,
+            }) => {
+                assert!(speculative_exec_at_block.is_none());
+                let event = deploy_acceptor::Event::Accept {
+                    deploy,
+                    source: Source::Client,
+                    maybe_responder: Some(responder),
+                };
+                reactor::wrap_effects(
+                    Event::FakeDeployAcceptor,
+                    self.fake_deploy_acceptor
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
             Event::NetRequestIncoming(announcement) => reactor::wrap_effects(
                 Event::Storage,
                 self.storage
@@ -311,7 +316,7 @@ impl Reactor {
                 let deploy = match bincode::deserialize::<FetchResponse<Deploy, DeployHash>>(
                     serialized_item,
                 ) {
-                    Ok(FetchResponse::Fetched(deploy)) => Box::new(deploy),
+                    Ok(FetchResponse::Fetched(deploy)) => Arc::new(deploy),
                     Ok(FetchResponse::NotFound(deploy_hash)) => {
                         return fatal!(
                             effect_builder,
@@ -366,13 +371,10 @@ impl NetworkedReactor for Reactor {
     }
 }
 
-fn announce_deploy_received(
-    deploy: Deploy,
-    responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
-) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
+fn announce_deploy_received(deploy: Deploy) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .announce_deploy_received(Box::new(deploy), responder)
+            .try_accept_deploy(Arc::new(deploy), None)
             .ignore()
     }
 }
@@ -401,11 +403,10 @@ async fn store_deploy(
     deploy: &Deploy,
     node_id: &NodeId,
     network: &mut TestingNetwork<Reactor>,
-    responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
     rng: &mut TestRng,
 ) {
     network
-        .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone(), responder))
+        .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone()))
         .await;
 
     // cycle to deploy acceptor announcement
@@ -512,7 +513,7 @@ async fn should_fetch_from_local() {
 
     // Store deploy on a node.
     let node_to_store_on = &node_ids[0];
-    store_deploy(&deploy, node_to_store_on, &mut network, None, &mut rng).await;
+    store_deploy(&deploy, node_to_store_on, &mut network, &mut rng).await;
 
     // Try to fetch the deploy from a node that holds it.
     let node_id = node_ids[0];
@@ -559,7 +560,7 @@ async fn should_fetch_from_peer() {
 
     // Store deploy on a node.
     let node_with_deploy = node_ids[0];
-    store_deploy(&deploy, &node_with_deploy, &mut network, None, &mut rng).await;
+    store_deploy(&deploy, &node_with_deploy, &mut network, &mut rng).await;
 
     let node_without_deploy = node_ids[1];
     let deploy_id = deploy.fetch_id();
@@ -611,7 +612,7 @@ async fn should_timeout_fetch_from_peer() {
     let requesting_node = node_ids[1];
 
     // Store deploy on holding node.
-    store_deploy(&deploy, &holding_node, &mut network, None, &mut rng).await;
+    store_deploy(&deploy, &holding_node, &mut network, &mut rng).await;
 
     // Initiate requesting node asking for deploy from holding node.
     let fetched = Arc::new(Mutex::new((false, None)));

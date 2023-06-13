@@ -9,11 +9,13 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::{
-    core::engine_state::{run_genesis_request::RunGenesisRequest, ExecConfig, GenesisAccount},
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+use casper_execution_engine::core::engine_state::{
+    run_genesis_request::RunGenesisRequest, ExecConfig,
 };
-use casper_types::{system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, ProtocolVersion, TimeDiff};
+use casper_types::{
+    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, GenesisAccount, ProtocolVersion, SystemConfig,
+    TimeDiff, WasmConfig,
+};
 
 use crate::{
     DEFAULT_ACCOUNTS, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,

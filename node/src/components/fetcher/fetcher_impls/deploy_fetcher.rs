@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
@@ -39,7 +39,7 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         StoringState::Enqueued(
             async move {
                 let is_new = effect_builder
-                    .put_deploy_to_storage(Box::new(item.clone()))
+                    .put_deploy_to_storage(Arc::new(item.clone()))
                     .await;
                 // If `is_new` is `false`, the deploy was previously stored, and the incoming
                 // deploy could have a different set of approvals to the one already stored.

@@ -7,8 +7,7 @@ use std::{
 
 use tracing::error;
 
-use casper_hashing::Digest;
-use casper_types::{Key, StoredValue};
+use casper_types::{Digest, Key, StoredValue};
 
 use crate::global_state::{
     shared::{transform::Transform, AdditiveMap, CorrelationId},
@@ -360,8 +359,7 @@ pub(crate) mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use casper_hashing::Digest;
-    use casper_types::{account::AccountHash, CLValue};
+    use casper_types::{account::AccountHash, CLValue, Digest};
 
     use super::*;
     use crate::global_state::storage::{

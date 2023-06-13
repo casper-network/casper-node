@@ -14,7 +14,8 @@ use smallvec::smallvec;
 
 use casper_types::{
     generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, URef, U512,
+    Chainspec, ChainspecRawBytes, EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey,
+    TimeDiff, URef, U512,
 };
 
 use super::{
@@ -35,8 +36,8 @@ use crate::{
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange, Block,
         BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
+        Deploy, DeployHash, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
@@ -451,7 +452,7 @@ fn put_block_signatures(
 fn put_deploy(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-    deploy: Box<Deploy>,
+    deploy: Arc<Deploy>,
 ) -> bool {
     let response = harness.send_request(storage, move |responder| {
         StorageRequest::PutDeploy { deploy, responder }.into()
@@ -755,28 +756,28 @@ fn can_retrieve_store_and_load_deploys() {
     let mut storage = storage_fixture(&harness);
 
     // Create a random deploy, store and load it.
-    let deploy = Box::new(Deploy::random(&mut harness.rng));
+    let deploy = Arc::new(Deploy::random(&mut harness.rng));
 
-    let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
+    let was_new = put_deploy(&mut harness, &mut storage, Arc::clone(&deploy));
     let block_hash_and_height = BlockHashAndHeight::random(&mut harness.rng);
     // Insert to the deploy hash index as well so that we can perform the GET later.
     // Also check that we don't have an entry there for this deploy.
     assert!(insert_to_deploy_index(
         &mut storage,
-        *deploy.clone(),
+        (*deploy).clone(),
         block_hash_and_height
     ));
     assert!(was_new, "putting deploy should have returned `true`");
 
     // Storing the same deploy again should work, but yield a result of `false`.
-    let was_new_second_time = put_deploy(&mut harness, &mut storage, deploy.clone());
+    let was_new_second_time = put_deploy(&mut harness, &mut storage, Arc::clone(&deploy));
     assert!(
         !was_new_second_time,
         "storing deploy the second time should have returned `false`"
     );
     assert!(!insert_to_deploy_index(
         &mut storage,
-        *deploy.clone(),
+        (*deploy).clone(),
         block_hash_and_height
     ));
 
@@ -811,9 +812,9 @@ fn can_retrieve_store_and_load_deploys() {
     }
 
     // Create a random deploy, store and load it.
-    let deploy = Box::new(Deploy::random(&mut harness.rng));
+    let deploy = Arc::new(Deploy::random(&mut harness.rng));
 
-    assert!(put_deploy(&mut harness, &mut storage, deploy.clone()));
+    assert!(put_deploy(&mut harness, &mut storage, Arc::clone(&deploy)));
     // Don't insert to the deploy hash index. Since we have no execution results
     // either, we should receive an empty metadata response.
     let (deploy_response, metadata_response) = harness
@@ -851,7 +852,7 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
     let mut deploy_hashes = Vec::new();
 
     for _ in 0..total {
-        let deploy = Box::new(Deploy::random(&mut harness.rng));
+        let deploy = Arc::new(Deploy::random(&mut harness.rng));
         deploy_hashes.push(*deploy.hash());
         put_deploy(&mut harness, &mut storage, deploy);
     }
@@ -877,7 +878,7 @@ fn store_execution_results_for_two_blocks() {
     let block_hash_b = BlockHash::random(&mut harness.rng);
 
     // Store the deploy.
-    put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+    put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
 
     // Ensure deploy exists.
     assert_eq!(
@@ -944,7 +945,7 @@ fn store_random_execution_results() {
 
     // Store shared deploys.
     for deploy in &shared_deploys {
-        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+        put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
     }
 
     // We collect the expected result per deploy in parallel to adding them.
@@ -967,7 +968,7 @@ fn store_random_execution_results() {
             let deploy = Deploy::random(&mut harness.rng);
 
             // Store unique deploy.
-            put_deploy(harness, storage, Box::new(deploy.clone()));
+            put_deploy(harness, storage, Arc::new(deploy.clone()));
 
             let execution_result: ExecutionResult = harness.rng.gen();
 
@@ -1085,15 +1086,15 @@ fn test_legacy_interface() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let deploy = Box::new(Deploy::random(&mut harness.rng));
-    let was_new = put_deploy(&mut harness, &mut storage, deploy.clone());
+    let deploy = Arc::new(Deploy::random(&mut harness.rng));
+    let was_new = put_deploy(&mut harness, &mut storage, Arc::clone(&deploy));
     assert!(was_new);
 
     // Ensure we get the deploy we expect.
     let result = storage
         .get_legacy_deploy(*deploy.hash())
         .expect("should get deploy");
-    assert_eq!(result, Some(LegacyDeploy::from(*deploy)));
+    assert_eq!(result, Some(LegacyDeploy::from((*deploy).clone())));
 
     // A non-existent deploy should simply return `None`.
     assert!(storage
@@ -1113,7 +1114,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let execution_result: ExecutionResult = harness.rng.gen();
-    put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+    put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
     put_complete_block(&mut harness, &mut storage, Arc::new(block.clone()));
     let mut execution_results = HashMap::new();
     execution_results.insert(*deploy.hash(), execution_result.clone());
@@ -1206,7 +1207,7 @@ fn should_hard_reset() {
     for (index, block_hash) in blocks.iter().map(|block| block.hash()).enumerate() {
         let deploy = random_deploys.get(index).expect("should have deploys");
         let execution_result: ExecutionResult = harness.rng.gen();
-        put_deploy(&mut harness, &mut storage, Box::new(deploy.clone()));
+        put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.hash(), execution_result);
         put_execution_results(

@@ -6,10 +6,12 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 /// The cryptographic hash of a [`Deploy`](struct.Deploy.html).
 #[derive(

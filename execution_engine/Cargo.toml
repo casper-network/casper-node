@@ -14,8 +14,7 @@ license = "Apache-2.0"
 anyhow = "1.0.33"
 base16 = "0.2.1"
 casper-storage = { version = "1.4.3", path = "../storage" }
-casper-hashing = { version = "2.0.0", path = "../hashing" }
-casper-types = { version = "3.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema"] }
+casper-types = { version = "3.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema", "std"] }
 casper-wasm-utils = "1.0.0"
 datasize = "0.2.4"
 either = "1.8.1"
@@ -49,7 +48,7 @@ wasmi = "0.9.1"
 
 [dev-dependencies]
 assert_matches = "1.3.0"
-casper-types = { path = "../types", features = ["datasize", "json-schema", "testing"] }
+casper-types = { path = "../types", features = ["datasize", "json-schema", "testing", "std"] }
 criterion = "0.3.5"
 proptest = "1.0.0"
 tempfile = "3.4.0"

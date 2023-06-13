@@ -8,10 +8,12 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use casper_types::testing::TestRng;
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 use super::Approval;
 

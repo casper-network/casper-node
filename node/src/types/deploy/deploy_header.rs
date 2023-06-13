@@ -3,17 +3,17 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tracing::debug;
 
-use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, TimeDiff, Timestamp,
+    DeployConfig, Digest, PublicKey, TimeDiff, Timestamp,
 };
 
 #[cfg(doc)]
 use super::Deploy;
-use super::DeployHash;
-use crate::{types::chainspec::DeployConfig, utils::DisplayIter};
+use super::{DeployConfigurationFailure, DeployHash};
+use crate::utils::DisplayIter;
 
 /// The header portion of a [`Deploy`].
 #[derive(
@@ -91,13 +91,50 @@ impl DeployHeader {
         &self.chain_name
     }
 
-    /// Determine if this deploy header has valid values based on a `DeployConfig` and timestamp.
-    pub fn is_valid(&self, deploy_config: &DeployConfig, current_timestamp: Timestamp) -> bool {
-        let ttl_valid = self.ttl() <= deploy_config.max_ttl;
-        let timestamp_valid = self.timestamp() <= current_timestamp;
-        let not_expired = !self.expired(current_timestamp);
-        let num_deps_valid = self.dependencies().len() <= deploy_config.max_dependencies as usize;
-        ttl_valid && timestamp_valid && not_expired && num_deps_valid
+    /// Returns Ok if and only if the dependencies count and TTL are within limits, and the
+    /// timestamp is not later than `at`.  Does NOT check for expiry.
+    pub fn is_valid(
+        &self,
+        config: &DeployConfig,
+        at: Timestamp,
+        deploy_hash: &DeployHash,
+    ) -> Result<(), DeployConfigurationFailure> {
+        #[allow(deprecated)]
+        if self.dependencies.len() > config.max_dependencies as usize {
+            debug!(
+                %deploy_hash,
+                deploy_header = %self,
+                max_dependencies = %config.max_dependencies,
+                "deploy dependency ceiling exceeded"
+            );
+            return Err(DeployConfigurationFailure::ExcessiveDependencies {
+                max_dependencies: config.max_dependencies,
+                got: self.dependencies().len(),
+            });
+        }
+
+        if self.ttl() > config.max_ttl {
+            debug!(
+                %deploy_hash,
+                deploy_header = %self,
+                max_ttl = %config.max_ttl,
+                "deploy ttl excessive"
+            );
+            return Err(DeployConfigurationFailure::ExcessiveTimeToLive {
+                max_ttl: config.max_ttl,
+                got: self.ttl(),
+            });
+        }
+
+        if self.timestamp() > at {
+            debug!(%deploy_hash, deploy_header = %self, %at, "deploy timestamp in the future");
+            return Err(DeployConfigurationFailure::TimestampInFuture {
+                validation_timestamp: at,
+                got: self.timestamp(),
+            });
+        }
+
+        Ok(())
     }
 
     /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl`.

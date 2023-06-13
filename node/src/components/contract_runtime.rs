@@ -4,6 +4,8 @@ mod config;
 mod error;
 mod metrics;
 mod operations;
+#[cfg(test)]
+mod tests;
 mod types;
 
 use std::{
@@ -25,14 +27,10 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+use casper_execution_engine::core::engine_state::{
+    self, genesis::GenesisError, DeployItem, EngineConfig, EngineState, GenesisSuccess,
+    SystemContractRegistry, UpgradeSuccess,
 };
-use casper_hashing::Digest;
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
@@ -43,7 +41,10 @@ use casper_storage::{
         },
     },
 };
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
+use casper_types::{
+    bytesrepr::Bytes, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest,
+    EraId, ProtocolVersion, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -59,8 +60,8 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError,
-        Deploy, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
+        BlockHash, BlockHeader, ChunkingError, Deploy, FinalizedBlock, MetaBlock, MetaBlockState,
+        TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -575,7 +576,11 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let result = run_intensive_task(move || {
-                        execute_only(engine_state.as_ref(), execution_prestate, (*deploy).into())
+                        execute_only(
+                            engine_state.as_ref(),
+                            execution_prestate,
+                            DeployItem::from((*deploy).clone()),
+                        )
                     })
                     .await;
                     responder.respond(result).await
@@ -723,6 +728,7 @@ impl ContractRuntime {
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
+        let next_block_height = sequential_block_state.next_block_height;
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
 
@@ -737,6 +743,7 @@ impl ContractRuntime {
                 .exec_queue_size
                 .set(exec_queue.len().try_into().unwrap_or(i64::MIN));
         }
+        debug!(next_block_height, "ContractRuntime: set initial state");
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -786,16 +793,33 @@ impl ContractRuntime {
         .await
         {
             Ok(block_and_execution_results) => block_and_execution_results,
-            Err(error) => return fatal!(effect_builder, "{}", error).await,
+            Err(error) => {
+                error!(%error, "failed to execute block");
+                return fatal!(effect_builder, "{}", error).await;
+            }
         };
 
         let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
-        debug!(
-            next_block_height = new_execution_pre_state.next_block_height,
-            "ContractRuntime: updating new_execution_pre_state",
-        );
-        *shared_pre_state.lock().unwrap() = new_execution_pre_state.clone();
-        debug!("ContractRuntime: updated new_execution_pre_state");
+        {
+            // The `shared_pre_state` could have been set to a block we just fully synced after
+            // doing a sync leap (via a call to `set_initial_state`).  We should not allow a block
+            // which completed execution just after this to set the `shared_pre_state` back to an
+            // earlier block height.
+            let mut shared_pre_state = shared_pre_state.lock().unwrap();
+            if shared_pre_state.next_block_height < new_execution_pre_state.next_block_height {
+                debug!(
+                    next_block_height = new_execution_pre_state.next_block_height,
+                    "ContractRuntime: updating shared pre-state",
+                );
+                *shared_pre_state = new_execution_pre_state.clone();
+            } else {
+                debug!(
+                    current_next_block_height = shared_pre_state.next_block_height,
+                    attempted_next_block_height = new_execution_pre_state.next_block_height,
+                    "ContractRuntime: not updating shared pre-state to older state"
+                );
+            }
+        }
 
         let current_era_id = block.header().era_id();
 
@@ -958,9 +982,10 @@ impl ContractRuntime {
 }
 
 #[cfg(test)]
-mod tests {
-    use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-    use casper_hashing::{ChunkWithProof, Digest};
+mod trie_chunking_tests {
+    use prometheus::Registry;
+    use tempfile::tempdir;
+
     use casper_storage::global_state::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
         storage::{
@@ -969,18 +994,16 @@ mod tests {
         },
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, CLValue, EraId, Key, ProtocolVersion, StoredValue,
-    };
-    use prometheus::Registry;
-    use tempfile::tempdir;
-
-    use crate::{
-        components::fetcher::FetchResponse,
-        contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
-        types::{ActivationPoint, ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+        account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
+        Key, ProtocolVersion, StoredValue, SystemConfig, WasmConfig,
     };
 
     use super::ContractRuntimeError;
+    use crate::{
+        components::fetcher::FetchResponse,
+        contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
+        types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+    };
 
     #[derive(Debug, Clone)]
     struct TestPair(Key, StoredValue);

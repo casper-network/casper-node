@@ -2,7 +2,10 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 use crate::{
-    components::consensus::ChainspecConsensusExt,
+    components::{
+        block_accumulator::{SyncIdentifier, SyncInstruction},
+        consensus::ChainspecConsensusExt,
+    },
     effect::{EffectBuilder, Effects},
     reactor::{
         self,
@@ -12,10 +15,13 @@ use crate::{
     NodeRng,
 };
 
+/// Cranking delay when encountered a non-switch block when checking the validator status.
+const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
+
 pub(super) enum ValidateInstruction {
     Do(Duration, Effects<MainEvent>),
     CheckLater(String, Duration),
-    NonSwitchBlock,
+    CatchUp,
     KeepUp,
     ShutdownForUpgrade,
     Fatal(String),
@@ -35,9 +41,40 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
-        if self.switch_block_header.is_none() {
-            // validate status is only checked at switch blocks
-            return ValidateInstruction::NonSwitchBlock;
+
+        match self.storage.read_highest_complete_block() {
+            Ok(Some(highest_complete_block)) => {
+                // If we're lagging behind the rest of the network, fall back out of Validate mode.
+                let sync_identifier = SyncIdentifier::LocalTip(
+                    *highest_complete_block.hash(),
+                    highest_complete_block.height(),
+                    highest_complete_block.header().era_id(),
+                );
+                match self.block_accumulator.sync_instruction(sync_identifier) {
+                    SyncInstruction::Leap { .. } => return ValidateInstruction::CatchUp,
+                    SyncInstruction::BlockSync { .. } => return ValidateInstruction::KeepUp,
+                    SyncInstruction::CaughtUp { .. } => (),
+                }
+
+                if !highest_complete_block.header().is_switch_block() {
+                    return ValidateInstruction::CheckLater(
+                        "tip is not a switch block, don't change from validate state".to_string(),
+                        VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK,
+                    );
+                }
+            }
+            Ok(None) => {
+                return ValidateInstruction::CheckLater(
+                    "no complete block found in storage".to_string(),
+                    self.control_logic_default_delay.into(),
+                );
+            }
+            Err(error) => {
+                return ValidateInstruction::Fatal(format!(
+                    "Could not read highest complete block from storage due to storage error: {}",
+                    error
+                ));
+            }
         }
 
         if self.should_shutdown_for_upgrade() {

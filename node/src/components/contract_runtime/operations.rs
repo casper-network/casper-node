@@ -18,10 +18,8 @@ use casper_storage::{
         storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     },
 };
-
-use casper_hashing::Digest;
 use casper_types::{
-    CLValue, DeployHash, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
+    CLValue, DeployHash, Digest, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
@@ -245,72 +243,63 @@ pub fn execute_finalized_block(
 
     // Pruning
     if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
-        match calculate_prune_eras(
+        if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
             previous_block_height,
             prune_batch_size,
         ) {
-            Some(keys_to_prune) => {
-                let first_key = keys_to_prune.first().copied();
-                let last_key = keys_to_prune.last().copied();
-                info!(
-                    previous_block_height,
-                    %key_block_height_for_activation_point,
-                    %state_root_hash,
-                    first_key=?first_key,
-                    last_key=?last_key,
-                    "commit prune: preparing prune config"
-                );
-                let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
-                match engine_state.commit_prune(CorrelationId::new(), prune_config) {
-                    Ok(PruneResult::RootNotFound) => {
-                        error!(
-                            previous_block_height,
-                            %state_root_hash,
-                            "commit prune: root not found"
-                        );
-                        panic!(
-                            "Root {} not found while performing a prune.",
-                            state_root_hash
-                        );
-                    }
-                    Ok(PruneResult::DoesNotExist) => {
-                        warn!(
-                            previous_block_height,
-                            %state_root_hash,
-                            "commit prune: key does not exist"
-                        );
-                    }
-                    Ok(PruneResult::Success { post_state_hash }) => {
-                        info!(
-                            previous_block_height,
-                            %key_block_height_for_activation_point,
-                            %state_root_hash,
-                            %post_state_hash,
-                            first_key=?first_key,
-                            last_key=?last_key,
-                            "commit prune: success"
-                        );
-                        state_root_hash = post_state_hash;
-                    }
-                    Err(error) => {
-                        error!(
-                            previous_block_height,
-                            %key_block_height_for_activation_point,
-                            %error,
-                            "commit prune: commit prune error"
-                        );
-                        return Err(error.into());
-                    }
+            let first_key = keys_to_prune.first().copied();
+            let last_key = keys_to_prune.last().copied();
+            info!(
+                previous_block_height,
+                %key_block_height_for_activation_point,
+                %state_root_hash,
+                first_key=?first_key,
+                last_key=?last_key,
+                "commit prune: preparing prune config"
+            );
+            let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
+            match engine_state.commit_prune(CorrelationId::new(), prune_config) {
+                Ok(PruneResult::RootNotFound) => {
+                    error!(
+                        previous_block_height,
+                        %state_root_hash,
+                        "commit prune: root not found"
+                    );
+                    panic!(
+                        "Root {} not found while performing a prune.",
+                        state_root_hash
+                    );
                 }
-            }
-            None => {
-                debug!(
-                    previous_block_height,
-                    %key_block_height_for_activation_point,
-                    "commit prune: nothing to do, no more eras to delete"
-                );
+                Ok(PruneResult::DoesNotExist) => {
+                    warn!(
+                        previous_block_height,
+                        %state_root_hash,
+                        "commit prune: key does not exist"
+                    );
+                }
+                Ok(PruneResult::Success { post_state_hash }) => {
+                    info!(
+                        previous_block_height,
+                        %key_block_height_for_activation_point,
+                        %state_root_hash,
+                        %post_state_hash,
+                        first_key=?first_key,
+                        last_key=?last_key,
+                        "commit prune: success"
+                    );
+                    state_root_hash = post_state_hash;
+                }
+                Err(error) => {
+                    error!(
+                        previous_block_height,
+                        %key_block_height_for_activation_point,
+                        %error,
+                        "commit prune: commit prune error"
+                    );
+                    return Err(error.into());
+                }
             }
         }
     }

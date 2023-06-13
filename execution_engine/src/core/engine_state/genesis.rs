@@ -1,7 +1,6 @@
 //! Support for a genesis process.
 use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
 
-use datasize::DataSize;
 use num::Zero;
 use num_rational::Ratio;
 use rand::{
@@ -10,11 +9,9 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
 use casper_types::{
     account::{Account, AccountHash},
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
     system::{
         auction::{
@@ -28,24 +25,19 @@ use casper_types::{
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, EntryPoints, EraId, Key, Motes, Phase, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, URef, U512,
+    AccessRights, CLValue, Chainspec, ChainspecRegistry, Contract, ContractHash, ContractPackage,
+    ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
+    GenesisAccount, Key, Motes, Phase, ProtocolVersion, PublicKey, StoredValue, SystemConfig, URef,
+    WasmConfig, U512,
 };
 
-use crate::{
-    core::{
-        engine_state::{
-            execution_effect::ExecutionEffect, ChainspecRegistry, SystemContractRegistry,
-        },
-        execution,
-        execution::AddressGenerator,
-        tracking_copy::TrackingCopy,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+use crate::core::{
+    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry},
+    execution,
+    execution::AddressGenerator,
+    tracking_copy::TrackingCopy,
 };
 
-const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Represents an outcome of a successful genesis run.
@@ -64,375 +56,6 @@ impl fmt::Display for GenesisSuccess {
             "Success: {} {:?}",
             self.post_state_hash, self.execution_effect
         )
-    }
-}
-
-#[repr(u8)]
-enum GenesisAccountTag {
-    System = 0,
-    Account = 1,
-    Delegator = 2,
-}
-
-/// Represents details about genesis account's validator status.
-#[derive(DataSize, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GenesisValidator {
-    /// Stake of a genesis validator.
-    bonded_amount: Motes,
-    /// Delegation rate in the range of 0-100.
-    delegation_rate: DelegationRate,
-}
-
-impl ToBytes for GenesisValidator {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.bonded_amount.to_bytes()?);
-        buffer.extend(self.delegation_rate.to_bytes()?);
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.bonded_amount.serialized_length() + self.delegation_rate.serialized_length()
-    }
-}
-
-impl FromBytes for GenesisValidator {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (bonded_amount, remainder) = FromBytes::from_bytes(bytes)?;
-        let (delegation_rate, remainder) = FromBytes::from_bytes(remainder)?;
-        let genesis_validator = GenesisValidator {
-            bonded_amount,
-            delegation_rate,
-        };
-        Ok((genesis_validator, remainder))
-    }
-}
-
-impl GenesisValidator {
-    /// Creates new [`GenesisValidator`].
-    pub fn new(bonded_amount: Motes, delegation_rate: DelegationRate) -> Self {
-        Self {
-            bonded_amount,
-            delegation_rate,
-        }
-    }
-
-    /// Returns the bonded amount of a genesis validator.
-    pub fn bonded_amount(&self) -> Motes {
-        self.bonded_amount
-    }
-
-    /// Returns the delegation rate of a genesis validator.
-    pub fn delegation_rate(&self) -> DelegationRate {
-        self.delegation_rate
-    }
-}
-
-impl Distribution<GenesisValidator> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisValidator {
-        let bonded_amount = Motes::new(rng.gen());
-        let delegation_rate = rng.gen();
-
-        GenesisValidator::new(bonded_amount, delegation_rate)
-    }
-}
-
-/// This enum represents possible states of a genesis account.
-#[derive(DataSize, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum GenesisAccount {
-    /// This variant is for internal use only - genesis process will create a virtual system
-    /// account and use it to call system contracts.
-    System,
-    /// Genesis account that will be created.
-    Account {
-        /// Public key of a genesis account.
-        public_key: PublicKey,
-        /// Starting balance of a genesis account.
-        balance: Motes,
-        /// If set, it will make this account a genesis validator.
-        validator: Option<GenesisValidator>,
-    },
-    /// The genesis delegator is a special account that will be created as a delegator.
-    /// It does not have any stake of its own, but will create a real account in the system
-    /// which will delegate to a genesis validator.
-    Delegator {
-        /// Validator's public key that has to refer to other instance of
-        /// [`GenesisAccount::Account`] with a `validator` field set.
-        validator_public_key: PublicKey,
-        /// Public key of the genesis account that will be created as part of this entry.
-        delegator_public_key: PublicKey,
-        /// Starting balance of the account.
-        balance: Motes,
-        /// Delegated amount for given `validator_public_key`.
-        delegated_amount: Motes,
-    },
-}
-
-impl GenesisAccount {
-    /// Create a system account variant.
-    pub fn system() -> Self {
-        Self::System
-    }
-
-    /// Create a standard account variant.
-    pub fn account(
-        public_key: PublicKey,
-        balance: Motes,
-        validator: Option<GenesisValidator>,
-    ) -> Self {
-        Self::Account {
-            public_key,
-            balance,
-            validator,
-        }
-    }
-
-    /// Create a delegator account variant.
-    pub fn delegator(
-        validator_public_key: PublicKey,
-        delegator_public_key: PublicKey,
-        balance: Motes,
-        delegated_amount: Motes,
-    ) -> Self {
-        Self::Delegator {
-            validator_public_key,
-            delegator_public_key,
-            balance,
-            delegated_amount,
-        }
-    }
-
-    /// The public key (if any) associated with the account.
-    pub fn public_key(&self) -> PublicKey {
-        match self {
-            GenesisAccount::System => PublicKey::System,
-            GenesisAccount::Account { public_key, .. } => public_key.clone(),
-            GenesisAccount::Delegator {
-                delegator_public_key,
-                ..
-            } => delegator_public_key.clone(),
-        }
-    }
-
-    /// The account hash for the account.
-    pub fn account_hash(&self) -> AccountHash {
-        match self {
-            GenesisAccount::System => PublicKey::System.to_account_hash(),
-            GenesisAccount::Account { public_key, .. } => public_key.to_account_hash(),
-            GenesisAccount::Delegator {
-                delegator_public_key,
-                ..
-            } => delegator_public_key.to_account_hash(),
-        }
-    }
-
-    /// How many motes are to be deposited in the account's main purse.
-    pub fn balance(&self) -> Motes {
-        match self {
-            GenesisAccount::System => Motes::zero(),
-            GenesisAccount::Account { balance, .. } => *balance,
-            GenesisAccount::Delegator { balance, .. } => *balance,
-        }
-    }
-
-    /// How many motes are to be staked.
-    ///
-    /// Staked accounts are either validators with some amount of bonded stake or delgators with
-    /// some amount of delegated stake.
-    pub fn staked_amount(&self) -> Motes {
-        match self {
-            GenesisAccount::System { .. }
-            | GenesisAccount::Account {
-                validator: None, ..
-            } => Motes::zero(),
-            GenesisAccount::Account {
-                validator: Some(genesis_validator),
-                ..
-            } => genesis_validator.bonded_amount(),
-            GenesisAccount::Delegator {
-                delegated_amount, ..
-            } => *delegated_amount,
-        }
-    }
-
-    /// What is the delegation rate of a validator.
-    pub fn delegation_rate(&self) -> DelegationRate {
-        match self {
-            GenesisAccount::Account {
-                validator: Some(genesis_validator),
-                ..
-            } => genesis_validator.delegation_rate(),
-            GenesisAccount::System
-            | GenesisAccount::Account {
-                validator: None, ..
-            }
-            | GenesisAccount::Delegator { .. } => {
-                // This value represents a delegation rate in invalid state that system is supposed
-                // to reject if used.
-                DelegationRate::max_value()
-            }
-        }
-    }
-
-    /// Is this a virtual system account.
-    pub fn is_system_account(&self) -> bool {
-        matches!(self, GenesisAccount::System { .. })
-    }
-
-    /// Is this a validator account.
-    pub fn is_validator(&self) -> bool {
-        match self {
-            GenesisAccount::Account {
-                validator: Some(_), ..
-            } => true,
-            GenesisAccount::System { .. }
-            | GenesisAccount::Account {
-                validator: None, ..
-            }
-            | GenesisAccount::Delegator { .. } => false,
-        }
-    }
-
-    /// Details about the genesis validator.
-    pub fn validator(&self) -> Option<&GenesisValidator> {
-        match self {
-            GenesisAccount::Account {
-                validator: Some(genesis_validator),
-                ..
-            } => Some(genesis_validator),
-            _ => None,
-        }
-    }
-
-    /// Is this a delegator account.
-    pub fn is_delegator(&self) -> bool {
-        matches!(self, GenesisAccount::Delegator { .. })
-    }
-
-    /// Details about the genesis delegator.
-    pub fn as_delegator(&self) -> Option<(&PublicKey, &PublicKey, &Motes, &Motes)> {
-        match self {
-            GenesisAccount::Delegator {
-                validator_public_key,
-                delegator_public_key,
-                balance,
-                delegated_amount,
-            } => Some((
-                validator_public_key,
-                delegator_public_key,
-                balance,
-                delegated_amount,
-            )),
-            _ => None,
-        }
-    }
-}
-
-impl Distribution<GenesisAccount> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisAccount {
-        let mut bytes = [0u8; 32];
-        rng.fill_bytes(&mut bytes[..]);
-        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
-        let public_key = PublicKey::from(&secret_key);
-        let balance = Motes::new(rng.gen());
-        let validator = rng.gen();
-
-        GenesisAccount::account(public_key, balance, validator)
-    }
-}
-
-impl ToBytes for GenesisAccount {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            GenesisAccount::System => {
-                buffer.push(GenesisAccountTag::System as u8);
-            }
-            GenesisAccount::Account {
-                public_key,
-                balance,
-                validator,
-            } => {
-                buffer.push(GenesisAccountTag::Account as u8);
-                buffer.extend(public_key.to_bytes()?);
-                buffer.extend(balance.value().to_bytes()?);
-                buffer.extend(validator.to_bytes()?);
-            }
-            GenesisAccount::Delegator {
-                validator_public_key,
-                delegator_public_key,
-                balance,
-                delegated_amount,
-            } => {
-                buffer.push(GenesisAccountTag::Delegator as u8);
-                buffer.extend(validator_public_key.to_bytes()?);
-                buffer.extend(delegator_public_key.to_bytes()?);
-                buffer.extend(balance.value().to_bytes()?);
-                buffer.extend(delegated_amount.value().to_bytes()?);
-            }
-        }
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        match self {
-            GenesisAccount::System => TAG_LENGTH,
-            GenesisAccount::Account {
-                public_key,
-                balance,
-                validator,
-            } => {
-                public_key.serialized_length()
-                    + balance.value().serialized_length()
-                    + validator.serialized_length()
-                    + TAG_LENGTH
-            }
-            GenesisAccount::Delegator {
-                validator_public_key,
-                delegator_public_key,
-                balance,
-                delegated_amount,
-            } => {
-                validator_public_key.serialized_length()
-                    + delegator_public_key.serialized_length()
-                    + balance.value().serialized_length()
-                    + delegated_amount.value().serialized_length()
-                    + TAG_LENGTH
-            }
-        }
-    }
-}
-
-impl FromBytes for GenesisAccount {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder) = u8::from_bytes(bytes)?;
-        match tag {
-            tag if tag == GenesisAccountTag::System as u8 => {
-                let genesis_account = GenesisAccount::system();
-                Ok((genesis_account, remainder))
-            }
-            tag if tag == GenesisAccountTag::Account as u8 => {
-                let (public_key, remainder) = FromBytes::from_bytes(remainder)?;
-                let (balance, remainder) = FromBytes::from_bytes(remainder)?;
-                let (validator, remainder) = FromBytes::from_bytes(remainder)?;
-                let genesis_account = GenesisAccount::account(public_key, balance, validator);
-                Ok((genesis_account, remainder))
-            }
-            tag if tag == GenesisAccountTag::Delegator as u8 => {
-                let (validator_public_key, remainder) = FromBytes::from_bytes(remainder)?;
-                let (delegator_public_key, remainder) = FromBytes::from_bytes(remainder)?;
-                let (balance, remainder) = FromBytes::from_bytes(remainder)?;
-                let (delegated_amount_value, remainder) = FromBytes::from_bytes(remainder)?;
-                let genesis_account = GenesisAccount::delegator(
-                    validator_public_key,
-                    delegator_public_key,
-                    balance,
-                    Motes::new(delegated_amount_value),
-                );
-                Ok((genesis_account, remainder))
-            }
-            _ => Err(bytesrepr::Error::Formatting),
-        }
     }
 }
 
@@ -659,6 +282,26 @@ impl Distribution<ExecConfig> for Standard {
             unbonding_delay,
             genesis_timestamp_millis,
         }
+    }
+}
+
+impl From<&Chainspec> for ExecConfig {
+    fn from(chainspec: &Chainspec) -> Self {
+        ExecConfig::new(
+            chainspec.network_config.accounts_config.clone().into(),
+            chainspec.wasm_config,
+            chainspec.system_costs_config,
+            chainspec.core_config.validator_slots,
+            chainspec.core_config.auction_delay,
+            chainspec.core_config.locked_funds_period.millis(),
+            chainspec.core_config.round_seigniorage_rate,
+            chainspec.core_config.unbonding_delay,
+            chainspec
+                .protocol_config
+                .activation_point
+                .genesis_timestamp()
+                .map_or(0, |timestamp| timestamp.millis()),
+        )
     }
 }
 
@@ -1359,8 +1002,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rand::RngCore;
+
+    use super::*;
+
+    use casper_types::{bytesrepr, SecretKey};
 
     #[test]
     fn bytesrepr_roundtrip() {

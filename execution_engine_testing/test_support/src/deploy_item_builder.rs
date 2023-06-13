@@ -5,10 +5,9 @@ use rand::Rng;
 use casper_execution_engine::core::engine_state::{
     deploy_item::DeployItem, executable_deploy_item::ExecutableDeployItem,
 };
-use casper_hashing::Digest;
 use casper_types::{
-    account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash, HashAddr,
-    RuntimeArgs,
+    account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash, Digest,
+    HashAddr, RuntimeArgs,
 };
 
 use crate::{utils, DEFAULT_GAS_PRICE};

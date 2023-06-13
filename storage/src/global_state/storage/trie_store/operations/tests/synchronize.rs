@@ -2,14 +2,15 @@ use std::{borrow::Cow, collections::HashSet};
 
 use num_traits::FromPrimitive;
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 use crate::global_state::{
     shared::CorrelationId,
     storage::{
         error,
-        error::in_memory,
         transaction_source::{Readable, Transaction, TransactionSource},
         trie::{Pointer, Trie, TrieTag},
         trie_store::{

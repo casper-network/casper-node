@@ -7,18 +7,15 @@ mod scan;
 mod synchronize;
 mod write;
 
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashMap},
-    convert,
-    ops::Not,
-};
+use std::{cell::RefCell, collections::BTreeMap, convert, ops::Not};
 
 use lmdb::DatabaseFlags;
 use tempfile::{tempdir, TempDir};
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest,
+};
 
 use crate::global_state::{
     shared::CorrelationId,

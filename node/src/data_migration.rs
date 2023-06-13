@@ -5,13 +5,15 @@ use thiserror::Error;
 use toml::de::Error as TomlDecodeError;
 use tracing::info;
 
-use casper_hashing::Digest;
-use casper_types::{crypto, ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{
+    crypto, Chainspec, ChainspecRawBytes, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
+};
 
 use crate::{
     reactor::main_reactor::Config,
-    types::{chainspec, Chainspec, ChainspecRawBytes},
-    utils::{LoadError, Loadable, WithDir},
+    utils::{
+        chain_specification::error::Error as LoadChainspecError, LoadError, Loadable, WithDir,
+    },
 };
 
 /// The name of the file for recording the new global state hash after a data migration.
@@ -80,7 +82,7 @@ pub(crate) enum Error {
 
     /// Error loading the chainspec.
     #[error("error loading chainspec: {0}")]
-    LoadChainspec(chainspec::Error),
+    LoadChainspec(LoadChainspecError),
 }
 
 #[derive(Serialize, Deserialize)]

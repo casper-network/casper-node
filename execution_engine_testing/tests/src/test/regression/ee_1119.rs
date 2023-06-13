@@ -6,10 +6,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
-use casper_execution_engine::core::engine_state::{
-    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-    genesis::{GenesisAccount, GenesisValidator},
-};
+use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -20,7 +17,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

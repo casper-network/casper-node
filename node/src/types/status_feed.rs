@@ -11,8 +11,9 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::{
+    ActivationPoint, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+};
 
 use crate::{
     components::{
@@ -21,7 +22,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     reactor::main_reactor::ReactorState,
-    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap},
+    types::{Block, BlockHash, NodeId, PeersMap},
 };
 
 use super::AvailableBlockRange;

@@ -2,30 +2,23 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
+use casper_types::{GenesisAccount, GenesisValidator};
+
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            genesis::{GenesisAccount, GenesisValidator},
-            Error,
-        },
-        execution,
-    },
-    shared::{
-        system_config::auction_costs::{DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST},
-        wasm_prep::PreprocessingError,
-    },
+    core::{engine_state::Error, execution},
+    shared::wasm_prep::PreprocessingError,
 };
 use casper_types::{
     account::AccountHash,
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
-    Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, U512,
 };
 
 use crate::wasm_utils;

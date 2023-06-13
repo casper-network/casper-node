@@ -6,7 +6,6 @@ use std::{
     fmt::{self, Debug},
 };
 
-use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use derive_more::From;
 use rand::seq::SliceRandom;
@@ -14,8 +13,8 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 
-use casper_hashing::{ChunkWithProof, Digest};
-use casper_types::bytesrepr::Bytes;
+use casper_storage::global_state::storage::trie::TrieRaw;
+use casper_types::{bytesrepr::Bytes, ChunkWithProof, Digest};
 
 use crate::{
     components::{

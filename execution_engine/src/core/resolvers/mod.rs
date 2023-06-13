@@ -6,10 +6,10 @@ mod v1_resolver;
 
 use wasmi::ModuleImportResolver;
 
-use casper_types::ProtocolVersion;
+use casper_types::{ProtocolVersion, WasmConfig};
 
 use self::error::ResolverError;
-use crate::{core::resolvers::memory_resolver::MemoryResolver, shared::wasm_config::WasmConfig};
+use crate::core::resolvers::memory_resolver::MemoryResolver;
 
 /// Creates a module resolver for given protocol version.
 ///
@@ -29,10 +29,9 @@ pub(crate) fn create_module_resolver(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::ProtocolVersion;
+    use casper_types::{ProtocolVersion, WasmConfig};
 
     use super::*;
-    use crate::shared::wasm_config::WasmConfig;
 
     #[test]
     fn resolve_invalid_module() {

@@ -25,7 +25,7 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{Chainspec, ChainspecRawBytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -57,10 +57,10 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::ChainspecRawBytesRequest,
+        requests::{AcceptDeployRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
@@ -72,8 +72,8 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        Block, BlockHash, Deploy, FinalitySignature, MetaBlock, MetaBlockState, TrieOrChunk,
+        ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -180,12 +180,14 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block_header: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
+    shutdown_for_upgrade_timeout: TimeDiff,
+    switched_to_shutdown_for_upgrade: Timestamp,
+    upgrade_timeout: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
 }
@@ -306,17 +308,6 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
-                deploy,
-                responder,
-            }) => {
-                let event = deploy_acceptor::Event::Accept {
-                    deploy,
-                    source: Source::Client,
-                    maybe_responder: responder,
-                };
-                self.dispatch_event(effect_builder, rng, MainEvent::DeployAcceptor(event))
-            }
             MainEvent::RestServer(event) => reactor::wrap_effects(
                 MainEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -683,6 +674,27 @@ impl reactor::Reactor for MainReactor {
                 self.deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
+            MainEvent::AcceptDeployRequest(AcceptDeployRequest {
+                deploy,
+                speculative_exec_at_block,
+                responder,
+            }) => {
+                let source = if let Some(block) = speculative_exec_at_block {
+                    Source::SpeculativeExec(block)
+                } else {
+                    Source::Client
+                };
+                let event = deploy_acceptor::Event::Accept {
+                    deploy,
+                    source,
+                    maybe_responder: Some(responder),
+                };
+                reactor::wrap_effects(
+                    MainEvent::DeployAcceptor,
+                    self.deploy_acceptor
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
@@ -719,6 +731,12 @@ impl reactor::Reactor for MainReactor {
                                 event_stream_server::Event::DeployAccepted(deploy),
                             ),
                         ));
+                    }
+                    Source::SpeculativeExec(_) => {
+                        error!(
+                            ?deploy,
+                            "deploy acceptor should not announce speculative exec deploys"
+                        );
                     }
                 }
 
@@ -759,7 +777,7 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     deploy_acceptor::Event::Accept {
-                        deploy: item,
+                        deploy: Arc::new(*item),
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },
@@ -1170,9 +1188,11 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            switch_block_header: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
+            shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
+            switched_to_shutdown_for_upgrade: Timestamp::from(0),
+            upgrade_timeout: config.node.upgrade_timeout,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -1391,42 +1411,23 @@ impl MainReactor {
             return effects;
         }
 
-        // Set the current switch block only after the block is marked complete.
         // We *always* want to initialize the contract runtime with the highest complete block.
         // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
         // the immediate switch block is stored and *also* marked complete.
         // This will allow the contract runtime to initialize properly (see
         // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
         // `KeepUp`.
-        if state.is_marked_complete() {
-            debug!(
-                "MetaBlock: marked complete: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            if block.header().is_switch_block() {
-                match self
-                    .switch_block_header
-                    .as_ref()
-                    .map(|header| header.height())
-                {
-                    Some(current_height) => {
-                        if block.height() > current_height {
-                            self.switch_block_header = Some(block.header().clone());
-                        }
-                    }
-                    None => {
-                        self.switch_block_header = Some(block.header().clone());
-                    }
-                }
-            } else {
-                self.switch_block_header = None;
-            }
-        } else {
+        if !state.is_marked_complete() {
             error!(
                 block = %*block,
                 ?state,
                 "should be a complete block after passing to accumulator"
+            );
+        } else {
+            debug!(
+                "MetaBlock: block is marked complete: {} {}",
+                block.height(),
+                block.hash(),
             );
         }
 

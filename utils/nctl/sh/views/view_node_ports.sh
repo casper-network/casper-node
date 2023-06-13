@@ -14,10 +14,10 @@ function main()
     if [ "$NODE_ID" = "all" ]; then
         for NODE_ID in $(seq 1 "$(get_count_of_nodes)")
         do
-            echo "------------------------------------------------------------------------------------------------------------------------------------"
+            echo "----------------------------------------------------------------------------------------------------------------------------------------------------------------"
             do_render "$NODE_ID"
         done
-        echo "------------------------------------------------------------------------------------------------------------------------------------"
+        echo "----------------------------------------------------------------------------------------------------------------------------------------------------------------"
     else
         do_render "$NODE_ID"
     fi
@@ -37,13 +37,15 @@ function do_render()
     local PORT_REST
     local PORT_RPC
     local PORT_SSE
+    local PORT_SPECULATIVE_EXEC
 
     PORT_VNET=$(get_node_port "$NCTL_BASE_PORT_NETWORK" "$NODE_ID")
     PORT_REST=$(get_node_port_rest "$NODE_ID")
     PORT_RPC=$(get_node_port_rpc "$NODE_ID")
     PORT_SSE=$(get_node_port_sse "$NODE_ID")
+    PORT_SPECULATIVE_EXEC=$(get_node_port_speculative_exec "$NODE_ID")
 
-    log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE"
+    log "node-$NODE_ID :: VNET @ $PORT_VNET :: RPC @ $PORT_RPC :: REST @ $PORT_REST :: SSE @ $PORT_SSE :: SPECULATIVE_EXEC @ $PORT_SPECULATIVE_EXEC"
 }
 
 # ----------------------------------------------------------------

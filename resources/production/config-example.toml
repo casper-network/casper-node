@@ -21,6 +21,13 @@ control_logic_default_delay = '1sec'
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
 
+# A timeout for the ShutdownForUpgrade state, after which the node will upgrade even if not all
+# conditions are satisfied.
+shutdown_for_upgrade_timeout = '2min'
+
+# Maximum time a node will wait for an upgrade to commit.
+upgrade_timeout = '30sec'
+
 
 # =================================
 # Configuration options for logging

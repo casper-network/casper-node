@@ -18,8 +18,10 @@ use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
 };
 
-use casper_hashing::Digest;
-use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use casper_types::{
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest,
+};
 
 #[cfg(test)]
 pub mod gens;
@@ -641,10 +643,12 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
 }
 
 pub(crate) mod operations {
-    use casper_types::bytesrepr::{self, ToBytes};
+    use casper_types::{
+        bytesrepr::{self, ToBytes},
+        Digest,
+    };
 
     use crate::global_state::storage::trie::Trie;
-    use casper_hashing::Digest;
 
     /// Creates a tuple containing an empty root hash and an empty root (a node
     /// with an empty pointer block)

@@ -4,8 +4,7 @@ use lmdb::DatabaseFlags;
 use proptest::{collection::vec, prelude::proptest};
 use tempfile::tempdir;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, Digest, Key, StoredValue};
 
 use crate::global_state::storage::{
     store::tests as store_tests,

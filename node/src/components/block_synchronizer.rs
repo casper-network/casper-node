@@ -29,8 +29,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::core::engine_state;
-use casper_hashing::Digest;
-use casper_types::Timestamp;
+use casper_types::{Chainspec, Digest, Timestamp};
 
 use super::network::blocklist::BlocklistJustification;
 use crate::{
@@ -53,7 +52,7 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, Block,
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Deploy,
         FinalitySignature, FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock,
         MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
@@ -1009,8 +1008,10 @@ impl BlockSynchronizer {
         };
         let demote_peer = maybe_sync_leap.is_none();
         if let Some(sync_leap) = maybe_sync_leap {
-            let era_validator_weights =
-                sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
+            let era_validator_weights = sync_leap.era_validator_weights(
+                self.validator_matrix.fault_tolerance_threshold(),
+                &self.chainspec.protocol_config,
+            );
             for evw in era_validator_weights {
                 self.validator_matrix.register_era_validator_weights(evw);
             }

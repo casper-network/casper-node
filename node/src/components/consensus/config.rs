@@ -3,7 +3,7 @@ use std::{path::Path, sync::Arc};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{PublicKey, SecretKey};
+use casper_types::{Chainspec, PublicKey, SecretKey};
 
 use crate::{
     components::consensus::{
@@ -11,7 +11,6 @@ use crate::{
         protocols::{highway::config::Config as HighwayConfig, zug::config::Config as ZugConfig},
         EraId,
     },
-    types::Chainspec,
     utils::{External, LoadError, Loadable},
 };
 

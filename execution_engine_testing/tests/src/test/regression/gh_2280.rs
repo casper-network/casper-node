@@ -5,24 +5,18 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        EngineConfig, UpgradeConfig, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+use casper_execution_engine::core::engine_state::{
+    engine_config::{
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
     },
-    shared::{
-        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        system_config::{mint_costs::MintCosts, SystemConfig},
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
+    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, Key, Motes,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,
+    HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_WASM_MAX_MEMORY, U512,
 };
 
 const TRANSFER_TO_ACCOUNT_CONTRACT: &str = "transfer_to_account.wasm";
@@ -68,7 +62,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 });
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 
-const HOST_FUNCTION_COST_CHANGE: Cost = 13_730_593; // random prime number
+const HOST_FUNCTION_COST_CHANGE: HostFunctionCost = 13_730_593; // random prime number
 
 const ARG_FAUCET_FUNDS: &str = "faucet_initial_balance";
 const HASH_KEY_NAME: &str = "gh_2280_hash";

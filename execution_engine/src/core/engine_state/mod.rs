@@ -1,6 +1,5 @@
 //!  This module contains all the execution related code.
 pub mod balance;
-pub mod chainspec_registry;
 pub mod checksum_registry;
 pub mod deploy_item;
 pub mod engine_config;
@@ -31,9 +30,8 @@ use std::{
 use num::Zero;
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
-use casper_hashing::Digest;
 use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
@@ -65,13 +63,13 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ContractHash, DeployHash, DeployInfo, EraId, Gas,
-    Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    AccessRights, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash, DeployHash,
+    DeployInfo, Digest, EraId, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
-    chainspec_registry::ChainspecRegistry,
     checksum_registry::ChecksumRegistry,
     deploy_item::DeployItem,
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
@@ -81,7 +79,7 @@ pub use self::{
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
-    genesis::{ExecConfig, GenesisAccount, GenesisConfig, GenesisSuccess},
+    genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
     prune::{PruneConfig, PruneResult},
     query::{QueryRequest, QueryResult},
@@ -89,7 +87,7 @@ pub use self::{
     step::{SlashItem, StepError, StepRequest, StepSuccess},
     system_contract_registry::SystemContractRegistry,
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
-    upgrade::{UpgradeConfig, UpgradeSuccess},
+    upgrade::UpgradeSuccess,
 };
 use crate::{
     core::{
@@ -1484,8 +1482,7 @@ where
                 )
             }
         };
-
-        debug!("Payment result: {:?}", payment_result);
+        log_execution_result("payment result", &payment_result);
 
         // the proposer of the block this deploy is in receives the gas from this deploy execution
         let proposer_purse = {
@@ -1678,7 +1675,7 @@ where
                 session_stack,
             )
         };
-        debug!("Session result: {:?}", session_result);
+        log_execution_result("session result", &session_result);
 
         // Create + persist deploy info.
         {
@@ -2397,6 +2394,40 @@ where
             }
         }
         Ok(())
+    }
+}
+
+fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
+    trace!("{}: {:?}", preamble, result);
+    match result {
+        ExecutionResult::Success {
+            transfers,
+            cost,
+            execution_journal,
+        } => {
+            debug!(
+                %cost,
+                transfer_count=%transfers.len(),
+                journal_entries=%execution_journal.len(),
+                "{}: execution success",
+                preamble
+            );
+        }
+        ExecutionResult::Failure {
+            error,
+            transfers,
+            cost,
+            execution_journal,
+        } => {
+            debug!(
+                %error,
+                %cost,
+                transfer_count=%transfers.len(),
+                journal_entries=%execution_journal.len(),
+                "{}: execution failure",
+                preamble
+            );
+        }
     }
 }
 

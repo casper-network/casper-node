@@ -2,6 +2,7 @@
 //! being factored out into standalone crates.
 
 mod block_signatures;
+pub(crate) mod chain_specification;
 mod display_error;
 pub(crate) mod ds;
 mod external;
@@ -38,7 +39,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{error, warn};
 
-use crate::types::NodeId;
+use crate::types::{BlockHeader, NodeId};
 pub(crate) use block_signatures::{check_sufficient_block_signatures, BlockSignatureError};
 pub(crate) use display_error::display_error;
 #[cfg(test)]
@@ -289,6 +290,8 @@ pub(crate) enum Source {
     Peer(NodeId),
     /// A client.
     Client,
+    /// A client via the speculative_exec server.
+    SpeculativeExec(Box<BlockHeader>),
     /// This node.
     Ourself,
 }
@@ -296,14 +299,17 @@ pub(crate) enum Source {
 impl Source {
     #[allow(clippy::wrong_self_convention)]
     pub(crate) fn is_client(&self) -> bool {
-        matches!(self, Source::Client)
+        match self {
+            Source::Client | Source::SpeculativeExec(_) => true,
+            Source::PeerGossiped(_) | Source::Peer(_) | Source::Ourself => false,
+        }
     }
 
     /// If `self` represents a peer, returns its ID, otherwise returns `None`.
     pub(crate) fn node_id(&self) -> Option<NodeId> {
         match self {
             Source::Peer(node_id) | Source::PeerGossiped(node_id) => Some(*node_id),
-            Source::Client | Source::Ourself => None,
+            Source::Client | Source::SpeculativeExec(_) | Source::Ourself => None,
         }
     }
 }
@@ -314,6 +320,7 @@ impl Display for Source {
             Source::PeerGossiped(node_id) => Display::fmt(node_id, formatter),
             Source::Peer(node_id) => Display::fmt(node_id, formatter),
             Source::Client => write!(formatter, "client"),
+            Source::SpeculativeExec(_) => write!(formatter, "client (speculative exec)"),
             Source::Ourself => write!(formatter, "ourself"),
         }
     }

@@ -1,6 +1,5 @@
 //! Support for obtaining current bids from the auction system.
-use casper_hashing::Digest;
-use casper_types::system::auction::Bids;
+use casper_types::{system::auction::Bids, Digest};
 
 /// Represents a request to obtain current bids in the auction system.
 #[derive(Debug, Clone, PartialEq, Eq)]

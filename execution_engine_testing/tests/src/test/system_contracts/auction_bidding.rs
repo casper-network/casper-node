@@ -7,13 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::{
-    engine_state::{
-        genesis::{GenesisAccount, GenesisValidator},
-        Error as EngineError,
-    },
-    execution::Error,
-};
+use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 
 use casper_types::{
     account::AccountHash,
@@ -25,7 +19,8 @@ use casper_types::{
         },
         mint,
     },
-    ApiError, EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey,
+    RuntimeArgs, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
