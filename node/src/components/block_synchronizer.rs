@@ -583,7 +583,10 @@ impl BlockSynchronizer {
                     }))
                 }
                 NeedNext::FinalitySignatures(block_hash, era_id, validators) => {
-                    builder.latch_by(validators.len());
+                    builder.latch_by(std::cmp::min(
+                        validators.len(),
+                        max_simultaneous_peers as usize,
+                    ));
                     for (validator, peer) in validators
                         .into_iter()
                         .take(max_simultaneous_peers as usize)
