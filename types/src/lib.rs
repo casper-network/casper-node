@@ -112,8 +112,10 @@ pub use deploy::{
     runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
     DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
     DeployFootprint, DeployHash, DeployHeader, DeployId, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier,
+    ExecutableDeployItemIdentifier, TransferTarget,
 };
+#[cfg(any(feature = "std", test))]
+pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use deploy_info::DeployInfo;
 pub use digest::{
     ChunkWithProof, ChunkWithProofVerificationError, Digest, DigestError, IndexedMerkleProof,

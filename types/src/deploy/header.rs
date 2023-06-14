@@ -40,11 +40,7 @@ pub struct DeployHeader {
 }
 
 impl DeployHeader {
-    #[cfg(any(
-        all(feature = "std", feature = "testing"),
-        feature = "json-schema",
-        test
-    ))]
+    #[cfg(any(feature = "std", feature = "json-schema", test))]
     pub(super) fn new(
         account: PublicKey,
         timestamp: Timestamp,

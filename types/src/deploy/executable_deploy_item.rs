@@ -18,10 +18,13 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::Deploy;
 use crate::{
+    account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::DEFAULT_ENTRY_POINT_NAME,
+    runtime_args,
     system::mint::ARG_AMOUNT,
-    ContractHash, ContractPackageHash, ContractVersion, Gas, Motes, Phase, RuntimeArgs, U512,
+    ContractHash, ContractPackageHash, ContractVersion, Gas, Motes, Phase, PublicKey, RuntimeArgs,
+    URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, CLValue};
@@ -36,6 +39,10 @@ const STORED_CONTRACT_BY_NAME_TAG: u8 = 2;
 const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 3;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 4;
 const TRANSFER_TAG: u8 = 5;
+const TRANSFER_ARG_AMOUNT: &str = "amount";
+const TRANSFER_ARG_SOURCE: &str = "source";
+const TRANSFER_ARG_TARGET: &str = "target";
+const TRANSFER_ARG_ID: &str = "id";
 
 /// The executable component of a [`Deploy`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -109,6 +116,114 @@ pub enum ExecutableDeployItem {
 }
 
 impl ExecutableDeployItem {
+    /// Returns a new `ExecutableDeployItem::ModuleBytes`.
+    pub fn new_module_bytes(module_bytes: Bytes, args: RuntimeArgs) -> Self {
+        ExecutableDeployItem::ModuleBytes { module_bytes, args }
+    }
+
+    /// Returns a new `ExecutableDeployItem::ModuleBytes` suitable for use as standard payment code
+    /// of a `Deploy`.
+    pub fn new_standard_payment<A: Into<U512>>(amount: A) -> Self {
+        ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! {
+                ARG_AMOUNT => amount.into(),
+            },
+        }
+    }
+
+    /// Returns a new `ExecutableDeployItem::StoredContractByHash`.
+    pub fn new_stored_contract_by_hash(
+        hash: ContractHash,
+        entry_point: String,
+        args: RuntimeArgs,
+    ) -> Self {
+        ExecutableDeployItem::StoredContractByHash {
+            hash,
+            entry_point,
+            args,
+        }
+    }
+
+    /// Returns a new `ExecutableDeployItem::StoredContractByName`.
+    pub fn new_stored_contract_by_name(
+        name: String,
+        entry_point: String,
+        args: RuntimeArgs,
+    ) -> Self {
+        ExecutableDeployItem::StoredContractByName {
+            name,
+            entry_point,
+            args,
+        }
+    }
+
+    /// Returns a new `ExecutableDeployItem::StoredVersionedContractByHash`.
+    pub fn new_stored_versioned_contract_by_hash(
+        hash: ContractPackageHash,
+        version: Option<ContractVersion>,
+        entry_point: String,
+        args: RuntimeArgs,
+    ) -> Self {
+        ExecutableDeployItem::StoredVersionedContractByHash {
+            hash,
+            version,
+            entry_point,
+            args,
+        }
+    }
+
+    /// Returns a new `ExecutableDeployItem::StoredVersionedContractByName`.
+    pub fn new_stored_versioned_contract_by_name(
+        name: String,
+        version: Option<ContractVersion>,
+        entry_point: String,
+        args: RuntimeArgs,
+    ) -> Self {
+        ExecutableDeployItem::StoredVersionedContractByName {
+            name,
+            version,
+            entry_point,
+            args,
+        }
+    }
+
+    /// Returns a new `ExecutableDeployItem` suitable for use as session code for a transfer.
+    ///
+    /// If `maybe_source` is None, the account's main purse is used as the source.
+    pub fn new_transfer<A: Into<U512>>(
+        amount: A,
+        maybe_source: Option<URef>,
+        target: TransferTarget,
+        maybe_transfer_id: Option<u64>,
+    ) -> Self {
+        let mut args = RuntimeArgs::new();
+        args.insert(TRANSFER_ARG_AMOUNT, amount.into())
+            .expect("should serialize amount arg");
+
+        if let Some(source) = maybe_source {
+            args.insert(TRANSFER_ARG_SOURCE, source)
+                .expect("should serialize source arg");
+        }
+
+        match target {
+            TransferTarget::PublicKey(public_key) => args
+                .insert(TRANSFER_ARG_TARGET, public_key)
+                .expect("should serialize public key target arg"),
+            TransferTarget::AccountHash(account_hash) => args
+                .insert(TRANSFER_ARG_TARGET, account_hash)
+                .expect("should serialize account hash target arg"),
+            TransferTarget::URef(uref) => args
+                .insert(TRANSFER_ARG_TARGET, uref)
+                .expect("should serialize uref target arg"),
+        }
+
+        args.insert(TRANSFER_ARG_ID, maybe_transfer_id)
+            .expect("should serialize transfer id arg");
+
+        ExecutableDeployItem::Transfer { args }
+    }
+
     /// Returns the entry point name.
     pub fn entry_point_name(&self) -> &str {
         match self {
@@ -653,6 +768,17 @@ impl Distribution<ExecutableDeployItem> for Standard {
             _ => unreachable!(),
         }
     }
+}
+
+/// The various types which can be used as the `target` runtime argument of a native transfer.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
+pub enum TransferTarget {
+    /// A public key.
+    PublicKey(PublicKey),
+    /// An account hash.
+    AccountHash(AccountHash),
+    /// A URef.
+    URef(URef),
 }
 
 #[cfg(test)]

@@ -1,5 +1,7 @@
 mod approval;
 mod approvals_hash;
+#[cfg(any(feature = "std", test))]
+mod builder;
 mod deploy_hash;
 mod error;
 mod executable_deploy_item;
@@ -18,7 +20,7 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "std", test))]
 use itertools::Itertools;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
@@ -46,6 +48,10 @@ use crate::{system::mint::ARG_AMOUNT, DeployConfig, U512};
 use crate::{testing::TestRng, MAX_PAYMENT_AMOUNT};
 pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
+#[cfg(any(feature = "std", test))]
+use builder::AccountAndSecretKey;
+#[cfg(any(feature = "std", test))]
+pub use builder::{DeployBuilder, DeployBuilderError};
 pub use deploy_hash::DeployHash;
 pub use error::{
     DecodeFromJsonError as DeployDecodeFromJsonError, DeployConfigurationFailure,
@@ -53,7 +59,7 @@ pub use error::{
 };
 pub use executable_deploy_item::{
     ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier,
+    ExecutableDeployItemIdentifier, TransferTarget,
 };
 pub use footprint::DeployFootprint;
 pub use header::DeployHeader;
@@ -106,6 +112,8 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
 });
 
 /// A signed smart contract.
+///
+/// To construct a new `Deploy`, use a [`DeployBuilder`].
 #[derive(Clone, Eq, Debug)]
 #[cfg_attr(
     any(feature = "std", test),
@@ -113,7 +121,11 @@ static DEPLOY: Lazy<Deploy> = Lazy::new(|| {
     serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "A signed smart contract.")
+)]
 pub struct Deploy {
     hash: DeployHash,
     header: DeployHeader,
@@ -130,6 +142,53 @@ pub struct Deploy {
 }
 
 impl Deploy {
+    /// Called by the `DeployBuilder` to construct a new `Deploy`.
+    #[cfg(any(feature = "std", test))]
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+        gas_price: u64,
+        dependencies: Vec<DeployHash>,
+        chain_name: String,
+        payment: ExecutableDeployItem,
+        session: ExecutableDeployItem,
+        account_and_secret_key: AccountAndSecretKey,
+    ) -> Deploy {
+        let serialized_body = serialize_body(&payment, &session);
+        let body_hash = Digest::hash(serialized_body);
+
+        let account = account_and_secret_key.account();
+
+        let dependencies = dependencies.into_iter().unique().collect();
+        let header = DeployHeader::new(
+            account,
+            timestamp,
+            ttl,
+            gas_price,
+            body_hash,
+            dependencies,
+            chain_name,
+        );
+        let serialized_header = serialize_header(&header);
+        let hash = DeployHash::new(Digest::hash(serialized_header));
+
+        let mut deploy = Deploy {
+            hash,
+            header,
+            payment,
+            session,
+            approvals: BTreeSet::new(),
+            #[cfg(any(feature = "once_cell", test))]
+            is_valid: OnceCell::new(),
+        };
+
+        if let Some(secret_key) = account_and_secret_key.secret_key() {
+            deploy.sign(secret_key);
+        }
+        deploy
+    }
+
     /// Returns the `DeployHash` identifying this `Deploy`.
     pub fn hash(&self) -> &DeployHash {
         &self.hash
@@ -616,36 +675,24 @@ impl Deploy {
         secret_key: &SecretKey,
         account: Option<PublicKey>,
     ) -> Deploy {
-        let serialized_body = serialize_body(&payment, &session);
-        let body_hash = Digest::hash(serialized_body);
+        let account_and_secret_key = match account {
+            Some(account) => AccountAndSecretKey::Both {
+                account,
+                secret_key,
+            },
+            None => AccountAndSecretKey::SecretKey(secret_key),
+        };
 
-        let account = account.unwrap_or_else(|| PublicKey::from(secret_key));
-
-        // Remove duplicates.
-        let dependencies = dependencies.into_iter().unique().collect();
-        let header = DeployHeader::new(
-            account,
+        Deploy::build(
             timestamp,
             ttl,
             gas_price,
-            body_hash,
             dependencies,
             chain_name,
-        );
-        let serialized_header = serialize_header(&header);
-        let hash = DeployHash::new(Digest::hash(serialized_header));
-
-        let mut deploy = Deploy {
-            hash,
-            header,
             payment,
             session,
-            approvals: BTreeSet::new(),
-            is_valid: OnceCell::new(),
-        };
-
-        deploy.sign(secret_key);
-        deploy
+            account_and_secret_key,
+        )
     }
 
     /// Returns a random `Deploy`.
