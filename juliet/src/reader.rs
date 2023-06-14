@@ -56,7 +56,7 @@ macro_rules! try_outcome {
     ($src:expr) => {
         match $src {
             Outcome::Incomplete(n) => return Outcome::Incomplete(n),
-            Outcome::ProtocolErr(header) return Outcome::ProtocolErr(header),
+            Outcome::ProtocolErr(header) => return Outcome::ProtocolErr(header),
             Outcome::Success(value) => value,
         }
     };
@@ -101,8 +101,7 @@ impl<const N: usize> State<N> {
                 return Success(CompletedRead::ErrorReceived(header));
             }
 
-            // At this point we are guaranteed a valid non-error frame, which has to be on a valid
-            // channel.
+            // At this point we are guaranteed a valid non-error frame, verify its channel.
             let channel = match self.channels.get_mut(header.channel().get() as usize) {
                 Some(channel) => channel,
                 None => return header.return_err(ErrorKind::InvalidChannel),
@@ -128,54 +127,43 @@ impl<const N: usize> State<N> {
                     });
                 }
                 Kind::Response => todo!(),
-                Kind::RequestPl => match channel.current_request_state {
-                    RequestState::Ready => {
+                Kind::RequestPl => {
+                    let is_new_request = channel.current_request_state.is_ready();
+
+                    if is_new_request {
                         if channel.is_at_max_requests() {
+                            // If we're in the ready state, requests must be eagerly rejected if
+                            // exceeding the limit.
+
                             return header.return_err(ErrorKind::RequestLimitExceeded);
                         }
+                    }
 
+                    let multiframe_outcome: Option<BytesMut> = try_outcome!(channel
+                        .current_request_state
+                        .accept(header, &mut buffer, self.max_frame_size));
+
+                    // If we made it to this point, we have consumed the frame. Record it.
+                    if is_new_request {
                         if channel.incoming_requests.insert(header.id()) {
                             return header.return_err(ErrorKind::DuplicateRequest);
                         }
+                    }
 
-                        let segment_buf = &buffer[0..Header::SIZE];
-
-                        match decode_varint32(segment_buf) {
-                            Varint32Result::Incomplete => return Incomplete(1),
-                            Varint32Result::Overflow => {
-                                return header.return_err(ErrorKind::BadVarInt)
-                            }
-                            Varint32Result::Valid { offset, value } => {
-                                // TODO: Check frame boundary.
-
-                                let offset = offset.get() as usize;
-                                let total_size = value as usize;
-
-                                let payload_buf = &segment_buf[offset..];
-                                if payload_buf.len() >= total_size as usize {
-                                    // Entire payload is already in segment. We can just remove it
-                                    // from the buffer and return.
-
-                                    buffer.advance(Header::SIZE + offset);
-                                    let payload = buffer.split_to(total_size).freeze();
-                                    return Success(CompletedRead::NewRequest {
-                                        id: header.id(),
-                                        payload: Some(payload),
-                                    });
-                                }
-
-                                todo!() // doesn't fit - check if the segment was filled completely.
-                            }
+                    match multiframe_outcome {
+                        Some(payload) => {
+                            // Message is complete.
+                            return Success(CompletedRead::NewRequest {
+                                id: header.id(),
+                                payload: Some(payload.freeze()),
+                            });
+                        }
+                        None => {
+                            // We need more frames to complete the payload. Do nothing and attempt
+                            // to read the next frame.
                         }
                     }
-                    RequestState::InProgress {
-                        header,
-                        ref mut payload,
-                        total_payload_size,
-                    } => {
-                        todo!()
-                    }
-                },
+                }
                 Kind::ResponsePl => todo!(),
                 Kind::CancelReq => todo!(),
                 Kind::CancelResp => todo!(),

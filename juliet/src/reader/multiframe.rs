@@ -182,4 +182,9 @@ impl RequestState {
             }
         }
     }
+
+    /// Returns whether or not the current request state is
+    pub(super) fn is_ready(&self) -> bool {
+        matches!(self, RequestState::Ready)
+    }
 }
