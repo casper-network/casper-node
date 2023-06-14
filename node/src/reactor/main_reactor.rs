@@ -1041,7 +1041,7 @@ impl reactor::Reactor for MainReactor {
         let network = Network::new(
             config.network.clone(),
             network_identity,
-            Some((our_secret_key.clone(), our_public_key.clone())),
+            Some((our_secret_key, our_public_key)),
             registry,
             chainspec.as_ref(),
             validator_matrix.clone(),
@@ -1100,8 +1100,7 @@ impl reactor::Reactor for MainReactor {
         // consensus
         let consensus = EraSupervisor::new(
             storage.root_path(),
-            our_secret_key,
-            our_public_key,
+            validator_matrix.clone(),
             config.consensus,
             chainspec.clone(),
             registry,

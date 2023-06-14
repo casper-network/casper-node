@@ -233,6 +233,10 @@ impl ValidatorMatrix {
         &self.public_signing_key
     }
 
+    pub(crate) fn secret_signing_key(&self) -> &Arc<SecretKey> {
+        &self.secret_signing_key
+    }
+
     /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
     /// information for that era is missing.
     pub(crate) fn is_self_validator_in_era(&self, era_id: EraId) -> Option<bool> {

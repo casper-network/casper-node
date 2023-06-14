@@ -35,7 +35,8 @@ use tracing::error;
 pub struct PastFinalitySignatures(Vec<u8>);
 
 impl PastFinalitySignatures {
-    #[allow(dead_code)] //TODO remove it when the code is used in a next ticket
+    /// Creates a new set of recorded finality signaures from the era's validators +
+    /// the list of validators which signed.
     pub fn from_validator_set<'a>(
         public_keys: &BTreeSet<PublicKey>,
         all_validators: impl IntoIterator<Item = &'a PublicKey>,
@@ -61,7 +62,8 @@ impl PastFinalitySignatures {
         result
     }
 
-    #[allow(dead_code)] //TODO remove it when the code is used in a next ticket
+    /// Gets the list of validators which signed from a set of recorded finality signaures (`self`)
+    /// + the era's validators.
     pub fn into_validator_set(
         self,
         all_validators: impl IntoIterator<Item = PublicKey>,
@@ -253,7 +255,7 @@ impl crate::utils::specimen::LargestSpecimen for PastFinalitySignatures {
 
 #[cfg(any(feature = "testing", test))]
 impl PastFinalitySignatures {
-    pub fn random(rng: &mut casper_types::testing::TestRng, n_validators: usize) -> Self {
+    pub(crate) fn random(rng: &mut casper_types::testing::TestRng, n_validators: usize) -> Self {
         let mut bytes = vec![0; div_by_8_ceil(n_validators)];
 
         rand::RngCore::fill_bytes(rng, bytes.as_mut());

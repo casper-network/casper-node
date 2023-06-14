@@ -58,7 +58,7 @@ pub(crate) use approvals_hashes::ApprovalsHashes;
 pub(crate) use meta_block::{
     MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
-pub(crate) use past_finality_signatures::PastFinalitySignatures;
+pub use past_finality_signatures::PastFinalitySignatures;
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
