@@ -1,3 +1,5 @@
+mod multiframe;
+
 use std::{collections::HashSet, marker::PhantomData, mem, ops::Deref};
 
 use bytes::{Buf, Bytes, BytesMut};
@@ -7,29 +9,6 @@ use crate::{
     varint::{decode_varint32, Varint32Result},
     ChannelId, Id,
 };
-
-struct Index<'a> {
-    index: usize,
-    buffer: PhantomData<&'a BytesMut>,
-}
-
-impl<'a> Deref for Index<'a> {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.index
-    }
-}
-
-impl<'a> Index<'a> {
-    fn new(buffer: &'a BytesMut, index: usize) -> Self {
-        let _ = buffer;
-        Index {
-            index,
-            buffer: PhantomData,
-        }
-    }
-}
 
 const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
 const UNKNOWN_ID: Id = Id::new(0);
@@ -50,144 +29,6 @@ struct Channel {
     current_request_state: RequestState,
 }
 
-#[derive(Debug)]
-enum RequestState {
-    Ready,
-    InProgress {
-        header: Header,
-        payload: BytesMut,
-        total_payload_size: u32,
-    },
-}
-
-impl RequestState {
-    /// Accept additional data to be written.
-    ///
-    /// If a message payload matching the given header has been succesfully completed, returns it.
-    /// If a starting or intermediate segment was processed without completing the message, returns
-    /// `None` instead. This method will never consume more than one frame.
-    ///
-    /// Assumes that `header` is the first [`Header::SIZE`] bytes of `buffer`. Will advance `buffer`
-    /// past header and payload only on success.
-    fn accept(
-        &mut self,
-        header: Header,
-        buffer: &mut BytesMut,
-        max_frame_size: u32,
-    ) -> Outcome<Option<BytesMut>> {
-        debug_assert!(
-            max_frame_size >= 10,
-            "maximum frame size must be enough to hold header and varint"
-        );
-
-        match self {
-            RequestState::Ready => {
-                // We have a new segment, which has a variable size.
-                let segment_buf = &buffer[Header::SIZE..];
-
-                match decode_varint32(segment_buf) {
-                    Varint32Result::Incomplete => return Incomplete(1),
-                    Varint32Result::Overflow => return header.return_err(ErrorKind::BadVarInt),
-                    Varint32Result::Valid {
-                        offset,
-                        value: total_payload_size,
-                    } => {
-                        // We have a valid varint32.
-                        let preamble_size = Header::SIZE as u32 + offset.get() as u32;
-                        let max_data_in_frame = (max_frame_size - preamble_size) as u32;
-
-                        // Determine how many additional bytes are needed for frame completion.
-                        let frame_end = Index::new(
-                            &buffer,
-                            preamble_size as usize
-                                + (max_data_in_frame as usize).min(total_payload_size as usize),
-                        );
-                        if buffer.remaining() < *frame_end {
-                            return Incomplete(buffer.remaining() - *frame_end);
-                        }
-
-                        // At this point we are sure to complete a frame, so drop the preamble.
-                        buffer.advance(preamble_size as usize);
-
-                        // Is the payload complete in one frame?
-                        if total_payload_size <= max_data_in_frame {
-                            let payload = buffer.split_to(total_payload_size as usize);
-
-                            // No need to alter the state, we stay `Ready`.
-                            Success(Some(payload))
-                        } else {
-                            // Length exceeds the frame boundary, split to maximum and store that.
-                            let partial_payload = buffer.split_to(max_frame_size as usize);
-
-                            // We are now in progress of reading a payload.
-                            *self = RequestState::InProgress {
-                                header,
-                                payload: partial_payload,
-                                total_payload_size,
-                            };
-
-                            // We have successfully consumed a frame, but are not finished yet.
-                            Success(None)
-                        }
-                    }
-                }
-            }
-            RequestState::InProgress {
-                header: active_header,
-                payload,
-                total_payload_size,
-            } => {
-                if header.kind_byte_without_reserved() != active_header.kind_byte_without_reserved()
-                {
-                    // The newly supplied header does not match the one active.
-                    return header.return_err(ErrorKind::InProgress);
-                }
-
-                // Determine whether we expect an intermediate or end segment.
-                let bytes_remaining = *total_payload_size as usize - payload.remaining();
-                let max_data_in_frame = max_frame_size as usize - Header::SIZE;
-
-                if bytes_remaining > max_data_in_frame {
-                    // Intermediate segment.
-                    if buffer.remaining() < max_frame_size as usize {
-                        return Incomplete(max_frame_size as usize - buffer.remaining());
-                    }
-
-                    // Discard header.
-                    buffer.advance(Header::SIZE);
-
-                    // Copy data over to internal buffer.
-                    payload.extend_from_slice(&buffer[0..max_data_in_frame]);
-                    buffer.advance(max_data_in_frame);
-
-                    // We're done with this frame (but not the payload).
-                    Success(None)
-                } else {
-                    // End segment
-                    let frame_end = Index::new(&buffer, bytes_remaining + Header::SIZE);
-
-                    // If we don't have the entire frame read yet, return.
-                    if *frame_end > buffer.remaining() {
-                        return Incomplete(*frame_end - buffer.remaining());
-                    }
-
-                    // Discard header.
-                    buffer.advance(Header::SIZE);
-
-                    // Copy data over to internal buffer.
-                    payload.extend_from_slice(&buffer[0..bytes_remaining]);
-                    buffer.advance(bytes_remaining);
-
-                    let finished_payload = mem::take(payload);
-                    *self = RequestState::Ready;
-
-                    Success(Some(finished_payload))
-                }
-            }
-        }
-    }
-}
-
 impl Channel {
     #[inline]
     fn in_flight_requests(&self) -> u32 {
@@ -205,7 +46,7 @@ enum CompletedRead {
     NewRequest { id: Id, payload: Option<Bytes> },
 }
 
-enum Outcome<T> {
+pub(crate) enum Outcome<T> {
     Incomplete(usize),
     ProtocolErr(Header),
     Success(T),
@@ -223,9 +64,11 @@ macro_rules! try_outcome {
 
 use Outcome::{Incomplete, ProtocolErr, Success};
 
+use self::multiframe::RequestState;
+
 impl Header {
     #[inline]
-    fn return_err<T>(self, kind: ErrorKind) -> Outcome<T> {
+    pub(crate) fn return_err<T>(self, kind: ErrorKind) -> Outcome<T> {
         Outcome::ProtocolErr(Header::new_error(kind, self.channel(), self.id()))
     }
 }
@@ -328,6 +171,7 @@ impl<const N: usize> State<N> {
                     RequestState::InProgress {
                         header,
                         ref mut payload,
+                        total_payload_size,
                     } => {
                         todo!()
                     }

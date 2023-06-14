@@ -2,6 +2,7 @@
 use std::fmt::Debug;
 
 use crate::{ChannelId, Id};
+
 /// Header structure.
 #[derive(Copy, Clone, Eq, PartialEq)]
 #[repr(transparent)]
