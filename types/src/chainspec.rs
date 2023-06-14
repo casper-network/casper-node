@@ -19,6 +19,7 @@ use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::Serialize;
+use tracing::error;
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
@@ -106,12 +107,15 @@ pub struct Chainspec {
 impl Chainspec {
     /// Serializes `self` and hashes the resulting bytes.
     pub fn hash(&self) -> Digest {
-        let serialized_chainspec = self.to_bytes().unwrap_or_else(|_| vec![]);
+        let serialized_chainspec = self.to_bytes().unwrap_or_else(|error| {
+            error!(%error, "failed to serialize chainspec");
+            vec![]
+        });
         Digest::hash(serialized_chainspec)
     }
 
     /// Serializes `self` and hashes the resulting bytes, if able.
-    pub fn maybe_hash(&self) -> Result<Digest, String> {
+    pub fn try_hash(&self) -> Result<Digest, String> {
         let arr = self
             .to_bytes()
             .map_err(|_| "failed to serialize chainspec".to_string())?;
