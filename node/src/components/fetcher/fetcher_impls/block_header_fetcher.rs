@@ -1,13 +1,34 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, convert::Infallible, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
 
+use casper_types::{BlockHash, BlockHeader};
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    components::fetcher::{
+        metrics::Metrics, EmptyValidationMetadata, FetchItem, Fetcher, ItemFetcher, ItemHandle,
+        StoringState, Tag,
+    },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{BlockHash, BlockHeader, NodeId},
+    types::NodeId,
 };
+
+impl FetchItem for BlockHeader {
+    type Id = BlockHash;
+    type ValidationError = Infallible;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    const TAG: Tag = Tag::BlockHeader;
+
+    fn fetch_id(&self) -> Self::Id {
+        self.block_hash()
+    }
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        Ok(())
+    }
+}
 
 #[async_trait]
 impl ItemFetcher<BlockHeader> for Fetcher<BlockHeader> {

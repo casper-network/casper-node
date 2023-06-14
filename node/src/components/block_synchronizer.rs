@@ -29,7 +29,10 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::core::engine_state;
-use casper_types::{Chainspec, Deploy, Digest, Timestamp};
+use casper_types::{
+    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
+    FinalitySignatureId, Timestamp,
+};
 
 use super::network::blocklist::BlocklistJustification;
 use crate::{
@@ -51,10 +54,9 @@ use crate::{
     reactor::{self, main_reactor::MainEvent},
     rpcs::docs::DocExample,
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, Block,
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,
-        FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
-        SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
+        BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState,
+        NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -599,11 +601,7 @@ impl BlockSynchronizer {
                     {
                         debug!(%validator, %peer, "attempting to fetch FinalitySignature");
                         builder.register_finality_signature_pending(validator.clone());
-                        let id = Box::new(FinalitySignatureId {
-                            block_hash,
-                            era_id,
-                            public_key: validator,
-                        });
+                        let id = Box::new(FinalitySignatureId::new(block_hash, era_id, validator));
                         results.extend(
                             effect_builder
                                 .fetch::<FinalitySignature>(
@@ -953,10 +951,10 @@ impl BlockSynchronizer {
             }
         };
 
-        let block_hash = id.block_hash;
+        let block_hash = id.block_hash();
 
         match (&mut self.forward, &mut self.historical) {
-            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == block_hash => {
+            (Some(builder), _) | (_, Some(builder)) if builder.block_hash() == *block_hash => {
                 match maybe_finality_signature {
                     None => {
                         if let Some(peer_id) = maybe_peer_id {

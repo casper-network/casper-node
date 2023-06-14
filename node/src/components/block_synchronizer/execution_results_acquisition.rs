@@ -11,14 +11,9 @@ use serde::{Deserialize, Serialize};
 
 use tracing::{debug, error};
 
-use casper_types::{
-    bytesrepr::{self},
-    ChunkWithProof, DeployHash, Digest, ExecutionResult,
-};
+use casper_types::{bytesrepr, BlockHash, ChunkWithProof, DeployHash, Digest, ExecutionResult};
 
-use crate::types::{
-    BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, ValueOrChunk,
-};
+use crate::types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, ValueOrChunk};
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Serialize, Deserialize)]
 pub(crate) enum ExecutionResultsChecksum {
@@ -29,7 +24,7 @@ pub(crate) enum ExecutionResultsChecksum {
 }
 
 impl Display for ExecutionResultsChecksum {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Uncheckable => write!(f, "uncheckable execution results"),
             Self::Checkable(digest) => write!(f, "execution results checksum {}", digest),

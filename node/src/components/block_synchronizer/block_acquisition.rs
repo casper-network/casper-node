@@ -7,7 +7,10 @@ use datasize::DataSize;
 use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{Deploy, DeployHash, DeployId, Digest, ProtocolVersion, PublicKey};
+use casper_types::{
+    Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployId, Digest, FinalitySignature,
+    ProtocolVersion, PublicKey,
+};
 
 use crate::{
     components::block_synchronizer::{
@@ -16,8 +19,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        EraValidatorWeights, FinalitySignature, FinalizedBlock, SignatureWeight,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, FinalizedBlock,
+        SignatureWeight,
     },
     NodeRng,
 };
@@ -146,43 +149,40 @@ impl Display for BlockAcquisitionState {
             BlockAcquisitionState::HaveBlock(block, _, _) => write!(
                 f,
                 "have block body({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveGlobalState(block, _, _, _) => write!(
                 f,
                 "have global state({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _) => write!(
                 f,
                 "have execution results({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveApprovalsHashes(block, _, _) => write!(
                 f,
                 "have approvals hashes({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
-            BlockAcquisitionState::HaveAllDeploys(block, _) => write!(
-                f,
-                "have deploys({}) for: {}",
-                block.header().height(),
-                block.hash()
-            ),
+            BlockAcquisitionState::HaveAllDeploys(block, _) => {
+                write!(f, "have deploys({}) for: {}", block.height(), block.hash())
+            }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => write!(
                 f,
                 "have strict finality({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveFinalizedBlock(block, finalized_block, _, _) => write!(
                 f,
                 "have finalized block({}) for: {}",
-                finalized_block.height(),
+                finalized_block.height,
                 *block.hash()
             ),
             BlockAcquisitionState::Complete(block) => {
@@ -496,7 +496,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveBlockHeader(header, _)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Some(header.height()),
             BlockAcquisitionState::HaveFinalizedBlock(_, finalized_block, _, _) => {
-                Some(finalized_block.height())
+                Some(finalized_block.height)
             }
             BlockAcquisitionState::HaveBlock(block, _, _)
             | BlockAcquisitionState::HaveGlobalState(block, ..)
@@ -672,7 +672,7 @@ impl BlockAcquisitionState {
         // Initialized and Failed. However, it can only cause a state transition when we
         // are in a resting state that needs weak finality or strict finality.
         let cloned_sig = signature.clone();
-        let signer = signature.public_key.clone();
+        let signer = signature.public_key().clone();
         let acceptance: Acceptance;
         let maybe_block_hash: Option<BlockHash>;
         let currently_acquiring_sigs: bool;

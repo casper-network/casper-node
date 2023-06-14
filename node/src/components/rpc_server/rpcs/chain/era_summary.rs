@@ -4,12 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     system::auction::{EraInfo, SeigniorageAllocation},
-    AsymmetricType, Digest, EraId, PublicKey, U512,
+    AsymmetricType, BlockHash, Digest, EraId, JsonBlock, PublicKey, U512,
 };
 
 use crate::{
     rpcs::{common::MERKLE_PROOF, docs::DocExample},
-    types::{json_compatibility::StoredValue, Block, BlockHash},
+    types::json_compatibility::StoredValue,
 };
 
 pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
@@ -35,10 +35,10 @@ pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let mut era_info = EraInfo::new();
     *era_info.seigniorage_allocations_mut() = seigniorage_allocations;
     EraSummary {
-        block_hash: *Block::doc_example().hash(),
+        block_hash: JsonBlock::doc_example().hash,
         era_id: EraId::from(42),
         stored_value: StoredValue::EraInfo(era_info),
-        state_root_hash: *Block::doc_example().header().state_root_hash(),
+        state_root_hash: JsonBlock::doc_example().header.state_root_hash,
         merkle_proof: MERKLE_PROOF.clone(),
     }
 });

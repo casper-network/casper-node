@@ -1,12 +1,13 @@
-use either::Either;
 use std::{
     fmt::{Display, Formatter},
     time::Duration,
 };
+
+use either::Either;
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{ActivationPoint, EraId, TimeDiff, Timestamp};
+use casper_types::{ActivationPoint, BlockHash, BlockHeader, EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -21,7 +22,7 @@ use crate::{
         requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
+    types::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 
@@ -186,7 +187,7 @@ impl MainReactor {
             Ok(Some(block)) => Either::Left(SyncIdentifier::LocalTip(
                 *block.hash(),
                 block.height(),
-                block.header().era_id(),
+                block.era_id(),
             )),
             Ok(None) => {
                 // something out of the ordinary occurred; it isn't legit to be in keep up mode
@@ -726,12 +727,9 @@ fn is_timestamp_at_ttl(
 mod tests {
     use std::str::FromStr;
 
-    use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff, Timestamp};
+    use casper_types::{testing::TestRng, Block, ProtocolVersion, TimeDiff, Timestamp};
 
-    use crate::{
-        reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
-        types::Block,
-    };
+    use crate::reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl};
 
     const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
     const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);

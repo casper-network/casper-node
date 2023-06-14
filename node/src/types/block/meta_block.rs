@@ -6,9 +6,7 @@ use std::sync::Arc;
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_types::{ActivationPoint, DeployHash, DeployHeader, ExecutionResult};
-
-use crate::types::Block;
+use casper_types::{ActivationPoint, Block, DeployHash, DeployHeader, ExecutionResult};
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
@@ -62,14 +60,14 @@ impl MetaBlock {
 
     /// Is this a switch block?
     pub(crate) fn is_switch_block(&self) -> bool {
-        self.block.header.is_switch_block()
+        self.block.is_switch_block()
     }
 
     /// Is this the last block before a protocol version upgrade?
     pub(crate) fn is_upgrade_boundary(&self, activation_point: ActivationPoint) -> bool {
         match activation_point {
             ActivationPoint::EraId(era_id) => {
-                self.is_switch_block() && self.block.header.era_id.successor() == era_id
+                self.is_switch_block() && self.block.era_id().successor() == era_id
             }
             ActivationPoint::Genesis(_) => false,
         }
@@ -151,7 +149,7 @@ mod tests {
         let block1 = Arc::new(Block::random(&mut rng));
         let block2 = Arc::new(Block::random_with_specifics(
             &mut rng,
-            block1.header().era_id().successor(),
+            block1.era_id().successor(),
             block1.height() + 1,
             block1.protocol_version(),
             true,

@@ -5,9 +5,11 @@ use std::{
 
 use derive_more::From;
 use serde::Serialize;
-
-use casper_types::{system::auction::EraValidators, Deploy, EraId};
 use static_assertions::const_assert;
+
+use casper_types::{
+    system::auction::EraValidators, Block, BlockHeader, Deploy, EraId, FinalitySignature,
+};
 
 use crate::{
     components::{
@@ -44,10 +46,7 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, FinalitySignature,
-        LegacyDeploy, SyncLeap, TrieOrChunk,
-    },
+    types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
 };
 
 // Enforce an upper bound for the `MainEvent` size, which is already quite hefty.

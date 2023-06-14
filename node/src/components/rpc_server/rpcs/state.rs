@@ -19,8 +19,8 @@ use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{Bytes, ToBytes},
-    CLValue, Digest, Key, ProtocolVersion, PublicKey, SecretKey, StoredValue as DomainStoredValue,
-    URef, U512,
+    BlockHash, CLValue, Digest, JsonBlock, JsonBlockHeader, Key, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue as DomainStoredValue, URef, U512,
 };
 
 use crate::{
@@ -32,14 +32,11 @@ use crate::{
         docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
         Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithParams,
     },
-    types::{
-        json_compatibility::{Account as JsonAccount, AuctionState, StoredValue},
-        Block, BlockHash, JsonBlockHeader,
-    },
+    types::json_compatibility::{Account as JsonAccount, AuctionState, StoredValue},
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
-    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    state_root_hash: JsonBlock::doc_example().header.state_root_hash,
     key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
     path: vec!["inner".to_string()],
 });
@@ -49,7 +46,7 @@ static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParams {
-    state_root_hash: *Block::doc_example().header().state_root_hash(),
+    state_root_hash: JsonBlock::doc_example().header.state_root_hash,
     purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
         .to_string(),
 });
@@ -59,7 +56,7 @@ static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResul
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuctionInfoParams {
-    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+    block_identifier: BlockIdentifier::Hash(JsonBlock::doc_example().hash),
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -70,7 +67,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
         public_key,
-        block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
+        block_identifier: Some(BlockIdentifier::Hash(JsonBlock::doc_example().hash)),
     }
 });
 static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
@@ -80,7 +77,7 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
 });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     Lazy::new(|| GetDictionaryItemParams {
-        state_root_hash: *Block::doc_example().header().state_root_hash(),
+        state_root_hash: JsonBlock::doc_example().header.state_root_hash,
         dictionary_identifier: DictionaryIdentifier::URef {
             seed_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
                 .to_string(),
@@ -98,7 +95,7 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
     });
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
-        state_identifier: GlobalStateIdentifier::BlockHash(*Block::doc_example().hash()),
+        state_identifier: GlobalStateIdentifier::BlockHash(JsonBlock::doc_example().hash),
         key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
         path: vec![],
     });
@@ -110,7 +107,7 @@ static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
         merkle_proof: MERKLE_PROOF.clone(),
     });
 static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
-    trie_key: *Block::doc_example().header().state_root_hash(),
+    trie_key: JsonBlock::doc_example().header.state_root_hash,
 });
 static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -118,7 +115,7 @@ static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
 });
 static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanceParams {
     state_identifier: Some(GlobalStateIdentifier::BlockHash(
-        *Block::doc_example().hash(),
+        JsonBlock::doc_example().hash,
     )),
     purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
@@ -381,9 +378,9 @@ impl RpcWithOptionalParams for GetAuctionInfo {
         let protocol_version = api_version;
 
         // the global state hash of the last block
-        let state_root_hash = *block.header().state_root_hash();
+        let state_root_hash = *block.state_root_hash();
         // the block height of the last added block
-        let block_height = block.header().height();
+        let block_height = block.height();
 
         let get_bids_result = effect_builder
             .make_request(
@@ -525,7 +522,7 @@ impl RpcWithParams for GetAccountInfo {
         )
         .await?;
 
-        let state_root_hash = *block.header().state_root_hash();
+        let state_root_hash = *block.state_root_hash();
         let base_key = {
             let account_hash = params.public_key.to_account_hash();
             Key::Account(account_hash)

@@ -53,8 +53,8 @@ pub struct GlobalStateUpdate {
 }
 
 impl GlobalStateUpdate {
+    /// Returns a random `GlobalStateUpdate`.
     #[cfg(any(feature = "testing", test))]
-    /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let mut validators = BTreeMap::new();
         if rng.gen() {

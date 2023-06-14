@@ -1,15 +1,15 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use casper_types::{testing::TestRng, Chainspec};
-
 use prometheus::Registry;
+
+use casper_types::{testing::TestRng, Block, BlockHash, Chainspec};
 
 use crate::{
     components::{
         fetcher::{self, FetchResult, FetchedData},
         sync_leaper::{LeapState, PeerState, RegisterLeapAttemptOutcome},
     },
-    types::{Block, BlockHash, NodeId, SyncLeap, SyncLeapIdentifier},
+    types::{NodeId, SyncLeap, SyncLeapIdentifier},
 };
 
 use super::{Error, SyncLeaper};

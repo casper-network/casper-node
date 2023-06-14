@@ -1301,12 +1301,15 @@ pub(crate) fn vec_u8_serialized_length(vec: &Vec<u8>) -> usize {
     u8_slice_serialized_length(vec.as_slice())
 }
 
-// This test helper is not intended to be used by third party crates.
-#[doc(hidden)]
-/// Returns `true` if a we can serialize and then deserialize a value
+/// Asserts that `t` can be serialized and when deserialized back into an instance `T` compares
+/// equal to `t`.
+///
+/// Also asserts that `t.serialized_length()` is the same as the actual number of bytes of the
+/// serialized `t` instance.
+#[cfg(any(feature = "testing", test))]
 pub fn test_serialization_roundtrip<T>(t: &T)
 where
-    T: alloc::fmt::Debug + ToBytes + FromBytes + PartialEq,
+    T: fmt::Debug + ToBytes + FromBytes + PartialEq,
 {
     let serialized = ToBytes::to_bytes(t).expect("Unable to serialize data");
     assert_eq!(
@@ -1325,12 +1328,12 @@ where
 
     let deserialized_from_slice =
         deserialize_from_slice(&serialized).expect("Unable to deserialize data");
-    // assert!(*t == deserialized);
     assert_eq!(*t, deserialized_from_slice);
 
     let deserialized = deserialize::<T>(serialized).expect("Unable to deserialize data");
     assert_eq!(*t, deserialized);
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1344,7 +1347,7 @@ mod tests {
     #[test]
     fn should_not_deserialize_zero_denominator() {
         let malicious_bytes = (1u64, 0u64).to_bytes().unwrap();
-        let result: Result<Ratio<u64>, Error> = super::deserialize(malicious_bytes);
+        let result: Result<Ratio<u64>, Error> = deserialize(malicious_bytes);
         assert_eq!(result.unwrap_err(), Error::Formatting);
     }
 

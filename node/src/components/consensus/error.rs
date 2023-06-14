@@ -1,8 +1,6 @@
 use thiserror::Error;
 
-use casper_types::EraId;
-
-use crate::types::BlockHeader;
+use casper_types::{BlockHeader, EraId};
 
 #[derive(Error, Debug)]
 pub enum CreateNewEraError {

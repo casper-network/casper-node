@@ -35,14 +35,13 @@ use tokio::sync::{
 use tracing::{error, info, warn};
 use warp::Filter;
 
-use casper_types::ProtocolVersion;
+use casper_types::{JsonBlock, ProtocolVersion};
 
 use super::Component;
 use crate::{
     components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
     reactor::main_reactor::MainEvent,
-    types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -238,7 +237,7 @@ where
                 }
                 Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
-                    block: Box::new(JsonBlock::new(&block, None)),
+                    block: Box::new(JsonBlock::new((*block).clone(), None)),
                 }),
                 Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
                 Event::DeployProcessed {

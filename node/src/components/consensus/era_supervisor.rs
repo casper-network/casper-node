@@ -31,8 +31,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    AsymmetricType, Chainspec, ConsensusProtocolName, Deploy, DeployHash, Digest, EraId, PublicKey,
-    SecretKey, TimeDiff, Timestamp,
+    AsymmetricType, BlockHash, BlockHeader, Chainspec, ConsensusProtocolName, Deploy, DeployHash,
+    Digest, DisplayIter, EraId, EraReport, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -40,7 +40,7 @@ use crate::{
         consensus::{
             cl_context::{ClContext, Keypair},
             consensus_protocol::{
-                ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
+                ConsensusProtocol, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
                 ProtocolOutcome,
             },
             metrics::Metrics,
@@ -56,10 +56,7 @@ use crate::{
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal, protocol,
-    types::{
-        BlockHash, BlockHeader, DeployOrTransferHash, FinalizedApprovals, FinalizedBlock,
-        MetaBlockState, NodeId,
-    },
+    types::{DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId},
     NodeRng,
 };
 
@@ -392,7 +389,7 @@ impl EraSupervisor {
                 // selection algorithm.
                 BlockHash::default()
             };
-        let seed = Self::era_seed(booking_block_hash, key_block.accumulated_seed());
+        let seed = Self::era_seed(booking_block_hash, *key_block.accumulated_seed());
 
         // The beginning of the new era is marked by the key block.
         #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
@@ -401,14 +398,14 @@ impl EraSupervisor {
 
         // Validators that were inactive in the previous era will be excluded from leader selection
         // in the new era.
-        let inactive = report.inactive_validators.iter().cloned().collect();
+        let inactive = report.inactive_validators().iter().cloned().collect();
 
         // Validators that were only exposed as faulty after the booking block are still in the new
         // era's validator set but get banned.
         let blocks_after_booking_block = switch_blocks.iter().rev().take(auction_delay);
         let faulty = blocks_after_booking_block
             .filter_map(|switch_block| switch_block.era_end())
-            .flat_map(|era_end| era_end.era_report().equivocators.clone())
+            .flat_map(|era_end| era_end.era_report().equivocators().iter().cloned())
             .collect();
 
         let chainspec_hash = self.chainspec.hash();
@@ -1000,10 +997,8 @@ impl EraSupervisor {
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
-                let report = terminal_block_data.map(|tbd| EraReport {
-                    equivocators: era.accusations(),
-                    inactive_validators: tbd.inactive_validators,
-                    rewards: BTreeMap::new(),
+                let report = terminal_block_data.map(|tbd| {
+                    EraReport::new(era.accusations(), BTreeMap::new(), tbd.inactive_validators)
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
                 let finalized_approvals: HashMap<_, _> = proposed_block
@@ -1019,8 +1014,8 @@ impl EraSupervisor {
                     .collect();
                 if let Some(era_report) = report.as_ref() {
                     info!(
-                        inactive = ?era_report.inactive_validators,
-                        faulty = ?era_report.equivocators,
+                        inactive = %DisplayIter::new(era_report.inactive_validators()),
+                        faulty = %DisplayIter::new(era_report.equivocators()),
                         era_id = era_id.value(),
                         "era end: inactive and faulty validators"
                     );
@@ -1034,9 +1029,9 @@ impl EraSupervisor {
                     proposer,
                 );
                 info!(
-                    era_id = finalized_block.era_id().value(),
-                    height = finalized_block.height(),
-                    timestamp = %finalized_block.timestamp(),
+                    era_id = finalized_block.era_id.value(),
+                    height = finalized_block.height,
+                    timestamp = %finalized_block.timestamp,
                     "finalized block"
                 );
                 self.metrics.finalized_block(&finalized_block);
@@ -1044,7 +1039,7 @@ impl EraSupervisor {
                 let mut effects = effect_builder
                     .announce_finalized_block(finalized_block.clone())
                     .ignore();
-                self.next_block_height = self.next_block_height.max(finalized_block.height() + 1);
+                self.next_block_height = self.next_block_height.max(finalized_block.height + 1);
                 // Request execution of the finalized block.
                 effects.extend(
                     execute_finalized_block(effect_builder, finalized_approvals, finalized_block)

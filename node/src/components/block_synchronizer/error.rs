@@ -7,7 +7,7 @@ use casper_types::{DeployId, Digest};
 
 use super::deploy_acquisition;
 
-use crate::types::BlockHash;
+use casper_types::BlockHash;
 
 #[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum BlockAcquisitionError {

@@ -19,7 +19,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Approval, Deploy, DeployConfig, DeployFootprint, DeployHash, DeployId, DisplayIter, Timestamp,
+    Approval, Block, Deploy, DeployConfig, DeployFootprint, DeployHash, DeployId, DisplayIter,
+    Timestamp,
 };
 
 use crate::{
@@ -37,7 +38,7 @@ use crate::{
     storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
-        Block, DeployHashWithApprovals, FinalizedBlock,
+        DeployHashWithApprovals, FinalizedBlock,
     },
     NodeRng,
 };
@@ -293,7 +294,7 @@ impl DeployBuffer {
 
     /// Update buffer and holds considering new added block.
     fn register_block(&mut self, block: &Block) {
-        let block_height = block.header().height();
+        let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
         self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
@@ -301,8 +302,8 @@ impl DeployBuffer {
 
     /// Update buffer and holds considering new finalized block.
     fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
-        let block_height = finalized_block.height();
-        let timestamp = finalized_block.timestamp();
+        let block_height = finalized_block.height;
+        let timestamp = finalized_block.timestamp;
         debug!(%timestamp, "DeployBuffer: register_block_finalized({}) timestamp finalized", block_height);
         self.register_deploys(timestamp, finalized_block.deploy_and_transfer_hashes());
     }

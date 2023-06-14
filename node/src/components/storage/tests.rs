@@ -4,7 +4,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     fs::{self, File},
     iter,
-    rc::Rc,
     sync::Arc,
 };
 
@@ -14,8 +13,9 @@ use smallvec::smallvec;
 
 use casper_types::{
     generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    Chainspec, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionResult, ProtocolVersion,
-    PublicKey, SecretKey, TimeDiff, URef, U512,
+    Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Chainspec,
+    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionResult, FinalitySignature,
+    ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TimeDiff, URef, U512,
 };
 
 use super::{
@@ -34,10 +34,9 @@ use crate::{
     },
     testing::{ComponentHarness, UnitTestEvent},
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange, Block,
-        BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
-        LegacyDeploy, SyncLeapIdentifier,
+        sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, LegacyDeploy,
+        SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };
@@ -67,10 +66,10 @@ fn block_headers_into_heights(block_headers: &[BlockHeader]) -> Vec<u64> {
         .collect()
 }
 
-fn signed_block_headers_into_heights(signed_block_headers: &[BlockHeaderWithMetadata]) -> Vec<u64> {
+fn signed_block_headers_into_heights(signed_block_headers: &[SignedBlockHeader]) -> Vec<u64> {
     signed_block_headers
         .iter()
-        .map(|signed_block_header| signed_block_header.block_header.height())
+        .map(|signed_block_header| signed_block_header.block_header().height())
         .collect()
 }
 
@@ -102,7 +101,7 @@ fn create_sync_leap_test_chain(
     let mut trusted_validator_weights = BTreeMap::new();
 
     let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
-    trusted_validator_weights.insert(validator_public_key.clone(), U512::from(2000000000000u64));
+    trusted_validator_weights.insert(validator_public_key, U512::from(2000000000000u64));
 
     let mut blocks: Vec<Block> = vec![];
     let block_count = 13 + include_switch_block_at_tip as u64;
@@ -114,9 +113,9 @@ fn create_sync_leap_test_chain(
             _ => (height + 4) / 3,
         });
         let parent_hash = if height == 0 {
-            None
+            BlockHash::new(Digest::default())
         } else {
-            Some(*blocks.get((height - 1) as usize).unwrap().hash())
+            *blocks.get((height - 1) as usize).unwrap().hash()
         };
 
         let block = Block::random_with_specifics_and_parent_and_validator_weights(
@@ -124,13 +123,11 @@ fn create_sync_leap_test_chain(
             era_id,
             height,
             chainspec.protocol_version(),
-            is_switch,
-            None,
             parent_hash,
             if is_switch {
-                trusted_validator_weights.clone()
+                Some(trusted_validator_weights.clone())
             } else {
-                BTreeMap::new()
+                None
             },
         );
 
@@ -139,23 +136,11 @@ fn create_sync_leap_test_chain(
     blocks.iter().for_each(|block| {
         storage.write_block(block).unwrap();
 
-        let secret_rc = Rc::new(&validator_secret_key);
-        let fs = FinalitySignature::create(
-            *block.hash(),
-            block.header().era_id(),
-            &secret_rc,
-            validator_public_key.clone(),
-        );
+        let fs = FinalitySignature::create(*block.hash(), block.era_id(), &validator_secret_key);
         assert!(fs.is_verified().is_ok());
 
-        let mut proofs = BTreeMap::new();
-        proofs.insert(validator_public_key.clone(), fs.signature);
-
-        let block_signatures = BlockSignatures {
-            block_hash: *block.hash(),
-            era_id: block.header().era_id(),
-            proofs,
-        };
+        let mut block_signatures = BlockSignatures::new(*block.hash(), block.era_id());
+        block_signatures.insert_signature(fs);
 
         if !non_signed_blocks.contains(&block.height()) {
             storage
@@ -266,17 +251,12 @@ fn storage_fixture_with_hard_reset(
 /// Creates 3 random signatures for the given block.
 fn random_signatures(rng: &mut TestRng, block: &Block) -> BlockSignatures {
     let block_hash = *block.hash();
-    let era_id = block.header().era_id();
+    let era_id = block.era_id();
     let mut block_signatures = BlockSignatures::new(block_hash, era_id);
     for _ in 0..3 {
         let secret_key = SecretKey::random(rng);
-        let signature = FinalitySignature::create(
-            block_hash,
-            era_id,
-            &secret_key,
-            PublicKey::from(&secret_key),
-        );
-        block_signatures.insert_proof(signature.public_key, signature.signature);
+        let signature = FinalitySignature::create(block_hash, era_id, &secret_key);
+        block_signatures.insert_signature(signature);
     }
     block_signatures
 }
@@ -1177,7 +1157,12 @@ fn should_hard_reset() {
                 height as u64,
                 ProtocolVersion::V1_0_0,
                 is_switch,
-                iter::once(random_deploys.get(height).expect("should_have_deploy")),
+                iter::once(
+                    *random_deploys
+                        .get(height)
+                        .expect("should_have_deploy")
+                        .hash(),
+                ),
             )
         })
         .collect();
@@ -1473,7 +1458,7 @@ fn should_get_signed_block_headers() {
             .unwrap()
             .unwrap()
             .iter()
-            .map(|block_header_with_metadata| block_header_with_metadata.block_header.height())
+            .map(|block_header_with_metadata| block_header_with_metadata.block_header().height())
             .collect()
     };
 
@@ -1517,7 +1502,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             .unwrap()
             .unwrap()
             .iter()
-            .map(|block_header_with_metadata| block_header_with_metadata.block_header.height())
+            .map(|block_header_with_metadata| block_header_with_metadata.block_header().height())
             .collect()
     };
 
@@ -1544,7 +1529,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
 fn should_get_sync_leap() {
     let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], false, None);
 
-    let requested_block_hash = blocks.get(6).unwrap().header().block_hash();
+    let requested_block_hash = *blocks.get(6).unwrap().hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
@@ -1572,7 +1557,7 @@ fn should_get_sync_leap() {
 fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], false, None);
 
-    let requested_block_hash = blocks.get(12).unwrap().header().block_hash();
+    let requested_block_hash = *blocks.get(12).unwrap().hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
@@ -1597,7 +1582,7 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
 fn sync_leap_should_populate_trusted_ancestor_headers_if_tip_is_a_switch_block() {
     let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], true, None);
 
-    let requested_block_hash = blocks.get(13).unwrap().header().block_hash();
+    let requested_block_hash = *blocks.get(13).unwrap().hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 
@@ -1623,7 +1608,7 @@ fn should_respect_allowed_era_diff_in_get_sync_leap() {
     let maybe_recent_era_count = Some(1);
     let (storage, _, blocks) = create_sync_leap_test_chain(&[], false, maybe_recent_era_count);
 
-    let requested_block_hash = blocks.get(6).unwrap().header().block_hash();
+    let requested_block_hash = *blocks.get(6).unwrap().hash();
     let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
     let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
 

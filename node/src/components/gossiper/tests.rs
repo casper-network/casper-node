@@ -18,7 +18,8 @@ use tokio::time;
 use tracing::debug;
 
 use casper_types::{
-    testing::TestRng, Chainspec, ChainspecRawBytes, Deploy, EraId, ProtocolVersion, TimeDiff,
+    testing::TestRng, Block, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature,
+    ProtocolVersion, TimeDiff,
 };
 
 use super::*;
@@ -48,7 +49,7 @@ use crate::{
         network::{NetworkedReactor, TestingNetwork},
         ConditionCheckReactor, FakeDeployAcceptor,
     },
-    types::{Block, FinalitySignature, NodeId},
+    types::NodeId,
     utils::WithDir,
     NodeRng,
 };

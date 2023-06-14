@@ -6,10 +6,9 @@ use std::{
 use itertools::Itertools;
 
 use casper_types::{
-    Deploy, DeployHash, DeployHeader, EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp,
+    Block, BlockHash, Deploy, DeployHash, DeployHeader, EraId, ExecutionEffect, ExecutionResult,
+    FinalitySignature, PublicKey, Timestamp,
 };
-
-use crate::types::{Block, BlockHash, FinalitySignature};
 
 #[derive(Debug)]
 pub enum Event {

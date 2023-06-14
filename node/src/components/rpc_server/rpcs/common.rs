@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 
 use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr::ToBytes, Digest, Key};
+use casper_types::{bytesrepr::ToBytes, Block, Digest, Key};
 
 use super::{
     chain::{self, BlockIdentifier},
@@ -16,7 +16,7 @@ use super::{
 use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{json_compatibility::StoredValue, AvailableBlockRange, Block},
+    types::{json_compatibility::StoredValue, AvailableBlockRange},
 };
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
@@ -130,7 +130,7 @@ pub(super) async fn get_block<REv: ReactorEventT>(
     only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<Block, Error> {
-    chain::get_block_with_metadata(maybe_id, only_from_available_block_range, effect_builder)
+    chain::get_signed_block(maybe_id, only_from_available_block_range, effect_builder)
         .await
         .map(|block_with_metadata| block_with_metadata.block)
 }

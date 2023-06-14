@@ -70,8 +70,9 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    ApprovalsHash, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionResult,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
+    ApprovalsHash, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
+    Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionResult, FinalitySignature,
+    ProtocolVersion, PublicKey, SignedBlockHeader, TimeDiff, Timestamp, Transfer, Transform,
 };
 
 use crate::{
@@ -90,12 +91,10 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        BlockWithMetadata, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalizedApprovals, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap,
-        SyncLeapIdentifier, ValueOrChunk,
+        ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, NodeId,
+        SignedBlock, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -721,13 +720,13 @@ impl Storage {
             NetRequest::FinalitySignature(ref serialized_id) => {
                 let id = decode_item_id::<FinalitySignature>(serialized_id)?;
                 let opt_item =
-                    self.read_block_signatures(&id.block_hash)?
+                    self.read_block_signatures(id.block_hash())?
                         .and_then(|block_signatures| {
-                            block_signatures.get_finality_signature(&id.public_key)
+                            block_signatures.finality_signature(id.public_key())
                         });
 
                 if let Some(item) = opt_item.as_ref() {
-                    if item.block_hash != id.block_hash || item.era_id != id.era_id {
+                    if item.block_hash() != id.block_hash() || item.era_id() != id.era_id() {
                         return Err(GetRequestError::FinalitySignatureIdMismatch {
                             requested_id: id,
                             finality_signature: Box::new(item.clone()),
@@ -962,7 +961,7 @@ impl Storage {
 
                 responder.respond(Some((deploy, metadata_ext))).ignore()
             }
-            StorageRequest::GetBlockAndMetadataByHash {
+            StorageRequest::GetSignedBlockByHash {
                 block_hash,
                 only_from_available_block_range,
                 responder,
@@ -992,7 +991,7 @@ impl Storage {
                 }
                 let block_signatures = match self.get_block_signatures(&mut txn, &block_hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(block_hash, block.header().era_id()),
+                    None => BlockSignatures::new(block_hash, block.era_id()),
                 };
                 if block_signatures.verify().is_err() {
                     error!(?block, "invalid block signatures for block");
@@ -1000,7 +999,7 @@ impl Storage {
                     return Ok(responder.respond(None).ignore());
                 }
                 responder
-                    .respond(Some(BlockWithMetadata {
+                    .respond(Some(SignedBlock {
                         block,
                         block_signatures,
                     }))
@@ -1009,20 +1008,20 @@ impl Storage {
             StorageRequest::GetFinalitySignature { id, responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 let maybe_sig = self
-                    .get_block_signatures(&mut txn, &id.block_hash)?
-                    .and_then(|sigs| sigs.get_finality_signature(&id.public_key))
-                    .filter(|sig| sig.era_id == id.era_id);
+                    .get_block_signatures(&mut txn, id.block_hash())?
+                    .and_then(|sigs| sigs.finality_signature(id.public_key()))
+                    .filter(|sig| sig.era_id() == id.era_id());
                 responder.respond(maybe_sig).ignore()
             }
             StorageRequest::IsFinalitySignatureStored { id, responder } => {
                 let mut txn = self.env.begin_ro_txn()?;
                 let has_signature = self
-                    .get_block_signatures(&mut txn, &id.block_hash)?
-                    .map(|sigs| sigs.has_finality_signature(&id.public_key))
+                    .get_block_signatures(&mut txn, id.block_hash())?
+                    .map(|sigs| sigs.has_finality_signature(id.public_key()))
                     .unwrap_or(false);
                 responder.respond(has_signature).ignore()
             }
-            StorageRequest::GetBlockAndMetadataByHeight {
+            StorageRequest::GetSignedBlockByHeight {
                 block_height,
                 only_from_available_block_range,
                 responder,
@@ -1044,16 +1043,16 @@ impl Storage {
                 let hash = block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.header().era_id()),
+                    None => BlockSignatures::new(*hash, block.era_id()),
                 };
                 responder
-                    .respond(Some(BlockWithMetadata {
+                    .respond(Some(SignedBlock {
                         block,
                         block_signatures,
                     }))
                     .ignore()
             }
-            StorageRequest::GetHighestBlockWithMetadata {
+            StorageRequest::GetHighestSignedBlock {
                 only_from_available_block_range,
                 responder,
             } => {
@@ -1074,10 +1073,10 @@ impl Storage {
                 let hash = highest_block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, highest_block.header().era_id()),
+                    None => BlockSignatures::new(*hash, highest_block.era_id()),
                 };
                 responder
-                    .respond(Some(BlockWithMetadata {
+                    .respond(Some(SignedBlock {
                         block: highest_block,
                         block_signatures,
                     }))
@@ -1087,7 +1086,7 @@ impl Storage {
                 signatures,
                 responder,
             } => {
-                if signatures.proofs.is_empty() {
+                if signatures.is_empty() {
                     error!(
                         ?signatures,
                         "should not attempt to store empty collection of block signatures"
@@ -1096,19 +1095,20 @@ impl Storage {
                 }
                 let mut txn = self.env.begin_rw_txn()?;
                 let old_data: Option<BlockSignatures> =
-                    txn.get_value(self.block_metadata_db, &signatures.block_hash)?;
+                    txn.get_value(self.block_metadata_db, signatures.block_hash())?;
                 let new_data = match old_data {
                     None => signatures,
                     Some(mut data) => {
-                        for (public_key, sig) in signatures.proofs {
-                            data.insert_proof(public_key, sig);
+                        if let Err(error) = data.merge(signatures) {
+                            error!(%error, "failed to put block signatures");
+                            return Ok(responder.respond(false).ignore());
                         }
                         data
                     }
                 };
                 let outcome = txn.put_value(
                     self.block_metadata_db,
-                    &new_data.block_hash,
+                    new_data.block_hash(),
                     &new_data,
                     true,
                 )?;
@@ -1121,14 +1121,14 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_rw_txn()?;
                 let mut block_signatures = txn
-                    .get_value(self.block_metadata_db, &signature.block_hash)?
+                    .get_value(self.block_metadata_db, signature.block_hash())?
                     .unwrap_or_else(|| {
-                        BlockSignatures::new(signature.block_hash, signature.era_id)
+                        BlockSignatures::new(*signature.block_hash(), signature.era_id())
                     });
-                block_signatures.insert_proof(signature.public_key, signature.signature);
+                block_signatures.insert_signature(*signature);
                 let outcome = txn.put_value(
                     self.block_metadata_db,
-                    &block_signatures.block_hash,
+                    block_signatures.block_hash(),
                     &block_signatures,
                     true,
                 )?;
@@ -1369,17 +1369,16 @@ impl Storage {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<FinalizedBlockAndDeploys>, FatalStorageError> {
-        let BlockAndDeploys { block, deploys } =
-            match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
-                Some(block_and_finalized_deploys) => block_and_finalized_deploys,
-                None => {
-                    error!(
-                        ?block_hash,
-                        "Storage: unable to make_executable_block for  {}", block_hash
-                    );
-                    return Ok(None);
-                }
-            };
+        let (block, deploys) = match self.read_block_and_finalized_deploys_by_hash(*block_hash)? {
+            Some(block_and_finalized_deploys) => block_and_finalized_deploys,
+            None => {
+                error!(
+                    ?block_hash,
+                    "Storage: unable to make_executable_block for  {}", block_hash
+                );
+                return Ok(None);
+            }
+        };
         if let Some(finalized_approvals) = self.read_approvals_hashes(block.hash())? {
             if deploys.len() != finalized_approvals.approvals_hashes().len() {
                 error!(
@@ -1415,7 +1414,7 @@ impl Storage {
         info!(
             ?block_hash,
             "Storage: created finalized_block({}) {} with {} deploys",
-            finalized_block.height(),
+            finalized_block.height,
             block_hash,
             deploys.len()
         );
@@ -1538,9 +1537,9 @@ impl Storage {
         signatures: &BlockSignatures,
     ) -> Result<(), FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
-        let block_hash = signatures.block_hash;
+        let block_hash = signatures.block_hash();
         if txn
-            .put_value(self.block_metadata_db, &block_hash, signatures, true)
+            .put_value(self.block_metadata_db, block_hash, signatures, true)
             .is_err()
         {
             panic!("write_finality_signatures() failed");
@@ -1559,7 +1558,7 @@ impl Storage {
         block: &Block,
     ) -> Result<bool, FatalStorageError> {
         {
-            let block_body_hash = block.header().body_hash();
+            let block_body_hash = block.body_hash();
             let block_body = block.body();
             if !self.put_single_block_body(txn, block_body_hash, block_body)? {
                 error!("could not insert body for: {}", block);
@@ -1589,7 +1588,7 @@ impl Storage {
                 &mut self.deploy_hash_index,
                 *block.hash(),
                 block.body(),
-                block.header().height(),
+                block.height(),
             )?;
         }
         Ok(true)
@@ -1670,10 +1669,10 @@ impl Storage {
     /// Retrieves a block by height, together with all stored block signatures.
     ///
     /// Returns `None` if the block is not stored, or if no block signatures are stored for it.
-    pub fn read_block_and_metadata_by_height(
+    pub fn read_signed_block_by_height(
         &self,
         height: u64,
-    ) -> Result<Option<BlockWithMetadata>, FatalStorageError> {
+    ) -> Result<Option<SignedBlock>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -1690,7 +1689,7 @@ impl Storage {
                 debug!(height, "no block signatures stored for block");
                 return Ok(None);
             };
-        Ok(Some(BlockWithMetadata {
+        Ok(Some(SignedBlock {
             block,
             block_signatures,
         }))
@@ -1701,7 +1700,7 @@ impl Storage {
     fn read_block_and_finalized_deploys_by_hash(
         &self,
         block_hash: BlockHash,
-    ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
+    ) -> Result<Option<(Block, Vec<Deploy>)>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         let block = match self.get_single_block(&mut txn, &block_hash)? {
             Some(block) => block,
@@ -1720,7 +1719,7 @@ impl Storage {
             .into_iter()
             .map(|maybe_deploy| maybe_deploy.map(|deploy| deploy.into_naive()))
             .collect::<Option<Vec<Deploy>>>()
-            .map(|deploys| BlockAndDeploys { block, deploys }))
+            .map(|deploys| (block, deploys)))
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
@@ -1768,7 +1767,7 @@ impl Storage {
         self.deploy_hash_index
             .get(&deploy_hash)
             .and_then(|block_hash_and_height| {
-                self.get_single_block_header(txn, &block_hash_and_height.block_hash)
+                self.get_single_block_header(txn, block_hash_and_height.block_hash())
                     .transpose()
             })
             .transpose()
@@ -1826,7 +1825,7 @@ impl Storage {
     fn get_header_with_metadata_of_highest_complete_block<Tx: Transaction>(
         &self,
         txn: &mut Tx,
-    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
+    ) -> Result<Option<SignedBlockHeader>, FatalStorageError> {
         let highest_complete_block_height = match self.completed_blocks.highest_sequence() {
             Some(sequence) => sequence.high(),
             None => {
@@ -1971,16 +1970,16 @@ impl Storage {
         &self,
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
-        highest_signed_block_header: &BlockHeaderWithMetadata,
-    ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
+        highest_signed_block_header: &SignedBlockHeader,
+    ) -> Result<Option<Vec<SignedBlockHeader>>, FatalStorageError> {
         if trusted_block_header.block_hash()
-            == highest_signed_block_header.block_header.block_hash()
+            == highest_signed_block_header.block_header().block_hash()
         {
             return Ok(Some(vec![]));
         }
 
         let start_era_id: u64 = trusted_block_header.next_block_era_id().into();
-        let current_era_id: u64 = highest_signed_block_header.block_header.era_id().into();
+        let current_era_id: u64 = highest_signed_block_header.block_header().era_id().into();
 
         let mut result = vec![];
 
@@ -2019,7 +2018,7 @@ impl Storage {
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<BlockHeaderWithMetadata>, FatalStorageError> {
+    ) -> Result<Option<SignedBlockHeader>, FatalStorageError> {
         let block_header: BlockHeader = match txn.get_value(self.block_header_db, &block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -2031,10 +2030,7 @@ impl Storage {
             None => BlockSignatures::new(block_header_hash, block_header.era_id()),
         };
 
-        Ok(Some(BlockHeaderWithMetadata {
-            block_header,
-            block_signatures,
-        }))
+        Ok(Some(SignedBlockHeader::new(block_header, block_signatures)))
     }
 
     /// Stores block headers in the db and, if successful, updates the in-memory indices.
@@ -2128,7 +2124,7 @@ impl Storage {
                 return Ok(None);
             }
         };
-        let block = Block::new_from_header_and_body(block_header, block_body)?;
+        let block = Block::new_from_header_and_body(block_header, block_body);
         Ok(Some(block))
     }
 
@@ -2205,7 +2201,7 @@ impl Storage {
     ) -> Result<Option<FinalitySignature>, FatalStorageError> {
         let maybe_signatures: Option<BlockSignatures> =
             txn.get_value(self.block_metadata_db, block_hash)?;
-        Ok(maybe_signatures.and_then(|signatures| signatures.get_finality_signature(public_key)))
+        Ok(maybe_signatures.and_then(|signatures| signatures.finality_signature(public_key)))
     }
 
     /// Retrieves block signatures for a block with a given block hash.
@@ -2338,7 +2334,7 @@ impl Storage {
             };
 
         if highest_complete_block_header
-            .block_header
+            .block_header()
             .era_id()
             .saturating_sub(trusted_block_header.era_id().into())
             > self.recent_era_count.into()
@@ -2346,7 +2342,7 @@ impl Storage {
             return Ok(FetchResponse::NotProvided(sync_leap_identifier));
         }
 
-        if highest_complete_block_header.block_header.height() == 0 {
+        if highest_complete_block_header.block_header().height() == 0 {
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: false,
                 trusted_block_header,
@@ -2646,7 +2642,7 @@ fn insert_to_deploy_index(
         deploy_hash_index
             .get(hash)
             .map_or(false, |old_block_hash_and_height| {
-                old_block_hash_and_height.block_hash != block_hash
+                *old_block_hash_and_height.block_hash() != block_hash
             })
     }) {
         return Err(FatalStorageError::DuplicateDeployIndex {

@@ -16,10 +16,10 @@ use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
-    Chainspec, Contract, ContractHash, ContractIdentifier, ContractPackage, ContractPackageHash,
-    ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy, DeployConfig,
-    DeployConfigurationFailure, Digest, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key,
-    ProtocolVersion, Timestamp, U512,
+    BlockHash, BlockHeader, Chainspec, Contract, ContractHash, ContractIdentifier, ContractPackage,
+    ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy,
+    DeployConfig, DeployConfigurationFailure, Digest, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, Key, ProtocolVersion, Timestamp, U512,
 };
 
 use crate::{
@@ -30,7 +30,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{BlockHash, BlockHeader, FinalizedApprovals},
+    types::FinalizedApprovals,
     utils::Source,
     NodeRng,
 };

@@ -7,12 +7,12 @@ use serde::Serialize;
 
 use casper_types::{
     account::{Account, AccountHash},
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Deploy,
-    Timestamp, U512,
+    BlockHeader, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
+    Deploy, Timestamp, U512,
 };
 
 use super::Source;
-use crate::{components::deploy_acceptor::Error, effect::Responder, types::BlockHeader};
+use crate::{components::deploy_acceptor::Error, effect::Responder};
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]

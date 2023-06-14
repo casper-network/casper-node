@@ -61,10 +61,10 @@ impl ApprovalsHashes {
             .compute_state_hash()
             .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
-        if proof_state_root_hash != *block.header().state_root_hash() {
+        if proof_state_root_hash != *block.state_root_hash() {
             return Err(ApprovalsHashesValidationError::StateRootHashMismatch {
                 proof_state_root_hash,
-                block_state_root_hash: *block.header().state_root_hash(),
+                block_state_root_hash: *block.state_root_hash(),
             });
         }
 
