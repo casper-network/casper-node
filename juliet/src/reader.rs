@@ -44,6 +44,7 @@ impl Channel {
 enum CompletedRead {
     ErrorReceived(Header),
     NewRequest { id: Id, payload: Option<Bytes> },
+    ReceivedResponse { id: Id, payload: Option<Bytes> },
 }
 
 pub(crate) enum Outcome<T> {
@@ -97,8 +98,16 @@ impl<const N: usize> State<N> {
 
             // We have a valid header, check if it is an error.
             if header.is_error() {
-                // TODO: Read the payload of `OTHER` errors.
-                return Success(CompletedRead::ErrorReceived(header));
+                match header.error_kind() {
+                    ErrorKind::Other => {
+                        // TODO: `OTHER` errors may contain a payload.
+
+                        unimplemented!()
+                    }
+                    _ => {
+                        return Success(CompletedRead::ErrorReceived(header));
+                    }
+                }
             }
 
             // At this point we are guaranteed a valid non-error frame, verify its channel.
@@ -126,7 +135,16 @@ impl<const N: usize> State<N> {
                         payload: None,
                     });
                 }
-                Kind::Response => todo!(),
+                Kind::Response => {
+                    if !channel.outgoing_requests.remove(&header.id()) {
+                        return header.return_err(ErrorKind::FictitiousRequest);
+                    } else {
+                        return Success(CompletedRead::ReceivedResponse {
+                            id: header.id(),
+                            payload: None,
+                        });
+                    }
+                }
                 Kind::RequestPl => {
                     let is_new_request = channel.current_request_state.is_ready();
 
