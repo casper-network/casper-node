@@ -1,13 +1,13 @@
 mod approval;
 mod approvals_hash;
 #[cfg(any(feature = "std", test))]
-mod builder;
+mod deploy_builder;
+mod deploy_footprint;
 mod deploy_hash;
+mod deploy_header;
+mod deploy_id;
 mod error;
 mod executable_deploy_item;
-mod footprint;
-mod header;
-mod id;
 #[macro_use]
 pub mod runtime_args;
 
@@ -49,10 +49,13 @@ use crate::{testing::TestRng, MAX_PAYMENT_AMOUNT};
 pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
 #[cfg(any(feature = "std", test))]
-use builder::AccountAndSecretKey;
+use deploy_builder::AccountAndSecretKey;
 #[cfg(any(feature = "std", test))]
-pub use builder::{DeployBuilder, DeployBuilderError};
+pub use deploy_builder::{DeployBuilder, DeployBuilderError};
+pub use deploy_footprint::DeployFootprint;
 pub use deploy_hash::DeployHash;
+pub use deploy_header::DeployHeader;
+pub use deploy_id::DeployId;
 pub use error::{
     DecodeFromJsonError as DeployDecodeFromJsonError, DeployConfigurationFailure,
     Error as DeployError, ExcessiveSizeError as DeployExcessiveSizeError,
@@ -61,9 +64,6 @@ pub use executable_deploy_item::{
     ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItem,
     ExecutableDeployItemIdentifier, TransferTarget,
 };
-pub use footprint::DeployFootprint;
-pub use header::DeployHeader;
-pub use id::DeployId;
 pub use runtime_args::RuntimeArgs;
 
 #[cfg(feature = "json-schema")]
