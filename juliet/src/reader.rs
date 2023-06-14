@@ -1,4 +1,4 @@
-use std::{collections::HashSet, mem};
+use std::{collections::HashSet, marker::PhantomData, mem, ops::Deref};
 
 use bytes::{Buf, Bytes, BytesMut};
 
@@ -7,6 +7,29 @@ use crate::{
     varint::{decode_varint32, Varint32Result},
     ChannelId, Id,
 };
+
+struct Index<'a> {
+    index: usize,
+    buffer: PhantomData<&'a BytesMut>,
+}
+
+impl<'a> Deref for Index<'a> {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.index
+    }
+}
+
+impl<'a> Index<'a> {
+    fn new(buffer: &'a BytesMut, index: usize) -> Self {
+        let _ = buffer;
+        Index {
+            index,
+            buffer: PhantomData,
+        }
+    }
+}
 
 const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
 const UNKNOWN_ID: Id = Id::new(0);
@@ -74,19 +97,17 @@ impl RequestState {
                         let max_data_in_frame = (max_frame_size - preamble_size) as u32;
 
                         // Determine how many additional bytes are needed for frame completion.
-                        let frame_ends_at = (preamble_size as usize
-                            + (max_data_in_frame as usize).min(total_payload_size as usize));
-                        if buffer.remaining() < frame_ends_at {
-                            return Incomplete(buffer.remaining() - frame_ends_at);
+                        let frame_end = Index::new(
+                            &buffer,
+                            preamble_size as usize
+                                + (max_data_in_frame as usize).min(total_payload_size as usize),
+                        );
+                        if buffer.remaining() < *frame_end {
+                            return Incomplete(buffer.remaining() - *frame_end);
                         }
 
                         // At this point we are sure to complete a frame, so drop the preamble.
                         buffer.advance(preamble_size as usize);
-
-                        // Pure defensive coding: Drop all now-invalid offsets.
-                        // TODO: This has no effect, replace with https://compilersaysno.com/posts/owning-your-invariants/
-                        drop(frame_ends_at);
-                        drop(preamble_size);
 
                         // Is the payload complete in one frame?
                         if total_payload_size <= max_data_in_frame {
@@ -124,7 +145,7 @@ impl RequestState {
 
                 // Determine whether we expect an intermediate or end segment.
                 let bytes_remaining = *total_payload_size as usize - payload.remaining();
-                let max_data_in_frame = (max_frame_size as usize - Header::SIZE);
+                let max_data_in_frame = max_frame_size as usize - Header::SIZE;
 
                 if bytes_remaining > max_data_in_frame {
                     // Intermediate segment.
@@ -143,11 +164,11 @@ impl RequestState {
                     Success(None)
                 } else {
                     // End segment
-                    let frame_end = bytes_remaining + Header::SIZE;
+                    let frame_end = Index::new(&buffer, bytes_remaining + Header::SIZE);
 
                     // If we don't have the entire frame read yet, return.
-                    if frame_end > buffer.remaining() {
-                        return Incomplete(frame_end - buffer.remaining());
+                    if *frame_end > buffer.remaining() {
+                        return Incomplete(*frame_end - buffer.remaining());
                     }
 
                     // Discard header.
