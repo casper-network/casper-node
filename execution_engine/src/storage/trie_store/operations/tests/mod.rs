@@ -43,6 +43,8 @@ use crate::{
     },
 };
 
+use self::bytesrepr_utils::PanickingFromBytes;
+
 const TEST_KEY_LENGTH: usize = 7;
 
 /// A short key type for tests.
@@ -132,7 +134,7 @@ impl ToBytes for TestValue {
     }
 }
 
-// Determine if a there exists a caller in the backtrace that matches any of the specified symbols
+// Determine if there exists a caller in the backtrace that matches any of the specified symbols
 fn first_caller_from_set(backtrace: &Backtrace, symbols: &[*mut c_void]) -> Option<*mut c_void> {
     if symbols.is_empty() {
         return None;
@@ -824,7 +826,7 @@ where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<K, V>,
+    S: TrieStore<K, PanickingFromBytes<V>>,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
@@ -834,13 +836,20 @@ where
     }
     let mut root_hash = root_hash.to_owned();
     let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
-    let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
+    let write_op = write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
 
     for leaf in leaves.iter() {
         if let Trie::Leaf { key, value } = leaf {
+            let new_value = PanickingFromBytes::new(value.clone());
             let _counter = TestValue::before_operation(write_op);
-            let write_result =
-                write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)?;
+            let write_result = write::<K, PanickingFromBytes<V>, _, _, E>(
+                correlation_id,
+                &mut txn,
+                store,
+                &root_hash,
+                key,
+                &new_value,
+            )?;
             let counter = TestValue::after_operation(write_op);
             assert_eq!(counter, 0, "Write should never deserialize a value");
             match write_result {
@@ -970,7 +979,7 @@ where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<K, V>,
+    S: TrieStore<K, PanickingFromBytes<V>>,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
@@ -981,10 +990,18 @@ where
     let mut root_hash = root_hash.to_owned();
     let mut txn = environment.create_read_write_txn()?;
 
-    let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
+    let write_op = write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
     for (key, value) in pairs.iter() {
         let _counter = TestValue::before_operation(write_op);
-        match write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)? {
+        let new_val = PanickingFromBytes::new(value.clone());
+        match write::<K, PanickingFromBytes<V>, _, _, E>(
+            correlation_id,
+            &mut txn,
+            store,
+            &root_hash,
+            key,
+            &new_val,
+        )? {
             WriteResult::Written(hash) => {
                 root_hash = hash;
             }
@@ -999,10 +1016,12 @@ where
     Ok(results)
 }
 
-fn writes_to_n_leaf_empty_trie_had_expected_results<'a, K, V, R, S, E>(
+fn writes_to_n_leaf_empty_trie_had_expected_results<'a, K, V, R, WR, S, WS, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
+    writable_environment: &'a WR,
     store: &S,
+    writable_store: &WS,
     states: &[Digest],
     test_leaves: &[Trie<K, V>],
 ) -> Result<Vec<Digest>, E>
@@ -1010,17 +1029,20 @@ where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy + Ord,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy,
     R: TransactionSource<'a, Handle = S::Handle>,
+    WR: TransactionSource<'a, Handle = WS::Handle>,
     S: TrieStore<K, V>,
+    WS: TrieStore<K, PanickingFromBytes<V>>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    WS::Error: From<WR::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<WR::Error> + From<WS::Error>,
 {
     let mut states = states.to_vec();
 
     // Write set of leaves to the trie
     let hashes = write_leaves::<_, _, _, _, E>(
         correlation_id,
-        environment,
-        store,
+        writable_environment,
+        writable_store,
         states.last().unwrap(),
         test_leaves,
     )?
