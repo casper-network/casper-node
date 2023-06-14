@@ -164,6 +164,16 @@ impl Header {
         self.0[0]
     }
 
+    /// Returns the kind byte with all reserved bits zero'd.
+    #[inline(always)]
+    pub(crate) fn kind_byte_without_reserved(self) -> u8 {
+        if self.is_error() {
+            self.kind_byte() & (Self::KIND_ERR_BIT | Self::KIND_ERR_MASK)
+        } else {
+            self.kind_byte() & (Self::KIND_ERR_BIT | Self::KIND_MASK)
+        }
+    }
+
     /// Returns the channel.
     #[inline(always)]
     pub(crate) fn channel(self) -> ChannelId {
@@ -282,6 +292,25 @@ mod tests {
             expected
         );
         assert_eq!(<[u8; Header::SIZE]>::from(expected), input);
+    }
+
+    #[test]
+    fn kind_byte_without_reserved_zeros_reserved() {
+        let input_err = [0b1111_1000, 0xFF, 0xFF, 0xFF];
+        assert_eq!(
+            Header::parse(input_err)
+                .expect("could not parse header")
+                .kind_byte_without_reserved(),
+            0b1000_1000
+        );
+
+        let input_ok = [0b0111_0100, 0xFF, 0xFF, 0xFF];
+        assert_eq!(
+            Header::parse(input_ok)
+                .expect("could not parse header")
+                .kind_byte_without_reserved(),
+            0b0000_0100
+        );
     }
 
     #[proptest]

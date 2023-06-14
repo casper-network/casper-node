@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, mem};
 
 use bytes::{Buf, Bytes, BytesMut};
 
@@ -30,7 +30,11 @@ struct Channel {
 #[derive(Debug)]
 enum RequestState {
     Ready,
-    InProgress { header: Header, payload: BytesMut },
+    InProgress {
+        header: Header,
+        payload: BytesMut,
+        total_payload_size: u32,
+    },
 }
 
 impl RequestState {
@@ -80,7 +84,7 @@ impl RequestState {
                         buffer.advance(preamble_size as usize);
 
                         // Pure defensive coding: Drop all now-invalid offsets.
-                        // TODO: Consider wild idea of `AssumeUnchanged<T, S>`.
+                        // TODO: This has no effect, replace with https://compilersaysno.com/posts/owning-your-invariants/
                         drop(frame_ends_at);
                         drop(preamble_size);
 
@@ -98,6 +102,7 @@ impl RequestState {
                             *self = RequestState::InProgress {
                                 header,
                                 payload: partial_payload,
+                                total_payload_size,
                             };
 
                             // We have successfully consumed a frame, but are not finished yet.
@@ -106,8 +111,57 @@ impl RequestState {
                     }
                 }
             }
-            RequestState::InProgress { header, payload } => {
-                todo!()
+            RequestState::InProgress {
+                header: active_header,
+                payload,
+                total_payload_size,
+            } => {
+                if header.kind_byte_without_reserved() != active_header.kind_byte_without_reserved()
+                {
+                    // The newly supplied header does not match the one active.
+                    return header.return_err(ErrorKind::InProgress);
+                }
+
+                // Determine whether we expect an intermediate or end segment.
+                let bytes_remaining = *total_payload_size as usize - payload.remaining();
+                let max_data_in_frame = (max_frame_size as usize - Header::SIZE);
+
+                if bytes_remaining > max_data_in_frame {
+                    // Intermediate segment.
+                    if buffer.remaining() < max_frame_size as usize {
+                        return Incomplete(max_frame_size as usize - buffer.remaining());
+                    }
+
+                    // Discard header.
+                    buffer.advance(Header::SIZE);
+
+                    // Copy data over to internal buffer.
+                    payload.extend_from_slice(&buffer[0..max_data_in_frame]);
+                    buffer.advance(max_data_in_frame);
+
+                    // We're done with this frame (but not the payload).
+                    Success(None)
+                } else {
+                    // End segment
+                    let frame_end = bytes_remaining + Header::SIZE;
+
+                    // If we don't have the entire frame read yet, return.
+                    if frame_end > buffer.remaining() {
+                        return Incomplete(frame_end - buffer.remaining());
+                    }
+
+                    // Discard header.
+                    buffer.advance(Header::SIZE);
+
+                    // Copy data over to internal buffer.
+                    payload.extend_from_slice(&buffer[0..bytes_remaining]);
+                    buffer.advance(bytes_remaining);
+
+                    let finished_payload = mem::take(payload);
+                    *self = RequestState::Ready;
+
+                    Success(Some(finished_payload))
+                }
             }
         }
     }
@@ -250,7 +304,10 @@ impl<const N: usize> State<N> {
                             }
                         }
                     }
-                    RequestState::InProgress { header } => {
+                    RequestState::InProgress {
+                        header,
+                        ref mut payload,
+                    } => {
                         todo!()
                     }
                 },
