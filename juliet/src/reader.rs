@@ -26,7 +26,7 @@ struct Channel {
     request_limit: u32,
     max_request_payload_size: u32,
     max_response_payload_size: u32,
-    current_request_state: RequestState,
+    current_multiframe_receive: MultiframeSendState,
 }
 
 impl Channel {
@@ -65,7 +65,7 @@ macro_rules! try_outcome {
 
 use Outcome::{Incomplete, ProtocolErr, Success};
 
-use self::multiframe::RequestState;
+use self::multiframe::MultiframeSendState;
 
 impl Header {
     #[inline]
@@ -146,19 +146,24 @@ impl<const N: usize> State<N> {
                     }
                 }
                 Kind::RequestPl => {
-                    let is_new_request = channel.current_request_state.is_ready();
+                    // First, we need to "gate" the incoming request; it only gets to bypass the request limit if it is already in progress:
+                    let is_new_request = channel.current_multiframe_receive.is_new_transfer(header);
 
                     if is_new_request {
+                        // If we're in the ready state, requests must be eagerly rejected if
+                        // exceeding the limit.
                         if channel.is_at_max_requests() {
-                            // If we're in the ready state, requests must be eagerly rejected if
-                            // exceeding the limit.
-
                             return header.return_err(ErrorKind::RequestLimitExceeded);
                         }
-                    }
+
+                        // We also check for duplicate requests early to avoid reading them.
+                        if channel.incoming_requests.contains(&header.id()) {
+                            return header.return_err(ErrorKind::DuplicateRequest);
+                        }
+                    };
 
                     let multiframe_outcome: Option<BytesMut> = try_outcome!(channel
-                        .current_request_state
+                        .current_multiframe_receive
                         .accept(header, &mut buffer, self.max_frame_size));
 
                     // If we made it to this point, we have consumed the frame. Record it.
@@ -182,7 +187,42 @@ impl<const N: usize> State<N> {
                         }
                     }
                 }
-                Kind::ResponsePl => todo!(),
+                Kind::ResponsePl => {
+                    let is_new_response =
+                        channel.current_multiframe_receive.is_new_transfer(header);
+
+                    // Ensure it is not a bogus response.
+                    if is_new_response {
+                        if !channel.outgoing_requests.contains(&header.id()) {
+                            return header.return_err(ErrorKind::FictitiousRequest);
+                        }
+                    }
+
+                    let multiframe_outcome: Option<BytesMut> = try_outcome!(channel
+                        .current_multiframe_receive
+                        .accept(header, &mut buffer, self.max_frame_size));
+
+                    // If we made it to this point, we have consumed the frame.
+                    if is_new_response {
+                        if !channel.outgoing_requests.remove(&header.id()) {
+                            return header.return_err(ErrorKind::FictitiousRequest);
+                        }
+                    }
+
+                    match multiframe_outcome {
+                        Some(payload) => {
+                            // Message is complete.
+                            return Success(CompletedRead::ReceivedResponse {
+                                id: header.id(),
+                                payload: Some(payload.freeze()),
+                            });
+                        }
+                        None => {
+                            // We need more frames to complete the payload. Do nothing and attempt
+                            // to read the next frame.
+                        }
+                    }
+                }
                 Kind::CancelReq => todo!(),
                 Kind::CancelResp => todo!(),
             }

@@ -39,7 +39,7 @@ impl<'a> Index<'a> {
 
 /// The multi-frame message receival state of a single channel, as specified in the RFC.
 #[derive(Debug)]
-pub(super) enum RequestState {
+pub(super) enum MultiframeSendState {
     /// The channel is ready to start receiving a new multi-frame message.
     Ready,
     /// A multi-frame message transfer is currently in progress.
@@ -53,7 +53,7 @@ pub(super) enum RequestState {
     },
 }
 
-impl RequestState {
+impl MultiframeSendState {
     /// Attempt to process a single multi-frame message frame.
     ///
     /// The caller must only calls this method if it has determined that the frame in `buffer` is
@@ -77,7 +77,7 @@ impl RequestState {
         );
 
         match self {
-            RequestState::Ready => {
+            MultiframeSendState::Ready => {
                 // We have a new segment, which has a variable size.
                 let segment_buf = &buffer[Header::SIZE..];
 
@@ -116,7 +116,7 @@ impl RequestState {
                             let partial_payload = buffer.split_to(max_frame_size as usize);
 
                             // We are now in progress of reading a payload.
-                            *self = RequestState::InProgress {
+                            *self = MultiframeSendState::InProgress {
                                 header,
                                 payload: partial_payload,
                                 total_payload_size,
@@ -128,13 +128,12 @@ impl RequestState {
                     }
                 }
             }
-            RequestState::InProgress {
+            MultiframeSendState::InProgress {
                 header: active_header,
                 payload,
                 total_payload_size,
             } => {
-                if header.kind_byte_without_reserved() != active_header.kind_byte_without_reserved()
-                {
+                if header != *active_header {
                     // The newly supplied header does not match the one active.
                     return header.return_err(ErrorKind::InProgress);
                 }
@@ -175,7 +174,7 @@ impl RequestState {
                     buffer.advance(bytes_remaining);
 
                     let finished_payload = mem::take(payload);
-                    *self = RequestState::Ready;
+                    *self = MultiframeSendState::Ready;
 
                     Success(Some(finished_payload))
                 }
@@ -183,8 +182,18 @@ impl RequestState {
         }
     }
 
-    /// Returns whether or not the current request state is
-    pub(super) fn is_ready(&self) -> bool {
-        matches!(self, RequestState::Ready)
+    #[inline]
+    pub(super) fn current_header(&self) -> Option<Header> {
+        match self {
+            MultiframeSendState::Ready => None,
+            MultiframeSendState::InProgress { header, .. } => Some(*header),
+        }
+    }
+
+    pub(super) fn is_new_transfer(&self, new_header: Header) -> bool {
+        match self {
+            MultiframeSendState::Ready => true,
+            MultiframeSendState::InProgress { header, .. } => *header != new_header,
+        }
     }
 }
