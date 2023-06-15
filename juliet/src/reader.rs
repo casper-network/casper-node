@@ -27,6 +27,7 @@ struct Channel {
     max_request_payload_size: u32,
     max_response_payload_size: u32,
     current_multiframe_receive: MultiframeSendState,
+    cancellation_allowance: u32,
 }
 
 impl Channel {
@@ -39,12 +40,20 @@ impl Channel {
     fn is_at_max_requests(&self) -> bool {
         self.in_flight_requests() == self.request_limit
     }
+
+    fn increment_cancellation_allowance(&mut self) {
+        if self.cancellation_allowance < self.request_limit {
+            self.cancellation_allowance += 1;
+        }
+    }
 }
 
 enum CompletedRead {
     ErrorReceived(Header),
     NewRequest { id: Id, payload: Option<Bytes> },
     ReceivedResponse { id: Id, payload: Option<Bytes> },
+    RequestCancellation { id: Id },
+    ResponseCancellation { id: Id },
 }
 
 pub(crate) enum Outcome<T> {
@@ -125,6 +134,7 @@ impl<const N: usize> State<N> {
                     if channel.incoming_requests.insert(header.id()) {
                         return header.return_err(ErrorKind::DuplicateRequest);
                     }
+                    channel.increment_cancellation_allowance();
 
                     // At this point, we have a valid request and its ID has been added to our
                     // incoming set. All we need to do now is to remove it from the buffer.
@@ -171,6 +181,7 @@ impl<const N: usize> State<N> {
                         if channel.incoming_requests.insert(header.id()) {
                             return header.return_err(ErrorKind::DuplicateRequest);
                         }
+                        channel.increment_cancellation_allowance();
                     }
 
                     match multiframe_outcome {
@@ -223,8 +234,26 @@ impl<const N: usize> State<N> {
                         }
                     }
                 }
-                Kind::CancelReq => todo!(),
-                Kind::CancelResp => todo!(),
+                Kind::CancelReq => {
+                    // Cancellations can be sent multiple times and are not checked to avoid
+                    // cancellation races. For security reasons they are subject to an allowance.
+
+                    if channel.cancellation_allowance == 0 {
+                        return header.return_err(ErrorKind::CancellationLimitExceeded);
+                    }
+                    channel.cancellation_allowance -= 1;
+
+                    // TODO: What to do with partially received multi-frame request?
+
+                    return Success(CompletedRead::RequestCancellation { id: header.id() });
+                }
+                Kind::CancelResp => {
+                    if channel.outgoing_requests.remove(&header.id()) {
+                        return Success(CompletedRead::ResponseCancellation { id: header.id() });
+                    } else {
+                        return header.return_err(ErrorKind::FictitiousCancel);
+                    }
+                }
             }
         }
     }
