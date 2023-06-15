@@ -23,7 +23,7 @@ use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::{info, warn};
 
-use casper_types::{Chainspec, Timestamp};
+use casper_types::{Approval, Chainspec, Deploy, DeployFootprint, DeployHash, Timestamp};
 
 use crate::{
     components::{
@@ -36,8 +36,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Approval, Deploy, DeployFootprint, DeployHash,
-        DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
+        appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransferHash,
+        LegacyDeploy, NodeId,
     },
     NodeRng,
 };
@@ -366,11 +366,11 @@ where
                 return Event::DeployMissing(dt_hash);
             }
         };
-        if deploy.deploy_or_transfer_hash() != dt_hash {
+        if DeployOrTransferHash::new(&deploy) != dt_hash {
             warn!(
                 deploy = ?deploy,
                 expected_deploy_or_transfer_hash = ?dt_hash,
-                actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
+                actual_deploy_or_transfer_hash = ?DeployOrTransferHash::new(&deploy),
                 "Deploy has incorrect transfer hash"
             );
             return Event::CannotConvertDeploy(dt_hash);

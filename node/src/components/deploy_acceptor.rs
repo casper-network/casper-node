@@ -12,17 +12,14 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, trace};
 
-use casper_execution_engine::core::engine_state::{
-    executable_deploy_item::{
-        ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItemIdentifier,
-    },
-    ExecutableDeployItem, MAX_PAYMENT,
-};
+use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
-    Chainspec, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, DeployConfig, Digest, Key, ProtocolVersion, Timestamp, U512,
+    Chainspec, Contract, ContractHash, ContractIdentifier, ContractPackage, ContractPackageHash,
+    ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy, DeployConfig,
+    DeployConfigurationFailure, Digest, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key,
+    ProtocolVersion, Timestamp, U512,
 };
 
 use crate::{
@@ -33,7 +30,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{BlockHash, BlockHeader, Deploy, DeployConfigurationFailure, FinalizedApprovals},
+    types::{BlockHash, BlockHeader, FinalizedApprovals},
     utils::Source,
     NodeRng,
 };

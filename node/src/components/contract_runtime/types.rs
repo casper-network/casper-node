@@ -5,9 +5,11 @@ use datasize::DataSize;
 use casper_execution_engine::{
     core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
 };
-use casper_types::{Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
+use casper_types::{
+    DeployHash, DeployHeader, Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, U512,
+};
 
-use crate::types::{ApprovalsHashes, Block, DeployHash, DeployHeader};
+use crate::types::{ApprovalsHashes, Block};
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]

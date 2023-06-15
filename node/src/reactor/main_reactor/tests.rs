@@ -12,8 +12,8 @@ use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes, EraId, Motes,
-    ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes, Deploy, EraId,
+    Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -37,7 +37,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockHeader, BlockPayload, Deploy, ExitCode, NodeRng},
+    types::{BlockHeader, BlockPayload, DeployOrTransferHash, ExitCode, NodeRng},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -726,7 +726,7 @@ async fn should_store_finalized_approvals() {
         .collect();
     assert_ne!(bobs_original_approvals, expected_approvals);
 
-    let deploy_hash = *deploy_alice_bob.deploy_or_transfer_hash().deploy_hash();
+    let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
 
     for runner in net.runners_mut() {
         if runner.main_reactor().consensus().public_key() == &alice_public_key {

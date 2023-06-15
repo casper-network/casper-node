@@ -7,6 +7,8 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 mod additive_map_diff;
 /// Utility methods for running the auction in a test or bench context.
 pub mod auction;

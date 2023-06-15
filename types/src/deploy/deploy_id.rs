@@ -1,39 +1,32 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use alloc::vec::Vec;
+use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
-#[cfg(any(feature = "testing", test))]
-use casper_types::testing::TestRng;
-
+#[cfg(doc)]
+use super::Deploy;
 use super::{ApprovalsHash, DeployHash};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 
-/// The unique identifier of a deploy, comprising its [`DeployHash`] and [`ApprovalsHash`].
+/// The unique identifier of a [`Deploy`], comprising its [`DeployHash`] and [`ApprovalsHash`].
 #[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Debug,
-    Default,
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
-pub struct Id {
+pub struct DeployId {
     deploy_hash: DeployHash,
     approvals_hash: ApprovalsHash,
 }
 
-impl Id {
-    /// Returns a new ID.
+impl DeployId {
+    /// Returns a new `DeployId`.
     pub fn new(deploy_hash: DeployHash, approvals_hash: ApprovalsHash) -> Self {
-        Id {
+        DeployId {
             deploy_hash,
             approvals_hash,
         }
@@ -49,19 +42,19 @@ impl Id {
         &self.approvals_hash
     }
 
+    /// Consumes `self`, returning a tuple of the constituent parts.
     pub fn destructure(self) -> (DeployHash, ApprovalsHash) {
         (self.deploy_hash, self.approvals_hash)
     }
 
-    /// Returns a random `ApprovalsHash`.
-    #[allow(unused)]
+    /// Returns a random `DeployId`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        Id::new(DeployHash::random(rng), ApprovalsHash::random(rng))
+        DeployId::new(DeployHash::random(rng), ApprovalsHash::random(rng))
     }
 }
 
-impl Display for Id {
+impl Display for DeployId {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -71,7 +64,7 @@ impl Display for Id {
     }
 }
 
-impl ToBytes for Id {
+impl ToBytes for DeployId {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.deploy_hash.write_bytes(writer)?;
         self.approvals_hash.write_bytes(writer)
@@ -88,11 +81,11 @@ impl ToBytes for Id {
     }
 }
 
-impl FromBytes for Id {
+impl FromBytes for DeployId {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (deploy_hash, remainder) = DeployHash::from_bytes(bytes)?;
         let (approvals_hash, remainder) = ApprovalsHash::from_bytes(remainder)?;
-        let id = Id::new(deploy_hash, approvals_hash);
+        let id = DeployId::new(deploy_hash, approvals_hash);
         Ok((id, remainder))
     }
 }
@@ -103,8 +96,8 @@ mod tests {
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
-        let id = Id::random(&mut rng);
+        let rng = &mut TestRng::new();
+        let id = DeployId::random(rng);
         bytesrepr::test_serialization_roundtrip(&id);
     }
 }

@@ -13,7 +13,7 @@ use schemars::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use casper_types::ProtocolVersion;
+use casper_types::{Deploy, ProtocolVersion};
 
 use super::{
     account::PutDeploy,
@@ -122,6 +122,12 @@ static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
 pub trait DocExample {
     /// Generates a hardcoded example of `Self`.
     fn doc_example() -> &'static Self;
+}
+
+impl DocExample for Deploy {
+    fn doc_example() -> &'static Self {
+        Deploy::example()
+    }
 }
 
 /// The main schema for the casper node's RPC server, compliant with

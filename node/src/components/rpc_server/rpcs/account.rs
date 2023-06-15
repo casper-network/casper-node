@@ -11,17 +11,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use casper_types::ProtocolVersion;
+use casper_types::{Deploy, DeployHash, ProtocolVersion};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ReactorEventT, RpcWithParams,
 };
-use crate::{
-    components::rpc_server::rpcs::ErrorCode,
-    effect::EffectBuilder,
-    types::{Deploy, DeployHash},
-};
+use crate::{components::rpc_server::rpcs::ErrorCode, effect::EffectBuilder};
 
 static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),

@@ -8,11 +8,11 @@ use derive_more::From;
 use casper_execution_engine::core::engine_state::{
     self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult,
 };
-use casper_types::{system::auction::EraValidators, Transfer};
+use casper_types::{system::auction::EraValidators, Deploy, DeployHash, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
-    types::{BlockHash, Deploy, DeployHash, DeployMetadataExt, NodeId},
+    types::{BlockHash, DeployMetadataExt, NodeId},
 };
 
 #[derive(Debug, From)]

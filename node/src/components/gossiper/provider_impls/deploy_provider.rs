@@ -1,10 +1,34 @@
 use async_trait::async_trait;
+use tracing::error;
+
+use casper_types::{ApprovalsHash, Deploy, DeployId, Digest};
 
 use crate::{
-    components::gossiper::{GossipItem, Gossiper, ItemProvider},
+    components::gossiper::{GossipItem, GossipTarget, Gossiper, ItemProvider, LargeGossipItem},
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{Deploy, DeployId},
 };
+
+impl GossipItem for Deploy {
+    type Id = DeployId;
+
+    const ID_IS_COMPLETE_ITEM: bool = false;
+    const REQUIRES_GOSSIP_RECEIVED_ANNOUNCEMENT: bool = false;
+
+    fn gossip_id(&self) -> Self::Id {
+        let deploy_hash = *self.hash();
+        let approvals_hash = self.compute_approvals_hash().unwrap_or_else(|error| {
+            error!(%error, "failed to serialize approvals");
+            ApprovalsHash::from(Digest::default())
+        });
+        DeployId::new(deploy_hash, approvals_hash)
+    }
+
+    fn gossip_target(&self) -> GossipTarget {
+        GossipTarget::All
+    }
+}
+
+impl LargeGossipItem for Deploy {}
 
 #[async_trait]
 impl ItemProvider<Deploy> for Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy> {

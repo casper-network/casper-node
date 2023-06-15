@@ -18,6 +18,7 @@ use blake2::{
 };
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -31,8 +32,8 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::{ContractHash, ContractPackageHash},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
-    DeployHash, EraId, Tagged, TransferAddr, TransferFromStrError, DEPLOY_HASH_LENGTH,
-    TRANSFER_ADDR_LENGTH, UREF_ADDR_LENGTH,
+    DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
+    UREF_ADDR_LENGTH,
 };
 
 const HASH_PREFIX: &str = "hash-";
@@ -55,7 +56,7 @@ pub const KEY_HASH_LENGTH: usize = 32;
 /// The number of bytes in a [`Key::Transfer`].
 pub const KEY_TRANSFER_LENGTH: usize = TRANSFER_ADDR_LENGTH;
 /// The number of bytes in a [`Key::DeployInfo`].
-pub const KEY_DEPLOY_INFO_LENGTH: usize = DEPLOY_HASH_LENGTH;
+pub const KEY_DEPLOY_INFO_LENGTH: usize = DeployHash::LENGTH;
 /// The number of bytes in a [`Key::Dictionary`].
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
@@ -294,7 +295,7 @@ impl Key {
                 format!(
                     "{}{}",
                     DEPLOY_INFO_PREFIX,
-                    base16::encode_lower(addr.as_bytes())
+                    base16::encode_lower(addr.as_ref())
                 )
             }
             Key::EraInfo(era_id) => {
@@ -369,9 +370,9 @@ impl Key {
         if let Some(hex) = input.strip_prefix(DEPLOY_INFO_PREFIX) {
             let hash = checksummed_hex::decode(hex)
                 .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
-            let hash_array = <[u8; DEPLOY_HASH_LENGTH]>::try_from(hash.as_ref())
+            let hash_array = <[u8; DeployHash::LENGTH]>::try_from(hash.as_ref())
                 .map_err(|error| FromStrError::DeployInfo(error.to_string()))?;
-            return Ok(Key::DeployInfo(DeployHash::new(hash_array)));
+            return Ok(Key::DeployInfo(DeployHash::new(Digest::from(hash_array))));
         }
 
         match TransferAddr::from_formatted_str(input) {
@@ -587,7 +588,7 @@ impl Display for Key {
             Key::DeployInfo(addr) => write!(
                 f,
                 "Key::DeployInfo({})",
-                base16::encode_lower(addr.as_bytes())
+                base16::encode_lower(addr.as_ref())
             ),
             Key::EraInfo(era_id) => write!(f, "Key::EraInfo({})", era_id),
             Key::Balance(uref_addr) => {
@@ -839,6 +840,7 @@ fn please_add_to_distribution_impl(key: Key) {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
         match rng.gen_range(0..=14) {
@@ -846,7 +848,7 @@ impl Distribution<Key> for Standard {
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
             3 => Key::Transfer(rng.gen()),
-            4 => Key::DeployInfo(rng.gen()),
+            4 => Key::DeployInfo(DeployHash::from_raw(rng.gen())),
             5 => Key::EraInfo(rng.gen()),
             6 => Key::Balance(rng.gen()),
             7 => Key::Bid(rng.gen()),
@@ -1059,7 +1061,7 @@ mod tests {
     const HASH_KEY: Key = Key::Hash([42; 32]);
     const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
     const TRANSFER_KEY: Key = Key::Transfer(TransferAddr::new([42; 32]));
-    const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::new([42; 32]));
+    const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
     const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
     const BALANCE_KEY: Key = Key::Balance([42; 32]);
     const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
@@ -1433,7 +1435,7 @@ mod tests {
         round_trip(&Key::Hash(zeros));
         round_trip(&Key::URef(URef::new(zeros, AccessRights::READ)));
         round_trip(&Key::Transfer(TransferAddr::new(zeros)));
-        round_trip(&Key::DeployInfo(DeployHash::new(zeros)));
+        round_trip(&Key::DeployInfo(DeployHash::from_raw(zeros)));
         round_trip(&Key::EraInfo(EraId::from(0)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
         round_trip(&Key::Bid(AccountHash::new(zeros)));

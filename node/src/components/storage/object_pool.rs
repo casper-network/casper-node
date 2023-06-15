@@ -116,8 +116,10 @@ mod tests {
 
     use datasize::DataSize;
 
+    use casper_types::Deploy;
+
     use super::ObjectPool;
-    use crate::{components::fetcher::FetchItem, types::Deploy};
+    use crate::components::fetcher::FetchItem;
 
     impl<I> ObjectPool<I>
     where

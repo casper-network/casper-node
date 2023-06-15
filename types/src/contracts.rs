@@ -481,7 +481,8 @@ impl JsonSchema for ContractHash {
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("The hash address of the contract".to_string());
+        schema_object.metadata().description =
+            Some("The hex-encoded hash address of the contract".to_string());
         schema_object.into()
     }
 }
@@ -635,7 +636,7 @@ impl JsonSchema for ContractPackageHash {
         let schema = gen.subschema_for::<String>();
         let mut schema_object = schema.into_object();
         schema_object.metadata().description =
-            Some("The hash address of the contract package".to_string());
+            Some("The hex-encoded hash address of the contract package".to_string());
         schema_object.into()
     }
 }

@@ -30,8 +30,9 @@ use tracing::error;
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, ActivationPoint, ChunkWithProofVerificationError, Digest, EraId, ProtocolConfig,
-    ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
+    crypto, ActivationPoint, Approval, ChunkWithProofVerificationError, Deploy, DeployHash,
+    DeployId, Digest, DisplayIter, EraId, ProtocolConfig, ProtocolVersion, PublicKey, SecretKey,
+    Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
@@ -47,10 +48,10 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         error::{BlockCreationError, BlockHeaderWithMetadataValidationError, BlockValidationError},
-        Approval, Chunkable, Deploy, DeployHash, DeployHashWithApprovals, DeployId,
-        DeployOrTransferHash, JsonBlock, JsonBlockHeader, ValueOrChunk,
+        Chunkable, DeployHashWithApprovals, DeployOrTransferHash, JsonBlock, JsonBlockHeader,
+        ValueOrChunk,
     },
-    utils::{ds, DisplayIter},
+    utils::ds,
 };
 pub(crate) use approvals_hashes::ApprovalsHashes;
 pub(crate) use meta_block::{

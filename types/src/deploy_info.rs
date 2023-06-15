@@ -120,7 +120,7 @@ pub(crate) mod gens {
     };
 
     pub fn deploy_hash_arb() -> impl Strategy<Value = DeployHash> {
-        array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::new)
+        array::uniform32(<u8>::arbitrary()).prop_map(DeployHash::from_raw)
     }
 
     pub fn transfer_addr_arb() -> impl Strategy<Value = TransferAddr> {

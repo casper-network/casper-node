@@ -1,22 +1,24 @@
-use std::fmt::{self, Display, Formatter};
+use alloc::vec::Vec;
+use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(feature = "testing", test))]
-use casper_types::testing::TestRng;
-use casper_types::{
+use super::DeployHash;
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, PublicKey, SecretKey, Signature,
 };
 
-use super::DeployHash;
-
 /// A struct containing a signature of a deploy hash and the public key of the signer.
-#[derive(
-    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
-)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Approval {
     signer: PublicKey,
@@ -24,10 +26,15 @@ pub struct Approval {
 }
 
 impl Approval {
-    /// Creates an approval for the given deploy hash using the given secret key.
+    /// Creates an approval by signing the given deploy hash using the given secret key.
     pub fn create(hash: &DeployHash, secret_key: &SecretKey) -> Self {
         let signer = PublicKey::from(secret_key);
         let signature = crypto::sign(hash, secret_key, &signer);
+        Self { signer, signature }
+    }
+
+    /// Returns a new approval.
+    pub fn new(signer: PublicKey, signature: Signature) -> Self {
         Self { signer, signature }
     }
 
@@ -40,11 +47,9 @@ impl Approval {
     pub fn signature(&self) -> &Signature {
         &self.signature
     }
-}
 
-#[cfg(any(feature = "testing", test))]
-impl Approval {
     /// Returns a random `Approval`.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
         Self {
             signer: PublicKey::random(rng),
@@ -85,37 +90,14 @@ impl FromBytes for Approval {
     }
 }
 
-mod specimen_support {
-    use std::collections::BTreeSet;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    use casper_types::PublicKey;
-
-    use crate::utils::specimen::{Cache, LargeUniqueSequence, LargestSpecimen, SizeEstimator};
-
-    use super::Approval;
-
-    impl LargestSpecimen for Approval {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            Approval {
-                signer: LargestSpecimen::largest_specimen(estimator, cache),
-                signature: LargestSpecimen::largest_specimen(estimator, cache),
-            }
-        }
-    }
-
-    impl<E> LargeUniqueSequence<E> for Approval
-    where
-        Self: Sized + Ord,
-        E: SizeEstimator,
-    {
-        fn large_unique_sequence(estimator: &E, count: usize, cache: &mut Cache) -> BTreeSet<Self> {
-            PublicKey::large_unique_sequence(estimator, count, cache)
-                .into_iter()
-                .map(|public_key| Approval {
-                    signer: public_key,
-                    signature: LargestSpecimen::largest_specimen(estimator, cache),
-                })
-                .collect()
-        }
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+        let approval = Approval::random(rng);
+        bytesrepr::test_serialization_roundtrip(&approval);
     }
 }

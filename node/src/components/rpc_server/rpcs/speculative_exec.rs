@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::core::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_types::{Deploy, ExecutionResult, ProtocolVersion};
 
 use super::{
     chain::BlockIdentifier,
@@ -23,7 +23,7 @@ use super::{
 use crate::{
     components::contract_runtime::SpeculativeExecutionState,
     effect::EffectBuilder,
-    types::{Block, BlockHash, Deploy},
+    types::{Block, BlockHash},
 };
 
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {

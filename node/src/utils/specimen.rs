@@ -12,16 +12,17 @@ use std::{
     sync::Arc,
 };
 
-use casper_execution_engine::core::engine_state::ExecutableDeployItem;
-use casper_types::{
-    bytesrepr::Bytes,
-    crypto::{sign, PublicKey, Signature},
-    AsymmetricType, ChunkWithProof, ContractPackageHash, Digest, EraId, ProtocolVersion,
-    RuntimeArgs, SecretKey, SemVer, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
-};
 use either::Either;
 use serde::Serialize;
 use strum::{EnumIter, IntoEnumIterator};
+
+use casper_types::{
+    bytesrepr::Bytes,
+    crypto::{sign, PublicKey, Signature},
+    Approval, ApprovalsHash, AsymmetricType, ChunkWithProof, ContractPackageHash, Deploy,
+    DeployHash, DeployId, Digest, EraId, ExecutableDeployItem, ProtocolVersion, RuntimeArgs,
+    SecretKey, SemVer, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
+};
 
 use crate::{
     components::{
@@ -30,9 +31,9 @@ use crate::{
     },
     protocol::Message,
     types::{
-        ApprovalsHash, ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash,
-        BlockHeader, BlockPayload, Deploy, DeployHashWithApprovals, DeployId, FinalitySignature,
-        FinalitySignatureId, FinalizedBlock, LegacyDeploy, SyncLeap, TrieOrChunk,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockPayload,
+        DeployHashWithApprovals, FinalitySignature, FinalitySignatureId, FinalizedBlock,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -620,6 +621,39 @@ impl LargestSpecimen for BlockPayload {
             vec_prop_specimen(estimator, "max_accusations_per_block", cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
+    }
+}
+
+impl LargestSpecimen for DeployHash {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        DeployHash::new(LargestSpecimen::largest_specimen(estimator, cache))
+    }
+}
+
+impl LargestSpecimen for Approval {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        Approval::new(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+        )
+    }
+}
+
+impl<E> LargeUniqueSequence<E> for Approval
+where
+    Self: Sized + Ord,
+    E: SizeEstimator,
+{
+    fn large_unique_sequence(estimator: &E, count: usize, cache: &mut Cache) -> BTreeSet<Self> {
+        PublicKey::large_unique_sequence(estimator, count, cache)
+            .into_iter()
+            .map(|public_key| {
+                Approval::new(
+                    public_key,
+                    LargestSpecimen::largest_specimen(estimator, cache),
+                )
+            })
+            .collect()
     }
 }
 

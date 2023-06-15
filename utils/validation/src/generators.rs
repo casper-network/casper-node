@@ -59,7 +59,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     };
 
     let transfer = Transfer::new(
-        DeployHash::new([44; 32]),
+        DeployHash::from_raw([44; 32]),
         AccountHash::new([100; 32]),
         Some(AccountHash::new([101; 32])),
         URef::new([10; 32], AccessRights::WRITE),
@@ -69,7 +69,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         Some(1),
     );
     let deploy_info = DeployInfo::new(
-        DeployHash::new([55; 32]),
+        DeployHash::from_raw([55; 32]),
         &[TransferAddr::new([1; 32]), TransferAddr::new([2; 32])],
         AccountHash::new([100; 32]),
         URef::new([10; 32], AccessRights::READ_ADD_WRITE),

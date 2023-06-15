@@ -1,47 +1,54 @@
-use std::fmt::{self, Debug, Display, Formatter};
+use alloc::vec::Vec;
+use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(doc)]
+use super::Deploy;
 #[cfg(any(feature = "testing", test))]
-use casper_types::testing::TestRng;
-use casper_types::{
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest,
 };
 
-/// The cryptographic hash of a [`Deploy`](struct.Deploy.html).
+/// The cryptographic hash of a [`Deploy`].
 #[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Debug,
-    Default,
-    JsonSchema,
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
+)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(with = "String", description = "Hex-encoded deploy hash.")
 )]
 #[serde(deny_unknown_fields)]
-#[schemars(with = "String", description = "Hex-encoded deploy hash.")]
-pub struct DeployHash(#[schemars(skip)] Digest);
+pub struct DeployHash(#[cfg_attr(feature = "json-schema", schemars(skip))] Digest);
 
 impl DeployHash {
+    /// The number of bytes in a `DeployHash` digest.
+    pub const LENGTH: usize = Digest::LENGTH;
+
     /// Constructs a new `DeployHash`.
-    pub fn new(hash: Digest) -> Self {
+    pub const fn new(hash: Digest) -> Self {
         DeployHash(hash)
     }
 
-    /// Returns the wrapped inner hash.
+    /// Returns the wrapped inner digest.
     pub fn inner(&self) -> &Digest {
         &self.0
+    }
+
+    /// Returns a new `DeployHash` directly initialized with the provided bytes; no hashing is done.
+    #[cfg(any(feature = "testing", test))]
+    pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
+        DeployHash(Digest::from_raw(raw_digest))
     }
 
     /// Returns a random `DeployHash`.
@@ -52,15 +59,9 @@ impl DeployHash {
     }
 }
 
-impl From<DeployHash> for casper_types::DeployHash {
-    fn from(deploy_hash: DeployHash) -> casper_types::DeployHash {
-        casper_types::DeployHash::new(deploy_hash.inner().value())
-    }
-}
-
-impl From<casper_types::DeployHash> for DeployHash {
-    fn from(deploy_hash: casper_types::DeployHash) -> DeployHash {
-        DeployHash::new(deploy_hash.value().into())
+impl From<Digest> for DeployHash {
+    fn from(digest: Digest) -> Self {
+        DeployHash(digest)
     }
 }
 
@@ -73,12 +74,6 @@ impl From<DeployHash> for Digest {
 impl Display for DeployHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "deploy-hash({})", self.0,)
-    }
-}
-
-impl From<Digest> for DeployHash {
-    fn from(digest: Digest) -> Self {
-        Self(digest)
     }
 }
 
@@ -108,26 +103,14 @@ impl FromBytes for DeployHash {
     }
 }
 
-mod specimen_support {
-    use crate::utils::specimen::{Cache, LargestSpecimen, SizeEstimator};
-
-    use super::DeployHash;
-
-    impl LargestSpecimen for DeployHash {
-        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-            DeployHash::new(LargestSpecimen::largest_specimen(estimator, cache))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
-        let hash = DeployHash(rng.gen::<[u8; Digest::LENGTH]>().into());
+        let rng = &mut TestRng::new();
+        let hash = DeployHash::random(rng);
         bytesrepr::test_serialization_roundtrip(&hash);
     }
 }

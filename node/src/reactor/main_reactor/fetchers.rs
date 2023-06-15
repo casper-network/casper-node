@@ -1,14 +1,16 @@
 use datasize::DataSize;
 use prometheus::Registry;
 
+use casper_types::Deploy;
+
 use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
     effect::{announcements::DeployAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy,
-        FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, FinalitySignature,
+        LegacyDeploy, SyncLeap, TrieOrChunk,
     },
     utils::Source,
     FetcherConfig, NodeRng,

@@ -12,6 +12,8 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
+use casper_types::Deploy;
+
 use crate::{
     components::{
         consensus,
@@ -27,7 +29,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, Deploy, FinalitySignature, NodeId},
+    types::{Block, FinalitySignature, NodeId},
 };
 
 /// Reactor message.

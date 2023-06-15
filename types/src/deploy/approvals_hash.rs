@@ -1,41 +1,32 @@
-use std::{
-    collections::BTreeSet,
-    fmt::{self, Debug, Display, Formatter},
-};
+use alloc::{collections::BTreeSet, vec::Vec};
+use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use super::Approval;
 #[cfg(any(feature = "testing", test))]
-use casper_types::testing::TestRng;
-use casper_types::{
+use crate::testing::TestRng;
+use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest,
 };
 
-use super::Approval;
-
 /// The cryptographic hash of the bytesrepr-encoded set of approvals for a single deploy.
 #[derive(
-    Copy,
-    Clone,
-    DataSize,
-    Ord,
-    PartialOrd,
-    Eq,
-    PartialEq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Debug,
-    Default,
+    Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 #[serde(deny_unknown_fields)]
 pub struct ApprovalsHash(Digest);
 
 impl ApprovalsHash {
+    /// The number of bytes in a `ApprovalsHash` digest.
+    pub const LENGTH: usize = Digest::LENGTH;
+
     /// Constructs a new `ApprovalsHash` by bytesrepr-encoding `approvals` and creating a [`Digest`]
     /// of this.
     pub fn compute(approvals: &BTreeSet<Approval>) -> Result<Self, bytesrepr::Error> {
@@ -43,9 +34,16 @@ impl ApprovalsHash {
         Ok(ApprovalsHash(digest))
     }
 
-    /// Returns the wrapped inner hash digest.
+    /// Returns the wrapped inner digest.
     pub fn inner(&self) -> &Digest {
         &self.0
+    }
+
+    /// Returns a new `ApprovalsHash` directly initialized with the provided bytes; no hashing is
+    /// done.
+    #[cfg(any(feature = "testing", test))]
+    pub const fn from_raw(raw_digest: [u8; Self::LENGTH]) -> Self {
+        ApprovalsHash(Digest::from_raw(raw_digest))
     }
 
     /// Returns a random `ApprovalsHash`.
@@ -53,6 +51,18 @@ impl ApprovalsHash {
     pub fn random(rng: &mut TestRng) -> Self {
         let hash = rng.gen::<[u8; Digest::LENGTH]>().into();
         ApprovalsHash(hash)
+    }
+}
+
+impl From<ApprovalsHash> for Digest {
+    fn from(deploy_hash: ApprovalsHash) -> Self {
+        deploy_hash.0
+    }
+}
+
+impl From<Digest> for ApprovalsHash {
+    fn from(digest: Digest) -> Self {
+        Self(digest)
     }
 }
 
@@ -88,26 +98,14 @@ impl FromBytes for ApprovalsHash {
     }
 }
 
-impl From<ApprovalsHash> for Digest {
-    fn from(deploy_hash: ApprovalsHash) -> Self {
-        deploy_hash.0
-    }
-}
-
-impl From<Digest> for ApprovalsHash {
-    fn from(digest: Digest) -> Self {
-        Self(digest)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
-        let mut rng = crate::new_rng();
-        let hash = ApprovalsHash::random(&mut rng);
+        let rng = &mut TestRng::new();
+        let hash = ApprovalsHash::random(rng);
         bytesrepr::test_serialization_roundtrip(&hash);
     }
 }

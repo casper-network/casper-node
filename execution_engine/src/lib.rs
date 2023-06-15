@@ -12,6 +12,7 @@
     trivial_numeric_casts,
     unused_qualifications
 )]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub mod config;
 pub mod core;

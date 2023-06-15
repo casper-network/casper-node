@@ -5,9 +5,9 @@ pub mod deploy_item;
 pub mod engine_config;
 pub mod era_validators;
 mod error;
-pub mod executable_deploy_item;
 pub mod execute_request;
 pub mod execution_effect;
+pub(crate) mod execution_kind;
 pub mod execution_result;
 pub mod genesis;
 pub mod get_bids;
@@ -64,8 +64,8 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash, DeployHash,
-    DeployInfo, Digest, EraId, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    DeployInfo, Digest, EraId, ExecutableDeployItem, Gas, Key, KeyTag, Motes, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 pub use self::{
@@ -75,7 +75,6 @@ pub use self::{
     engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
-    executable_deploy_item::{ExecutableDeployItem, ExecutableDeployItemIdentifier},
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
     execution_result::{ExecutionResult, ForcedTransferResult},
@@ -92,7 +91,7 @@ pub use self::{
 use crate::{
     core::{
         engine_state::{
-            executable_deploy_item::ExecutionKind,
+            execution_kind::ExecutionKind,
             execution_result::{ExecutionResultBuilder, ExecutionResults},
             genesis::GenesisInstaller,
             upgrade::{ProtocolUpgradeError, SystemUpgrader},
@@ -2021,7 +2020,7 @@ where
             // seeds address generator w/ era_end_timestamp_millis
             let mut bytes = time.into_bytes()?;
             bytes.append(&mut next_block_height.into_bytes()?);
-            DeployHash::new(Digest::hash(&bytes).value())
+            DeployHash::new(Digest::hash(&bytes))
         };
 
         let distribute_rewards_stack = self.get_new_system_call_stack();
@@ -2089,7 +2088,7 @@ where
             // seeds address generator w/ era_end_timestamp_millis
             let mut bytes = step_request.era_end_timestamp_millis.into_bytes()?;
             bytes.append(&mut step_request.next_era_id.into_bytes()?);
-            DeployHash::new(Digest::hash(&bytes).value())
+            DeployHash::new(Digest::hash(&bytes))
         };
 
         let slashed_validators: Vec<PublicKey> = step_request.slashed_validators();

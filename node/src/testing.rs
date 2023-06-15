@@ -32,7 +32,7 @@ use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{testing::TestRng, TimeDiff, Timestamp};
+use casper_types::{testing::TestRng, Deploy, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
@@ -44,7 +44,6 @@ use crate::{
     logging,
     protocol::Message,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
-    types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
 pub(crate) use fake_deploy_acceptor::FakeDeployAcceptor;

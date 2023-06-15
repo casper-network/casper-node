@@ -11,6 +11,7 @@ use crate::{
     Motes, TimeDiff, U512,
 };
 
+/// The maximum number of motes that payment code execution can cost.
 #[cfg(any(feature = "testing", test))]
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 

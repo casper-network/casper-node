@@ -1,15 +1,15 @@
 //! Chunks with Merkle proofs.
 
+use alloc::vec::Vec;
+
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    ChunkWithProofVerificationError, Digest, IndexedMerkleProof, MerkleConstructionError,
-};
+use super::{ChunkWithProofVerificationError, Digest, IndexedMerkleProof, MerkleConstructionError};
+use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
 /// Represents a chunk of data with attached proof.
 #[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize)]

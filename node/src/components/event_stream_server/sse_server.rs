@@ -35,10 +35,11 @@ use warp::{
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Deploy, DeployHash, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp,
 };
 
-use crate::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
+use crate::types::{BlockHash, FinalitySignature, JsonBlock};
 #[cfg(test)]
 use crate::{testing, types::Block};
 

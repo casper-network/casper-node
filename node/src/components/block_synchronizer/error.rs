@@ -3,11 +3,11 @@ use std::fmt::{Display, Formatter};
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::Digest;
+use casper_types::{DeployId, Digest};
 
 use super::deploy_acquisition;
 
-use crate::types::{BlockHash, DeployId};
+use crate::types::BlockHash;
 
 #[derive(Clone, Copy, From, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum BlockAcquisitionError {

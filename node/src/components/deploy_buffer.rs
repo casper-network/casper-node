@@ -18,7 +18,9 @@ use prometheus::Registry;
 use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{DeployConfig, Timestamp};
+use casper_types::{
+    Approval, Deploy, DeployConfig, DeployFootprint, DeployHash, DeployId, DisplayIter, Timestamp,
+};
 
 use crate::{
     components::{
@@ -35,10 +37,8 @@ use crate::{
     storage::Storage,
     types::{
         appendable_block::{AddError, AppendableBlock},
-        Approval, Block, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, DeployId,
-        FinalizedBlock,
+        Block, DeployHashWithApprovals, FinalizedBlock,
     },
-    utils::DisplayIter,
     NodeRng,
 };
 pub(crate) use config::Config;

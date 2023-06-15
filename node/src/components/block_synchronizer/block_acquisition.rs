@@ -7,7 +7,7 @@ use datasize::DataSize;
 use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{Digest, ProtocolVersion, PublicKey};
+use casper_types::{Deploy, DeployHash, DeployId, Digest, ProtocolVersion, PublicKey};
 
 use crate::{
     components::block_synchronizer::{
@@ -16,9 +16,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        DeployHash, DeployId, EraValidatorWeights, FinalitySignature, FinalizedBlock,
-        SignatureWeight,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
+        EraValidatorWeights, FinalitySignature, FinalizedBlock, SignatureWeight,
     },
     NodeRng,
 };
