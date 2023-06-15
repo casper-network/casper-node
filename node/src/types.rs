@@ -30,7 +30,7 @@ pub(crate) use block::{
 };
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
-    Block, BlockAndDeploys, BlockBody, BlockExecutionResultsOrChunk,
+    Block, BlockAndDeploys, BlockBody, BlockBodyV1, BlockBodyV2, BlockExecutionResultsOrChunk,
     BlockExecutionResultsOrChunkId, BlockExecutionResultsOrChunkIdDisplay, BlockHash, BlockHeader,
     BlockSignatures, FinalitySignature, FinalizedBlock,
 };

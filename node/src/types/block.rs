@@ -29,7 +29,7 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
+    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     crypto, ActivationPoint, ChunkWithProofVerificationError, Digest, EraId, ProtocolConfig,
     ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
@@ -187,6 +187,8 @@ static JSON_BLOCK_HEADER: Lazy<JsonBlockHeader> = Lazy::new(|| {
 
 #[cfg(any(feature = "testing", test))]
 const MAX_ERA_FOR_RANDOM_BLOCK: u64 = 6;
+
+const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
 /// Error returned from constructing a `Block`.
 #[derive(Debug, Error)]
@@ -589,8 +591,8 @@ impl DocExample for FinalizedBlock {
 impl From<Block> for FinalizedBlock {
     fn from(block: Block) -> Self {
         FinalizedBlock {
-            deploy_hashes: block.body.deploy_hashes,
-            transfer_hashes: block.body.transfer_hashes,
+            deploy_hashes: block.body.deploy_hashes().to_vec(),
+            transfer_hashes: block.body.transfer_hashes().to_vec(),
             timestamp: block.header.timestamp,
             random_bit: block.header.random_bit,
             era_report: block
@@ -599,7 +601,7 @@ impl From<Block> for FinalizedBlock {
                 .map(|era_end| Box::new(era_end.era_report)),
             era_id: block.header.era_id,
             height: block.header.height,
-            proposer: Box::new(block.body.proposer),
+            proposer: Box::new(block.body.proposer().clone()),
         }
     }
 }
@@ -1171,15 +1173,140 @@ impl BlockHeaderWithMetadata {
     }
 }
 
+/// TODO
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
+pub enum BlockBody {
+    /// TODO
+    BlockBodyV1(BlockBodyV1),
+    /// TODO
+    BlockBodyV2(BlockBodyV2),
+}
+
+impl BlockBody {
+    /// TODO: ?
+    pub fn into_current_version(&self) -> &BlockBodyV2 {
+        match self {
+            BlockBody::BlockBodyV1(_) => panic!("TODO"),
+            BlockBody::BlockBodyV2(v2) => v2,
+        }
+    }
+}
+
 /// The body portion of a block.
 #[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
-pub struct BlockBody {
+pub struct BlockBodyV1 {
     proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     hash: OnceCell<Digest>,
+}
+
+impl BlockBodyV1 {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = OnceCell::new();
+        let _ = hash.set(Digest::from([8u8; Digest::LENGTH]));
+        let deploy_count = rng.gen_range(0..11);
+        let transfer_count = rng.gen_range(0..11);
+        Self {
+            proposer: PublicKey::from(
+                &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
+            ),
+            deploy_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(deploy_count)
+                .collect(),
+            transfer_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(transfer_count)
+                .collect(),
+            hash,
+        }
+    }
+}
+
+#[derive(
+    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema, Debug,
+)]
+pub struct PastFinalitySignatures(Vec<u8>);
+
+impl PastFinalitySignatures {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let count = rng.gen_range(0..11);
+        Self(
+            std::iter::repeat_with(|| rng.gen::<u8>())
+                .take(count)
+                .collect(),
+        )
+    }
+}
+
+impl Default for PastFinalitySignatures {
+    fn default() -> Self {
+        Self(vec![1, 2, 3, 4, 5])
+    }
+}
+
+impl ToBytes for PastFinalitySignatures {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(Bytes::from(self.0.as_ref()).to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for PastFinalitySignatures {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (inner, rest) = Bytes::from_bytes(bytes)?;
+        Ok((PastFinalitySignatures(inner.into()), rest))
+    }
+}
+
+/// The body portion of a block.
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
+pub struct BlockBodyV2 {
+    proposer: PublicKey,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
+    past_finality_signatures: PastFinalitySignatures,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    hash: OnceCell<Digest>,
+}
+
+impl BlockBodyV2 {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = OnceCell::new();
+        let _ = hash.set(Digest::from([8u8; Digest::LENGTH]));
+        let deploy_count = rng.gen_range(0..11);
+        let transfer_count = rng.gen_range(0..11);
+        Self {
+            proposer: PublicKey::from(
+                &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
+            ),
+            deploy_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(deploy_count)
+                .collect(),
+            transfer_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(transfer_count)
+                .collect(),
+            past_finality_signatures: PastFinalitySignatures::random(rng),
+            hash,
+        }
+    }
 }
 
 impl BlockBody {
@@ -1192,27 +1319,48 @@ impl BlockBody {
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
     ) -> Self {
-        BlockBody {
+        Self::BlockBodyV2(BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            past_finality_signatures: Default::default(),
             hash: OnceCell::new(),
-        }
+        })
     }
 
     /// Block proposer.
     pub fn proposer(&self) -> &PublicKey {
-        &self.proposer
+        match self {
+            BlockBody::BlockBodyV1(block_body_v1) => &block_body_v1.proposer,
+            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.proposer,
+        }
     }
 
     /// Retrieves the deploy hashes within the block.
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
-        &self.deploy_hashes
+        match self {
+            BlockBody::BlockBodyV1(block_body_v1) => &block_body_v1.deploy_hashes,
+            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.deploy_hashes,
+        }
     }
 
     /// Retrieves the transfer hashes within the block.
     pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
-        &self.transfer_hashes
+        match self {
+            BlockBody::BlockBodyV1(block_body_v1) => &block_body_v1.transfer_hashes,
+            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.transfer_hashes,
+        }
+    }
+
+    /// Returns past finality signatures
+    #[allow(unused)]
+    pub(crate) fn past_finality_signatures(&self) -> &PastFinalitySignatures {
+        match self {
+            BlockBody::BlockBodyV1(_block_body_v1) => {
+                panic!("no PastFinalitySignatures in block_body_v1")
+            }
+            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.past_finality_signatures,
+        }
     }
 
     /// Returns deploy hashes of transactions in an order in which they were executed.
@@ -1224,19 +1372,43 @@ impl BlockBody {
 
     /// Computes the body hash by hashing the serialized bytes.
     pub fn hash(&self) -> Digest {
-        *self.hash.get_or_init(|| {
-            let serialized_body = self
-                .to_bytes()
-                .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
-            Digest::hash(serialized_body)
-        })
+        *match self {
+            BlockBody::BlockBodyV1(v1) => v1.hash.get_or_init(|| {
+                let serialized_body = v1
+                    .to_bytes()
+                    .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+                Digest::hash(serialized_body)
+            }),
+            BlockBody::BlockBodyV2(v2) => v2.hash.get_or_init(|| {
+                let serialized_body = v2
+                    .to_bytes()
+                    .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+                Digest::hash(serialized_body)
+            }),
+        }
     }
 }
 
 impl PartialEq for BlockBody {
     fn eq(&self, other: &BlockBody) -> bool {
-        // Destructure to make sure we don't accidentally omit fields.
-        let BlockBody {
+        match (self, other) {
+            (BlockBody::BlockBodyV1(lhs), BlockBody::BlockBodyV1(rhs)) => lhs.eq(rhs),
+            (BlockBody::BlockBodyV1(lhs), BlockBody::BlockBodyV2(rhs)) => {
+                let lhs: BlockBodyV2 = lhs.into();
+                lhs.eq(rhs)
+            }
+            (BlockBody::BlockBodyV2(lhs), BlockBody::BlockBodyV1(rhs)) => {
+                let rhs: BlockBodyV2 = rhs.into();
+                lhs.eq(&rhs)
+            }
+            (BlockBody::BlockBodyV2(lhs), BlockBody::BlockBodyV2(rhs)) => lhs.eq(rhs),
+        }
+    }
+}
+
+impl PartialEq for BlockBodyV1 {
+    fn eq(&self, other: &Self) -> bool {
+        let BlockBodyV1 {
             proposer,
             deploy_hashes,
             transfer_hashes,
@@ -1248,10 +1420,47 @@ impl PartialEq for BlockBody {
     }
 }
 
+impl PartialEq for BlockBodyV2 {
+    fn eq(&self, other: &Self) -> bool {
+        let BlockBodyV2 {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            past_finality_signatures,
+            hash: _,
+        } = self;
+        *proposer == other.proposer
+            && *deploy_hashes == other.deploy_hashes
+            && *transfer_hashes == other.transfer_hashes
+            && *past_finality_signatures == other.past_finality_signatures
+    }
+}
+
+impl From<&BlockBodyV1> for BlockBodyV2 {
+    fn from(value: &BlockBodyV1) -> Self {
+        Self {
+            proposer: value.proposer.clone(),
+            deploy_hashes: value.deploy_hashes.clone(),
+            transfer_hashes: value.transfer_hashes.clone(),
+            past_finality_signatures: Default::default(),
+            hash: OnceCell::new(),
+        }
+    }
+}
+
 impl Display for BlockBody {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            BlockBody::BlockBodyV1(v1) => Display::fmt(&v1, formatter),
+            BlockBody::BlockBodyV2(v2) => Display::fmt(&v2, formatter),
+        }
+    }
+}
+
+impl Display for BlockBodyV1 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
-            formatter,
+            f,
             "block body proposed by {}, {} deploys, {} transfers",
             self.proposer,
             self.deploy_hashes.len(),
@@ -1261,7 +1470,68 @@ impl Display for BlockBody {
     }
 }
 
+impl Display for BlockBodyV2 {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "block body proposed by {}, {} deploys, {} transfers, {} past finality signatures",
+            self.proposer,
+            self.deploy_hashes.len(),
+            self.transfer_hashes.len(),
+            self.past_finality_signatures.0.len(),
+        )?;
+        Ok(())
+    }
+}
+
 impl ToBytes for BlockBody {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            BlockBody::BlockBodyV1(v1) => {
+                buffer.insert(0, BLOCK_BODY_V1_TAG);
+                buffer.extend(v1.to_bytes()?);
+            }
+            BlockBody::BlockBodyV2(v2) => {
+                buffer.insert(0, BLOCK_BODY_V2_TAG);
+                buffer.extend(v2.to_bytes()?);
+            }
+        }
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        TAG_LENGTH
+            + match self {
+                BlockBody::BlockBodyV1(v1) => v1.serialized_length(),
+                BlockBody::BlockBodyV2(v2) => v2.serialized_length(),
+            }
+    }
+}
+
+/// Tag for block body v1.
+pub const BLOCK_BODY_V1_TAG: u8 = 0;
+/// Tag for block body v2.
+pub const BLOCK_BODY_V2_TAG: u8 = 1;
+
+impl FromBytes for BlockBody {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            BLOCK_BODY_V1_TAG => {
+                let (body, remainder): (BlockBodyV1, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::BlockBodyV1(body), remainder))
+            }
+            BLOCK_BODY_V2_TAG => {
+                let (body, remainder): (BlockBodyV2, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::BlockBodyV2(body), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl ToBytes for BlockBodyV1 {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.proposer.to_bytes()?);
@@ -1277,15 +1547,50 @@ impl ToBytes for BlockBody {
     }
 }
 
-impl FromBytes for BlockBody {
+impl FromBytes for BlockBodyV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
         let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
-        let body = BlockBody {
+        let body = BlockBodyV1 {
             proposer,
             deploy_hashes,
             transfer_hashes,
+            hash: OnceCell::new(),
+        };
+        Ok((body, bytes))
+    }
+}
+
+impl ToBytes for BlockBodyV2 {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(self.proposer.to_bytes()?);
+        buffer.extend(self.deploy_hashes.to_bytes()?);
+        buffer.extend(self.transfer_hashes.to_bytes()?);
+        buffer.extend(self.past_finality_signatures.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.proposer.serialized_length()
+            + self.deploy_hashes.serialized_length()
+            + self.transfer_hashes.serialized_length()
+            + self.past_finality_signatures.serialized_length()
+    }
+}
+
+impl FromBytes for BlockBodyV2 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
+        let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
+        let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
+        let (past_finality_signatures, bytes) = PastFinalitySignatures::from_bytes(bytes)?;
+        let body = BlockBodyV2 {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            past_finality_signatures,
             hash: OnceCell::new(),
         };
         Ok((body, bytes))
@@ -2212,12 +2517,13 @@ pub(crate) mod json_compatibility {
 
     impl From<JsonBlockBody> for BlockBody {
         fn from(json_body: JsonBlockBody) -> Self {
-            BlockBody {
+            Self::BlockBodyV2(BlockBodyV2 {
                 proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
+                past_finality_signatures: Default::default(), /* TODO: `JsonBlockBody` should also have `past_finality_signatures` */
                 hash: OnceCell::new(),
-            }
+            })
         }
     }
 
@@ -2620,6 +2926,16 @@ mod tests {
         let mut rng = TestRng::new();
         let block = Block::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&block);
+    }
+
+    #[test]
+    fn block_body_bytesrepr_roundtrip() {
+        let mut rng = TestRng::new();
+        let block_body = BlockBody::BlockBodyV1(BlockBodyV1::random(&mut rng));
+        bytesrepr::test_serialization_roundtrip(&block_body);
+
+        let block_body = BlockBody::BlockBodyV2(BlockBodyV2::random(&mut rng));
+        bytesrepr::test_serialization_roundtrip(&block_body);
     }
 
     #[test]

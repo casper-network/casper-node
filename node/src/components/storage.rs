@@ -91,7 +91,7 @@ use crate::{
     protocol::Message,
     types::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
+        BlockBodyV1, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
         BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
         DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
@@ -128,7 +128,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 9;
+const MAX_DB_COUNT: u32 = 10;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 /// Name of the file created when initializing a force resync.
@@ -156,6 +156,16 @@ const STORAGE_FILES: [&str; 5] = [
     "sse_index",
 ];
 
+#[derive(DataSize, Debug)]
+struct BlockBodyDatabases {
+    /// The legacy block body database, storing [BlockBodyV1] objects.
+    #[data_size(skip)]
+    legacy: Database,
+    /// The current block body database, storing [BlockBody] objects.
+    #[data_size(skip)]
+    current: Database,
+}
+
 /// The storage component.
 #[derive(DataSize, Debug)]
 pub struct Storage {
@@ -167,9 +177,9 @@ pub struct Storage {
     /// The block header database.
     #[data_size(skip)]
     block_header_db: Database,
-    /// The block body database.
+    /// Block body databases.
     #[data_size(skip)]
-    block_body_db: Database,
+    block_body_dbs: BlockBodyDatabases,
     /// The approvals hashes database.
     #[data_size(skip)]
     approvals_hashes_db: Database,
@@ -413,7 +423,8 @@ impl Storage {
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
         let finalized_approvals_db =
             env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
-        let block_body_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
+        let block_body_legacy_db = env.create_db(Some("block_body"), DatabaseFlags::empty())?;
+        let block_body_db = env.create_db(Some("block_body_v2"), DatabaseFlags::empty())?;
         let approvals_hashes_db =
             env.create_db(Some("approvals_hashes"), DatabaseFlags::empty())?;
 
@@ -435,8 +446,14 @@ impl Storage {
             let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let maybe_block_body =
-                get_body_for_block_header(&mut body_txn, block_header.body_hash(), block_body_db);
+            let maybe_block_body = get_body_for_block_header(
+                &mut body_txn,
+                block_header.body_hash(),
+                &BlockBodyDatabases {
+                    legacy: block_body_legacy_db,
+                    current: block_body_db,
+                },
+            );
             if let Some(invalid_era) = hard_reset_to_start_of_era {
                 // Remove blocks that are in to-be-upgraded eras, but have obsolete protocol
                 // versions - they were most likely created before the upgrade and should be
@@ -482,7 +499,7 @@ impl Storage {
         initialize_block_body_db(
             &env,
             &block_header_db,
-            &block_body_db,
+            &[block_body_db, block_body_legacy_db],
             &deleted_block_body_hashes
                 .iter()
                 .map(Digest::as_ref)
@@ -498,7 +515,10 @@ impl Storage {
             root,
             env: Rc::new(env),
             block_header_db,
-            block_body_db,
+            block_body_dbs: BlockBodyDatabases {
+                legacy: block_body_legacy_db,
+                current: block_body_db,
+            },
             block_metadata_db,
             approvals_hashes_db,
             deploy_db,
@@ -908,7 +928,7 @@ impl Storage {
                 responder,
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
-                let has_deploy = txn.value_exists(self.deploy_db, deploy_id.deploy_hash())?;
+                let has_deploy = txn.value_exists(&[self.deploy_db], deploy_id.deploy_hash())?;
                 responder.respond(has_deploy).ignore()
             }
             StorageRequest::GetExecutionResults {
@@ -1294,10 +1314,13 @@ impl Storage {
                 return Ok(false);
             }
         };
-        Ok(txn.value_exists(self.block_body_db, block_header.body_hash())?)
+        Ok(txn.value_exists(
+            &[self.block_body_dbs.legacy, self.block_body_dbs.current],
+            block_header.body_hash(),
+        )?)
     }
 
-    /// Retrieves a approvals hashes by block hash.
+    /// Retrieves approvals hashes by block hash.
     fn read_approvals_hashes(
         &self,
         block_hash: &BlockHash,
@@ -2084,8 +2107,13 @@ impl Storage {
         block_body_hash: &Digest,
         block_body: &BlockBody,
     ) -> Result<bool, LmdbExtError> {
-        txn.put_value(self.block_body_db, block_body_hash, block_body, true)
-            .map_err(Into::into)
+        txn.put_value(
+            self.block_body_dbs.current,
+            block_body_hash,
+            block_body,
+            true,
+        )
+        .map_err(Into::into)
     }
 
     /// Retrieves a block header by hash.
@@ -2115,8 +2143,9 @@ impl Storage {
                 return Ok(None);
             }
         };
+
         let maybe_block_body =
-            get_body_for_block_header(txn, block_header.body_hash(), self.block_body_db);
+            get_body_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
@@ -2468,7 +2497,7 @@ impl Storage {
             None => return Ok(None),
         };
         let maybe_block_body =
-            get_body_for_block_header(txn, block_header.body_hash(), self.block_body_db);
+            get_body_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
@@ -2926,36 +2955,41 @@ fn construct_block_body_to_block_header_reverse_lookup(
 }
 
 /// Purges stale entries from the block body database.
-fn initialize_block_body_db(
+fn initialize_block_body_db<'a, D>(
     env: &Environment,
     block_header_db: &Database,
-    block_body_db: &Database,
+    block_body_dbs: D,
     deleted_block_body_hashes_raw: &HashSet<&[u8]>,
-) -> Result<(), FatalStorageError> {
+) -> Result<(), FatalStorageError>
+where
+    D: IntoIterator<Item = &'a Database>,
+{
     info!("initializing block body database");
     let mut txn = env.begin_rw_txn()?;
 
     let block_body_hash_to_header_map =
         construct_block_body_to_block_header_reverse_lookup(&txn, block_header_db)?;
 
-    let mut cursor = txn.open_rw_cursor(*block_body_db)?;
+    for db in block_body_dbs.into_iter() {
+        let mut cursor = txn.open_rw_cursor(*db)?;
 
-    for row in cursor.iter() {
-        let (raw_key, _raw_val) = row?;
-        let block_body_hash =
-            Digest::try_from(raw_key).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
-        if !block_body_hash_to_header_map.contains_key(&block_body_hash) {
-            if !deleted_block_body_hashes_raw.contains(raw_key) {
-                // This means that the block body isn't referenced by any header, but no header
-                // referencing it was just deleted, either
-                warn!(?raw_key, "orphaned block body detected");
+        for row in cursor.iter() {
+            let (raw_key, _raw_val) = row?;
+            let block_body_hash = Digest::try_from(raw_key)
+                .map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))?;
+            if !block_body_hash_to_header_map.contains_key(&block_body_hash) {
+                if !deleted_block_body_hashes_raw.contains(raw_key) {
+                    // This means that the block body isn't referenced by any header, but no header
+                    // referencing it was just deleted, either
+                    warn!(?raw_key, "orphaned block body detected");
+                }
+                info!(?raw_key, "deleting block body");
+                cursor.del(WriteFlags::empty())?;
             }
-            info!(?raw_key, "deleting block body");
-            cursor.del(WriteFlags::empty())?;
         }
-    }
 
-    drop(cursor);
+        drop(cursor);
+    }
 
     txn.commit()?;
     info!("block body database initialized");
@@ -2963,12 +2997,27 @@ fn initialize_block_body_db(
 }
 
 /// Retrieves the block body for the given block header.
-fn get_body_for_block_header<Tx: Transaction>(
+fn get_body_for_block_header<Tx>(
     txn: &mut Tx,
     block_body_hash: &Digest,
-    block_body_db: Database,
-) -> Result<Option<BlockBody>, LmdbExtError> {
-    txn.get_value(block_body_db, block_body_hash)
+    block_body_dbs: &BlockBodyDatabases,
+) -> Result<Option<BlockBody>, LmdbExtError>
+where
+    Tx: Transaction,
+{
+    let maybe_block_body: Option<BlockBody> =
+        txn.get_value(block_body_dbs.current, block_body_hash)?;
+    if maybe_block_body.is_none() {
+        let maybe_legacy_block_body: Option<BlockBodyV1> =
+            txn.get_value(block_body_dbs.legacy, block_body_hash)?;
+        if let Some(legacy_block_body) = maybe_legacy_block_body {
+            return Ok(Some(BlockBody::BlockBodyV1(legacy_block_body)));
+        }
+    } else {
+        return Ok(maybe_block_body);
+    }
+
+    Ok(None)
 }
 
 /// Purges stale entries from the block metadata database.
