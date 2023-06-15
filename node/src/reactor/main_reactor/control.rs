@@ -96,6 +96,7 @@ impl MainReactor {
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
                     GenesisInstruction::Validator(duration, effects) => {
                         info!("CatchUp: switch to Validate at genesis");
+                        self.block_synchronizer.purge();
                         self.state = ReactorState::Validate;
                         (duration, effects)
                     }
@@ -112,6 +113,7 @@ impl MainReactor {
                 CatchUpInstruction::CommitUpgrade => match self.commit_upgrade(effect_builder) {
                     Ok(effects) => {
                         info!("CatchUp: switch to Upgrading");
+                        self.block_synchronizer.purge();
                         self.state = ReactorState::Upgrading;
                         self.last_progress = Timestamp::now();
                         self.attempts = 0;
@@ -135,8 +137,8 @@ impl MainReactor {
                         return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
                     }
                     // purge to avoid polluting the status endpoints w/ stale state
-                    self.block_synchronizer.purge();
                     info!("CatchUp: switch to KeepUp");
+                    self.block_synchronizer.purge();
                     self.state = ReactorState::KeepUp;
                     (Duration::ZERO, Effects::new())
                 }
@@ -166,9 +168,9 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
                 KeepUpInstruction::Validate(effects) => {
+                    info!("KeepUp: switch to Validate");
                     // purge to avoid polluting the status endpoints w/ stale state
                     self.block_synchronizer.purge();
-                    info!("KeepUp: switch to Validate");
                     self.state = ReactorState::Validate;
                     (Duration::ZERO, effects)
                 }
