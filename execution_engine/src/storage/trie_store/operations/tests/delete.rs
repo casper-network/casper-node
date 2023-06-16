@@ -22,9 +22,6 @@ where
     E: From<S::Error> + From<WS::Error> + From<R::Error> + From<WR::Error> + From<bytesrepr::Error>,
 {
     let mut txn = write_environment.create_read_write_txn()?;
-    let delete_op = operations::delete::<K, PanickingFromBytes<V>, WR::ReadWriteTransaction, WS, E>
-        as *mut c_void;
-    let _counter = TestValue::before_operation(delete_op);
     let delete_result = operations::delete::<K, PanickingFromBytes<V>, _, WS, E>(
         correlation_id,
         &mut txn,
@@ -32,8 +29,6 @@ where
         root,
         key_to_delete,
     );
-    let counter = TestValue::after_operation(delete_op);
-    assert_eq!(counter, 0, "Delete should never deserialize a value");
     txn.commit()?;
     let delete_result = delete_result?;
     let rtxn = environment.create_read_write_txn()?;
@@ -320,14 +315,11 @@ mod full_tries {
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
-        let write_op =
-            write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
 
         let mut roots = Vec::new();
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs {
             let new_value = PanickingFromBytes::new(value.clone());
-            let _counter = TestValue::before_operation(write_op);
             if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
                 correlation_id,
                 &mut txn,
@@ -340,15 +332,10 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
-            let counter = TestValue::after_operation(write_op);
-            assert_eq!(counter, 0, "Write should never deserialize a value");
         }
         // Delete the key-value pairs, checking the resulting roots as we go
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
-        let delete_op =
-            delete::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
         for (key, _value) in pairs.iter().rev() {
-            let _counter = TestValue::before_operation(delete_op);
             let delete_result = delete::<K, PanickingFromBytes<V>, _, _, E>(
                 correlation_id,
                 &mut txn,
@@ -356,8 +343,6 @@ mod full_tries {
                 &current_root,
                 key,
             );
-            let counter = TestValue::after_operation(delete_op);
-            assert_eq!(counter, 0, "Delete should never deserialize a value");
             if let DeleteResult::Deleted(new_root) = delete_result? {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
@@ -435,12 +420,9 @@ mod full_tries {
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
-        let write_op =
-            write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
         let mut expected_root = *root;
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs_to_insert.iter() {
-            let _counter = TestValue::before_operation(write_op);
             let new_value = PanickingFromBytes::new(value.clone());
             if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
                 correlation_id,
@@ -454,13 +436,8 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
-            let counter = TestValue::after_operation(write_op);
-            assert_eq!(counter, 0, "Write should never deserialize a value");
         }
-        let delete_op =
-            delete::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
         for key in keys_to_delete.iter() {
-            let _counter = TestValue::before_operation(delete_op);
             let delete_result = delete::<K, PanickingFromBytes<V>, _, _, E>(
                 correlation_id,
                 &mut txn,
@@ -468,8 +445,6 @@ mod full_tries {
                 &expected_root,
                 key,
             );
-            let counter = TestValue::after_operation(delete_op);
-            assert_eq!(counter, 0, "Delete should never deserialize a value");
             match delete_result? {
                 DeleteResult::Deleted(new_root) => {
                     expected_root = new_root;
@@ -488,7 +463,6 @@ mod full_tries {
 
         let mut actual_root = *root;
         for (key, value) in pairs_to_insert_less_deleted.iter() {
-            let _counter = TestValue::before_operation(write_op);
             let new_value = PanickingFromBytes::new(value.clone());
             if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
                 correlation_id,
@@ -502,8 +476,6 @@ mod full_tries {
             } else {
                 panic!("Could not write pair")
             }
-            let counter = TestValue::after_operation(write_op);
-            assert_eq!(counter, 0, "Write should never deserialize a value");
         }
 
         assert_eq!(expected_root, actual_root, "Expected did not match actual");

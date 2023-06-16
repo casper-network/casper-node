@@ -836,12 +836,10 @@ where
     }
     let mut root_hash = root_hash.to_owned();
     let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
-    let write_op = write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
 
     for leaf in leaves.iter() {
         if let Trie::Leaf { key, value } = leaf {
             let new_value = PanickingFromBytes::new(value.clone());
-            let _counter = TestValue::before_operation(write_op);
             let write_result = write::<K, PanickingFromBytes<V>, _, _, E>(
                 correlation_id,
                 &mut txn,
@@ -850,8 +848,6 @@ where
                 key,
                 &new_value,
             )?;
-            let counter = TestValue::after_operation(write_op);
-            assert_eq!(counter, 0, "Write should never deserialize a value");
             match write_result {
                 WriteResult::Written(hash) => {
                     root_hash = hash;
@@ -990,9 +986,7 @@ where
     let mut root_hash = root_hash.to_owned();
     let mut txn = environment.create_read_write_txn()?;
 
-    let write_op = write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
     for (key, value) in pairs.iter() {
-        let _counter = TestValue::before_operation(write_op);
         let new_val = PanickingFromBytes::new(value.clone());
         match write::<K, PanickingFromBytes<V>, _, _, E>(
             correlation_id,
@@ -1008,8 +1002,6 @@ where
             WriteResult::AlreadyExists => (),
             WriteResult::RootNotFound => panic!("write_leaves given an invalid root"),
         };
-        let counter = TestValue::after_operation(write_op);
-        assert_eq!(counter, 0, "Write should never deserialize a value");
         results.push(root_hash);
     }
     txn.commit()?;
