@@ -258,7 +258,7 @@
                   },
                   "execution_results": [
                     {
-                      "block_hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114",
+                      "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
                       "result": {
                         "Success": {
                           "effect": {
@@ -365,7 +365,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 }
               ],
@@ -561,7 +561,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "BlockHash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 },
                 {
@@ -580,7 +580,7 @@
                   "block_header": {
                     "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                    "body_hash": "30fef6833f75f79b3aeafac8da864e00b27b384a99df6534b2fba4e9f491ad9d",
+                    "body_hash": "36f51a136e294b01754414c8f62ee64da02ac70c54ab0d823f01f3dd3b9b3bc9",
                     "random_bit": true,
                     "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                     "era_end": {
@@ -705,7 +705,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "BlockHash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 },
                 {
@@ -898,7 +898,7 @@
                   "chainspec_name": "casper-example",
                   "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                   "last_added_block_info": {
-                    "hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114",
+                    "hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "era_id": 1,
                     "height": 10,
@@ -1079,7 +1079,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 }
               ],
@@ -1088,11 +1088,11 @@
                 "value": {
                   "api_version": "1.5.0",
                   "block": {
-                    "hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114",
+                    "hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
                     "header": {
                       "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                      "body_hash": "30fef6833f75f79b3aeafac8da864e00b27b384a99df6534b2fba4e9f491ad9d",
+                      "body_hash": "36f51a136e294b01754414c8f62ee64da02ac70c54ab0d823f01f3dd3b9b3bc9",
                       "random_bit": true,
                       "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                       "era_end": {
@@ -1144,21 +1144,23 @@
                       "transfer_hashes": [
                         "5c9b3b099c1378aa8e4a5f07f59ff1fcdc69a83179427c7e67ae0377d94d93fa"
                       ],
-                      "past_finality_signatures": [
-                        1,
-                        1,
-                        1,
-                        0,
-                        0,
-                        0,
-                        0,
-                        0
+                      "rewarded_signatures": [
+                        [
+                          1,
+                          1,
+                          1,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0
+                        ]
                       ]
                     },
                     "proofs": [
                       {
                         "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                        "signature": "01cdc22b5c31dcb8c52c6e5cfa8023c587908f43097ce19aa3f5e2be9cc98826ab43946086f6af8e233692f9087374f6d56dff6ee6b5a929f3f597cc86767e7805"
+                        "signature": "01c440d39261aaa441011415cc9f403ca35cb42dd0d9f59e0edaa27822de1b2a123998dd3c572080bfb4d90e57bedf848d9227fcee2a6353fc0357f69c1313ba03"
                       }
                     ]
                   }
@@ -1225,7 +1227,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 }
               ],
@@ -1233,7 +1235,7 @@
                 "name": "chain_get_block_transfers_example_result",
                 "value": {
                   "api_version": "1.5.0",
-                  "block_hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114",
+                  "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
                   "transfers": [
                     {
                       "deploy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -1529,7 +1531,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 }
               ],
@@ -1538,7 +1540,7 @@
                 "value": {
                   "api_version": "1.5.0",
                   "era_summary": {
-                    "block_hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114",
+                    "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -1609,7 +1611,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 }
               ],
@@ -1691,7 +1693,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114"
+                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
                   }
                 }
               ],
@@ -1700,7 +1702,7 @@
                 "value": {
                   "api_version": "1.5.0",
                   "era_summary": {
-                    "block_hash": "f04ca2c7027fa1d5eabffe42e5395e0ec04dc9284d1d8b46f55eb8752b439114",
+                    "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -4476,8 +4478,8 @@
             "type": "object",
             "required": [
               "deploy_hashes",
-              "past_finality_signatures",
               "proposer",
+              "rewarded_signatures",
               "transfer_hashes"
             ],
             "properties": {
@@ -4496,13 +4498,16 @@
                   "$ref": "#/components/schemas/DeployHash"
                 }
               },
-              "past_finality_signatures": {
+              "rewarded_signatures": {
                 "description": "A series of 1s and 0s defining whether the validator at the same index has signed or not.",
                 "type": "array",
                 "items": {
-                  "type": "integer",
-                  "format": "uint8",
-                  "minimum": 0.0
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "format": "uint8",
+                    "minimum": 0.0
+                  }
                 }
               }
             },

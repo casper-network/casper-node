@@ -474,8 +474,8 @@
       "type": "object",
       "required": [
         "deploy_hashes",
-        "past_finality_signatures",
         "proposer",
+        "rewarded_signatures",
         "transfer_hashes"
       ],
       "properties": {
@@ -494,13 +494,16 @@
             "$ref": "#/definitions/DeployHash"
           }
         },
-        "past_finality_signatures": {
+        "rewarded_signatures": {
           "description": "A series of 1s and 0s defining whether the validator at the same index has signed or not.",
           "type": "array",
           "items": {
-            "type": "integer",
-            "format": "uint8",
-            "minimum": 0.0
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
+            }
           }
         }
       },

@@ -1594,6 +1594,25 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn collect_past_blocks_with_metadata(
+        self,
+        range: std::ops::Range<u64>,
+        only_from_available_block_range: bool,
+    ) -> Vec<Option<BlockWithMetadata>>
+    where
+        REv: From<StorageRequest>,
+    {
+        futures::future::join_all(range.into_iter().map(|block_height| {
+            self.get_block_at_height_with_metadata_from_storage(
+                block_height,
+                only_from_available_block_range,
+            )
+        }))
+        .await
+        .into_iter()
+        .collect()
+    }
+
     /// Gets the requested finality signature from storage.
     pub(crate) async fn get_finality_signature_from_storage(
         self,

@@ -33,7 +33,8 @@ use crate::{
     types::{
         ApprovalsHash, ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash,
         BlockHeader, BlockPayload, Deploy, DeployHashWithApprovals, DeployId, FinalitySignature,
-        FinalitySignatureId, FinalizedBlock, LegacyDeploy, SyncLeap, TrieOrChunk,
+        FinalitySignatureId, FinalizedBlock, LegacyDeploy, RewardedSignatures,
+        SingleBlockRewardedSignatures, SyncLeap, TrieOrChunk,
     },
 };
 
@@ -621,6 +622,23 @@ impl LargestSpecimen for BlockPayload {
             vec_prop_specimen(estimator, "max_accusations_per_block", cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
+        )
+    }
+}
+
+impl LargestSpecimen for RewardedSignatures {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        RewardedSignatures::new(
+            std::iter::repeat(LargestSpecimen::largest_specimen(estimator, cache))
+                .take(estimator.parameter("signature_rewards_max_delay")),
+        )
+    }
+}
+
+impl LargestSpecimen for SingleBlockRewardedSignatures {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, _cache: &mut Cache) -> Self {
+        SingleBlockRewardedSignatures::pack(
+            std::iter::repeat(1).take(estimator.parameter("validator_count")),
         )
     }
 }
