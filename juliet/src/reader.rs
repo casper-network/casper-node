@@ -171,9 +171,14 @@ impl<const N: usize> ReaderState<N> {
                         }
                     };
 
-                    let multiframe_outcome: Option<BytesMut> = try_outcome!(channel
-                        .current_multiframe_receive
-                        .accept(header, &mut buffer, self.max_frame_size));
+                    let multiframe_outcome: Option<BytesMut> =
+                        try_outcome!(channel.current_multiframe_receive.accept(
+                            header,
+                            &mut buffer,
+                            self.max_frame_size,
+                            channel.max_request_payload_size,
+                            ErrorKind::RequestTooLarge
+                        ));
 
                     // If we made it to this point, we have consumed the frame. Record it.
                     if is_new_request {
@@ -208,9 +213,14 @@ impl<const N: usize> ReaderState<N> {
                         }
                     }
 
-                    let multiframe_outcome: Option<BytesMut> = try_outcome!(channel
-                        .current_multiframe_receive
-                        .accept(header, &mut buffer, self.max_frame_size));
+                    let multiframe_outcome: Option<BytesMut> =
+                        try_outcome!(channel.current_multiframe_receive.accept(
+                            header,
+                            &mut buffer,
+                            self.max_frame_size,
+                            channel.max_response_payload_size,
+                            ErrorKind::ResponseTooLarge
+                        ));
 
                     // If we made it to this point, we have consumed the frame.
                     if is_new_response {

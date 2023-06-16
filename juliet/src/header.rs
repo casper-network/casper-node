@@ -34,7 +34,7 @@ impl Debug for Header {
 #[derive(Copy, Clone, Debug)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
-pub(crate) enum ErrorKind {
+pub enum ErrorKind {
     /// Application defined error.
     Other = 0,
     /// The maximum frame size has been exceeded. This error cannot occur in this implementation,
@@ -72,7 +72,7 @@ pub(crate) enum ErrorKind {
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 
-pub(crate) enum Kind {
+pub enum Kind {
     /// A request with no payload.
     Request = 0,
     /// A response with no payload.
@@ -113,14 +113,14 @@ impl Header {
 
     /// Creates a new non-error header.
     #[inline(always)]
-    pub(crate) fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
+    pub fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
         let id = id.get().to_le_bytes();
         Header([kind as u8, channel.get(), id[0], id[1]])
     }
 
     /// Creates a new error header.
     #[inline(always)]
-    pub(crate) fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
+    pub fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
         let id = id.get().to_le_bytes();
         Header([
             kind as u8 | Header::KIND_ERR_BIT,
@@ -134,7 +134,7 @@ impl Header {
     ///
     /// Returns `None` if the given `raw` bytes are not a valid header.
     #[inline(always)]
-    pub(crate) fn parse(mut raw: [u8; Header::SIZE]) -> Option<Self> {
+    pub fn parse(mut raw: [u8; Header::SIZE]) -> Option<Self> {
         // Zero-out reserved bits.
         raw[0] &= Self::KIND_ERR_MASK | Self::KIND_ERR_BIT;
 
@@ -167,20 +167,20 @@ impl Header {
 
     /// Returns the channel.
     #[inline(always)]
-    pub(crate) fn channel(self) -> ChannelId {
+    pub fn channel(self) -> ChannelId {
         ChannelId::new(self.0[1])
     }
 
     /// Returns the id.
     #[inline(always)]
-    pub(crate) fn id(self) -> Id {
+    pub fn id(self) -> Id {
         let [_, _, id @ ..] = self.0;
         Id::new(u16::from_le_bytes(id))
     }
 
     /// Returns whether the error bit is set.
     #[inline(always)]
-    pub(crate) fn is_error(self) -> bool {
+    pub fn is_error(self) -> bool {
         self.kind_byte() & Self::KIND_ERR_BIT == Self::KIND_ERR_BIT
     }
 
@@ -190,7 +190,7 @@ impl Header {
     ///
     /// Will panic if `Self::is_error()` is not `true`.
     #[inline(always)]
-    pub(crate) fn error_kind(self) -> ErrorKind {
+    pub fn error_kind(self) -> ErrorKind {
         debug_assert!(self.is_error());
         match self.kind_byte() & Self::KIND_ERR_MASK {
             0 => ErrorKind::Other,
@@ -218,7 +218,7 @@ impl Header {
     ///
     /// Will panic if `Self::is_error()` is not `false`.
     #[inline(always)]
-    pub(crate) fn kind(self) -> Kind {
+    pub fn kind(self) -> Kind {
         debug_assert!(!self.is_error());
         match self.kind_byte() & Self::KIND_MASK {
             0 => Kind::Request,

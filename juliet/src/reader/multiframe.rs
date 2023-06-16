@@ -70,6 +70,8 @@ impl MultiframeSendState {
         header: Header,
         buffer: &mut BytesMut,
         max_frame_size: u32,
+        max_payload_size: u32,
+        payload_exceeded_error_kind: ErrorKind,
     ) -> Outcome<Option<BytesMut>> {
         debug_assert!(
             max_frame_size >= 10,
@@ -88,6 +90,10 @@ impl MultiframeSendState {
                         offset,
                         value: total_payload_size,
                     } => {
+                        if total_payload_size > max_payload_size {
+                            return header.return_err(payload_exceeded_error_kind);
+                        }
+
                         // We have a valid varint32.
                         let preamble_size = Header::SIZE as u32 + offset.get() as u32;
                         let max_data_in_frame = (max_frame_size - preamble_size) as u32;
