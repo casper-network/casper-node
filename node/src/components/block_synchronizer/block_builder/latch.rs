@@ -1,6 +1,6 @@
 use datasize::DataSize;
 
-use tracing::error;
+use tracing::warn;
 
 use casper_types::{TimeDiff, Timestamp};
 
@@ -19,7 +19,7 @@ impl Latch {
                 self.touch();
             }
             None => {
-                error!("latch increment overflowed.");
+                warn!("latch increment overflowed.");
             }
         }
     }
@@ -28,12 +28,12 @@ impl Latch {
         match self.latch.checked_sub(decrement_by) {
             Some(val) => {
                 self.latch = val;
-                self.touch();
             }
             None => {
-                error!("latch decrement overflowed.");
+                self.latch = 0;
             }
         }
+        self.touch();
     }
 
     pub(super) fn unlatch(&mut self) {
