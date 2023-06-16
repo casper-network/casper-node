@@ -5,7 +5,7 @@ use crate::{
     shared::newtypes::CorrelationId,
     storage::{
         error::{self, in_memory},
-        trie_store::operations::{scan_raw, TrieScanRaw},
+        trie_store::operations::{scan_raw, store_wrappers, TrieScanRaw},
     },
 };
 
@@ -27,9 +27,10 @@ where
         .get(&txn, root_hash)?
         .expect("check_scan received an invalid root hash");
     let root_bytes = root.to_bytes()?;
+    let store = store_wrappers::NonDeserializingStore::new(store);
     let TrieScanRaw { mut tip, parents } = scan_raw::<TestKey, TestValue, R::ReadTransaction, S, E>(
         &txn,
-        store,
+        &store,
         key,
         root_bytes.into(),
     )?;

@@ -42,8 +42,11 @@ where
     {
         #[cfg(debug_assertions)]
         {
-            let _ = bytes;
-            panic!("Tried to deserialize a value but expected no deserialization to happen.")
+            let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(bytes)?;
+            if let Trie::Leaf { .. } = trie {
+                panic!("Tried to deserialize a value but expected no deserialization to happen.")
+            }
+            Ok(trie)
         }
         #[cfg(not(debug_assertions))]
         {

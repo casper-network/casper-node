@@ -309,7 +309,7 @@ impl<K, V> TrieScanRaw<K, V> {
 /// their depth from the root (shallow to deep). The tip is not parsed.
 fn scan_raw<K, V, T, S, E>(
     txn: &T,
-    store: &S,
+    store: &NonDeserializingStore<K, V, S>,
     key_bytes: &[u8],
     root_bytes: Bytes,
 ) -> Result<TrieScanRaw<K, V>, E>
@@ -328,7 +328,6 @@ where
     let mut depth: usize = 0;
     let mut acc: Parents<K, V> = Vec::new();
 
-    let store = store_wrappers::NonDeserializingStore::new(store);
     loop {
         let maybe_trie_leaf = trie::lazy_trie_deserialize(current)?;
         current_trie = match maybe_trie_leaf {
@@ -429,6 +428,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
+    let store = store_wrappers::NonDeserializingStore::new(store);
     let root_trie_bytes = match store.get_raw(txn, root)? {
         None => return Ok(DeleteResult::RootNotFound),
         Some(root_trie) => root_trie,
@@ -436,7 +436,7 @@ where
 
     let key_bytes = key_to_delete.to_bytes()?;
     let TrieScanRaw { tip, mut parents } =
-        scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
+        scan_raw::<_, _, _, _, E>(txn, &store, &key_bytes, root_trie_bytes)?;
 
     // Check that tip is a leaf
     match tip {
@@ -890,6 +890,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
+    let store = store_wrappers::NonDeserializingStore::new(store);
     match store.get_raw(txn, root)? {
         None => Ok(WriteResult::RootNotFound),
         Some(current_root_bytes) => {
@@ -899,7 +900,7 @@ where
             };
             let path: Vec<u8> = key.to_bytes()?;
             let TrieScanRaw { tip, parents } =
-                scan_raw::<K, V, T, S, E>(txn, store, &path, current_root_bytes)?;
+                scan_raw::<K, V, T, S, E>(txn, &store, &path, current_root_bytes)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 LazyTrieLeaf::Left(leaf_bytes) => {
                     let trie_tag = trie::lazy_trie_tag(leaf_bytes.as_slice());

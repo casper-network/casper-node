@@ -1,31 +1,46 @@
 use super::*;
-use crate::storage::{transaction_source::Writable, trie_store::operations::DeleteResult};
+use crate::storage::trie_store::operations::DeleteResult;
 
-fn checked_delete<K, V, T, S, E>(
+fn checked_delete<'a, K, V, R, WR, S, WS, E>(
     correlation_id: CorrelationId,
-    txn: &mut T,
+    environment: &'a R,
+    write_environment: &'a WR,
     store: &S,
+    write_store: &WS,
     root: &Digest,
     key_to_delete: &K,
 ) -> Result<DeleteResult, E>
 where
     K: ToBytes + FromBytes + Clone + std::fmt::Debug + Eq,
     V: ToBytes + FromBytes + Clone + std::fmt::Debug,
-    T: Readable<Handle = S::Handle> + Writable<Handle = S::Handle>,
+    R: TransactionSource<'a, Handle = S::Handle>,
+    WR: TransactionSource<'a, Handle = WS::Handle>,
     S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
+    WS: TrieStore<K, PanickingFromBytes<V>>,
+    S::Error: From<R::Error>,
+    WS::Error: From<WR::Error>,
+    E: From<S::Error> + From<WS::Error> + From<R::Error> + From<WR::Error> + From<bytesrepr::Error>,
 {
-    let delete_op = operations::delete::<K, V, T, S, E> as *mut c_void;
+    let mut txn = write_environment.create_read_write_txn()?;
+    let delete_op = operations::delete::<K, PanickingFromBytes<V>, WR::ReadWriteTransaction, WS, E>
+        as *mut c_void;
     let _counter = TestValue::before_operation(delete_op);
-    let delete_result =
-        operations::delete::<K, V, T, S, E>(correlation_id, txn, store, root, key_to_delete);
+    let delete_result = operations::delete::<K, PanickingFromBytes<V>, _, WS, E>(
+        correlation_id,
+        &mut txn,
+        write_store,
+        root,
+        key_to_delete,
+    );
     let counter = TestValue::after_operation(delete_op);
     assert_eq!(counter, 0, "Delete should never deserialize a value");
+    txn.commit()?;
     let delete_result = delete_result?;
+    let rtxn = environment.create_read_write_txn()?;
     if let DeleteResult::Deleted(new_root) = delete_result {
-        operations::check_integrity::<K, V, T, S, E>(correlation_id, txn, store, vec![new_root])?;
+        operations::check_integrity::<K, V, _, S, E>(correlation_id, &rtxn, store, vec![new_root])?;
     }
+    rtxn.commit()?;
     Ok(delete_result)
 }
 
@@ -33,10 +48,13 @@ mod partial_tries {
     use super::*;
     use crate::storage::trie_store::operations::DeleteResult;
 
-    fn delete_from_partial_trie_had_expected_results<'a, K, V, R, S, E>(
+    #[allow(clippy::too_many_arguments)]
+    fn delete_from_partial_trie_had_expected_results<'a, K, V, R, WR, S, WS, E>(
         correlation_id: CorrelationId,
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        write_store: &WS,
         root: &Digest,
         key_to_delete: &K,
         expected_root_after_delete: &Digest,
@@ -46,17 +64,27 @@ mod partial_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<K, V>,
+        WS: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<WR::Error>
+            + From<WS::Error>
+            + From<bytesrepr::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
+        let rtxn = environment.create_read_txn()?;
         // The assert below only works with partial tries
-        assert_eq!(store.get(&txn, expected_root_after_delete)?, None);
-        let root_after_delete = match checked_delete::<K, V, _, _, E>(
+        assert_eq!(store.get(&rtxn, expected_root_after_delete)?, None);
+        rtxn.commit()?;
+        let root_after_delete = match checked_delete::<K, V, _, _, _, _, E>(
             correlation_id,
-            &mut txn,
+            environment,
+            write_environment,
             store,
+            write_store,
             root,
             key_to_delete,
         )? {
@@ -65,9 +93,11 @@ mod partial_tries {
             DeleteResult::RootNotFound => panic!("root should be found"),
         };
         assert_eq!(root_after_delete, *expected_root_after_delete);
+        let rtxn = environment.create_read_txn()?;
         for HashedTrie { hash, trie } in expected_tries_after_delete {
-            assert_eq!(store.get(&txn, hash)?, Some(trie.clone()));
+            assert_eq!(store.get(&rtxn, hash)?, Some(trie.clone()));
         }
+        rtxn.commit()?;
         Ok(())
     }
 
@@ -80,9 +110,19 @@ mod partial_tries {
             let key_to_delete = &TEST_LEAVES[i];
             let context = LmdbTestContext::new(&initial_tries).unwrap();
 
-            delete_from_partial_trie_had_expected_results::<TestKey, TestValue, _, _, error::Error>(
+            delete_from_partial_trie_had_expected_results::<
+                TestKey,
+                TestValue,
+                _,
+                _,
+                _,
+                _,
+                error::Error,
+            >(
                 correlation_id,
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_root_hash,
                 key_to_delete.key().unwrap(),
@@ -102,9 +142,19 @@ mod partial_tries {
             let key_to_delete = &TEST_LEAVES[i];
             let context = InMemoryTestContext::new(&initial_tries).unwrap();
 
-            delete_from_partial_trie_had_expected_results::<TestKey, TestValue, _, _, error::Error>(
+            delete_from_partial_trie_had_expected_results::<
+                TestKey,
+                TestValue,
+                _,
+                _,
+                _,
+                _,
+                error::Error,
+            >(
                 correlation_id,
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_root_hash,
                 key_to_delete.key().unwrap(),
@@ -115,10 +165,21 @@ mod partial_tries {
         }
     }
 
-    fn delete_non_existent_key_from_partial_trie_should_return_does_not_exist<'a, K, V, R, S, E>(
+    fn delete_non_existent_key_from_partial_trie_should_return_does_not_exist<
+        'a,
+        K,
+        V,
+        R,
+        WR,
+        S,
+        WS,
+        E,
+    >(
         correlation_id: CorrelationId,
         environment: &'a R,
+        write_environment: &'a WR,
         store: &S,
+        write_store: &WS,
         root: &Digest,
         key_to_delete: &K,
     ) -> Result<(), E>
@@ -126,13 +187,26 @@ mod partial_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
+        WR: TransactionSource<'a, Handle = WS::Handle>,
         S: TrieStore<K, V>,
+        WS: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
-        E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+        WS::Error: From<WR::Error>,
+        E: From<R::Error>
+            + From<S::Error>
+            + From<bytesrepr::Error>
+            + From<WR::Error>
+            + From<WS::Error>,
     {
-        let mut txn = environment.create_read_write_txn()?;
-        match checked_delete::<K, V, _, _, E>(correlation_id, &mut txn, store, root, key_to_delete)?
-        {
+        match checked_delete::<K, _, _, _, _, _, E>(
+            correlation_id,
+            environment,
+            write_environment,
+            store,
+            write_store,
+            root,
+            key_to_delete,
+        )? {
             DeleteResult::Deleted(_) => panic!("should not delete"),
             DeleteResult::DoesNotExist => Ok(()),
             DeleteResult::RootNotFound => panic!("root should be found"),
@@ -152,10 +226,14 @@ mod partial_tries {
                 TestValue,
                 _,
                 _,
+                _,
+                _,
                 error::Error,
             >(
                 correlation_id,
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_root_hash,
                 key_to_delete.key().unwrap(),
@@ -177,10 +255,14 @@ mod partial_tries {
                 TestValue,
                 _,
                 _,
+                _,
+                _,
                 error::Error,
             >(
                 correlation_id,
                 &context.environment,
+                &context.environment,
+                &context.store,
                 &context.store,
                 &initial_root_hash,
                 key_to_delete.key().unwrap(),
@@ -233,24 +315,26 @@ mod full_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
-        let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
+        let write_op =
+            write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
 
         let mut roots = Vec::new();
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs {
+            let new_value = PanickingFromBytes::new(value.clone());
             let _counter = TestValue::before_operation(write_op);
-            if let WriteResult::Written(new_root) = write::<K, V, _, _, E>(
+            if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
                 correlation_id,
                 &mut txn,
                 store,
                 roots.last().unwrap_or(root),
                 key,
-                value,
+                &new_value,
             )? {
                 roots.push(new_root);
             } else {
@@ -261,11 +345,17 @@ mod full_tries {
         }
         // Delete the key-value pairs, checking the resulting roots as we go
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
-        let delete_op = delete::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
+        let delete_op =
+            delete::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
         for (key, _value) in pairs.iter().rev() {
             let _counter = TestValue::before_operation(delete_op);
-            let delete_result =
-                delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &current_root, key);
+            let delete_result = delete::<K, PanickingFromBytes<V>, _, _, E>(
+                correlation_id,
+                &mut txn,
+                store,
+                &current_root,
+                key,
+            );
             let counter = TestValue::after_operation(delete_op);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
             if let DeleteResult::Deleted(new_root) = delete_result? {
@@ -340,19 +430,26 @@ mod full_tries {
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
         R: TransactionSource<'a, Handle = S::Handle>,
-        S: TrieStore<K, V>,
+        S: TrieStore<K, PanickingFromBytes<V>>,
         S::Error: From<R::Error>,
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
-        let write_op = write::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
+        let write_op =
+            write::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
         let mut expected_root = *root;
         // Insert the key-value pairs, keeping track of the roots as we go
         for (key, value) in pairs_to_insert.iter() {
             let _counter = TestValue::before_operation(write_op);
-            if let WriteResult::Written(new_root) =
-                write::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key, value)?
-            {
+            let new_value = PanickingFromBytes::new(value.clone());
+            if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
+                correlation_id,
+                &mut txn,
+                store,
+                &expected_root,
+                key,
+                &new_value,
+            )? {
                 expected_root = new_root;
             } else {
                 panic!("Could not write pair")
@@ -360,11 +457,17 @@ mod full_tries {
             let counter = TestValue::after_operation(write_op);
             assert_eq!(counter, 0, "Write should never deserialize a value");
         }
-        let delete_op = delete::<K, V, R::ReadWriteTransaction, S, E> as *mut c_void;
+        let delete_op =
+            delete::<K, PanickingFromBytes<V>, R::ReadWriteTransaction, S, E> as *mut c_void;
         for key in keys_to_delete.iter() {
             let _counter = TestValue::before_operation(delete_op);
-            let delete_result =
-                delete::<K, V, _, _, E>(correlation_id, &mut txn, store, &expected_root, key);
+            let delete_result = delete::<K, PanickingFromBytes<V>, _, _, E>(
+                correlation_id,
+                &mut txn,
+                store,
+                &expected_root,
+                key,
+            );
             let counter = TestValue::after_operation(delete_op);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
             match delete_result? {
@@ -386,9 +489,15 @@ mod full_tries {
         let mut actual_root = *root;
         for (key, value) in pairs_to_insert_less_deleted.iter() {
             let _counter = TestValue::before_operation(write_op);
-            if let WriteResult::Written(new_root) =
-                write::<K, V, _, _, E>(correlation_id, &mut txn, store, &actual_root, key, value)?
-            {
+            let new_value = PanickingFromBytes::new(value.clone());
+            if let WriteResult::Written(new_root) = write::<K, PanickingFromBytes<V>, _, _, E>(
+                correlation_id,
+                &mut txn,
+                store,
+                &actual_root,
+                key,
+                &new_value,
+            )? {
                 actual_root = new_root;
             } else {
                 panic!("Could not write pair")
