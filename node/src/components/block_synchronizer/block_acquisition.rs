@@ -320,7 +320,7 @@ impl BlockAcquisitionState {
         validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         is_historical: bool,
-        max_simultaneous_peers: usize,
+        max_simultaneous_peers: u8,
     ) -> Result<BlockAcquisitionAction, BlockAcquisitionError> {
         // self is the resting state we are in, ret is the next action that should be taken
         // to acquire the necessary data to get us to the next step (if any), or an error
@@ -1352,7 +1352,7 @@ impl BlockAcquisitionState {
 pub(super) fn signatures_from_missing_validators(
     validator_weights: &EraValidatorWeights,
     signatures: &mut SignatureAcquisition,
-    max_simultaneous_peers: usize,
+    max_simultaneous_peers: u8,
     peer_list: &PeerList,
     rng: &mut NodeRng,
     block_header: &BlockHeader,
@@ -1362,7 +1362,7 @@ pub(super) fn signatures_from_missing_validators(
         .cloned()
         .collect();
     // If there are too few, retry any in Pending state.
-    if missing_signatures_in_random_order.len() < max_simultaneous_peers {
+    if (missing_signatures_in_random_order.len() as u8) < max_simultaneous_peers {
         missing_signatures_in_random_order.extend(
             validator_weights
                 .missing_validators(signatures.not_pending())

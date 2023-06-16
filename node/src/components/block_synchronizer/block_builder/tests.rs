@@ -16,7 +16,6 @@ fn handle_acceptance() {
         false,
         1,
         TimeDiff::from_seconds(1),
-        TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
     );
@@ -100,7 +99,6 @@ fn register_era_validator_weights() {
         false,
         1,
         TimeDiff::from_seconds(1),
-        TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
     );
@@ -149,7 +147,6 @@ fn register_finalized_block() {
         block.header().block_hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -223,7 +220,6 @@ fn register_block_execution() {
         block.header().block_hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -307,7 +303,6 @@ fn register_block_executed() {
         false,
         1,
         TimeDiff::from_seconds(1),
-        TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
     );
@@ -375,7 +370,6 @@ fn register_block_marked_complete() {
         block.header().block_hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
