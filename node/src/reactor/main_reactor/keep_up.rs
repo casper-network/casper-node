@@ -170,16 +170,6 @@ impl MainReactor {
                 // execution effects.
                 Either::Left(self.keep_up_synced(block_hash, block_height, era_id))
             }
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                // working on syncing a block
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "KeepUp: block synchronizer stalled while syncing block; purging forward builder"
-                );
-                self.block_synchronizer.purge_forward();
-                self.keep_up_idle()
-            }
         }
     }
 
@@ -594,14 +584,6 @@ impl MainReactor {
             BlockSynchronizerProgress::Syncing(_, _, _) => {
                 debug!("KeepUp: still syncing historical block");
                 return Ok(Some(SyncBackInstruction::Syncing));
-            }
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "KeepUp: block synchronizer stalled while syncing historical block; purging historical builder"
-                );
-                self.block_synchronizer.purge_historical();
             }
             BlockSynchronizerProgress::Executing(block_hash, height, _) => {
                 warn!(

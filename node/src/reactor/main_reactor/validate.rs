@@ -50,6 +50,7 @@ impl MainReactor {
                     highest_complete_block.height(),
                     highest_complete_block.header().era_id(),
                 );
+
                 if let SyncInstruction::Leap { .. } =
                     self.block_accumulator.sync_instruction(sync_identifier)
                 {
