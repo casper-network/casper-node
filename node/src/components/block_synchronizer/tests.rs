@@ -932,7 +932,7 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
         block_synchronizer.forward.as_mut(),
         &mut rng,
         NeedNext::BlockHeader(block_hash),
-        "should need finality sigs",
+        "should need block header",
     );
     assert!(
         !generated_effects.is_empty(),
@@ -952,7 +952,6 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
         "should be syncing"
     );
 
-    // Wait for the stall detection time to pass
     tokio::time::sleep(Duration::from(cfg.need_next_interval)).await;
 
     assert_matches!(
@@ -1249,6 +1248,15 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
     // Simulate failed fetch of finality signatures
     let mut generated_effects = Effects::new();
     for (peer, public_key) in sigs_requested {
+        latch_inner_check(
+            block_synchronizer.forward.as_ref(),
+            true,
+            &format!("response from peer: {:?}, but should still be latched until after final response received", peer),
+        );
+        assert!(
+            generated_effects.is_empty(),
+            "effects should remain empty until last response"
+        );
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             &mut rng,
@@ -1268,14 +1276,33 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
 
     assert_matches!(
         block_synchronizer.forward_progress(),
-        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == expected_block_hash
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == expected_block_hash,
+        "should be syncing"
     );
 
     // The effects are empty at this point and the synchronizer is stuck
-    assert!(generated_effects.is_empty());
+    assert!(
+        !generated_effects.is_empty(),
+        "should have gotten effects after the final response tail called into need next"
+    );
 
-    // Wait for the stall detection time to pass
-    tokio::time::sleep(Duration::from(cfg.need_next_interval * 2)).await;
+    latch_inner_check(
+        block_synchronizer.forward.as_ref(),
+        true,
+        "all requests have been responded to, and the last event response should have \
+        resulted in a fresh need next being reported and thus a new latch",
+    );
+
+    for event in mock_reactor.process_effects(generated_effects).await {
+        assert_matches!(
+            event,
+            MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                id,
+                peer,
+                ..
+            }) if peers.contains(&peer) && id.block_hash == expected_block_hash && id.era_id == block.header().era_id()
+        );
+    }
 
     // Check if the forward builder is reported as stalled so that the control logic can recover
     assert_matches!(
