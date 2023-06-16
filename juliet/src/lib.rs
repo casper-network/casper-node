@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    num::NonZeroU32,
+};
 
 mod header;
 pub mod reader;
@@ -73,6 +76,90 @@ impl From<Id> for u16 {
     fn from(value: Id) -> Self {
         value.get()
     }
+}
+
+/// The outcome from a parsing operation over a potentially incomplete buffer.
+#[derive(Debug)]
+#[must_use]
+pub enum Outcome<T, E> {
+    /// The given data was incomplete, at least the given amount of additional bytes is needed.
+    Incomplete(NonZeroU32),
+    /// An fatal error was found in the given input.
+    Err(E),
+    /// The parse was successful and the underlying buffer has been modified to extract `T`.
+    Success(T),
+}
+
+impl<T, E> Outcome<T, E> {
+    /// Expects the outcome, similar to [`std::result::Result::unwrap`].
+    ///
+    /// Returns the value of [`Outcome::Success`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
+    #[inline]
+    #[track_caller]
+    pub fn expect(self, msg: &str) -> T {
+        match self {
+            Outcome::Success(value) => value,
+            Outcome::Incomplete(_) | Outcome::Err(_) => panic!("{}", msg),
+        }
+    }
+
+    /// Maps the error of an [`Outcome`].
+    #[inline]
+    pub fn map_err<E2, F>(self, f: F) -> Outcome<T, E2>
+    where
+        F: FnOnce(E) -> E2,
+    {
+        match self {
+            Outcome::Incomplete(n) => Outcome::Incomplete(n),
+            Outcome::Err(err) => Outcome::Err(f(err)),
+            Outcome::Success(value) => Outcome::Success(value),
+        }
+    }
+
+    /// Unwraps the outcome, similar to [`std::result::Result::unwrap`].
+    ///
+    /// Returns the value of [`Outcome::Success`].
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
+    #[inline]
+    #[track_caller]
+    pub fn unwrap(self) -> T {
+        match self {
+            Outcome::Incomplete(n) => panic!("called unwrap on incomplete({}) outcome", n),
+            Outcome::Err(_err) => panic!("called unwrap on error outcome"),
+            Outcome::Success(value) => value,
+        }
+    }
+
+    #[inline]
+    #[track_caller]
+    pub fn incomplete(remaining: usize) -> Outcome<T, E> {
+        Outcome::Incomplete(
+            NonZeroU32::new(u32::try_from(remaining).expect("did not expect large usize"))
+                .expect("did not expect 0-byte `Incomplete`"),
+        )
+    }
+}
+
+/// `try!` for [`Outcome`].
+///
+/// Will return [`Outcome::Incomplete`] and [`Outcome::Err`] upwards, or unwrap the value found in
+/// [`Outcome::Success`].
+#[macro_export]
+macro_rules! try_outcome {
+    ($src:expr) => {
+        match $src {
+            Outcome::Incomplete(n) => return Outcome::Incomplete(n),
+            Outcome::Err(err) => return Outcome::Err(err.into()),
+            Outcome::Success(value) => value,
+        }
+    };
 }
 
 #[cfg(test)]

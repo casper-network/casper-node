@@ -1,12 +1,13 @@
 mod multiframe;
 
-use std::collections::HashSet;
+use std::{collections::HashSet, num::NonZeroU32};
 
 use bytes::{Buf, Bytes, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header, Kind},
-    ChannelId, Id,
+    try_outcome, ChannelId, Id,
+    Outcome::{self, Err, Incomplete, Success},
 };
 
 const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
@@ -55,40 +56,15 @@ pub enum CompletedRead {
     ResponseCancellation { id: Id },
 }
 
-pub enum Outcome<T> {
-    Incomplete(usize),
-    ProtocolErr(Header),
-    Success(T),
-}
-
-macro_rules! try_outcome {
-    ($src:expr) => {
-        match $src {
-            Outcome::Incomplete(n) => return Outcome::Incomplete(n),
-            Outcome::ProtocolErr(header) => return Outcome::ProtocolErr(header),
-            Outcome::Success(value) => value,
-        }
-    };
-}
-
-use Outcome::{Incomplete, ProtocolErr, Success};
-
 use self::multiframe::MultiframeSendState;
 
-impl Header {
-    #[inline]
-    pub(crate) fn return_err<T>(self, kind: ErrorKind) -> Outcome<T> {
-        Outcome::ProtocolErr(Header::new_error(kind, self.channel(), self.id()))
-    }
-}
-
 impl<const N: usize> ReaderState<N> {
-    pub fn process(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead> {
+    pub fn process(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {
         // First, attempt to complete a frame.
         loop {
             // We do not have enough data to extract a header, indicate and return.
             if buffer.len() < Header::SIZE {
-                return Incomplete(Header::SIZE - buffer.len());
+                return Incomplete(NonZeroU32::new((Header::SIZE - buffer.len()) as u32).unwrap());
             }
 
             let header_raw: [u8; Header::SIZE] = buffer[0..Header::SIZE].try_into().unwrap();
@@ -96,7 +72,7 @@ impl<const N: usize> ReaderState<N> {
                 Some(header) => header,
                 None => {
                     // The header was invalid, return an error.
-                    return ProtocolErr(Header::new_error(
+                    return Err(Header::new_error(
                         ErrorKind::InvalidHeader,
                         UNKNOWN_CHANNEL,
                         UNKNOWN_ID,
@@ -121,17 +97,17 @@ impl<const N: usize> ReaderState<N> {
             // At this point we are guaranteed a valid non-error frame, verify its channel.
             let channel = match self.channels.get_mut(header.channel().get() as usize) {
                 Some(channel) => channel,
-                None => return header.return_err(ErrorKind::InvalidChannel),
+                None => return Err(header.with_err(ErrorKind::InvalidChannel)),
             };
 
             match header.kind() {
                 Kind::Request => {
                     if channel.is_at_max_requests() {
-                        return header.return_err(ErrorKind::RequestLimitExceeded);
+                        return Err(header.with_err(ErrorKind::RequestLimitExceeded));
                     }
 
                     if channel.incoming_requests.insert(header.id()) {
-                        return header.return_err(ErrorKind::DuplicateRequest);
+                        return Err(header.with_err(ErrorKind::DuplicateRequest));
                     }
                     channel.increment_cancellation_allowance();
 
@@ -146,7 +122,7 @@ impl<const N: usize> ReaderState<N> {
                 }
                 Kind::Response => {
                     if !channel.outgoing_requests.remove(&header.id()) {
-                        return header.return_err(ErrorKind::FictitiousRequest);
+                        return Err(header.with_err(ErrorKind::FictitiousRequest));
                     } else {
                         return Success(CompletedRead::ReceivedResponse {
                             id: header.id(),
@@ -162,12 +138,12 @@ impl<const N: usize> ReaderState<N> {
                         // If we're in the ready state, requests must be eagerly rejected if
                         // exceeding the limit.
                         if channel.is_at_max_requests() {
-                            return header.return_err(ErrorKind::RequestLimitExceeded);
+                            return Err(header.with_err(ErrorKind::RequestLimitExceeded));
                         }
 
                         // We also check for duplicate requests early to avoid reading them.
                         if channel.incoming_requests.contains(&header.id()) {
-                            return header.return_err(ErrorKind::DuplicateRequest);
+                            return Err(header.with_err(ErrorKind::DuplicateRequest));
                         }
                     };
 
@@ -183,7 +159,7 @@ impl<const N: usize> ReaderState<N> {
                     // If we made it to this point, we have consumed the frame. Record it.
                     if is_new_request {
                         if channel.incoming_requests.insert(header.id()) {
-                            return header.return_err(ErrorKind::DuplicateRequest);
+                            return Err(header.with_err(ErrorKind::DuplicateRequest));
                         }
                         channel.increment_cancellation_allowance();
                     }
@@ -209,7 +185,7 @@ impl<const N: usize> ReaderState<N> {
                     // Ensure it is not a bogus response.
                     if is_new_response {
                         if !channel.outgoing_requests.contains(&header.id()) {
-                            return header.return_err(ErrorKind::FictitiousRequest);
+                            return Err(header.with_err(ErrorKind::FictitiousRequest));
                         }
                     }
 
@@ -225,7 +201,7 @@ impl<const N: usize> ReaderState<N> {
                     // If we made it to this point, we have consumed the frame.
                     if is_new_response {
                         if !channel.outgoing_requests.remove(&header.id()) {
-                            return header.return_err(ErrorKind::FictitiousRequest);
+                            return Err(header.with_err(ErrorKind::FictitiousRequest));
                         }
                     }
 
@@ -248,7 +224,7 @@ impl<const N: usize> ReaderState<N> {
                     // cancellation races. For security reasons they are subject to an allowance.
 
                     if channel.cancellation_allowance == 0 {
-                        return header.return_err(ErrorKind::CancellationLimitExceeded);
+                        return Err(header.with_err(ErrorKind::CancellationLimitExceeded));
                     }
                     channel.cancellation_allowance -= 1;
 
@@ -260,7 +236,7 @@ impl<const N: usize> ReaderState<N> {
                     if channel.outgoing_requests.remove(&header.id()) {
                         return Success(CompletedRead::ResponseCancellation { id: header.id() });
                     } else {
-                        return header.return_err(ErrorKind::FictitiousCancel);
+                        return Err(header.with_err(ErrorKind::FictitiousCancel));
                     }
                 }
             }

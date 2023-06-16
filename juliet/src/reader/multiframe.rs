@@ -4,8 +4,9 @@ use bytes::{Buf, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header},
-    reader::Outcome::{self, Incomplete, Success},
-    varint::{decode_varint32, Varint32Result},
+    reader::Outcome::{self, Err, Success},
+    try_outcome,
+    varint::decode_varint32,
 };
 
 /// Bytes offset with a lifetime.
@@ -72,7 +73,7 @@ impl MultiframeSendState {
         max_frame_size: u32,
         max_payload_size: u32,
         payload_exceeded_error_kind: ErrorKind,
-    ) -> Outcome<Option<BytesMut>> {
+    ) -> Outcome<Option<BytesMut>, Header> {
         debug_assert!(
             max_frame_size >= 10,
             "maximum frame size must be enough to hold header and varint"
@@ -83,37 +84,35 @@ impl MultiframeSendState {
                 // We have a new segment, which has a variable size.
                 let segment_buf = &buffer[Header::SIZE..];
 
-                match decode_varint32(segment_buf) {
-                    Varint32Result::Incomplete => return Incomplete(1),
-                    Varint32Result::Overflow => return header.return_err(ErrorKind::BadVarInt),
-                    Varint32Result::Valid {
-                        offset,
-                        value: total_payload_size,
-                    } => {
-                        if total_payload_size > max_payload_size {
-                            return header.return_err(payload_exceeded_error_kind);
+                let payload_size = try_outcome!(decode_varint32(segment_buf)
+                    .map_err(|_overflow| header.with_err(ErrorKind::BadVarInt)));
+
+                {
+                    {
+                        if payload_size.value > max_payload_size {
+                            return Err(header.with_err(payload_exceeded_error_kind));
                         }
 
                         // We have a valid varint32.
-                        let preamble_size = Header::SIZE as u32 + offset.get() as u32;
+                        let preamble_size = Header::SIZE as u32 + payload_size.offset.get() as u32;
                         let max_data_in_frame = (max_frame_size - preamble_size) as u32;
 
                         // Determine how many additional bytes are needed for frame completion.
                         let frame_end = Index::new(
                             &buffer,
                             preamble_size as usize
-                                + (max_data_in_frame as usize).min(total_payload_size as usize),
+                                + (max_data_in_frame as usize).min(payload_size.value as usize),
                         );
                         if buffer.remaining() < *frame_end {
-                            return Incomplete(buffer.remaining() - *frame_end);
+                            return Outcome::incomplete(buffer.remaining() - *frame_end);
                         }
 
                         // At this point we are sure to complete a frame, so drop the preamble.
                         buffer.advance(preamble_size as usize);
 
                         // Is the payload complete in one frame?
-                        if total_payload_size <= max_data_in_frame {
-                            let payload = buffer.split_to(total_payload_size as usize);
+                        if payload_size.value <= max_data_in_frame {
+                            let payload = buffer.split_to(payload_size.value as usize);
 
                             // No need to alter the state, we stay `Ready`.
                             Success(Some(payload))
@@ -125,7 +124,7 @@ impl MultiframeSendState {
                             *self = MultiframeSendState::InProgress {
                                 header,
                                 payload: partial_payload,
-                                total_payload_size,
+                                total_payload_size: payload_size.value,
                             };
 
                             // We have successfully consumed a frame, but are not finished yet.
@@ -141,7 +140,7 @@ impl MultiframeSendState {
             } => {
                 if header != *active_header {
                     // The newly supplied header does not match the one active.
-                    return header.return_err(ErrorKind::InProgress);
+                    return Err(header.with_err(ErrorKind::InProgress));
                 }
 
                 // Determine whether we expect an intermediate or end segment.
@@ -151,7 +150,7 @@ impl MultiframeSendState {
                 if bytes_remaining > max_data_in_frame {
                     // Intermediate segment.
                     if buffer.remaining() < max_frame_size as usize {
-                        return Incomplete(max_frame_size as usize - buffer.remaining());
+                        return Outcome::incomplete(max_frame_size as usize - buffer.remaining());
                     }
 
                     // Discard header.
@@ -169,7 +168,7 @@ impl MultiframeSendState {
 
                     // If we don't have the entire frame read yet, return.
                     if *frame_end > buffer.remaining() {
-                        return Incomplete(*frame_end - buffer.remaining());
+                        return Outcome::incomplete(*frame_end - buffer.remaining());
                     }
 
                     // Discard header.

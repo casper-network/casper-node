@@ -231,11 +231,23 @@ impl Header {
             _ => unreachable!(),
         }
     }
+
+    /// Creates a new header with the same id and channel but an error kind.
+    #[inline]
+    pub(crate) fn with_err(self, kind: ErrorKind) -> Self {
+        Header::new_error(kind, self.channel(), self.id())
+    }
 }
 
 impl From<Header> for [u8; Header::SIZE] {
     fn from(value: Header) -> Self {
         value.0
+    }
+}
+
+impl AsRef<[u8; Header::SIZE]> for Header {
+    fn as_ref(&self) -> &[u8; Header::SIZE] {
+        &self.0
     }
 }
 
