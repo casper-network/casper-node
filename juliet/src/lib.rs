@@ -1,7 +1,7 @@
 use std::fmt::{self, Display};
 
 mod header;
-mod reader;
+pub mod reader;
 pub mod varint;
 
 /// A channel identifier.
@@ -11,7 +11,7 @@ pub mod varint;
 /// exists.
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialOrd, PartialEq)]
 #[repr(transparent)]
-struct ChannelId(u8);
+pub struct ChannelId(u8);
 
 impl Display for ChannelId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -46,7 +46,7 @@ impl From<ChannelId> for u8 {
 /// Does not indicate whether or not an ID refers to an existing request.
 #[derive(Copy, Clone, Debug, Eq, Hash, Ord, PartialOrd, PartialEq)]
 #[repr(transparent)]
-struct Id(u16);
+pub struct Id(u16);
 
 impl Display for Id {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

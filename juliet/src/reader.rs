@@ -1,12 +1,11 @@
 mod multiframe;
 
-use std::{collections::HashSet, marker::PhantomData, mem, ops::Deref};
+use std::collections::HashSet;
 
 use bytes::{Buf, Bytes, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header, Kind},
-    varint::{decode_varint32, Varint32Result},
     ChannelId, Id,
 };
 
@@ -14,7 +13,7 @@ const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
 const UNKNOWN_ID: Id = Id::new(0);
 
 #[derive(Debug)]
-pub struct State<const N: usize> {
+pub struct ReaderState<const N: usize> {
     channels: [Channel; N],
     max_frame_size: u32,
 }
@@ -48,7 +47,7 @@ impl Channel {
     }
 }
 
-enum CompletedRead {
+pub enum CompletedRead {
     ErrorReceived(Header),
     NewRequest { id: Id, payload: Option<Bytes> },
     ReceivedResponse { id: Id, payload: Option<Bytes> },
@@ -56,7 +55,7 @@ enum CompletedRead {
     ResponseCancellation { id: Id },
 }
 
-pub(crate) enum Outcome<T> {
+pub enum Outcome<T> {
     Incomplete(usize),
     ProtocolErr(Header),
     Success(T),
@@ -83,8 +82,8 @@ impl Header {
     }
 }
 
-impl<const N: usize> State<N> {
-    fn process_data(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead> {
+impl<const N: usize> ReaderState<N> {
+    pub fn process(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead> {
         // First, attempt to complete a frame.
         loop {
             // We do not have enough data to extract a header, indicate and return.

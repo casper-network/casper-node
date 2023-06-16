@@ -182,14 +182,6 @@ impl MultiframeSendState {
         }
     }
 
-    #[inline]
-    pub(super) fn current_header(&self) -> Option<Header> {
-        match self {
-            MultiframeSendState::Ready => None,
-            MultiframeSendState::InProgress { header, .. } => Some(*header),
-        }
-    }
-
     pub(super) fn is_new_transfer(&self, new_header: Header) -> bool {
         match self {
             MultiframeSendState::Ready => true,

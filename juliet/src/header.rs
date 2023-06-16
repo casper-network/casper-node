@@ -6,7 +6,7 @@ use crate::{ChannelId, Id};
 /// Header structure.
 #[derive(Copy, Clone, Eq, PartialEq)]
 #[repr(transparent)]
-pub(crate) struct Header([u8; Self::SIZE]);
+pub struct Header([u8; Self::SIZE]);
 
 impl Debug for Header {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
