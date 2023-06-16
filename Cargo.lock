@@ -705,9 +705,9 @@ dependencies = [
 
 [[package]]
 name = "casper-wasm-utils"
-version = "1.1.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13cd18418b19bc2cbd2bc724cc9050055848e734182e861af43e130a0d442291"
+checksum = "b49e4ef1382d48c312809fe8f09d0c7beb434a74f5026c5f12efe384df51ca42"
 dependencies = [
  "byteorder",
  "log",
