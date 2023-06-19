@@ -61,6 +61,8 @@ where
 {
     let path: Vec<u8> = key.to_bytes()?;
 
+    let store = store_wrappers::OnceDeserializingStore::new(store);
+
     let mut depth: usize = 0;
     let mut current: Trie<K, V> = match store.get(txn, root)? {
         Some(root) => root,
