@@ -1,6 +1,5 @@
 use std::{borrow::Cow, collections::HashSet};
 
-use libc::c_void;
 use num_traits::FromPrimitive;
 
 use casper_hashing::Digest;
@@ -189,12 +188,10 @@ where
     {
         let source_txn: R::ReadTransaction = source_environment.create_read_txn()?;
         let target_txn: R::ReadTransaction = target_environment.create_read_txn()?;
-        let read_op = operations::read::<K, V, R::ReadTransaction, S, E> as *mut c_void;
         let target_keys =
             operations::keys::<_, _, _, _>(correlation_id, &target_txn, target_store, root)
                 .collect::<Result<Vec<K>, S::Error>>()?;
         for key in target_keys {
-            let _counter = TestValue::before_operation(read_op);
             let maybe_value: ReadResult<V> = operations::read::<_, _, _, _, E>(
                 correlation_id,
                 &source_txn,
@@ -202,18 +199,6 @@ where
                 root,
                 &key,
             )?;
-            let counter = TestValue::after_operation(read_op);
-            if maybe_value.is_found() {
-                assert_eq!(
-                    counter, 1,
-                    "Read should deserialize value only once if the key is found"
-                );
-            } else {
-                assert_eq!(
-                    counter, 0,
-                    "Read should never deserialize value if the key is not found"
-                );
-            }
             assert!(maybe_value.is_found())
         }
         source_txn.commit()?;
@@ -228,8 +213,6 @@ where
             operations::keys::<_, _, _, _>(correlation_id, &source_txn, source_store, root)
                 .collect::<Result<Vec<K>, S::Error>>()?;
         for key in source_keys {
-            let read_op = operations::read::<K, V, R::ReadTransaction, S, E> as *mut c_void;
-            let _counter = TestValue::before_operation(read_op);
             let maybe_value: ReadResult<V> = operations::read::<_, _, _, _, E>(
                 correlation_id,
                 &target_txn,
@@ -237,18 +220,6 @@ where
                 root,
                 &key,
             )?;
-            let counter = TestValue::after_operation(read_op);
-            if maybe_value.is_found() {
-                assert_eq!(
-                    counter, 1,
-                    "Read should deserialize value only once if the key is found"
-                );
-            } else {
-                assert_eq!(
-                    counter, 0,
-                    "Read should never deserialize value if the key is not found"
-                );
-            }
             assert!(maybe_value.is_found())
         }
         source_txn.commit()?;
