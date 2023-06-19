@@ -1,6 +1,7 @@
+use std::marker::PhantomData;
+#[cfg(debug_assertions)]
 use std::{
     collections::HashSet,
-    marker::PhantomData,
     sync::{Arc, Mutex},
 };
 
@@ -75,6 +76,7 @@ where
     pub(crate) fn new(store: &'a S) -> Self {
         Self {
             store,
+            #[cfg(debug_assertions)]
             deserialize_tracking: Arc::new(Mutex::new(HashSet::new())),
             _marker: PhantomData,
         }
