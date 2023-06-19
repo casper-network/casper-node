@@ -26,7 +26,7 @@ struct Channel {
     request_limit: u32,
     max_request_payload_size: u32,
     max_response_payload_size: u32,
-    current_multiframe_receive: MultiframeSendState,
+    current_multiframe_receive: MultiframeReceiver,
     cancellation_allowance: u32,
 }
 
@@ -56,7 +56,7 @@ pub enum CompletedRead {
     ResponseCancellation { id: Id },
 }
 
-use self::multiframe::MultiframeSendState;
+use self::multiframe::MultiframeReceiver;
 
 impl<const N: usize> ReaderState<N> {
     pub fn process(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {

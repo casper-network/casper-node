@@ -11,7 +11,7 @@ use crate::Outcome::{self, Err, Incomplete, Success};
 const VARINT_MASK: u8 = 0b0111_1111;
 
 /// The only possible error for a varint32 parsing, value overflow.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct Overflow;
 
 /// A successful parse of a varint32.
@@ -19,7 +19,7 @@ pub struct Overflow;
 /// Contains both the decoded value and the bytes consumed.
 pub struct ParsedU32 {
     /// The number of bytes consumed by the varint32.
-    // The `NonZeroU8` allows for niche optimization of compound types.
+    // Note: The `NonZeroU8` allows for niche optimization of compound types containing this type.
     pub offset: NonZeroU8,
     /// The actual parsed value.
     pub value: u32,
@@ -50,7 +50,9 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
 
 /// An encoded varint32.
 ///
-/// Internally these are stored as six byte arrays to make passing around convenient.
+/// Internally these are stored as six byte arrays to make passing around convenient. Since the
+/// maximum length a 32 bit varint can posses is 5 bytes, the 6th bytes is used to record the
+/// length.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug)]
 pub struct Varint32([u8; 6]);
@@ -123,7 +125,8 @@ mod tests {
 
     #[track_caller]
     fn check_decode(expected: u32, input: &[u8]) {
-        let ParsedU32 { offset, value } = decode_varint32(input).unwrap();
+        let ParsedU32 { offset, value } =
+            decode_varint32(input).expect("expected decoding to succeed");
         assert_eq!(expected, value);
         assert_eq!(offset.get() as usize, input.len());
 

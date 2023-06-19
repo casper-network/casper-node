@@ -1,3 +1,8 @@
+//! A `juliet` protocol implementation.
+//!
+//! This crate implements the juliet multiplexing protocol as laid out in the juliet RFC. It aims to
+//! be a secure, simple, easy to verify/review implementation that is still reasonably performant.
+
 use std::{
     fmt::{self, Display},
     num::NonZeroU32,
@@ -78,7 +83,7 @@ impl From<Id> for u16 {
     }
 }
 
-/// The outcome from a parsing operation over a potentially incomplete buffer.
+/// The outcome of a parsing operation on a potentially incomplete buffer.
 #[derive(Debug)]
 #[must_use]
 pub enum Outcome<T, E> {
@@ -103,7 +108,8 @@ impl<T, E> Outcome<T, E> {
     pub fn expect(self, msg: &str) -> T {
         match self {
             Outcome::Success(value) => value,
-            Outcome::Incomplete(_) | Outcome::Err(_) => panic!("{}", msg),
+            Outcome::Incomplete(_) => panic!("incomplete: {}", msg),
+            Outcome::Err(_) => panic!("error: {}", msg),
         }
     }
 
@@ -120,23 +126,6 @@ impl<T, E> Outcome<T, E> {
         }
     }
 
-    /// Unwraps the outcome, similar to [`std::result::Result::unwrap`].
-    ///
-    /// Returns the value of [`Outcome::Success`].
-    ///
-    /// # Panics
-    ///
-    /// Will panic if the [`Outcome`] is not [`Outcome::Success`].
-    #[inline]
-    #[track_caller]
-    pub fn unwrap(self) -> T {
-        match self {
-            Outcome::Incomplete(n) => panic!("called unwrap on incomplete({}) outcome", n),
-            Outcome::Err(_err) => panic!("called unwrap on error outcome"),
-            Outcome::Success(value) => value,
-        }
-    }
-
     #[inline]
     #[track_caller]
     pub fn incomplete(remaining: usize) -> Outcome<T, E> {
@@ -149,7 +138,7 @@ impl<T, E> Outcome<T, E> {
 
 /// `try!` for [`Outcome`].
 ///
-/// Will return [`Outcome::Incomplete`] and [`Outcome::Err`] upwards, or unwrap the value found in
+/// Will pass [`Outcome::Incomplete`] and [`Outcome::Err`] upwards, or unwrap the value found in
 /// [`Outcome::Success`].
 #[macro_export]
 macro_rules! try_outcome {

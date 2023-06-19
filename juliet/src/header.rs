@@ -136,11 +136,11 @@ impl Header {
     #[inline(always)]
     pub fn parse(mut raw: [u8; Header::SIZE]) -> Option<Self> {
         // Zero-out reserved bits.
-        raw[0] &= Self::KIND_ERR_MASK | Self::KIND_ERR_BIT;
+        raw[0] &= Self::KIND_ERR_MASK | Self::KIND_MASK | Self::KIND_ERR_BIT;
 
         let header = Header(raw);
 
-        // Check that the kind byte is within valid range and mask reserved bits.
+        // Check that the kind byte is within valid range.
         if header.is_error() {
             if (header.kind_byte() & Self::KIND_ERR_MASK) > ErrorKind::HIGHEST as u8 {
                 return None;
@@ -150,7 +150,7 @@ impl Header {
                 return None;
             }
 
-            // Ensure the 4th bit is not set.
+            // Ensure the 4th bit is not set, since the error kind bits are superset of kind bits.
             if header.0[0] & Self::KIND_MASK != header.0[0] {
                 return None;
             }

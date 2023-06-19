@@ -1,3 +1,8 @@
+//! Multiframe reading support.
+//!
+//! The juliet protocol supports multi-frame messages, which are subject to addtional rules and
+//! checks. The resulting state machine is encoded in the [`MultiframeReceiver`] type.
+
 use std::{marker::PhantomData, mem, ops::Deref};
 
 use bytes::{Buf, BytesMut};
@@ -11,9 +16,9 @@ use crate::{
 
 /// Bytes offset with a lifetime.
 ///
-/// Ensures that offsets that are depending on a buffer not being modified are not invalidated.
+/// Helper type that ensures that offsets that are depending on a buffer are not being invalidated through accidental modification.
 struct Index<'a> {
-    /// The value of the `Index`.
+    /// The byte offset this `Index` represents.
     index: usize,
     /// Buffer it is tied to.
     buffer: PhantomData<&'a BytesMut>,
@@ -28,7 +33,7 @@ impl<'a> Deref for Index<'a> {
 }
 
 impl<'a> Index<'a> {
-    /// Creates a new `Index` with value `index`, borrowing `buffer`.
+    /// Creates a new `Index` with offset value `index`, borrowing `buffer`.
     fn new(buffer: &'a BytesMut, index: usize) -> Self {
         let _ = buffer;
         Index {
@@ -39,9 +44,10 @@ impl<'a> Index<'a> {
 }
 
 /// The multi-frame message receival state of a single channel, as specified in the RFC.
-#[derive(Debug)]
-pub(super) enum MultiframeSendState {
+#[derive(Debug, Default)]
+pub(super) enum MultiframeReceiver {
     /// The channel is ready to start receiving a new multi-frame message.
+    #[default]
     Ready,
     /// A multi-frame message transfer is currently in progress.
     InProgress {
@@ -54,18 +60,28 @@ pub(super) enum MultiframeSendState {
     },
 }
 
-impl MultiframeSendState {
+impl MultiframeReceiver {
     /// Attempt to process a single multi-frame message frame.
     ///
-    /// The caller must only calls this method if it has determined that the frame in `buffer` is
-    /// one that requires a payload.
+    /// The caller MUST only call this method if it has determined that the frame in `buffer` is one
+    /// that includes a payload. If this is the case, the entire receive `buffer` should be passed
+    /// to this function.
     ///
-    /// If a message payload matching the given header has been succesfully completed, returns it.
-    /// If a starting or intermediate segment was processed without completing the message, returns
-    /// `None` instead. This method will never consume more than one frame.
+    /// If a message payload matching the given header has been succesfully completed, both header
+    /// and payload are consumed from the `buffer`, the payload being returned. If a starting or
+    /// intermediate segment was processed without completing the message, both are still consume,
+    /// but `None` is returned instead. This method will never consume more than one frame.
     ///
-    /// Assumes that `header` is the first [`Header::SIZE`] bytes of `buffer`. Will advance `buffer`
-    /// past header and payload only on success.
+    /// On any error, [`Outcome::Err`] with a suitable header to return to the sender is returned.
+    ///
+    /// `max_payload_size` is the maximum size of a payload across multiple frames. If it is
+    /// exceeded, the `payload_exceeded_error_kind` function is used to construct an error `Header`
+    /// to return.
+    ///
+    /// # Panics
+    ///
+    /// Panics in debug builds if `max_frame_size` is too small to hold a maximum sized varint and
+    /// a header.
     pub(super) fn accept(
         &mut self,
         header: Header,
@@ -80,7 +96,7 @@ impl MultiframeSendState {
         );
 
         match self {
-            MultiframeSendState::Ready => {
+            MultiframeReceiver::Ready => {
                 // We have a new segment, which has a variable size.
                 let segment_buf = &buffer[Header::SIZE..];
 
@@ -121,7 +137,7 @@ impl MultiframeSendState {
                             let partial_payload = buffer.split_to(max_frame_size as usize);
 
                             // We are now in progress of reading a payload.
-                            *self = MultiframeSendState::InProgress {
+                            *self = MultiframeReceiver::InProgress {
                                 header,
                                 payload: partial_payload,
                                 total_payload_size: payload_size.value,
@@ -133,7 +149,7 @@ impl MultiframeSendState {
                     }
                 }
             }
-            MultiframeSendState::InProgress {
+            MultiframeReceiver::InProgress {
                 header: active_header,
                 payload,
                 total_payload_size,
@@ -179,7 +195,7 @@ impl MultiframeSendState {
                     buffer.advance(bytes_remaining);
 
                     let finished_payload = mem::take(payload);
-                    *self = MultiframeSendState::Ready;
+                    *self = MultiframeReceiver::Ready;
 
                     Success(Some(finished_payload))
                 }
@@ -187,10 +203,13 @@ impl MultiframeSendState {
         }
     }
 
+    /// Determines whether given `new_header` would be a new transfer if accepted.
+    ///
+    /// If `false`, `new_header` would indicate a continuation of an already in-progress transfer.
     pub(super) fn is_new_transfer(&self, new_header: Header) -> bool {
         match self {
-            MultiframeSendState::Ready => true,
-            MultiframeSendState::InProgress { header, .. } => *header != new_header,
+            MultiframeReceiver::Ready => true,
+            MultiframeReceiver::InProgress { header, .. } => *header != new_header,
         }
     }
 }
