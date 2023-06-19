@@ -61,6 +61,8 @@ where
 {
     let path: Vec<u8> = key.to_bytes()?;
 
+    let store = store_wrappers::OnceDeserializingStore::new(store);
+
     let mut depth: usize = 0;
     let mut current: Trie<K, V> = match store.get(txn, root)? {
         Some(root) => root,
@@ -292,45 +294,6 @@ where
     })
 }
 
-struct TrieScan<K, V> {
-    tip: Trie<K, V>,
-    parents: Parents<K, V>,
-}
-
-impl<K, V> TrieScan<K, V> {
-    fn new(tip: Trie<K, V>, parents: Parents<K, V>) -> Self {
-        TrieScan { tip, parents }
-    }
-}
-
-/// Returns a [`TrieScan`] from the given key at a given root in a given store.
-/// A scan consists of the deepest trie variant found at that key, a.k.a. the
-/// "tip", along the with the parents of that variant. Parents are ordered by
-/// their depth from the root (shallow to deep).
-fn scan<K, V, T, S, E>(
-    txn: &T,
-    store: &S,
-    key_bytes: &[u8],
-    root: &Trie<K, V>,
-) -> Result<TrieScan<K, V>, E>
-where
-    K: ToBytes + FromBytes + Clone,
-    V: ToBytes + FromBytes + Clone,
-    T: Readable<Handle = S::Handle>,
-    S: TrieStore<K, V>,
-    S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
-{
-    let root_bytes = root.to_bytes()?;
-    let TrieScanRaw { tip, parents } =
-        scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
-    let tip = match tip {
-        LazyTrieLeaf::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
-        LazyTrieLeaf::Right(tip) => tip,
-    };
-    Ok(TrieScan::new(tip, parents))
-}
-
 struct TrieScanRaw<K, V> {
     tip: LazyTrieLeaf<K, V>,
     parents: Parents<K, V>,
@@ -342,10 +305,13 @@ impl<K, V> TrieScanRaw<K, V> {
     }
 }
 
-/// Just like scan, however we don't parse the tip.
+/// Returns a [`TrieScanRaw`] from the given key at a given root in a given store.
+/// A scan consists of the deepest trie variant found at that key, a.k.a. the
+/// "tip", along the with the parents of that variant. Parents are ordered by
+/// their depth from the root (shallow to deep). The tip is not parsed.
 fn scan_raw<K, V, T, S, E>(
     txn: &T,
-    store: &S,
+    store: &NonDeserializingStore<K, V, S>,
     key_bytes: &[u8],
     root_bytes: Bytes,
 ) -> Result<TrieScanRaw<K, V>, E>
@@ -464,6 +430,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
+    let store = store_wrappers::NonDeserializingStore::new(store);
     let root_trie_bytes = match store.get_raw(txn, root)? {
         None => return Ok(DeleteResult::RootNotFound),
         Some(root_trie) => root_trie,
@@ -471,7 +438,7 @@ where
 
     let key_bytes = key_to_delete.to_bytes()?;
     let TrieScanRaw { tip, mut parents } =
-        scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
+        scan_raw::<_, _, _, _, E>(txn, &store, &key_bytes, root_trie_bytes)?;
 
     // Check that tip is a leaf
     match tip {
@@ -925,52 +892,68 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    match store.get(txn, root)? {
+    let store = store_wrappers::NonDeserializingStore::new(store);
+    match store.get_raw(txn, root)? {
         None => Ok(WriteResult::RootNotFound),
-        Some(current_root) => {
+        Some(current_root_bytes) => {
             let new_leaf = Trie::Leaf {
                 key: key.to_owned(),
                 value: value.to_owned(),
             };
             let path: Vec<u8> = key.to_bytes()?;
-            let TrieScan { tip, parents } =
-                scan::<K, V, T, S, E>(txn, store, &path, &current_root)?;
+            let TrieScanRaw { tip, parents } =
+                scan_raw::<K, V, T, S, E>(txn, &store, &path, current_root_bytes)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
-                // If the "tip" is the same as the new leaf, then the leaf
-                // is already in the Trie.
-                Trie::Leaf { .. } if new_leaf == tip => Vec::new(),
-                // If the "tip" is an existing leaf with the same key as the
-                // new leaf, but the existing leaf and new leaf have different
-                // values, then we are in the situation where we are "updating"
-                // an existing leaf.
-                Trie::Leaf {
-                    key: ref leaf_key,
-                    value: ref leaf_value,
-                } if key == leaf_key && value != leaf_value => rehash(new_leaf, parents)?,
-                // If the "tip" is an existing leaf with a different key than
-                // the new leaf, then we are in a situation where the new leaf
-                // shares some common prefix with the existing leaf.
-                Trie::Leaf {
-                    key: ref existing_leaf_key,
-                    ..
-                } if key != existing_leaf_key => {
-                    let existing_leaf_path = existing_leaf_key.to_bytes()?;
-                    let (new_node, parents) = reparent_leaf(&path, &existing_leaf_path, parents)?;
-                    let parents = add_node_to_parents(&path, new_node, parents);
-                    rehash(new_leaf, parents)?
+                LazyTrieLeaf::Left(leaf_bytes) => {
+                    let trie_tag = trie::lazy_trie_tag(leaf_bytes.as_slice());
+                    assert_eq!(
+                        trie_tag,
+                        Some(TrieTag::Leaf),
+                        "Unexpected trie variant found instead of a `TrieTag::Leaf`"
+                    );
+
+                    let key_bytes: &[u8] = &leaf_bytes[1..];
+                    let (existing_leaf_key, existing_value_bytes) = K::from_bytes(key_bytes)?;
+
+                    if key != &existing_leaf_key {
+                        // If the "tip" is an existing leaf with a different key than
+                        // the new leaf, then we are in a situation where the new leaf
+                        // shares some common prefix with the existing leaf.
+                        let existing_leaf_path = existing_leaf_key.to_bytes()?;
+                        let (new_node, parents) =
+                            reparent_leaf(&path, &existing_leaf_path, parents)?;
+                        let parents = add_node_to_parents(&path, new_node, parents);
+                        rehash(new_leaf, parents)?
+                    } else {
+                        let new_value_bytes = value.to_bytes()?;
+                        if new_value_bytes != existing_value_bytes {
+                            // If the "tip" is an existing leaf with the same key as the
+                            // new leaf, but the existing leaf and new leaf have different
+                            // values, then we are in the situation where we are "updating"
+                            // an existing leaf.
+                            rehash(new_leaf, parents)?
+                        } else {
+                            // Both key and values are the same.
+                            // If the "tip" is the same as the new leaf, then the leaf
+                            // is already in the Trie.
+                            Vec::new()
+                        }
+                    }
                 }
-                // This case is unreachable, but the compiler can't figure
+                // `trie_scan_raw` will never deserialize a leaf and will always
+                // deserialize other Trie variants.
+                // So this case is unreachable, but the compiler can't figure
                 // that out.
-                Trie::Leaf { .. } => unreachable!(),
+                LazyTrieLeaf::Right(Trie::Leaf { .. }) => unreachable!(),
                 // If the "tip" is an existing node, then we can add a pointer
                 // to the new leaf to the node's pointer block.
-                node @ Trie::Node { .. } => {
+                LazyTrieLeaf::Right(node @ Trie::Node { .. }) => {
                     let parents = add_node_to_parents(&path, node, parents);
                     rehash(new_leaf, parents)?
                 }
                 // If the "tip" is an extension node, then we must modify or
                 // replace it, adding a node where necessary.
-                extension @ Trie::Extension { .. } => {
+                LazyTrieLeaf::Right(extension @ Trie::Extension { .. }) => {
                     let SplitResult {
                         new_node,
                         parents,
