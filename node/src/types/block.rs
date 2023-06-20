@@ -1174,6 +1174,7 @@ impl BlockHeaderWithMetadata {
 }
 
 /// TODO
+// TODO[RC]: Consider moving to a separate module after merged with Fraser's types rework
 #[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
 pub enum BlockBody {
     /// TODO

@@ -446,7 +446,7 @@ impl Storage {
             let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let maybe_block_body = get_body_for_block_header(
+            let maybe_block_body = get_body_for_block_header_without_migration(
                 &mut body_txn,
                 block_header.body_hash(),
                 &BlockBodyDatabases {
@@ -987,7 +987,7 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                let mut txn = self.env.begin_ro_txn()?;
+                let mut txn = self.env.begin_rw_txn()?;
 
                 let block: Block =
                     if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
@@ -1051,7 +1051,7 @@ impl Storage {
                     return Ok(responder.respond(None).ignore());
                 }
 
-                let mut txn = self.env.begin_ro_txn()?;
+                let mut txn = self.env.begin_rw_txn()?;
 
                 let block: Block = {
                     if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
@@ -1077,7 +1077,7 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                let mut txn = self.env.begin_ro_txn()?;
+                let mut txn = self.env.begin_rw_txn()?;
                 let maybe_height = if only_from_available_block_range {
                     self.highest_complete_block_height()
                 } else {
@@ -1302,7 +1302,7 @@ impl Storage {
 
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
-        self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
+        self.get_single_block(&mut self.env.begin_rw_txn()?, block_hash)
     }
 
     /// Returns `true` if the given block's header and body are stored.
@@ -1332,7 +1332,7 @@ impl Storage {
 
     /// Gets the highest block.
     pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
+        let mut txn = self.env.begin_rw_txn()?;
         self.get_highest_block(&mut txn)
     }
 
@@ -1356,8 +1356,8 @@ impl Storage {
     pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_ro_txn()
-            .expect("Could not start read only transaction for lmdb");
+            .begin_rw_txn()
+            .expect("Could not start transaction for lmdb");
         let maybe_block = self.get_highest_complete_block(&mut txn)?;
         txn.commit().expect("Could not commit transaction");
         Ok(maybe_block)
@@ -1374,8 +1374,8 @@ impl Storage {
     ) -> Result<Vec<Block>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_ro_txn()
-            .expect("Could not start read only transaction for lmdb");
+            .begin_rw_txn()
+            .expect("Could not start transaction for lmdb");
         let timestamp = match self.switch_block_era_id_index.keys().last() {
             Some(era_id) => self
                 .get_switch_block_header_by_era_id(&mut txn, *era_id)?
@@ -1584,7 +1584,12 @@ impl Storage {
         {
             let block_body_hash = block.header().body_hash();
             let block_body = block.body();
-            if !self.put_single_block_body(txn, block_body_hash, block_body)? {
+            if !put_single_block_body(
+                txn,
+                block_body_hash,
+                block_body,
+                self.block_body_dbs.current,
+            )? {
                 error!("could not insert body for: {}", block);
                 return Ok(false);
             }
@@ -1687,7 +1692,7 @@ impl Storage {
 
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
-        self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
+        self.get_block_by_height(&mut self.env.begin_rw_txn()?, height)
     }
 
     /// Retrieves a block by height, together with all stored block signatures.
@@ -1699,8 +1704,8 @@ impl Storage {
     ) -> Result<Option<BlockWithMetadata>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_ro_txn()
-            .expect("could not create RO transaction");
+            .begin_rw_txn()
+            .expect("could not create RW transaction");
         let block = if let Some(block) = self.get_block_by_height(&mut txn, height)? {
             block
         } else {
@@ -1725,7 +1730,7 @@ impl Storage {
         &self,
         block_hash: BlockHash,
     ) -> Result<Option<BlockAndDeploys>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
+        let mut txn = self.env.begin_rw_txn()?;
         let block = match self.get_single_block(&mut txn, &block_hash)? {
             Some(block) => block,
             None => {
@@ -1747,9 +1752,9 @@ impl Storage {
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
-    fn get_block_by_height<Tx: Transaction>(
+    fn get_block_by_height(
         &self,
-        txn: &mut Tx,
+        txn: &mut RwTransaction,
         height: u64,
     ) -> Result<Option<Block>, FatalStorageError> {
         self.block_height_index
@@ -1807,9 +1812,9 @@ impl Storage {
     }
 
     /// Retrieves the highest block from storage, if one exists. May return an LMDB error.
-    fn get_highest_block<Tx: Transaction>(
+    fn get_highest_block(
         &self,
-        txn: &mut Tx,
+        txn: &mut RwTransaction,
     ) -> Result<Option<Block>, FatalStorageError> {
         self.block_height_index
             .keys()
@@ -1871,9 +1876,9 @@ impl Storage {
     }
 
     /// Retrieves the highest complete block from storage, if one exists. May return an LMDB error.
-    fn get_highest_complete_block<Tx: Transaction>(
+    fn get_highest_complete_block(
         &self,
-        txn: &mut Tx,
+        txn: &mut RwTransaction,
     ) -> Result<Option<Block>, FatalStorageError> {
         let highest_complete_block_height = match self.highest_complete_block_height() {
             Some(height) => height,
@@ -1897,9 +1902,9 @@ impl Storage {
 
     /// Returns a vector of blocks that satisfy the predicate, and one that doesn't (if one
     /// exists), starting from the latest one and following the ancestry chain.
-    fn get_blocks_while<F, Tx: Transaction>(
+    fn get_blocks_while<F>(
         &self,
-        txn: &mut Tx,
+        txn: &mut RwTransaction,
         predicate: F,
     ) -> Result<Vec<Block>, FatalStorageError>
     where
@@ -2100,22 +2105,6 @@ impl Storage {
         Ok(result)
     }
 
-    /// Writes a single block body in a separate transaction to storage.
-    fn put_single_block_body(
-        &self,
-        txn: &mut RwTransaction,
-        block_body_hash: &Digest,
-        block_body: &BlockBody,
-    ) -> Result<bool, LmdbExtError> {
-        txn.put_value(
-            self.block_body_dbs.current,
-            block_body_hash,
-            block_body,
-            true,
-        )
-        .map_err(Into::into)
-    }
-
     /// Retrieves a block header by hash.
     fn read_block_header_by_hash(
         &self,
@@ -2127,10 +2116,10 @@ impl Storage {
         Ok(maybe_block_header)
     }
 
-    /// Retrieves a single block in a separate transaction from storage.
-    fn get_single_block<Tx: Transaction>(
+    /// Retrieves a single block from storage.
+    fn get_single_block(
         &self,
-        txn: &mut Tx,
+        txn: &mut RwTransaction,
         block_hash: &BlockHash,
     ) -> Result<Option<Block>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
@@ -2466,8 +2455,8 @@ impl Storage {
                     Some(block_hash) => {
                         let mut txn = self
                             .env
-                            .begin_ro_txn()
-                            .expect("Could not start read only transaction for lmdb");
+                            .begin_rw_txn()
+                            .expect("Could not start transaction for lmdb");
                         if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
                             HighestOrphanedBlockResult::Orphan(block.header().clone())
                         } else {
@@ -2479,9 +2468,9 @@ impl Storage {
         }
     }
 
-    fn get_execution_results<Tx: Transaction>(
+    fn get_execution_results(
         &self,
-        txn: &mut Tx,
+        txn: &mut RwTransaction,
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(DeployHash, ExecutionResult)>>, FatalStorageError> {
         // There's no mapping between block_hash -> execution results.
@@ -2889,9 +2878,9 @@ impl Storage {
     }
 
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
-    fn get_switch_block_by_era_id<Tx: Transaction>(
+    fn get_switch_block_by_era_id(
         &self,
-        txn: &mut Tx,
+        txn: &mut RwTransaction,
         era_id: EraId,
     ) -> Result<Option<Block>, FatalStorageError> {
         self.switch_block_era_id_index
@@ -2911,7 +2900,7 @@ impl Storage {
     ) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_ro_txn()
+            .begin_rw_txn()
             .expect("Could not start read only transaction for lmdb");
         let switch_block = self
             .get_switch_block_by_era_id(&mut txn, EraId::from(switch_block_era_num))
@@ -2996,12 +2985,31 @@ where
     Ok(())
 }
 
+fn migrate_to_block_body_v2(
+    txn: &mut RwTransaction,
+    block_body_hash: &Digest,
+    block_body: &BlockBody,
+    block_body_dbs: &BlockBodyDatabases,
+) -> Result<(), LmdbExtError> {
+    put_single_block_body(txn, block_body_hash, block_body, block_body_dbs.current)?;
+    if let Err(err) = txn.del(block_body_dbs.legacy, block_body_hash, None) {
+        warn!(%block_body_hash, %err, "error deleting migrated block body from legacy db")
+    }
+
+    Ok(())
+}
+
+enum BlockBodyVersion {
+    Current,
+    Legacy,
+}
+
 /// Retrieves the block body for the given block header.
-fn get_body_for_block_header<Tx>(
+fn get_body_for_block_header_internal<Tx>(
     txn: &mut Tx,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<BlockBody>, LmdbExtError>
+) -> Result<Option<(BlockBody, BlockBodyVersion)>, LmdbExtError>
 where
     Tx: Transaction,
 {
@@ -3011,13 +3019,58 @@ where
         let maybe_legacy_block_body: Option<BlockBodyV1> =
             txn.get_value(block_body_dbs.legacy, block_body_hash)?;
         if let Some(legacy_block_body) = maybe_legacy_block_body {
-            return Ok(Some(BlockBody::BlockBodyV1(legacy_block_body)));
+            return Ok(Some((
+                BlockBody::BlockBodyV1(legacy_block_body),
+                BlockBodyVersion::Legacy,
+            )));
         }
     } else {
-        return Ok(maybe_block_body);
+        return Ok(maybe_block_body.map(|block_body| (block_body, BlockBodyVersion::Current)));
     }
 
     Ok(None)
+}
+
+/// Retrieves the block body for the given block header, doesn't perform migration to new version.
+fn get_body_for_block_header_without_migration<Tx>(
+    txn: &mut Tx,
+    block_body_hash: &Digest,
+    block_body_dbs: &BlockBodyDatabases,
+) -> Result<Option<BlockBody>, LmdbExtError>
+where
+    Tx: Transaction,
+{
+    let maybe_block_body =
+        get_body_for_block_header_internal(txn, block_body_hash, block_body_dbs)?;
+
+    Ok(maybe_block_body.map(|(block_body, _)| block_body))
+}
+
+/// Retrieves the block body for the given block header.
+fn get_body_for_block_header(
+    txn: &mut RwTransaction,
+    block_body_hash: &Digest,
+    block_body_dbs: &BlockBodyDatabases,
+) -> Result<Option<BlockBody>, LmdbExtError> {
+    let maybe_block_body =
+        get_body_for_block_header_internal(txn, block_body_hash, block_body_dbs)?;
+
+    if let Some((ref block_body, BlockBodyVersion::Legacy)) = maybe_block_body {
+        migrate_to_block_body_v2(txn, block_body_hash, block_body, block_body_dbs)?
+    }
+
+    Ok(maybe_block_body.map(|(block_body, _)| block_body))
+}
+
+/// Writes a single block body in a separate transaction to storage.
+fn put_single_block_body(
+    txn: &mut RwTransaction,
+    block_body_hash: &Digest,
+    block_body: &BlockBody,
+    db: Database,
+) -> Result<bool, LmdbExtError> {
+    txn.put_value(db, block_body_hash, block_body, true)
+        .map_err(Into::into)
 }
 
 /// Purges stale entries from the block metadata database.
