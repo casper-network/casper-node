@@ -468,7 +468,6 @@ dependencies = [
  "uuid",
  "walrus",
  "wasmi",
- "wasmi-validation",
 ]
 
 [[package]]
