@@ -657,12 +657,8 @@
               ],
               "properties": {
                 "hash": {
-                  "description": "Contract hash.",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/ContractHash"
-                    }
-                  ]
+                  "description": "Hex-encoded contract hash.",
+                  "type": "string"
                 },
                 "entry_point": {
                   "description": "Name of an entry point.",
@@ -735,12 +731,8 @@
               ],
               "properties": {
                 "hash": {
-                  "description": "Contract package hash",
-                  "allOf": [
-                    {
-                      "$ref": "#/definitions/ContractPackageHash"
-                    }
-                  ]
+                  "description": "Hex-encoded contract package hash.",
+                  "type": "string"
                 },
                 "version": {
                   "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
@@ -1054,14 +1046,6 @@
           "additionalProperties": false
         }
       ]
-    },
-    "ContractHash": {
-      "description": "The hex-encoded hash address of the contract",
-      "type": "string"
-    },
-    "ContractPackageHash": {
-      "description": "The hex-encoded hash address of the contract package",
-      "type": "string"
     },
     "Approval": {
       "description": "A struct containing a signature of a deploy hash and the public key of the signer.",

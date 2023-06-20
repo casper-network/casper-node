@@ -66,6 +66,11 @@ pub enum ExecutableDeployItem {
     /// [`RuntimeArgs`].
     StoredContractByHash {
         /// Contract hash.
+        #[serde(with = "contract_hash_as_digest")]
+        #[cfg_attr(
+            feature = "json-schema",
+            schemars(with = "String", description = "Hex-encoded contract hash.")
+        )]
         hash: ContractHash,
         /// Name of an entry point.
         entry_point: String,
@@ -86,6 +91,11 @@ pub enum ExecutableDeployItem {
     /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
         /// Contract package hash
+        #[serde(with = "contract_package_hash_as_digest")]
+        #[cfg_attr(
+            feature = "json-schema",
+            schemars(with = "String", description = "Hex-encoded contract package hash.")
+        )]
         hash: ContractPackageHash,
         /// An optional version of the contract to call. It will default to the highest enabled
         /// version if no value is specified.
@@ -767,6 +777,48 @@ impl Distribution<ExecutableDeployItem> for Standard {
             }
             _ => unreachable!(),
         }
+    }
+}
+
+mod contract_hash_as_digest {
+    use serde::{Deserializer, Serializer};
+
+    use super::*;
+    use crate::Digest;
+
+    pub(super) fn serialize<S: Serializer>(
+        contract_hash: &ContractHash,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        Digest::from(contract_hash.value()).serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<ContractHash, D::Error> {
+        let digest = Digest::deserialize(deserializer)?;
+        Ok(ContractHash::new(digest.value()))
+    }
+}
+
+mod contract_package_hash_as_digest {
+    use serde::{Deserializer, Serializer};
+
+    use super::*;
+    use crate::Digest;
+
+    pub(super) fn serialize<S: Serializer>(
+        contract_package_hash: &ContractPackageHash,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        Digest::from(contract_package_hash.value()).serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<ContractPackageHash, D::Error> {
+        let digest = Digest::deserialize(deserializer)?;
+        Ok(ContractPackageHash::new(digest.value()))
     }
 }
 
