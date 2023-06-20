@@ -47,7 +47,9 @@ impl FrameDecoder for LengthDelimited {
     fn decode_frame(&mut self, buffer: &mut BytesMut) -> DecodeResult<Bytes, Self::Error> {
         let bytes_in_buffer = buffer.remaining();
         if bytes_in_buffer < LENGTH_MARKER_SIZE {
-            return DecodeResult::Incomplete;
+            // Note: This is somewhat inefficient, as it results in two read calls per frame
+            //      received, but accurate. It is up to the higher layer to reduce reads.
+            return DecodeResult::Remaining(LENGTH_MARKER_SIZE - bytes_in_buffer);
         }
         let data_length = u16::from_le_bytes(
             buffer[0..LENGTH_MARKER_SIZE]
