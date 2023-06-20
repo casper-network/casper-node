@@ -16,7 +16,7 @@ base16 = "0.2.1"
 bincode = "1.3.1"
 casper-hashing = { version = "1.4.4", path = "../hashing" }
 casper-types = { version = "2.0.0", path = "../types", default-features = false, features = ["datasize", "gens", "json-schema"] }
-casper-wasm-utils = "1.0.0"
+casper-wasm-utils = "2.0.0"
 datasize = "0.2.4"
 either = "1.8.1"
 hex_fmt = "0.3.0"
@@ -34,7 +34,7 @@ num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = "0.2.10"
 num_cpus = "1"
 once_cell = "1.5.2"
-parity-wasm = { version = "0.42", default-features = false }
+parity-wasm = { version = "0.45.0", default-features = false }
 proptest = { version = "1.0.0", optional = true }
 rand = "0.8.3"
 rand_chacha = "0.3.0"
@@ -47,7 +47,7 @@ thiserror = "1.0.18"
 tracing = "0.1.18"
 uint = "0.9.0"
 uuid = { version = "0.8.1", features = ["serde", "v4"] }
-wasmi = "0.9.1"
+wasmi = "0.13.2"
 
 [dev-dependencies]
 assert_matches = "1.3.0"

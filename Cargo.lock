@@ -380,7 +380,7 @@ dependencies = [
  "humantime",
  "lmdb-rkv",
  "log",
- "num-rational 0.4.1",
+ "num-rational",
  "num-traits",
  "once_cell",
  "rand 0.8.5",
@@ -409,7 +409,7 @@ dependencies = [
  "gh-1470-regression",
  "gh-1470-regression-call",
  "log",
- "num-rational 0.4.1",
+ "num-rational",
  "num-traits",
  "once_cell",
  "parity-wasm 0.41.0",
@@ -448,11 +448,11 @@ dependencies = [
  "log",
  "num",
  "num-derive",
- "num-rational 0.4.1",
+ "num-rational",
  "num-traits",
  "num_cpus",
  "once_cell",
- "parity-wasm 0.42.2",
+ "parity-wasm 0.45.0",
  "proptest",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -556,7 +556,7 @@ dependencies = [
  "muxink",
  "num",
  "num-derive",
- "num-rational 0.4.1",
+ "num-rational",
  "num-traits",
  "num_cpus",
  "once_cell",
@@ -624,7 +624,7 @@ dependencies = [
  "num",
  "num-derive",
  "num-integer",
- "num-rational 0.4.1",
+ "num-rational",
  "num-traits",
  "rand 0.8.5",
  "serde",
@@ -654,7 +654,7 @@ dependencies = [
  "num",
  "num-derive",
  "num-integer",
- "num-rational 0.4.1",
+ "num-rational",
  "num-traits",
  "once_cell",
  "openssl",
@@ -704,13 +704,13 @@ dependencies = [
 
 [[package]]
 name = "casper-wasm-utils"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e9c4208106e8a95a83ab3cb5f4e800114bfc101df9e7cb8c2160c7e298c6397"
+checksum = "b49e4ef1382d48c312809fe8f09d0c7beb434a74f5026c5f12efe384df51ca42"
 dependencies = [
  "byteorder",
  "log",
- "parity-wasm 0.42.2",
+ "parity-wasm 0.45.0",
 ]
 
 [[package]]
@@ -2683,12 +2683,6 @@ dependencies = [
 
 [[package]]
 name = "memory_units"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71d96e3f3c0b6325d8ccd83c33b28acb183edcb6c67938ba104ec546854b0882"
-
-[[package]]
-name = "memory_units"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8452105ba047068f40ff7093dd1d9da90898e63dd61736462e9cdda6a90ad3c3"
@@ -2863,22 +2857,11 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43db66d1170d347f9a065114077f7dccb00c1b9478c89384490a3425279a4606"
 dependencies = [
- "num-bigint 0.4.3",
+ "num-bigint",
  "num-complex",
  "num-integer",
  "num-iter",
- "num-rational 0.4.1",
- "num-traits",
-]
-
-[[package]]
-name = "num-bigint"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "090c7f9998ee0ff65aa5b723e4009f7b217707f1fb5ea551329cc4d6231fb304"
-dependencies = [
- "autocfg",
- "num-integer",
+ "num-rational",
  "num-traits",
 ]
 
@@ -2936,24 +2919,12 @@ dependencies = [
 
 [[package]]
 name = "num-rational"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c000134b5dbf44adc5cb772486d335293351644b801551abe8f75c84cfa4aef"
-dependencies = [
- "autocfg",
- "num-bigint 0.2.6",
- "num-integer",
- "num-traits",
-]
-
-[[package]]
-name = "num-rational"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0638a1c9d0a3c0914158145bc76cff373a75a627e6ecbfb71cbe6f453a5a19b0"
 dependencies = [
  "autocfg",
- "num-bigint 0.4.3",
+ "num-bigint",
  "num-integer",
  "num-traits",
  "serde",
@@ -3105,9 +3076,9 @@ checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
 
 [[package]]
 name = "parity-wasm"
-version = "0.42.2"
+version = "0.45.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be5e13c266502aadf83426d87d81a0f5d1ef45b8027f5a471c360abfe4bfae92"
+checksum = "e1ad0aff30c1da14b1254fcb2af73e1fa9a28670e584a626f53a369d0e157304"
 
 [[package]]
 name = "parking_lot"
@@ -5321,26 +5292,35 @@ dependencies = [
 
 [[package]]
 name = "wasmi"
-version = "0.9.1"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca00c5147c319a8ec91ec1a0edbec31e566ce2c9cc93b3f9bb86a9efd0eb795d"
+checksum = "06c326c93fbf86419608361a2c925a31754cf109da1b8b55737070b4d6669422"
 dependencies = [
- "downcast-rs",
- "libc",
- "memory_units 0.3.0",
- "num-rational 0.2.4",
- "num-traits",
- "parity-wasm 0.42.2",
+ "parity-wasm 0.45.0",
  "wasmi-validation",
+ "wasmi_core",
 ]
 
 [[package]]
 name = "wasmi-validation"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "165343ecd6c018fc09ebcae280752702c9a2ef3e6f8d02f1cfcbdb53ef6d7937"
+checksum = "91ff416ad1ff0c42e5a926ed5d5fab74c0f098749aa0ad8b2a34b982ce0e867b"
 dependencies = [
- "parity-wasm 0.42.2",
+ "parity-wasm 0.45.0",
+]
+
+[[package]]
+name = "wasmi_core"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57d20cb3c59b788653d99541c646c561c9dd26506f25c0cebfe810659c54c6d7"
+dependencies = [
+ "downcast-rs",
+ "libm",
+ "memory_units",
+ "num-rational",
+ "num-traits",
 ]
 
 [[package]]
@@ -5388,7 +5368,7 @@ checksum = "dbb3b5a6b2bb17cb6ad44a2e68a43e8d2722c997da10e928665c72ec6c0a0b8e"
 dependencies = [
  "cfg-if 0.1.10",
  "libc",
- "memory_units 0.4.0",
+ "memory_units",
  "winapi",
 ]
 
