@@ -2999,17 +2999,12 @@ fn migrate_to_block_body_v2(
     Ok(())
 }
 
-enum BlockBodyVersion {
-    Current,
-    Legacy,
-}
-
 /// Retrieves the block body for the given block header.
 fn get_body_for_block_header_internal<Tx>(
     txn: &mut Tx,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<(BlockBody, BlockBodyVersion)>, LmdbExtError>
+) -> Result<Option<BlockBody>, LmdbExtError>
 where
     Tx: Transaction,
 {
@@ -3019,13 +3014,10 @@ where
         let maybe_legacy_block_body: Option<BlockBodyV1> =
             txn.get_value(block_body_dbs.legacy, block_body_hash)?;
         if let Some(legacy_block_body) = maybe_legacy_block_body {
-            return Ok(Some((
-                BlockBody::BlockBodyV1(legacy_block_body),
-                BlockBodyVersion::Legacy,
-            )));
+            return Ok(Some(BlockBody::BlockBodyV1(legacy_block_body)));
         }
     } else {
-        return Ok(maybe_block_body.map(|block_body| (block_body, BlockBodyVersion::Current)));
+        return Ok(maybe_block_body);
     }
 
     Ok(None)
@@ -3043,7 +3035,7 @@ where
     let maybe_block_body =
         get_body_for_block_header_internal(txn, block_body_hash, block_body_dbs)?;
 
-    Ok(maybe_block_body.map(|(block_body, _)| block_body))
+    Ok(maybe_block_body)
 }
 
 /// Retrieves the block body for the given block header.
@@ -3055,11 +3047,13 @@ fn get_body_for_block_header(
     let maybe_block_body =
         get_body_for_block_header_internal(txn, block_body_hash, block_body_dbs)?;
 
-    if let Some((ref block_body, BlockBodyVersion::Legacy)) = maybe_block_body {
-        migrate_to_block_body_v2(txn, block_body_hash, block_body, block_body_dbs)?
+    if let Some(ref block_body) = maybe_block_body {
+        if matches!(block_body, BlockBody::BlockBodyV1(_)) {
+            migrate_to_block_body_v2(txn, block_body_hash, block_body, block_body_dbs)?
+        }
     }
 
-    Ok(maybe_block_body.map(|(block_body, _)| block_body))
+    Ok(maybe_block_body)
 }
 
 /// Writes a single block body in a separate transaction to storage.
