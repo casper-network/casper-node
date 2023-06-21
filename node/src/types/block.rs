@@ -1173,141 +1173,15 @@ impl BlockHeaderWithMetadata {
     }
 }
 
-/// TODO
+/// The body portion of a block. It encapsulates different variants of the `BlockBodyVx`.
 // TODO[RC]: Consider moving to a separate module after merged with Fraser's types rework
 #[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
 pub enum BlockBody {
-    /// TODO
+    /// The legacy, initial version of the body portion of a block.
     BlockBodyV1(BlockBodyV1),
-    /// TODO
+    /// The version 2 of the body portion of a block, which includes the
+    /// `past_finality_signatures`.
     BlockBodyV2(BlockBodyV2),
-}
-
-impl BlockBody {
-    /// TODO: ?
-    pub fn into_current_version(&self) -> &BlockBodyV2 {
-        match self {
-            BlockBody::BlockBodyV1(_) => panic!("TODO"),
-            BlockBody::BlockBodyV2(v2) => v2,
-        }
-    }
-}
-
-/// The body portion of a block.
-#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
-pub struct BlockBodyV1 {
-    proposer: PublicKey,
-    deploy_hashes: Vec<DeployHash>,
-    transfer_hashes: Vec<DeployHash>,
-    #[serde(skip)]
-    #[data_size(with = ds::once_cell)]
-    hash: OnceCell<Digest>,
-}
-
-impl BlockBodyV1 {
-    /// Generates a random instance using a `TestRng`.
-    #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let hash = OnceCell::new();
-        let _ = hash.set(Digest::from([8u8; Digest::LENGTH]));
-        let deploy_count = rng.gen_range(0..11);
-        let transfer_count = rng.gen_range(0..11);
-        Self {
-            proposer: PublicKey::from(
-                &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
-            ),
-            deploy_hashes: std::iter::repeat_with(|| Deploy::random(rng))
-                .map(|deploy| *deploy.hash())
-                .take(deploy_count)
-                .collect(),
-            transfer_hashes: std::iter::repeat_with(|| Deploy::random(rng))
-                .map(|deploy| *deploy.hash())
-                .take(transfer_count)
-                .collect(),
-            hash,
-        }
-    }
-}
-
-#[derive(
-    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema, Debug,
-)]
-pub struct PastFinalitySignatures(Vec<u8>);
-
-impl PastFinalitySignatures {
-    /// Generates a random instance using a `TestRng`.
-    #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let count = rng.gen_range(0..11);
-        Self(
-            std::iter::repeat_with(|| rng.gen::<u8>())
-                .take(count)
-                .collect(),
-        )
-    }
-}
-
-impl Default for PastFinalitySignatures {
-    fn default() -> Self {
-        Self(vec![1, 2, 3, 4, 5])
-    }
-}
-
-impl ToBytes for PastFinalitySignatures {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(Bytes::from(self.0.as_ref()).to_bytes()?);
-        Ok(buffer)
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-}
-
-impl FromBytes for PastFinalitySignatures {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (inner, rest) = Bytes::from_bytes(bytes)?;
-        Ok((PastFinalitySignatures(inner.into()), rest))
-    }
-}
-
-/// The body portion of a block.
-#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
-pub struct BlockBodyV2 {
-    proposer: PublicKey,
-    deploy_hashes: Vec<DeployHash>,
-    transfer_hashes: Vec<DeployHash>,
-    past_finality_signatures: PastFinalitySignatures,
-    #[serde(skip)]
-    #[data_size(with = ds::once_cell)]
-    hash: OnceCell<Digest>,
-}
-
-impl BlockBodyV2 {
-    /// Generates a random instance using a `TestRng`.
-    #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let hash = OnceCell::new();
-        let _ = hash.set(Digest::from([8u8; Digest::LENGTH]));
-        let deploy_count = rng.gen_range(0..11);
-        let transfer_count = rng.gen_range(0..11);
-        Self {
-            proposer: PublicKey::from(
-                &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
-            ),
-            deploy_hashes: std::iter::repeat_with(|| Deploy::random(rng))
-                .map(|deploy| *deploy.hash())
-                .take(deploy_count)
-                .collect(),
-            transfer_hashes: std::iter::repeat_with(|| Deploy::random(rng))
-                .map(|deploy| *deploy.hash())
-                .take(transfer_count)
-                .collect(),
-            past_finality_signatures: PastFinalitySignatures::random(rng),
-            hash,
-        }
-    }
 }
 
 impl BlockBody {
@@ -1327,6 +1201,14 @@ impl BlockBody {
             past_finality_signatures: Default::default(),
             hash: OnceCell::new(),
         })
+    }
+
+    /// Returns the inner block body representing the most recent type version.
+    pub fn into_current_version(&self) -> &BlockBodyV2 {
+        match self {
+            BlockBody::BlockBodyV2(v2) => v2,
+            _ => panic!("current version of node should never try to use any version of BlockBody other than the most recent one"),
+        }
     }
 
     /// Block proposer.
@@ -1386,6 +1268,125 @@ impl BlockBody {
                     .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
                 Digest::hash(serialized_body)
             }),
+        }
+    }
+}
+
+/// The legacy, initial version of the body portion of a block.
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
+pub struct BlockBodyV1 {
+    proposer: PublicKey,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    hash: OnceCell<Digest>,
+}
+
+impl BlockBodyV1 {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = OnceCell::new();
+        let _ = hash.set(Digest::from([8u8; Digest::LENGTH]));
+        let deploy_count = rng.gen_range(0..11);
+        let transfer_count = rng.gen_range(0..11);
+        Self {
+            proposer: PublicKey::from(
+                &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
+            ),
+            deploy_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(deploy_count)
+                .collect(),
+            transfer_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(transfer_count)
+                .collect(),
+            hash,
+        }
+    }
+}
+
+/// This is a placeholder and should be replaced with the real `PastFinalitySignatures` structure
+/// which is being implemented on the separate branch.
+#[derive(
+    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema, Debug,
+)]
+pub struct PastFinalitySignatures(Vec<u8>);
+
+impl PastFinalitySignatures {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let count = rng.gen_range(0..11);
+        Self(
+            std::iter::repeat_with(|| rng.gen::<u8>())
+                .take(count)
+                .collect(),
+        )
+    }
+}
+
+impl Default for PastFinalitySignatures {
+    fn default() -> Self {
+        Self(vec![1, 2, 3, 4, 5])
+    }
+}
+
+impl ToBytes for PastFinalitySignatures {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(Bytes::from(self.0.as_ref()).to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for PastFinalitySignatures {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (inner, rest) = Bytes::from_bytes(bytes)?;
+        Ok((PastFinalitySignatures(inner.into()), rest))
+    }
+}
+
+/// The version 2 of the body portion of a block, which includes the `past_finality_signatures`.
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
+pub struct BlockBodyV2 {
+    proposer: PublicKey,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
+    past_finality_signatures: PastFinalitySignatures,
+    #[serde(skip)]
+    #[data_size(with = ds::once_cell)]
+    hash: OnceCell<Digest>,
+}
+
+impl BlockBodyV2 {
+    /// Generates a random instance using a `TestRng`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        let hash = OnceCell::new();
+        let _ = hash.set(Digest::from([8u8; Digest::LENGTH]));
+        let deploy_count = rng.gen_range(0..11);
+        let transfer_count = rng.gen_range(0..11);
+        Self {
+            proposer: PublicKey::from(
+                &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
+            ),
+            deploy_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(deploy_count)
+                .collect(),
+            transfer_hashes: std::iter::repeat_with(|| Deploy::random(rng))
+                .map(|deploy| *deploy.hash())
+                .take(transfer_count)
+                .collect(),
+            past_finality_signatures: PastFinalitySignatures::random(rng),
+            hash,
         }
     }
 }
@@ -2499,13 +2500,16 @@ pub(crate) mod json_compatibility {
         }
     }
 
+    // TODO[RC]: `JsonBlockBody` should also have `past_finality_signatures`, integrate this
+    // properly after the code is merged with the branch that added the actual
+    // `past_finality_signatures`
     impl From<JsonBlockBody> for BlockBody {
         fn from(json_body: JsonBlockBody) -> Self {
             Self::BlockBodyV2(BlockBodyV2 {
                 proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
-                past_finality_signatures: Default::default(), /* TODO: `JsonBlockBody` should also have `past_finality_signatures` */
+                past_finality_signatures: Default::default(),
                 hash: OnceCell::new(),
             })
         }
