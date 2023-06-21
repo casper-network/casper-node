@@ -1659,6 +1659,7 @@ impl Display for BlockSignatures {
 
 /// A proposed block after execution, with the resulting post-state-hash.  This is the core
 /// component of the Casper linear blockchain.
+// TODO[RC]: This should be `BlockV2` now, as it has upgraded `BlockBody`
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Block {
     hash: BlockHash,
