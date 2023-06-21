@@ -53,6 +53,7 @@ mod named_key;
 mod phase;
 mod protocol_version;
 mod semver;
+pub(crate) mod serde_helpers;
 mod stored_value;
 pub mod system;
 mod tagged;

@@ -2712,7 +2712,7 @@
             ],
             "properties": {
               "deploy_hash": {
-                "description": "The relevant Deploy.",
+                "description": "Hex-encoded Deploy hash.",
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/DeployHash"
@@ -2880,7 +2880,7 @@
             ],
             "properties": {
               "deploy_hash": {
-                "description": "Deploy that created the transfer",
+                "description": "Hex-encoded Deploy hash of Deploy that created the transfer.",
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/DeployHash"
