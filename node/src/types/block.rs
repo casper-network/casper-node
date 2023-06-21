@@ -1394,15 +1394,10 @@ impl PartialEq for BlockBody {
     fn eq(&self, other: &BlockBody) -> bool {
         match (self, other) {
             (BlockBody::BlockBodyV1(lhs), BlockBody::BlockBodyV1(rhs)) => lhs.eq(rhs),
-            (BlockBody::BlockBodyV1(lhs), BlockBody::BlockBodyV2(rhs)) => {
-                let lhs: BlockBodyV2 = lhs.into();
-                lhs.eq(rhs)
-            }
-            (BlockBody::BlockBodyV2(lhs), BlockBody::BlockBodyV1(rhs)) => {
-                let rhs: BlockBodyV2 = rhs.into();
-                lhs.eq(&rhs)
-            }
             (BlockBody::BlockBodyV2(lhs), BlockBody::BlockBodyV2(rhs)) => lhs.eq(rhs),
+            _ => {
+                panic!("should we ever compare different versions of BlockBody?")
+            }
         }
     }
 }
@@ -1434,18 +1429,6 @@ impl PartialEq for BlockBodyV2 {
             && *deploy_hashes == other.deploy_hashes
             && *transfer_hashes == other.transfer_hashes
             && *past_finality_signatures == other.past_finality_signatures
-    }
-}
-
-impl From<&BlockBodyV1> for BlockBodyV2 {
-    fn from(value: &BlockBodyV1) -> Self {
-        Self {
-            proposer: value.proposer.clone(),
-            deploy_hashes: value.deploy_hashes.clone(),
-            transfer_hashes: value.transfer_hashes.clone(),
-            past_finality_signatures: Default::default(),
-            hash: OnceCell::new(),
-        }
     }
 }
 
