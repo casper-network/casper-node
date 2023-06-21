@@ -3038,7 +3038,8 @@ where
     Ok(maybe_block_body)
 }
 
-/// Retrieves the block body for the given block header.
+/// Retrieves the block body for the given block header, performing the migration to the new version
+/// of BlockBody if necessary.
 fn get_body_for_block_header(
     txn: &mut RwTransaction,
     block_body_hash: &Digest,
