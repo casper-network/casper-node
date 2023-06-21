@@ -46,7 +46,7 @@ use crate::{
     reactor::ReactorEvent,
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy,
-        FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
+        FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
     },
 };
 
@@ -155,9 +155,9 @@ pub(crate) enum MainEvent {
     #[from]
     BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
     #[from]
-    BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
+    BlockFetcher(#[serde(skip_serializing)] fetcher::Event<VersionedBlock>),
     #[from]
-    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<Block>),
+    BlockFetcherRequest(#[serde(skip_serializing)] FetcherRequest<VersionedBlock>),
     #[from]
     BlockFetcherAnnouncement(#[serde(skip_serializing)] FetchedNewBlockAnnouncement),
     #[from]

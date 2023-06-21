@@ -12,6 +12,8 @@ use crate::types::{
     block::EraReport, Block, BlockHash, Deploy, DeployConfigurationFailure, DeployHash,
 };
 
+use super::VersionedBlock;
+
 /// An error that can arise when creating a block from a finalized block and other components.
 #[derive(Error, Debug, Serialize)]
 pub enum BlockCreationError {
@@ -52,7 +54,7 @@ pub enum BlockValidationError {
     )]
     UnexpectedBodyHash {
         /// The `Block` with the `BlockHeader` with the incorrect block body hash.
-        block: Box<Block>,
+        block: Box<VersionedBlock>,
         /// The actual hash of the block's `BlockBody`.
         actual_block_body_hash: Digest,
     },
@@ -65,7 +67,7 @@ pub enum BlockValidationError {
     )]
     UnexpectedBlockHash {
         /// The `Block` with the incorrect `BlockHeaderHash`.
-        block: Box<Block>,
+        block: Box<VersionedBlock>,
         /// The actual hash of the block's `BlockHeader`.
         actual_block_header_hash: BlockHash,
     },

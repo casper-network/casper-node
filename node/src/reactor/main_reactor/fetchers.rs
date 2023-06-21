@@ -7,8 +7,8 @@ use crate::{
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy,
-        FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, Deploy, FinalitySignature,
+        LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
     },
     utils::Source,
     FetcherConfig, NodeRng,
@@ -17,7 +17,7 @@ use crate::{
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {
     sync_leap_fetcher: Fetcher<SyncLeap>,
-    block_fetcher: Fetcher<Block>,
+    block_fetcher: Fetcher<VersionedBlock>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     approvals_hashes_fetcher: Fetcher<ApprovalsHashes>,
     finality_signature_fetcher: Fetcher<FinalitySignature>,

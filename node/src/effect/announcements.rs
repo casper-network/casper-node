@@ -26,7 +26,9 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{Block, Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
+    types::{
+        Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId, VersionedBlock,
+    },
     utils::Source,
 };
 
@@ -401,7 +403,7 @@ impl Display for BlockAccumulatorAnnouncement {
 /// A block which wasn't previously stored on this node has been fetched and stored.
 #[derive(Debug, Serialize)]
 pub(crate) struct FetchedNewBlockAnnouncement {
-    pub(crate) block: Arc<Block>,
+    pub(crate) block: Arc<VersionedBlock>,
     pub(crate) peer: NodeId,
 }
 

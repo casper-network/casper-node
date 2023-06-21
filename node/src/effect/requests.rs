@@ -53,7 +53,7 @@ use crate::{
         BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId,
         DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalitySignatureId,
         FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlockState, NodeId, StatusFeed,
-        TrieOrChunk, TrieOrChunkId,
+        TrieOrChunk, TrieOrChunkId, VersionedBlock,
     },
     utils::{DisplayIter, Source},
 };
@@ -270,6 +270,14 @@ pub(crate) enum StorageRequest {
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
+    /// Store given versioned block.
+    PutVersionedBlock {
+        /// Block to be stored.
+        block: Arc<VersionedBlock>,
+        /// Responder to call with the result.  Returns true if the block was stored on this
+        /// attempt or false if it was previously stored.
+        responder: Responder<bool>,
+    },
     /// Store the approvals hashes.
     PutApprovalsHashes {
         /// Approvals hashes to store.
@@ -292,6 +300,14 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
+    },
+    /// Retrieve versioned block with given hash.
+    GetVersionedBlock {
+        /// Hash of block to be retrieved.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
+        /// storage.
+        responder: Responder<Option<VersionedBlock>>,
     },
     IsBlockStored {
         block_hash: BlockHash,
@@ -503,6 +519,9 @@ impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
             StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutVersionedBlock { block, .. } => {
+                write!(formatter, "put versioned {}", block)
+            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes, ..
             } => {
@@ -510,6 +529,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlock { block_hash, .. } => {
                 write!(formatter, "get block {}", block_hash)
+            }
+            StorageRequest::GetVersionedBlock { block_hash, .. } => {
+                write!(formatter, "get versioned block {}", block_hash)
             }
             StorageRequest::IsBlockStored { block_hash, .. } => {
                 write!(formatter, "is block {} stored", block_hash)

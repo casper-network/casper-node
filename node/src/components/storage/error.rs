@@ -7,8 +7,8 @@ use casper_types::{bytesrepr, crypto, Digest, EraId};
 
 use super::lmdb_ext::LmdbExtError;
 use crate::types::{
-    error::BlockValidationError, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
-    FinalitySignature, FinalitySignatureId,
+    error::BlockValidationError, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
+    FinalitySignature, FinalitySignatureId, VersionedBlockBody,
 };
 
 /// A fatal storage component error.
@@ -100,7 +100,7 @@ pub enum FatalStorageError {
         /// The block body hash.
         block_body_hash: Digest,
         /// The block body.
-        block_body: Box<BlockBody>,
+        block_body: Box<VersionedBlockBody>,
     },
     /// Could not verify finality signatures for block.
     #[error("{0} in signature verification. Database is corrupted.")]

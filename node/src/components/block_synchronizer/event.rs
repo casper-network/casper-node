@@ -15,8 +15,8 @@ use crate::{
     },
     effect::requests::BlockSynchronizerRequest,
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
+        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, VersionedBlock,
     },
 };
 
@@ -40,7 +40,7 @@ pub(crate) enum Event {
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
-    BlockFetched(FetchResult<Block>),
+    BlockFetched(FetchResult<VersionedBlock>),
     #[from]
     ApprovalsHashesFetched(FetchResult<ApprovalsHashes>),
     #[from]

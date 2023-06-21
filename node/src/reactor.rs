@@ -81,8 +81,8 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy, ExitCode,
-        FinalitySignature, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, Deploy, ExitCode,
+        FinalitySignature, LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, VersionedBlock,
     },
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},
@@ -990,7 +990,7 @@ where
     R: Reactor,
     <R as Reactor>::Event: From<deploy_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
-        + From<fetcher::Event<Block>>
+        + From<fetcher::Event<VersionedBlock>>
         + From<fetcher::Event<BlockHeader>>
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<LegacyDeploy>>
@@ -1016,9 +1016,13 @@ where
             sender,
             serialized_item,
         ),
-        NetResponse::Block(ref serialized_item) => {
-            handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
-        }
+        NetResponse::Block(ref serialized_item) => handle_fetch_response::<R, VersionedBlock>(
+            reactor,
+            effect_builder,
+            rng,
+            sender,
+            serialized_item,
+        ),
         NetResponse::BlockHeader(ref serialized_item) => handle_fetch_response::<R, BlockHeader>(
             reactor,
             effect_builder,

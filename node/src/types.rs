@@ -32,7 +32,7 @@ pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
     Block, BlockAndDeploys, BlockBody, BlockBodyV1, BlockBodyV2, BlockExecutionResultsOrChunk,
     BlockExecutionResultsOrChunkId, BlockExecutionResultsOrChunkIdDisplay, BlockHash, BlockHeader,
-    BlockSignatures, FinalitySignature, FinalizedBlock,
+    BlockSignatures, FinalitySignature, FinalizedBlock, VersionedBlock, VersionedBlockBody,
 };
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;

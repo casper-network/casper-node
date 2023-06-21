@@ -561,13 +561,15 @@ impl reactor::Reactor for MainReactor {
                 _gossiped_block_id,
             )) => Effects::new(),
             MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
+                let versioned_block = &*block;
+                let block: Block = versioned_block.into();
                 reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
                     self.block_accumulator.handle_event(
                         effect_builder,
                         rng,
                         block_accumulator::Event::ReceivedBlock {
-                            block,
+                            block: Arc::new(block),
                             sender: peer,
                         },
                     ),

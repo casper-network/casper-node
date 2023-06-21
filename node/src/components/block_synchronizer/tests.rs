@@ -41,7 +41,7 @@ const STRICT_FINALITY_REQUIRED_VERSION: ProtocolVersion = ProtocolVersion::from_
 #[derive(Debug, From)]
 enum MockReactorEvent {
     MarkBlockCompletedRequest(MarkBlockCompletedRequest),
-    BlockFetcherRequest(FetcherRequest<Block>),
+    BlockFetcherRequest(FetcherRequest<VersionedBlock>),
     BlockHeaderFetcherRequest(FetcherRequest<BlockHeader>),
     LegacyDeployFetcherRequest(FetcherRequest<LegacyDeploy>),
     DeployFetcherRequest(FetcherRequest<Deploy>),
@@ -1270,7 +1270,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(block.clone()),
+            item: Box::new(VersionedBlock::V2(block.clone())),
             peer: peers[0],
         })),
     );

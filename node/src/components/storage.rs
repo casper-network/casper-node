@@ -96,6 +96,7 @@ use crate::{
         BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
         DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
         FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
+        VersionedBlock, VersionedBlockBody,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -446,7 +447,7 @@ impl Storage {
             let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let maybe_block_body = get_body_for_block_header_without_migration(
+            let maybe_block_body = get_versioned_body_for_block_header_no_migration(
                 &mut body_txn,
                 block_header.body_hash(),
                 &BlockBodyDatabases {
@@ -482,7 +483,7 @@ impl Storage {
             )?;
 
             if let Some(block_body) = maybe_block_body? {
-                insert_to_deploy_index(
+                insert_versioned_block_body_to_deploy_index(
                     &mut deploy_hash_index,
                     block_header.block_hash(),
                     &block_body,
@@ -813,6 +814,9 @@ impl Storage {
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&block)?).ignore()
             }
+            StorageRequest::PutVersionedBlock { block, responder } => responder
+                .respond(self.write_versioned_block(&block)?)
+                .ignore(),
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
                 responder,
@@ -827,6 +831,12 @@ impl Storage {
                 block_hash,
                 responder,
             } => responder.respond(self.read_block(&block_hash)?).ignore(),
+            StorageRequest::GetVersionedBlock {
+                block_hash,
+                responder,
+            } => responder
+                .respond(self.read_versioned_block(&block_hash)?)
+                .ignore(),
             StorageRequest::IsBlockStored {
                 block_hash,
                 responder,
@@ -1305,6 +1315,14 @@ impl Storage {
         self.get_single_block(&mut self.env.begin_rw_txn()?, block_hash)
     }
 
+    /// Retrieves a versioned block by hash.
+    pub fn read_versioned_block(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+        self.get_single_versioned_block(&mut self.env.begin_rw_txn()?, block_hash)
+    }
+
     /// Returns `true` if the given block's header and body are stored.
     fn block_exists(&self, block_hash: &BlockHash) -> Result<bool, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
@@ -1455,6 +1473,22 @@ impl Storage {
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
+        if wrote {
+            txn.commit()?;
+        }
+        Ok(wrote)
+    }
+
+    /// TODO: Docs
+    pub fn write_versioned_block(
+        &mut self,
+        block: &VersionedBlock,
+    ) -> Result<bool, FatalStorageError> {
+        // Validate the block prior to inserting it into the database
+        block.verify()?;
+        let env = Rc::clone(&self.env);
+        let mut txn = env.begin_rw_txn()?;
+        let wrote = self.write_validated_versioned_block(&mut txn, block)?;
         if wrote {
             txn.commit()?;
         }
@@ -1613,10 +1647,60 @@ impl Storage {
                 &mut self.switch_block_era_id_index,
                 block.header(),
             )?;
-            insert_to_deploy_index(
+            insert_block_body_to_deploy_index(
                 &mut self.deploy_hash_index,
                 *block.hash(),
                 block.body(),
+                block.header().height(),
+            )?;
+        }
+        Ok(true)
+    }
+
+    // TODO[RC]: Dedup with the above, generic?
+    fn write_validated_versioned_block(
+        &mut self,
+        txn: &mut RwTransaction,
+        block: &VersionedBlock,
+    ) -> Result<bool, FatalStorageError> {
+        {
+            let block_body_hash = block.header().body_hash();
+            let block_body = block.body();
+            if !put_single_versioned_block_body(
+                txn,
+                block_body_hash,
+                &block_body,
+                self.block_body_dbs.current,
+            )? {
+                error!("could not insert body for: {}", block);
+                return Ok(false);
+            }
+        }
+
+        let overwrite = true;
+
+        if !txn.put_value(
+            self.block_header_db,
+            block.hash(),
+            block.header(),
+            overwrite,
+        )? {
+            error!("could not insert block header for block: {}", block);
+            return Ok(false);
+        }
+
+        {
+            insert_to_block_header_indices(
+                &mut self.block_height_index,
+                &mut self.switch_block_era_id_index,
+                block.header(),
+            )?;
+            let versioned_block_body = &block.body();
+            let block_body: BlockBody = versioned_block_body.into();
+            insert_block_body_to_deploy_index(
+                &mut self.deploy_hash_index,
+                *block.hash(),
+                &block_body,
                 block.header().height(),
             )?;
         }
@@ -2150,6 +2234,43 @@ impl Storage {
         Ok(Some(block))
     }
 
+    /// Retrieves a single block from storage.
+    fn get_single_versioned_block(
+        &self,
+        txn: &mut RwTransaction,
+        block_hash: &BlockHash,
+    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+        let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
+            Some(block_header) => block_header,
+            None => {
+                debug!(
+                    ?block_hash,
+                    "get_single_block: missing block header for {}", block_hash
+                );
+                return Ok(None);
+            }
+        };
+
+        let maybe_versioned_block_body = get_versioned_body_for_block_header(
+            txn,
+            block_header.body_hash(),
+            &self.block_body_dbs,
+        );
+        let block_body = match maybe_versioned_block_body? {
+            Some(block_body) => block_body,
+            None => {
+                debug!(
+                    ?block_header,
+                    "get_single_versioned_block: missing versioned block body for {}",
+                    block_header.block_hash()
+                );
+                return Ok(None);
+            }
+        };
+        let block = VersionedBlock::new_from_header_and_versioned_body(block_header, &block_body)?;
+        Ok(Some(block))
+    }
+
     /// Retrieves a set of deploys from storage, along with their potential finalized approvals.
     fn get_deploys_with_finalized_approvals<Tx: Transaction>(
         &self,
@@ -2654,7 +2775,37 @@ fn insert_to_block_header_indices(
 /// Inserts the relevant entries to the index.
 ///
 /// If a duplicate entry is encountered, index is not updated and an error is returned.
-fn insert_to_deploy_index(
+fn insert_versioned_block_body_to_deploy_index(
+    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
+    block_hash: BlockHash,
+    block_body: &VersionedBlockBody,
+    block_height: u64,
+) -> Result<(), FatalStorageError> {
+    if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
+        deploy_hash_index
+            .get(hash)
+            .map_or(false, |old_block_hash_and_height| {
+                old_block_hash_and_height.block_hash != block_hash
+            })
+    }) {
+        return Err(FatalStorageError::DuplicateDeployIndex {
+            deploy_hash: *hash,
+            first: deploy_hash_index[hash],
+            second: BlockHashAndHeight::new(block_hash, block_height),
+        });
+    }
+
+    for hash in block_body.deploy_and_transfer_hashes() {
+        deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
+    }
+
+    Ok(())
+}
+
+/// Inserts the relevant entries to the index.
+///
+/// If a duplicate entry is encountered, index is not updated and an error is returned.
+fn insert_block_body_to_deploy_index(
     deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
     block_hash: BlockHash,
     block_body: &BlockBody,
@@ -2985,13 +3136,13 @@ where
     Ok(())
 }
 
-fn migrate_to_block_body_v2(
+fn migrate_to_versioned_block_body(
     txn: &mut RwTransaction,
     block_body_hash: &Digest,
-    block_body: &BlockBody,
+    block_body: &VersionedBlockBody,
     block_body_dbs: &BlockBodyDatabases,
 ) -> Result<(), LmdbExtError> {
-    put_single_block_body(txn, block_body_hash, block_body, block_body_dbs.current)?;
+    put_single_versioned_block_body(txn, block_body_hash, block_body, block_body_dbs.current)?;
     if let Err(err) = txn.del(block_body_dbs.legacy, block_body_hash, None) {
         warn!(%block_body_hash, %err, "error deleting migrated block body from legacy db")
     }
@@ -3000,21 +3151,21 @@ fn migrate_to_block_body_v2(
 }
 
 /// Retrieves the block body for the given block header.
-fn get_body_for_block_header_internal<Tx>(
+fn get_versioned_body_for_block_header_no_migration<Tx>(
     txn: &mut Tx,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<BlockBody>, LmdbExtError>
+) -> Result<Option<VersionedBlockBody>, LmdbExtError>
 where
     Tx: Transaction,
 {
-    let maybe_block_body: Option<BlockBody> =
+    let maybe_block_body: Option<VersionedBlockBody> =
         txn.get_value(block_body_dbs.current, block_body_hash)?;
     if maybe_block_body.is_none() {
         let maybe_legacy_block_body: Option<BlockBodyV1> =
             txn.get_value(block_body_dbs.legacy, block_body_hash)?;
-        if let Some(legacy_block_body) = maybe_legacy_block_body {
-            return Ok(Some(BlockBody::BlockBodyV1(legacy_block_body)));
+        if let Some(block_body_v1) = maybe_legacy_block_body {
+            return Ok(Some(VersionedBlockBody::V1(block_body_v1)));
         }
     } else {
         return Ok(maybe_block_body);
@@ -3023,38 +3174,49 @@ where
     Ok(None)
 }
 
-/// Retrieves the block body for the given block header, doesn't perform migration to new version.
-fn get_body_for_block_header_without_migration<Tx>(
-    txn: &mut Tx,
-    block_body_hash: &Digest,
-    block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<BlockBody>, LmdbExtError>
-where
-    Tx: Transaction,
-{
-    let maybe_block_body =
-        get_body_for_block_header_internal(txn, block_body_hash, block_body_dbs)?;
-
-    Ok(maybe_block_body)
-}
-
-/// Retrieves the block body for the given block header, performing the migration to the new version
-/// of BlockBody if necessary.
+/// Retrieves the block body for the given block header.
 fn get_body_for_block_header(
     txn: &mut RwTransaction,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
 ) -> Result<Option<BlockBody>, LmdbExtError> {
+    let maybe_versioned_block_body: Option<VersionedBlockBody> =
+        txn.get_value(block_body_dbs.current, block_body_hash)?;
+    match maybe_versioned_block_body {
+        Some(VersionedBlockBody::V2(block_body_v2)) => Ok(Some(block_body_v2)),
+        Some(VersionedBlockBody::V1(_)) | None => Ok(None),
+    }
+}
+
+/// Retrieves the versioned block body for the given block header, performing the migration to the
+/// new version of BlockBody if necessary.
+#[allow(unused)] // TODO[RC]: This function should be used by gossiper/fetcher in the historical sync process.
+fn get_versioned_body_for_block_header(
+    txn: &mut RwTransaction,
+    block_body_hash: &Digest,
+    block_body_dbs: &BlockBodyDatabases,
+) -> Result<Option<VersionedBlockBody>, LmdbExtError> {
     let maybe_block_body =
-        get_body_for_block_header_internal(txn, block_body_hash, block_body_dbs)?;
+        get_versioned_body_for_block_header_no_migration(txn, block_body_hash, block_body_dbs)?;
 
     if let Some(ref block_body) = maybe_block_body {
-        if matches!(block_body, BlockBody::BlockBodyV1(_)) {
-            migrate_to_block_body_v2(txn, block_body_hash, block_body, block_body_dbs)?
+        if matches!(block_body, VersionedBlockBody::V1(_)) {
+            migrate_to_versioned_block_body(txn, block_body_hash, block_body, block_body_dbs)?
         }
     }
 
     Ok(maybe_block_body)
+}
+
+/// Writes a single block body in a separate transaction to storage.
+fn put_single_versioned_block_body(
+    txn: &mut RwTransaction,
+    block_body_hash: &Digest,
+    block_body: &VersionedBlockBody,
+    db: Database,
+) -> Result<bool, LmdbExtError> {
+    txn.put_value(db, block_body_hash, block_body, true)
+        .map_err(Into::into)
 }
 
 /// Writes a single block body in a separate transaction to storage.
@@ -3064,8 +3226,8 @@ fn put_single_block_body(
     block_body: &BlockBody,
     db: Database,
 ) -> Result<bool, LmdbExtError> {
-    txn.put_value(db, block_body_hash, block_body, true)
-        .map_err(Into::into)
+    let versioned_block_body = VersionedBlockBody::V2(block_body.clone());
+    put_single_versioned_block_body(txn, block_body_hash, &versioned_block_body, db)
 }
 
 /// Purges stale entries from the block metadata database.

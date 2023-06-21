@@ -55,6 +55,7 @@ use crate::{
         BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, Deploy,
         FinalitySignature, FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock,
         MetaBlockState, NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
+        VersionedBlock,
     },
     NodeRng,
 };
@@ -109,7 +110,7 @@ const COMPONENT_NAME: &str = "block_synchronizer";
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
     + From<NetworkInfoRequest>
-    + From<FetcherRequest<Block>>
+    + From<FetcherRequest<VersionedBlock>>
     + From<FetcherRequest<BlockHeader>>
     + From<FetcherRequest<LegacyDeploy>>
     + From<FetcherRequest<Deploy>>
@@ -134,7 +135,7 @@ pub(crate) trait ReactorEvent:
 impl<REv> ReactorEvent for REv where
     REv: From<FetcherRequest<ApprovalsHashes>>
         + From<NetworkInfoRequest>
-        + From<FetcherRequest<Block>>
+        + From<FetcherRequest<VersionedBlock>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<LegacyDeploy>>
         + From<FetcherRequest<Deploy>>
@@ -544,7 +545,7 @@ impl BlockSynchronizer {
         rng: &mut NodeRng,
     ) -> Effects<Event>
     where
-        REv: ReactorEvent + From<FetcherRequest<Block>> + From<MarkBlockCompletedRequest>,
+        REv: ReactorEvent + From<FetcherRequest<VersionedBlock>> + From<MarkBlockCompletedRequest>,
     {
         let need_next_interval = self.config.need_next_interval.into();
         let mut results = Effects::new();
@@ -586,7 +587,11 @@ impl BlockSynchronizer {
                     builder.set_in_flight_latch();
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<Block>(block_hash, node_id, Box::new(EmptyValidationMetadata))
+                            .fetch::<VersionedBlock>(
+                                block_hash,
+                                node_id,
+                                Box::new(EmptyValidationMetadata),
+                            )
                             .event(Event::BlockFetched)
                     }))
                 }
@@ -833,10 +838,13 @@ impl BlockSynchronizer {
         }
     }
 
-    fn block_fetched(&mut self, result: Result<FetchedData<Block>, FetcherError<Block>>) {
+    fn block_fetched(
+        &mut self,
+        result: Result<FetchedData<VersionedBlock>, FetcherError<VersionedBlock>>,
+    ) {
         let (block_hash, maybe_block, maybe_peer_id): (
             BlockHash,
-            Option<Box<Block>>,
+            Option<Box<VersionedBlock>>,
             Option<NodeId>,
         ) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => {
@@ -866,7 +874,8 @@ impl BlockSynchronizer {
                             builder.demote_peer(peer_id);
                         }
                     }
-                    Some(block) => {
+                    Some(versioned_block) => {
+                        let block: Block = (*versioned_block).into();
                         if let Err(error) = builder.register_block(&block, maybe_peer_id) {
                             error!(%error, "BlockSynchronizer: failed to apply block");
                         }
@@ -1306,7 +1315,7 @@ impl BlockSynchronizer {
 
 impl<REv> InitializedComponent<REv> for BlockSynchronizer
 where
-    REv: ReactorEvent + From<FetcherRequest<Block>>,
+    REv: ReactorEvent + From<FetcherRequest<VersionedBlock>>,
 {
     fn state(&self) -> &ComponentState {
         &self.state

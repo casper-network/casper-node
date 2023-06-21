@@ -1173,76 +1173,43 @@ impl BlockHeaderWithMetadata {
     }
 }
 
+/// The body portion of a block.
+pub type BlockBody = BlockBodyV2;
+
 /// The body portion of a block. It encapsulates different variants of the `BlockBodyVx`.
 // TODO[RC]: Consider moving to a separate module after merged with Fraser's types rework
 #[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
-pub enum BlockBody {
+pub enum VersionedBlockBody {
     /// The legacy, initial version of the body portion of a block.
-    BlockBodyV1(BlockBodyV1),
+    V1(BlockBodyV1),
     /// The version 2 of the body portion of a block, which includes the
     /// `past_finality_signatures`.
-    BlockBodyV2(BlockBodyV2),
+    V2(BlockBodyV2),
 }
 
-impl BlockBody {
-    /// The number of parts of a block body.
-    pub const PARTS_COUNT: usize = 3;
-
-    /// Creates a new body from deploy and transfer hashes.
-    pub(crate) fn new(
-        proposer: PublicKey,
-        deploy_hashes: Vec<DeployHash>,
-        transfer_hashes: Vec<DeployHash>,
-    ) -> Self {
-        Self::BlockBodyV2(BlockBodyV2 {
-            proposer,
-            deploy_hashes,
-            transfer_hashes,
-            past_finality_signatures: Default::default(),
-            hash: OnceCell::new(),
-        })
-    }
-
-    /// Returns the inner block body representing the most recent type version.
-    pub fn into_current_version(&self) -> &BlockBodyV2 {
-        match self {
-            BlockBody::BlockBodyV2(v2) => v2,
-            _ => panic!("current version of node should never try to use any version of BlockBody other than the most recent one"),
-        }
-    }
-
+// TODO[RC]: Don't need these functions, use generic or trait?
+impl VersionedBlockBody {
     /// Block proposer.
     pub fn proposer(&self) -> &PublicKey {
         match self {
-            BlockBody::BlockBodyV1(block_body_v1) => &block_body_v1.proposer,
-            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.proposer,
+            VersionedBlockBody::V1(v1) => &v1.proposer,
+            VersionedBlockBody::V2(v2) => &v2.proposer,
         }
     }
 
     /// Retrieves the deploy hashes within the block.
     pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
         match self {
-            BlockBody::BlockBodyV1(block_body_v1) => &block_body_v1.deploy_hashes,
-            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.deploy_hashes,
+            VersionedBlockBody::V1(v1) => &v1.deploy_hashes,
+            VersionedBlockBody::V2(v2) => &v2.deploy_hashes,
         }
     }
 
     /// Retrieves the transfer hashes within the block.
     pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
         match self {
-            BlockBody::BlockBodyV1(block_body_v1) => &block_body_v1.transfer_hashes,
-            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.transfer_hashes,
-        }
-    }
-
-    /// Returns past finality signatures
-    #[allow(unused)]
-    pub(crate) fn past_finality_signatures(&self) -> &PastFinalitySignatures {
-        match self {
-            BlockBody::BlockBodyV1(_block_body_v1) => {
-                panic!("no PastFinalitySignatures in block_body_v1")
-            }
-            BlockBody::BlockBodyV2(block_body_v2) => &block_body_v2.past_finality_signatures,
+            VersionedBlockBody::V1(v1) => &v1.transfer_hashes,
+            VersionedBlockBody::V2(v2) => &v2.transfer_hashes,
         }
     }
 
@@ -1256,13 +1223,13 @@ impl BlockBody {
     /// Computes the body hash by hashing the serialized bytes.
     pub fn hash(&self) -> Digest {
         *match self {
-            BlockBody::BlockBodyV1(v1) => v1.hash.get_or_init(|| {
+            VersionedBlockBody::V1(v1) => v1.hash.get_or_init(|| {
                 let serialized_body = v1
                     .to_bytes()
                     .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
                 Digest::hash(serialized_body)
             }),
-            BlockBody::BlockBodyV2(v2) => v2.hash.get_or_init(|| {
+            VersionedBlockBody::V2(v2) => v2.hash.get_or_init(|| {
                 let serialized_body = v2
                     .to_bytes()
                     .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
@@ -1284,6 +1251,16 @@ pub struct BlockBodyV1 {
 }
 
 impl BlockBodyV1 {
+    /// Computes the body hash by hashing the serialized bytes.
+    pub fn hash(&self) -> Digest {
+        *self.hash.get_or_init(|| {
+            let serialized_body = self
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+            Digest::hash(serialized_body)
+        })
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -1366,6 +1343,53 @@ pub struct BlockBodyV2 {
 }
 
 impl BlockBodyV2 {
+    /// Creates a new body from deploy and transfer hashes.
+    pub(crate) fn new(
+        proposer: PublicKey,
+        deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
+    ) -> Self {
+        BlockBody {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            past_finality_signatures: Default::default(),
+            hash: OnceCell::new(),
+        }
+    }
+
+    /// Block proposer.
+    pub fn proposer(&self) -> &PublicKey {
+        &self.proposer
+    }
+
+    /// Retrieves the deploy hashes within the block.
+    pub(crate) fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        &self.deploy_hashes
+    }
+
+    /// Retrieves the transfer hashes within the block.
+    pub(crate) fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        &self.transfer_hashes
+    }
+
+    /// Returns deploy hashes of transactions in an order in which they were executed.
+    pub(crate) fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+    }
+
+    /// Computes the body hash by hashing the serialized bytes.
+    pub fn hash(&self) -> Digest {
+        *self.hash.get_or_init(|| {
+            let serialized_body = self
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+            Digest::hash(serialized_body)
+        })
+    }
+
     /// Generates a random instance using a `TestRng`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
@@ -1391,11 +1415,20 @@ impl BlockBodyV2 {
     }
 }
 
-impl PartialEq for BlockBody {
-    fn eq(&self, other: &BlockBody) -> bool {
+impl From<&VersionedBlockBody> for BlockBodyV2 {
+    fn from(value: &VersionedBlockBody) -> Self {
+        match value {
+            VersionedBlockBody::V1(_) => todo!(),
+            VersionedBlockBody::V2(v2) => v2.clone(),
+        }
+    }
+}
+
+impl PartialEq for VersionedBlockBody {
+    fn eq(&self, other: &VersionedBlockBody) -> bool {
         match (self, other) {
-            (BlockBody::BlockBodyV1(lhs), BlockBody::BlockBodyV1(rhs)) => lhs.eq(rhs),
-            (BlockBody::BlockBodyV2(lhs), BlockBody::BlockBodyV2(rhs)) => lhs.eq(rhs),
+            (VersionedBlockBody::V1(lhs), VersionedBlockBody::V1(rhs)) => lhs.eq(rhs),
+            (VersionedBlockBody::V2(lhs), VersionedBlockBody::V2(rhs)) => lhs.eq(rhs),
             _ => {
                 panic!("should we ever compare different versions of BlockBody?")
             }
@@ -1433,11 +1466,11 @@ impl PartialEq for BlockBodyV2 {
     }
 }
 
-impl Display for BlockBody {
+impl Display for VersionedBlockBody {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            BlockBody::BlockBodyV1(v1) => Display::fmt(&v1, formatter),
-            BlockBody::BlockBodyV2(v2) => Display::fmt(&v2, formatter),
+            VersionedBlockBody::V1(v1) => Display::fmt(&v1, formatter),
+            VersionedBlockBody::V2(v2) => Display::fmt(&v2, formatter),
         }
     }
 }
@@ -1469,15 +1502,15 @@ impl Display for BlockBodyV2 {
     }
 }
 
-impl ToBytes for BlockBody {
+impl ToBytes for VersionedBlockBody {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         match self {
-            BlockBody::BlockBodyV1(v1) => {
+            VersionedBlockBody::V1(v1) => {
                 buffer.insert(0, BLOCK_BODY_V1_TAG);
                 buffer.extend(v1.to_bytes()?);
             }
-            BlockBody::BlockBodyV2(v2) => {
+            VersionedBlockBody::V2(v2) => {
                 buffer.insert(0, BLOCK_BODY_V2_TAG);
                 buffer.extend(v2.to_bytes()?);
             }
@@ -1488,8 +1521,8 @@ impl ToBytes for BlockBody {
     fn serialized_length(&self) -> usize {
         TAG_LENGTH
             + match self {
-                BlockBody::BlockBodyV1(v1) => v1.serialized_length(),
-                BlockBody::BlockBodyV2(v2) => v2.serialized_length(),
+                VersionedBlockBody::V1(v1) => v1.serialized_length(),
+                VersionedBlockBody::V2(v2) => v2.serialized_length(),
             }
     }
 }
@@ -1499,17 +1532,17 @@ pub const BLOCK_BODY_V1_TAG: u8 = 0;
 /// Tag for block body v2.
 pub const BLOCK_BODY_V2_TAG: u8 = 1;
 
-impl FromBytes for BlockBody {
+impl FromBytes for VersionedBlockBody {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             BLOCK_BODY_V1_TAG => {
                 let (body, remainder): (BlockBodyV1, _) = FromBytes::from_bytes(remainder)?;
-                Ok((Self::BlockBodyV1(body), remainder))
+                Ok((Self::V1(body), remainder))
             }
             BLOCK_BODY_V2_TAG => {
                 let (body, remainder): (BlockBodyV2, _) = FromBytes::from_bytes(remainder)?;
-                Ok((Self::BlockBodyV2(body), remainder))
+                Ok((Self::V2(body), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -1657,17 +1690,151 @@ impl Display for BlockSignatures {
     }
 }
 
-/// A proposed block after execution, with the resulting post-state-hash.  This is the core
-/// component of the Casper linear blockchain.
-// TODO[RC]: This should be `BlockV2` now, as it has upgraded `BlockBody`
+/// A block.
+pub type Block = BlockV2;
+
+/// A block, version 1.
 #[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Block {
+pub struct BlockV1 {
     hash: BlockHash,
     header: BlockHeader,
-    body: BlockBody,
+    body: BlockBodyV1,
 }
 
-impl Block {
+/// A block, version 2.
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockV2 {
+    hash: BlockHash,
+    header: BlockHeader,
+    body: BlockBodyV2,
+}
+
+/// A block. It encapsulates different variants of the `BlockVx`.
+#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VersionedBlock {
+    /// The legacy, initial version of the block.
+    V1(BlockV1),
+    /// The version 2 of the block, which uses the [VersionedBlockBody].
+    V2(BlockV2),
+}
+
+impl VersionedBlock {
+    pub(crate) fn new_from_header_and_versioned_body(
+        header: BlockHeader,
+        versioned_block_body: &VersionedBlockBody,
+    ) -> Result<Self, Box<BlockValidationError>> {
+        let body: BlockBody = versioned_block_body.into();
+        let hash = header.block_hash();
+        let block = VersionedBlock::V2(Block { hash, header, body });
+        block.verify()?;
+        Ok(block)
+    }
+
+    /// The hash of this block's header.
+    pub fn hash(&self) -> &BlockHash {
+        match self {
+            VersionedBlock::V1(v1) => v1.hash(),
+            VersionedBlock::V2(v2) => v2.hash(),
+        }
+    }
+
+    /// Check the integrity of a block by hashing its body and header
+    pub fn verify(&self) -> Result<(), BlockValidationError> {
+        match self {
+            VersionedBlock::V1(v1) => v1.verify(),
+            VersionedBlock::V2(v2) => v2.verify(),
+        }
+    }
+
+    /// Returns the reference to the header.    
+    pub fn header(&self) -> &BlockHeader {
+        match self {
+            VersionedBlock::V1(v1) => v1.header(),
+            VersionedBlock::V2(v2) => v2.header(),
+        }
+    }
+
+    pub(crate) fn body(&self) -> VersionedBlockBody {
+        match self {
+            VersionedBlock::V1(v1) => VersionedBlockBody::V1(v1.body().clone()),
+            VersionedBlock::V2(v2) => VersionedBlockBody::V2(v2.body().clone()),
+        }
+    }
+}
+
+impl From<VersionedBlock> for Block {
+    fn from(value: VersionedBlock) -> Self {
+        match value {
+            VersionedBlock::V1(_) => todo!(),
+            VersionedBlock::V2(v2) => v2,
+        }
+    }
+}
+
+impl From<&VersionedBlock> for Block {
+    fn from(value: &VersionedBlock) -> Self {
+        match value {
+            VersionedBlock::V1(_) => todo!(),
+            VersionedBlock::V2(v2) => v2.clone(),
+        }
+    }
+}
+
+// TODO[RC]: Shouldn't be needed.
+impl FetchItem for Block {
+    type Id = BlockHash;
+    type ValidationError = BlockValidationError;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    const TAG: Tag = Tag::Block;
+
+    fn fetch_id(&self) -> Self::Id {
+        *self.hash()
+    }
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+}
+
+impl BlockV1 {
+    /// The hash of this block's header.
+    pub fn hash(&self) -> &BlockHash {
+        &self.hash
+    }
+
+    /// Returns the reference to the header.
+    pub fn header(&self) -> &BlockHeader {
+        &self.header
+    }
+
+    pub(crate) fn body(&self) -> &BlockBodyV1 {
+        &self.body
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn verify(&self) -> Result<(), BlockValidationError> {
+        let actual_block_header_hash = self.header().block_hash();
+        if *self.hash() != actual_block_header_hash {
+            return Err(BlockValidationError::UnexpectedBlockHash {
+                block: Box::new(VersionedBlock::V1(self.to_owned())),
+                actual_block_header_hash,
+            });
+        }
+
+        let actual_block_body_hash = self.body.hash();
+        if self.header.body_hash != actual_block_body_hash {
+            return Err(BlockValidationError::UnexpectedBodyHash {
+                block: Box::new(VersionedBlock::V1(self.to_owned())),
+                actual_block_body_hash,
+            });
+        }
+
+        Ok(())
+    }
+}
+
+impl BlockV2 {
     pub(crate) fn new(
         parent_hash: BlockHash,
         parent_seed: Digest,
@@ -1799,7 +1966,7 @@ impl Block {
         let actual_block_header_hash = self.header().block_hash();
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
-                block: Box::new(self.to_owned()),
+                block: Box::new(VersionedBlock::V2(self.to_owned())),
                 actual_block_header_hash,
             });
         }
@@ -1807,7 +1974,7 @@ impl Block {
         let actual_block_body_hash = self.body.hash();
         if self.header.body_hash != actual_block_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
-                block: Box::new(self.to_owned()),
+                block: Box::new(VersionedBlock::V2(self.to_owned())),
                 actual_block_body_hash,
             });
         }
@@ -2014,6 +2181,15 @@ impl Display for Block {
     }
 }
 
+impl Display for VersionedBlock {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            VersionedBlock::V1(_) => todo!(),
+            VersionedBlock::V2(v2) => fmt::Display::fmt(&v2, f),
+        }
+    }
+}
+
 impl ToBytes for Block {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -2040,7 +2216,7 @@ impl FromBytes for Block {
     }
 }
 
-impl FetchItem for Block {
+impl FetchItem for VersionedBlock {
     type Id = BlockHash;
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;
@@ -2506,13 +2682,13 @@ pub(crate) mod json_compatibility {
     // `past_finality_signatures`
     impl From<JsonBlockBody> for BlockBody {
         fn from(json_body: JsonBlockBody) -> Self {
-            Self::BlockBodyV2(BlockBodyV2 {
+            BlockBody {
                 proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
                 past_finality_signatures: Default::default(),
                 hash: OnceCell::new(),
-            })
+            }
         }
     }
 
@@ -2918,12 +3094,12 @@ mod tests {
     }
 
     #[test]
-    fn block_body_bytesrepr_roundtrip() {
+    fn versioned_block_body_bytesrepr_roundtrip() {
         let mut rng = TestRng::new();
-        let block_body = BlockBody::BlockBodyV1(BlockBodyV1::random(&mut rng));
+        let block_body = VersionedBlockBody::V1(BlockBodyV1::random(&mut rng));
         bytesrepr::test_serialization_roundtrip(&block_body);
 
-        let block_body = BlockBody::BlockBodyV2(BlockBodyV2::random(&mut rng));
+        let block_body = VersionedBlockBody::V2(BlockBodyV2::random(&mut rng));
         bytesrepr::test_serialization_roundtrip(&block_body);
     }
 
@@ -2982,9 +3158,9 @@ mod tests {
             Err(BlockValidationError::UnexpectedBodyHash {
                 block,
                 actual_block_body_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.body_hash == bogus_block_body_hash
-                && block.body.hash() == actual_block_body_hash => {}
+            }) if block.hash() == &bogus_block_hash
+                && block.header().body_hash == bogus_block_body_hash
+                && block.body().hash() == actual_block_body_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }
@@ -3002,8 +3178,8 @@ mod tests {
             Err(BlockValidationError::UnexpectedBlockHash {
                 block,
                 actual_block_header_hash,
-            }) if block.hash == bogus_block_hash
-                && block.header.block_hash() == actual_block_header_hash => {}
+            }) if block.hash() == &bogus_block_hash
+                && block.header().block_hash() == actual_block_header_hash => {}
             unexpected => panic!("Bad check response: {:?}", unexpected),
         }
     }
