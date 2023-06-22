@@ -62,6 +62,7 @@ use tracing_futures::Instrument;
 
 #[cfg(test)]
 use crate::components::ComponentState;
+#[cfg(test)]
 use casper_types::testing::TestRng;
 
 #[cfg(target_os = "linux")]
