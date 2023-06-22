@@ -1468,6 +1468,7 @@ fn should_get_signed_block_headers() {
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
+                false,
             )
             .unwrap()
             .unwrap()
@@ -1512,6 +1513,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
                 &mut txn,
                 requested_block_header,
                 &highest_block_header_with_sufficient_signatures,
+                false,
             )
             .unwrap()
             .unwrap()
@@ -1587,6 +1589,106 @@ fn sync_leap_signed_block_headers_should_be_empty_when_asked_for_a_tip() {
     );
     assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
 
+    sync_leap
+        .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
+        .unwrap();
+}
+
+#[test]
+fn sync_leap_historical_sync_signed_block_headers_for_era_0() {
+    let (storage, chainspec, blocks) = create_sync_leap_test_chain(&[], false, None);
+
+    // Ask for block in Era 0 and attempt historical leap
+    let ask_for_block: usize = 0;
+    let requested_block_hash = blocks.get(ask_for_block).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+    assert_eq!(
+        sync_leap.trusted_block_header.height(),
+        ask_for_block as u64
+    );
+    assert!(block_headers_into_heights(&sync_leap.trusted_ancestor_headers).is_empty());
+    // Expect single switch block header to be present.
+    assert_eq!(
+        signed_block_headers_into_heights(&sync_leap.signed_block_headers),
+        vec![1],
+    );
+    sync_leap
+        .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
+        .unwrap();
+
+    // Ask for block in Era 1 and attempt historical leap
+    let ask_for_block: usize = 1;
+    let requested_block_hash = blocks.get(ask_for_block).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_historical(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+    assert_eq!(
+        sync_leap.trusted_block_header.height(),
+        ask_for_block as u64
+    );
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![0],
+    );
+    // Expect single switch block header is empty.
+    assert!(signed_block_headers_into_heights(&sync_leap.signed_block_headers).is_empty());
+    sync_leap
+        .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
+        .unwrap();
+
+    // Ask for block in Era 0 and attempt forward leap
+    let ask_for_block: usize = 0;
+    let requested_block_hash = blocks.get(ask_for_block).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+    assert_eq!(
+        sync_leap.trusted_block_header.height(),
+        ask_for_block as u64
+    );
+    assert!(block_headers_into_heights(&sync_leap.trusted_ancestor_headers).is_empty());
+    // Expect switch block headers up to the tip
+    assert_eq!(
+        signed_block_headers_into_heights(&sync_leap.signed_block_headers),
+        vec![1, 4, 7, 10, 12]
+    );
+    sync_leap
+        .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
+        .unwrap();
+
+    // Ask for block in Era 1 and attempt forward leap
+    let ask_for_block: usize = 1;
+    let requested_block_hash = blocks.get(ask_for_block).unwrap().header().block_hash();
+    let sync_leap_identifier = SyncLeapIdentifier::sync_to_tip(requested_block_hash);
+    let sync_leap_result = storage.get_sync_leap(sync_leap_identifier).unwrap();
+    let sync_leap = match sync_leap_result {
+        FetchResponse::Fetched(sync_leap) => sync_leap,
+        _ => panic!("should have leap sync"),
+    };
+    assert_eq!(
+        sync_leap.trusted_block_header.height(),
+        ask_for_block as u64
+    );
+    assert_eq!(
+        block_headers_into_heights(&sync_leap.trusted_ancestor_headers),
+        vec![0],
+    );
+    // Expect switch block headers up to the tip
+    assert_eq!(
+        signed_block_headers_into_heights(&sync_leap.signed_block_headers),
+        vec![4, 7, 10, 12]
+    );
     sync_leap
         .validate(&SyncLeapValidationMetaData::from_chainspec(&chainspec))
         .unwrap();

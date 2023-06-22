@@ -1972,6 +1972,7 @@ impl Storage {
         txn: &mut Tx,
         trusted_block_header: &BlockHeader,
         highest_signed_block_header: &BlockHeaderWithMetadata,
+        first_one_only: bool,
     ) -> Result<Option<Vec<BlockHeaderWithMetadata>>, FatalStorageError> {
         if trusted_block_header.block_hash()
             == highest_signed_block_header.block_header.block_hash()
@@ -1993,6 +1994,10 @@ impl Storage {
             match self.get_single_block_header_with_metadata(txn, hash)? {
                 Some(block) => result.push(block),
                 None => return Ok(None),
+            }
+
+            if first_one_only {
+                return Ok(Some(result));
             }
         }
         result.push(highest_signed_block_header.clone());
@@ -2321,8 +2326,33 @@ impl Storage {
                 None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };
 
+        let highest_complete_block_header =
+            match self.get_header_with_metadata_of_highest_complete_block(&mut txn)? {
+                Some(highest_complete_block_header) => highest_complete_block_header,
+                None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
+            };
+
         // highest block and signatures are not requested
         if sync_leap_identifier.trusted_ancestor_only() {
+            if trusted_block_header.era_id().is_genesis() {
+                if let Some(signed_block_headers) = self.get_signed_block_headers(
+                    &mut txn,
+                    &trusted_block_header,
+                    &highest_complete_block_header,
+                    true,
+                )? {
+                    debug_assert!(signed_block_headers.len() <= 1);
+                    return Ok(FetchResponse::Fetched(SyncLeap {
+                        trusted_ancestor_only: true,
+                        trusted_block_header,
+                        trusted_ancestor_headers,
+                        signed_block_headers,
+                    }));
+                } else {
+                    warn!("unable to provide validator weights for era 1 to the requesting node")
+                }
+            }
+
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: true,
                 trusted_block_header,
@@ -2330,12 +2360,6 @@ impl Storage {
                 signed_block_headers: vec![],
             }));
         }
-
-        let highest_complete_block_header =
-            match self.get_header_with_metadata_of_highest_complete_block(&mut txn)? {
-                Some(highest_complete_block_header) => highest_complete_block_header,
-                None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
-            };
 
         if highest_complete_block_header
             .block_header
@@ -2361,6 +2385,7 @@ impl Storage {
             &mut txn,
             &trusted_block_header,
             &highest_complete_block_header,
+            false,
         )? {
             return Ok(FetchResponse::Fetched(SyncLeap {
                 trusted_ancestor_only: false,

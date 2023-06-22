@@ -113,7 +113,10 @@ pub(crate) struct GlobalStatesMetadata {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, DataSize)]
 pub(crate) struct SyncLeap {
     /// Requester indicates if they want only the header and ancestor headers,
-    /// of if they want everything.
+    /// of if they want everything. In case where `trusted_block_header` is in era 0, even if this
+    /// flag is set to `true`, there will be a single signed block header added to
+    /// `signed_block_headers` - this will be switch block for era 0 that will enable the
+    /// requesting node to saturate era validators for eras 0 and 1.
     pub trusted_ancestor_only: bool,
     /// The header of the trusted block specified by hash by the requester.
     pub trusted_block_header: BlockHeader,
@@ -307,8 +310,14 @@ impl FetchItem for SyncLeap {
         if trusted_ancestor_iter.any(BlockHeader::is_switch_block) {
             return Err(SyncLeapValidationError::UnexpectedAncestorSwitchBlock);
         }
-        if self.trusted_ancestor_only && !self.signed_block_headers.is_empty() {
-            return Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders);
+        if self.trusted_ancestor_only {
+            if self.trusted_block_header.era_id().is_genesis() {
+                if self.signed_block_headers.len() > 1 {
+                    return Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders);
+                }
+            } else if !self.signed_block_headers.is_empty() {
+                return Err(SyncLeapValidationError::UnexpectedSignedBlockHeaders);
+            }
         }
 
         let mut headers: BTreeMap<BlockHash, &BlockHeader> = self
