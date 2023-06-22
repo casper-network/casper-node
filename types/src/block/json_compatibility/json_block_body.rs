@@ -1,6 +1,5 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -27,17 +26,6 @@ impl From<BlockBody> for JsonBlockBody {
             proposer: body.proposer,
             deploy_hashes: body.deploy_hashes,
             transfer_hashes: body.transfer_hashes,
-        }
-    }
-}
-
-impl From<JsonBlockBody> for BlockBody {
-    fn from(json_body: JsonBlockBody) -> Self {
-        BlockBody {
-            proposer: json_body.proposer,
-            deploy_hashes: json_body.deploy_hashes,
-            transfer_hashes: json_body.transfer_hashes,
-            hash: OnceCell::new(),
         }
     }
 }

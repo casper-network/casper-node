@@ -132,5 +132,5 @@ pub(super) async fn get_block<REv: ReactorEventT>(
 ) -> Result<Block, Error> {
     chain::get_signed_block(maybe_id, only_from_available_block_range, effect_builder)
         .await
-        .map(|block_with_metadata| block_with_metadata.block)
+        .map(|signed_block| signed_block.block)
 }

@@ -494,8 +494,8 @@ pub(super) async fn get_signed_block<REv: ReactorEventT>(
         }
     };
 
-    if let Some(block_with_metadata) = maybe_result {
-        return Ok(block_with_metadata);
+    if let Some(signed_block) = maybe_result {
+        return Ok(signed_block);
     }
 
     // TODO: Potential optimization: We might want to make the `GetBlock` actually return the

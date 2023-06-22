@@ -7,6 +7,8 @@ use datasize::DataSize;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use super::JsonBlockBody;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     DeployHash, Digest, PublicKey,
@@ -150,5 +152,17 @@ impl FromBytes for BlockBody {
             hash: OnceCell::new(),
         };
         Ok((body, bytes))
+    }
+}
+
+#[cfg(all(feature = "std", feature = "json-schema"))]
+impl From<JsonBlockBody> for BlockBody {
+    fn from(json_body: JsonBlockBody) -> Self {
+        BlockBody {
+            proposer: json_body.proposer,
+            deploy_hashes: json_body.deploy_hashes,
+            transfer_hashes: json_body.transfer_hashes,
+            hash: OnceCell::new(),
+        }
     }
 }

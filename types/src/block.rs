@@ -527,6 +527,17 @@ impl FromBytes for Block {
     }
 }
 
+#[cfg(all(feature = "std", feature = "json-schema"))]
+impl From<JsonBlock> for Block {
+    fn from(block: JsonBlock) -> Self {
+        Block {
+            hash: block.hash,
+            header: BlockHeader::from(block.header),
+            body: BlockBody::from(block.body),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

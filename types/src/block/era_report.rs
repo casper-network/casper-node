@@ -11,6 +11,8 @@ use once_cell::sync::Lazy;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use super::JsonEraReport;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 #[cfg(feature = "json-schema")]
@@ -204,6 +206,24 @@ impl EraReport<PublicKey> {
             .take(inactive_count)
             .collect();
         EraReport::new(equivocators, rewards, inactive_validators)
+    }
+}
+
+#[cfg(all(feature = "std", feature = "json-schema"))]
+impl From<JsonEraReport> for EraReport<PublicKey> {
+    fn from(era_report: JsonEraReport) -> Self {
+        let equivocators = era_report.equivocators;
+        let rewards = era_report
+            .rewards
+            .into_iter()
+            .map(|reward| (reward.validator, reward.amount))
+            .collect();
+        let inactive_validators = era_report.inactive_validators;
+        EraReport {
+            equivocators,
+            rewards,
+            inactive_validators,
+        }
     }
 }
 

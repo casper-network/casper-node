@@ -94,8 +94,8 @@ impl SignedBlockHeader {
     /// those in the `BlockSignatures`.
     ///
     /// Note that no cryptographic verification of the contained signatures is performed.  For this,
-    /// see [`BlockSignatures::verify`].
-    pub fn validate(&self) -> Result<(), SignedBlockHeaderValidationError> {
+    /// see [`BlockSignatures::is_verified`].
+    pub fn is_valid(&self) -> Result<(), SignedBlockHeaderValidationError> {
         if self.block_header.block_hash() != *self.block_signatures.block_hash() {
             return Err(SignedBlockHeaderValidationError::BlockHashMismatch {
                 block_hash_in_header: self.block_header.block_hash(),
@@ -122,7 +122,7 @@ impl SignedBlockHeader {
     /// Replaces the signature field of the last `block_signatures` entry with the `System` variant
     /// of [`Signature`], rendering that entry invalid.
     ///
-    /// Note that [`Self::validate`] will be unaffected by this as it only checks for equality in
+    /// Note that [`Self::is_valid`] will be unaffected by this as it only checks for equality in
     /// the block hash and era ID of the header and signatures; no cryptographic verification is
     /// performed.
     #[cfg(any(feature = "testing", test))]

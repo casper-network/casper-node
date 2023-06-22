@@ -993,9 +993,9 @@ impl Storage {
                     Some(signatures) => signatures,
                     None => BlockSignatures::new(block_hash, block.era_id()),
                 };
-                if block_signatures.verify().is_err() {
+                if block_signatures.is_verified().is_err() {
                     error!(?block, "invalid block signatures for block");
-                    debug_assert!(block_signatures.verify().is_ok());
+                    debug_assert!(block_signatures.is_verified().is_ok());
                     return Ok(responder.respond(None).ignore());
                 }
                 responder
@@ -1822,7 +1822,7 @@ impl Storage {
 
     /// Retrieves the highest block header with metadata from storage, if one exists. May return an
     /// LMDB error.
-    fn get_header_with_metadata_of_highest_complete_block<Tx: Transaction>(
+    fn get_highest_complete_signed_block_header<Tx: Transaction>(
         &self,
         txn: &mut Tx,
     ) -> Result<Option<SignedBlockHeader>, FatalStorageError> {
@@ -1843,7 +1843,7 @@ impl Storage {
 
         // The `completed_blocks` contains blocks with sufficient finality signatures,
         // so we don't need to check the sufficiency again.
-        self.get_single_block_header_with_metadata(txn, highest_complete_block_hash)
+        self.get_single_signed_block_header(txn, highest_complete_block_hash)
     }
 
     /// Retrieves the highest complete block from storage, if one exists. May return an LMDB error.
@@ -1989,7 +1989,7 @@ impl Storage {
                 None => return Ok(None),
             };
 
-            match self.get_single_block_header_with_metadata(txn, hash)? {
+            match self.get_single_signed_block_header(txn, hash)? {
                 Some(block) => result.push(block),
                 None => return Ok(None),
             }
@@ -2014,7 +2014,7 @@ impl Storage {
     }
 
     /// Retrieves a single block header in a given transaction from storage.
-    fn get_single_block_header_with_metadata<Tx: Transaction>(
+    fn get_single_signed_block_header<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
@@ -2328,7 +2328,7 @@ impl Storage {
         }
 
         let highest_complete_block_header =
-            match self.get_header_with_metadata_of_highest_complete_block(&mut txn)? {
+            match self.get_highest_complete_signed_block_header(&mut txn)? {
                 Some(highest_complete_block_header) => highest_complete_block_header,
                 None => return Ok(FetchResponse::NotFound(sync_leap_identifier)),
             };

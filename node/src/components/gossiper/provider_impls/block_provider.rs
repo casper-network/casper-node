@@ -18,7 +18,6 @@ impl GossipItem for Block {
     }
 
     fn gossip_target(&self) -> GossipTarget {
-        // Validators make their own blocks thus we only gossip blocks to non validators.
         GossipTarget::Mixed(self.era_id())
     }
 }

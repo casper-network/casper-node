@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    super::{Block, BlockBody, BlockHash, BlockHeader, BlockSignatures, EraEnd, EraId},
+    super::{Block, BlockHash, BlockSignatures, EraEnd, EraId},
     JsonBlockBody, JsonBlockHeader, JsonProof,
 };
 use crate::{crypto, DeployHash, Digest, ProtocolVersion, PublicKey, SecretKey, Timestamp};
@@ -97,16 +97,6 @@ impl JsonBlock {
     #[doc(hidden)]
     pub fn example() -> &'static Self {
         &JSON_BLOCK
-    }
-}
-
-impl From<JsonBlock> for Block {
-    fn from(block: JsonBlock) -> Self {
-        Block {
-            hash: block.hash,
-            header: BlockHeader::from(block.header),
-            body: BlockBody::from(block.body),
-        }
     }
 }
 

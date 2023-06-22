@@ -8,6 +8,8 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 use super::EraReport;
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use super::JsonEraEnd;
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
 use crate::{
@@ -113,6 +115,19 @@ impl FromBytes for EraEnd {
 impl Display for EraEnd {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "era end: {} ", self.era_report)
+    }
+}
+
+#[cfg(all(feature = "std", feature = "json-schema"))]
+impl From<JsonEraEnd> for EraEnd {
+    fn from(json_data: JsonEraEnd) -> Self {
+        let era_report = EraReport::from(json_data.era_report);
+        let validator_weights = json_data
+            .next_era_validator_weights
+            .iter()
+            .map(|validator_weight| (validator_weight.validator.clone(), validator_weight.weight))
+            .collect();
+        EraEnd::new(era_report, validator_weights)
     }
 }
 

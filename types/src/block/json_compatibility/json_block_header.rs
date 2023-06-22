@@ -1,11 +1,10 @@
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    super::{BlockHash, BlockHeader, EraEnd},
+    super::{BlockHash, BlockHeader},
     JsonEraEnd,
 };
 use crate::{Digest, EraId, ProtocolVersion, Timestamp};
@@ -51,24 +50,6 @@ impl From<BlockHeader> for JsonBlockHeader {
             era_id: block_header.era_id,
             height: block_header.height,
             protocol_version: block_header.protocol_version,
-        }
-    }
-}
-
-impl From<JsonBlockHeader> for BlockHeader {
-    fn from(block_header: JsonBlockHeader) -> Self {
-        BlockHeader {
-            parent_hash: block_header.parent_hash,
-            state_root_hash: block_header.state_root_hash,
-            body_hash: block_header.body_hash,
-            random_bit: block_header.random_bit,
-            accumulated_seed: block_header.accumulated_seed,
-            era_end: block_header.era_end.map(EraEnd::from),
-            timestamp: block_header.timestamp,
-            era_id: block_header.era_id,
-            height: block_header.height,
-            protocol_version: block_header.protocol_version,
-            block_hash: OnceCell::new(),
         }
     }
 }

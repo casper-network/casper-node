@@ -231,10 +231,10 @@ impl SyncLeap {
         let signatures = self
             .signed_block_headers
             .iter()
-            .find(|block_header_with_metadata| {
-                block_header_with_metadata.block_header().height() == header.height()
+            .find(|signed_block_header| {
+                signed_block_header.block_header().height() == header.height()
             })
-            .map(|block_header_with_metadata| block_header_with_metadata.block_signatures());
+            .map(|signed_block_header| signed_block_header.block_signatures());
         (header, signatures)
     }
 
@@ -371,7 +371,7 @@ impl FetchItem for SyncLeap {
 
         for signed_header in &self.signed_block_headers {
             signed_header
-                .validate()
+                .is_valid()
                 .map_err(SyncLeapValidationError::SignedBlockHeader)?;
         }
 
@@ -379,7 +379,7 @@ impl FetchItem for SyncLeap {
         for signed_header in &self.signed_block_headers {
             signed_header
                 .block_signatures()
-                .verify()
+                .is_verified()
                 .map_err(SyncLeapValidationError::Crypto)?;
         }
 
@@ -980,7 +980,7 @@ mod tests {
         // Add single orphaned block. Signatures are cloned from a legit block to avoid bailing on
         // the signature validation check.
         let orphaned_block = Block::random(&mut rng);
-        let orphaned_block_with_metadata = SignedBlockHeader::new(
+        let orphaned_signed_block_header = SignedBlockHeader::new(
             orphaned_block.header().clone(),
             sync_leap
                 .signed_block_headers
@@ -991,7 +991,7 @@ mod tests {
         );
         sync_leap
             .signed_block_headers
-            .push(orphaned_block_with_metadata);
+            .push(orphaned_signed_block_header);
 
         let result = sync_leap.validate(&validation_metadata);
         assert!(matches!(
@@ -1162,11 +1162,11 @@ mod tests {
         let signed_block_1 = Block::random_switch_block(&mut rng);
         let signed_block_2 = Block::random_switch_block(&mut rng);
         let signed_block_3 = Block::random_non_switch_block(&mut rng);
-        let signed_block_header_with_metadata_1 =
+        let signed_block_header_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);
-        let signed_block_header_with_metadata_2 =
+        let signed_block_header_2 =
             make_signed_block_header_from_header(signed_block_2.header(), &[], false);
-        let signed_block_header_with_metadata_3 =
+        let signed_block_header_3 =
             make_signed_block_header_from_header(signed_block_3.header(), &[], false);
 
         let sync_leap = SyncLeap {
@@ -1178,9 +1178,9 @@ mod tests {
                 trusted_ancestor_3.header().clone(),
             ],
             signed_block_headers: vec![
-                signed_block_header_with_metadata_1,
-                signed_block_header_with_metadata_2,
-                signed_block_header_with_metadata_3,
+                signed_block_header_1,
+                signed_block_header_2,
+                signed_block_header_3,
             ],
         };
 
@@ -1216,11 +1216,11 @@ mod tests {
         let signed_block_1 = Block::random_switch_block(&mut rng);
         let signed_block_2 = Block::random_switch_block(&mut rng);
         let signed_block_3 = Block::random_non_switch_block(&mut rng);
-        let signed_block_header_with_metadata_1 =
+        let signed_block_header_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);
-        let signed_block_header_with_metadata_2 =
+        let signed_block_header_2 =
             make_signed_block_header_from_header(signed_block_2.header(), &[], false);
-        let signed_block_header_with_metadata_3 =
+        let signed_block_header_3 =
             make_signed_block_header_from_header(signed_block_3.header(), &[], false);
 
         let sync_leap = SyncLeap {
@@ -1232,9 +1232,9 @@ mod tests {
                 trusted_ancestor_3.header().clone(),
             ],
             signed_block_headers: vec![
-                signed_block_header_with_metadata_1.clone(),
-                signed_block_header_with_metadata_2.clone(),
-                signed_block_header_with_metadata_3.clone(),
+                signed_block_header_1.clone(),
+                signed_block_header_2.clone(),
+                signed_block_header_3.clone(),
             ],
         };
 
@@ -1263,9 +1263,9 @@ mod tests {
                 trusted_ancestor_3.header().clone(),
             ],
             signed_block_headers: vec![
-                signed_block_header_with_metadata_1,
-                signed_block_header_with_metadata_2,
-                signed_block_header_with_metadata_3,
+                signed_block_header_1,
+                signed_block_header_2,
+                signed_block_header_3,
             ],
         };
         let actual_headers: BTreeSet<_> = sync_leap
@@ -1452,7 +1452,7 @@ mod tests {
             .iter()
             .take(2)
             .cloned()
-            .map(|block_header_with_metadata| block_header_with_metadata.block_header().clone())
+            .map(|signed_block_header| signed_block_header.block_header().clone())
             .collect();
 
         let highest_block_height = highest_block.block_header().height();
@@ -1812,25 +1812,22 @@ mod tests {
 
         let version = ProtocolVersion::from_parts(1, 5, 0);
 
-        let (
-            signed_block_header_with_metadata_1,
-            signed_block_header_with_metadata_2,
-            signed_block_header_with_metadata_3,
-        ) = make_three_switch_blocks_at_era_and_height_and_version(
-            &mut rng,
-            (1, 10, version),
-            (2, 20, version),
-            (3, 30, version),
-        );
+        let (signed_block_header_1, signed_block_header_2, signed_block_header_3) =
+            make_three_switch_blocks_at_era_and_height_and_version(
+                &mut rng,
+                (1, 10, version),
+                (2, 20, version),
+                (3, 30, version),
+            );
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: trusted_block.header().clone(),
             trusted_ancestor_headers: vec![],
             signed_block_headers: vec![
-                signed_block_header_with_metadata_1,
-                signed_block_header_with_metadata_2,
-                signed_block_header_with_metadata_3,
+                signed_block_header_1,
+                signed_block_header_2,
+                signed_block_header_3,
             ],
         };
 
@@ -1866,25 +1863,22 @@ mod tests {
         let version_1 = ProtocolVersion::from_parts(1, 4, 0);
         let version_2 = ProtocolVersion::from_parts(1, 5, 0);
 
-        let (
-            signed_block_header_with_metadata_1,
-            signed_block_header_with_metadata_2,
-            signed_block_header_with_metadata_3,
-        ) = make_three_switch_blocks_at_era_and_height_and_version(
-            &mut rng,
-            (1, 10, version_1),
-            (2, 20, version_1),
-            (3, 21, version_2),
-        );
+        let (signed_block_header_1, signed_block_header_2, signed_block_header_3) =
+            make_three_switch_blocks_at_era_and_height_and_version(
+                &mut rng,
+                (1, 10, version_1),
+                (2, 20, version_1),
+                (3, 21, version_2),
+            );
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: trusted_block.header().clone(),
             trusted_ancestor_headers: vec![],
             signed_block_headers: vec![
-                signed_block_header_with_metadata_1,
-                signed_block_header_with_metadata_2,
-                signed_block_header_with_metadata_3,
+                signed_block_header_1,
+                signed_block_header_2,
+                signed_block_header_3,
             ],
         };
 
@@ -1946,25 +1940,22 @@ mod tests {
 
         let version = ProtocolVersion::from_parts(1, 5, 0);
 
-        let (
-            signed_block_header_with_metadata_1,
-            signed_block_header_with_metadata_2,
-            signed_block_header_with_metadata_3,
-        ) = make_three_switch_blocks_at_era_and_height_and_version(
-            &mut rng,
-            (0, 0, version),
-            (1, 10, version),
-            (2, 20, version),
-        );
+        let (signed_block_header_1, signed_block_header_2, signed_block_header_3) =
+            make_three_switch_blocks_at_era_and_height_and_version(
+                &mut rng,
+                (0, 0, version),
+                (1, 10, version),
+                (2, 20, version),
+            );
 
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: trusted_block.header().clone(),
             trusted_ancestor_headers: vec![],
             signed_block_headers: vec![
-                signed_block_header_with_metadata_1,
-                signed_block_header_with_metadata_2,
-                signed_block_header_with_metadata_3,
+                signed_block_header_1,
+                signed_block_header_2,
+                signed_block_header_3,
             ],
         };
 
@@ -2016,16 +2007,16 @@ mod tests {
             version_3,
         );
 
-        let signed_block_header_with_metadata_1 =
+        let signed_block_header_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);
-        let signed_block_header_with_metadata_2 =
+        let signed_block_header_2 =
             make_signed_block_header_from_header(signed_block_2.header(), &[], false);
-        let signed_block_header_with_metadata_3 =
+        let signed_block_header_3 =
             make_signed_block_header_from_header(signed_block_3.header(), &[], false);
         (
-            signed_block_header_with_metadata_1,
-            signed_block_header_with_metadata_2,
-            signed_block_header_with_metadata_3,
+            signed_block_header_1,
+            signed_block_header_2,
+            signed_block_header_3,
         )
     }
 

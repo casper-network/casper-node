@@ -33,20 +33,3 @@ impl From<EraReport<PublicKey>> for JsonEraReport {
         }
     }
 }
-
-impl From<JsonEraReport> for EraReport<PublicKey> {
-    fn from(era_report: JsonEraReport) -> Self {
-        let equivocators = era_report.equivocators;
-        let rewards = era_report
-            .rewards
-            .into_iter()
-            .map(|reward| (reward.validator, reward.amount))
-            .collect();
-        let inactive_validators = era_report.inactive_validators;
-        EraReport {
-            equivocators,
-            rewards,
-            inactive_validators,
-        }
-    }
-}

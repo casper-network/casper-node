@@ -1446,7 +1446,7 @@ fn should_get_signed_block_headers() {
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_with_metadata_of_highest_complete_block(&mut txn)
+            .get_highest_complete_signed_block_header(&mut txn)
             .unwrap()
             .unwrap();
         storage
@@ -1458,7 +1458,7 @@ fn should_get_signed_block_headers() {
             .unwrap()
             .unwrap()
             .iter()
-            .map(|block_header_with_metadata| block_header_with_metadata.block_header().height())
+            .map(|signed_block_header| signed_block_header.block_header().height())
             .collect()
     };
 
@@ -1489,7 +1489,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
         let mut txn = storage.env.begin_ro_txn().unwrap();
         let requested_block_header = blocks.get(requested_height).unwrap().header();
         let highest_block_header_with_sufficient_signatures = storage
-            .get_header_with_metadata_of_highest_complete_block(&mut txn)
+            .get_highest_complete_signed_block_header(&mut txn)
             .unwrap()
             .unwrap();
 
@@ -1502,7 +1502,7 @@ fn should_get_signed_block_headers_when_no_sufficient_finality_in_most_recent_bl
             .unwrap()
             .unwrap()
             .iter()
-            .map(|block_header_with_metadata| block_header_with_metadata.block_header().height())
+            .map(|signed_block_header| signed_block_header.block_header().height())
             .collect()
     };
 

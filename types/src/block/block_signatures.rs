@@ -145,11 +145,6 @@ impl BlockSignatures {
     }
 
     /// Inserts a new signature.
-    ///
-    /// If the `BlockSignatures` did not have this entry present, `None` is returned.
-    ///
-    /// If the `BlockSignatures` did have this entry present, the signature is updated, and the old
-    /// signature is returned.
     pub fn insert_signature(&mut self, finality_signature: FinalitySignature) {
         let _ = self
             .proofs
@@ -179,8 +174,8 @@ impl BlockSignatures {
         Ok(())
     }
 
-    /// Cryptographically verifies all the signatures.
-    pub fn verify(&self) -> Result<(), crypto::Error> {
+    /// Returns `Ok` if and only if all the signatures are cryptographically valid.
+    pub fn is_verified(&self) -> Result<(), crypto::Error> {
         for (public_key, signature) in self.proofs.iter() {
             let signature = FinalitySignature {
                 block_hash: self.block_hash,

@@ -3,10 +3,7 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{
-    super::{EraEnd, EraReport},
-    JsonEraReport, JsonValidatorWeight,
-};
+use super::{super::EraEnd, JsonEraReport, JsonValidatorWeight};
 
 /// A JSON-friendly representation of [`EraEnd`].
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
@@ -38,17 +35,5 @@ impl From<EraEnd> for JsonEraEnd {
             era_report: json_era_end,
             next_era_validator_weights: json_validator_weights,
         }
-    }
-}
-
-impl From<JsonEraEnd> for EraEnd {
-    fn from(json_data: JsonEraEnd) -> Self {
-        let era_report = EraReport::from(json_data.era_report);
-        let validator_weights = json_data
-            .next_era_validator_weights
-            .iter()
-            .map(|validator_weight| (validator_weight.validator.clone(), validator_weight.weight))
-            .collect();
-        EraEnd::new(era_report, validator_weights)
     }
 }
