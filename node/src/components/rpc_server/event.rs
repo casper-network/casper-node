@@ -12,8 +12,7 @@ use casper_types::{system::auction::EraValidators, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
-    rpcs::chain::BlockIdentifier,
-    types::{BlockHash, BlockWithMetadata, Deploy, DeployHash, DeployMetadataExt, NodeId},
+    types::{BlockHash, Deploy, DeployHash, DeployMetadataExt, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -21,11 +20,6 @@ pub(crate) enum Event {
     Initialize,
     #[from]
     RpcRequest(RpcRequest),
-    GetBlockResult {
-        maybe_id: Option<BlockIdentifier>,
-        result: Option<Box<BlockWithMetadata>>,
-        main_responder: Responder<Option<Box<BlockWithMetadata>>>,
-    },
     GetBlockTransfersResult {
         block_hash: BlockHash,
         result: Option<Vec<Transfer>>,
@@ -63,21 +57,6 @@ impl Display for Event {
         match self {
             Event::Initialize => write!(formatter, "initialize"),
             Event::RpcRequest(request) => write!(formatter, "{}", request),
-            Event::GetBlockResult {
-                maybe_id: Some(BlockIdentifier::Hash(hash)),
-                result,
-                ..
-            } => write!(formatter, "get block result for {}: {:?}", hash, result),
-            Event::GetBlockResult {
-                maybe_id: Some(BlockIdentifier::Height(height)),
-                result,
-                ..
-            } => write!(formatter, "get block result for {}: {:?}", height, result),
-            Event::GetBlockResult {
-                maybe_id: None,
-                result,
-                ..
-            } => write!(formatter, "get latest block result: {:?}", result),
             Event::GetBlockTransfersResult {
                 block_hash, result, ..
             } => write!(

@@ -166,7 +166,7 @@ impl Fetchers {
                     effect_builder,
                     rng,
                     fetcher::Event::GotRemotely {
-                        item: deploy,
+                        item: Box::new((*deploy).clone()),
                         source,
                     },
                 ),

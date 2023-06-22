@@ -1,10 +1,7 @@
 [package]
 name = "casper-node"
-version = "1.4.15-alt" # when updating, also update 'html_root_url' in lib.rs
-authors = [
-    "Marc Brinkmann <marc@casperlabs.io>",
-    "Fraser Hutchison <fraser@casperlabs.io>",
-]
+version = "1.5.1" # when updating, also update 'html_root_url' in lib.rs
+authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
 documentation = "https://docs.rs/casper-node"
@@ -25,20 +22,11 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
-casper-execution-engine = { version = "4.0.0", path = "../execution_engine" }
-casper-hashing = { version = "1.4.4", path = "../hashing" }
-casper-json-rpc = { version = "0.1.0", path = "../json_rpc" }
-casper-types = { version = "2.0.0", path = "../types", features = [
-    "datasize",
-    "json-schema",
-    "std",
-] }
-datasize = { version = "0.2.11", features = [
-    "detailed",
-    "fake_clock-types",
-    "futures-types",
-    "smallvec-types",
-] }
+casper-execution-engine = { version = "5.0.0", path = "../execution_engine" }
+casper-hashing = { version = "2.0.0", path = "../hashing" }
+casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
+casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
+datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
 ed25519-dalek = { version = "1", default-features = false, features = [
     "rand",
@@ -121,7 +109,7 @@ warp = { version = "0.3.0", features = [ "compression" ] }
 wheelbuf = "0.2.0"
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = [ "git" ] }
+vergen = { version = "8.2.1", default-features = false, features = ["git", "gitoxide"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"

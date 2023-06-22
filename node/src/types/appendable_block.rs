@@ -27,6 +27,8 @@ pub(crate) enum AddError {
     BlockSize,
     #[error("duplicate deploy")]
     Duplicate,
+    #[error("deploy has expired")]
+    Expired,
     #[error("deploy is not valid in this context")]
     InvalidDeploy,
 }
@@ -89,9 +91,13 @@ impl AppendableBlock {
         {
             return Err(AddError::Duplicate);
         }
-        if !footprint
+        if footprint.header.expired(self.timestamp) {
+            return Err(AddError::Expired);
+        }
+        if footprint
             .header
-            .is_valid(&self.deploy_config, self.timestamp)
+            .is_valid(&self.deploy_config, self.timestamp, transfer.deploy_hash())
+            .is_err()
         {
             return Err(AddError::InvalidDeploy);
         }
@@ -120,9 +126,13 @@ impl AppendableBlock {
         if self.deploy_and_transfer_set.contains(deploy.deploy_hash()) {
             return Err(AddError::Duplicate);
         }
-        if !footprint
+        if footprint.header.expired(self.timestamp) {
+            return Err(AddError::Expired);
+        }
+        if footprint
             .header
-            .is_valid(&self.deploy_config, self.timestamp)
+            .is_valid(&self.deploy_config, self.timestamp, deploy.deploy_hash())
+            .is_err()
         {
             return Err(AddError::InvalidDeploy);
         }

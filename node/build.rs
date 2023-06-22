@@ -1,12 +1,12 @@
 use std::env;
 
-use vergen::{Config, ShaKind};
+use vergen::EmitBuilder;
 
 fn main() {
-    let mut config = Config::default();
-    *config.git_mut().sha_kind_mut() = ShaKind::Short;
-    *config.git_mut().rerun_on_head_change_mut() = true;
-    vergen::vergen(config).expect("should generate the cargo keys");
+    if let Err(error) = EmitBuilder::builder().fail_on_error().git_sha(true).emit() {
+        println!("cargo:warning={}", error);
+        println!("cargo:warning=casper-node build version will not include git short hash");
+    }
 
     // Make the build profile available to rustc at compile time.
     println!(

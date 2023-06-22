@@ -21,6 +21,13 @@ control_logic_default_delay = '1sec'
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
 
+# A timeout for the ShutdownForUpgrade state, after which the node will upgrade even if not all
+# conditions are satisfied.
+shutdown_for_upgrade_timeout = '2min'
+
+# Maximum time a node will wait for an upgrade to commit.
+upgrade_timeout = '30sec'
+
 
 # =================================
 # Configuration options for logging
@@ -247,13 +254,25 @@ blocklist_retain_duration = '10min'
 [network.estimator_weights]
 consensus = 0
 gossip = 0
-finality_signatures = 0
+finality_signature_broadcasts = 0
 deploy_requests = 1
-deploy_responses = 1
+deploy_responses = 0
+legacy_deploy_requests = 1
+legacy_deploy_responses = 0
 block_requests = 1
 block_responses = 0
+block_header_requests = 1
+block_header_responses = 0
 trie_requests = 1
 trie_responses = 0
+finality_signature_requests = 1
+finality_signature_responses = 0
+sync_leap_requests = 1
+sync_leap_responses = 0
+approvals_hashes_requests = 1
+approvals_hashes_responses = 0
+execution_results_requests = 1
+execution_results_responses = 0
 
 
 # ==================================================

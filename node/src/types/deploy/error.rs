@@ -4,7 +4,7 @@ use datasize::DataSize;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_types::{TimeDiff, U512};
+use casper_types::{TimeDiff, Timestamp, U512};
 
 /// A representation of the way in which a deploy failed validation checks.
 #[derive(Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Error, Serialize)]
@@ -38,6 +38,17 @@ pub enum DeployConfigurationFailure {
         max_ttl: TimeDiff,
         /// The received time-to-live.
         got: TimeDiff,
+    },
+
+    /// Deploy's timestamp is in the future.
+    #[error(
+        "timestamp of {got} is later than node's validation timestamp of {validation_timestamp}"
+    )]
+    TimestampInFuture {
+        /// The node's timestamp when validating the deploy.
+        validation_timestamp: Timestamp,
+        /// The deploy's timestamp.
+        got: Timestamp,
     },
 
     /// The provided body hash does not match the actual hash of the body.
@@ -93,7 +104,7 @@ pub enum DeployConfigurationFailure {
         /// Configured block gas limit.
         block_gas_limit: u64,
         /// The payment amount received.
-        got: U512,
+        got: Box<U512>,
     },
 
     /// Missing payment "amount" runtime argument
@@ -108,9 +119,9 @@ pub enum DeployConfigurationFailure {
     #[error("insufficient transfer amount; minimum: {minimum} attempted: {attempted}")]
     InsufficientTransferAmount {
         /// The minimum transfer amount.
-        minimum: U512,
+        minimum: Box<U512>,
         /// The attempted transfer amount.
-        attempted: U512,
+        attempted: Box<U512>,
     },
 
     /// The amount of approvals on the deploy exceeds the max_associated_keys limit.

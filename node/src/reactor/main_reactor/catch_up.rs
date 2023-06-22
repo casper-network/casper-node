@@ -85,8 +85,7 @@ impl MainReactor {
                 // this code path should be unreachable because we're not
                 // supposed to enqueue historical blocks for execution.
                 Either::Right(CatchUpInstruction::Fatal(format!(
-                    "CatchUp: block synchronizer attempted to execute \
-                                        block: {}",
+                    "CatchUp: block synchronizer attempted to execute block: {}",
                     block_hash
                 )))
             }
@@ -95,19 +94,6 @@ impl MainReactor {
                 // effects, any referenced deploys, & sufficient finality (by weight) of signatures
                 SyncIdentifier::SyncedBlockIdentifier(block_hash, block_height, era_id),
             ),
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                // working on syncing a block
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "CatchUp: block synchronizer stalled while syncing block; purging historical builder"
-                );
-                self.block_synchronizer.purge_historical();
-                match self.trusted_hash {
-                    Some(trusted_hash) => self.catch_up_trusted_hash(trusted_hash),
-                    None => self.catch_up_no_trusted_hash(),
-                }
-            }
         }
     }
 
@@ -120,26 +106,37 @@ impl MainReactor {
                 // if too much time has passed, the node will shutdown and require a
                 // trusted block hash to be provided via the config file
                 info!("CatchUp: local tip detected, no trusted hash");
-                if block.header().is_switch_block() {
-                    self.switch_block_header = Some(block.header().clone());
-                }
                 Either::Left(SyncIdentifier::LocalTip(
                     *block.hash(),
                     block.height(),
                     block.header().era_id(),
                 ))
             }
-            Ok(None) if self.switch_block_header.is_none() => {
-                // no trusted hash, no local block, might be genesis
-                self.catch_up_check_genesis()
-            }
             Ok(None) => {
-                // no trusted hash, no local block, no error, must be waiting for genesis
-                info!("CatchUp: waiting to store genesis immediate switch block");
-                Either::Right(CatchUpInstruction::CheckLater(
-                    "waiting for genesis immediate switch block to be stored".to_string(),
-                    self.control_logic_default_delay.into(),
-                ))
+                match self
+                    .storage
+                    .read_highest_switch_block_headers(1)
+                    .map(|headers| headers.get(0).cloned())
+                {
+                    Ok(Some(_)) => {
+                        // no trusted hash, no local block, no error, must be waiting for genesis
+                        info!("CatchUp: waiting to store genesis immediate switch block");
+                        Either::Right(CatchUpInstruction::CheckLater(
+                            "waiting for genesis immediate switch block to be stored".to_string(),
+                            self.control_logic_default_delay.into(),
+                        ))
+                    }
+                    Ok(None) => {
+                        // no trusted hash, no local block, might be genesis
+                        self.catch_up_check_genesis()
+                    }
+                    Err(storage_err) => {
+                        return Either::Right(CatchUpInstruction::Fatal(format!(
+                            "CatchUp: Could not read storage to find highest switch block header: {}",
+                            storage_err
+                        )));
+                    }
+                }
             }
             Err(err) => Either::Right(CatchUpInstruction::Fatal(format!(
                 "CatchUp: fatal block store error when attempting to read \
@@ -235,12 +232,6 @@ impl MainReactor {
         maybe_block_height: Option<u64>,
         last_progress: Timestamp,
     ) -> Either<SyncIdentifier, CatchUpInstruction> {
-        // if any progress has been made, reset attempts
-        if last_progress > self.last_progress {
-            debug!(%last_progress, "CatchUp: syncing");
-            self.last_progress = last_progress;
-            self.attempts = 0;
-        }
         // if we have not made progress on our attempt to catch up with the network, increment
         // attempts counter and try again; the crank logic will shut the node down on the next
         // crank if we've exceeded our reattempts
@@ -371,13 +362,10 @@ impl MainReactor {
             "CatchUp: leap received"
         );
 
-        if let Err(msg) = self.update_highest_switch_block() {
-            return CatchUpInstruction::Fatal(msg);
-        }
-
-        for validator_weights in
-            sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold())
-        {
+        for validator_weights in sync_leap.era_validator_weights(
+            self.validator_matrix.fault_tolerance_threshold(),
+            &self.chainspec.protocol_config,
+        ) {
             self.validator_matrix
                 .register_era_validator_weights(validator_weights);
         }

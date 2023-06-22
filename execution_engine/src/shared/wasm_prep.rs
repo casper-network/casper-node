@@ -1,7 +1,7 @@
 //! Preprocessing of Wasm modules.
-use casper_wasm_utils::{self, stack_height};
+use casper_wasm_utils::{self, parity_wasm::elements::Module, stack_height};
 use parity_wasm::elements::{
-    self, External, Instruction, Internal, MemorySection, Module, Section, TableType, Type,
+    self, External, Instruction, Internal, MemorySection, Section, TableType, Type,
 };
 use thiserror::Error;
 

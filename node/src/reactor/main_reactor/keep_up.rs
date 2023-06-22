@@ -170,16 +170,6 @@ impl MainReactor {
                 // execution effects.
                 Either::Left(self.keep_up_synced(block_hash, block_height, era_id))
             }
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                // working on syncing a block
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "KeepUp: block synchronizer stalled while syncing block; purging forward builder"
-                );
-                self.block_synchronizer.purge_forward();
-                self.keep_up_idle()
-            }
         }
     }
 
@@ -291,9 +281,12 @@ impl MainReactor {
         match self.sync_back_instruction(&sync_back_progress) {
             Ok(Some(sync_back_instruction)) => match sync_back_instruction {
                 SyncBackInstruction::TtlSynced | SyncBackInstruction::GenesisSynced => {
-                    // we don't need to sync any historical blocks currently
+                    // we don't need to sync any historical blocks currently, so we clear both the
+                    // historical synchronizer and the sync back leap activity since they will not
+                    // be required anymore
                     debug!("KeepUp: synced to TTL or Genesis");
                     self.block_synchronizer.purge_historical();
+                    self.sync_leaper.purge();
                     None
                 }
                 SyncBackInstruction::Syncing => {
@@ -516,15 +509,14 @@ impl MainReactor {
         // era validator weights. if there are other processes which are holding on discovery
         // of relevant newly-seen era validator weights, they should naturally progress
         // themselves via notification on the event loop.
-        if let Err(msg) = self.update_highest_switch_block() {
-            return KeepUpInstruction::Fatal(msg);
-        }
         let block_hash = sync_leap.highest_block_hash();
         let block_height = sync_leap.highest_block_height();
         info!(%sync_leap, %block_height, %block_hash, "KeepUp: historical sync_back received");
 
-        let era_validator_weights =
-            sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
+        let era_validator_weights = sync_leap.era_validator_weights(
+            self.validator_matrix.fault_tolerance_threshold(),
+            &self.chainspec.protocol_config,
+        );
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "KeepUp: attempt to register historical validators for era");
@@ -592,14 +584,6 @@ impl MainReactor {
             BlockSynchronizerProgress::Syncing(_, _, _) => {
                 debug!("KeepUp: still syncing historical block");
                 return Ok(Some(SyncBackInstruction::Syncing));
-            }
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "KeepUp: block synchronizer stalled while syncing historical block; purging historical builder"
-                );
-                self.block_synchronizer.purge_historical();
             }
             BlockSynchronizerProgress::Executing(block_hash, height, _) => {
                 warn!(

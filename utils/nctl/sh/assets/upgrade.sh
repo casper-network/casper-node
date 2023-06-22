@@ -18,14 +18,13 @@ function _upgrade_node() {
     local ACTIVATE_ERA=${2}
     local NODE_ID=${3}
     local CONFIG_PATH=${4}
-    local PATH_TO_NET
-    PATH_TO_NET=$(get_path_to_net)
+    local PATH_TO_NET=$(get_path_to_net)
+    local PATH_TO_CONFIG_FILE
+    local SPECULATIVE_EXEC_ADDR
     local PATH_TO_CHAINSPEC_FILE=${5:-"$PATH_TO_NET/chainspec/chainspec.toml"}
 
     local PATH_TO_NODE
     local CHAIN_NAME
-
-    PATH_TO_NET=$(get_path_to_net)
 
     # Set chainspec file.
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
@@ -64,7 +63,13 @@ function _upgrade_node() {
     if [ -z "$CONFIG_PATH" ]; then
         cp $(get_path_to_node_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
     else
-        cp "$CONFIG_PATH" "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/config.toml
+        # Set paths to node's config.
+        PATH_TO_CONFIG_FILE="$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/config.toml
+
+        cp "$CONFIG_PATH" "$PATH_TO_CONFIG_FILE"
+
+        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_CONFIG_FILE || true)
+
         local SCRIPT=(
             "import toml;"
             "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/config.toml');"
@@ -76,8 +81,18 @@ function _upgrade_node() {
             "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
             "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
             "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
-            "toml.dump(cfg, open('$PATH_TO_NODE/config/$PROTOCOL_VERSION/config.toml', 'w'));"
         )
+
+        if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
+            SCRIPT+=(
+                "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
+            )
+        fi
+
+        SCRIPT+=(
+            "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
+        )
+
         python3 -c "${SCRIPT[*]}"
     fi
 

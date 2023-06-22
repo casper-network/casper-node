@@ -161,16 +161,16 @@ use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
     FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
-    MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, UnexecutedBlockAnnouncement,
+    UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest, BlockValidationRequest,
-    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
-    FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
-    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest, StorageRequest,
-    SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
+    BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest,
+    DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest,
+    MetricsRequest, NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest,
+    StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -926,26 +926,30 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces that the HTTP API server has received a deploy.
-    pub(crate) async fn announce_deploy_received(
+    /// Try to accept a deploy received from the JSON-RPC server.
+    pub(crate) async fn try_accept_deploy(
         self,
-        deploy: Box<Deploy>,
-        responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
-    ) where
-        REv: From<RpcServerAnnouncement>,
+        deploy: Arc<Deploy>,
+        speculative_exec_at_block: Option<Box<BlockHeader>>,
+    ) -> Result<(), deploy_acceptor::Error>
+    where
+        REv: From<AcceptDeployRequest>,
     {
-        self.event_queue
-            .schedule(
-                RpcServerAnnouncement::DeployReceived { deploy, responder },
-                QueueKind::Api,
-            )
-            .await;
+        self.make_request(
+            |responder| AcceptDeployRequest {
+                deploy,
+                speculative_exec_at_block,
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await
     }
 
     /// Announces that a deploy not previously stored has now been accepted and stored.
     pub(crate) fn announce_new_deploy_accepted(
         self,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
     ) -> impl Future<Output = ()>
     where
@@ -989,7 +993,7 @@ impl<REv> EffectBuilder<REv> {
     /// Announces that an invalid deploy has been received.
     pub(crate) fn announce_invalid_deploy(
         self,
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
     ) -> impl Future<Output = ()>
     where
@@ -1463,7 +1467,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
+    pub(crate) async fn put_deploy_to_storage(self, deploy: Arc<Deploy>) -> bool
     where
         REv: From<StorageRequest>,
     {
@@ -1655,12 +1659,16 @@ impl<REv> EffectBuilder<REv> {
     /// Gets the highest block with its associated metadata.
     pub(crate) async fn get_highest_block_with_metadata_from_storage(
         self,
+        only_from_available_block_range: bool,
     ) -> Option<BlockWithMetadata>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetHighestBlockWithMetadata { responder },
+            |responder| StorageRequest::GetHighestBlockWithMetadata {
+                only_from_available_block_range,
+                responder,
+            },
             QueueKind::FromStorage,
         )
         .await
@@ -2190,7 +2198,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn speculative_execute_deploy(
         self,
         execution_prestate: SpeculativeExecutionState,
-        deploy: Deploy,
+        deploy: Arc<Deploy>,
     ) -> Result<Option<ExecutionResult>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
@@ -2198,7 +2206,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| ContractRuntimeRequest::SpeculativeDeployExecution {
                 execution_prestate,
-                deploy: Box::new(deploy),
+                deploy,
                 responder,
             },
             QueueKind::ContractRuntime,

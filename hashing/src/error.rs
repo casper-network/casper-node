@@ -5,6 +5,7 @@ use crate::{ChunkWithProof, Digest};
 
 /// Possible hashing errors.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum Error {
     #[error("Incorrect digest length {0}, expected length {}.", Digest::LENGTH)]
     /// The digest length was an incorrect size.

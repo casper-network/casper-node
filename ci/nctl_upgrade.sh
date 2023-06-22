@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+shopt -s expand_aliases
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
 
@@ -8,7 +9,7 @@ pushd "$ROOT_DIR"
 source $(pwd)/utils/nctl/activate
 
 # Call compile wrapper for client, launcher, and nctl-compile
-bash -i "$ROOT_DIR/ci/nctl_compile.sh"
+bash -c "$ROOT_DIR/ci/nctl_compile.sh"
 
 function main() {
     local TEST_ID=${1}
