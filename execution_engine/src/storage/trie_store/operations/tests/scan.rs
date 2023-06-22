@@ -1,3 +1,6 @@
+use assert_matches::assert_matches;
+use std::convert::TryInto;
+
 use casper_hashing::Digest;
 
 use super::*;
@@ -5,6 +8,7 @@ use crate::{
     shared::newtypes::CorrelationId,
     storage::{
         error::{self, in_memory},
+        trie::LazilyDeserializedTrie,
         trie_store::operations::{scan_raw, store_wrappers, TrieScanRaw},
     },
 };
@@ -38,9 +42,12 @@ where
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {
             match tip {
-                either::Either::Left(leaf_bytes) => Digest::hash(&leaf_bytes),
-                either::Either::Right(trie) => {
-                    let tip_bytes = trie.to_bytes().unwrap();
+                LazilyDeserializedTrie::Leaf(leaf_bytes) => Digest::hash(&leaf_bytes),
+                node @ LazilyDeserializedTrie::Node { .. }
+                | node @ LazilyDeserializedTrie::Extension { .. } => {
+                    let tip_bytes = TryInto::<Trie<TestKey, TestValue>>::try_into(node)?
+                        .to_bytes()
+                        .unwrap();
                     Digest::hash(&tip_bytes)
                 }
             }
@@ -50,16 +57,22 @@ where
             Trie::Node { pointer_block } => {
                 let pointer_tip_hash = pointer_block[<usize>::from(index)].map(|ptr| *ptr.hash());
                 assert_eq!(Some(expected_tip_hash), pointer_tip_hash);
-                tip = either::Either::Right(Trie::Node { pointer_block });
+                tip = LazilyDeserializedTrie::Node { pointer_block };
             }
             Trie::Extension { affix, pointer } => {
                 let pointer_tip_hash = pointer.hash().to_owned();
                 assert_eq!(expected_tip_hash, pointer_tip_hash);
-                tip = either::Either::Right(Trie::Extension { affix, pointer });
+                tip = LazilyDeserializedTrie::Extension { affix, pointer };
             }
         }
     }
-    assert_eq!(root, tip.expect_right("Unexpected leaf found"));
+
+    assert_matches!(
+        tip,
+        LazilyDeserializedTrie::Node { .. } | LazilyDeserializedTrie::Extension { .. },
+        "Unexpected leaf found"
+    );
+    assert_eq!(root, tip.try_into()?);
     txn.commit()?;
     Ok(())
 }
