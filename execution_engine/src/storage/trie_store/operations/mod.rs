@@ -435,19 +435,12 @@ where
 
     // Check that tip is a leaf
     match tip {
-        LazilyDeserializedTrie::Leaf(bytes)
+        lazy_leaf @ LazilyDeserializedTrie::Leaf(_)
             if {
                 // Partially deserialize a key of a leaf node to ensure that we can only continue if
                 // the key matches what we're looking for.
-                let ((tag_u8, key), _rem): ((u8, K), _) = FromBytes::from_bytes(&bytes)?;
-                let trie_tag = TrieTag::from_u8(tag_u8);
                 // _rem contains bytes of serialized V, but we don't need to inspect it.
-                assert_eq!(
-                    trie_tag,
-                    Some(TrieTag::Leaf),
-                    "Tip should contain leaf bytes, but has tag {:?}",
-                    trie_tag
-                );
+                let (key, _rem) = lazy_leaf.try_deserialize_leaf_key::<K>()?;
                 key == *key_to_delete
             } => {}
         _ => return Ok(DeleteResult::DoesNotExist),
