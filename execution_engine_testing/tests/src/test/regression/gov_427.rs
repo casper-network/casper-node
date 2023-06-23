@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_WASM_CONFIG,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
 use walrus::{ir::Value, FunctionBuilder, Module, ModuleConfig, ValType};
 

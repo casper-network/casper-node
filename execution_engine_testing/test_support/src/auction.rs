@@ -3,7 +3,7 @@ use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         self, run_genesis_request::RunGenesisRequest, EngineState, ExecConfig, ExecuteRequest,
     },

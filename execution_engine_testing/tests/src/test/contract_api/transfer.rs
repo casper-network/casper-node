@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
 use casper_types::{
     account::AccountHash,
     runtime_args,

@@ -8,7 +8,7 @@ use tempfile::TempDir;
 use tokio::time;
 use tracing::{error, info};
 
-use casper_execution_engine::core::engine_state::GetBidsRequest;
+use casper_execution_engine::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,

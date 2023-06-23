@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::ExecuteRequest;
+use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
     runtime_args, system::standard_payment::ARG_AMOUNT, ContractHash, ContractPackageHash,
     RuntimeArgs,

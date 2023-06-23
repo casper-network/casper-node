@@ -16,7 +16,7 @@ use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self,
     balance::{BalanceRequest, BalanceResult},
     era_validators::GetEraValidatorsError,

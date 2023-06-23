@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     Error as EngineStateError, GetEraValidatorsError, StepError,
 };
 use casper_storage::global_state::storage::error::lmdb::Error as StorageLmdbError;

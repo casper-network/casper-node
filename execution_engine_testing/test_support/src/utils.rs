@@ -8,7 +8,7 @@ use std::{
 
 use once_cell::sync::Lazy;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     execution_result::ExecutionResult,
     genesis::{ExecConfig, GenesisConfig},
     run_genesis_request::RunGenesisRequest,

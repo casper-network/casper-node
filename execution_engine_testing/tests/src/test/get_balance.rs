@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{core, core::ValidationError};
+use casper_execution_engine::tracking_copy::{self, ValidationError};
 use casper_types::{
     account::AccountHash, runtime_args, AccessRights, Digest, Key, PublicKey, RuntimeArgs,
     SecretKey, URef, U512,
@@ -59,7 +59,7 @@ fn get_balance_should_work() {
 
     let balance_proof = alice_balance_result.proof().expect("should have proofs");
 
-    assert!(core::validate_balance_proof(
+    assert!(tracking_copy::validate_balance_proof(
         &state_root_hash,
         &balance_proof,
         alice_main_purse.into(),
@@ -69,7 +69,7 @@ fn get_balance_should_work() {
 
     let bogus_key = Key::Hash([1u8; 32]);
     assert_eq!(
-        core::validate_balance_proof(
+        tracking_copy::validate_balance_proof(
             &state_root_hash,
             &balance_proof,
             bogus_key.to_owned(),
@@ -80,13 +80,18 @@ fn get_balance_should_work() {
 
     let bogus_uref: Key = Key::URef(URef::new([3u8; 32], AccessRights::READ_ADD_WRITE));
     assert_eq!(
-        core::validate_balance_proof(&state_root_hash, &balance_proof, bogus_uref, &alice_balance,),
+        tracking_copy::validate_balance_proof(
+            &state_root_hash,
+            &balance_proof,
+            bogus_uref,
+            &alice_balance,
+        ),
         Err(ValidationError::UnexpectedKey)
     );
 
     let bogus_hash = Digest::hash([5u8; 32]);
     assert_eq!(
-        core::validate_balance_proof(
+        tracking_copy::validate_balance_proof(
             &bogus_hash,
             &balance_proof,
             alice_main_purse.into(),
@@ -97,7 +102,7 @@ fn get_balance_should_work() {
 
     let bogus_motes = U512::from(1337);
     assert_eq!(
-        core::validate_balance_proof(
+        tracking_copy::validate_balance_proof(
             &state_root_hash,
             &balance_proof,
             alice_main_purse.into(),
@@ -144,7 +149,7 @@ fn get_balance_using_public_key_should_work() {
 
     let balance_proof = alice_balance_result.proof().expect("should have proofs");
 
-    assert!(core::validate_balance_proof(
+    assert!(tracking_copy::validate_balance_proof(
         &state_root_hash,
         &balance_proof,
         alice_main_purse.into(),
@@ -154,7 +159,7 @@ fn get_balance_using_public_key_should_work() {
 
     let bogus_key = Key::Hash([1u8; 32]);
     assert_eq!(
-        core::validate_balance_proof(
+        tracking_copy::validate_balance_proof(
             &state_root_hash,
             &balance_proof,
             bogus_key.to_owned(),
@@ -165,13 +170,18 @@ fn get_balance_using_public_key_should_work() {
 
     let bogus_uref: Key = Key::URef(URef::new([3u8; 32], AccessRights::READ_ADD_WRITE));
     assert_eq!(
-        core::validate_balance_proof(&state_root_hash, &balance_proof, bogus_uref, &alice_balance,),
+        tracking_copy::validate_balance_proof(
+            &state_root_hash,
+            &balance_proof,
+            bogus_uref,
+            &alice_balance,
+        ),
         Err(ValidationError::UnexpectedKey)
     );
 
     let bogus_hash = Digest::hash([5u8; 32]);
     assert_eq!(
-        core::validate_balance_proof(
+        tracking_copy::validate_balance_proof(
             &bogus_hash,
             &balance_proof,
             alice_main_purse.into(),
@@ -182,7 +192,7 @@ fn get_balance_using_public_key_should_work() {
 
     let bogus_motes = U512::from(1337);
     assert_eq!(
-        core::validate_balance_proof(
+        tracking_copy::validate_balance_proof(
             &state_root_hash,
             &balance_proof,
             alice_main_purse.into(),

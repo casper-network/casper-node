@@ -3,7 +3,7 @@ use std::{cmp, collections::BTreeMap, ops::Range, sync::Arc, time::Instant};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry, DeployItem,
         EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,

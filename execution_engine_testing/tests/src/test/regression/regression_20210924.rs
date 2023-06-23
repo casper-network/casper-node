@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::{Error as CoreError, MAX_PAYMENT};
+use casper_execution_engine::engine_state::{Error as CoreError, MAX_PAYMENT};
 use casper_types::{
     contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST, U512,
 };

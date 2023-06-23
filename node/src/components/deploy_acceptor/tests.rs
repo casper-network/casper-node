@@ -19,7 +19,7 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
+use casper_execution_engine::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},

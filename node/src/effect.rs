@@ -115,7 +115,7 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, ExecutionJournal,
     GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
 };

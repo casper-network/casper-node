@@ -5,7 +5,7 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult,
 };
 use casper_types::{system::auction::EraValidators, BlockHash, Deploy, DeployHash, Transfer};

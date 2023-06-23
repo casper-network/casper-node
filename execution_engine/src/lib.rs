@@ -14,5 +14,16 @@
 )]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-pub mod core;
+pub mod engine_state;
+pub mod execution;
+pub mod resolvers;
+pub mod runtime;
+pub mod runtime_context;
 mod system;
+pub mod tracking_copy;
+
+/// The length of an address.
+pub const ADDRESS_LENGTH: usize = 32;
+
+/// Alias for an array of bytes that represents an address.
+pub type Address = [u8; ADDRESS_LENGTH];

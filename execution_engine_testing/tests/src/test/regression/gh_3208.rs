@@ -10,7 +10,7 @@ use casper_engine_test_support::{
     DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS,
     DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         self,
         engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},

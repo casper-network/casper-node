@@ -14,7 +14,7 @@ use lmdb::DatabaseFlags;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         self,
         era_validators::GetEraValidatorsRequest,

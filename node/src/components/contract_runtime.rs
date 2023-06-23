@@ -27,7 +27,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfig, EngineState, GenesisSuccess,
     SystemContractRegistry, UpgradeSuccess,
 };

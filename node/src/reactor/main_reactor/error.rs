@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use casper_execution_engine::core::engine_state;
+use casper_execution_engine::engine_state;
 use casper_types::{bytesrepr, crypto::ErrorExt as CryptoError};
 
 use crate::{

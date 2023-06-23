@@ -8,7 +8,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_WASM_CONFIG, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state::Error, runtime::PreprocessingError};
+use casper_execution_engine::{engine_state::Error, runtime::PreprocessingError};
 use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs};
 
 use crate::test::regression::test_utils::make_gas_counter_overflow;
