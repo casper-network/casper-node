@@ -9,14 +9,13 @@ use std::{
 
 use tracing::error;
 
-use crate::{
-    core::{
-        engine_state::{execution_effect::ExecutionEffect, EngineConfig, SystemContractRegistry},
-        execution::{AddressGenerator, Error},
-        runtime_context::dictionary::DictionaryValue,
-        tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
+use crate::core::{
+    engine_state::{
+        execution_effect::ExecutionEffect, EngineConfig, ExecutionJournal, SystemContractRegistry,
     },
-    shared::execution_journal::ExecutionJournal,
+    execution::{AddressGenerator, Error},
+    runtime_context::dictionary::DictionaryValue,
+    tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
 };
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{

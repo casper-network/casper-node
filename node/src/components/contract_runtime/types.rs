@@ -2,9 +2,7 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 
-use casper_execution_engine::{
-    core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
-};
+use casper_execution_engine::core::engine_state::{ExecutionJournal, GetEraValidatorsRequest};
 use casper_types::{
     Block, DeployHash, DeployHeader, Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey,
     U512,

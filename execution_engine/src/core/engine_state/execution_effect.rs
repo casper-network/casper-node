@@ -3,7 +3,7 @@ use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
 use casper_types::Key;
 
 use super::op::Op;
-use crate::shared::execution_journal::ExecutionJournal;
+use crate::core::engine_state::execution_journal::ExecutionJournal;
 
 /// Represents the effects of executing a single [`crate::core::engine_state::DeployItem`].
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

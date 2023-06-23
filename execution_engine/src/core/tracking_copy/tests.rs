@@ -21,9 +21,10 @@ use casper_types::{
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
-use crate::{
-    core::{engine_state::EngineConfig, runtime_context::dictionary, ValidationError},
-    shared::execution_journal::ExecutionJournal,
+use crate::core::{
+    engine_state::{EngineConfig, ExecutionJournal},
+    runtime_context::dictionary,
+    ValidationError,
 };
 
 struct CountingDb {

@@ -7,6 +7,7 @@ pub mod era_validators;
 mod error;
 pub mod execute_request;
 pub mod execution_effect;
+mod execution_journal;
 pub(crate) mod execution_kind;
 pub mod execution_result;
 pub mod genesis;
@@ -77,6 +78,7 @@ pub use self::{
     error::Error,
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
+    execution_journal::ExecutionJournal,
     execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},

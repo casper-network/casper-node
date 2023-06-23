@@ -14,22 +14,19 @@ use lmdb::DatabaseFlags;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            era_validators::GetEraValidatorsRequest,
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            PruneConfig, PruneResult, QueryRequest, QueryResult, StepError, SystemContractRegistry,
-            UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
-        },
-        execution,
+use casper_execution_engine::core::{
+    engine_state::{
+        self,
+        era_validators::GetEraValidatorsRequest,
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResult,
+        run_genesis_request::RunGenesisRequest,
+        step::{StepRequest, StepSuccess},
+        BalanceResult, EngineConfig, EngineState, Error, ExecutionJournal, GenesisSuccess,
+        GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
+        SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
-    shared::execution_journal::ExecutionJournal,
+    execution,
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},

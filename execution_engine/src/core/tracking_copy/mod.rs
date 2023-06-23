@@ -32,9 +32,9 @@ use casper_types::{
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
 use super::engine_state::EngineConfig;
-use crate::{
-    core::{engine_state::execution_effect::ExecutionEffect, runtime_context::dictionary},
-    shared::execution_journal::ExecutionJournal,
+use crate::core::{
+    engine_state::{execution_effect::ExecutionEffect, ExecutionJournal},
+    runtime_context::dictionary,
 };
 
 /// Result of a query on a `TrackingCopy`.

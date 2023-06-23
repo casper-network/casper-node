@@ -6,9 +6,10 @@ use std::vec::Vec;
 
 use casper_types::{bytesrepr, CLValueError, Digest, EraId, ProtocolVersion, PublicKey};
 
-use crate::{
-    core::{engine_state::Error, execution, runtime::stack::RuntimeStackOverflow},
-    shared::execution_journal::ExecutionJournal,
+use crate::core::{
+    engine_state::{Error, ExecutionJournal},
+    execution,
+    runtime::stack::RuntimeStackOverflow,
 };
 
 /// The definition of a slash item.
