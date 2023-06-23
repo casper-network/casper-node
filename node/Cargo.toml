@@ -10,6 +10,7 @@ homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/node"
 license = "Apache-2.0"
 default-run = "casper-node"
+exclude = ["proptest-regressions"]
 
 [dependencies]
 ansi_term = "0.12.1"
