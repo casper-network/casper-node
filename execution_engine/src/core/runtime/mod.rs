@@ -8,6 +8,7 @@ mod mint_internal;
 pub mod stack;
 mod standard_payment_internal;
 mod utils;
+mod wasm_prep;
 
 use std::{
     cmp,
@@ -50,13 +51,16 @@ use crate::{
         runtime_context::{self, RuntimeContext},
         tracking_copy::TrackingCopyExt,
     },
-    shared::wasm_prep::{self, PreprocessingError},
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
         standard_payment::StandardPayment,
     },
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
+pub use wasm_prep::{
+    PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
+    DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
+};
 
 enum CallContractIdentifier {
     Contract {

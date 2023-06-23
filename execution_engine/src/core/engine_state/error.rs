@@ -2,18 +2,14 @@
 use datasize::DataSize;
 use thiserror::Error;
 
+use casper_storage::global_state::storage::{self, lmdb, state::CommitError};
 use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
 
-use crate::{
-    core::{
-        engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
-        execution,
-        runtime::stack,
-    },
-    shared::wasm_prep,
+use crate::core::{
+    engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
+    execution,
+    runtime::{stack, PreprocessingError},
 };
-
-use casper_storage::global_state::storage::{self, lmdb, state::CommitError};
 
 /// Engine state errors.
 #[derive(Clone, Error, Debug)]
@@ -30,7 +26,7 @@ pub enum Error {
     Genesis(Box<GenesisError>),
     /// WASM preprocessing error.
     #[error("Wasm preprocessing error: {0}")]
-    WasmPreprocessing(#[from] wasm_prep::PreprocessingError),
+    WasmPreprocessing(#[from] PreprocessingError),
     /// WASM serialization error.
     #[error("Wasm serialization error: {0:?}")]
     WasmSerialization(#[from] parity_wasm::SerializationError),

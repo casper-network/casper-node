@@ -379,7 +379,7 @@ fn ensure_valid_imports(module: &Module) -> Result<(), WasmValidationError> {
 ///
 /// In case the preprocessing rules can't be applied, an error is returned.
 /// Otherwise, this method returns a valid module ready to be executed safely on the host.
-pub fn preprocess(
+pub(crate) fn preprocess(
     wasm_config: WasmConfig,
     module_bytes: &[u8],
 ) -> Result<Module, PreprocessingError> {
@@ -409,7 +409,7 @@ pub fn preprocess(
 }
 
 /// Returns a parity Module from the given bytes without making modifications or checking limits.
-pub fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
+fn deserialize(module_bytes: &[u8]) -> Result<Module, PreprocessingError> {
     parity_wasm::deserialize_buffer::<Module>(module_bytes).map_err(Into::into)
 }
 

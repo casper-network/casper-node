@@ -24,6 +24,7 @@ hex_fmt = "0.3.0"
 humantime = { version = "2", optional = true }
 itertools = { version = "0.10.1", default-features = false }
 k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "sha256", "zeroize"] }
+libc = { version = "0.2.146", optional = true, default-features = false }
 num = { version = "0.4.0", default-features = false, features = ["alloc"] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }
@@ -70,7 +71,7 @@ untrusted = "0.7.1"
 
 [features]
 json-schema = ["once_cell", "schemars"]
-std = ["base16/std", "derp", "getrandom/std", "humantime", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
+std = ["base16/std", "derp", "getrandom/std", "humantime", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
 testing = ["proptest", "proptest-derive", "rand_pcg", "strum"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]

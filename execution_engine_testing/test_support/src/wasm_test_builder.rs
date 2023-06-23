@@ -11,7 +11,6 @@ use std::{
 
 use filesize::PathExt;
 use lmdb::DatabaseFlags;
-use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
@@ -30,11 +29,7 @@ use casper_execution_engine::{
         },
         execution,
     },
-    shared::{
-        execution_journal::ExecutionJournal,
-        logging::{self, Settings, Style},
-        utils::OS_PAGE_SIZE,
-    },
+    shared::execution_journal::ExecutionJournal,
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
@@ -67,7 +62,7 @@ use casper_types::{
     AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
     MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    UpgradeConfig, U512,
+    UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -120,13 +115,6 @@ pub struct WasmTestBuilder<S> {
     global_state_dir: Option<PathBuf>,
     /// Temporary directory, for implementation that uses one.
     temp_dir: Option<Rc<TempDir>>,
-}
-
-impl<S> WasmTestBuilder<S> {
-    fn initialize_logging() {
-        let log_settings = Settings::new(LevelFilter::Error).with_style(Style::HumanReadable);
-        let _ = logging::initialize(log_settings);
-    }
 }
 
 impl Default for LmdbWasmTestBuilder {
@@ -224,7 +212,7 @@ impl LmdbWasmTestBuilder {
         data_dir: &T,
         engine_config: EngineConfig,
     ) -> Self {
-        Self::initialize_logging();
+        let _ = env_logger::try_init();
         let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::global_state_dir(data_dir);
         Self::create_global_state_dir(&global_state_dir);
@@ -328,7 +316,7 @@ impl LmdbWasmTestBuilder {
         engine_config: EngineConfig,
         mode: GlobalStateMode,
     ) -> Self {
-        Self::initialize_logging();
+        let _ = env_logger::try_init();
         let page_size = *OS_PAGE_SIZE;
 
         match mode {

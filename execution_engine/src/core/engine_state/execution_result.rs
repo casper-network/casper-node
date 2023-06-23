@@ -4,7 +4,8 @@ use std::collections::VecDeque;
 
 use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
-    bytesrepr::FromBytes, CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
+    bytesrepr::FromBytes, CLTyped, CLValue, ExecutionEffect, Gas, Key, Motes, StoredValue,
+    TransferAddr,
 };
 
 use super::error;
@@ -375,7 +376,7 @@ impl From<ExecutionResult> for casper_types::ExecutionResult {
                 cost,
                 execution_journal,
             } => casper_types::ExecutionResult::Success {
-                effect: execution_journal.into(),
+                effect: ExecutionEffect::from(&execution_journal),
                 transfers,
                 cost: cost.value(),
             },
@@ -385,7 +386,7 @@ impl From<ExecutionResult> for casper_types::ExecutionResult {
                 cost,
                 execution_journal,
             } => casper_types::ExecutionResult::Failure {
-                effect: execution_journal.into(),
+                effect: ExecutionEffect::from(&execution_journal),
                 transfers,
                 cost: cost.value(),
                 error_message: error.to_string(),

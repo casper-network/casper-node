@@ -14,7 +14,6 @@
 )]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-pub mod config;
 pub mod core;
 pub mod shared;
 mod system;

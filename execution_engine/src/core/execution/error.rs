@@ -9,9 +9,9 @@ use casper_types::{
     ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };
 
-use crate::{
-    core::{resolvers::error::ResolverError, runtime::stack},
-    shared::wasm_prep,
+use crate::core::{
+    resolvers::error::ResolverError,
+    runtime::{stack, PreprocessingError},
 };
 
 /// Possible execution errors.
@@ -127,7 +127,7 @@ pub enum Error {
     NoSuchMethod(String),
     /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
-    WasmPreprocessing(wasm_prep::PreprocessingError),
+    WasmPreprocessing(PreprocessingError),
     /// Unable to convert a [`Key`] into an [`URef`].
     #[error("Key is not a URef: {}", _0)]
     KeyIsNotAURef(Key),
@@ -178,8 +178,8 @@ pub enum Error {
     Transform(transform::Error),
 }
 
-impl From<wasm_prep::PreprocessingError> for Error {
-    fn from(error: wasm_prep::PreprocessingError) -> Self {
+impl From<PreprocessingError> for Error {
+    fn from(error: PreprocessingError) -> Self {
         Error::WasmPreprocessing(error)
     }
 }

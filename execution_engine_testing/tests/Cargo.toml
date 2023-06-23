@@ -54,25 +54,3 @@ harness = false
 [[bin]]
 name = "disk_use"
 path = "bin/disk_use.rs"
-
-[[bin]]
-name = "state-initializer"
-path = "src/profiling/state_initializer.rs"
-test = false
-bench = false
-
-[[bin]]
-name = "simple-transfer"
-path = "src/profiling/simple_transfer.rs"
-test = false
-bench = false
-
-[[bin]]
-name = "host-function-metrics"
-path = "src/profiling/host_function_metrics.rs"
-test = false
-bench = false
-
-[[test]]
-name = "metrics"
-path = "src/logging/metrics.rs"
