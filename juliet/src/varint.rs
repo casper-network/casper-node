@@ -5,6 +5,8 @@
 
 use std::num::{NonZeroU32, NonZeroU8};
 
+use bytemuck::{Pod, Zeroable};
+
 use crate::Outcome::{self, Err, Incomplete, Success};
 
 /// The bitmask to separate the data-follows bit from actual value bits.
@@ -54,7 +56,7 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
 /// maximum length a 32 bit varint can posses is 5 bytes, the 6th bytes is used to record the
 /// length.
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Pod, Zeroable)]
 pub struct Varint32([u8; 6]);
 
 impl Varint32 {
@@ -90,6 +92,7 @@ impl AsRef<[u8]> for Varint32 {
 
 #[cfg(test)]
 mod tests {
+    use bytemuck::Zeroable;
     use proptest::prelude::{any, prop::collection};
     use proptest_attr_macro::proptest;
 
@@ -190,4 +193,9 @@ mod tests {
             check_decode(value, valid_substring);
         }
     }}
+
+    #[test]
+    fn ensure_is_zeroable() {
+        assert_eq!(Varint32::zeroed().as_ref(), Varint32::encode(0).as_ref());
+    }
 }

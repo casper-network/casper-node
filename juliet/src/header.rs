@@ -1,12 +1,16 @@
 //! `juliet` header parsing and serialization.
 use std::fmt::Debug;
 
+use bytemuck::{Pod, Zeroable};
+
 use crate::{ChannelId, Id};
 
 /// Header structure.
-#[derive(Copy, Clone, Eq, PartialEq)]
+// Note: `[u8; 4]` below should ideally be `[u8; Self::SIZE]`, but this prevents the `Zeroable`
+//       derive from working.
+#[derive(Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
 #[repr(transparent)]
-pub struct Header([u8; Self::SIZE]);
+pub struct Header([u8; 4]);
 
 impl Debug for Header {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -253,6 +257,7 @@ impl AsRef<[u8; Header::SIZE]> for Header {
 
 #[cfg(test)]
 mod tests {
+    use bytemuck::Zeroable;
     use proptest::{
         arbitrary::any,
         prelude::Arbitrary,
@@ -344,5 +349,13 @@ mod tests {
         // Two reserved bits set.
         let raw = [48, 0, 0, 0];
         assert!(Header::parse(raw).is_some());
+    }
+
+    #[test]
+    fn ensure_zeroed_header_works() {
+        assert_eq!(
+            Header::zeroed(),
+            Header::new(Kind::Request, ChannelId(0), Id(0))
+        )
     }
 }
