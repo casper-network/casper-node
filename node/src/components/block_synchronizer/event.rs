@@ -15,10 +15,8 @@ use crate::{
     },
     effect::requests::BlockSynchronizerRequest,
     types::{
-        ApprovalsHashes, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunk, BlockHash, BlockHash, BlockHeader, BlockHeader, Deploy,
-        FinalitySignature, FinalitySignature, FinalizedBlock, FinalizedBlock, LegacyDeploy,
-        LegacyDeploy, NodeId, NodeId, SyncLeap, SyncLeap, VersionedBlock,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, FinalitySignature,
+        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, VersionedBlock,
     },
 };
 

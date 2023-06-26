@@ -52,13 +52,9 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockSignatures, BlockWithMetadata, BlockWithMetadata, Deploy, DeployHash,
-        DeployHeader, DeployId, DeployMetadataExt, DeployMetadataExt, DeployWithFinalizedApprovals,
-        DeployWithFinalizedApprovals, FinalitySignature, FinalitySignature, FinalitySignatureId,
-        FinalitySignatureId, FinalizedApprovals, FinalizedApprovals, FinalizedBlock,
-        FinalizedBlock, LegacyDeploy, LegacyDeploy, MetaBlockState, MetaBlockState, NodeId, NodeId,
-        StatusFeed, StatusFeed, TrieOrChunk, TrieOrChunk, TrieOrChunkId, TrieOrChunkId,
-        VersionedBlock,
+        BlockSignatures, BlockWithMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
+        MetaBlockState, NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId, VersionedBlock,
     },
     utils::Source,
 };

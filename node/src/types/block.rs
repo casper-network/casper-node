@@ -30,11 +30,9 @@ use tracing::error;
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    bytesrepr::{self, FromBytes, ToBytes},
-    crypto, crypto, ActivationPoint, ActivationPoint, Approval, ChunkWithProofVerificationError,
-    ChunkWithProofVerificationError, Deploy, DeployHash, DeployId, Digest, Digest, DisplayIter,
-    EraId, EraId, ProtocolConfig, ProtocolConfig, ProtocolVersion, ProtocolVersion, PublicKey,
-    PublicKey, SecretKey, SecretKey, Signature, Signature, Timestamp, Timestamp, U512, U512,
+    crypto, ActivationPoint, Approval, ChunkWithProofVerificationError, Deploy, DeployHash,
+    DeployId, Digest, DisplayIter, EraId, ProtocolConfig, ProtocolVersion, PublicKey, SecretKey,
+    Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};

@@ -52,12 +52,9 @@ use crate::{
     rpcs::docs::DocExample,
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, Block,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunk, BlockHash, BlockHash,
-        BlockHeader, BlockHeader, BlockSignatures, BlockSignatures, Deploy, FinalitySignature,
-        FinalitySignature, FinalitySignatureId, FinalitySignatureId, FinalizedBlock,
-        FinalizedBlock, LegacyDeploy, LegacyDeploy, MetaBlock, MetaBlock, MetaBlockState,
-        MetaBlockState, NodeId, NodeId, SyncLeap, SyncLeap, SyncLeapIdentifier, SyncLeapIdentifier,
-        TrieOrChunk, TrieOrChunk, ValidatorMatrix, ValidatorMatrix, VersionedBlock,
+        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,
+        FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
+        SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix, VersionedBlock,
     },
     NodeRng,
 };

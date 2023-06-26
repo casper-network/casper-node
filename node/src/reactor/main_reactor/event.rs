@@ -45,10 +45,8 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        ApprovalsHashes, ApprovalsHashes, Block, Block, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunk, BlockHeader, BlockHeader, Deploy, FinalitySignature,
-        FinalitySignature, LegacyDeploy, LegacyDeploy, SyncLeap, SyncLeap, TrieOrChunk,
-        TrieOrChunk, VersionedBlock,
+        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, FinalitySignature,
+        LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
     },
 };
 

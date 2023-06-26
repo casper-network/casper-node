@@ -26,10 +26,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{Block, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
-    types::{
-        Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId, VersionedBlock,
-    },
+    types::{FinalitySignature, FinalizedBlock, MetaBlock, NodeId, VersionedBlock},
     utils::Source,
 };
 

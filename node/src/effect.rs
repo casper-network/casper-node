@@ -148,13 +148,9 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalitySignatureId,
-        FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
-        TrieOrChunk, TrieOrChunkId, VersionedBlock,
         BlockSignatures, BlockWithMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
         FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
+        MetaBlock, MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId, VersionedBlock,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };

@@ -9,10 +9,8 @@ use crate::{
     reactor,
     reactor::main_reactor::MainEvent,
     types::{
-        ApprovalsHashes, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunk, BlockHeader, BlockHeader, Deploy, FinalitySignature,
-        FinalitySignature, LegacyDeploy, LegacyDeploy, SyncLeap, SyncLeap, TrieOrChunk,
-        TrieOrChunk, VersionedBlock,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, FinalitySignature,
+        LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
     },
     utils::Source,
     FetcherConfig, NodeRng,

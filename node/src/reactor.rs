@@ -81,10 +81,8 @@ use crate::{
         Effect, EffectBuilder, EffectExt, Effects,
     },
     types::{
-        ApprovalsHashes, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunk, BlockHeader, BlockHeader, Deploy, ExitCode, ExitCode,
-        FinalitySignature, FinalitySignature, LegacyDeploy, LegacyDeploy, NodeId, NodeId, SyncLeap,
-        SyncLeap, TrieOrChunk, TrieOrChunk, VersionedBlock,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, ExitCode, FinalitySignature,
+        LegacyDeploy, NodeId, SyncLeap, TrieOrChunk, VersionedBlock,
     },
     unregister_metric,
     utils::{self, SharedFlag, WeightedRoundRobin},

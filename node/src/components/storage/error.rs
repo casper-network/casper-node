@@ -7,10 +7,8 @@ use casper_types::{bytesrepr, crypto, DeployHash, Digest, EraId};
 
 use super::lmdb_ext::LmdbExtError;
 use crate::types::{
-    error::BlockValidationError, error::BlockValidationError, BlockBody, BlockHash, BlockHash,
-    BlockHashAndHeight, BlockHashAndHeight, BlockHeader, BlockHeader, DeployHash,
-    FinalitySignature, FinalitySignature, FinalitySignatureId, FinalitySignatureId,
-    VersionedBlockBody,
+    error::BlockValidationError, BlockHash, BlockHashAndHeight, BlockHeader, FinalitySignature,
+    FinalitySignatureId, VersionedBlockBody,
 };
 
 /// A fatal storage component error.
