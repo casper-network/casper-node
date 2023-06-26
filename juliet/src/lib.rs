@@ -151,6 +151,17 @@ macro_rules! try_outcome {
     };
 }
 
+/// Configuration values that need to be agreed upon by all clients.
+#[derive(Copy, Clone, Debug)]
+struct ChannelConfiguration {
+    /// Maximum number of requests allowed on the channel.
+    request_limit: u32,
+    /// Maximum size of a request sent across the channel.
+    max_request_payload_size: u32,
+    /// Maximum size of a response sent across the channel.
+    max_response_payload_size: u32,
+}
+
 #[cfg(test)]
 mod tests {
     use proptest::{

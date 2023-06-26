@@ -1,3 +1,5 @@
+//! Incoming message parser.
+
 mod multiframe;
 
 use std::{collections::HashSet, num::NonZeroU32};
@@ -6,15 +8,20 @@ use bytes::{Buf, Bytes, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header, Kind},
-    try_outcome, ChannelId, Id,
+    try_outcome, ChannelConfiguration, ChannelId, Id,
     Outcome::{self, Err, Incomplete, Success},
 };
 
 const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
 const UNKNOWN_ID: Id = Id::new(0);
 
+/// A parser/state machine that processes an incoming stream.
+///
+/// Does not handle IO, rather it expects a growing [`BytesMut`] buffer to be passed in, containing
+/// incoming data.
 #[derive(Debug)]
-pub struct ReaderState<const N: usize> {
+pub struct MessageReader<const N: usize> {
+    /// Incoming channels
     channels: [Channel; N],
     max_frame_size: u32,
 }
@@ -23,11 +30,9 @@ pub struct ReaderState<const N: usize> {
 struct Channel {
     incoming_requests: HashSet<Id>,
     outgoing_requests: HashSet<Id>,
-    request_limit: u32,
-    max_request_payload_size: u32,
-    max_response_payload_size: u32,
     current_multiframe_receive: MultiframeReceiver,
     cancellation_allowance: u32,
+    config: ChannelConfiguration,
 }
 
 impl Channel {
@@ -38,11 +43,11 @@ impl Channel {
 
     #[inline]
     fn is_at_max_requests(&self) -> bool {
-        self.in_flight_requests() == self.request_limit
+        self.in_flight_requests() == self.config.request_limit
     }
 
     fn increment_cancellation_allowance(&mut self) {
-        if self.cancellation_allowance < self.request_limit {
+        if self.cancellation_allowance < self.config.request_limit {
             self.cancellation_allowance += 1;
         }
     }
@@ -58,7 +63,7 @@ pub enum CompletedRead {
 
 use self::multiframe::MultiframeReceiver;
 
-impl<const N: usize> ReaderState<N> {
+impl<const N: usize> MessageReader<N> {
     pub fn process(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {
         // First, attempt to complete a frame.
         loop {
@@ -152,7 +157,7 @@ impl<const N: usize> ReaderState<N> {
                             header,
                             &mut buffer,
                             self.max_frame_size,
-                            channel.max_request_payload_size,
+                            channel.config.max_request_payload_size,
                             ErrorKind::RequestTooLarge
                         ));
 
@@ -194,7 +199,7 @@ impl<const N: usize> ReaderState<N> {
                             header,
                             &mut buffer,
                             self.max_frame_size,
-                            channel.max_response_payload_size,
+                            channel.config.max_response_payload_size,
                             ErrorKind::ResponseTooLarge
                         ));
 
