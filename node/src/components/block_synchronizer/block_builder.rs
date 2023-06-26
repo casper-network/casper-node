@@ -11,7 +11,8 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    Digest, EraId, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    Deploy, DeployHash, DeployId, Digest, EraId, LegacyRequiredFinality, ProtocolVersion,
+    PublicKey, TimeDiff, Timestamp,
 };
 
 use super::{
@@ -25,8 +26,8 @@ use super::{
 use crate::{
     types::{
         ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights, FinalitySignature,
-        FinalizedBlock, NodeId, ValidatorMatrix,
+        BlockSignatures, EraValidatorWeights, FinalitySignature, FinalizedBlock, NodeId,
+        ValidatorMatrix,
     },
     NodeRng,
 };

@@ -25,7 +25,9 @@ use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{Chainspec, ChainspecRawBytes, EraId, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{
+    Chainspec, ChainspecRawBytes, Deploy, EraId, PublicKey, TimeDiff, Timestamp, U512,
+};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -72,7 +74,7 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        Block, BlockHash, Deploy, FinalitySignature, MetaBlock, MetaBlockState, TrieOrChunk,
+        Block, BlockHash, FinalitySignature, MetaBlock, MetaBlockState, TrieOrChunk,
         ValidatorMatrix,
     },
     utils::{Source, WithDir},

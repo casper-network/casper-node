@@ -12,8 +12,7 @@ use casper_types::{
 
 use crate::core::{
     engine_state::{
-        executable_deploy_item::ExecutionKind, execution_result::ExecutionResult, EngineConfig,
-        ExecError,
+        execution_kind::ExecutionKind, execution_result::ExecutionResult, EngineConfig, ExecError,
     },
     execution::{address_generator::AddressGenerator, Error},
     runtime::{Runtime, RuntimeStack},
@@ -74,7 +73,7 @@ impl Executor {
         };
 
         let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 
@@ -160,7 +159,7 @@ impl Executor {
         };
 
         let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 
@@ -229,7 +228,7 @@ impl Executor {
         T: FromBytes + CLTyped,
     {
         let address_generator = {
-            let generator = AddressGenerator::new(deploy_hash.as_bytes(), phase);
+            let generator = AddressGenerator::new(deploy_hash.as_ref(), phase);
             Rc::new(RefCell::new(generator))
         };
 

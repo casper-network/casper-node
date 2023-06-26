@@ -1,25 +1,34 @@
-use std::fmt::{self, Display, Formatter};
+use alloc::{string::String, vec::Vec};
+use core::fmt::{self, Display, Formatter};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
+#[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
+#[cfg(any(feature = "std", test))]
 use tracing::debug;
-
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    DeployConfig, Digest, PublicKey, TimeDiff, Timestamp,
-};
 
 #[cfg(doc)]
 use super::Deploy;
-use super::{DeployConfigurationFailure, DeployHash};
-use crate::utils::DisplayIter;
+use super::DeployHash;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Digest, DisplayIter, PublicKey, TimeDiff, Timestamp,
+};
+#[cfg(any(feature = "std", test))]
+use crate::{DeployConfig, DeployConfigurationFailure};
 
 /// The header portion of a [`Deploy`].
-#[derive(
-    Clone, DataSize, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, JsonSchema,
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[cfg_attr(
+    any(feature = "std", test),
+    derive(Serialize, Deserialize),
+    serde(deny_unknown_fields)
 )]
-#[serde(deny_unknown_fields)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct DeployHeader {
     account: PublicKey,
     timestamp: Timestamp,
@@ -31,6 +40,7 @@ pub struct DeployHeader {
 }
 
 impl DeployHeader {
+    #[cfg(any(feature = "std", feature = "json-schema", test))]
     pub(super) fn new(
         account: PublicKey,
         timestamp: Timestamp,
@@ -51,48 +61,51 @@ impl DeployHeader {
         }
     }
 
-    /// The account within which the deploy will be run.
+    /// Returns the public key of the account providing the context in which to run the `Deploy`.
     pub fn account(&self) -> &PublicKey {
         &self.account
     }
 
-    /// When the deploy was created.
+    /// Returns the creation timestamp of the `Deploy`.
     pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
 
-    /// How long the deploy will stay valid.
+    /// Returns the duration after the creation timestamp for which the `Deploy` will stay valid.
+    ///
+    /// After this duration has ended, the `Deploy` will be considered expired.
     pub fn ttl(&self) -> TimeDiff {
         self.ttl
     }
 
-    /// Has this deploy expired?
+    /// Returns `true` if the `Deploy` has expired.
     pub fn expired(&self, current_instant: Timestamp) -> bool {
         self.expires() < current_instant
     }
 
-    /// Price per gas unit for this deploy.
+    /// Returns the price per gas unit for the `Deploy`.
     pub fn gas_price(&self) -> u64 {
         self.gas_price
     }
 
-    /// Hash of the Wasm code.
+    /// Returns the hash of the body (i.e. the Wasm code) of the `Deploy`.
     pub fn body_hash(&self) -> &Digest {
         &self.body_hash
     }
 
-    /// Other deploys that have to be run before this one.
+    /// Returns the list of other `Deploy`s that have to be executed before this one.
     pub fn dependencies(&self) -> &Vec<DeployHash> {
         &self.dependencies
     }
 
-    /// Which chain the deploy is supposed to be run on.
+    /// Returns the name of the chain the `Deploy` should be executed on.
     pub fn chain_name(&self) -> &str {
         &self.chain_name
     }
 
-    /// Returns Ok if and only if the dependencies count and TTL are within limits, and the
+    /// Returns `Ok` if and only if the dependencies count and TTL are within limits, and the
     /// timestamp is not later than `at`.  Does NOT check for expiry.
+    #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
         config: &DeployConfig,
@@ -137,7 +150,7 @@ impl DeployHeader {
         Ok(())
     }
 
-    /// Returns the timestamp of when the deploy expires, i.e. `self.timestamp + self.ttl`.
+    /// Returns the timestamp of when the `Deploy` expires, i.e. `self.timestamp + self.ttl`.
     pub fn expires(&self) -> Timestamp {
         self.timestamp.saturating_add(self.ttl)
     }
@@ -197,7 +210,8 @@ impl Display for DeployHeader {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "deploy-header[account: {}, timestamp: {}, ttl: {}, gas_price: {}, body_hash: {}, dependencies: [{}], chain_name: {}]",
+            "deploy-header[account: {}, timestamp: {}, ttl: {}, gas_price: {}, body_hash: {}, \
+            dependencies: [{}], chain_name: {}]",
             self.account,
             self.timestamp,
             self.ttl,
@@ -209,7 +223,7 @@ impl Display for DeployHeader {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 impl DeployHeader {
     pub(super) fn invalidate(&mut self) {
         self.chain_name.clear();

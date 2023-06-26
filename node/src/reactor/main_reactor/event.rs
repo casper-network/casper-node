@@ -6,7 +6,7 @@ use std::{
 use derive_more::From;
 use serde::Serialize;
 
-use casper_types::{system::auction::EraValidators, EraId};
+use casper_types::{system::auction::EraValidators, Deploy, EraId};
 use static_assertions::const_assert;
 
 use crate::{
@@ -45,8 +45,10 @@ use crate::{
     protocol::Message,
     reactor::ReactorEvent,
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, Deploy,
-        FinalitySignature, LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
+        ApprovalsHashes, ApprovalsHashes, Block, Block, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunk, BlockHeader, BlockHeader, Deploy, FinalitySignature,
+        FinalitySignature, LegacyDeploy, LegacyDeploy, SyncLeap, SyncLeap, TrieOrChunk,
+        TrieOrChunk, VersionedBlock,
     },
 };
 

@@ -1697,7 +1697,7 @@
       "components": {
         "schemas": {
           "Deploy": {
-            "description": "A deploy; an item containing a smart contract along with the requester's signature(s).",
+            "description": "A signed smart contract.",
             "type": "object",
             "required": [
               "approvals",
@@ -1800,10 +1800,10 @@
             "minimum": 0.0
           },
           "ExecutableDeployItem": {
-            "description": "Represents possible variants of an executable deploy.",
+            "description": "The executable component of a [`Deploy`].",
             "anyOf": [
               {
-                "description": "Executable specified as raw bytes that represent WASM code and an instance of [`RuntimeArgs`].",
+                "description": "Executable specified as raw bytes that represent Wasm code and an instance of [`RuntimeArgs`].",
                 "type": "object",
                 "required": [
                   "ModuleBytes"
@@ -1850,8 +1850,12 @@
                     ],
                     "properties": {
                       "hash": {
-                        "description": "Hex-encoded hash.",
-                        "type": "string"
+                        "description": "Contract hash.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ContractHash"
+                          }
+                        ]
                       },
                       "entry_point": {
                         "description": "Name of an entry point.",
@@ -1924,8 +1928,12 @@
                     ],
                     "properties": {
                       "hash": {
-                        "description": "Hex-encoded hash.",
-                        "type": "string"
+                        "description": "Contract package hash",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ContractPackageHash"
+                          }
+                        ]
                       },
                       "version": {
                         "description": "An optional version of the contract to call. It will default to the highest enabled version if no value is specified.",
@@ -2001,7 +2009,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "A native transfer which does not contain or reference a WASM code.",
+                "description": "A native transfer which does not contain or reference a Wasm code.",
                 "type": "object",
                 "required": [
                   "Transfer"
@@ -2239,6 +2247,14 @@
                 "additionalProperties": false
               }
             ]
+          },
+          "ContractHash": {
+            "description": "The hex-encoded hash address of the contract",
+            "type": "string"
+          },
+          "ContractPackageHash": {
+            "description": "The hex-encoded hash address of the contract package",
+            "type": "string"
           },
           "Approval": {
             "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
@@ -3634,10 +3650,6 @@
             },
             "additionalProperties": false
           },
-          "ContractPackageHash": {
-            "description": "The hash address of the contract package",
-            "type": "string"
-          },
           "ContractWasmHash": {
             "description": "The hash address of the contract wasm",
             "type": "string"
@@ -3788,10 +3800,6 @@
                 "$ref": "#/components/schemas/ContractHash"
               }
             }
-          },
-          "ContractHash": {
-            "description": "The hash address of the contract",
-            "type": "string"
           },
           "DisabledVersion": {
             "type": "object",

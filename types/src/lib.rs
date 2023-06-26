@@ -17,6 +17,7 @@
     test(attr(forbid(warnings)))
 )]
 #![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
@@ -34,9 +35,10 @@ mod cl_value;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
+mod deploy;
 mod deploy_info;
-#[cfg(any(feature = "std", test))]
 mod digest;
+mod display_iter;
 mod era_id;
 mod execution_result;
 #[cfg(any(feature = "std", test))]
@@ -50,7 +52,6 @@ mod motes;
 mod named_key;
 mod phase;
 mod protocol_version;
-pub mod runtime_args;
 mod semver;
 mod stored_value;
 pub mod system;
@@ -63,6 +64,7 @@ mod transfer_result;
 mod uint;
 mod uref;
 
+pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
@@ -79,8 +81,7 @@ pub use chainspec::{
     NetworkConfig, OpcodeCosts, ProtocolConfig, StandardPaymentCosts, StorageCosts, SystemConfig,
     UpgradeConfig, ValidatorConfig, WasmConfig,
 };
-
-#[cfg(any(feature = "testing", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
     DEFAULT_ADD_BID_COST, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
     DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
@@ -95,7 +96,7 @@ pub use chainspec::{
     DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
     DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
     DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, MAX_PAYMENT_AMOUNT,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
@@ -107,12 +108,21 @@ pub use contracts::{
     Parameter,
 };
 pub use crypto::*;
-pub use deploy_info::DeployInfo;
+pub use deploy::{
+    runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
+    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    DeployFootprint, DeployHash, DeployHeader, DeployId, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, TransferTarget,
+};
 #[cfg(any(feature = "std", test))]
+pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use deploy_info::DeployInfo;
 pub use digest::{
     ChunkWithProof, ChunkWithProofVerificationError, Digest, DigestError, IndexedMerkleProof,
     MerkleConstructionError, MerkleVerificationError,
 };
+pub use display_iter::DisplayIter;
+pub use era_id::EraId;
 pub use execution_result::{
     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
 };
@@ -136,15 +146,9 @@ pub use tagged::Tagged;
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
 pub use transfer::{
-    DeployHash, FromStrError as TransferFromStrError, Transfer, TransferAddr, DEPLOY_HASH_LENGTH,
-    TRANSFER_ADDR_LENGTH,
+    FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
 };
 pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
-};
-
-pub use crate::{
-    era_id::EraId,
-    uint::{UIntParseError, U128, U256, U512},
 };

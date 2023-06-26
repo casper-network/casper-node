@@ -31,8 +31,8 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    AsymmetricType, Chainspec, ConsensusProtocolName, Digest, EraId, PublicKey, SecretKey,
-    TimeDiff, Timestamp,
+    AsymmetricType, Chainspec, ConsensusProtocolName, Deploy, DeployHash, Digest, EraId, PublicKey,
+    SecretKey, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -57,8 +57,8 @@ use crate::{
     },
     fatal, protocol,
     types::{
-        BlockHash, BlockHeader, Deploy, DeployHash, DeployOrTransferHash, FinalizedApprovals,
-        FinalizedBlock, MetaBlockState, NodeId,
+        BlockHash, BlockHeader, DeployOrTransferHash, FinalizedApprovals, FinalizedBlock,
+        MetaBlockState, NodeId,
     },
     NodeRng,
 };

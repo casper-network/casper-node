@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use tracing::debug;
 
-use casper_types::Timestamp;
+use casper_types::{Deploy, Timestamp};
 
 pub(crate) use crate::components::deploy_acceptor::{Error, Event};
 use crate::{
@@ -20,7 +20,6 @@ use crate::{
         announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects, Responder,
     },
-    types::Deploy,
     utils::Source,
     NodeRng,
 };

@@ -3,9 +3,11 @@ use std::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use casper_types::{
+    bytesrepr::{self, FromBytes, ToBytes},
+    Deploy, DeployConfigurationFailure, DeployHash,
+};
 
-use super::{Deploy, DeployConfigurationFailure, DeployHash};
 use crate::components::fetcher::{EmptyValidationMetadata, FetchItem, Tag};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, DataSize, Debug)]

@@ -6,10 +6,12 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
+use casper_types::{Deploy, DeployId};
+
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::requests::DeployBufferRequest,
-    types::{Block, Deploy, DeployId, FinalizedBlock},
+    types::{Block, FinalizedBlock},
 };
 
 #[derive(Debug, From, DataSize)]

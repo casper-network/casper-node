@@ -6,10 +6,9 @@ use rand::RngCore;
 use serde::Serialize;
 use tempfile::TempDir;
 
-use casper_execution_engine::core::engine_state::ExecutableDeployItem;
 use casper_types::{
-    runtime_args, Chainspec, ChainspecRawBytes, EraId, PublicKey, RuntimeArgs, SecretKey, TimeDiff,
-    U512,
+    runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, ExecutableDeployItem, PublicKey,
+    RuntimeArgs, SecretKey, TimeDiff, U512,
 };
 
 use super::*;
@@ -23,7 +22,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, ReactorEvent, Runner},
     testing::{self, network::NetworkedReactor, ConditionCheckReactor},
-    types::{BlockPayload, Deploy, DeployHashWithApprovals},
+    types::{BlockPayload, DeployHashWithApprovals},
     utils::{Loadable, WithDir, RESOURCES_PATH},
     NodeRng,
 };

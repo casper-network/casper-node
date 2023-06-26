@@ -4,10 +4,9 @@ use std::{
     time::Duration,
 };
 
-use casper_execution_engine::core::engine_state::executable_deploy_item::ExecutableDeployItem;
 use casper_types::{
     bytesrepr::Bytes, runtime_args, system::standard_payment::ARG_AMOUNT, testing::TestRng,
-    Chainspec, ChainspecRawBytes, RuntimeArgs, SecretKey, TimeDiff, U512,
+    Chainspec, ChainspecRawBytes, ExecutableDeployItem, RuntimeArgs, SecretKey, TimeDiff, U512,
 };
 use derive_more::From;
 use itertools::Itertools;

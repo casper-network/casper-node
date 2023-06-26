@@ -3,12 +3,14 @@ use std::{io, path::PathBuf};
 use thiserror::Error;
 use tracing::error;
 
-use casper_types::{bytesrepr, crypto, Digest, EraId};
+use casper_types::{bytesrepr, crypto, DeployHash, Digest, EraId};
 
 use super::lmdb_ext::LmdbExtError;
 use crate::types::{
-    error::BlockValidationError, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash,
-    FinalitySignature, FinalitySignatureId, VersionedBlockBody,
+    error::BlockValidationError, error::BlockValidationError, BlockBody, BlockHash, BlockHash,
+    BlockHashAndHeight, BlockHashAndHeight, BlockHeader, BlockHeader, DeployHash,
+    FinalitySignature, FinalitySignature, FinalitySignatureId, FinalitySignatureId,
+    VersionedBlockBody,
 };
 
 /// A fatal storage component error.

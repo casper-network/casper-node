@@ -32,5 +32,7 @@ version-sync = "0.9.3"
 
 [features]
 use-as-wasm = []
-# deprecated - has no effect
-test-support = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustc-args = ["--cfg", "docsrs"]

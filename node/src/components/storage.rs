@@ -70,8 +70,8 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer,
-    Transform,
+    ApprovalsHash, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionResult,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
 };
 
 use crate::{
@@ -90,13 +90,18 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
-        BlockBodyV1, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
+        ApprovalsHash, ApprovalsHashes, ApprovalsHashes, AvailableBlockRange, AvailableBlockRange,
+        Block, Block, BlockAndDeploys, BlockAndDeploys, BlockBody, BlockBody, BlockBodyV1,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
+        BlockExecutionResultsOrChunkId, BlockHash, BlockHash, BlockHashAndHeight,
+        BlockHashAndHeight, BlockHeader, BlockHeader, BlockHeaderWithMetadata,
+        BlockHeaderWithMetadata, BlockSignatures, BlockSignatures, BlockWithMetadata,
         BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
-        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
-        VersionedBlock, VersionedBlockBody,
+        DeployMetadata, DeployMetadataExt, DeployMetadataExt, DeployWithFinalizedApprovals,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalitySignature, FinalizedApprovals,
+        FinalizedApprovals, FinalizedBlock, FinalizedBlock, LegacyDeploy, LegacyDeploy, NodeId,
+        NodeId, SyncLeap, SyncLeap, SyncLeapIdentifier, SyncLeapIdentifier, ValueOrChunk,
+        ValueOrChunk, VersionedBlock, VersionedBlockBody,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1435,7 +1440,7 @@ impl Storage {
             }
             for (deploy, hash) in deploys.iter().zip(finalized_approvals.approvals_hashes()) {
                 if deploy
-                    .approvals_hash()
+                    .compute_approvals_hash()
                     .map_err(FatalStorageError::UnexpectedDeserializationFailure)?
                     == *hash
                 {

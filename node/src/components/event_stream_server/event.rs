@@ -3,10 +3,13 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp};
 use itertools::Itertools;
 
-use crate::types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature};
+use casper_types::{
+    Deploy, DeployHash, DeployHeader, EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp,
+};
+
+use crate::types::{Block, BlockHash, FinalitySignature};
 
 #[derive(Debug)]
 pub enum Event {

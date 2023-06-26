@@ -24,10 +24,12 @@ use casper_execution_engine::core::engine_state::{
     query::{QueryRequest, QueryResult},
 };
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, ChainspecRawBytes, Digest, EraId,
-    ExecutionResult, Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    bytesrepr::Bytes, system::auction::EraValidators, ChainspecRawBytes, Deploy, DeployHash,
+    DeployHeader, DeployId, Digest, DisplayIter, EraId, ExecutionResult, Key, ProtocolVersion,
+    PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
+use super::GossipTarget;
 use crate::{
     components::{
         block_synchronizer::{
@@ -50,15 +52,16 @@ use crate::{
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalitySignatureId,
-        FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlockState, NodeId, StatusFeed,
-        TrieOrChunk, TrieOrChunkId, VersionedBlock,
+        BlockSignatures, BlockSignatures, BlockWithMetadata, BlockWithMetadata, Deploy, DeployHash,
+        DeployHeader, DeployId, DeployMetadataExt, DeployMetadataExt, DeployWithFinalizedApprovals,
+        DeployWithFinalizedApprovals, FinalitySignature, FinalitySignature, FinalitySignatureId,
+        FinalitySignatureId, FinalizedApprovals, FinalizedApprovals, FinalizedBlock,
+        FinalizedBlock, LegacyDeploy, LegacyDeploy, MetaBlockState, MetaBlockState, NodeId, NodeId,
+        StatusFeed, StatusFeed, TrieOrChunk, TrieOrChunk, TrieOrChunkId, TrieOrChunkId,
+        VersionedBlock,
     },
-    utils::{DisplayIter, Source},
+    utils::Source,
 };
-
-use super::GossipTarget;
 
 const _STORAGE_REQUEST_SIZE: usize = mem::size_of::<StorageRequest>();
 const_assert!(_STORAGE_REQUEST_SIZE < 89);

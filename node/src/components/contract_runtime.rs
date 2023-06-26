@@ -42,8 +42,8 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Digest,
-    EraId, ProtocolVersion, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
+    bytesrepr::Bytes, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Deploy,
+    Digest, EraId, ProtocolVersion, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
 };
 
 use crate::{
@@ -60,7 +60,7 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        BlockHash, BlockHeader, ChunkingError, Deploy, FinalizedBlock, MetaBlock, MetaBlockState,
+        BlockHash, BlockHeader, ChunkingError, FinalizedBlock, MetaBlock, MetaBlockState,
         TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,

@@ -36,12 +36,8 @@ pub use block::{
 };
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
-pub use deploy::{
-    Approval, ApprovalsHash, Deploy, DeployConfigurationFailure, DeployError, DeployHash,
-    DeployHeader, DeployOrTransferHash, ExcessiveSizeError as ExcessiveSizeDeployError,
-};
 pub(crate) use deploy::{
-    DeployFootprint, DeployHashWithApprovals, DeployId, DeployMetadata, DeployMetadataExt,
+    DeployHashWithApprovals, DeployMetadata, DeployMetadataExt, DeployOrTransferHash,
     DeployWithFinalizedApprovals, FinalizedApprovals, LegacyDeploy,
 };
 pub use error::BlockValidationError;

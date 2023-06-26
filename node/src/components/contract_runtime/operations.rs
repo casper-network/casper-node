@@ -19,7 +19,8 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    CLValue, DeployHash, Digest, EraId, ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
+    CLValue, Deploy, DeployHash, DeployHeader, Digest, EraId, ExecutionResult, Key,
+    ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
@@ -32,10 +33,7 @@ use crate::{
         },
         fetcher::FetchItem,
     },
-    types::{
-        self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, Deploy, DeployHeader,
-        FinalizedBlock,
-    },
+    types::{self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, FinalizedBlock},
 };
 
 fn generate_range_by_index(
@@ -162,7 +160,7 @@ pub fn execute_finalized_block(
             &scratch_state,
             metrics.clone(),
             state_root_hash,
-            deploy_hash.into(),
+            deploy_hash,
             result,
         )?;
         execution_results.push((deploy_hash, deploy_header, execution_result));

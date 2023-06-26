@@ -2,12 +2,39 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
+use tracing::error;
+
+use casper_types::{ApprovalsHash, Deploy, DeployConfigurationFailure, DeployId, Digest};
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    components::fetcher::{
+        metrics::Metrics, EmptyValidationMetadata, FetchItem, Fetcher, ItemFetcher, ItemHandle,
+        StoringState, Tag,
+    },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{Deploy, DeployId, FinalizedApprovals, NodeId},
+    types::{FinalizedApprovals, NodeId},
 };
+
+impl FetchItem for Deploy {
+    type Id = DeployId;
+    type ValidationError = DeployConfigurationFailure;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    const TAG: Tag = Tag::Deploy;
+
+    fn fetch_id(&self) -> Self::Id {
+        let deploy_hash = *self.hash();
+        let approvals_hash = self.compute_approvals_hash().unwrap_or_else(|error| {
+            error!(%error, "failed to serialize approvals");
+            ApprovalsHash::from(Digest::default())
+        });
+        DeployId::new(deploy_hash, approvals_hash)
+    }
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        self.is_valid()
+    }
+}
 
 #[async_trait]
 impl ItemFetcher<Deploy> for Fetcher<Deploy> {

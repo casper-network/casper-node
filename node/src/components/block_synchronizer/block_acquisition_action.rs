@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 use tracing::{debug, warn};
 
-use casper_types::{Digest, EraId, PublicKey};
+use casper_types::{Deploy, DeployHash, DeployId, Digest, EraId, PublicKey};
 
 use crate::{
     components::block_synchronizer::{
@@ -10,8 +10,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, Deploy, DeployHash,
-        DeployId, EraValidatorWeights, FinalizedBlock, NodeId,
+        Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, EraValidatorWeights,
+        FinalizedBlock, NodeId,
     },
     NodeRng,
 };

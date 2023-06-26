@@ -124,8 +124,8 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, ChainspecRawBytes,
-    Contract, ContractPackage, Digest, EraId, ExecutionEffect, ExecutionResult, Key, PublicKey,
-    TimeDiff, Timestamp, Transfer, URef, U512,
+    Contract, ContractPackage, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId,
+    ExecutionEffect, ExecutionResult, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -152,6 +152,9 @@ use crate::{
         DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalitySignatureId,
         FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
         TrieOrChunk, TrieOrChunkId, VersionedBlock,
+        BlockSignatures, BlockWithMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
+        MetaBlock, MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };

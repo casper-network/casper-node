@@ -304,9 +304,9 @@ mod tests {
     use warp::{filters::BoxedFilter, Filter, Reply};
 
     use casper_json_rpc::{filters, Response};
+    use casper_types::DeployHash;
 
     use super::*;
-    use crate::types::DeployHash;
 
     async fn send_request(
         method: &str,

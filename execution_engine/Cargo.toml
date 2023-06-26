@@ -63,3 +63,7 @@ test-support = []
 [[bench]]
 name = "trie_bench"
 harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustc-args = ["--cfg", "docsrs"]
