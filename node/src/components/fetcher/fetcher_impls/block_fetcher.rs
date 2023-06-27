@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
-use casper_types::{Block, BlockHash, BlockValidationError};
+use casper_types::{Block, BlockHash, BlockValidationError, VersionedBlock};
 
 use crate::{
     components::fetcher::{
@@ -15,11 +15,27 @@ use crate::{
         requests::{BlockAccumulatorRequest, StorageRequest},
         EffectBuilder,
     },
-    types::{BlockHash, NodeId, VersionedBlock},
     types::NodeId,
 };
 
+// TODO[RC]: This implementation should be not needed, we never fetch `BlockV2`, but some other code relies on the trait being implemented. We should clean this up.
 impl FetchItem for Block {
+    type Id = BlockHash;
+    type ValidationError = BlockValidationError;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    const TAG: Tag = Tag::Block;
+
+    fn fetch_id(&self) -> Self::Id {
+        *self.hash()
+    }
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+}
+
+impl FetchItem for VersionedBlock {
     type Id = BlockHash;
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;

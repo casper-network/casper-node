@@ -4,15 +4,11 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr, crypto, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId,
+    bytesrepr, crypto, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
+    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, VersionedBlockBody,
 };
 
 use super::lmdb_ext::LmdbExtError;
-use crate::types::{
-    error::BlockValidationError, BlockHash, BlockHashAndHeight, BlockHeader, FinalitySignature,
-    FinalitySignatureId, VersionedBlockBody,
-};
 
 /// A fatal storage component error.
 ///

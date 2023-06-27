@@ -1,17 +1,13 @@
 use datasize::DataSize;
 use prometheus::Registry;
 
-use casper_types::{Block, BlockHeader, Deploy, FinalitySignature};
+use casper_types::{BlockHeader, Deploy, FinalitySignature, VersionedBlock};
 
 use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
     effect::{announcements::DeployAcceptorAnnouncement, EffectBuilder, Effects},
     reactor,
     reactor::main_reactor::MainEvent,
-    types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, FinalitySignature,
-        LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
-    },
     types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
     utils::Source,
     FetcherConfig, NodeRng,

@@ -77,6 +77,7 @@ impl BlockAcceptor {
             });
         }
 
+        // TODO[RC]: validate() comes from the `FetchItem` trait. I'd be better to avoid the need of implementing the `FetchItem` for the type we actually don't fetch.
         if let Err(error) = meta_block.block.validate(&EmptyValidationMetadata) {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors

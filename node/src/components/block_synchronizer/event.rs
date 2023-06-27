@@ -5,7 +5,7 @@ use either::Either;
 use serde::Serialize;
 
 use casper_execution_engine::core::engine_state;
-use casper_types::{Block, BlockHash, BlockHeader, Deploy, Digest, FinalitySignature};
+use casper_types::{BlockHash, BlockHeader, Deploy, Digest, FinalitySignature, VersionedBlock};
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
@@ -15,8 +15,6 @@ use crate::{
     },
     effect::requests::BlockSynchronizerRequest,
     types::{
-        ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, FinalitySignature,
-        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, VersionedBlock,
         ApprovalsHashes, BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, NodeId,
         SyncLeap,
     },

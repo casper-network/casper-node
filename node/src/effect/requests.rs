@@ -27,7 +27,7 @@ use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash, BlockHeader,
     BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId, Digest,
     DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef, VersionedBlock,
 };
 
 use super::GossipTarget;
@@ -51,11 +51,6 @@ use crate::{
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlockState, NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId, VersionedBlock,
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployMetadataExt,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy,

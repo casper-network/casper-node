@@ -9,6 +9,7 @@ use static_assertions::const_assert;
 
 use casper_types::{
     system::auction::EraValidators, Block, BlockHeader, Deploy, EraId, FinalitySignature,
+    VersionedBlock,
 };
 
 use crate::{
@@ -46,10 +47,6 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHeader, FinalitySignature,
-        LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
-    },
     types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
 };
 

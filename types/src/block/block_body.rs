@@ -11,13 +11,17 @@ use serde::{Deserialize, Serialize};
 use super::JsonBlockBody;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
+    past_finality_signatures::PastFinalitySignatures,
     DeployHash, Digest, PublicKey,
 };
 
 /// The body portion of a block.
+pub type BlockBody = BlockBodyV2;
+
+/// The body portion of a block.
 #[derive(Clone, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct BlockBody {
+pub struct BlockBodyV1 {
     pub(super) proposer: PublicKey,
     pub(super) deploy_hashes: Vec<DeployHash>,
     pub(super) transfer_hashes: Vec<DeployHash>,
@@ -30,14 +34,30 @@ pub struct BlockBody {
     pub(super) hash: OnceCell<Digest>,
 }
 
-impl BlockBody {
+#[derive(Clone, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub struct BlockBodyV2 {
+    pub(super) proposer: PublicKey,
+    pub(super) deploy_hashes: Vec<DeployHash>,
+    pub(super) transfer_hashes: Vec<DeployHash>,
+    pub(super) past_finality_signatures: PastFinalitySignatures,
+    #[serde(skip)]
+    #[cfg_attr(
+        all(any(feature = "once_cell", test), feature = "datasize"),
+        data_size(skip)
+    )]
+    #[cfg(any(feature = "once_cell", test))]
+    pub(super) hash: OnceCell<Digest>,
+}
+
+impl BlockBodyV1 {
     /// Constructs a new `BlockBody`.
     pub(super) fn new(
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
     ) -> Self {
-        BlockBody {
+        BlockBodyV1 {
             proposer,
             deploy_hashes,
             transfer_hashes,
@@ -85,18 +105,79 @@ impl BlockBody {
     }
 }
 
-impl PartialEq for BlockBody {
-    fn eq(&self, other: &BlockBody) -> bool {
+impl BlockBodyV2 {
+    /// Constructs a new `BlockBody`.
+    pub(super) fn new(
+        proposer: PublicKey,
+        deploy_hashes: Vec<DeployHash>,
+        transfer_hashes: Vec<DeployHash>,
+    ) -> Self {
+        BlockBodyV2 {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            past_finality_signatures: Default::default(),
+            #[cfg(any(feature = "once_cell", test))]
+            hash: OnceCell::new(),
+        }
+    }
+
+    /// Returns the public key of the validator which proposed the block.
+    pub fn proposer(&self) -> &PublicKey {
+        &self.proposer
+    }
+
+    /// Returns the deploy hashes of the non-transfer deploys within the block.
+    pub fn deploy_hashes(&self) -> &[DeployHash] {
+        &self.deploy_hashes
+    }
+
+    /// Returns the deploy hashes of the transfers within the block.
+    pub fn transfer_hashes(&self) -> &[DeployHash] {
+        &self.transfer_hashes
+    }
+
+    /// Returns the past finality signatures stored in the block.
+    pub fn past_finality_signatures(&self) -> &PastFinalitySignatures {
+        &self.past_finality_signatures
+    }
+
+    /// Returns the deploy and transfer hashes in the order in which they were executed.
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+    }
+
+    /// Returns the body hash, i.e. the hash of the body's serialized bytes.
+    pub fn hash(&self) -> Digest {
+        #[cfg(any(feature = "once_cell", test))]
+        return *self.hash.get_or_init(|| self.compute_hash());
+
+        #[cfg(not(any(feature = "once_cell", test)))]
+        self.compute_hash()
+    }
+
+    fn compute_hash(&self) -> Digest {
+        let serialized_body = self
+            .to_bytes()
+            .unwrap_or_else(|error| panic!("should serialize block body: {}", error));
+        Digest::hash(serialized_body)
+    }
+}
+
+impl PartialEq for BlockBodyV1 {
+    fn eq(&self, other: &BlockBodyV1) -> bool {
         // Destructure to make sure we don't accidentally omit fields.
         #[cfg(any(feature = "once_cell", test))]
-        let BlockBody {
+        let BlockBodyV1 {
             proposer,
             deploy_hashes,
             transfer_hashes,
             hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let BlockBody {
+        let BlockBodyV1 {
             proposer,
             deploy_hashes,
             transfer_hashes,
@@ -107,7 +188,32 @@ impl PartialEq for BlockBody {
     }
 }
 
-impl Display for BlockBody {
+impl PartialEq for BlockBodyV2 {
+    fn eq(&self, other: &BlockBodyV2) -> bool {
+        // Destructure to make sure we don't accidentally omit fields.
+        #[cfg(any(feature = "once_cell", test))]
+        let BlockBodyV2 {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            past_finality_signatures,
+            hash: _,
+        } = self;
+        #[cfg(not(any(feature = "once_cell", test)))]
+        let BlockBodyV1 {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            past_finality_signatures,
+        } = self;
+        *proposer == other.proposer
+            && *deploy_hashes == other.deploy_hashes
+            && *transfer_hashes == other.transfer_hashes
+            && *past_finality_signatures == other.past_finality_signatures
+    }
+}
+
+impl Display for BlockBodyV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -119,7 +225,20 @@ impl Display for BlockBody {
     }
 }
 
-impl ToBytes for BlockBody {
+impl Display for BlockBodyV2 {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "block body proposed by {}, {} deploys, {} transfers, {} past finality signatures",
+            self.proposer,
+            self.deploy_hashes.len(),
+            self.transfer_hashes.len(),
+            self.past_finality_signatures.0.len()
+        )
+    }
+}
+
+impl ToBytes for BlockBodyV1 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.proposer.write_bytes(writer)?;
         self.deploy_hashes.write_bytes(writer)?;
@@ -139,12 +258,34 @@ impl ToBytes for BlockBody {
     }
 }
 
-impl FromBytes for BlockBody {
+impl ToBytes for BlockBodyV2 {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.proposer.write_bytes(writer)?;
+        self.deploy_hashes.write_bytes(writer)?;
+        self.transfer_hashes.write_bytes(writer)?;
+        self.past_finality_signatures.write_bytes(writer)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.proposer.serialized_length()
+            + self.deploy_hashes.serialized_length()
+            + self.transfer_hashes.serialized_length()
+            + self.past_finality_signatures.serialized_length()
+    }
+}
+
+impl FromBytes for BlockBodyV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
         let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
-        let body = BlockBody {
+        let body = BlockBodyV1 {
             proposer,
             deploy_hashes,
             transfer_hashes,
@@ -155,14 +296,99 @@ impl FromBytes for BlockBody {
     }
 }
 
+impl FromBytes for BlockBodyV2 {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
+        let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
+        let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
+        let (past_finality_signatures, bytes) = PastFinalitySignatures::from_bytes(bytes)?;
+        let body = BlockBodyV2 {
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+            past_finality_signatures,
+            #[cfg(any(feature = "once_cell", test))]
+            hash: OnceCell::new(),
+        };
+        Ok((body, bytes))
+    }
+}
+
 #[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonBlockBody> for BlockBody {
+impl From<JsonBlockBody> for BlockBodyV1 {
     fn from(json_body: JsonBlockBody) -> Self {
-        BlockBody {
+        BlockBodyV1 {
             proposer: json_body.proposer,
             deploy_hashes: json_body.deploy_hashes,
             transfer_hashes: json_body.transfer_hashes,
             hash: OnceCell::new(),
+        }
+    }
+}
+
+/// The versioned body portion of a block. It encapsulates different variants of the BlockBody struct.
+// TODO[RC]: Moving to a separate module after merged with Fraser's types rework
+#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
+pub enum VersionedBlockBody {
+    /// The legacy, initial version of the body portion of a block.
+    V1(BlockBodyV1),
+    /// The version 2 of the body portion of a block, which includes the
+    /// `past_finality_signatures`.
+    V2(BlockBodyV2),
+}
+
+impl VersionedBlockBody {
+    /// Retrieves the deploy hashes within the block.
+    pub fn deploy_hashes(&self) -> &Vec<DeployHash> {
+        match self {
+            VersionedBlockBody::V1(v1) => &v1.deploy_hashes,
+            VersionedBlockBody::V2(v2) => &v2.deploy_hashes,
+        }
+    }
+
+    /// Retrieves the transfer hashes within the block.
+    pub fn transfer_hashes(&self) -> &Vec<DeployHash> {
+        match self {
+            VersionedBlockBody::V1(v1) => &v1.transfer_hashes,
+            VersionedBlockBody::V2(v2) => &v2.transfer_hashes,
+        }
+    }
+
+    /// Returns deploy hashes of transactions in an order in which they were executed.
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+    }
+}
+
+// TODO[RC]: We probably don't need `Eq` on `VersionedBlockBody` - remove this and make sure that only correct version of the BlockBody are allowed to be compared.
+impl PartialEq for VersionedBlockBody {
+    fn eq(&self, other: &VersionedBlockBody) -> bool {
+        match (self, other) {
+            (VersionedBlockBody::V1(lhs), VersionedBlockBody::V1(rhs)) => lhs.eq(rhs),
+            (VersionedBlockBody::V2(lhs), VersionedBlockBody::V2(rhs)) => lhs.eq(rhs),
+            _ => {
+                panic!("BlockBody structs of different versions should not be compared")
+            }
+        }
+    }
+}
+
+impl Display for VersionedBlockBody {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            VersionedBlockBody::V1(v1) => Display::fmt(&v1, formatter),
+            VersionedBlockBody::V2(v2) => Display::fmt(&v2, formatter),
+        }
+    }
+}
+
+impl From<&VersionedBlockBody> for BlockBody {
+    fn from(value: &VersionedBlockBody) -> Self {
+        match value {
+            VersionedBlockBody::V1(_) => todo!(),
+            VersionedBlockBody::V2(v2) => v2.clone(),
         }
     }
 }

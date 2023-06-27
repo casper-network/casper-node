@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    Block, Deploy, DeployHash, EraId, ExecutionEffect, FinalitySignature, PublicKey, Timestamp,
-    U512,
+    Deploy, DeployHash, EraId, ExecutionEffect, FinalitySignature, PublicKey, Timestamp,
+    VersionedBlock, U512,
 };
 
 use crate::{
@@ -29,7 +29,6 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{FinalitySignature, FinalizedBlock, MetaBlock, NodeId, VersionedBlock},
     types::{FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };

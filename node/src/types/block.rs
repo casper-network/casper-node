@@ -10,10 +10,6 @@ mod meta_block;
 mod signed_block;
 
 use casper_types::{
-    bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    crypto, ActivationPoint, Approval, ChunkWithProofVerificationError, Deploy, DeployHash,
-    DeployId, Digest, DisplayIter, EraId, ProtocolConfig, ProtocolVersion, PublicKey, SecretKey,
-    Signature, Timestamp, U512,
     bytesrepr::{self, ToBytes},
     Block, BlockHash, DeployId, Digest, FinalitySignature,
 };

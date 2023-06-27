@@ -70,9 +70,10 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    ApprovalsHash, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionResult, FinalitySignature,
-    ProtocolVersion, PublicKey, SignedBlockHeader, TimeDiff, Timestamp, Transfer, Transform,
+    ApprovalsHash, Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionResult,
+    FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader, TimeDiff, Timestamp,
+    Transfer, Transform, VersionedBlock, VersionedBlockBody,
 };
 
 use crate::{
@@ -91,16 +92,10 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ApprovalsHashes, ApprovalsHashes, AvailableBlockRange, AvailableBlockRange, Block,
-        BlockAndDeploys, BlockBody, BlockBodyV1, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId,
-        BlockExecutionResultsOrChunkId, BlockHash, BlockHashAndHeight, BlockHeader,
-        BlockHeaderWithMetadata, BlockSignatures, BlockWithMetadata, DeployMetadata,
-        DeployMetadata, DeployMetadataExt, DeployMetadataExt, DeployWithFinalizedApprovals,
-        DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals, FinalizedApprovals,
-        FinalizedBlock, FinalizedBlock, LegacyDeploy, LegacyDeploy, NodeId, NodeId, SignedBlock,
-        SyncLeap, SyncLeap, SyncLeapIdentifier, SyncLeapIdentifier, ValueOrChunk, ValueOrChunk,
-        VersionedBlock, VersionedBlockBody,
+        ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
+        BlockExecutionResultsOrChunkId, DeployMetadata, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, NodeId,
+        SignedBlock, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -1818,7 +1813,7 @@ impl Storage {
         &self,
         block_hash: BlockHash,
     ) -> Result<Option<(Block, Vec<Deploy>)>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
+        let mut txn = self.env.begin_rw_txn()?;
         let block = match self.get_single_block(&mut txn, &block_hash)? {
             Some(block) => block,
             None => {
@@ -2204,7 +2199,7 @@ impl Storage {
     /// Retrieves a single block from storage.
     fn get_single_block(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RwTransaction, // TODO[RC]: Check if we can turn RoTransaction to RwTransation on demand (i.e.: only if the migration is needed)
         block_hash: &BlockHash,
     ) -> Result<Option<Block>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
@@ -2786,7 +2781,7 @@ fn insert_versioned_block_body_to_deploy_index(
         deploy_hash_index
             .get(hash)
             .map_or(false, |old_block_hash_and_height| {
-                old_block_hash_and_height.block_hash != block_hash
+                *old_block_hash_and_height.block_hash() != block_hash
             })
     }) {
         return Err(FatalStorageError::DuplicateDeployIndex {

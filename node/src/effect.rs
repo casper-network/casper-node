@@ -126,7 +126,7 @@ use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash,
     BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage, Deploy, DeployHash,
     DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult, FinalitySignature,
-    FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512,
+    FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, VersionedBlock, U512,
 };
 
 use crate::{
@@ -147,11 +147,6 @@ use crate::{
     contract_runtime::SpeculativeExecutionState,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId, VersionedBlock,
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployMetadataExt,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,

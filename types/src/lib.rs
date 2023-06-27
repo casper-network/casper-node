@@ -51,6 +51,7 @@ mod json_pretty_printer;
 mod key;
 mod motes;
 mod named_key;
+mod past_finality_signatures;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -71,10 +72,12 @@ pub use access_rights::{
 };
 #[doc(inline)]
 pub use api_error::ApiError;
+// TODO[RC]: Can we live without `BlockBodyV1` being exported?
 pub use block::{
-    Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSignaturesMergeError, BlockValidationError, EraEnd, EraReport, FinalitySignature,
-    FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
+    Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
+    BlockSignaturesMergeError, BlockV1, BlockValidationError, EraEnd, EraReport, FinalitySignature,
+    FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError, VersionedBlock,
+    VersionedBlockBody,
 };
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::{

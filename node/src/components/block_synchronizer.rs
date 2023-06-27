@@ -31,7 +31,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_execution_engine::core::engine_state;
 use casper_types::{
     Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
-    FinalitySignatureId, Timestamp,
+    FinalitySignatureId, Timestamp, VersionedBlock,
 };
 
 use super::network::blocklist::BlocklistJustification;
@@ -54,10 +54,6 @@ use crate::{
     reactor::{self, main_reactor::MainEvent},
     rpcs::docs::DocExample,
     types::{
-        sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes, Block,
-        BlockExecutionResultsOrChunk, BlockHash, BlockHeader, BlockSignatures, FinalitySignature,
-        FinalitySignatureId, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState, NodeId,
-        SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix, VersionedBlock,
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
         BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, MetaBlock, MetaBlockState,
         NodeId, SyncLeap, SyncLeapIdentifier, TrieOrChunk, ValidatorMatrix,
