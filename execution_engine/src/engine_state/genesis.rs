@@ -1,5 +1,10 @@
 //! Support for a genesis process.
-use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    fmt, iter,
+    rc::Rc,
+};
 
 use num::Zero;
 use num_rational::Ratio;
@@ -12,7 +17,8 @@ use serde::{Deserialize, Serialize};
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     account::{Account, AccountHash},
-    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
+    contracts::ContractPackageStatus,
+    execution::ExecutionJournal,
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -26,15 +32,13 @@ use casper_types::{
         standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Chainspec, ChainspecRegistry, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
-    GenesisAccount, Key, Motes, Phase, ProtocolVersion, PublicKey, StoredValue, SystemConfig, URef,
-    WasmConfig, U512,
+    ContractPackageHash, ContractVersions, ContractWasm, ContractWasmHash, Digest, EntryPoints,
+    EraId, GenesisAccount, Groups, Key, Motes, NamedKeys, Phase, ProtocolVersion, PublicKey,
+    StoredValue, SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::{
-    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry},
-    execution,
-    execution::AddressGenerator,
+    engine_state::SystemContractRegistry, execution, execution::AddressGenerator,
     tracking_copy::TrackingCopy,
 };
 
@@ -46,16 +50,12 @@ pub struct GenesisSuccess {
     /// State hash after genesis is committed to the global state.
     pub post_state_hash: Digest,
     /// Effects of a successful genesis.
-    pub execution_effect: ExecutionEffect,
+    pub effects: ExecutionJournal,
 }
 
 impl fmt::Display for GenesisSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Success: {} {:?}",
-            self.post_state_hash, self.execution_effect
-        )
+        write!(f, "Success: {} {:?}", self.post_state_hash, self.effects)
     }
 }
 
@@ -419,8 +419,8 @@ where
         }
     }
 
-    pub(crate) fn finalize(self) -> ExecutionEffect {
-        self.tracking_copy.borrow().effect()
+    pub(crate) fn finalize(self) -> ExecutionJournal {
+        self.tracking_copy.borrow().effects()
     }
 
     fn create_mint(&mut self) -> Result<Key, Box<GenesisError>> {
@@ -811,11 +811,8 @@ where
             let main_purse = self.create_purse(account.balance().value())?;
 
             let key = Key::Account(account_hash);
-            let stored_value = StoredValue::Account(Account::create(
-                account_hash,
-                Default::default(),
-                main_purse,
-            ));
+            let stored_value =
+                StoredValue::Account(Account::create(account_hash, NamedKeys::new(), main_purse));
 
             self.tracking_copy.borrow_mut().write(key, stored_value);
 
@@ -901,8 +898,8 @@ where
         let contract_package = {
             let mut contract_package = ContractPackage::new(
                 access_key,
-                ContractVersions::default(),
-                DisabledVersions::default(),
+                ContractVersions::new(),
+                BTreeSet::default(),
                 Groups::default(),
                 ContractPackageStatus::default(),
             );

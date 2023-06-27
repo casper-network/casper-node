@@ -11,29 +11,11 @@ use crate::bytesrepr::Bytes;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct ChainspecRawBytes {
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded raw bytes of the current chainspec.toml file."
-        )
-    )]
+    /// Raw bytes of the current chainspec.toml file.
     chainspec_bytes: Bytes,
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded raw bytes of the current genesis accounts.toml file."
-        )
-    )]
+    /// Raw bytes of the current genesis accounts.toml file.
     maybe_genesis_accounts_bytes: Option<Bytes>,
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(
-            with = "String",
-            description = "Hex-encoded raw bytes of the current global_state.toml file."
-        )
-    )]
+    /// Raw bytes of the current global_state.toml file.
     maybe_global_state_bytes: Option<Bytes>,
 }
 

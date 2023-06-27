@@ -1,8 +1,5 @@
 //! RPCs related to the state.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::str;
 
 use async_trait::async_trait;
@@ -15,10 +12,10 @@ use casper_execution_engine::engine_state::{self, BalanceResult, GetBidsResult, 
 use casper_json_rpc::ReservedErrorCode;
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
     BlockHash, CLValue, Digest, JsonBlock, JsonBlockHeader, Key, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue as DomainStoredValue, URef, U512,
+    SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -30,12 +27,15 @@ use crate::{
         docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
         Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithParams,
     },
-    types::json_compatibility::{Account as JsonAccount, AuctionState, StoredValue},
+    types::json_compatibility::AuctionState,
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
     state_root_hash: JsonBlock::doc_example().header.state_root_hash,
-    key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+    key: Key::from_formatted_str(
+        "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+    )
+    .unwrap(),
     path: vec!["inner".to_string()],
 });
 static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
@@ -70,7 +70,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
 });
 static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    account: JsonAccount::doc_example().clone(),
+    account: Account::doc_example().clone(),
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
@@ -94,14 +94,17 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
         state_identifier: GlobalStateIdentifier::BlockHash(JsonBlock::doc_example().hash),
-        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+        key: Key::from_formatted_str(
+            "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+        )
+        .unwrap(),
         path: vec![],
     });
 static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
     Lazy::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
         block_header: Some(JsonBlockHeader::doc_example().clone()),
-        stored_value: StoredValue::Account(JsonAccount::doc_example().clone()),
+        stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
 static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
@@ -128,8 +131,8 @@ static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanc
 pub struct GetItemParams {
     /// Hash of the state root.
     pub state_root_hash: Digest,
-    /// `casper_types::Key` as formatted string.
-    pub key: String,
+    /// The key under which to query.
+    pub key: Key,
     /// The path components starting from the key as base.
     #[serde(default)]
     pub path: Vec<String>,
@@ -174,22 +177,10 @@ impl RpcWithParams for GetItem {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        // Try to parse a `casper_types::Key` from the params.
-        let base_key = match Key::from_formatted_str(&params.key)
-            .map_err(|error| format!("failed to parse key: {}", error))
-        {
-            Ok(key) => key,
-            Err(error_msg) => {
-                info!("{}", error_msg);
-                return Err(Error::new(ErrorCode::FailedToParseQueryKey, error_msg));
-            }
-        };
-
-        // Run the query.
         let (stored_value, merkle_proof) = common::run_query_and_encode(
             effect_builder,
             params.state_root_hash,
-            base_key,
+            params.key,
             params.path,
         )
         .await?;
@@ -484,7 +475,7 @@ pub struct GetAccountInfoResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The account.
-    pub account: JsonAccount,
+    pub account: Account,
     /// The Merkle proof.
     pub merkle_proof: String,
 }
@@ -581,7 +572,7 @@ pub enum DictionaryIdentifier {
 impl DictionaryIdentifier {
     fn get_dictionary_address(
         &self,
-        maybe_stored_value: Option<DomainStoredValue>,
+        maybe_stored_value: Option<StoredValue>,
     ) -> Result<Key, Error> {
         match self {
             DictionaryIdentifier::AccountNamedKey {
@@ -595,8 +586,8 @@ impl DictionaryIdentifier {
                 ..
             } => {
                 let named_keys = match &maybe_stored_value {
-                    Some(DomainStoredValue::Account(account)) => account.named_keys(),
-                    Some(DomainStoredValue::Contract(contract)) => contract.named_keys(),
+                    Some(StoredValue::Account(account)) => account.named_keys(),
+                    Some(StoredValue::Contract(contract)) => contract.named_keys(),
                     Some(other) => {
                         return Err(Error::new(
                             ErrorCode::FailedToGetDictionaryURef,
@@ -769,8 +760,8 @@ pub enum GlobalStateIdentifier {
 pub struct QueryGlobalStateParams {
     /// The identifier used for the query.
     pub state_identifier: GlobalStateIdentifier,
-    /// `casper_types::Key` as formatted string.
-    pub key: String,
+    /// The key under which to query.
+    pub key: Key,
     /// The path components starting from the key as base.
     #[serde(default)]
     pub path: Vec<String>,
@@ -821,18 +812,8 @@ impl RpcWithParams for QueryGlobalState {
             get_state_root_hash_and_optional_header(effect_builder, params.state_identifier)
                 .await?;
 
-        let base_key = match Key::from_formatted_str(&params.key)
-            .map_err(|error| format!("failed to parse key: {}", error))
-        {
-            Ok(key) => key,
-            Err(error_msg) => {
-                info!("{}", error_msg);
-                return Err(Error::new(ErrorCode::FailedToParseQueryKey, error_msg));
-            }
-        };
-
         let (stored_value, merkle_proof) =
-            common::run_query_and_encode(effect_builder, state_root_hash, base_key, params.path)
+            common::run_query_and_encode(effect_builder, state_root_hash, params.key, params.path)
                 .await?;
 
         let result = Self::ResponseResult {
@@ -1055,10 +1036,7 @@ impl RpcWithParams for GetTrie {
     }
 }
 
-type QuerySuccess = (
-    DomainStoredValue,
-    Vec<TrieMerkleProof<Key, DomainStoredValue>>,
-);
+type QuerySuccess = (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>);
 
 /// Runs a global state query and returns a tuple of the domain stored value and Merkle proof of the
 /// value.
@@ -1125,7 +1103,7 @@ async fn get_account<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
     account_hash: AccountHash,
-) -> Result<JsonAccount, Error> {
+) -> Result<Account, Error> {
     let (stored_value, _) = common::run_query_and_encode(
         effect_builder,
         state_root_hash,

@@ -4,12 +4,13 @@ use datasize::DataSize;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::U512;
 use casper_types::{
     bytesrepr::{self, ToBytes},
+    execution::ExecutionResult,
     BlockHash, ChunkWithProofVerificationError, Digest,
 };
+#[cfg(test)]
+use casper_types::{execution::ExecutionJournal, U512};
 
 use super::BlockExecutionResultsOrChunkId;
 use crate::{
@@ -28,7 +29,7 @@ pub struct BlockExecutionResultsOrChunk {
     /// Block to which this value or chunk refers to.
     pub(super) block_hash: BlockHash,
     /// Complete execution results for the block or a chunk of the complete data.
-    pub(super) value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+    pub(super) value: ValueOrChunk<Vec<ExecutionResult>>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     pub(super) is_valid: OnceCell<Result<bool, bytesrepr::Error>>,
@@ -37,20 +38,18 @@ pub struct BlockExecutionResultsOrChunk {
 impl BlockExecutionResultsOrChunk {
     /// Verifies equivalence of the effects (or chunks) Merkle root hash with the expected value.
     pub fn validate(&self, expected_merkle_root: &Digest) -> Result<bool, bytesrepr::Error> {
-        self.is_valid
-            .get_or_init(|| match &self.value {
-                ValueOrChunk::Value(block_execution_results) => {
-                    Ok(&Chunkable::hash(&block_execution_results)? == expected_merkle_root)
-                }
-                ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
-                    Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
-                }
-            })
-            .clone()
+        *self.is_valid.get_or_init(|| match &self.value {
+            ValueOrChunk::Value(block_execution_results) => {
+                Ok(&Chunkable::hash(&block_execution_results)? == expected_merkle_root)
+            }
+            ValueOrChunk::ChunkWithProof(chunk_with_proof) => {
+                Ok(&chunk_with_proof.proof().root_hash() == expected_merkle_root)
+            }
+        })
     }
 
     /// Consumes `self` and returns inner `ValueOrChunk` field.
-    pub fn into_value(self) -> ValueOrChunk<Vec<casper_types::ExecutionResult>> {
+    pub fn into_value(self) -> ValueOrChunk<Vec<ExecutionResult>> {
         self.value
     }
 
@@ -63,8 +62,8 @@ impl BlockExecutionResultsOrChunk {
     pub(crate) fn new_mock_value(block_hash: BlockHash) -> Self {
         Self {
             block_hash,
-            value: ValueOrChunk::Value(vec![casper_types::ExecutionResult::Success {
-                effect: Default::default(),
+            value: ValueOrChunk::Value(vec![ExecutionResult::Success {
+                effects: ExecutionJournal::new(),
                 transfers: vec![],
                 cost: U512::from(123),
             }]),

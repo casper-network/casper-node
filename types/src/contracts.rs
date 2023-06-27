@@ -1,7 +1,4 @@
 //! Data types for supporting contract headers feature.
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
@@ -17,8 +14,11 @@ use core::{
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     account,
@@ -28,7 +28,8 @@ use crate::{
     contract_wasm::ContractWasmHash,
     uref,
     uref::URef,
-    CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
+    CLType, CLTyped, ContextAccessRights, HashAddr, Key, NamedKeys, ProtocolVersion,
+    KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -257,9 +258,15 @@ pub const CONTRACT_INITIAL_VERSION: ContractVersion = 1;
 pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct ContractVersionKey {
+    /// Major element of `ProtocolVersion` a `ContractVersion` is compatible with.
+    protocol_version_major: ProtocolVersionMajor,
+    /// Automatically incremented value for a contract version within a major `ProtocolVersion`.
+    contract_version: ContractVersion,
+}
 
 impl ContractVersionKey {
     /// Returns a new instance of ContractVersionKey with provided values.
@@ -267,23 +274,29 @@ impl ContractVersionKey {
         protocol_version_major: ProtocolVersionMajor,
         contract_version: ContractVersion,
     ) -> Self {
-        Self(protocol_version_major, contract_version)
+        Self {
+            protocol_version_major,
+            contract_version,
+        }
     }
 
     /// Returns the major element of the protocol version this contract is compatible with.
     pub fn protocol_version_major(self) -> ProtocolVersionMajor {
-        self.0
+        self.protocol_version_major
     }
 
     /// Returns the contract version within the protocol major version.
     pub fn contract_version(self) -> ContractVersion {
-        self.1
+        self.contract_version
     }
 }
 
 impl From<ContractVersionKey> for (ProtocolVersionMajor, ContractVersion) {
     fn from(contract_version_key: ContractVersionKey) -> Self {
-        (contract_version_key.0, contract_version_key.1)
+        (
+            contract_version_key.protocol_version_major,
+            contract_version_key.contract_version,
+        )
     }
 }
 
@@ -293,10 +306,9 @@ pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
 
 impl ToBytes for ContractVersionKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = bytesrepr::unchecked_allocate_buffer(self);
-        ret.append(&mut self.0.to_bytes()?);
-        ret.append(&mut self.1.to_bytes()?);
-        Ok(ret)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -304,40 +316,209 @@ impl ToBytes for ContractVersionKey {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)?;
-        self.1.write_bytes(writer)?;
-        Ok(())
+        self.protocol_version_major.write_bytes(writer)?;
+        self.contract_version.write_bytes(writer)
     }
 }
 
 impl FromBytes for ContractVersionKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (major, rem): (u32, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let (contract, rem): (ContractVersion, &[u8]) = FromBytes::from_bytes(rem)?;
-        Ok((ContractVersionKey::new(major, contract), rem))
+        let (protocol_version_major, remainder) = ProtocolVersionMajor::from_bytes(bytes)?;
+        let (contract_version, remainder) = ContractVersion::from_bytes(remainder)?;
+        Ok((
+            ContractVersionKey {
+                protocol_version_major,
+                contract_version,
+            },
+            remainder,
+        ))
     }
 }
 
-impl fmt::Display for ContractVersionKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}.{}", self.0, self.1)
+impl Display for ContractVersionKey {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}.{}",
+            self.protocol_version_major, self.contract_version
+        )
     }
 }
 
 /// Collection of contract versions.
-pub type ContractVersions = BTreeMap<ContractVersionKey, ContractHash>;
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(transparent, deny_unknown_fields)]
+pub struct ContractVersions(
+    #[serde(with = "BTreeMapToArray::<ContractVersionKey, ContractHash, ContractVersionLabels>")]
+    BTreeMap<ContractVersionKey, ContractHash>,
+);
 
-/// Collection of disabled contract versions. The runtime will not permit disabled
-/// contract versions to be executed.
-pub type DisabledVersions = BTreeSet<ContractVersionKey>;
+impl ContractVersions {
+    /// Constructs a new, empty `ContractVersions`.
+    pub const fn new() -> Self {
+        ContractVersions(BTreeMap::new())
+    }
+
+    /// Returns an iterator over the `ContractHash`s (i.e. the map's values).
+    pub fn contract_hashes(&self) -> impl Iterator<Item = &ContractHash> {
+        self.0.values()
+    }
+}
+
+impl ToBytes for ContractVersions {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for ContractVersions {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (versions, remainder) =
+            BTreeMap::<ContractVersionKey, ContractHash>::from_bytes(bytes)?;
+        Ok((ContractVersions(versions), remainder))
+    }
+}
+
+struct ContractVersionLabels;
+
+impl KeyValueLabels for ContractVersionLabels {
+    const KEY: &'static str = "contract_version_key";
+    const VALUE: &'static str = "contract_hash";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for ContractVersionLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
+}
+
+#[cfg(any(feature = "testing", feature = "gens", test))]
+impl From<BTreeMap<ContractVersionKey, ContractHash>> for ContractVersions {
+    fn from(value: BTreeMap<ContractVersionKey, ContractHash>) -> Self {
+        ContractVersions(value)
+    }
+}
 
 /// Collection of named groups.
-pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(transparent, deny_unknown_fields)]
+pub struct Groups(
+    #[serde(with = "BTreeMapToArray::<Group, BTreeSet::<URef>, GroupLabels>")]
+    BTreeMap<Group, BTreeSet<URef>>,
+);
+
+impl Groups {
+    /// Constructs a new, empty `Groups`.
+    pub const fn new() -> Self {
+        Groups(BTreeMap::new())
+    }
+
+    /// Inserts a named group.
+    ///
+    /// If the map did not have this name present, `None` is returned.  If the map did have this
+    /// name present, its collection of `URef`s is overwritten, and the collection is returned.
+    pub fn insert(&mut self, name: Group, urefs: BTreeSet<URef>) -> Option<BTreeSet<URef>> {
+        self.0.insert(name, urefs)
+    }
+
+    /// Returns `true` if the named group exists in the collection.
+    pub fn contains(&self, name: &Group) -> bool {
+        self.0.contains_key(name)
+    }
+
+    /// Returns a reference to the collection of `URef`s under the given `name` if any.
+    pub fn get(&self, name: &Group) -> Option<&BTreeSet<URef>> {
+        self.0.get(name)
+    }
+
+    /// Returns a mutable reference to the collection of `URef`s under the given `name` if any.
+    pub fn get_mut(&mut self, name: &Group) -> Option<&mut BTreeSet<URef>> {
+        self.0.get_mut(name)
+    }
+
+    /// Returns the number of named groups.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if there are no named groups.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns an iterator over the `Key`s (i.e. the map's values).
+    pub fn keys(&self) -> impl Iterator<Item = &BTreeSet<URef>> {
+        self.0.values()
+    }
+
+    /// Returns the total number of `URef`s contained in all the groups.
+    pub fn total_urefs(&self) -> usize {
+        self.0.values().map(|urefs| urefs.len()).sum()
+    }
+}
+
+impl ToBytes for Groups {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for Groups {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (groups, remainder) = BTreeMap::<Group, BTreeSet<URef>>::from_bytes(bytes)?;
+        Ok((Groups(groups), remainder))
+    }
+}
+
+struct GroupLabels;
+
+impl KeyValueLabels for GroupLabels {
+    const KEY: &'static str = "group_name";
+    const VALUE: &'static str = "group_users";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for GroupLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedUserGroup");
+}
+
+#[cfg(any(feature = "testing", feature = "gens", test))]
+impl From<BTreeMap<Group, BTreeSet<URef>>> for Groups {
+    fn from(value: BTreeMap<Group, BTreeSet<URef>>) -> Self {
+        Groups(value)
+    }
+}
 
 /// A newtype wrapping a `HashAddr` which references a [`Contract`] in the global state.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractHash(HashAddr);
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The hex-encoded hash address of the contract.")
+)]
+pub struct ContractHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
+);
 
 impl ContractHash {
     /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
@@ -472,25 +653,17 @@ impl TryFrom<&Vec<u8>> for ContractHash {
     }
 }
 
-#[cfg(feature = "json-schema")]
-impl JsonSchema for ContractHash {
-    fn schema_name() -> String {
-        String::from("ContractHash")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("The hex-encoded hash address of the contract.".to_string());
-        schema_object.into()
-    }
-}
-
 /// A newtype wrapping a `HashAddr` which references a [`ContractPackage`] in the global state.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractPackageHash(HashAddr);
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The hex-encoded hash address of the contract package.")
+)]
+pub struct ContractPackageHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
+);
 
 impl ContractPackageHash {
     /// Constructs a new `ContractPackageHash` from the raw bytes of the contract package hash.
@@ -626,21 +799,6 @@ impl TryFrom<&Vec<u8>> for ContractPackageHash {
     }
 }
 
-#[cfg(feature = "json-schema")]
-impl JsonSchema for ContractPackageHash {
-    fn schema_name() -> String {
-        String::from("ContractPackageHash")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("The hex-encoded hash address of the contract package.".to_string());
-        schema_object.into()
-    }
-}
-
 /// A enum to determine the lock status of the contract package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -704,21 +862,22 @@ impl FromBytes for ContractPackageStatus {
 }
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct ContractPackage {
-    /// Key used to add or disable versions
+    /// Key used to add or disable versions.
     access_key: URef,
-    /// All versions (enabled & disabled)
+    /// All versions (enabled & disabled).
     versions: ContractVersions,
-    /// Disabled versions
-    disabled_versions: DisabledVersions,
-    /// Mapping maintaining the set of URefs associated with each "user
-    /// group". This can be used to control access to methods in a particular
-    /// version of the contract. A method is callable by any context which
-    /// "knows" any of the URefs associated with the method's user group.
+    /// Collection of disabled contract versions. The runtime will not permit disabled contract
+    /// versions to be executed.
+    disabled_versions: BTreeSet<ContractVersionKey>,
+    /// Mapping maintaining the set of URefs associated with each "user group". This can be used to
+    /// control access to methods in a particular version of the contract. A method is callable by
+    /// any context which "knows" any of the URefs associated with the method's user group.
     groups: Groups,
-    /// A flag that determines whether a contract is locked
+    /// A flag that determines whether a contract is locked or not.
     lock_status: ContractPackageStatus,
 }
 
@@ -733,7 +892,7 @@ impl ContractPackage {
     pub fn new(
         access_key: URef,
         versions: ContractVersions,
-        disabled_versions: DisabledVersions,
+        disabled_versions: BTreeSet<ContractVersionKey>,
         groups: Groups,
         lock_status: ContractPackageStatus,
     ) -> Self {
@@ -763,7 +922,7 @@ impl ContractPackage {
 
     /// Adds new group to this contract.
     pub fn add_group(&mut self, group: Group, urefs: BTreeSet<URef>) {
-        let v = self.groups.entry(group).or_insert_with(Default::default);
+        let v = self.groups.0.entry(group).or_insert_with(Default::default);
         v.extend(urefs)
     }
 
@@ -775,13 +934,13 @@ impl ContractPackage {
         if !self.is_version_enabled(contract_version_key) {
             return None;
         }
-        self.versions.get(&contract_version_key)
+        self.versions.0.get(&contract_version_key)
     }
 
     /// Checks if the given contract version exists and is available for use.
     pub fn is_version_enabled(&self, contract_version_key: ContractVersionKey) -> bool {
         !self.disabled_versions.contains(&contract_version_key)
-            && self.versions.contains_key(&contract_version_key)
+            && self.versions.0.contains_key(&contract_version_key)
     }
 
     /// Returns `true` if the given contract hash exists and is enabled.
@@ -800,7 +959,7 @@ impl ContractPackage {
     ) -> ContractVersionKey {
         let contract_version = self.next_contract_version_for(protocol_version_major);
         let key = ContractVersionKey::new(protocol_version_major, contract_version);
-        self.versions.insert(key, contract_hash);
+        self.versions.0.insert(key, contract_hash);
         key
     }
 
@@ -808,6 +967,7 @@ impl ContractPackage {
     pub fn disable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
         let contract_version_key = self
             .versions
+            .0
             .iter()
             .filter_map(|(k, v)| if *v == contract_hash { Some(*k) } else { None })
             .next()
@@ -825,6 +985,7 @@ impl ContractPackage {
         contract_hash: &ContractHash,
     ) -> Option<&ContractVersionKey> {
         self.versions
+            .0
             .iter()
             .filter_map(|(k, v)| if v == contract_hash { Some(k) } else { None })
             .next()
@@ -838,11 +999,11 @@ impl ContractPackage {
     /// Returns all of this contract's enabled contract versions.
     pub fn enabled_versions(&self) -> ContractVersions {
         let mut ret = ContractVersions::new();
-        for version in &self.versions {
+        for version in &self.versions.0 {
             if !self.is_version_enabled(*version.0) {
                 continue;
             }
-            ret.insert(*version.0, *version.1);
+            ret.0.insert(*version.0, *version.1);
         }
         ret
     }
@@ -858,24 +1019,25 @@ impl ContractPackage {
     }
 
     /// Returns all of this contract's disabled versions.
-    pub fn disabled_versions(&self) -> &DisabledVersions {
+    pub fn disabled_versions(&self) -> &BTreeSet<ContractVersionKey> {
         &self.disabled_versions
     }
 
     /// Returns mut reference to all of this contract's disabled versions.
-    pub fn disabled_versions_mut(&mut self) -> &mut DisabledVersions {
+    pub fn disabled_versions_mut(&mut self) -> &mut BTreeSet<ContractVersionKey> {
         &mut self.disabled_versions
     }
 
     /// Removes a group from this contract (if it exists).
     pub fn remove_group(&mut self, group: &Group) -> bool {
-        self.groups.remove(group).is_some()
+        self.groups.0.remove(group).is_some()
     }
 
     /// Gets the next available contract version for the given protocol version
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
             .versions
+            .0
             .keys()
             .rev()
             .find_map(|&contract_version_key| {
@@ -892,12 +1054,12 @@ impl ContractPackage {
 
     /// Return the contract version key for the newest enabled contract version.
     pub fn current_contract_version(&self) -> Option<ContractVersionKey> {
-        self.enabled_versions().keys().next_back().copied()
+        self.enabled_versions().0.keys().next_back().copied()
     }
 
     /// Return the contract hash for the newest enabled contract version.
     pub fn current_contract_hash(&self) -> Option<ContractHash> {
-        self.enabled_versions().values().next_back().copied()
+        self.enabled_versions().0.values().next_back().copied()
     }
 
     /// Return the lock status of the contract package.
@@ -916,13 +1078,9 @@ impl ContractPackage {
 
 impl ToBytes for ContractPackage {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        self.access_key().write_bytes(&mut result)?;
-        self.versions().write_bytes(&mut result)?;
-        self.disabled_versions().write_bytes(&mut result)?;
-        self.groups().write_bytes(&mut result)?;
-        self.lock_status.write_bytes(&mut result)?;
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -934,10 +1092,10 @@ impl ToBytes for ContractPackage {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.access_key().write_bytes(writer)?;
-        self.versions().write_bytes(writer)?;
-        self.disabled_versions().write_bytes(writer)?;
-        self.groups().write_bytes(writer)?;
+        self.access_key.write_bytes(writer)?;
+        self.versions.write_bytes(writer)?;
+        self.disabled_versions.write_bytes(writer)?;
+        self.groups.write_bytes(writer)?;
         self.lock_status.write_bytes(writer)?;
         Ok(())
     }
@@ -947,7 +1105,7 @@ impl FromBytes for ContractPackage {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (access_key, bytes) = URef::from_bytes(bytes)?;
         let (versions, bytes) = ContractVersions::from_bytes(bytes)?;
-        let (disabled_versions, bytes) = DisabledVersions::from_bytes(bytes)?;
+        let (disabled_versions, bytes) = BTreeSet::<ContractVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
         let result = ContractPackage {
@@ -962,48 +1120,49 @@ impl FromBytes for ContractPackage {
     }
 }
 
-/// Type alias for a container used inside [`EntryPoints`].
-pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
-
 /// Collection of named entry points
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct EntryPoints(EntryPointsMap);
-
-impl Default for EntryPoints {
-    fn default() -> Self {
-        let mut entry_points = EntryPoints::new();
-        let entry_point = EntryPoint::default();
-        entry_points.add_entry_point(entry_point);
-        entry_points
-    }
-}
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(transparent, deny_unknown_fields)]
+pub struct EntryPoints(
+    #[serde(with = "BTreeMapToArray::<String, EntryPoint, EntryPointLabels>")]
+    BTreeMap<String, EntryPoint>,
+);
 
 impl ToBytes for EntryPoints {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
+
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)?;
-        Ok(())
+        self.0.write_bytes(writer)
     }
 }
 
 impl FromBytes for EntryPoints {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (entry_points_map, rem) = EntryPointsMap::from_bytes(bytes)?;
-        Ok((EntryPoints(entry_points_map), rem))
+        let (entry_points_map, remainder) = BTreeMap::<String, EntryPoint>::from_bytes(bytes)?;
+        Ok((EntryPoints(entry_points_map), remainder))
     }
 }
 
 impl EntryPoints {
-    /// Creates empty instance of [`EntryPoints`].
-    pub fn new() -> EntryPoints {
-        EntryPoints(EntryPointsMap::new())
+    /// Constructs a new, empty `EntryPoints`.
+    pub const fn new() -> EntryPoints {
+        EntryPoints(BTreeMap::<String, EntryPoint>::new())
+    }
+
+    /// Constructs a new `EntryPoints` with a single entry for the default `EntryPoint`.
+    pub fn new_with_default_entry_point() -> Self {
+        let mut entry_points = EntryPoints::new();
+        let entry_point = EntryPoint::default();
+        entry_points.add_entry_point(entry_point);
+        entry_points
     }
 
     /// Adds new [`EntryPoint`].
@@ -1052,12 +1211,22 @@ impl From<Vec<EntryPoint>> for EntryPoints {
     }
 }
 
-/// Collection of named keys
-pub type NamedKeys = BTreeMap<String, Key>;
+struct EntryPointLabels;
+
+impl KeyValueLabels for EntryPointLabels {
+    const KEY: &'static str = "name";
+    const VALUE: &'static str = "entry_point";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for EntryPointLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedEntryPoint");
+}
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
@@ -1155,13 +1324,13 @@ impl Contract {
     }
 
     /// Appends `keys` to `named_keys`
-    pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
+    pub fn named_keys_append(&mut self, keys: NamedKeys) {
         self.named_keys.append(keys);
     }
 
     /// Removes given named key.
-    pub fn remove_named_key(&mut self, key: &str) -> Option<Key> {
-        self.named_keys.remove(key)
+    pub fn remove_named_key(&mut self, name: &str) -> Option<Key> {
+        self.named_keys.remove(name)
     }
 
     /// Set protocol_version.
@@ -1178,7 +1347,7 @@ impl Contract {
     pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
-            .values()
+            .keys()
             .filter_map(|key| key.as_uref().copied());
         ContextAccessRights::new(contract_hash.into(), urefs_iter)
     }
@@ -1236,8 +1405,8 @@ impl FromBytes for Contract {
 impl Default for Contract {
     fn default() -> Self {
         Contract {
-            named_keys: NamedKeys::default(),
-            entry_points: EntryPoints::default(),
+            named_keys: NamedKeys::new(),
+            entry_points: EntryPoints::new_with_default_entry_point(),
             contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
             contract_package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
@@ -1585,8 +1754,8 @@ mod tests {
     fn make_contract_package() -> ContractPackage {
         let mut contract_package = ContractPackage::new(
             URef::new([0; 32], AccessRights::NONE),
-            ContractVersions::default(),
-            DisabledVersions::default(),
+            ContractVersions::new(),
+            BTreeSet::default(),
             Groups::default(),
             ContractPackageStatus::default(),
         );
@@ -1601,10 +1770,12 @@ mod tests {
 
             contract_package
                 .groups_mut()
+                .0
                 .insert(Group::new("Group 1"), group_urefs.clone());
 
             contract_package
                 .groups_mut()
+                .0
                 .insert(Group::new("Group 2"), group_urefs);
         }
 
@@ -1647,8 +1818,8 @@ mod tests {
         let major = 1;
         let mut contract_package = ContractPackage::new(
             URef::new([0; 32], AccessRights::NONE),
-            ContractVersions::default(),
-            DisabledVersions::default(),
+            ContractVersions::new(),
+            BTreeSet::default(),
             Groups::default(),
             ContractPackageStatus::default(),
         );
@@ -1904,7 +2075,7 @@ mod tests {
             ContractPackageHash::new([254; 32]),
             ContractWasmHash::new([253; 32]),
             named_keys,
-            EntryPoints::default(),
+            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
         );
         let access_rights = contract.extract_access_rights(contract_hash);

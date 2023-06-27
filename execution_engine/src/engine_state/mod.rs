@@ -6,13 +6,10 @@ pub mod engine_config;
 pub mod era_validators;
 mod error;
 pub mod execute_request;
-pub mod execution_effect;
-mod execution_journal;
 pub(crate) mod execution_kind;
 pub mod execution_result;
 pub mod genesis;
 pub mod get_bids;
-pub mod op;
 mod prune;
 pub mod query;
 pub mod run_genesis_request;
@@ -37,7 +34,6 @@ use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
         self,
-        shared::{transform::Transform, AdditiveMap},
         state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
             StateReader,
@@ -49,7 +45,7 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
-    contracts::NamedKeys,
+    execution::ExecutionJournal,
     system::{
         auction::{
             EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
@@ -62,7 +58,7 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash, DeployHash,
-    DeployInfo, Digest, EraId, ExecutableDeployItem, Gas, Key, KeyTag, Motes, Phase,
+    DeployInfo, Digest, EraId, ExecutableDeployItem, Gas, Key, KeyTag, Motes, NamedKeys, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
@@ -75,7 +71,6 @@ pub use self::{
     error::Error,
     execute_request::ExecuteRequest,
     execution::Error as ExecError,
-    execution_journal::ExecutionJournal,
     execution_result::{ExecutionResult, ForcedTransferResult},
     genesis::{ExecConfig, GenesisConfig, GenesisSuccess},
     get_bids::{GetBidsRequest, GetBidsResult},
@@ -261,17 +256,17 @@ where
         genesis_installer.install(chainspec_registry)?;
 
         // Commit the transforms.
-        let execution_effect = genesis_installer.finalize();
+        let effects = genesis_installer.finalize();
 
         let post_state_hash = self
             .state
-            .commit(initial_root_hash, execution_effect.transforms.to_owned())
+            .commit(initial_root_hash, effects.clone())
             .map_err(Into::<execution::Error>::into)?;
 
         // Return the result
         Ok(GenesisSuccess {
             post_state_hash,
-            execution_effect,
+            effects,
         })
     }
 
@@ -381,37 +376,48 @@ where
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
             let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
-            let validator_slots_key = auction_contract.named_keys()[VALIDATOR_SLOTS_KEY];
+            let validator_slots_key = auction_contract
+                .named_keys()
+                .get(VALIDATOR_SLOTS_KEY)
+                .expect("validator_slots key must exist in auction contract's named keys");
             let value = StoredValue::CLValue(
                 CLValue::from_t(new_validator_slots)
                     .map_err(|_| Error::Bytesrepr("new_validator_slots".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(validator_slots_key, value);
+            tracking_copy
+                .borrow_mut()
+                .write(*validator_slots_key, value);
         }
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
             let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
-            let auction_delay_key = auction_contract.named_keys()[AUCTION_DELAY_KEY];
+            let auction_delay_key = auction_contract
+                .named_keys()
+                .get(AUCTION_DELAY_KEY)
+                .expect("auction_delay key must exist in auction contract's named keys");
             let value = StoredValue::CLValue(
                 CLValue::from_t(new_auction_delay)
                     .map_err(|_| Error::Bytesrepr("new_auction_delay".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(auction_delay_key, value);
+            tracking_copy.borrow_mut().write(*auction_delay_key, value);
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
             let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
-            let locked_funds_period_key = auction_contract.named_keys()[LOCKED_FUNDS_PERIOD_KEY];
+            let locked_funds_period_key = auction_contract
+                .named_keys()
+                .get(LOCKED_FUNDS_PERIOD_KEY)
+                .expect("locked_funds_period key must exist in auction contract's named keys");
             let value = StoredValue::CLValue(
                 CLValue::from_t(new_locked_funds_period)
                     .map_err(|_| Error::Bytesrepr("new_locked_funds_period".to_string()))?,
             );
             tracking_copy
                 .borrow_mut()
-                .write(locked_funds_period_key, value);
+                .write(*locked_funds_period_key, value);
         }
 
         if let Some(new_round_seigniorage_rate) = upgrade_config.new_round_seigniorage_rate() {
@@ -422,14 +428,17 @@ where
 
             let mint_contract = tracking_copy.borrow_mut().get_contract(*mint_hash)?;
 
-            let locked_funds_period_key = mint_contract.named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
+            let locked_funds_period_key = mint_contract
+                .named_keys()
+                .get(ROUND_SEIGNIORAGE_RATE_KEY)
+                .expect("round_seigniorage_rate key must exist in mint contract's named keys");
             let value = StoredValue::CLValue(
                 CLValue::from_t(new_round_seigniorage_rate)
                     .map_err(|_| Error::Bytesrepr("new_round_seigniorage_rate".to_string()))?,
             );
             tracking_copy
                 .borrow_mut()
-                .write(locked_funds_period_key, value);
+                .write(*locked_funds_period_key, value);
         }
 
         // apply the arbitrary modifications
@@ -449,10 +458,13 @@ where
             let (unbonding_delay, current_era_id) = {
                 let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
-                let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+                let unbonding_delay_key = auction_contract
+                    .named_keys()
+                    .get(UNBONDING_DELAY_KEY)
+                    .expect("unbonding_delay key must exist in auction contract's named keys");
                 let delay = tracking_copy
                     .borrow_mut()
-                    .read(&unbonding_delay_key)
+                    .read(unbonding_delay_key)
                     .map_err(|error| error.into())?
                     .ok_or(Error::FailedToRetrieveUnbondingDelay)?
                     .as_cl_value()
@@ -461,11 +473,14 @@ where
                     .into_t::<u64>()
                     .map_err(execution::Error::from)?;
 
-                let era_id_key = auction_contract.named_keys()[ERA_ID_KEY];
+                let era_id_key = auction_contract
+                    .named_keys()
+                    .get(ERA_ID_KEY)
+                    .expect("era_id key must exist in auction contract's named keys");
 
                 let era_id = tracking_copy
                     .borrow_mut()
-                    .read(&era_id_key)
+                    .read(era_id_key)
                     .map_err(|error| error.into())?
                     .ok_or(Error::FailedToRetrieveEraId)?
                     .as_cl_value()
@@ -521,12 +536,17 @@ where
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
             let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
-            let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+            let unbonding_delay_key = auction_contract
+                .named_keys()
+                .get(UNBONDING_DELAY_KEY)
+                .expect("unbonding_delay key must exist in auction contract's named keys");
             let value = StoredValue::CLValue(
                 CLValue::from_t(new_unbonding_delay)
                     .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
             );
-            tracking_copy.borrow_mut().write(unbonding_delay_key, value);
+            tracking_copy
+                .borrow_mut()
+                .write(*unbonding_delay_key, value);
         }
 
         // Perform global state migrations that require state.
@@ -563,18 +583,18 @@ where
             };
         }
 
-        let execution_effect = tracking_copy.borrow().effect();
+        let effects = tracking_copy.borrow().effects();
 
         // commit
         let post_state_hash = self
             .state
-            .commit(pre_state_hash, execution_effect.transforms.to_owned())
+            .commit(pre_state_hash, effects.clone())
             .map_err(Into::into)?;
 
         // return result and effects
         Ok(UpgradeSuccess {
             post_state_hash,
-            execution_effect,
+            effects,
         })
     }
 
@@ -892,7 +912,7 @@ where
                     match maybe_uref {
                         Some(main_purse) => {
                             let new_account =
-                                Account::create(public_key, Default::default(), main_purse);
+                                Account::create(public_key, NamedKeys::new(), main_purse);
                             // write new account
                             tracking_copy
                                 .borrow_mut()
@@ -1138,7 +1158,7 @@ where
 
             let system_account = Account::new(
                 PublicKey::System.to_account_hash(),
-                Default::default(),
+                NamedKeys::new(),
                 URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
                 Default::default(),
                 Default::default(),
@@ -1188,7 +1208,7 @@ where
         }
 
         if session_result.is_success() {
-            session_result = session_result.with_journal(tracking_copy.borrow().execution_journal())
+            session_result = session_result.with_effects(tracking_copy.borrow().effects())
         }
 
         let mut execution_result_builder = ExecutionResultBuilder::new();
@@ -1314,7 +1334,7 @@ where
         // payment_code_spec_5: system executes finalization
         let system_account = Account::new(
             PublicKey::System.to_account_hash(),
-            Default::default(),
+            NamedKeys::new(),
             URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
             Default::default(),
             Default::default(),
@@ -1638,8 +1658,7 @@ where
             // so we start again from the post-payment state.
             Rc::new(RefCell::new(post_payment_tracking_copy.fork()))
         } else {
-            session_result =
-                session_result.with_journal(session_tracking_copy.borrow().execution_journal());
+            session_result = session_result.with_effects(session_tracking_copy.borrow().effects());
             session_tracking_copy
         };
 
@@ -1751,10 +1770,10 @@ where
     /// to be run after an execution has been made to persists the effects of it.
     ///
     /// Returns new state root hash.
-    pub fn apply_effect(
+    pub fn apply_effects(
         &self,
         pre_state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
+        effects: ExecutionJournal,
     ) -> Result<Digest, Error> {
         self.state
             .commit(pre_state_hash, effects)
@@ -1939,12 +1958,12 @@ where
             return Err(StepError::DistributeError(exec_error));
         }
 
-        let execution_effect = tracking_copy.borrow().effect();
+        let effects = tracking_copy.borrow().effects();
 
         // commit
         let post_state_hash = self
             .state
-            .commit(pre_state_hash, execution_effect.transforms)
+            .commit(pre_state_hash, effects)
             .map_err(Into::into)?;
 
         Ok(post_state_hash)
@@ -2052,18 +2071,17 @@ where
             return Err(StepError::AuctionError(exec_error));
         }
 
-        let execution_effect = tracking_copy.borrow().effect();
-        let execution_journal = tracking_copy.borrow().execution_journal();
+        let effects = tracking_copy.borrow().effects();
 
         // commit
         let post_state_hash = self
             .state
-            .commit(step_request.pre_state_hash, execution_effect.transforms)
+            .commit(step_request.pre_state_hash, effects.clone())
             .map_err(Into::into)?;
 
         Ok(StepSuccess {
             post_state_hash,
-            execution_journal,
+            effects,
         })
     }
 
@@ -2259,12 +2277,12 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
         ExecutionResult::Success {
             transfers,
             cost,
-            execution_journal,
+            effects,
         } => {
             debug!(
                 %cost,
-                transfer_count=%transfers.len(),
-                journal_entries=%execution_journal.len(),
+                transfer_count = %transfers.len(),
+                transforms_count = %effects.len(),
                 "{}: execution success",
                 preamble
             );
@@ -2273,13 +2291,13 @@ fn log_execution_result(preamble: &'static str, result: &ExecutionResult) {
             error,
             transfers,
             cost,
-            execution_journal,
+            effects,
         } => {
             debug!(
                 %error,
                 %cost,
-                transfer_count=%transfers.len(),
-                journal_entries=%execution_journal.len(),
+                transfer_count = %transfers.len(),
+                transforms_count = %effects.len(),
                 "{}: execution failure",
                 preamble
             );
@@ -2293,7 +2311,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             error,
             transfers: _,
             cost: _,
-            execution_journal: _,
+            effects: _,
         } => match error {
             Error::Exec(err) => match err {
                 ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,

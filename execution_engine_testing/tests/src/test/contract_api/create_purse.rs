@@ -44,7 +44,7 @@ fn should_insert_account_into_named_keys() {
         .expect("should have account");
 
     assert!(
-        account_1.named_keys().contains_key(TEST_PURSE_NAME),
+        account_1.named_keys().contains(TEST_PURSE_NAME),
         "account_1 named_keys should include test purse"
     );
 }

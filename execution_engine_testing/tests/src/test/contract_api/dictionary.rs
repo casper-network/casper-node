@@ -58,10 +58,8 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
 
     assert!(account
         .named_keys()
-        .contains_key(dictionary::MALICIOUS_KEY_NAME));
-    assert!(account
-        .named_keys()
-        .contains_key(dictionary::DICTIONARY_REF));
+        .contains(dictionary::MALICIOUS_KEY_NAME));
+    assert!(account.named_keys().contains(dictionary::DICTIONARY_REF));
 
     let contract_hash = account
         .named_keys()

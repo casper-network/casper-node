@@ -24,10 +24,10 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash, BlockHeader,
-    BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId, Digest,
-    DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    bytesrepr::Bytes, execution::ExecutionResult, system::auction::EraValidators, Block, BlockHash,
+    BlockHeader, BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId,
+    Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key, ProtocolVersion,
+    PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use super::GossipTarget;

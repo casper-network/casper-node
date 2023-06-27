@@ -1,26 +1,25 @@
-use std::{cell::Cell, iter, rc::Rc};
+use std::{cell::Cell, collections::BTreeMap, iter, rc::Rc};
 
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
 use casper_storage::global_state::{
-    shared::transform::Transform,
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
-    contracts::NamedKeys,
+    execution::{ExecutionJournal, Transform, TransformKind},
     gens::*,
-    AccessRights, CLValue, Contract, Digest, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
-    StoredValue, URef, U256, U512,
+    AccessRights, CLValue, Contract, Digest, EntryPoints, HashAddr, Key, KeyTag, NamedKeys,
+    ProtocolVersion, StoredValue, URef, U256, U512,
 };
 
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
 use crate::{
-    engine_state::{EngineConfig, ExecutionJournal},
+    engine_state::EngineConfig,
     runtime_context::dictionary,
     tracking_copy::{self, ValidationError},
 };
@@ -70,13 +69,21 @@ impl StateReader<Key, StoredValue> for CountingDb {
     }
 }
 
+fn effects(transform_keys_and_kinds: Vec<(Key, TransformKind)>) -> ExecutionJournal {
+    let mut effects = ExecutionJournal::new();
+    for (key, kind) in transform_keys_and_kinds {
+        effects.push(Transform::new(key, kind));
+    }
+    effects
+}
+
 #[test]
 fn tracking_copy_new() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
     let tc = TrackingCopy::new(db);
 
-    assert!(tc.journal.is_empty());
+    assert!(tc.effects.is_empty());
 }
 
 #[test]
@@ -111,10 +118,7 @@ fn tracking_copy_read() {
     // value read correctly
     assert_eq!(value, zero);
     // Reading does produce an identity transform.
-    assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Identity)])
-    );
+    assert_eq!(tc.effects, effects(vec![(k, TransformKind::Identity)]));
 }
 
 #[test]
@@ -134,8 +138,8 @@ fn tracking_copy_write() {
     assert_eq!(db_value, 0);
     // Writing creates a write transform.
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Write(one.clone()))])
+        tc.effects,
+        effects(vec![(k, TransformKind::Write(one.clone()))])
     );
 
     // writing again should update the values
@@ -143,8 +147,11 @@ fn tracking_copy_write() {
     let db_value = counter.get();
     assert_eq!(db_value, 0);
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Write(one)), (k, Transform::Write(two))])
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::Write(one)),
+            (k, TransformKind::Write(two))
+        ])
     );
 }
 
@@ -162,17 +169,14 @@ fn tracking_copy_add_i32() {
     assert_matches!(add, Ok(_));
 
     // Adding creates an add transform.
-    assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::AddInt32(3))])
-    );
+    assert_eq!(tc.effects, effects(vec![(k, TransformKind::AddInt32(3))]));
 
     // adding again should update the values
     let add = tc.add(k, three);
     assert_matches!(add, Ok(_));
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::AddInt32(3)); 2])
+        tc.effects,
+        effects(vec![(k, TransformKind::AddInt32(3)); 2])
     );
 }
 
@@ -204,16 +208,18 @@ fn tracking_copy_add_named_key() {
     // adding the wrong type should fail
     let failed_add = tc.add(k, StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()));
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
-    assert!(tc.journal.is_empty());
+    assert!(tc.effects.is_empty());
 
     // adding correct type works
     let add = tc.add(k, named_key);
     assert_matches!(add, Ok(_));
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(
+        tc.effects,
+        effects(vec![(
             k,
-            Transform::AddKeys(iter::once((name1.clone(), u1)).collect())
+            TransformKind::AddKeys(NamedKeys::from(
+                iter::once((name1.clone(), u1)).collect::<BTreeMap<_, _>>()
+            ))
         )])
     );
 
@@ -222,10 +228,20 @@ fn tracking_copy_add_named_key() {
     let add = tc.add(k, other_named_key);
     assert_matches!(add, Ok(_));
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![
-            (k, Transform::AddKeys(iter::once((name1, u1)).collect())),
-            (k, Transform::AddKeys(iter::once((name2, u2)).collect()))
+        tc.effects,
+        effects(vec![
+            (
+                k,
+                TransformKind::AddKeys(NamedKeys::from(
+                    iter::once((name1, u1)).collect::<BTreeMap<_, _>>()
+                ))
+            ),
+            (
+                k,
+                TransformKind::AddKeys(NamedKeys::from(
+                    iter::once((name2, u2)).collect::<BTreeMap<_, _>>()
+                ))
+            )
         ])
     );
 }
@@ -242,8 +258,11 @@ fn tracking_copy_rw() {
     let _ = tc.read(&k);
     tc.write(k, value.clone());
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::Write(value))])
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::Identity),
+            (k, TransformKind::Write(value))
+        ])
     );
 }
 
@@ -259,8 +278,11 @@ fn tracking_copy_ra() {
     let _ = tc.read(&k);
     let _ = tc.add(k, value);
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::AddInt32(3))])
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::Identity),
+            (k, TransformKind::AddInt32(3))
+        ])
     );
 }
 
@@ -277,10 +299,10 @@ fn tracking_copy_aw() {
     let _ = tc.add(k, value);
     tc.write(k, write_value.clone());
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![
-            (k, Transform::AddInt32(3)),
-            (k, Transform::Write(write_value))
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::AddInt32(3)),
+            (k, TransformKind::Write(write_value))
         ])
     );
 }
@@ -322,7 +344,7 @@ proptest! {
             [2; 32].into(),
             [3; 32].into(),
             named_keys,
-            EntryPoints::default(),
+            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
         ));
         let contract_key = Key::Hash(hash);
@@ -356,7 +378,7 @@ proptest! {
         pk in account_hash_arb(), // account hash
         address in account_hash_arb(), // address for account hash
     ) {
-            let named_keys = iter::once((name.clone(), k)).collect();
+        let named_keys = NamedKeys::from(iter::once((name.clone(), k)).collect::<BTreeMap<_, _>>());
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let account = Account::new(
@@ -406,7 +428,7 @@ proptest! {
             [2; 32].into(),
             [3; 32].into(),
             contract_named_keys,
-            EntryPoints::default(),
+            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
         ));
         let contract_key = Key::Hash(hash);
@@ -510,7 +532,7 @@ fn query_for_circular_references_should_fail() {
         [2; 32].into(),
         [3; 32].into(),
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
     ));
 
@@ -550,11 +572,8 @@ fn validate_query_proof_should_work() {
     // create account
     let account_hash = AccountHash::new([3; 32]);
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
-    let account_value = StoredValue::Account(Account::create(
-        account_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let account_value =
+        StoredValue::Account(Account::create(account_hash, NamedKeys::new(), fake_purse));
     let account_key = Key::Account(account_hash);
 
     // create contract that refers to that account
@@ -568,7 +587,7 @@ fn validate_query_proof_should_work() {
         [2; 32].into(),
         [3; 32].into(),
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
     ));
     let contract_key = Key::Hash([5; 32]);
@@ -789,7 +808,7 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
     let account_1_value = StoredValue::Account(Account::create(
         account_1_hash,
-        NamedKeys::default(),
+        NamedKeys::new(),
         fake_purse,
     ));
     let account_1_key = Key::Account(account_1_hash);
@@ -799,7 +818,7 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
     let fake_purse = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
     let account_2_value = StoredValue::Account(Account::create(
         account_2_hash,
-        NamedKeys::default(),
+        NamedKeys::new(),
         fake_purse,
     ));
     let account_2_key = Key::Account(account_2_hash);
@@ -836,11 +855,8 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     // account
     let account_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-    let account_value = StoredValue::Account(Account::create(
-        account_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let account_value =
+        StoredValue::Account(Account::create(account_hash, NamedKeys::new(), fake_purse));
     let account_key = Key::Account(account_hash);
 
     // random value 1
@@ -931,11 +947,8 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     // persist account
     let account_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-    let account_value = StoredValue::Account(Account::create(
-        account_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let account_value =
+        StoredValue::Account(Account::create(account_hash, NamedKeys::new(), fake_purse));
     let account_key = Key::Account(account_hash);
     tracking_copy.write(account_key, account_value);
 
@@ -992,7 +1005,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
             named_keys,
-            EntryPoints::default(),
+            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
         ));
         pairs.push((contract_key, contract));
@@ -1051,7 +1064,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
     ));
     let contract_key = Key::Hash([0; 32]);

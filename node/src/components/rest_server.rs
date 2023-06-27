@@ -345,38 +345,38 @@ mod schema_tests {
     use schemars::schema_for;
 
     #[test]
-    fn schema_status() {
+    fn json_schema_status_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_status.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetStatusResult));
+        assert_schema(&schema_path, schema_for!(GetStatusResult));
     }
 
     #[test]
-    fn schema_validator_changes() {
+    fn json_schema_validator_changes_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_validator_changes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetValidatorChangesResult));
+        assert_schema(&schema_path, schema_for!(GetValidatorChangesResult));
     }
 
     #[test]
-    fn schema_rpc_schema() {
+    fn json_schema_rpc_schema_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_rpc_schema.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(OpenRpcSchema));
+        assert_schema(&schema_path, schema_for!(OpenRpcSchema));
     }
 
     #[test]
-    fn schema_chainspec_bytes() {
+    fn json_schema_chainspec_bytes_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_chainspec_bytes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetChainspecResult));
+        assert_schema(&schema_path, schema_for!(GetChainspecResult));
     }
 }

@@ -70,9 +70,10 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
+    execution::{ExecutionResult, TransformKind},
     ApprovalsHash, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionResult, FinalitySignature,
-    ProtocolVersion, PublicKey, SignedBlockHeader, TimeDiff, Timestamp, Transfer, Transform,
+    Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature, ProtocolVersion,
+    PublicKey, SignedBlockHeader, StoredValue, TimeDiff, Timestamp, Transfer,
 };
 
 use crate::{
@@ -1478,10 +1479,11 @@ impl Storage {
                 }
             }
 
-            if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
-                for transform_entry in effect.transforms {
-                    if let Transform::WriteTransfer(transfer) = transform_entry.transform {
-                        transfers.push(transfer);
+            if let ExecutionResult::Success { effects, .. } = &execution_result {
+                for transform in effects.transforms() {
+                    if let TransformKind::Write(StoredValue::Transfer(transfer)) = transform.kind()
+                    {
+                        transfers.push(*transfer);
                     }
                 }
             }

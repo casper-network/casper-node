@@ -9,7 +9,7 @@ use rand::Rng;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
+    AccessRights, CLValue, Key, NamedKeys, PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -134,7 +134,7 @@ impl<T: StateReader> StateTracker<T> {
     pub fn create_account(&mut self, account_hash: AccountHash, amount: U512) -> Account {
         let main_purse = self.create_purse(amount);
 
-        let account = Account::create(account_hash, Default::default(), main_purse);
+        let account = Account::create(account_hash, NamedKeys::new(), main_purse);
 
         self.accounts_cache.insert(account_hash, account.clone());
 

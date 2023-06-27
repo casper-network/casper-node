@@ -14,8 +14,7 @@ use casper_execution_engine::engine_state::{
     run_genesis_request::RunGenesisRequest,
     Error,
 };
-use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
-use casper_types::{account::Account, Gas, GenesisAccount, Key, StoredValue};
+use casper_types::{Gas, GenesisAccount};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{
@@ -221,16 +220,4 @@ pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
         })
         .collect::<Vec<_>>();
     errors.join("\n")
-}
-
-/// Returns `Option<Account>`.
-#[allow(clippy::implicit_hasher)]
-pub fn get_account(transforms: &AdditiveMap<Key, Transform>, account: &Key) -> Option<Account> {
-    transforms.get(account).and_then(|transform| {
-        if let Transform::Write(StoredValue::Account(account)) = transform {
-            Some(account.to_owned())
-        } else {
-            None
-        }
-    })
 }

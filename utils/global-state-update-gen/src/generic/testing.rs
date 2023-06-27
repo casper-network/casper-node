@@ -10,7 +10,7 @@ use casper_types::{
         WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, CLValue, EraId, Key, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, CLValue, EraId, Key, NamedKeys, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
 use super::{
@@ -54,7 +54,7 @@ impl MockStateReader {
         rng: &mut R,
     ) -> Self {
         let main_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
-        let account = Account::create(account_hash, Default::default(), main_purse);
+        let account = Account::create(account_hash, NamedKeys::new(), main_purse);
         self.purses.insert(main_purse.addr(), balance);
         // If `insert` returns `Some()`, it means we used the same account hash twice, which is
         // a programmer error and the function will panic.

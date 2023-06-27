@@ -2,7 +2,8 @@ use std::{borrow::Cow, convert::Infallible};
 
 use casper_types::{
     bytesrepr::{self, Bytes, ToBytes},
-    Digest, ExecutionResult,
+    execution::ExecutionResult,
+    Digest,
 };
 
 use super::value_or_chunk::HashingTrieRaw;

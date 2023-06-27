@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -7,17 +5,13 @@ use tracing::{debug, warn};
 
 use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr::ToBytes, Block, Digest, Key};
+use casper_types::{bytesrepr::ToBytes, Block, Digest, Key, StoredValue};
 
 use super::{
     chain::{self, BlockIdentifier},
     state, Error, ReactorEventT, RpcRequest,
 };
-use crate::{
-    effect::EffectBuilder,
-    reactor::QueueKind,
-    types::{json_compatibility::StoredValue, AvailableBlockRange},
-};
+use crate::{effect::EffectBuilder, reactor::QueueKind, types::AvailableBlockRange};
 
 pub(super) static MERKLE_PROOF: Lazy<String> = Lazy::new(|| {
     String::from(
@@ -57,20 +51,9 @@ pub(super) async fn run_query_and_encode<REv: ReactorEventT>(
 ///
 /// On error, a `warp_json_rpc::Error` is returned suitable for sending as a JSON-RPC response.
 pub(super) fn encode_query_success(
-    value: casper_types::StoredValue,
-    proofs: Vec<TrieMerkleProof<Key, casper_types::StoredValue>>,
+    value: StoredValue,
+    proofs: Vec<TrieMerkleProof<Key, StoredValue>>,
 ) -> Result<(StoredValue, String), Error> {
-    let value_compat = match StoredValue::try_from(value) {
-        Ok(value_compat) => value_compat,
-        Err(error) => {
-            warn!(?error, "failed to encode stored value");
-            return Err(Error::new(
-                ReservedErrorCode::InternalError,
-                format!("failed to encode stored value: {}", error),
-            ));
-        }
-    };
-
     let encoded_proofs = match proofs.to_bytes() {
         Ok(bytes) => base16::encode_lower(&bytes),
         Err(error) => {
@@ -82,7 +65,7 @@ pub(super) fn encode_query_success(
         }
     };
 
-    Ok((value_compat, encoded_proofs))
+    Ok((value, encoded_proofs))
 }
 
 /// An enum to be used as the `data` field of a JSON-RPC error response.

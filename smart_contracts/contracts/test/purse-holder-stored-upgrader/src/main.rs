@@ -11,8 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::NamedKeys, CLType, CLValue, ContractPackageHash, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter, URef,
+    CLType, CLValue, ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, NamedKeys, Parameter, URef,
 };
 
 pub const METHOD_ADD: &str = "add";

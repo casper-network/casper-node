@@ -21,8 +21,8 @@ use casper_contract::{
 use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    ApiError, CLType, ContractPackage, ContractPackageHash, Group, Key, Parameter, URef,
+    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
+    ApiError, CLType, ContractPackage, ContractPackageHash, Group, Key, NamedKeys, Parameter, URef,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

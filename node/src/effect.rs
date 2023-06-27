@@ -115,14 +115,17 @@ use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{
-    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, ExecutionJournal,
-    GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
+    GetBidsResult, QueryRequest, QueryResult,
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash,
-    BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage, Deploy, DeployHash,
-    DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult, FinalitySignature,
+    account::Account,
+    bytesrepr::Bytes,
+    execution::{ExecutionJournal, ExecutionResult},
+    system::auction::EraValidators,
+    Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage,
+    Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature,
     FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
@@ -1002,19 +1005,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a committed Step success.
-    pub(crate) async fn announce_commit_step_success(
-        self,
-        era_id: EraId,
-        execution_journal: ExecutionJournal,
-    ) where
+    pub(crate) async fn announce_commit_step_success(self, era_id: EraId, effects: ExecutionJournal)
+    where
         REv: From<ContractRuntimeAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ContractRuntimeAnnouncement::CommitStepSuccess {
-                    era_id,
-                    execution_effect: ExecutionEffect::from(&execution_journal),
-                },
+                ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
                 QueueKind::ContractRuntime,
             )
             .await

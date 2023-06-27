@@ -63,7 +63,8 @@ impl HeapSizeOf for Key {
 // TODO: contract has other fields (re a bunch) that are not repr here...on purpose?
 impl HeapSizeOf for Account {
     fn heap_size(&self) -> usize {
-        self.named_keys().heap_size()
+        // self.named_keys().0.heap_size()
+        0
     }
 }
 

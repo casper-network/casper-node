@@ -12,11 +12,10 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash,
-    contracts::NamedKeys,
     runtime_args,
     system::{handle_payment, mint},
     AccessRights, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Parameter, RuntimeArgs, URef, U512,
+    NamedKeys, Parameter, RuntimeArgs, URef, U512,
 };
 
 const HARDCODED_UREF: URef = URef::new([42; 32], AccessRights::READ_ADD_WRITE);

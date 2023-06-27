@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 mod vesting;
 
 use alloc::{collections::BTreeMap, vec::Vec};
@@ -10,6 +7,9 @@ use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -25,19 +25,20 @@ pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Bid {
-    /// Validator public key
+    /// Validator public key.
     validator_public_key: PublicKey,
     /// The purse that was used for bonding.
     bonding_purse: URef,
     /// The amount of tokens staked by a validator (not including delegators).
     staked_amount: U512,
-    /// Delegation rate
+    /// Delegation rate.
     delegation_rate: DelegationRate,
     /// Vesting schedule for a genesis validator. `None` if non-genesis validator.
     vesting_schedule: Option<VestingSchedule>,
-    /// This validator's delegators, indexed by their public keys
+    /// This validator's delegators, indexed by their public keys.
+    #[serde(with = "BTreeMapToArray::<PublicKey, Delegator, DelegatorLabels>")]
     delegators: BTreeMap<PublicKey, Delegator>,
-    /// `true` if validator has been "evicted"
+    /// `true` if validator has been "evicted".
     inactive: bool,
 }
 
@@ -316,15 +317,9 @@ impl CLTyped for Bid {
 
 impl ToBytes for Bid {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        self.validator_public_key.write_bytes(&mut result)?;
-        self.bonding_purse.write_bytes(&mut result)?;
-        self.staked_amount.write_bytes(&mut result)?;
-        self.delegation_rate.write_bytes(&mut result)?;
-        self.vesting_schedule.write_bytes(&mut result)?;
-        self.delegators().write_bytes(&mut result)?;
-        self.inactive.write_bytes(&mut result)?;
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -343,7 +338,7 @@ impl ToBytes for Bid {
         self.staked_amount.write_bytes(writer)?;
         self.delegation_rate.write_bytes(writer)?;
         self.vesting_schedule.write_bytes(writer)?;
-        self.delegators().write_bytes(writer)?;
+        self.delegators.write_bytes(writer)?;
         self.inactive.write_bytes(writer)?;
         Ok(())
     }
@@ -371,6 +366,23 @@ impl FromBytes for Bid {
             bytes,
         ))
     }
+}
+
+struct DelegatorLabels;
+
+impl KeyValueLabels for DelegatorLabels {
+    const KEY: &'static str = "delegator_public_key";
+    const VALUE: &'static str = "delegator";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for DelegatorLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("PublicKeyAndDelegator");
+    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> =
+        Some("A delegator associated with the given validator.");
+    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> =
+        Some("The public key of the delegator.");
+    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The delegator details.");
 }
 
 #[cfg(test)]

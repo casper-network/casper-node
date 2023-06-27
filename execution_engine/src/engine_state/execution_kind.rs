@@ -1,13 +1,11 @@
 //! Units of execution.
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
 
 use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    bytesrepr::Bytes, contracts::NamedKeys, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, ExecutableDeployItem, Key, Phase, ProtocolVersion, StoredValue,
+    bytesrepr::Bytes, ContractHash, ContractPackage, ContractPackageHash, ContractVersionKey,
+    ExecutableDeployItem, Key, NamedKeys, Phase, ProtocolVersion, StoredValue,
 };
 
 use crate::{

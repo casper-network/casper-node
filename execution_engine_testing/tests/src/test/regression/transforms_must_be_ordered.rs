@@ -1,4 +1,4 @@
-//! Tests whether transforms produced by contracts appear ordered in the transform journal.
+//! Tests whether transforms produced by contracts appear ordered in the effects.
 use core::convert::TryInto;
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -7,14 +7,14 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
-    runtime_args, system::standard_payment, ContractHash, Key, RuntimeArgs, URef, U512,
+    execution::TransformKind, runtime_args, system::standard_payment, ContractHash, Key,
+    RuntimeArgs, URef, U512,
 };
 
 #[ignore]
 #[test]
-fn contract_transforms_should_be_ordered_in_the_journal() {
+fn contract_transforms_should_be_ordered_in_the_effects() {
     // This many URefs will be created in the contract.
     const N_UREFS: u32 = 100;
     // This many operations will be scattered among these URefs.
@@ -35,12 +35,14 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     // Installs the contract and creates the URefs, all initialized to `0_i32`.
     builder.exec(execution_request).expect_success().commit();
 
-    let contract_hash: ContractHash = match builder
+    let contract_hash = match builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
-        .named_keys()["ordered-transforms-contract-hash"]
+        .named_keys()
+        .get("ordered-transforms-contract-hash")
+        .unwrap()
     {
-        Key::Hash(addr) => addr.into(),
-        _ => panic!("Couldn't find orderd-transforms contract."),
+        Key::Hash(addr) => ContractHash::new(*addr),
+        _ => panic!("Couldn't find ordered-transforms contract."),
     };
 
     // List of operations to be performed by the contract.
@@ -86,7 +88,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
 
     let exec_result = builder.get_exec_result_owned(1).unwrap();
     assert_eq!(exec_result.len(), 1);
-    let journal = exec_result[0].execution_journal();
+    let effects = exec_result[0].effects();
 
     let contract = builder.get_contract(contract_hash).unwrap();
     let urefs: Vec<URef> = (0..N_UREFS)
@@ -98,11 +100,11 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
         )
         .collect();
 
-    assert!(journal
-        .clone()
-        .into_iter()
-        .filter_map(|(key, transform)| {
-            let uref = match key {
+    assert!(effects
+        .transforms()
+        .iter()
+        .filter_map(|transform| {
+            let uref = match transform.key() {
                 Key::URef(uref) => uref,
                 _ => return None,
             };
@@ -114,13 +116,13 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
                 Some((i, _)) => i.try_into().unwrap(),
                 None => return None,
             };
-            let (type_index, value): (u8, i32) = match transform {
-                Transform::Identity => (0, 0),
-                Transform::Write(sv) => {
+            let (type_index, value): (u8, i32) = match transform.kind() {
+                TransformKind::Identity => (0, 0),
+                TransformKind::Write(sv) => {
                     let v: i32 = sv.as_cl_value().unwrap().clone().into_t().unwrap();
                     (1, v)
                 }
-                Transform::AddInt32(v) => (2, v),
+                TransformKind::AddInt32(v) => (2, *v),
                 _ => panic!("Invalid transform."),
             };
             Some((type_index, uref_index, value))

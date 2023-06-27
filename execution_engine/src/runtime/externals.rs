@@ -7,12 +7,12 @@ use casper_types::{
     account::AccountHash,
     api_error,
     bytesrepr::{self, ToBytes},
-    contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
+    contracts::{ContractPackageStatus, EntryPoints},
     crypto,
     system::auction::EraInfo,
     ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
-    HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
-    UREF_SERIALIZED_LENGTH,
+    HostFunctionCost, Key, NamedKeys, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};

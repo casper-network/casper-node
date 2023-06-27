@@ -7,7 +7,7 @@ use datasize::DataSize;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
-use casper_types::BlockHash;
+use casper_types::{execution::ExecutionResult, BlockHash};
 
 use super::BlockExecutionResultsOrChunk;
 use crate::types::ValueOrChunk;
@@ -51,7 +51,7 @@ impl BlockExecutionResultsOrChunkId {
     /// Constructs a response for the request, retaining the requests' variant and `block_hash`.
     pub(crate) fn response(
         &self,
-        value: ValueOrChunk<Vec<casper_types::ExecutionResult>>,
+        value: ValueOrChunk<Vec<ExecutionResult>>,
     ) -> BlockExecutionResultsOrChunk {
         BlockExecutionResultsOrChunk {
             block_hash: self.block_hash,

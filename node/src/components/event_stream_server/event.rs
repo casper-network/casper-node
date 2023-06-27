@@ -6,8 +6,9 @@ use std::{
 use itertools::Itertools;
 
 use casper_types::{
-    Block, BlockHash, Deploy, DeployHash, DeployHeader, EraId, ExecutionEffect, ExecutionResult,
-    FinalitySignature, PublicKey, Timestamp,
+    execution::{ExecutionJournal, ExecutionResult},
+    Block, BlockHash, Deploy, DeployHash, DeployHeader, EraId, FinalitySignature, PublicKey,
+    Timestamp,
 };
 
 #[derive(Debug)]
@@ -30,7 +31,7 @@ pub enum Event {
     FinalitySignature(Box<FinalitySignature>),
     Step {
         era_id: EraId,
-        execution_effect: ExecutionEffect,
+        execution_effects: ExecutionJournal,
     },
 }
 

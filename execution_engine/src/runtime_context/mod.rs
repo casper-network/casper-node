@@ -1,4 +1,9 @@
 //! The context of execution of WASM code.
+
+pub(crate) mod dictionary;
+#[cfg(test)]
+mod tests;
+
 use std::{
     cell::RefCell,
     collections::BTreeSet,
@@ -9,14 +14,6 @@ use std::{
 
 use tracing::error;
 
-use crate::{
-    engine_state::{
-        execution_effect::ExecutionEffect, EngineConfig, ExecutionJournal, SystemContractRegistry,
-    },
-    execution::{AddressGenerator, Error},
-    runtime_context::dictionary::DictionaryValue,
-    tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
-};
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{
@@ -24,57 +21,24 @@ use casper_types::{
         UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    contracts::NamedKeys,
+    execution::ExecutionJournal,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
-    ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
-    Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointType, Gas,
+    GrantedAccess, Key, KeyTag, NamedKeys, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_HASH_LENGTH, U512,
 };
 
-pub(crate) mod dictionary;
-#[cfg(test)]
-mod tests;
+use crate::{
+    engine_state::{EngineConfig, SystemContractRegistry},
+    execution::{AddressGenerator, Error},
+    runtime_context::dictionary::DictionaryValue,
+    tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
+};
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
-
-/// Validates an entry point access with a special validator callback.
-///
-/// If the passed `access` object is a `Groups` variant, then this function will return a
-/// [`Error::InvalidContext`] if there are no groups specified, as such entry point is uncallable.
-/// For each [`URef`] in every group that this `access` object refers to, a validator callback is
-/// called. If a validator function returns `false` for any of the `URef` in the set, an
-/// [`Error::InvalidContext`] is returned.
-///
-/// Otherwise, if `access` object is a `Public` variant, then the entry point is considered callable
-/// and an unit value is returned.
-pub fn validate_group_membership(
-    contract_package: &ContractPackage,
-    access: &EntryPointAccess,
-    validator: impl Fn(&URef) -> bool,
-) -> Result<(), Error> {
-    if let EntryPointAccess::Groups(groups) = access {
-        if groups.is_empty() {
-            // Exits early in a special case of empty list of groups regardless of the group
-            // checking logic below it.
-            return Err(Error::InvalidContext);
-        }
-
-        let find_result = groups.iter().find(|g| {
-            contract_package
-                .groups()
-                .get(g)
-                .and_then(|set| set.iter().find(|u| validator(u)))
-                .is_some()
-        });
-
-        if find_result.is_none() {
-            return Err(Error::InvalidContext);
-        }
-    }
-    Ok(())
-}
 
 /// Holds information specific to the deployed contract.
 pub struct RuntimeContext<'a, R> {
@@ -223,7 +187,7 @@ where
 
     /// Checks if named keys contains a key referenced by name.
     pub fn named_keys_contains_key(&self, name: &str) -> bool {
-        self.named_keys.contains_key(name)
+        self.named_keys.contains(name)
     }
 
     /// Helper function to avoid duplication in `remove_uref`.
@@ -249,7 +213,7 @@ where
             account_hash @ Key::Account(_) => {
                 let account: Account = {
                     let mut account: Account = self.read_gs_typed(&account_hash)?;
-                    account.named_keys_mut().remove(name);
+                    account.remove_named_key(name);
                     account
                 };
                 self.named_keys.remove(name);
@@ -623,14 +587,9 @@ where
         self.access_rights.remove_access(uref_addr, access_rights)
     }
 
-    /// Returns current effects of a tracking copy.
-    pub fn effect(&self) -> ExecutionEffect {
-        self.tracking_copy.borrow().effect()
-    }
-
-    /// Returns an `ExecutionJournal`.
-    pub fn execution_journal(&self) -> ExecutionJournal {
-        self.tracking_copy.borrow().execution_journal()
+    /// Returns a copy of the current effects of a tracking copy.
+    pub fn effects(&self) -> ExecutionJournal {
+        self.tracking_copy.borrow().effects()
     }
 
     /// Returns list of transfers.
@@ -690,13 +649,13 @@ where
                 // I am putting this here for the sake of completeness.
                 account
                     .named_keys()
-                    .values()
+                    .keys()
                     .try_for_each(|key| self.validate_key(key))
             }
             StoredValue::ContractWasm(_) => Ok(()),
             StoredValue::Contract(contract_header) => contract_header
                 .named_keys()
-                .values()
+                .keys()
                 .try_for_each(|key| self.validate_key(key)),
             // TODO: anything to validate here?
             StoredValue::ContractPackage(_) => Ok(()),

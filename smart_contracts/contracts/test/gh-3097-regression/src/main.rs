@@ -9,6 +9,7 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    NamedKeys,
 };
 
 const CONTRACT_PACKAGE_HASH_KEY: &str = "contract_package_hash";
@@ -43,11 +44,11 @@ pub extern "C" fn call() {
     let (disabled_contract_hash, _version) = storage::add_contract_version(
         contract_package_hash,
         entry_points.clone(),
-        Default::default(),
+        NamedKeys::new(),
     );
 
     let (enabled_contract_hash, _version) =
-        storage::add_contract_version(contract_package_hash, entry_points, Default::default());
+        storage::add_contract_version(contract_package_hash, entry_points, NamedKeys::new());
 
     runtime::put_key(CONTRACT_PACKAGE_HASH_KEY, contract_package_hash.into());
 

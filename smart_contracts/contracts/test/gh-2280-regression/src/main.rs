@@ -12,8 +12,8 @@ use casper_contract::{
 
 use casper_types::{
     account::AccountHash,
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter},
-    CLType, CLTyped, Key, U512,
+    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
+    CLType, CLTyped, Key, NamedKeys, U512,
 };
 
 const FAUCET_NAME: &str = "faucet";

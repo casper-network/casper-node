@@ -12,8 +12,8 @@ use casper_contract::{
 use core::convert::TryInto;
 
 use casper_types::{
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    CLType, CLTyped, ContractPackageHash, Key, Parameter, URef,
+    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
+    CLType, CLTyped, ContractPackageHash, Key, NamedKeys, Parameter, URef,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";

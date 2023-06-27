@@ -515,8 +515,8 @@ extern "C" {
     /// * `version_ptr` - output parameter where new version assigned by host is set
     /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
     /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
-    /// * `named_keys_ptr` - pointer to serialized [`casper_types::contracts::NamedKeys`]
-    /// * `named_keys_size` - size of serialized [`casper_types::contracts::NamedKeys`]
+    /// * `named_keys_ptr` - pointer to serialized [`casper_types::NamedKeys`]
+    /// * `named_keys_size` - size of serialized [`casper_types::NamedKeys`]
     /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
     /// * `output_size` - size of memory area that host can write to
     /// * `bytes_written_ptr` - pointer to a value where host will set a number of bytes written to

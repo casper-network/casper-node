@@ -7,11 +7,13 @@ use std::{
 
 use tracing::error;
 
-use casper_types::{Digest, Key, StoredValue};
+use casper_types::{
+    execution::{ExecutionJournal, Transform, TransformKind},
+    Digest, Key, StoredValue,
+};
 
 use crate::global_state::{
     error,
-    shared::{transform::Transform, AdditiveMap},
     state::{CommitError, CommitProvider, StateProvider, StateReader},
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Transaction, TransactionSource},
@@ -176,16 +178,12 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
-    fn commit(
-        &self,
-        state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        for (key, transform) in effects.into_iter() {
+    fn commit(&self, state_hash: Digest, effects: ExecutionJournal) -> Result<Digest, Self::Error> {
+        for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
-            let value = match (cached_value, transform) {
-                (None, Transform::Write(new_value)) => new_value,
-                (None, transform) => {
+            let value = match (cached_value, kind) {
+                (None, TransformKind::Write(new_value)) => new_value,
+                (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
                     let txn = self.environment.create_read_txn()?;
@@ -199,7 +197,7 @@ impl CommitProvider for ScratchGlobalState {
                         &txn, self.trie_store.deref(), &state_hash, &key
                     )? {
                         ReadResult::Found(current_value) => {
-                            match transform.apply(current_value.clone()) {
+                            match transform_kind.apply(current_value.clone()) {
                                 Ok(updated_value) => updated_value,
                                 Err(err) => {
                                     error!(?key, ?err, "Key found, but could not apply transform");
@@ -210,7 +208,7 @@ impl CommitProvider for ScratchGlobalState {
                         ReadResult::NotFound => {
                             error!(
                                 ?key,
-                                ?transform,
+                                ?transform_kind,
                                 "Key not found while attempting to apply transform"
                             );
                             return Err(CommitError::KeyNotFound(key).into());
@@ -223,13 +221,15 @@ impl CommitProvider for ScratchGlobalState {
                     txn.commit()?;
                     updated_value
                 }
-                (Some(current_value), transform) => match transform.apply(current_value.clone()) {
-                    Ok(updated_value) => updated_value,
-                    Err(err) => {
-                        error!(?key, ?err, "Key found, but could not apply transform");
-                        return Err(CommitError::TransformError(err).into());
+                (Some(current_value), transform_kind) => {
+                    match transform_kind.apply(current_value) {
+                        Ok(updated_value) => updated_value,
+                        Err(err) => {
+                            error!(?key, ?err, "Key found, but could not apply transform");
+                            return Err(CommitError::TransformError(err).into());
+                        }
                     }
-                },
+                }
             };
 
             self.cache.write().unwrap().insert_write(key, value);
@@ -324,7 +324,11 @@ pub(crate) mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use casper_types::{account::AccountHash, CLValue, Digest};
+    use casper_types::{
+        account::AccountHash,
+        execution::{ExecutionJournal, Transform, TransformKind},
+        CLValue, Digest,
+    };
 
     use super::*;
     use crate::global_state::{
@@ -369,21 +373,14 @@ pub(crate) mod tests {
         ]
     }
 
-    pub(crate) fn create_test_transforms() -> AdditiveMap<Key, Transform> {
-        let mut transforms = AdditiveMap::new();
-        transforms.insert(
+    pub(crate) fn create_test_transforms() -> ExecutionJournal {
+        let mut effects = ExecutionJournal::new();
+        let transform = Transform::new(
             Key::Account(AccountHash::new([3u8; 32])),
-            Transform::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
+            TransformKind::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
         );
-        transforms.insert(
-            Key::Account(AccountHash::new([3u8; 32])),
-            Transform::AddInt32(1),
-        );
-        transforms.insert(
-            Key::Account(AccountHash::new([3u8; 32])),
-            Transform::AddInt32(2),
-        );
-        transforms
+        effects.push(transform);
+        effects
     }
 
     pub(crate) struct TestState {
@@ -446,10 +443,11 @@ pub(crate) mod tests {
 
         let scratch = state.create_scratch();
 
-        let effects: AdditiveMap<Key, Transform> = {
-            let mut tmp = AdditiveMap::new();
+        let effects = {
+            let mut tmp = ExecutionJournal::new();
             for TestPair { key, value } in &test_pairs_updated {
-                tmp.insert(*key, Transform::Write(value.to_owned()));
+                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                tmp.push(transform);
             }
             tmp
         };
@@ -495,10 +493,11 @@ pub(crate) mod tests {
 
         let scratch = state.create_scratch();
 
-        let effects: AdditiveMap<Key, Transform> = {
-            let mut tmp = AdditiveMap::new();
+        let effects = {
+            let mut tmp = ExecutionJournal::new();
             for TestPair { key, value } in &test_pairs_updated {
-                tmp.insert(*key, Transform::Write(value.to_owned()));
+                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                tmp.push(transform);
             }
             tmp
         };
@@ -535,10 +534,11 @@ pub(crate) mod tests {
 
         let scratch = state.create_scratch();
 
-        let effects: AdditiveMap<Key, Transform> = {
-            let mut tmp = AdditiveMap::new();
+        let effects = {
+            let mut tmp = ExecutionJournal::new();
             for TestPair { key, value } in &test_pairs_updated {
-                tmp.insert(*key, Transform::Write(value.to_owned()));
+                let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
+                tmp.push(transform);
             }
             tmp
         };

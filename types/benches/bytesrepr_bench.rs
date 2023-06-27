@@ -8,13 +8,13 @@ use std::{
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contracts::{ContractPackageStatus, NamedKeys},
+    contracts::ContractPackageStatus,
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Group, Key, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
-    U128, U256, U512, UREF_ADDR_LENGTH,
+    ContractPackageHash, ContractVersionKey, ContractVersions, ContractWasmHash, DeployHash,
+    DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Groups, Key,
+    NamedKeys, Parameter, ProtocolVersion, PublicKey, SecretKey, Transfer, TransferAddr, URef,
+    KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -493,22 +493,24 @@ fn deserialize_contract(b: &mut Bencher) {
     b.iter(|| Contract::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
-fn sample_named_keys(len: u8) -> BTreeMap<String, Key> {
-    (0..len)
-        .map(|i| {
-            (
-                format!("named-key-{}", i),
-                Key::Account(AccountHash::default()),
-            )
-        })
-        .collect()
+fn sample_named_keys(len: u8) -> NamedKeys {
+    NamedKeys::from(
+        (0..len)
+            .map(|i| {
+                (
+                    format!("named-key-{}", i),
+                    Key::Account(AccountHash::default()),
+                )
+            })
+            .collect::<BTreeMap<_, _>>(),
+    )
 }
 
 fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
     let named_keys: NamedKeys = sample_named_keys(named_keys_len);
 
     let entry_points = {
-        let mut tmp = EntryPoints::default();
+        let mut tmp = EntryPoints::new_with_default_entry_point();
         (1..entry_points_len).for_each(|i| {
             let args = vec![
                 Parameter::new("first", CLType::U32),
@@ -578,13 +580,17 @@ fn sample_contract_package(
     groups_len: u8,
 ) -> ContractPackage {
     let access_key = URef::default();
-    let versions = sample_map(
+    let versions = ContractVersions::from(sample_map(
         contract_version_key_fn,
         contract_hash_fn,
         contract_versions_len,
-    );
+    ));
     let disabled_versions = sample_set(contract_version_key_fn, disabled_versions_len);
-    let groups = sample_map(sample_group, |_| sample_set(sample_uref, 3), groups_len);
+    let groups = Groups::from(sample_map(
+        sample_group,
+        |_| sample_set(sample_uref, 3),
+        groups_len,
+    ));
 
     ContractPackage::new(
         access_key,

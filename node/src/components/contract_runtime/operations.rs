@@ -13,20 +13,19 @@ use casper_execution_engine::{
 };
 use casper_storage::{
     data_access_layer::DataAccessLayer,
-    global_state::{
-        shared::{transform::Transform, AdditiveMap},
-        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
-    },
+    global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
+use casper_types::execution::ExecutionJournal;
 use casper_types::{
-    Block, CLValue, Deploy, DeployHash, DeployHeader, Digest, EraEnd, EraId, EraReport,
-    ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
+    execution::{ExecutionResult, Transform, TransformKind},
+    Block, CLValue, Deploy, DeployHash, DeployHeader, Digest, EraEnd, EraId, EraReport, Key,
+    ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
     components::{
         contract_runtime::{
-            error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
+            error::BlockExecutionError, types::StepEffectsAndUpcomingEraValidators,
             BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
             APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME,
         },
@@ -175,19 +174,19 @@ pub fn execute_finalized_block(
             .collect(),
     )?;
 
-    let mut effects = AdditiveMap::new();
     let mut checksum_registry = ChecksumRegistry::new();
     checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
     checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
-    let _ = effects.insert(
+    let mut effects = ExecutionJournal::new();
+    effects.push(Transform::new(
         Key::ChecksumRegistry,
-        Transform::Write(
+        TransformKind::Write(
             CLValue::from_t(checksum_registry)
                 .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
                 .into(),
         ),
-    );
-    scratch_state.apply_effect(state_root_hash, effects)?;
+    ));
+    scratch_state.apply_effects(state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -195,11 +194,11 @@ pub fn execute_finalized_block(
 
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators.
-    let maybe_step_effect_and_upcoming_era_validators =
+    let maybe_step_effects_and_upcoming_era_validators =
         if let Some(era_report) = finalized_block.era_report.as_deref() {
             let StepSuccess {
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
-                execution_journal: step_execution_journal,
+                effects: step_effects,
             } = commit_step(
                 &scratch_state, // engine_state
                 metrics,
@@ -221,8 +220,8 @@ pub fn execute_finalized_block(
                 system_contract_registry,
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
-            Some(StepEffectAndUpcomingEraValidators {
-                step_execution_journal,
+            Some(StepEffectsAndUpcomingEraValidators {
+                step_effects,
                 upcoming_era_validators,
             })
         } else {
@@ -300,10 +299,10 @@ pub fn execute_finalized_block(
     }
 
     let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
-        maybe_step_effect_and_upcoming_era_validators
+        maybe_step_effects_and_upcoming_era_validators
             .as_ref()
             .and_then(
-                |StepEffectAndUpcomingEraValidators {
+                |StepEffectsAndUpcomingEraValidators {
                      upcoming_era_validators,
                      ..
                  }| {
@@ -356,7 +355,7 @@ pub fn execute_finalized_block(
         block,
         approvals_hashes,
         execution_results,
-        maybe_step_effect_and_upcoming_era_validators,
+        maybe_step_effects_and_upcoming_era_validators,
     })
 }
 
@@ -376,22 +375,17 @@ where
         .into_iter()
         .exactly_one()
         .map_err(|_| BlockExecutionError::MoreThanOneExecutionResult)?;
-    let json_execution_result = ExecutionResult::from(&ee_execution_result);
 
-    let execution_effect: AdditiveMap<Key, Transform> = match ee_execution_result {
-        EngineExecutionResult::Success {
-            execution_journal,
-            cost,
-            ..
-        } => {
+    let effects = match &ee_execution_result {
+        EngineExecutionResult::Success { effects, cost, .. } => {
             // We do want to see the deploy hash and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, %cost, "execution succeeded");
-            execution_journal
+            effects.clone()
         }
         EngineExecutionResult::Failure {
             error,
-            execution_journal,
+            effects,
             cost,
             ..
         } => {
@@ -399,12 +393,11 @@ where
             // We do want to see the deploy hash, error, and cost in the logs.
             // We don't need to see the effects in the logs.
             debug!(?deploy_hash, ?error, %cost, "execution failure");
-            execution_journal
+            effects.clone()
         }
-    }
-    .into();
-    let new_state_root =
-        commit_transforms(engine_state, metrics, state_root_hash, execution_effect)?;
+    };
+    let new_state_root = commit_transforms(engine_state, metrics, state_root_hash, effects)?;
+    let json_execution_result = ExecutionResult::from(ee_execution_result);
     Ok((new_state_root, json_execution_result))
 }
 
@@ -412,7 +405,7 @@ fn commit_transforms<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
-    effects: AdditiveMap<Key, Transform>,
+    effects: ExecutionJournal,
 ) -> Result<Digest, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
@@ -420,7 +413,7 @@ where
 {
     trace!(?state_root_hash, ?effects, "commit");
     let start = Instant::now();
-    let result = engine_state.apply_effect(state_root_hash, effects);
+    let result = engine_state.apply_effects(state_root_hash, effects);
     if let Some(metrics) = metrics {
         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     }

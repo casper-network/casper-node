@@ -11,10 +11,10 @@ use casper_contract::{
 };
 use casper_types::{
     contracts::{
-        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
-        CONTRACT_INITIAL_VERSION,
+        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, CONTRACT_INITIAL_VERSION,
     },
-    runtime_args, CLType, ContractHash, ContractPackageHash, ContractVersion, Key, RuntimeArgs,
+    runtime_args, CLType, ContractHash, ContractPackageHash, ContractVersion, Key, NamedKeys,
+    RuntimeArgs,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

@@ -10,8 +10,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::NamedKeys, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    U512,
+    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, NamedKeys, U512,
 };
 
 const WRITE_FUNCTION_SMALL_NAME: &str = "write_function_small";

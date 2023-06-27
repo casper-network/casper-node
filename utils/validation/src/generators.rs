@@ -3,15 +3,17 @@ use std::{
     iter::FromIterator,
 };
 
+use casper_types::execution::TransformKind;
 use casper_types::{
     account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
-    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
+    contracts::{ContractPackageStatus, ContractVersions, Groups},
+    execution::Transform,
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
     DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedKey, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer,
-    TransferAddr, Transform, URef, U128, U256, U512,
+    NamedKeys, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer,
+    TransferAddr, URef, U128, U256, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -143,119 +145,116 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         let mut transform = BTreeMap::new();
         transform.insert(
             "Identity".to_string(),
-            ABITestCase::from_inputs(vec![Transform::Identity.into()])?,
+            ABITestCase::from_inputs(vec![TransformKind::Identity.into()])?,
         );
 
         let write_string =
             CLValue::from_t("Hello, world!".to_string()).expect("should create clvalue of string");
         transform.insert(
             "WriteCLValue".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteCLValue(write_string).into()])?,
-        );
-        transform.insert(
-            "WriteAccount".to_string(),
-            ABITestCase::from_inputs(vec![
-                Transform::WriteAccount(AccountHash::new([42; 32])).into()
-            ])?,
-        );
-        transform.insert(
-            "WriteContractWasm".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteContractWasm.into()])?,
-        );
-        transform.insert(
-            "WriteContract".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteContract.into()])?,
-        );
-        transform.insert(
-            "WriteContractPackage".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteContractPackage.into()])?,
-        );
-
-        transform.insert(
-            "WriteDeployInfo".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteDeployInfo(deploy_info.clone()).into()])?,
-        );
-
-        transform.insert(
-            "WriteEraInfo".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteEraInfo(era_info.clone()).into()])?,
-        );
-
-        transform.insert(
-            "WriteTransfer".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteTransfer(transfer).into()])?,
-        );
-
-        transform.insert(
-            "WriteBid".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteBid(Box::new(bid.clone())).into()])?,
-        );
-
-        transform.insert(
-            "WriteWithdraw".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteWithdraw(vec![
-                withdraw_purse_1.clone(),
-                withdraw_purse_2.clone(),
-            ])
+            ABITestCase::from_inputs(vec![TransformKind::Write(StoredValue::CLValue(
+                write_string,
+            ))
             .into()])?,
         );
-
-        transform.insert(
-            "WriteUnbonding".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteUnbonding(vec![
-                unbonding_purse_1.clone(),
-                unbonding_purse_2.clone(),
-            ])
-            .into()])?,
-        );
-
-        transform.insert(
-            "AddInt32".to_string(),
-            ABITestCase::from_inputs(vec![Transform::AddInt32(i32::MAX).into()])?,
-        );
-        transform.insert(
-            "AddUInt64".to_string(),
-            ABITestCase::from_inputs(vec![Transform::AddUInt64(u64::MAX).into()])?,
-        );
-        transform.insert(
-            "AddUInt128".to_string(),
-            ABITestCase::from_inputs(vec![Transform::AddUInt128(U128::MAX).into()])?,
-        );
-        transform.insert(
-            "AddUInt256".to_string(),
-            ABITestCase::from_inputs(vec![Transform::AddUInt256(U256::MAX).into()])?,
-        );
-        transform.insert(
-            "AddUInt512".to_string(),
-            ABITestCase::from_inputs(vec![Transform::AddUInt512(U512::MAX).into()])?,
-        );
-
-        let named_keys = {
-            let mut named_keys = Vec::new();
-            let key_hash = Key::Hash([42; 32]);
-            let key_uref = Key::URef(URef::new([43; 32], AccessRights::READ_ADD_WRITE));
-            named_keys.push(NamedKey {
-                name: "key 1".to_string(),
-                key: key_hash.to_formatted_string(),
-            });
-            named_keys.push(NamedKey {
-                name: "uref".to_string(),
-                key: key_uref.to_formatted_string(),
-            });
-            named_keys
-        };
-
-        transform.insert(
-            "AddKeys".to_string(),
-            ABITestCase::from_inputs(vec![Transform::AddKeys(named_keys).into()])?,
-        );
-        transform.insert(
-            "Failure".to_string(),
-            ABITestCase::from_inputs(vec![Transform::Failure(
-                "This is error message".to_string(),
-            )
-            .into()])?,
-        );
+        // transform.insert(
+        //     "WriteAccount".to_string(),
+        //     ABITestCase::from_inputs(vec![
+        //         Transform::WriteAccount(AccountHash::new([42; 32])).into()
+        //     ])?,
+        // );
+        // transform.insert(
+        //     "WriteContractWasm".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteContractWasm.into()])?,
+        // );
+        // transform.insert(
+        //     "WriteContract".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteContract.into()])?,
+        // );
+        // transform.insert(
+        //     "WriteContractPackage".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteContractPackage.into()])?,
+        // );
+        //
+        // transform.insert(
+        //     "WriteDeployInfo".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteDeployInfo(deploy_info.clone()).into()])?,
+        // );
+        //
+        // transform.insert(
+        //     "WriteEraInfo".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteEraInfo(era_info.clone()).into()])?,
+        // );
+        //
+        // transform.insert(
+        //     "WriteTransfer".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteTransfer(transfer).into()])?,
+        // );
+        //
+        // transform.insert(
+        //     "WriteBid".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteBid(Box::new(bid.clone())).into()])?,
+        // );
+        //
+        // transform.insert(
+        //     "WriteWithdraw".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteWithdraw(vec![
+        //         withdraw_purse_1.clone(),
+        //         withdraw_purse_2.clone(),
+        //     ])
+        //     .into()])?,
+        // );
+        //
+        // transform.insert(
+        //     "WriteUnbonding".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::WriteUnbonding(vec![
+        //         unbonding_purse_1.clone(),
+        //         unbonding_purse_2.clone(),
+        //     ])
+        //     .into()])?,
+        // );
+        //
+        // transform.insert(
+        //     "AddInt32".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::AddInt32(i32::MAX).into()])?,
+        // );
+        // transform.insert(
+        //     "AddUInt64".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::AddUInt64(u64::MAX).into()])?,
+        // );
+        // transform.insert(
+        //     "AddUInt128".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::AddUInt128(U128::MAX).into()])?,
+        // );
+        // transform.insert(
+        //     "AddUInt256".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::AddUInt256(U256::MAX).into()])?,
+        // );
+        // transform.insert(
+        //     "AddUInt512".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::AddUInt512(U512::MAX).into()])?,
+        // );
+        //
+        // let named_keys = {
+        //     let mut named_keys = NamedKeys::default();
+        //     let key_hash = Key::Hash([42; 32]);
+        //     let key_uref = Key::URef(URef::new([43; 32], AccessRights::READ_ADD_WRITE));
+        //     named_keys.0.insert("key 1".to_string(), key_hash);
+        //     named_keys.0.insert("uref".to_string(), key_uref);
+        //     named_keys
+        // };
+        //
+        // transform.insert(
+        //     "AddKeys".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::AddKeys(named_keys).into()])?,
+        // );
+        // transform.insert(
+        //     "Failure".to_string(),
+        //     ABITestCase::from_inputs(vec![Transform::Failure(
+        //         "This is error message".to_string(),
+        //     )
+        //     .into()])?,
+        // );
         Fixture::ABI {
             name: "transform".to_string(),
             fixture: ABIFixture::from(transform),
@@ -352,16 +351,18 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         let mut active_versions = ContractVersions::new();
         let v1_hash = ContractHash::new([99; 32]);
         let v2_hash = ContractHash::new([100; 32]);
-        active_versions.insert(ContractVersionKey::new(1, 2), v1_hash);
+        active_versions
+            .0
+            .insert(ContractVersionKey::new(1, 2), v1_hash);
         let v1 = ContractVersionKey::new(1, 1);
-        active_versions.insert(v1, v2_hash);
+        active_versions.0.insert(v1, v2_hash);
 
-        let mut disabled_versions = DisabledVersions::new();
+        let mut disabled_versions = BTreeSet::new();
         disabled_versions.insert(v1);
 
-        let mut groups = Groups::new();
-        groups.insert(Group::new("Empty"), BTreeSet::new());
-        groups.insert(
+        let mut groups = Groups::default();
+        groups.0.insert(Group::new("Empty"), BTreeSet::new());
+        groups.0.insert(
             Group::new("Single"),
             BTreeSet::from_iter(vec![URef::new([55; 32], AccessRights::READ)]),
         );

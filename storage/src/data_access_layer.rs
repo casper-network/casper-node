@@ -1,7 +1,7 @@
+use casper_types::execution::ExecutionJournal;
 use casper_types::{Digest, EraId};
 
 use crate::global_state::{
-    shared,
     state::{CommitProvider, StateProvider},
     trie::TrieRaw,
     trie_store::operations::DeleteResult,
@@ -82,11 +82,7 @@ impl<S> CommitProvider for DataAccessLayer<S>
 where
     S: CommitProvider,
 {
-    fn commit(
-        &self,
-        state_hash: Digest,
-        effects: shared::AdditiveMap<casper_types::Key, shared::transform::Transform>,
-    ) -> Result<Digest, Self::Error> {
+    fn commit(&self, state_hash: Digest, effects: ExecutionJournal) -> Result<Digest, Self::Error> {
         self.state.commit(state_hash, effects)
     }
 }

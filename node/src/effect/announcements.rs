@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    Block, Deploy, DeployHash, EraId, ExecutionEffect, FinalitySignature, PublicKey, Timestamp,
-    U512,
+    execution::ExecutionJournal, Block, Deploy, DeployHash, EraId, FinalitySignature, PublicKey,
+    Timestamp, U512,
 };
 
 use crate::{
@@ -348,7 +348,7 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The era id in which the step was committed to global state.
         era_id: EraId,
         /// The operations and transforms committed to global state.
-        execution_effect: ExecutionEffect,
+        effects: ExecutionJournal,
     },
     /// New era validators.
     UpcomingEraValidators {

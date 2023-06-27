@@ -15,9 +15,8 @@ use casper_contract::{
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
     bytesrepr::Bytes,
-    contracts::NamedKeys,
     runtime_args, ApiError, BlockTime, CLType, CLTyped, CLValue, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
+    EntryPointType, EntryPoints, Key, NamedKeys, Parameter, Phase, RuntimeArgs, U512,
 };
 
 const DO_NOTHING_NAME: &str = "do_nothing";

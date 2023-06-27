@@ -6,11 +6,12 @@ use thiserror::Error;
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     bytesrepr::{self},
+    execution::ExecutionJournal,
     system::SystemContractType,
     Contract, ContractHash, Digest, Key, ProtocolVersion, StoredValue,
 };
 
-use crate::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy};
+use crate::tracking_copy::TrackingCopy;
 
 /// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
@@ -18,16 +19,12 @@ pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Digest,
     /// Effects of executing an upgrade request.
-    pub execution_effect: ExecutionEffect,
+    pub effects: ExecutionJournal,
 }
 
 impl fmt::Display for UpgradeSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Success: {} {:?}",
-            self.post_state_hash, self.execution_effect
-        )
+        write!(f, "Success: {} {:?}", self.post_state_hash, self.effects)
     }
 }
 

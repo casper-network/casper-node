@@ -181,7 +181,10 @@ fn should_transfer_from_purse_to_public_key() {
     // Check genesis account balance
     let initial_account_balance = builder.get_purse_balance(default_account_purse);
 
-    let test_purse = default_account.named_keys()[TEST_PURSE]
+    let test_purse = default_account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should have test purse");
 

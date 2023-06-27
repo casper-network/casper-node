@@ -69,13 +69,13 @@ fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> Execu
         .expect("should have contract");
 
     assert!(
-        contract.named_keys().contains_key(NEW_KEY_NAME),
+        contract.named_keys().contains(NEW_KEY_NAME),
         "expected {} in {:?}",
         NEW_KEY_NAME,
         contract.named_keys()
     );
     assert!(
-        !account.named_keys().contains_key(NEW_KEY_NAME),
+        !account.named_keys().contains(NEW_KEY_NAME),
         "unexpected {} in {:?}",
         NEW_KEY_NAME,
         contract.named_keys()

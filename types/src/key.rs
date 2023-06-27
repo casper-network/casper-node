@@ -23,6 +23,8 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -109,8 +111,8 @@ pub enum KeyTag {
     ChecksumRegistry = 14,
 }
 
-/// The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts)
-/// are indexed on the network.
+/// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
+/// global state.
 #[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -146,6 +148,24 @@ pub enum Key {
     ChainspecRegistry,
     /// A `Key` variant under which we store a registry of checksums.
     ChecksumRegistry,
+}
+
+#[cfg(feature = "json-schema")]
+impl JsonSchema for Key {
+    fn schema_name() -> String {
+        String::from("Key")
+    }
+
+    fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
+        let schema = gen.subschema_for::<String>();
+        let mut schema_object = schema.into_object();
+        schema_object.metadata().description = Some(
+            "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, \
+                user accounts) are stored in global state."
+                .to_string(),
+        );
+        schema_object.into()
+    }
 }
 
 /// Errors produced when converting a `String` into a `Key`.
@@ -867,76 +887,6 @@ impl Distribution<Key> for Standard {
 mod serde_helpers {
     use super::*;
 
-    #[derive(Serialize, Deserialize)]
-    pub(super) enum HumanReadable {
-        Account(String),
-        Hash(String),
-        URef(String),
-        Transfer(String),
-        DeployInfo(String),
-        EraInfo(String),
-        Balance(String),
-        Bid(String),
-        Withdraw(String),
-        Dictionary(String),
-        SystemContractRegistry(String),
-        EraSummary(String),
-        Unbond(String),
-        ChainspecRegistry(String),
-        ChecksumRegistry(String),
-    }
-
-    impl From<&Key> for HumanReadable {
-        fn from(key: &Key) -> Self {
-            let formatted_string = key.to_formatted_string();
-            match key {
-                Key::Account(_) => HumanReadable::Account(formatted_string),
-                Key::Hash(_) => HumanReadable::Hash(formatted_string),
-                Key::URef(_) => HumanReadable::URef(formatted_string),
-                Key::Transfer(_) => HumanReadable::Transfer(formatted_string),
-                Key::DeployInfo(_) => HumanReadable::DeployInfo(formatted_string),
-                Key::EraInfo(_) => HumanReadable::EraInfo(formatted_string),
-                Key::Balance(_) => HumanReadable::Balance(formatted_string),
-                Key::Bid(_) => HumanReadable::Bid(formatted_string),
-                Key::Withdraw(_) => HumanReadable::Withdraw(formatted_string),
-                Key::Dictionary(_) => HumanReadable::Dictionary(formatted_string),
-                Key::SystemContractRegistry => {
-                    HumanReadable::SystemContractRegistry(formatted_string)
-                }
-                Key::EraSummary => HumanReadable::EraSummary(formatted_string),
-                Key::Unbond(_) => HumanReadable::Unbond(formatted_string),
-                Key::ChainspecRegistry => HumanReadable::ChainspecRegistry(formatted_string),
-                Key::ChecksumRegistry => HumanReadable::ChecksumRegistry(formatted_string),
-            }
-        }
-    }
-
-    impl TryFrom<HumanReadable> for Key {
-        type Error = FromStrError;
-
-        fn try_from(helper: HumanReadable) -> Result<Self, Self::Error> {
-            match helper {
-                HumanReadable::Account(formatted_string)
-                | HumanReadable::Hash(formatted_string)
-                | HumanReadable::URef(formatted_string)
-                | HumanReadable::Transfer(formatted_string)
-                | HumanReadable::DeployInfo(formatted_string)
-                | HumanReadable::EraInfo(formatted_string)
-                | HumanReadable::Balance(formatted_string)
-                | HumanReadable::Bid(formatted_string)
-                | HumanReadable::Withdraw(formatted_string)
-                | HumanReadable::Dictionary(formatted_string)
-                | HumanReadable::SystemContractRegistry(formatted_string)
-                | HumanReadable::EraSummary(formatted_string)
-                | HumanReadable::Unbond(formatted_string)
-                | HumanReadable::ChainspecRegistry(formatted_string)
-                | HumanReadable::ChecksumRegistry(formatted_string) => {
-                    Key::from_formatted_str(&formatted_string)
-                }
-            }
-        }
-    }
-
     #[derive(Serialize)]
     pub(super) enum BinarySerHelper<'a> {
         Account(&'a AccountHash),
@@ -1025,7 +975,7 @@ mod serde_helpers {
 impl Serialize for Key {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
-            serde_helpers::HumanReadable::from(self).serialize(serializer)
+            self.to_formatted_string().serialize(serializer)
         } else {
             serde_helpers::BinarySerHelper::from(self).serialize(serializer)
         }
@@ -1035,8 +985,8 @@ impl Serialize for Key {
 impl<'de> Deserialize<'de> for Key {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
-            let human_readable = serde_helpers::HumanReadable::deserialize(deserializer)?;
-            Key::try_from(human_readable).map_err(SerdeError::custom)
+            let formatted_key = String::deserialize(deserializer)?;
+            Key::from_formatted_str(&formatted_key).map_err(SerdeError::custom)
         } else {
             let binary_helper = serde_helpers::BinaryDeserHelper::deserialize(deserializer)?;
             Ok(Key::from(binary_helper))
@@ -1047,8 +997,6 @@ impl<'de> Deserialize<'de> for Key {
 #[cfg(test)]
 mod tests {
     use std::string::ToString;
-
-    use serde_json::json;
 
     use super::*;
     use crate::{
@@ -1364,49 +1312,11 @@ mod tests {
 
     #[test]
     fn key_to_json() {
-        let expected_json = &[
-            json!({ "Account": format!("account-hash-{}", HEX_STRING) }),
-            json!({ "Hash": format!("hash-{}", HEX_STRING) }),
-            json!({ "URef": format!("uref-{}-001", HEX_STRING) }),
-            json!({ "Transfer": format!("transfer-{}", HEX_STRING) }),
-            json!({ "DeployInfo": format!("deploy-{}", HEX_STRING) }),
-            json!({ "EraInfo": "era-42" }),
-            json!({ "Balance": format!("balance-{}", HEX_STRING) }),
-            json!({ "Bid": format!("bid-{}", HEX_STRING) }),
-            json!({ "Withdraw": format!("withdraw-{}", HEX_STRING) }),
-            json!({ "Dictionary": format!("dictionary-{}", HEX_STRING) }),
-            json!({
-                "SystemContractRegistry":
-                    format!(
-                        "system-contract-registry-{}",
-                        base16::encode_lower(&PADDING_BYTES)
-                    )
-            }),
-            json!({
-                "EraSummary": format!("era-summary-{}", base16::encode_lower(&PADDING_BYTES))
-            }),
-            json!({ "Unbond": format!("unbond-{}", HEX_STRING) }),
-            json!({
-                "ChainspecRegistry":
-                    format!(
-                        "chainspec-registry-{}",
-                        base16::encode_lower(&PADDING_BYTES)
-                    )
-            }),
-            json!({
-                "ChecksumRegistry":
-                    format!("checksum-registry-{}", base16::encode_lower(&PADDING_BYTES))
-            }),
-        ];
-
-        assert_eq!(
-            KEYS.len(),
-            expected_json.len(),
-            "There should be exactly one expected JSON string per test key"
-        );
-
-        for (key, expected_json_key) in KEYS.iter().zip(expected_json.iter()) {
-            assert_eq!(serde_json::to_value(key).unwrap(), *expected_json_key);
+        for key in KEYS.iter() {
+            assert_eq!(
+                serde_json::to_string(key).unwrap(),
+                format!("\"{}\"", key.to_formatted_string())
+            );
         }
     }
 

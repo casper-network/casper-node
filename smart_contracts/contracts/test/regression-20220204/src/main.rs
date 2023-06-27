@@ -10,10 +10,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash,
-    contracts::{NamedKeys, Parameters},
-    CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter,
-    URef, U512,
+    account::AccountHash, contracts::Parameters, CLType, CLTyped, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Key, NamedKeys, Parameter, URef, U512,
 };
 
 const TRANSFER_AS_CONTRACT: &str = "transfer_as_contract";

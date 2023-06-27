@@ -160,7 +160,7 @@ impl TransferRuntimeArgsBuilder {
                 let normalized_uref = Key::URef(uref).normalize();
                 let maybe_named_key = account
                     .named_keys()
-                    .values()
+                    .keys()
                     .find(|&named_key| named_key.normalize() == normalized_uref);
 
                 match maybe_named_key {

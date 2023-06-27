@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use alloc::{boxed::Box, string::String, vec, vec::Vec};
+use alloc::{boxed::Box, collections::BTreeMap, string::String, vec, vec::Vec};
 use core::iter;
 
 use rand::{distributions::Alphanumeric, rngs::SmallRng, Rng, SeedableRng};
@@ -14,9 +14,9 @@ use casper_contract::{
 use casper_types::{
     account::{AccountHash, ActionType, Weight},
     bytesrepr::Bytes,
-    contracts::NamedKeys,
     runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
+    EntryPointAccess, EntryPointType, EntryPoints, Key, NamedKeys, Parameter, Phase, RuntimeArgs,
+    U512,
 };
 
 const MIN_FUNCTION_NAME_LENGTH: usize = 1;
@@ -68,9 +68,9 @@ fn create_random_names(rng: &mut SmallRng) -> impl Iterator<Item = String> + '_ 
 
 fn truncate_named_keys(named_keys: NamedKeys, rng: &mut SmallRng) -> NamedKeys {
     let truncated_len = rng.gen_range(1..=named_keys.len());
-    let mut vec = named_keys.into_iter().collect::<Vec<_>>();
+    let mut vec = named_keys.into_inner().into_iter().collect::<Vec<_>>();
     vec.truncate(truncated_len);
-    vec.into_iter().collect()
+    NamedKeys::from(vec.into_iter().collect::<BTreeMap<_, _>>())
 }
 
 // Executes the named key functions from the `runtime` module and most of the functions from the

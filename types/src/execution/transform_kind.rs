@@ -1,69 +1,35 @@
-//! Support for transforms produced during execution.
-use std::{
-    any,
-    convert::TryFrom,
-    default::Default,
-    fmt::{self, Display, Formatter},
-    ops::{Add, AddAssign},
-};
+use alloc::{string::ToString, vec::Vec};
+use core::{any, convert::TryFrom};
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::traits::{AsPrimitive, WrappingAdd};
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    contracts::NamedKeys,
-    CLType, CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
+use super::TransformError;
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    CLType, CLTyped, CLValue, NamedKeys, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
-/// Error type for applying and combining transforms. A `TypeMismatch`
-/// occurs when a transform cannot be applied because the types are
-/// not compatible (e.g. trying to add a number to a string). An
-/// `Overflow` occurs if addition between numbers would result in the
-/// value overflowing its size in memory (e.g. if a, b are i32 and a +
-/// b > i32::MAX then a `AddInt32(a).apply(Value::Int32(b))` would
-/// cause an overflow).
-#[derive(PartialEq, Eq, Debug, Clone, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
-    /// Error while (de)serializing data.
-    #[error("{0}")]
-    Serialization(bytesrepr::Error),
-    /// Type mismatch error.
-    #[error("{0}")]
-    TypeMismatch(StoredValueTypeMismatch),
-}
-
-impl From<StoredValueTypeMismatch> for Error {
-    fn from(error: StoredValueTypeMismatch) -> Self {
-        Error::TypeMismatch(error)
-    }
-}
-
-impl From<CLValueError> for Error {
-    fn from(cl_value_error: CLValueError) -> Error {
-        match cl_value_error {
-            CLValueError::Serialization(error) => Error::Serialization(error),
-            CLValueError::Type(cl_type_mismatch) => {
-                let expected = format!("{:?}", cl_type_mismatch.expected);
-                let found = format!("{:?}", cl_type_mismatch.found);
-                let type_mismatch = StoredValueTypeMismatch::new(expected, found);
-                Error::TypeMismatch(type_mismatch)
-            }
-        }
-    }
-}
-
-/// Representation of a single transformation ocurring during execution.
+/// Representation of a single transformation occurring during execution.
 ///
-/// Note that all arithmetic variants of [`Transform`] are commutative which means that a given
+/// Note that all arithmetic variants of [`TransformKind`] are commutative which means that a given
 /// collection of them can be executed in any order to produce the same end result.
-#[allow(clippy::large_enum_variant)]
-#[derive(PartialEq, Eq, Debug, Clone, DataSize)]
-pub enum Transform {
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub enum TransformKind {
     /// An identity transformation that does not modify a value in the global state.
     ///
-    /// Created as part of a read from the global state.
+    /// Created as a result of reading from the global state.
     Identity,
     /// Writes a new value in the global state.
     Write(StoredValue),
@@ -87,103 +53,29 @@ pub enum Transform {
     /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
     /// Represents the case where applying a transform would cause an error.
-    #[data_size(skip)]
-    Failure(Error),
+    Failure(TransformError),
 }
 
-macro_rules! from_try_from_impl {
-    ($type:ty, $variant:ident) => {
-        impl From<$type> for Transform {
-            fn from(x: $type) -> Self {
-                Transform::$variant(x)
-            }
-        }
-
-        impl TryFrom<Transform> for $type {
-            type Error = String;
-
-            fn try_from(t: Transform) -> Result<$type, String> {
-                match t {
-                    Transform::$variant(x) => Ok(x),
-                    other => Err(format!("{:?}", other)),
-                }
-            }
-        }
-    };
-}
-
-from_try_from_impl!(StoredValue, Write);
-from_try_from_impl!(i32, AddInt32);
-from_try_from_impl!(u64, AddUInt64);
-from_try_from_impl!(U128, AddUInt128);
-from_try_from_impl!(U256, AddUInt256);
-from_try_from_impl!(U512, AddUInt512);
-from_try_from_impl!(NamedKeys, AddKeys);
-from_try_from_impl!(Error, Failure);
-
-/// Attempts a wrapping addition of `to_add` to `stored_value`, assuming `stored_value` is
-/// compatible with type `Y`.
-fn wrapping_addition<Y>(stored_value: StoredValue, to_add: Y) -> Result<StoredValue, Error>
-where
-    Y: AsPrimitive<i32>
-        + AsPrimitive<i64>
-        + AsPrimitive<u8>
-        + AsPrimitive<u32>
-        + AsPrimitive<u64>
-        + AsPrimitive<U128>
-        + AsPrimitive<U256>
-        + AsPrimitive<U512>,
-{
-    let cl_value = CLValue::try_from(stored_value)?;
-
-    match cl_value.cl_type() {
-        CLType::I32 => do_wrapping_addition::<i32, _>(cl_value, to_add),
-        CLType::I64 => do_wrapping_addition::<i64, _>(cl_value, to_add),
-        CLType::U8 => do_wrapping_addition::<u8, _>(cl_value, to_add),
-        CLType::U32 => do_wrapping_addition::<u32, _>(cl_value, to_add),
-        CLType::U64 => do_wrapping_addition::<u64, _>(cl_value, to_add),
-        CLType::U128 => do_wrapping_addition::<U128, _>(cl_value, to_add),
-        CLType::U256 => do_wrapping_addition::<U256, _>(cl_value, to_add),
-        CLType::U512 => do_wrapping_addition::<U512, _>(cl_value, to_add),
-        other => {
-            let expected = format!("integral type compatible with {}", any::type_name::<Y>());
-            let found = format!("{:?}", other);
-            Err(StoredValueTypeMismatch::new(expected, found).into())
-        }
-    }
-}
-
-/// Attempts a wrapping addition of `to_add` to the value represented by `cl_value`.
-fn do_wrapping_addition<X, Y>(cl_value: CLValue, to_add: Y) -> Result<StoredValue, Error>
-where
-    X: WrappingAdd + CLTyped + ToBytes + FromBytes + Copy + 'static,
-    Y: AsPrimitive<X>,
-{
-    let x: X = cl_value.into_t()?;
-    let result = x.wrapping_add(&(to_add.as_()));
-    Ok(StoredValue::CLValue(CLValue::from_t(result)?))
-}
-
-impl Transform {
+impl TransformKind {
     /// Applies the transformation on a specified stored value instance.
     ///
-    /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
-    pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
+    /// This method produces a new `StoredValue` instance based on the `TransformKind` variant.
+    pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, TransformError> {
         match self {
-            Transform::Identity => Ok(stored_value),
-            Transform::Write(new_value) => Ok(new_value),
-            Transform::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
-            Transform::AddKeys(mut keys) => match stored_value {
+            TransformKind::Identity => Ok(stored_value),
+            TransformKind::Write(new_value) => Ok(new_value),
+            TransformKind::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKind::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKind::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKind::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKind::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
+            TransformKind::AddKeys(keys) => match stored_value {
                 StoredValue::Contract(mut contract) => {
-                    contract.named_keys_append(&mut keys);
+                    contract.named_keys_append(keys);
                     Ok(StoredValue::Contract(contract))
                 }
                 StoredValue::Account(mut account) => {
-                    account.named_keys_append(&mut keys);
+                    account.named_keys_append(keys);
                     Ok(StoredValue::Account(account))
                 }
                 StoredValue::CLValue(cl_value) => {
@@ -232,209 +124,211 @@ impl Transform {
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
-            Transform::Failure(error) => Err(error),
+            TransformKind::Failure(error) => Err(error),
+        }
+    }
+
+    /// Returns a random `TransformKind`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        match rng.gen_range(0..9) {
+            0 => TransformKind::Identity,
+            1 => TransformKind::Write(StoredValue::CLValue(CLValue::from_t(true).unwrap())),
+            2 => TransformKind::AddInt32(rng.gen()),
+            3 => TransformKind::AddUInt64(rng.gen()),
+            4 => TransformKind::AddUInt128(rng.gen::<u64>().into()),
+            5 => TransformKind::AddUInt256(rng.gen::<u64>().into()),
+            6 => TransformKind::AddUInt512(rng.gen::<u64>().into()),
+            7 => {
+                let mut named_keys = NamedKeys::new();
+                for _ in 0..rng.gen_range(1..6) {
+                    named_keys.insert(rng.gen::<u64>().to_string(), rng.gen());
+                }
+                TransformKind::AddKeys(named_keys)
+            }
+            8 => TransformKind::Failure(TransformError::Serialization(
+                bytesrepr::Error::EarlyEndOfStream,
+            )),
+            _ => unreachable!(),
         }
     }
 }
 
-/// Combines numeric `Transform`s into a single `Transform`. This is done by unwrapping the
-/// `Transform` to obtain the underlying value, performing the wrapping addition then wrapping up as
-/// a `Transform` again.
-fn wrapped_transform_addition<T>(i: T, b: Transform, expected: &str) -> Transform
+impl ToBytes for TransformKind {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            TransformKind::Identity => (TransformTag::Identity as u8).write_bytes(writer),
+            TransformKind::Write(stored_value) => {
+                (TransformTag::Write as u8).write_bytes(writer)?;
+                stored_value.write_bytes(writer)
+            }
+            TransformKind::AddInt32(value) => {
+                (TransformTag::AddInt32 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            TransformKind::AddUInt64(value) => {
+                (TransformTag::AddUInt64 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            TransformKind::AddUInt128(value) => {
+                (TransformTag::AddUInt128 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            TransformKind::AddUInt256(value) => {
+                (TransformTag::AddUInt256 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            TransformKind::AddUInt512(value) => {
+                (TransformTag::AddUInt512 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            TransformKind::AddKeys(named_keys) => {
+                (TransformTag::AddKeys as u8).write_bytes(writer)?;
+                named_keys.write_bytes(writer)
+            }
+            TransformKind::Failure(error) => {
+                (TransformTag::Failure as u8).write_bytes(writer)?;
+                error.write_bytes(writer)
+            }
+        }
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                TransformKind::Identity => 0,
+                TransformKind::Write(stored_value) => stored_value.serialized_length(),
+                TransformKind::AddInt32(value) => value.serialized_length(),
+                TransformKind::AddUInt64(value) => value.serialized_length(),
+                TransformKind::AddUInt128(value) => value.serialized_length(),
+                TransformKind::AddUInt256(value) => value.serialized_length(),
+                TransformKind::AddUInt512(value) => value.serialized_length(),
+                TransformKind::AddKeys(named_keys) => named_keys.serialized_length(),
+                TransformKind::Failure(error) => error.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for TransformKind {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            tag if tag == TransformTag::Identity as u8 => Ok((TransformKind::Identity, remainder)),
+            tag if tag == TransformTag::Write as u8 => {
+                let (stored_value, remainder) = StoredValue::from_bytes(remainder)?;
+                Ok((TransformKind::Write(stored_value), remainder))
+            }
+            tag if tag == TransformTag::AddInt32 as u8 => {
+                let (value, remainder) = i32::from_bytes(remainder)?;
+                Ok((TransformKind::AddInt32(value), remainder))
+            }
+            tag if tag == TransformTag::AddUInt64 as u8 => {
+                let (value, remainder) = u64::from_bytes(remainder)?;
+                Ok((TransformKind::AddUInt64(value), remainder))
+            }
+            tag if tag == TransformTag::AddUInt128 as u8 => {
+                let (value, remainder) = U128::from_bytes(remainder)?;
+                Ok((TransformKind::AddUInt128(value), remainder))
+            }
+            tag if tag == TransformTag::AddUInt256 as u8 => {
+                let (value, remainder) = U256::from_bytes(remainder)?;
+                Ok((TransformKind::AddUInt256(value), remainder))
+            }
+            tag if tag == TransformTag::AddUInt512 as u8 => {
+                let (value, remainder) = U512::from_bytes(remainder)?;
+                Ok((TransformKind::AddUInt512(value), remainder))
+            }
+            tag if tag == TransformTag::AddKeys as u8 => {
+                let (named_keys, remainder) = NamedKeys::from_bytes(remainder)?;
+                Ok((TransformKind::AddKeys(named_keys), remainder))
+            }
+            tag if tag == TransformTag::Failure as u8 => {
+                let (error, remainder) = TransformError::from_bytes(remainder)?;
+                Ok((TransformKind::Failure(error), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+/// Attempts a wrapping addition of `to_add` to `stored_value`, assuming `stored_value` is
+/// compatible with type `Y`.
+fn wrapping_addition<Y>(stored_value: StoredValue, to_add: Y) -> Result<StoredValue, TransformError>
 where
-    T: WrappingAdd
-        + AsPrimitive<i32>
-        + From<u32>
-        + From<u64>
-        + Into<Transform>
-        + TryFrom<Transform, Error = String>,
-    i32: AsPrimitive<T>,
+    Y: AsPrimitive<i32>
+        + AsPrimitive<i64>
+        + AsPrimitive<u8>
+        + AsPrimitive<u32>
+        + AsPrimitive<u64>
+        + AsPrimitive<U128>
+        + AsPrimitive<U256>
+        + AsPrimitive<U512>,
 {
-    if let Transform::AddInt32(j) = b {
-        i.wrapping_add(&j.as_()).into()
-    } else if let Transform::AddUInt64(j) = b {
-        i.wrapping_add(&j.into()).into()
-    } else {
-        match T::try_from(b) {
-            Err(b_type) => Transform::Failure(
-                StoredValueTypeMismatch::new(String::from(expected), b_type).into(),
-            ),
+    let cl_value = CLValue::try_from(stored_value)?;
 
-            Ok(j) => i.wrapping_add(&j).into(),
+    match cl_value.cl_type() {
+        CLType::I32 => do_wrapping_addition::<i32, _>(cl_value, to_add),
+        CLType::I64 => do_wrapping_addition::<i64, _>(cl_value, to_add),
+        CLType::U8 => do_wrapping_addition::<u8, _>(cl_value, to_add),
+        CLType::U32 => do_wrapping_addition::<u32, _>(cl_value, to_add),
+        CLType::U64 => do_wrapping_addition::<u64, _>(cl_value, to_add),
+        CLType::U128 => do_wrapping_addition::<U128, _>(cl_value, to_add),
+        CLType::U256 => do_wrapping_addition::<U256, _>(cl_value, to_add),
+        CLType::U512 => do_wrapping_addition::<U512, _>(cl_value, to_add),
+        other => {
+            let expected = format!("integral type compatible with {}", any::type_name::<Y>());
+            let found = format!("{:?}", other);
+            Err(TransformError::from(StoredValueTypeMismatch::new(
+                expected, found,
+            )))
         }
     }
 }
 
-impl Add for Transform {
-    type Output = Transform;
-
-    fn add(self, other: Transform) -> Transform {
-        match (self, other) {
-            (a, Transform::Identity) => a,
-            (Transform::Identity, b) => b,
-            (a @ Transform::Failure(_), _) => a,
-            (_, b @ Transform::Failure(_)) => b,
-            (_, b @ Transform::Write(_)) => b,
-            (Transform::Write(v), b) => {
-                // second transform changes value being written
-                match b.apply(v) {
-                    Err(error) => Transform::Failure(error),
-                    Ok(new_value) => Transform::Write(new_value),
-                }
-            }
-            (Transform::AddInt32(i), b) => match b {
-                Transform::AddInt32(j) => Transform::AddInt32(i.wrapping_add(j)),
-                Transform::AddUInt64(j) => Transform::AddUInt64(j.wrapping_add(i as u64)),
-                Transform::AddUInt128(j) => Transform::AddUInt128(j.wrapping_add(&(i.as_()))),
-                Transform::AddUInt256(j) => Transform::AddUInt256(j.wrapping_add(&(i.as_()))),
-                Transform::AddUInt512(j) => Transform::AddUInt512(j.wrapping_add(&i.as_())),
-                other => Transform::Failure(
-                    StoredValueTypeMismatch::new("AddInt32".to_owned(), format!("{:?}", other))
-                        .into(),
-                ),
-            },
-            (Transform::AddUInt64(i), b) => match b {
-                Transform::AddInt32(j) => Transform::AddInt32(j.wrapping_add(i as i32)),
-                Transform::AddUInt64(j) => Transform::AddUInt64(i.wrapping_add(j)),
-                Transform::AddUInt128(j) => Transform::AddUInt128(j.wrapping_add(&i.into())),
-                Transform::AddUInt256(j) => Transform::AddUInt256(j.wrapping_add(&i.into())),
-                Transform::AddUInt512(j) => Transform::AddUInt512(j.wrapping_add(&i.into())),
-                other => Transform::Failure(
-                    StoredValueTypeMismatch::new("AddUInt64".to_owned(), format!("{:?}", other))
-                        .into(),
-                ),
-            },
-            (Transform::AddUInt128(i), b) => wrapped_transform_addition(i, b, "U128"),
-            (Transform::AddUInt256(i), b) => wrapped_transform_addition(i, b, "U256"),
-            (Transform::AddUInt512(i), b) => wrapped_transform_addition(i, b, "U512"),
-            (Transform::AddKeys(mut ks1), b) => match b {
-                Transform::AddKeys(mut ks2) => {
-                    ks1.append(&mut ks2);
-                    Transform::AddKeys(ks1)
-                }
-                other => Transform::Failure(
-                    StoredValueTypeMismatch::new("AddKeys".to_owned(), format!("{:?}", other))
-                        .into(),
-                ),
-            },
-        }
-    }
+/// Attempts a wrapping addition of `to_add` to the value represented by `cl_value`.
+fn do_wrapping_addition<X, Y>(cl_value: CLValue, to_add: Y) -> Result<StoredValue, TransformError>
+where
+    X: WrappingAdd + CLTyped + ToBytes + FromBytes + Copy + 'static,
+    Y: AsPrimitive<X>,
+{
+    let x: X = cl_value.into_t()?;
+    let result = x.wrapping_add(&(to_add.as_()));
+    Ok(StoredValue::CLValue(CLValue::from_t(result)?))
 }
 
-impl AddAssign for Transform {
-    fn add_assign(&mut self, other: Self) {
-        *self = self.clone() + other;
-    }
-}
-
-impl Display for Transform {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-impl Default for Transform {
-    fn default() -> Self {
-        Transform::Identity
-    }
-}
-
-impl From<&Transform> for casper_types::Transform {
-    fn from(transform: &Transform) -> Self {
-        match transform {
-            Transform::Identity => casper_types::Transform::Identity,
-            Transform::Write(StoredValue::CLValue(cl_value)) => {
-                casper_types::Transform::WriteCLValue(cl_value.clone())
-            }
-            Transform::Write(StoredValue::Account(account)) => {
-                casper_types::Transform::WriteAccount(account.account_hash())
-            }
-            Transform::Write(StoredValue::ContractWasm(_)) => {
-                casper_types::Transform::WriteContractWasm
-            }
-            Transform::Write(StoredValue::Contract(_)) => casper_types::Transform::WriteContract,
-            Transform::Write(StoredValue::ContractPackage(_)) => {
-                casper_types::Transform::WriteContractPackage
-            }
-            Transform::Write(StoredValue::Transfer(transfer)) => {
-                casper_types::Transform::WriteTransfer(*transfer)
-            }
-            Transform::Write(StoredValue::DeployInfo(deploy_info)) => {
-                casper_types::Transform::WriteDeployInfo(deploy_info.clone())
-            }
-            Transform::Write(StoredValue::EraInfo(era_info)) => {
-                casper_types::Transform::WriteEraInfo(era_info.clone())
-            }
-            Transform::Write(StoredValue::Bid(bid)) => {
-                casper_types::Transform::WriteBid(bid.clone())
-            }
-            Transform::Write(StoredValue::Withdraw(withdraw_purses)) => {
-                casper_types::Transform::WriteWithdraw(withdraw_purses.clone())
-            }
-            Transform::Write(StoredValue::Unbonding(unbonding_purses)) => {
-                casper_types::Transform::WriteUnbonding(unbonding_purses.clone())
-            }
-            Transform::AddInt32(value) => casper_types::Transform::AddInt32(*value),
-            Transform::AddUInt64(value) => casper_types::Transform::AddUInt64(*value),
-            Transform::AddUInt128(value) => casper_types::Transform::AddUInt128(*value),
-            Transform::AddUInt256(value) => casper_types::Transform::AddUInt256(*value),
-            Transform::AddUInt512(value) => casper_types::Transform::AddUInt512(*value),
-            Transform::AddKeys(named_keys) => casper_types::Transform::AddKeys(
-                named_keys
-                    .iter()
-                    .map(|(name, key)| casper_types::NamedKey {
-                        name: name.clone(),
-                        key: key.to_formatted_string(),
-                    })
-                    .collect(),
-            ),
-            Transform::Failure(error) => casper_types::Transform::Failure(error.to_string()),
-        }
-    }
-}
-
-#[doc(hidden)]
-#[cfg(any(feature = "gens", test))]
-pub mod gens {
-    use proptest::{collection::vec, prelude::*};
-
-    use casper_types::gens::stored_value_arb;
-
-    use super::Transform;
-
-    pub fn transform_arb() -> impl Strategy<Value = Transform> {
-        prop_oneof![
-            Just(Transform::Identity),
-            stored_value_arb().prop_map(Transform::Write),
-            any::<i32>().prop_map(Transform::AddInt32),
-            any::<u64>().prop_map(Transform::AddUInt64),
-            any::<u128>().prop_map(|u| Transform::AddUInt128(u.into())),
-            vec(any::<u8>(), 32).prop_map(|u| {
-                let mut buf: [u8; 32] = [0u8; 32];
-                buf.copy_from_slice(&u);
-                Transform::AddUInt256(buf.into())
-            }),
-            vec(any::<u8>(), 64).prop_map(|u| {
-                let mut buf: [u8; 64] = [0u8; 64];
-                buf.copy_from_slice(&u);
-                Transform::AddUInt512(buf.into())
-            }),
-        ]
-    }
+#[derive(Debug)]
+#[repr(u8)]
+enum TransformTag {
+    Identity = 0,
+    Write = 1,
+    AddInt32 = 2,
+    AddUInt64 = 3,
+    AddUInt128 = 4,
+    AddUInt256 = 5,
+    AddUInt512 = 6,
+    AddKeys = 7,
+    Failure = 8,
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::BTreeMap, fmt};
+
     use num::{Bounded, Num};
 
-    use casper_types::{
+    use crate::{
         account::{Account, AccountHash, ActionThresholds, AssociatedKeys},
         bytesrepr::Bytes,
         AccessRights, ContractWasm, Key, URef, U128, U256, U512,
     };
 
     use super::*;
-    use std::collections::BTreeMap;
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];
     const ZERO_PUBLIC_KEY: AccountHash = AccountHash::new(ZERO_ARRAY);
@@ -487,22 +381,16 @@ mod tests {
         let max_value = StoredValue::CLValue(CLValue::from_t(max).unwrap());
         let min_value = StoredValue::CLValue(CLValue::from_t(min).unwrap());
 
-        let apply_overflow = Transform::AddInt32(1).apply(max_value.clone());
-        let apply_underflow = Transform::AddInt32(-1).apply(min_value.clone());
-
-        let transform_overflow = Transform::AddInt32(max) + Transform::AddInt32(1);
-        let transform_underflow = Transform::AddInt32(min) + Transform::AddInt32(-1);
+        let apply_overflow = TransformKind::AddInt32(1).apply(max_value.clone());
+        let apply_underflow = TransformKind::AddInt32(-1).apply(min_value.clone());
 
         assert_eq!(apply_overflow.expect("Unexpected overflow"), min_value);
         assert_eq!(apply_underflow.expect("Unexpected underflow"), max_value);
-
-        assert_eq!(transform_overflow, min.into());
-        assert_eq!(transform_underflow, max.into());
     }
 
     fn uint_overflow_test<T>()
     where
-        T: Num + Bounded + CLTyped + ToBytes + Into<Transform> + Copy,
+        T: Num + Bounded + CLTyped + ToBytes + Into<TransformKind> + Copy,
     {
         let max = T::max_value();
         let min = T::min_value();
@@ -513,41 +401,45 @@ mod tests {
         let min_value = StoredValue::CLValue(CLValue::from_t(min).unwrap());
         let zero_value = StoredValue::CLValue(CLValue::from_t(zero).unwrap());
 
-        let max_transform: Transform = max.into();
-        let min_transform: Transform = min.into();
+        let one_transform: TransformKind = one.into();
 
-        let one_transform: Transform = one.into();
+        let apply_overflow = TransformKind::AddInt32(1).apply(max_value.clone());
 
-        let apply_overflow = Transform::AddInt32(1).apply(max_value.clone());
-
-        let apply_overflow_uint = one_transform.clone().apply(max_value.clone());
-        let apply_underflow = Transform::AddInt32(-1).apply(min_value);
-
-        let transform_overflow = max_transform.clone() + Transform::AddInt32(1);
-        let transform_overflow_uint = max_transform + one_transform;
-        let transform_underflow = min_transform + Transform::AddInt32(-1);
+        let apply_overflow_uint = one_transform.apply(max_value.clone());
+        let apply_underflow = TransformKind::AddInt32(-1).apply(min_value);
 
         assert_eq!(apply_overflow, Ok(zero_value.clone()));
         assert_eq!(apply_overflow_uint, Ok(zero_value));
         assert_eq!(apply_underflow, Ok(max_value));
-
-        assert_eq!(transform_overflow, zero.into());
-        assert_eq!(transform_overflow_uint, zero.into());
-        assert_eq!(transform_underflow, max.into());
     }
 
     #[test]
     fn u128_overflow() {
+        impl From<U128> for TransformKind {
+            fn from(x: U128) -> Self {
+                TransformKind::AddUInt128(x)
+            }
+        }
         uint_overflow_test::<U128>();
     }
 
     #[test]
     fn u256_overflow() {
+        impl From<U256> for TransformKind {
+            fn from(x: U256) -> Self {
+                TransformKind::AddUInt256(x)
+            }
+        }
         uint_overflow_test::<U256>();
     }
 
     #[test]
     fn u512_overflow() {
+        impl From<U512> for TransformKind {
+            fn from(x: U512) -> Self {
+                TransformKind::AddUInt512(x)
+            }
+        }
         uint_overflow_test::<U512>();
     }
 
@@ -555,7 +447,7 @@ mod tests {
     fn addition_between_mismatched_types_should_fail() {
         fn assert_yields_type_mismatch_error(stored_value: StoredValue) {
             match wrapping_addition(stored_value, ZERO_I32) {
-                Err(Error::TypeMismatch(_)) => (),
+                Err(TransformError::TypeMismatch(_)) => (),
                 _ => panic!("wrapping addition should yield TypeMismatch error"),
             };
         }
@@ -867,5 +759,14 @@ mod tests {
         assert_eq!(ONE_U512, add(ZERO_U512, ONE_U512));
         assert_eq!(ZERO_U512, add(MAX_U512, ONE_U512));
         assert_eq!(MAX_U512 - 1, add(MAX_U512, MAX_U512));
+    }
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+        for _ in 0..10 {
+            let execution_result = TransformKind::random(rng);
+            bytesrepr::test_serialization_roundtrip(&execution_result);
+        }
     }
 }

@@ -49,7 +49,7 @@ pub use indexed_merkle_proof::IndexedMerkleProof;
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "String", description = "Hex-encoded hash digest.")
+    schemars(description = "Hex-encoded hash digest.")
 )]
 pub struct Digest(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))]

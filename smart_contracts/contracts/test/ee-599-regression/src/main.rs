@@ -11,10 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash,
-    contracts::{NamedKeys, Parameters},
-    ApiError, CLType, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    RuntimeArgs, URef, U512,
+    account::AccountHash, contracts::Parameters, ApiError, CLType, ContractHash, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, Key, NamedKeys, RuntimeArgs, URef, U512,
 };
 
 const DONATION_AMOUNT: u64 = 1;

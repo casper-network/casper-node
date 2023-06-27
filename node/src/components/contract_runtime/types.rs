@@ -2,10 +2,10 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 
-use casper_execution_engine::engine_state::{ExecutionJournal, GetEraValidatorsRequest};
+use casper_execution_engine::engine_state::GetEraValidatorsRequest;
 use casper_types::{
-    Block, DeployHash, DeployHeader, Digest, EraId, ExecutionResult, ProtocolVersion, PublicKey,
-    U512,
+    execution::{ExecutionJournal, ExecutionResult},
+    Block, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::types::ApprovalsHashes;
@@ -85,11 +85,11 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 
 /// Effects from running step and the next era validators that are gathered when an era ends.
 #[derive(Clone, Debug, DataSize)]
-pub(crate) struct StepEffectAndUpcomingEraValidators {
+pub(crate) struct StepEffectsAndUpcomingEraValidators {
     /// Validator sets for all upcoming eras that have already been determined.
     pub(crate) upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
     /// An [`ExecutionJournal`] created by an era ending.
-    pub(crate) step_execution_journal: ExecutionJournal,
+    pub(crate) step_effects: ExecutionJournal,
 }
 
 #[doc(hidden)]
@@ -104,6 +104,6 @@ pub struct BlockAndExecutionResults {
     /// The results from executing the deploys in the block.
     pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
     /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
-    pub(crate) maybe_step_effect_and_upcoming_era_validators:
-        Option<StepEffectAndUpcomingEraValidators>,
+    pub(crate) maybe_step_effects_and_upcoming_era_validators:
+        Option<StepEffectsAndUpcomingEraValidators>,
 }

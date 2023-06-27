@@ -1,8 +1,5 @@
 //! RPCs returning ancillary information.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{collections::BTreeMap, str};
 
 use async_trait::async_trait;
@@ -12,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use casper_types::{
-    BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionResult,
-    JsonBlock, ProtocolVersion, PublicKey,
+    execution::ExecutionResult, BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy,
+    DeployHash, EraId, JsonBlock, ProtocolVersion, PublicKey,
 };
 
 use super::{

@@ -1,8 +1,5 @@
 //! RPC related to speculative execution.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{str, sync::Arc};
 
 use async_trait::async_trait;
@@ -12,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
-use casper_types::{BlockHash, Deploy, ExecutionResult, JsonBlock, ProtocolVersion};
+use casper_types::{execution::ExecutionResult, BlockHash, Deploy, JsonBlock, ProtocolVersion};
 
 use super::{
     chain::BlockIdentifier,

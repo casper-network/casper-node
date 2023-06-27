@@ -6,9 +6,9 @@ use core::{convert::From, mem::MaybeUninit};
 use casper_types::{
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
-    contracts::{ContractVersion, EntryPoints, NamedKeys},
+    contracts::{ContractVersion, EntryPoints},
     AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
-    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
+    NamedKeys, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
