@@ -6,7 +6,16 @@ use core::{
     fmt::{self, Display, Formatter},
 };
 
-use crate::{ApiError, EntryPoints};
+use datasize::DataSize;
+use serde::Serialize;
+
+use crate::bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{bytesrepr, ApiError, EntryPoints};
+
+const MINT_TAG: u8 = 0;
+const HANDLE_PAYMENT_TAG: u8 = 1;
+const STANDARD_PAYMENT_TAG: u8 = 2;
+const AUCTION_TAG: u8 = 3;
 
 use super::{
     auction::auction_entry_points, handle_payment::handle_payment_entry_points,
@@ -17,9 +26,11 @@ use super::{
 ///
 /// Used by converting to a `u32` and passing as the `system_contract_index` argument of
 /// `ext_ffi::casper_get_system_contract()`.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum SystemContractType {
     /// Mint contract.
+    #[default]
     Mint,
     /// Handle Payment contract.
     HandlePayment,
@@ -27,6 +38,44 @@ pub enum SystemContractType {
     StandardPayment,
     /// Auction contract.
     Auction,
+}
+
+impl ToBytes for SystemContractType {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            SystemContractType::Mint => {
+                buffer.insert(0, MINT_TAG);
+            }
+            SystemContractType::HandlePayment => {
+                buffer.insert(0, HANDLE_PAYMENT_TAG);
+            }
+            SystemContractType::StandardPayment => {
+                buffer.insert(0, STANDARD_PAYMENT_TAG);
+            }
+            SystemContractType::Auction => {
+                buffer.insert(0, AUCTION_TAG);
+            }
+        }
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for SystemContractType {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            MINT_TAG => Ok((SystemContractType::Mint, remainder)),
+            HANDLE_PAYMENT_TAG => Ok((SystemContractType::HandlePayment, remainder)),
+            STANDARD_PAYMENT_TAG => Ok((SystemContractType::StandardPayment, remainder)),
+            AUCTION_TAG => Ok((SystemContractType::Auction, remainder)),
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
 }
 
 /// Name of mint system contract

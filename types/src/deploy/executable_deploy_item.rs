@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(doc)]
 use super::Deploy;
 use crate::{
-    account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contracts::AccountHash,
     contracts::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::mint::ARG_AMOUNT,

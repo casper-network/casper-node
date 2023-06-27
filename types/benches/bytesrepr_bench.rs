@@ -5,10 +5,12 @@ use std::{
     iter,
 };
 
+use casper_types::contracts::ContractPackageKind;
 use casper_types::{
-    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contracts::{ContractPackageStatus, NamedKeys},
+    contracts::{
+        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageStatus, NamedKeys, Weight,
+    },
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
@@ -446,41 +448,41 @@ fn deserialize_u512(b: &mut Bencher) {
     b.iter(|| U512::from_bytes(black_box(&num_u512_bytes)))
 }
 
-fn sample_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
-    let account_hash = AccountHash::default();
-    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
-    let main_purse = URef::default();
-    let associated_keys = {
-        let mut tmp = AssociatedKeys::new(AccountHash::default(), Weight::new(1));
-        (1..associated_keys_len).for_each(|i| {
-            tmp.add_key(
-                AccountHash::new([i; casper_types::account::ACCOUNT_HASH_LENGTH]),
-                Weight::new(1),
-            )
-            .unwrap()
-        });
-        tmp
-    };
-    let action_thresholds = ActionThresholds::default();
-    Account::new(
-        account_hash,
-        named_keys,
-        main_purse,
-        associated_keys,
-        action_thresholds,
-    )
-}
-
-fn serialize_account(b: &mut Bencher) {
-    let account = sample_account(10, 10);
-    b.iter(|| ToBytes::to_bytes(black_box(&account)));
-}
-
-fn deserialize_account(b: &mut Bencher) {
-    let account = sample_account(10, 10);
-    let account_bytes = Account::to_bytes(&account).unwrap();
-    b.iter(|| Account::from_bytes(black_box(&account_bytes)).unwrap());
-}
+// fn sample_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
+//     let account_hash = AccountHash::default();
+//     let named_keys: NamedKeys = sample_named_keys(named_keys_len);
+//     let main_purse = URef::default();
+//     let associated_keys = {
+//         let mut tmp = AssociatedKeys::new(AccountHash::default(), Weight::new(1));
+//         (1..associated_keys_len).for_each(|i| {
+//             tmp.add_key(
+//                 AccountHash::new([i; casper_types::contracts::ACCOUNT_HASH_LENGTH]),
+//                 Weight::new(1),
+//             )
+//             .unwrap()
+//         });
+//         tmp
+//     };
+//     let action_thresholds = ActionThresholds::default();
+//     Account::new(
+//         account_hash,
+//         named_keys,
+//         main_purse,
+//         associated_keys,
+//         action_thresholds,
+//     )
+// }
+//
+// fn serialize_account(b: &mut Bencher) {
+//     let account = sample_account(10, 10);
+//     b.iter(|| ToBytes::to_bytes(black_box(&account)));
+// }
+//
+// fn deserialize_account(b: &mut Bencher) {
+//     let account = sample_account(10, 10);
+//     let account_bytes = Account::to_bytes(&account).unwrap();
+//     b.iter(|| Account::from_bytes(black_box(&account_bytes)).unwrap());
+// }
 
 fn serialize_contract(b: &mut Bencher) {
     let contract = sample_contract(10, 10);
@@ -532,6 +534,9 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
         named_keys,
         entry_points,
         ProtocolVersion::default(),
+        URef::default(),
+        AssociatedKeys::default(),
+        ActionThresholds::default(),
     )
 }
 
@@ -592,6 +597,7 @@ fn sample_contract_package(
         disabled_versions,
         groups,
         ContractPackageStatus::Locked,
+        ContractPackageKind::Wasm,
     )
 }
 
@@ -851,8 +857,8 @@ fn bytesrepr_bench(c: &mut Criterion) {
     c.bench_function("deserialize_u256", deserialize_u256);
     c.bench_function("serialize_u512", serialize_u512);
     c.bench_function("deserialize_u512", deserialize_u512);
-    c.bench_function("bytesrepr::serialize_account", serialize_account);
-    c.bench_function("bytesrepr::deserialize_account", deserialize_account);
+    // c.bench_function("bytesrepr::serialize_account", serialize_account);
+    // c.bench_function("bytesrepr::deserialize_account", deserialize_account);
     c.bench_function("bytesrepr::serialize_contract", serialize_contract);
     c.bench_function("bytesrepr::deserialize_contract", deserialize_contract);
     c.bench_function(

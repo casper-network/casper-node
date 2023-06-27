@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, mem};
 
-use casper_types::{account::Account, bytesrepr::ToBytes, ContractWasm, Key, StoredValue};
+use casper_types::{bytesrepr::ToBytes, ContractWasm, Key, StoredValue};
 
 /// Returns byte size of the element - both heap size and stack size.
 pub trait ByteSize {
@@ -60,12 +60,12 @@ impl HeapSizeOf for Key {
     }
 }
 
-// TODO: contract has other fields (re a bunch) that are not repr here...on purpose?
-impl HeapSizeOf for Account {
-    fn heap_size(&self) -> usize {
-        self.named_keys().heap_size()
-    }
-}
+// // TODO: contract has other fields (re a bunch) that are not repr here...on purpose?
+// impl HeapSizeOf for Account {
+//     fn heap_size(&self) -> usize {
+//         self.named_keys().heap_size()
+//     }
+// }
 
 // TODO: contract has other fields (re protocol version) that are not repr here...on purpose?
 impl HeapSizeOf for ContractWasm {

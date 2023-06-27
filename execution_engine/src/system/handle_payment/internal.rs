@@ -1,5 +1,5 @@
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     system::handle_payment::{Error, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
     Key, Phase, PublicKey, URef, U512,
 };

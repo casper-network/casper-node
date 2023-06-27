@@ -370,7 +370,7 @@ pub fn make_temporary_global_state(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{account::AccountHash, CLValue, Digest};
+    use casper_types::{contracts::AccountHash, CLValue, Digest};
 
     use crate::global_state::storage::state::scratch::tests::TestPair;
 

@@ -46,10 +46,10 @@ use untrusted::Input;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 use crate::{
-    account::AccountHash,
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     checksummed_hex,
+    contracts::AccountHash,
     crypto::Error,
     CLType, CLTyped, Tagged,
 };

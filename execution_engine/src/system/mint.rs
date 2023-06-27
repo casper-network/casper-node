@@ -6,7 +6,7 @@ use num_rational::Ratio;
 use num_traits::CheckedMul;
 
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     system::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,

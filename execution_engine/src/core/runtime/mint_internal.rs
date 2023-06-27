@@ -1,7 +1,7 @@
 use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
-    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    contracts::AccountHash,
     system::{mint::Error, CallStackElement},
     CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
@@ -65,7 +65,7 @@ where
     }
 
     fn get_main_purse(&self) -> URef {
-        self.context.account().main_purse()
+        self.context.contract().main_purse()
     }
 }
 

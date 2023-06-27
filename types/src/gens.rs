@@ -13,7 +13,7 @@ use proptest::{
 };
 
 use crate::{
-    account::{gens::account_arb, AccountHash, Weight},
+    contracts::{AccountHash, Weight},
     contracts::{
         ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Parameters,
     },
@@ -28,6 +28,9 @@ use crate::{
     NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
+use crate::contracts::action_thresholds::gens::action_thresholds_arb;
+use crate::contracts::associated_keys::gens::associated_keys_arb;
+use crate::contracts::ContractPackageKind;
 use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
@@ -321,6 +324,9 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
         u8_slice_32(),
         u8_slice_32(),
         named_keys_arb(20),
+        uref_arb(),
+        associated_keys_arb(),
+        action_thresholds_arb(),
     )
         .prop_map(
             |(
@@ -329,6 +335,9 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
                 contract_package_hash_arb,
                 contract_wasm_hash,
                 named_keys,
+                main_purse,
+                associated_keys,
+                action_thresholds,
             )| {
                 Contract::new(
                     contract_package_hash_arb.into(),
@@ -336,6 +345,9 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
                     named_keys,
                     entry_points,
                     protocol_version,
+                    main_purse,
+                    associated_keys,
+                    action_thresholds,
                 )
             },
         )
@@ -380,6 +392,7 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
                 disabled_versions,
                 groups,
                 ContractPackageStatus::default(),
+                ContractPackageKind::default(),
             )
         })
 }
@@ -501,7 +514,7 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
-        account_arb().prop_map(StoredValue::Account),
+        // account_arb().prop_map(StoredValue::Account),
         contract_wasm_arb().prop_map(StoredValue::ContractWasm),
         contract_arb().prop_map(StoredValue::Contract),
         contract_package_arb().prop_map(StoredValue::ContractPackage),

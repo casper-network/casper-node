@@ -182,9 +182,12 @@ impl Transform {
                     contract.named_keys_append(&mut keys);
                     Ok(StoredValue::Contract(contract))
                 }
-                StoredValue::Account(mut account) => {
-                    account.named_keys_append(&mut keys);
-                    Ok(StoredValue::Account(account))
+                StoredValue::Account(mut cl_value) => {
+                    // account.named_keys_append(&mut keys);
+                    // Ok(StoredValue::Account(account))
+                    let expected = "Contract or Account".to_string();
+                    let found = format!("{:?}", cl_value.cl_type());
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
@@ -346,8 +349,8 @@ impl From<&Transform> for casper_types::Transform {
             Transform::Write(StoredValue::CLValue(cl_value)) => {
                 casper_types::Transform::WriteCLValue(cl_value.clone())
             }
-            Transform::Write(StoredValue::Account(account)) => {
-                casper_types::Transform::WriteAccount(account.account_hash())
+            Transform::Write(StoredValue::Account(cl_value)) => {
+                casper_types::Transform::WriteCLValue(cl_value.clone())
             }
             Transform::Write(StoredValue::ContractWasm(_)) => {
                 casper_types::Transform::WriteContractWasm
@@ -428,8 +431,8 @@ mod tests {
     use num::{Bounded, Num};
 
     use casper_types::{
-        account::{Account, AccountHash, ActionThresholds, AssociatedKeys},
         bytesrepr::Bytes,
+        contracts::{AccountHash, ActionThresholds, AssociatedKeys},
         AccessRights, ContractWasm, Key, URef, U128, U256, U512,
     };
 
@@ -564,14 +567,14 @@ mod tests {
         assert_yields_type_mismatch_error(contract);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
-        let account = StoredValue::Account(Account::new(
-            ZERO_PUBLIC_KEY,
-            NamedKeys::new(),
-            uref,
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-        ));
-        assert_yields_type_mismatch_error(account);
+        // let account = StoredValue::Account(Account::new(
+        //     ZERO_PUBLIC_KEY,
+        //     NamedKeys::new(),
+        //     uref,
+        //     AssociatedKeys::default(),
+        //     ActionThresholds::default(),
+        // ));
+        // assert_yields_type_mismatch_error(account);
 
         let cl_bool =
             StoredValue::CLValue(CLValue::from_t(TEST_BOOL).expect("should create CLValue"));

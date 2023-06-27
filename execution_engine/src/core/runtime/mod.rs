@@ -22,12 +22,11 @@ use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
-    account::{Account, AccountHash, ActionType, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
-        self, Contract, ContractPackage, ContractPackageStatus, ContractVersion, ContractVersions,
-        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
-        DEFAULT_ENTRY_POINT_NAME,
+        self, AccountHash, ActionType, Contract, ContractPackage, ContractPackageStatus,
+        ContractVersion, ContractVersions, DisabledVersions, EntryPoint, EntryPointAccess,
+        EntryPoints, Group, Groups, NamedKeys, Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     system::{
         self,
@@ -1024,7 +1023,7 @@ where
         self.stack = Some(stack);
         self.context.set_args(utils::attenuate_uref_in_args(
             self.context.args().clone(),
-            self.context.account().main_purse().addr(),
+            self.context.contract().main_purse().addr(),
             AccessRights::WRITE,
         )?);
 
@@ -1235,8 +1234,8 @@ where
 
         let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
             EntryPointType::Session => (
-                self.context.account().named_keys().clone(),
-                self.context.account().extract_access_rights(),
+                self.context.contract().named_keys().clone(),
+                self.context.contract().extract_access_rights(),
             ),
             EntryPointType::Contract => (
                 contract.named_keys().clone(),
@@ -1249,7 +1248,7 @@ where
 
             let call_stack_element = match entry_point.entry_point_type() {
                 EntryPointType::Session => CallStackElement::stored_session(
-                    self.context.account().account_hash(),
+                    self.context.contract().account_hash(),
                     contract.contract_package_hash(),
                     contract_hash,
                 ),
@@ -1283,7 +1282,7 @@ where
             // a non-system account to avoid possible phishing attack scenarios.
             utils::attenuate_uref_in_args(
                 args,
-                self.context.account().main_purse().addr(),
+                self.context.contract().main_purse().addr(),
                 AccessRights::WRITE,
             )?
         } else {
@@ -1810,7 +1809,7 @@ where
         let transfer_addr = self.context.new_transfer_addr()?;
         let transfer = {
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
-            let from: AccountHash = self.context.account().account_hash();
+            let from: AccountHash = self.context.contract().account_hash();
             let fee: U512 = U512::zero(); // TODO
             Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
         };

@@ -12,10 +12,10 @@ use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account,
-    account::TryFromSliceForAccountHashError,
     bytesrepr::{Bytes, Error, FromBytes, ToBytes},
-    checksummed_hex, uref, CLType, CLTyped, HashAddr,
+    checksummed_hex, contracts,
+    contracts::TryFromSliceForAccountHashError,
+    uref, CLType, CLTyped, HashAddr,
 };
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
@@ -31,9 +31,9 @@ pub struct TryFromSliceForContractHashError(());
 pub enum FromStrError {
     InvalidPrefix,
     Hex(base16::DecodeError),
-    Account(TryFromSliceForAccountHashError),
+    // Account(TryFromSliceForAccountHashError),
     Hash(TryFromSliceError),
-    AccountHash(account::FromStrError),
+    AccountHash(contracts::FromAccountHashStrError),
     URef(uref::FromStrError),
 }
 
@@ -43,11 +43,11 @@ impl From<base16::DecodeError> for FromStrError {
     }
 }
 
-impl From<TryFromSliceForAccountHashError> for FromStrError {
-    fn from(error: TryFromSliceForAccountHashError) -> Self {
-        FromStrError::Account(error)
-    }
-}
+// impl From<TryFromSliceForAccountHashError> for FromStrError {
+//     fn from(error: TryFromSliceForAccountHashError) -> Self {
+//         FromStrError::Account(error)
+//     }
+// }
 
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
@@ -55,8 +55,8 @@ impl From<TryFromSliceError> for FromStrError {
     }
 }
 
-impl From<account::FromStrError> for FromStrError {
-    fn from(error: account::FromStrError) -> Self {
+impl From<contracts::FromAccountHashStrError> for FromStrError {
+    fn from(error: contracts::FromAccountHashStrError) -> Self {
         FromStrError::AccountHash(error)
     }
 }
@@ -72,7 +72,7 @@ impl Display for FromStrError {
         match self {
             FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
             FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
-            FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
+            // FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
             FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
             FromStrError::AccountHash(error) => {
                 write!(f, "account hash from string error: {:?}", error)

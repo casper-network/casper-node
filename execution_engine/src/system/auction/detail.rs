@@ -3,8 +3,8 @@ use std::{collections::BTreeMap, convert::TryInto};
 use num_rational::Ratio;
 
 use casper_types::{
-    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    contracts::AccountHash,
     system::auction::{
         Bids, Delegator, Error, SeigniorageAllocation, SeigniorageRecipientsSnapshot,
         UnbondingPurse, UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY,

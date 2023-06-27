@@ -4,8 +4,8 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::FromPrimitive;
 
 use crate::{
-    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contracts::AccountHash,
     CLType, CLTyped, ContractHash, ContractPackageHash,
 };
 

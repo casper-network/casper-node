@@ -2,6 +2,13 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
+pub mod account_hash;
+pub mod action_thresholds;
+mod action_type;
+pub mod associated_keys;
+mod error;
+mod weight;
+
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
@@ -13,6 +20,7 @@ use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
 };
+use std::iter;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -20,21 +28,39 @@ use datasize::DataSize;
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+pub use self::{
+    account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
+    action_thresholds::ActionThresholds,
+    action_type::ActionType,
+    associated_keys::AssociatedKeys,
+    error::{
+        FromAccountHashStrError, SetThresholdFailure, TryFromIntError,
+        TryFromSliceForAccountHashError,
+    },
+    weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
+};
+
+use crate::bytesrepr::U8_SERIALIZED_LENGTH;
+use crate::system::SystemContractType;
 use crate::{
-    account,
-    account::TryFromSliceForAccountHashError,
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
+    crypto::{self, PublicKey},
     uref,
     uref::URef,
-    CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
+    AccessRights, CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion,
+    BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
+
+pub const PACKAGE_KIND_WASM_TAG: u8 = 0;
+pub const PACKAGE_KIND_SYSTEM_CONTRACT_TAG: u8 = 1;
+pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
 const PACKAGE_STRING_PREFIX: &str = "contract-package-";
@@ -150,8 +176,6 @@ pub enum FromStrError {
     Account(TryFromSliceForAccountHashError),
     /// Error when parsing the hash.
     Hash(TryFromSliceError),
-    /// Error when parsing an account hash.
-    AccountHash(account::FromStrError),
     /// Error when parsing an uref.
     URef(uref::FromStrError),
 }
@@ -162,21 +186,15 @@ impl From<base16::DecodeError> for FromStrError {
     }
 }
 
-impl From<TryFromSliceForAccountHashError> for FromStrError {
-    fn from(error: TryFromSliceForAccountHashError) -> Self {
-        FromStrError::Account(error)
-    }
-}
+// impl From<TryFromSliceForAccountHashError> for FromStrError {
+//     fn from(error: TryFromSliceForAccountHashError) -> Self {
+//         FromStrError::Account(error)
+//     }
+// }
 
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
         FromStrError::Hash(error)
-    }
-}
-
-impl From<account::FromStrError> for FromStrError {
-    fn from(error: account::FromStrError) -> Self {
-        FromStrError::AccountHash(error)
     }
 }
 
@@ -191,12 +209,15 @@ impl Display for FromStrError {
         match self {
             FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
             FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
-            FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
+            // FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
             FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
-            FromStrError::AccountHash(error) => {
+            // FromStrError::AccountHash(error) => {
+            //     write!(f, "account hash from string error: {:?}", error)
+            // }
+            FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
+            FromStrError::Account(error) => {
                 write!(f, "account hash from string error: {:?}", error)
             }
-            FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
         }
     }
 }
@@ -527,6 +548,35 @@ impl ContractPackageHash {
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
         Ok(ContractPackageHash(bytes))
     }
+
+    /// Parses a `PublicKey` and outputs the corresponding account hash.
+    pub fn from_public_key(
+        public_key: &PublicKey,
+        blake2b_hash_fn: impl Fn(Vec<u8>) -> [u8; BLAKE2B_DIGEST_LENGTH],
+    ) -> Self {
+        const SYSTEM_LOWERCASE: &str = "system";
+        const ED25519_LOWERCASE: &str = "ed25519";
+        const SECP256K1_LOWERCASE: &str = "secp256k1";
+
+        let algorithm_name = match public_key {
+            PublicKey::System => SYSTEM_LOWERCASE,
+            PublicKey::Ed25519(_) => ED25519_LOWERCASE,
+            PublicKey::Secp256k1(_) => SECP256K1_LOWERCASE,
+        };
+        let public_key_bytes: Vec<u8> = public_key.into();
+
+        // Prepare preimage based on the public key parameters.
+        let preimage = {
+            let mut data = Vec::with_capacity(algorithm_name.len() + public_key_bytes.len() + 1);
+            data.extend(algorithm_name.as_bytes());
+            data.push(0);
+            data.extend(public_key_bytes);
+            data
+        };
+        // Hash the preimage data using blake2b256 and return it.
+        let digest = blake2b_hash_fn(preimage);
+        Self::new(digest)
+    }
 }
 
 impl Display for ContractPackageHash {
@@ -626,6 +676,12 @@ impl TryFrom<&Vec<u8>> for ContractPackageHash {
     }
 }
 
+impl From<&PublicKey> for ContractPackageHash {
+    fn from(public_key: &PublicKey) -> Self {
+        ContractPackageHash::from_public_key(public_key, crypto::blake2b)
+    }
+}
+
 #[cfg(feature = "json-schema")]
 impl JsonSchema for ContractPackageHash {
     fn schema_name() -> String {
@@ -703,6 +759,64 @@ impl FromBytes for ContractPackageStatus {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub enum ContractPackageKind {
+    #[default]
+    Wasm,
+    System(SystemContractType),
+    Account(AccountHash),
+}
+
+impl ToBytes for ContractPackageKind {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        match self {
+            ContractPackageKind::Wasm => {
+                result.insert(0, PACKAGE_KIND_WASM_TAG);
+            }
+            ContractPackageKind::System(system_contract_type) => {
+                result.insert(0, PACKAGE_KIND_SYSTEM_CONTRACT_TAG);
+                result.extend_from_slice(&system_contract_type.to_bytes()?);
+            }
+            ContractPackageKind::Account(account_hash) => {
+                result.insert(0, PACKAGE_KIND_ACCOUNT_TAG);
+                result.extend_from_slice(&account_hash.to_bytes()?);
+            }
+        }
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                ContractPackageKind::Wasm => 0 as usize,
+                ContractPackageKind::System(system_contract_type) => {
+                    system_contract_type.serialized_length()
+                }
+                ContractPackageKind::Account(account_hash) => account_hash.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for ContractPackageKind {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            PACKAGE_KIND_WASM_TAG => Ok((ContractPackageKind::Wasm, remainder)),
+            PACKAGE_KIND_SYSTEM_CONTRACT_TAG => {
+                let (system_contract_type, remainder) = SystemContractType::from_bytes(remainder)?;
+                Ok((ContractPackageKind::System(system_contract_type), remainder))
+            }
+            PACKAGE_KIND_ACCOUNT_TAG => {
+                let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
+                Ok((ContractPackageKind::Account(account_hash), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
 /// Contract definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -720,6 +834,8 @@ pub struct ContractPackage {
     groups: Groups,
     /// A flag that determines whether a contract is locked
     lock_status: ContractPackageStatus,
+
+    contract_package_kind: ContractPackageKind,
 }
 
 impl CLTyped for ContractPackage {
@@ -736,6 +852,7 @@ impl ContractPackage {
         disabled_versions: DisabledVersions,
         groups: Groups,
         lock_status: ContractPackageStatus,
+        contract_package_kind: ContractPackageKind,
     ) -> Self {
         ContractPackage {
             access_key,
@@ -743,6 +860,7 @@ impl ContractPackage {
             disabled_versions,
             groups,
             lock_status,
+            contract_package_kind,
         }
     }
 
@@ -950,15 +1068,160 @@ impl FromBytes for ContractPackage {
         let (disabled_versions, bytes) = DisabledVersions::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
+        let (contract_package_kind, bytes) = ContractPackageKind::from_bytes(bytes)?;
         let result = ContractPackage {
             access_key,
             versions,
             disabled_versions,
             groups,
             lock_status,
+            contract_package_kind,
         };
 
         Ok((result, bytes))
+    }
+}
+
+/// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[repr(i32)]
+#[non_exhaustive]
+pub enum AddKeyFailure {
+    /// There are already maximum [`AccountHash`]s associated with the given account.
+    MaxKeysLimit = 1,
+    /// The given [`AccountHash`] is already associated with the given account.
+    DuplicateKey = 2,
+    /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
+    /// given account.
+    PermissionDenied = 3,
+}
+
+impl Display for AddKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            AddKeyFailure::MaxKeysLimit => formatter.write_str(
+                "Unable to add new associated key because maximum amount of keys is reached",
+            ),
+            AddKeyFailure::DuplicateKey => formatter
+                .write_str("Unable to add new associated key because given key already exists"),
+            AddKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to add new associated key due to insufficient permissions"),
+        }
+    }
+}
+
+// This conversion is not intended to be used by third party crates.
+#[doc(hidden)]
+impl TryFrom<i32> for AddKeyFailure {
+    type Error = TryFromIntError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            d if d == AddKeyFailure::MaxKeysLimit as i32 => Ok(AddKeyFailure::MaxKeysLimit),
+            d if d == AddKeyFailure::DuplicateKey as i32 => Ok(AddKeyFailure::DuplicateKey),
+            d if d == AddKeyFailure::PermissionDenied as i32 => Ok(AddKeyFailure::PermissionDenied),
+            _ => Err(TryFromIntError(())),
+        }
+    }
+}
+
+/// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[repr(i32)]
+#[non_exhaustive]
+pub enum RemoveKeyFailure {
+    /// The given [`AccountHash`] is not associated with the given account.
+    MissingKey = 1,
+    /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
+    /// given account.
+    PermissionDenied = 2,
+    /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
+    /// `AccountHash`s to fall below one of the action thresholds for the given account.
+    ThresholdViolation = 3,
+}
+
+impl Display for RemoveKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            RemoveKeyFailure::MissingKey => {
+                formatter.write_str("Unable to remove a key that does not exist")
+            }
+            RemoveKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to remove associated key due to insufficient permissions"),
+            RemoveKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to remove a key which would violate action threshold constraints",
+            ),
+        }
+    }
+}
+
+// This conversion is not intended to be used by third party crates.
+#[doc(hidden)]
+impl TryFrom<i32> for RemoveKeyFailure {
+    type Error = TryFromIntError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            d if d == RemoveKeyFailure::MissingKey as i32 => Ok(RemoveKeyFailure::MissingKey),
+            d if d == RemoveKeyFailure::PermissionDenied as i32 => {
+                Ok(RemoveKeyFailure::PermissionDenied)
+            }
+            d if d == RemoveKeyFailure::ThresholdViolation as i32 => {
+                Ok(RemoveKeyFailure::ThresholdViolation)
+            }
+            _ => Err(TryFromIntError(())),
+        }
+    }
+}
+
+/// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
+/// associated keys map.
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[repr(i32)]
+#[non_exhaustive]
+pub enum UpdateKeyFailure {
+    /// The given [`AccountHash`] is not associated with the given account.
+    MissingKey = 1,
+    /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
+    /// given account.
+    PermissionDenied = 2,
+    /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
+    /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
+    /// account.
+    ThresholdViolation = 3,
+}
+
+impl Display for UpdateKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            UpdateKeyFailure::MissingKey => formatter.write_str(
+                "Unable to update the value under an associated key that does not exist",
+            ),
+            UpdateKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to update associated key due to insufficient permissions"),
+            UpdateKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to update weight that would fall below any of action thresholds",
+            ),
+        }
+    }
+}
+
+// This conversion is not intended to be used by third party crates.
+#[doc(hidden)]
+impl TryFrom<i32> for UpdateKeyFailure {
+    type Error = TryFromIntError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            d if d == UpdateKeyFailure::MissingKey as i32 => Ok(UpdateKeyFailure::MissingKey),
+            d if d == UpdateKeyFailure::PermissionDenied as i32 => {
+                Ok(UpdateKeyFailure::PermissionDenied)
+            }
+            d if d == UpdateKeyFailure::ThresholdViolation as i32 => {
+                Ok(UpdateKeyFailure::ThresholdViolation)
+            }
+            _ => Err(TryFromIntError(())),
+        }
     }
 }
 
@@ -1064,6 +1327,9 @@ pub struct Contract {
     named_keys: NamedKeys,
     entry_points: EntryPoints,
     protocol_version: ProtocolVersion,
+    main_purse: URef,
+    associated_keys: AssociatedKeys,
+    action_thresholds: ActionThresholds,
 }
 
 impl From<Contract>
@@ -1073,6 +1339,9 @@ impl From<Contract>
         NamedKeys,
         EntryPoints,
         ProtocolVersion,
+        URef,
+        AssociatedKeys,
+        ActionThresholds,
     )
 {
     fn from(contract: Contract) -> Self {
@@ -1082,6 +1351,9 @@ impl From<Contract>
             contract.named_keys,
             contract.entry_points,
             contract.protocol_version,
+            contract.main_purse,
+            contract.associated_keys,
+            contract.action_thresholds,
         )
     }
 }
@@ -1094,6 +1366,9 @@ impl Contract {
         named_keys: NamedKeys,
         entry_points: EntryPoints,
         protocol_version: ProtocolVersion,
+        main_purse: URef,
+        associated_keys: AssociatedKeys,
+        action_thresholds: ActionThresholds,
     ) -> Self {
         Contract {
             contract_package_hash,
@@ -1101,6 +1376,9 @@ impl Contract {
             named_keys,
             entry_points,
             protocol_version,
+            main_purse,
+            action_thresholds,
+            associated_keys,
         }
     }
 
@@ -1127,6 +1405,153 @@ impl Contract {
     /// Get the protocol version this header is targeting.
     pub fn protocol_version(&self) -> ProtocolVersion {
         self.protocol_version
+    }
+
+    /// Returns main purse.
+    pub fn main_purse(&self) -> URef {
+        self.main_purse
+    }
+
+    /// Returns an [`AccessRights::ADD`]-only version of the main purse's [`URef`].
+    pub fn main_purse_add_only(&self) -> URef {
+        URef::new(self.main_purse.addr(), AccessRights::ADD)
+    }
+
+    /// Returns associated keys.
+    pub fn associated_keys(&self) -> &AssociatedKeys {
+        &self.associated_keys
+    }
+
+    /// Returns action thresholds.
+    pub fn action_thresholds(&self) -> &ActionThresholds {
+        &self.action_thresholds
+    }
+
+    /// Adds an associated key to an account.
+    pub fn add_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), AddKeyFailure> {
+        self.associated_keys.add_key(account_hash, weight)
+    }
+
+    /// Checks if removing given key would properly satisfy thresholds.
+    fn can_remove_key(&self, account_hash: AccountHash) -> bool {
+        let total_weight_without = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Returns true if the total weight calculated without given public key would be greater or
+        // equal to all of the thresholds.
+        total_weight_without >= *self.action_thresholds().deployment()
+            && total_weight_without >= *self.action_thresholds().key_management()
+    }
+
+    /// Checks if adding a weight to a sum of all weights excluding the given key would make the
+    /// resulting value to fall below any of the thresholds on account.
+    fn can_update_key(&self, account_hash: AccountHash, weight: Weight) -> bool {
+        // Calculates total weight of all keys excluding the given key
+        let total_weight = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Safely calculate new weight by adding the updated weight
+        let new_weight = total_weight.value().saturating_add(weight.value());
+
+        // Returns true if the new weight would be greater or equal to all of
+        // the thresholds.
+        new_weight >= self.action_thresholds().deployment().value()
+            && new_weight >= self.action_thresholds().key_management().value()
+    }
+
+    /// Removes an associated key from an account.
+    ///
+    /// Verifies that removing the key will not cause the remaining weight to fall below any action
+    /// thresholds.
+    pub fn remove_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<(), RemoveKeyFailure> {
+        if self.associated_keys.contains_key(&account_hash) {
+            // Check if removing this weight would fall below thresholds
+            if !self.can_remove_key(account_hash) {
+                return Err(RemoveKeyFailure::ThresholdViolation);
+            }
+        }
+        self.associated_keys.remove_key(&account_hash)
+    }
+
+    /// Updates an associated key.
+    ///
+    /// Returns an error if the update would result in a violation of the key management thresholds.
+    pub fn update_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), UpdateKeyFailure> {
+        if let Some(current_weight) = self.associated_keys.get(&account_hash) {
+            if weight < *current_weight {
+                // New weight is smaller than current weight
+                if !self.can_update_key(account_hash, weight) {
+                    return Err(UpdateKeyFailure::ThresholdViolation);
+                }
+            }
+        }
+        self.associated_keys.update_key(account_hash, weight)
+    }
+
+    /// Sets new action threshold for a given action type for the account.
+    ///
+    /// Returns an error if the new action threshold weight is greater than the total weight of the
+    /// account's associated keys.
+    pub fn set_action_threshold(
+        &mut self,
+        action_type: ActionType,
+        weight: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        // Verify if new threshold weight exceeds total weight of all associated
+        // keys.
+        self.can_set_threshold(weight)?;
+        // Set new weight for given action
+        self.action_thresholds.set_threshold(action_type, weight)
+    }
+
+    /// Verifies if user can set action threshold.
+    pub fn can_set_threshold(&self, new_threshold: Weight) -> Result<(), SetThresholdFailure> {
+        let total_weight = self.associated_keys.total_keys_weight();
+        if new_threshold > total_weight {
+            return Err(SetThresholdFailure::InsufficientTotalWeight);
+        }
+        Ok(())
+    }
+
+    /// Checks whether all authorization keys are associated with this account.
+    pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        !authorization_keys.is_empty()
+            && authorization_keys
+                .iter()
+                .all(|e| self.associated_keys.contains_key(e))
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to deploy threshold.
+    pub fn can_deploy_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().deployment()
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to key management threshold.
+    pub fn can_manage_keys_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().key_management()
     }
 
     /// Adds new entry point
@@ -1179,7 +1604,8 @@ impl Contract {
         let urefs_iter = self
             .named_keys
             .values()
-            .filter_map(|key| key.as_uref().copied());
+            .filter_map(|key| key.as_uref().copied())
+            .chain(iter::once(self.main_purse));
         ContextAccessRights::new(contract_hash.into(), urefs_iter)
     }
 }
@@ -1192,6 +1618,9 @@ impl ToBytes for Contract {
         self.named_keys().write_bytes(&mut result)?;
         self.entry_points().write_bytes(&mut result)?;
         self.protocol_version().write_bytes(&mut result)?;
+        self.main_purse().write_bytes(&mut result)?;
+        self.associated_keys().write_bytes(&mut result)?;
+        self.action_thresholds().write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -1201,6 +1630,9 @@ impl ToBytes for Contract {
             + ToBytes::serialized_length(&self.contract_wasm_hash)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.named_keys)
+            + ToBytes::serialized_length(&self.main_purse)
+            + ToBytes::serialized_length(&self.associated_keys)
+            + ToBytes::serialized_length(&self.action_thresholds)
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1220,6 +1652,9 @@ impl FromBytes for Contract {
         let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
         let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
+        let (main_purse, bytes) = URef::from_bytes(bytes)?;
+        let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
+        let (action_thresholds, bytes) = ActionThresholds::from_bytes(bytes)?;
         Ok((
             Contract {
                 contract_package_hash,
@@ -1227,6 +1662,9 @@ impl FromBytes for Contract {
                 named_keys,
                 entry_points,
                 protocol_version,
+                main_purse,
+                associated_keys,
+                action_thresholds,
             },
             bytes,
         ))
@@ -1241,6 +1679,9 @@ impl Default for Contract {
             contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
             contract_package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
+            main_purse: URef::default(),
+            action_thresholds: ActionThresholds::default(),
+            associated_keys: AssociatedKeys::default(),
         }
     }
 }
@@ -1589,6 +2030,7 @@ mod tests {
             DisabledVersions::default(),
             Groups::default(),
             ContractPackageStatus::default(),
+            ContractPackageKind::Wasm,
         );
 
         // add groups
@@ -1651,6 +2093,7 @@ mod tests {
             DisabledVersions::default(),
             Groups::default(),
             ContractPackageStatus::default(),
+            ContractPackageKind::Wasm,
         );
         assert_eq!(contract_package.next_contract_version_for(major), 1);
 
@@ -1890,6 +2333,8 @@ mod tests {
 
     #[test]
     fn should_extract_access_rights() {
+        const MAIN_PURSE: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
+
         let contract_hash = ContractHash([255; 32]);
         let uref = URef::new([84; UREF_ADDR_LENGTH], AccessRights::READ_ADD);
         let uref_r = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ);
@@ -1900,12 +2345,17 @@ mod tests {
         named_keys.insert("b".to_string(), Key::URef(uref_a));
         named_keys.insert("c".to_string(), Key::URef(uref_w));
         named_keys.insert("d".to_string(), Key::URef(uref));
+        let associated_keys = AssociatedKeys::new(AccountHash::new([254; 32]), Weight::new(1));
         let contract = Contract::new(
             ContractPackageHash::new([254; 32]),
             ContractWasmHash::new([253; 32]),
             named_keys,
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
+            MAIN_PURSE,
+            associated_keys,
+            ActionThresholds::new(Weight::new(1), Weight::new(1))
+                .expect("should create thresholds"),
         );
         let access_rights = contract.extract_access_rights(contract_hash);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);

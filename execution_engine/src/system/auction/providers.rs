@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    contracts::AccountHash,
     system::{
         auction::{Bid, EraInfo, Error, UnbondingPurse},
         mint,

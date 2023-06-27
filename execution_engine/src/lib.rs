@@ -18,3 +18,6 @@ pub mod config;
 pub mod core;
 pub mod shared;
 mod system;
+
+/// A special contract wasm hash for contracts representing Accounts.
+pub const ACCOUNT_WASM_ADDR: [u8; 32] = [0u8; 32];

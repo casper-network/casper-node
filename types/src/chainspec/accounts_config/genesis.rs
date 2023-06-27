@@ -8,9 +8,9 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    account::AccountHash,
     bytesrepr,
     bytesrepr::{FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    contracts::AccountHash,
     system::auction::DelegationRate,
     Motes, PublicKey, SecretKey,
 };

@@ -3,9 +3,12 @@ use std::{
     iter::FromIterator,
 };
 
+use casper_types::contracts::ContractPackageKind;
 use casper_types::{
-    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
-    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
+    contracts::{
+        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageStatus, ContractVersions,
+        DisabledVersions, Groups, NamedKeys, Weight,
+    },
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
@@ -289,18 +292,18 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
-        let account = Account::new(
-            account_hash,
-            account_named_keys,
-            URef::new([17; 32], AccessRights::WRITE),
-            associated_keys,
-            ActionThresholds::new(Weight::new(1), Weight::new(1)).unwrap(),
-        );
-
-        stored_value.insert(
-            "Account".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
-        );
+        // let account = Account::new(
+        //     account_hash,
+        //     account_named_keys,
+        //     URef::new([17; 32], AccessRights::WRITE),
+        //     associated_keys,
+        //     ActionThresholds::new(Weight::new(1), Weight::new(1)).unwrap(),
+        // );
+        //
+        // stored_value.insert(
+        //     "Account".to_string(),
+        //     ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
+        // );
 
         let contract_wasm = ContractWasm::new(DO_NOTHING_BYTES.to_vec());
 
@@ -343,6 +346,9 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             contract_named_keys,
             entry_points,
             ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
         );
         stored_value.insert(
             "Contract".to_string(),
@@ -372,6 +378,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             disabled_versions,
             groups,
             ContractPackageStatus::Locked,
+            ContractPackageKind::Wasm,
         );
 
         stored_value.insert(

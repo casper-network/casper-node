@@ -6,11 +6,11 @@ use core::{
 };
 
 use crate::{
-    account::{
-        AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, TryFromIntError,
+    bytesrepr,
+    contracts::{
+        self, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, TryFromIntError,
         TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
-    bytesrepr, contracts,
     system::{auction, handle_payment, mint},
     CLValueError,
 };

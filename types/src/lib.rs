@@ -23,7 +23,7 @@
 extern crate alloc;
 
 mod access_rights;
-pub mod account;
+// pub mod account;
 pub mod api_error;
 mod block_time;
 pub mod bytesrepr;

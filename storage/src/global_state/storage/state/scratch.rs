@@ -359,7 +359,7 @@ pub(crate) mod tests {
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
-    use casper_types::{account::AccountHash, CLValue, Digest};
+    use casper_types::{contracts::AccountHash, CLValue, Digest};
 
     use super::*;
     use crate::global_state::storage::{

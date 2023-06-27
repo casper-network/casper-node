@@ -2,7 +2,9 @@ mod internal;
 pub(crate) mod mint_provider;
 pub(crate) mod runtime_provider;
 
-use casper_types::{account::AccountHash, system::handle_payment::Error, AccessRights, URef, U512};
+use casper_types::{
+    contracts::AccountHash, system::handle_payment::Error, AccessRights, URef, U512,
+};
 
 use crate::system::handle_payment::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,

@@ -4,11 +4,12 @@ use alloc::vec::Vec;
 use core::convert::TryFrom;
 
 use casper_types::{
-    account::{
+    bytesrepr,
+    contracts::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    bytesrepr, URef, UREF_SERIALIZED_LENGTH,
+    URef, UREF_SERIALIZED_LENGTH,
 };
 
 use super::to_ptr;

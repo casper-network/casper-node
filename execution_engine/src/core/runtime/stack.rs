@@ -1,6 +1,6 @@
 //! Runtime stacks.
 
-use casper_types::{account::AccountHash, system::CallStackElement, PublicKey};
+use casper_types::{contracts::AccountHash, system::CallStackElement, PublicKey};
 
 /// A runtime stack frame.
 ///
@@ -111,7 +111,7 @@ impl RuntimeStack {
 mod test {
     use core::convert::TryInto;
 
-    use casper_types::account::{AccountHash, ACCOUNT_HASH_LENGTH};
+    use casper_types::contracts::{AccountHash, ACCOUNT_HASH_LENGTH};
 
     use super::*;
 

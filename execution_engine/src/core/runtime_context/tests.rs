@@ -14,16 +14,16 @@ use casper_storage::global_state::{
     storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
 use casper_types::{
-    account::{
-        Account, AccountHash, ActionType, AddKeyFailure, AssociatedKeys, RemoveKeyFailure,
+    bytesrepr::ToBytes,
+    contracts::{
+        AccountHash, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
         SetThresholdFailure, Weight, ACCOUNT_HASH_LENGTH,
     },
-    bytesrepr::ToBytes,
-    contracts::NamedKeys,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, BlockTime, CLValue, ContextAccessRights, Contract, ContractHash, DeployHash,
-    EntryPointType, EntryPoints, Gas, Key, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, StoredValue, URef, KEY_HASH_LENGTH, U256, U512,
+    AccessRights, BlockTime, CLValue, ContextAccessRights, Contract, ContractHash,
+    ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH,
+    U256, U512,
 };
 use tempfile::TempDir;
 
@@ -42,7 +42,7 @@ static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default)
 
 fn new_tracking_copy(
     init_key: Key,
-    init_account: Account,
+    init_account: Contract,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
     let (global_state, state_root_hash, tempdir) =
         state::make_temporary_global_state([(init_key, init_account.into())]);
@@ -57,13 +57,17 @@ fn new_tracking_copy(
 
 fn new_account_with_purse(
     account_hash: AccountHash,
+    contract_hash: ContractHash,
     purse: [u8; 32],
     named_keys: NamedKeys,
-) -> (Key, Account) {
+) -> (Key, Contract) {
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
-    let account = Account::new(
-        account_hash,
+    let account = Contract::new(
+        ContractPackageHash::default(),
+        ContractWasmHash::default(),
         named_keys,
+        EntryPoints::default(),
+        ProtocolVersion::V1_0_0,
         URef::new(purse, AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
@@ -73,8 +77,12 @@ fn new_account_with_purse(
     (key, account)
 }
 
-fn new_account(account_hash: AccountHash, named_keys: NamedKeys) -> (Key, Account) {
-    new_account_with_purse(account_hash, [0; 32], named_keys)
+fn new_account(
+    account_hash: AccountHash,
+    contract_hash: ContractHash,
+    named_keys: NamedKeys,
+) -> (Key, Contract) {
+    new_account_with_purse(account_hash, contract_hash, [0; 32], named_keys)
 }
 
 // create random account key.
@@ -236,7 +244,7 @@ fn account_key_readable_valid() {
             .expect("Account key is readable.")
             .expect("Account is found in GS.");
 
-        assert_eq!(result, StoredValue::Account(rc.account().clone()));
+        assert_eq!(result, StoredValue::Account(rc.contract().clone()));
         Ok(())
     });
 
@@ -1002,7 +1010,7 @@ fn should_meter_for_gas_storage_add() {
 #[test]
 fn associated_keys_add_full() {
     let final_add_result = build_runtime_context_and_execute(Default::default(), |mut rc| {
-        let associated_keys_before = rc.account().associated_keys().len();
+        let associated_keys_before = rc.contract().associated_keys().len();
 
         for count in 0..(rc.engine_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {

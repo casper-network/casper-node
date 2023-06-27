@@ -2,12 +2,11 @@ use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
-    account::{Account, AccountHash},
     bytesrepr::FromBytes,
-    contracts::NamedKeys,
+    contracts::{AccountHash, NamedKeys},
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, ContextAccessRights, DeployHash, EntryPointType, Gas, Key, Phase,
-    ProtocolVersion, RuntimeArgs, StoredValue, U512,
+    BlockTime, CLTyped, ContextAccessRights, Contract, ContractHash, DeployHash, EntryPointType,
+    Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::core::{
@@ -48,7 +47,8 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        account: &Account,
+        contract_hash: ContractHash,
+        contract: &Contract,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -82,8 +82,8 @@ impl Executor {
             args.clone(),
             named_keys,
             access_rights,
-            Key::from(account.account_hash()),
-            account,
+            Key::from(contract_hash),
+            contract,
             authorization_keys,
             blocktime,
             deploy_hash,
@@ -134,7 +134,7 @@ impl Executor {
         &self,
         payment_args: RuntimeArgs,
         payment_base_key: Key,
-        account: &Account,
+        account: &Contract,
         payment_named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
@@ -210,7 +210,7 @@ impl Executor {
         &self,
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
-        account: &Account,
+        account: &Contract,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
@@ -346,7 +346,7 @@ impl Executor {
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
         base_key: Key,
-        account: &'a Account,
+        account: &'a Contract,
         authorization_keys: BTreeSet<AccountHash>,
         blocktime: BlockTime,
         deploy_hash: DeployHash,

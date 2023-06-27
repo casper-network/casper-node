@@ -49,9 +49,8 @@ use casper_storage::{
 };
 
 use casper_types::{
-    account::{Account, AccountHash},
     bytesrepr::ToBytes,
-    contracts::NamedKeys,
+    contracts::{AccountHash, NamedKeys},
     system::{
         auction::{
             EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
@@ -63,8 +62,8 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash, DeployHash,
-    DeployInfo, Digest, EraId, ExecutableDeployItem, Gas, Key, KeyTag, Motes, Phase,
+    AccessRights, ApiError, BlockTime, CLValue, ChainspecRegistry, Contract, ContractHash,
+    DeployHash, DeployInfo, Digest, EraId, ExecutableDeployItem, Gas, Key, KeyTag, Motes, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
@@ -732,34 +731,42 @@ where
         Ok(results)
     }
 
-    fn get_authorized_account(
+    fn get_authorized_contract(
         &self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<Account, Error> {
-        let account: Account = match tracking_copy
+    ) -> Result<(Contract, ContractHash), Error> {
+        let contract_hash: ContractHash = match tracking_copy
             .borrow_mut()
             .get_account(correlation_id, account_hash)
         {
-            Ok(account) => account,
+            Ok(contract_hash) => contract_hash,
             Err(_) => {
                 return Err(error::Error::Authorization);
             }
         };
 
+        let contract_record = match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, contract_hash)
+        {
+            Ok(contract) => contract,
+            Err(_) => return Err(error::Error::Authorization),
+        };
+
         // Authorize using provided authorization keys
-        if !account.can_authorize(authorization_keys) {
+        if !contract_record.can_authorize(authorization_keys) {
             return Err(error::Error::Authorization);
         }
 
         // Check total key weight against deploy threshold
-        if !account.can_deploy_with(authorization_keys) {
+        if !contract_record.can_deploy_with(authorization_keys) {
             return Err(execution::Error::DeploymentAuthorizationFailure.into());
         }
 
-        Ok(account)
+        Ok((contract_record, contract_hash))
     }
 
     /// Get the balance of a passed purse referenced by its [`URef`].
@@ -818,7 +825,7 @@ where
 
         let authorization_keys = deploy_item.authorization_keys;
 
-        let account = match self.get_authorized_account(
+        let (contract, contract_hash) = match self.get_authorized_contract(
             correlation_id,
             account_hash,
             &authorization_keys,
@@ -893,7 +900,7 @@ where
 
         let proposer_purse = proposer_account.main_purse();
 
-        let account_main_purse = account.main_purse();
+        let account_main_purse = contract.main_purse();
 
         let account_main_purse_balance_key = match tracking_copy
             .borrow_mut()
@@ -947,7 +954,7 @@ where
                         .call_system_contract(
                             DirectSystemContractCall::CreatePurse,
                             RuntimeArgs::new(), // mint create takes no arguments
-                            &account,
+                            &contract,
                             authorization_keys.clone(),
                             blocktime,
                             deploy_item.deploy_hash,
@@ -983,11 +990,14 @@ where
             Err(error) => return Ok(make_charged_execution_failure(error)),
         }
 
-        let transfer_args =
-            match runtime_args_builder.build(&account, correlation_id, Rc::clone(&tracking_copy)) {
-                Ok(transfer_args) => transfer_args,
-                Err(error) => return Ok(make_charged_execution_failure(error)),
-            };
+        let transfer_args = match runtime_args_builder.build(
+            &contract,
+            correlation_id,
+            Rc::clone(&tracking_copy),
+        ) {
+            Ok(transfer_args) => transfer_args,
+            Err(error) => return Ok(make_charged_execution_failure(error)),
+        };
 
         let payment_uref;
 
@@ -1036,7 +1046,7 @@ where
                 executor.call_system_contract(
                     DirectSystemContractCall::GetPaymentPurse,
                     RuntimeArgs::default(),
-                    &account,
+                    &contract,
                     authorization_keys.clone(),
                     blocktime,
                     deploy_item.deploy_hash,
@@ -1079,7 +1089,7 @@ where
                 executor.call_system_contract(
                     DirectSystemContractCall::Transfer,
                     runtime_args,
-                    &account,
+                    &contract,
                     authorization_keys.clone(),
                     blocktime,
                     deploy_item.deploy_hash,
@@ -1165,7 +1175,7 @@ where
             .call_system_contract(
                 DirectSystemContractCall::Transfer,
                 runtime_args,
-                &account,
+                &contract,
                 authorization_keys.clone(),
                 blocktime,
                 deploy_item.deploy_hash,
@@ -1253,8 +1263,8 @@ where
             let deploy_info = DeployInfo::new(
                 deploy_item.deploy_hash,
                 transfers,
-                account.account_hash(),
-                account.main_purse(),
+                contract.account_hash(),
+                contract.main_purse(),
                 cost,
             );
             tracking_copy.borrow_mut().write(
@@ -1315,18 +1325,18 @@ where
         // validation_spec_3: account validity
 
         let authorization_keys = deploy_item.authorization_keys;
+        let account_hash = deploy_item.address;
 
         // Get account from tracking copy
         // validation_spec_3: account validity
-        let account = {
-            let account_hash = deploy_item.address;
-            match self.get_authorized_account(
+        let (contract, contract_hash) = {
+            match self.get_authorized_contract(
                 correlation_id,
                 account_hash,
                 &authorization_keys,
                 Rc::clone(&tracking_copy),
             ) {
-                Ok(account) => account,
+                Ok((contract, contract_hash)) => (contract, contract_hash),
                 Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
             }
         };
@@ -1342,7 +1352,7 @@ where
         // we do this upfront as there is no reason to continue if session logic is invalid
         let session_execution_kind = match ExecutionKind::new(
             Rc::clone(&tracking_copy),
-            account.named_keys(),
+            contract.named_keys(),
             session,
             correlation_id,
             &protocol_version,
@@ -1357,7 +1367,7 @@ where
         // Get account main purse balance key
         // validation_spec_5: account main purse minimum balance
         let account_main_purse_balance_key: Key = {
-            let account_key = Key::URef(account.main_purse());
+            let account_key = Key::URef(contract.main_purse());
             match tracking_copy
                 .borrow_mut()
                 .get_purse_balance_key(correlation_id, account_key)
@@ -1425,9 +1435,9 @@ where
             );
 
             // payment_code_spec_2: execute payment code
-            let payment_access_rights = account.extract_access_rights();
+            let payment_access_rights = contract.extract_access_rights(contract_hash);
 
-            let mut payment_named_keys = account.named_keys().clone();
+            let mut payment_named_keys = contract.named_keys().clone();
 
             let payment_args = payment.args().clone();
 
@@ -1435,8 +1445,8 @@ where
                 // Todo potentially could be moved to Executor::Exec
                 executor.exec_standard_payment(
                     payment_args,
-                    Key::Account(account.account_hash()),
-                    &account,
+                    contract_hash.into(),
+                    &contract,
                     &mut payment_named_keys,
                     payment_access_rights,
                     authorization_keys.clone(),
@@ -1452,7 +1462,7 @@ where
             } else {
                 let payment_execution_kind = match ExecutionKind::new(
                     Rc::clone(&tracking_copy),
-                    account.named_keys(),
+                    contract.named_keys(),
                     payment,
                     correlation_id,
                     &protocol_version,
@@ -1466,7 +1476,8 @@ where
                 executor.exec(
                     payment_execution_kind,
                     payment_args,
-                    &account,
+                    contract_hash,
+                    &contract,
                     &mut payment_named_keys,
                     payment_access_rights,
                     authorization_keys.clone(),
@@ -1485,7 +1496,7 @@ where
 
         // the proposer of the block this deploy is in receives the gas from this deploy execution
         let proposer_purse = {
-            let proposer_account: Account = match tracking_copy
+            let proposer_contract_hash: ContractHash = match tracking_copy
                 .borrow_mut()
                 .get_account(correlation_id, AccountHash::from(&proposer))
             {
@@ -1494,7 +1505,16 @@ where
                     return Ok(ExecutionResult::precondition_failure(error.into()));
                 }
             };
-            proposer_account.main_purse()
+
+            let proposer_contract: Contract = match tracking_copy
+                .borrow_mut()
+                .get_contract(correlation_id, proposer_contract_hash)
+            {
+                Ok(contract) => contract,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
+            };
+
+            proposer_contract.main_purse()
         };
 
         let proposer_main_purse_balance_key = {
@@ -1635,9 +1655,9 @@ where
             self.config.max_runtime_call_stack_height() as usize,
         );
 
-        let session_access_rights = account.extract_access_rights();
+        let session_access_rights = contract.extract_access_rights(contract_hash);
 
-        let mut session_named_keys = account.named_keys().clone();
+        let mut session_named_keys = contract.named_keys().clone();
 
         let mut session_result = {
             // payment_code_spec_3_b_i: if (balance of handle payment pay purse) >= (gas spent
@@ -1660,7 +1680,8 @@ where
             executor.exec(
                 session_execution_kind,
                 session_args,
-                &account,
+                contract_hash,
+                &contract,
                 &mut session_named_keys,
                 session_access_rights,
                 authorization_keys.clone(),
@@ -1683,8 +1704,8 @@ where
             let deploy_info = DeployInfo::new(
                 deploy_hash,
                 transfers,
-                account.account_hash(),
-                account.main_purse(),
+                account_hash,
+                contract.main_purse(),
                 cost,
             );
             session_tracking_copy.borrow_mut().write(
@@ -1753,7 +1774,7 @@ where
 
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
                     args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;
-                    args.insert(handle_payment::ARG_ACCOUNT, account.account_hash())?;
+                    args.insert(handle_payment::ARG_ACCOUNT, account_hash)?;
                     args.insert(handle_payment::ARG_TARGET, proposer_purse)?;
                     Ok(())
                 });

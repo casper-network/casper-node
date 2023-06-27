@@ -4,9 +4,9 @@ use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
-    account::AccountHash,
     api_error,
     bytesrepr::{self, ToBytes},
+    contracts::AccountHash,
     contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     crypto,
     system::auction::EraInfo,

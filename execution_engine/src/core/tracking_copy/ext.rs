@@ -5,9 +5,8 @@ use casper_storage::global_state::{
     storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 use casper_types::{
-    account::{Account, AccountHash},
-    CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    ContractWasmHash, Key, Motes, StoredValue, StoredValueTypeMismatch, URef,
+    contracts::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, ContractWasmHash, Key, Motes, StoredValue, StoredValueTypeMismatch, URef,
 };
 
 use crate::core::{
@@ -21,19 +20,19 @@ pub trait TrackingCopyExt<R> {
     /// The type for the returned errors.
     type Error;
 
-    /// Gets the account at a given account address.
-    fn get_account(
-        &mut self,
-        correlation_id: CorrelationId,
-        account_hash: AccountHash,
-    ) -> Result<Account, Self::Error>;
-
-    /// Reads the account at a given account address.
-    fn read_account(
-        &mut self,
-        correlation_id: CorrelationId,
-        account_hash: AccountHash,
-    ) -> Result<Account, Self::Error>;
+    // /// Gets the account at a given account address.
+    // fn get_account(
+    //     &mut self,
+    //     correlation_id: CorrelationId,
+    //     account_hash: AccountHash,
+    // ) -> Result<Account, Self::Error>;
+    //
+    // /// Reads the account at a given account address.
+    // fn read_account(
+    //     &mut self,
+    //     correlation_id: CorrelationId,
+    //     account_hash: AccountHash,
+    // ) -> Result<Account, Self::Error>;
 
     // TODO: make this a static method
     /// Gets the purse balance key for a given purse id.
@@ -105,38 +104,41 @@ where
 {
     type Error = execution::Error;
 
-    fn get_account(
-        &mut self,
-        correlation_id: CorrelationId,
-        account_hash: AccountHash,
-    ) -> Result<Account, Self::Error> {
-        let account_key = Key::Account(account_hash);
-        match self.get(correlation_id, &account_key).map_err(Into::into)? {
-            Some(StoredValue::Account(account)) => Ok(account),
-            Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
-            )),
-            None => Err(execution::Error::KeyNotFound(account_key)),
-        }
-    }
-
-    fn read_account(
-        &mut self,
-        correlation_id: CorrelationId,
-        account_hash: AccountHash,
-    ) -> Result<Account, Self::Error> {
-        let account_key = Key::Account(account_hash);
-        match self
-            .read(correlation_id, &account_key)
-            .map_err(Into::into)?
-        {
-            Some(StoredValue::Account(account)) => Ok(account),
-            Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
-            )),
-            None => Err(execution::Error::KeyNotFound(account_key)),
-        }
-    }
+    // fn get_account(
+    //     &mut self,
+    //     correlation_id: CorrelationId,
+    //     account_hash: AccountHash,
+    // ) -> Result<ContractHash, Self::Error> {
+    //     let account_key = Key::Account(account_hash);
+    //     match self.get(correlation_id, &account_key).map_err(Into::into)? {
+    //         Some(StoredValue::Account(cl_value)) => {
+    //             let contract_hash = CLValue::into_t::<ContractHash>(cl_value)?;
+    //             Ok(contract_hash)
+    //         }
+    //         Some(other) => Err(execution::Error::TypeMismatch(
+    //             StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
+    //         )),
+    //         None => Err(execution::Error::KeyNotFound(account_key)),
+    //     }
+    // }
+    //
+    // fn read_account(
+    //     &mut self,
+    //     correlation_id: CorrelationId,
+    //     account_hash: AccountHash,
+    // ) -> Result<Account, Self::Error> {
+    //     let account_key = Key::Account(account_hash);
+    //     match self
+    //         .read(correlation_id, &account_key)
+    //         .map_err(Into::into)?
+    //     {
+    //         Some(StoredValue::Account(account)) => Ok(account),
+    //         Some(other) => Err(execution::Error::TypeMismatch(
+    //             StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
+    //         )),
+    //         None => Err(execution::Error::KeyNotFound(account_key)),
+    //     }
+    // }
 
     fn get_purse_balance_key(
         &self,

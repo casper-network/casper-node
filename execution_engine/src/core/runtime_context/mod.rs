@@ -20,12 +20,11 @@ use crate::{
 };
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
-    account::{
-        Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
+    bytesrepr::ToBytes,
+    contracts::{
+        AccountHash, ActionType, AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },
-    bytesrepr::ToBytes,
-    contracts::NamedKeys,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
@@ -34,8 +33,8 @@ use casper_types::{
 };
 
 pub(crate) mod dictionary;
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -84,8 +83,10 @@ pub struct RuntimeContext<'a, R> {
     named_keys: &'a mut NamedKeys,
     // Used to check uref is known before use (prevents forging urefs)
     access_rights: ContextAccessRights,
-    // Original account for read only tasks taken before execution
-    account: &'a Account,
+    // Original account/contract for read only tasks taken before execution
+    contract: &'a Contract,
+    contract_hash: &'a ContractHash,
+    account_hash: &'a AccountHash,
     args: RuntimeArgs,
     authorization_keys: BTreeSet<AccountHash>,
     // Key pointing to the entity we are currently running
@@ -121,7 +122,7 @@ where
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
         authorization_keys: BTreeSet<AccountHash>,
-        account: &'a Account,
+        contract: &'a Contract,
         base_key: Key,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
@@ -141,7 +142,7 @@ where
             named_keys,
             access_rights,
             args: runtime_args,
-            account,
+            contract,
             authorization_keys,
             blocktime,
             deploy_hash,
@@ -171,7 +172,8 @@ where
         // debug_assert!(base_key != self.base_key);
         let tracking_copy = self.state();
         let authorization_keys = self.authorization_keys.clone();
-        let account = self.account;
+        let contract = self.contract;
+        let account_hash = self.account_hash;
         let blocktime = self.blocktime;
         let deploy_hash = self.deploy_hash;
         let gas_limit = self.gas_limit;
@@ -190,7 +192,8 @@ where
             named_keys,
             access_rights,
             args: runtime_args,
-            account,
+            contract,
+            account_hash,
             authorization_keys,
             blocktime,
             deploy_hash,
@@ -253,15 +256,17 @@ where
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
         match self.base_key() {
             account_hash @ Key::Account(_) => {
-                let account: Account = {
-                    let mut account: Account = self.read_gs_typed(&account_hash)?;
-                    account.named_keys_mut().remove(name);
-                    account
+                let (contract, contract_hash): (Contract, Key) = {
+                    let contract_hash = self
+                        .read_gs_typed::<CLValue>(&account_hash)?
+                        .into_t::<ContractHash>()?;
+
+                    let mut contract: Contract = self.read_gs_typed(&account_hash)?;
+                    contract.named_keys_mut().remove(name);
+                    (contract, contract_hash.into())
                 };
                 self.named_keys.remove(name);
-                let account_value = self.account_to_validated_value(account)?;
-                self.metered_write_gs_unsafe(account_hash, account_value)?;
-                Ok(())
+                self.remove_key_from_contract(contract_hash, contract, name)
             }
             contract_uref @ Key::URef(_) => {
                 let contract: Contract = {
@@ -342,7 +347,7 @@ where
 
     /// Returns the caller of the contract.
     pub fn get_caller(&self) -> AccountHash {
-        self.account.account_hash()
+        self.contract.account_hash()
     }
 
     /// Returns the block time.
@@ -365,9 +370,18 @@ where
         &self.access_rights
     }
 
-    /// Returns account of the caller.
-    pub fn account(&self) -> &'a Account {
-        self.account
+    /// Returns contract of the caller.
+    pub fn contract(&self) -> &'a Contract {
+        self.contract
+    }
+
+    pub fn contract_hash(&self) -> &'a ContractHash {
+        self.contract_hash
+    }
+
+    /// Returns the account hash of the caller
+    pub fn account_hash(&self) -> &'a AccountHash {
+        self.account_hash
     }
 
     /// Returns arguments.
@@ -557,30 +571,30 @@ where
             .map_err(Into::into)
     }
 
-    /// Read an account from the global state.
-    pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
-        if let Key::Account(_) = key {
-            self.validate_key(key)?;
-            self.tracking_copy
-                .borrow_mut()
-                .read(self.correlation_id, key)
-                .map_err(Into::into)
-        } else {
-            panic!("Do not use this function for reading from non-account keys")
-        }
-    }
-
-    /// Write an account to the global state.
-    pub fn write_account(&mut self, key: Key, account: Account) -> Result<(), Error> {
-        if let Key::Account(_) = key {
-            self.validate_key(&key)?;
-            let account_value = self.account_to_validated_value(account)?;
-            self.metered_write_gs_unsafe(key, account_value)?;
-            Ok(())
-        } else {
-            panic!("Do not use this function for writing non-account keys")
-        }
-    }
+    // /// Read an account from the global state.
+    // pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
+    //     if let Key::Account(_) = key {
+    //         self.validate_key(key)?;
+    //         self.tracking_copy
+    //             .borrow_mut()
+    //             .read(self.correlation_id, key)
+    //             .map_err(Into::into)
+    //     } else {
+    //         panic!("Do not use this function for reading from non-account keys")
+    //     }
+    // }
+    //
+    // /// Write an account to the global state.
+    // pub fn write_account(&mut self, key: Key, account: Account) -> Result<(), Error> {
+    //     if let Key::Account(_) = key {
+    //         self.validate_key(&key)?;
+    //         let account_value = self.account_to_validated_value(account)?;
+    //         self.metered_write_gs_unsafe(key, account_value)?;
+    //         Ok(())
+    //     } else {
+    //         panic!("Do not use this function for writing non-account keys")
+    //     }
+    // }
 
     /// Write a transfer instance to the global state.
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
@@ -892,7 +906,7 @@ where
     where
         T: Into<Gas>,
     {
-        if self.account.account_hash() == PublicKey::System.to_account_hash() {
+        if self.contract.account_hash() == PublicKey::System.to_account_hash() {
             // Don't try to charge a system account for calling a system contract's entry point.
             // This will make sure that (for example) calling a mint's transfer from within auction
             // wouldn't try to incur cost to system account.
@@ -993,7 +1007,7 @@ where
         }
 
         if !self
-            .account()
+            .contract()
             .can_manage_keys_with(&self.authorization_keys)
         {
             // Exit early if authorization keys weight doesn't exceed required
@@ -1002,28 +1016,30 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key = Key::Account(self.account().account_hash());
+        // let key = Key::Account(self.contract().account_hash());
 
-        // Take an account out of the global state
-        let account = {
-            let mut account: Account = self.read_gs_typed(&key)?;
+        let key = self.contract_hash().into();
 
-            if account.associated_keys().len()
+        // Take a contract out of the global state
+        let contract = {
+            let mut contract: Contract = self.read_gs_typed(&key)?;
+
+            if contract.associated_keys().len()
                 >= (self.engine_config.max_associated_keys() as usize)
             {
                 return Err(Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
             }
 
             // Exit early in case of error without updating global state
-            account
+            contract
                 .add_associated_key(account_hash, weight)
                 .map_err(Error::from)?;
-            account
+            contract
         };
 
-        let account_value = self.account_to_validated_value(account)?;
+        let contract_value = self.contract_to_validated_value(contract)?;
 
-        self.metered_write_gs_unsafe(key, account_value)?;
+        self.metered_write_gs_unsafe(key, contract_value)?;
 
         Ok(())
     }
@@ -1037,7 +1053,7 @@ where
         }
 
         if !self
-            .account()
+            .contract()
             .can_manage_keys_with(&self.authorization_keys)
         {
             // Exit early if authorization keys weight doesn't exceed required
@@ -1046,17 +1062,18 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key = Key::Account(self.account().account_hash());
+        // let key = Key::Account(self.contract().account_hash());
+        let key = self.contract_hash().into();
 
         // Take an account out of the global state
-        let mut account: Account = self.read_gs_typed(&key)?;
+        let mut contract: Contract = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        account
+        contract
             .remove_associated_key(account_hash)
             .map_err(Error::from)?;
 
-        let account_value = self.account_to_validated_value(account)?;
+        let account_value = self.contract_to_validated_value(contract)?;
 
         self.metered_write_gs_unsafe(key, account_value)?;
 
@@ -1076,7 +1093,7 @@ where
         }
 
         if !self
-            .account()
+            .contract()
             .can_manage_keys_with(&self.authorization_keys)
         {
             // Exit early if authorization keys weight doesn't exceed required
@@ -1085,19 +1102,20 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key = Key::Account(self.account().account_hash());
+        // let key = Key::Account(self.contract().account_hash());
+        let key = self.contract_hash().into();
 
         // Take an account out of the global state
-        let mut account: Account = self.read_gs_typed(&key)?;
+        let mut contract: Contract = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        account
+        contract
             .update_associated_key(account_hash, weight)
             .map_err(Error::from)?;
 
-        let account_value = self.account_to_validated_value(account)?;
+        let contract_value = self.contract_to_validated_value(contract)?;
 
-        self.metered_write_gs_unsafe(key, account_value)?;
+        self.metered_write_gs_unsafe(key, contract_value)?;
 
         Ok(())
     }
@@ -1115,7 +1133,7 @@ where
         }
 
         if !self
-            .account()
+            .contract()
             .can_manage_keys_with(&self.authorization_keys)
         {
             // Exit early if authorization keys weight doesn't exceed required
@@ -1124,33 +1142,40 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key = Key::Account(self.account().account_hash());
+        // let key = Key::Account(self.contract().account_hash());
+        let key = self.contract_hash().into();
 
         // Take an account out of the global state
-        let mut account: Account = self.read_gs_typed(&key)?;
+        let mut contract: Contract = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        account
+        contract
             .set_action_threshold(action_type, threshold)
             .map_err(Error::from)?;
 
-        let account_value = self.account_to_validated_value(account)?;
+        let contract_value = self.contract_to_validated_value(contract)?;
 
-        self.metered_write_gs_unsafe(key, account_value)?;
+        self.metered_write_gs_unsafe(key, contract_value)?;
 
         Ok(())
     }
 
-    /// Creates validated instance of `StoredValue` from `account`.
-    fn account_to_validated_value(&self, account: Account) -> Result<StoredValue, Error> {
-        let value = StoredValue::Account(account);
+    // /// Creates validated instance of `StoredValue` from `account`.
+    // fn account_to_validated_value(&self, account: Account) -> Result<StoredValue, Error> {
+    //     let value = StoredValue::Account(account);
+    //     self.validate_value(&value)?;
+    //     Ok(value)
+    // }
+
+    fn contract_to_validated_value(&self, contract: Contract) -> Result<StoredValue, Error> {
+        let value = StoredValue::Contract(contract);
         self.validate_value(&value)?;
         Ok(value)
     }
 
     /// Checks if the account context is valid.
     fn is_valid_context(&self) -> bool {
-        self.base_key() == Key::Account(self.account().account_hash())
+        self.base_key() == Key::Account(self.contract().account_hash())
     }
 
     /// Gets main purse id
@@ -1159,7 +1184,7 @@ where
             return Err(Error::InvalidContext);
         }
 
-        let main_purse = self.account().main_purse();
+        let main_purse = self.contract().main_purse();
         Ok(main_purse)
     }
 

@@ -1,5 +1,5 @@
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, TransferredTo, URef, U512,
+    contracts::AccountHash, system::handle_payment::Error, TransferredTo, URef, U512,
 };
 
 /// Provides an access to mint.

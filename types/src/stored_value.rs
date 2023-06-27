@@ -13,7 +13,6 @@ use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
 use crate::{
-    account::Account,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
@@ -45,7 +44,7 @@ pub enum StoredValue {
     /// Variant that stores [`CLValue`].
     CLValue(CLValue),
     /// Variant that stores [`Account`].
-    Account(Account),
+    Account(CLValue),
     /// Variant that stores [`ContractWasm`].
     ContractWasm(ContractWasm),
     /// Variant that stores [`Contract`].
@@ -75,13 +74,13 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`Account`] if this is an `Account` variant.
-    pub fn as_account(&self) -> Option<&Account> {
-        match self {
-            StoredValue::Account(account) => Some(account),
-            _ => None,
-        }
-    }
+    // /// Returns a wrapped [`Account`] if this is an `Account` variant.
+    // pub fn as_account(&self) -> Option<&Account> {
+    //     match self {
+    //         StoredValue::Account(account) => Some(account),
+    //         _ => None,
+    //     }
+    // }
 
     /// Returns a wrapped [`Contract`] if this is a `Contract` variant.
     pub fn as_contract(&self) -> Option<&Contract> {
@@ -188,11 +187,12 @@ impl From<CLValue> for StoredValue {
         StoredValue::CLValue(value)
     }
 }
-impl From<Account> for StoredValue {
-    fn from(value: Account) -> StoredValue {
-        StoredValue::Account(value)
-    }
-}
+// impl From<Account> for StoredValue {
+//     fn from(value: Account) -> StoredValue {
+//         StoredValue::Account(value)
+//     }
+// }
+
 impl From<ContractWasm> for StoredValue {
     fn from(value: ContractWasm) -> StoredValue {
         StoredValue::ContractWasm(value)
@@ -228,19 +228,19 @@ impl TryFrom<StoredValue> for CLValue {
     }
 }
 
-impl TryFrom<StoredValue> for Account {
-    type Error = TypeMismatch;
-
-    fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
-        match stored_value {
-            StoredValue::Account(account) => Ok(account),
-            _ => Err(TypeMismatch::new(
-                "Account".to_string(),
-                stored_value.type_name(),
-            )),
-        }
-    }
-}
+// impl TryFrom<StoredValue> for Account {
+//     type Error = TypeMismatch;
+//
+//     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
+//         match stored_value {
+//             StoredValue::Account(account) => Ok(account),
+//             _ => Err(TypeMismatch::new(
+//                 "Account".to_string(),
+//                 stored_value.type_name(),
+//             )),
+//         }
+//     }
+// }
 
 impl TryFrom<StoredValue> for ContractWasm {
     type Error = TypeMismatch;
@@ -393,7 +393,7 @@ impl FromBytes for StoredValue {
         match tag {
             tag if tag == Tag::CLValue as u8 => CLValue::from_bytes(remainder)
                 .map(|(cl_value, remainder)| (StoredValue::CLValue(cl_value), remainder)),
-            tag if tag == Tag::Account as u8 => Account::from_bytes(remainder)
+            tag if tag == Tag::Account as u8 => CLValue::from_bytes(remainder)
                 .map(|(account, remainder)| (StoredValue::Account(account), remainder)),
             tag if tag == Tag::ContractWasm as u8 => {
                 ContractWasm::from_bytes(remainder).map(|(contract_wasm, remainder)| {

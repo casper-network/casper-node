@@ -10,9 +10,11 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
+use casper_types::contracts::{ActionThresholds, AssociatedKeys, ContractPackageKind};
 use casper_types::{
-    account::{Account, AccountHash},
-    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
+    contracts::{
+        AccountHash, ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys,
+    },
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -402,16 +404,63 @@ where
 
         let system_account_addr = PublicKey::System.to_account_hash();
 
-        let virtual_system_account = {
+        let (virtual_system_contract_hash, virtual_system_contract) = {
             let named_keys = NamedKeys::new();
+            let access_uref = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
+            let mut virtual_system_package = ContractPackage::new(
+                access_uref,
+                ContractVersions::default(),
+                DisabledVersions::default(),
+                Groups::default(),
+                ContractPackageStatus::Unlocked,
+                ContractPackageKind::Account(system_account_addr),
+            );
+
+            let package_addr = address_generator.borrow_mut().new_hash_address();
+            tracking_copy
+                .borrow_mut()
+                .write(Key::Hash(package_addr), virtual_system_package.into());
+
             let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, named_keys, purse)
+
+            let virtual_system_contract_hash = address_generator.borrow_mut().new_hash_address();
+            // Since this is in genesis the ProtocolVersion must be 1_0_0.
+            let major = ProtocolVersion::V1_0_0.value().major;
+
+            let virtual_system_contract = Contract::new(
+                package_addr.into(),
+                ACCOUNT_WASM_ADDR.into(),
+                named_keys,
+                EntryPoints::default(),
+                ProtocolVersion::V1_0_0,
+                purse,
+                AssociatedKeys::default(),
+                ActionThresholds::default(),
+            );
+
+            virtual_system_package
+                .insert_contract_version(major, virtual_system_contract_hash.into());
+
+            (
+                ContractHash::new(virtual_system_contract_hash),
+                virtual_system_contract,
+            )
         };
 
         let key = Key::Account(system_account_addr);
-        let value = { StoredValue::Account(virtual_system_account) };
+        // TODO: Get rid of this expect.
+        let value = {
+            StoredValue::Account(
+                CLValue::from_t(virtual_system_contract_hash).expect("must create CLValue"),
+            )
+        };
 
         tracking_copy.borrow_mut().write(key, value);
+
+        tracking_copy.borrow_mut().write(
+            virtual_system_contract_hash.into(),
+            virtual_system_contract.into(),
+        );
 
         GenesisInstaller {
             protocol_version,
@@ -997,6 +1046,25 @@ where
         self.store_chainspec_registry(chainspec_registry)?;
 
         Ok(())
+    }
+
+    fn create_genesis_account_packages(
+        &mut self,
+        genesis_account: GenesisAccount,
+    ) -> Result<ContractHash, Box<GenesisError>> {
+        let account_hash = genesis_account.account_hash();
+
+        let account_hash = account.account_hash();
+        let main_purse = self.create_purse(account.balance().value())?;
+
+        let contract_package = ContractPackage::new(
+            URef::default(),
+            ContractVersions::default(),
+            DisabledVersions::default(),
+            Groups::default(),
+            ContractPackageStatus::Locked,
+            ContractPackageKind::Account(account_hash),
+        );
     }
 }
 

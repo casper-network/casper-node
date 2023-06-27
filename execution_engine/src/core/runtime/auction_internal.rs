@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
-    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
+    contracts::AccountHash,
     crypto,
     system::{
         auction::{Bid, EraInfo, Error, UnbondingPurse},
@@ -184,7 +184,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        if !(self.context.account().main_purse().addr() == source.addr()
+        if !(self.context.contract().main_purse().addr() == source.addr()
             || self.context.get_caller() == PublicKey::System.to_account_hash())
         {
             return Err(Error::InvalidCaller);
@@ -299,7 +299,7 @@ where
         // "get_main_purse" won't work for security reasons. But since we're not running it as a
         // WASM contract, and purses are going to be removed anytime soon, we're making this
         // exception here.
-        Ok(Runtime::context(self).account().main_purse())
+        Ok(Runtime::context(self).contract().main_purse())
     }
 }
 
