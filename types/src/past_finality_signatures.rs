@@ -1,17 +1,21 @@
 use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+use alloc::vec::Vec;
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
+#[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// TODO[RC]: This is a placeholder and should be replaced with the real `PastFinalitySignatures` structure
-/// which is being implemented on the separate branch for the Zug consensus rewards. Also, the target file location may be different.
-#[derive(
-    Clone, DataSize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema, Debug,
-)]
+/// TODO[RC]: This is a placeholder and should be replaced with the real `PastFinalitySignatures`
+/// structure which is being implemented on the separate branch for the Zug consensus rewards. Also,
+/// the target file location may be different.
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 pub struct PastFinalitySignatures(pub(crate) Vec<u8>);
 
 impl PastFinalitySignatures {

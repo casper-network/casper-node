@@ -200,7 +200,7 @@ impl PartialEq for BlockBodyV2 {
             hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
-        let BlockBodyV1 {
+        let BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
@@ -326,9 +326,11 @@ impl From<JsonBlockBody> for BlockBodyV1 {
     }
 }
 
-/// The versioned body portion of a block. It encapsulates different variants of the BlockBody struct.
+/// The versioned body portion of a block. It encapsulates different variants of the BlockBody
+/// struct.
 // TODO[RC]: Moving to a separate module after merged with Fraser's types rework
-#[derive(Clone, DataSize, Eq, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[derive(Clone, Eq, Serialize, Deserialize, Debug)]
 pub enum VersionedBlockBody {
     /// The legacy, initial version of the body portion of a block.
     V1(BlockBodyV1),
@@ -362,7 +364,8 @@ impl VersionedBlockBody {
     }
 }
 
-// TODO[RC]: We probably don't need `Eq` on `VersionedBlockBody` - remove this and make sure that only correct version of the BlockBody are allowed to be compared.
+// TODO[RC]: We probably don't need `Eq` on `VersionedBlockBody` - remove this and make sure that
+// only correct version of the BlockBody are allowed to be compared.
 impl PartialEq for VersionedBlockBody {
     fn eq(&self, other: &VersionedBlockBody) -> bool {
         match (self, other) {

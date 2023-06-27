@@ -18,12 +18,14 @@ use crate::{
     types::NodeId,
 };
 
-// TODO[RC]: This implementation should be not needed, we never fetch `BlockV2`, but some other code relies on the trait being implemented. We should clean this up.
+// TODO[RC]: This implementation should be not needed, we never fetch `BlockV2`, but some other code
+// relies on the trait being implemented. We should clean this up.
 impl FetchItem for Block {
     type Id = BlockHash;
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;
 
+    // TODO[RC]: Tag duplicated for [VersionedBlock].
     const TAG: Tag = Tag::Block;
 
     fn fetch_id(&self) -> Self::Id {

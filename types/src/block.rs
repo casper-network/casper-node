@@ -141,7 +141,9 @@ pub struct BlockV1 {
 
 /// A block after execution, with the resulting post-state-hash.  This is the core component of the
 /// Casper linear blockchain. Version 2.
-#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlockV2 {
     hash: BlockHash,
     header: BlockHeader,
@@ -906,7 +908,7 @@ impl FromBytes for BlockV1 {
 
 #[cfg(all(feature = "std", feature = "json-schema"))]
 impl From<JsonBlock> for Block {
-    fn from(block: JsonBlock) -> Self {
+    fn from(_block: JsonBlock) -> Self {
         // TODO[RC]
         todo!();
 
@@ -962,7 +964,9 @@ mod tests {
 }
 
 /// A block. It encapsulates different variants of the `BlockVx`.
-#[derive(DataSize, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum VersionedBlock {
     /// The legacy, initial version of the block.
     V1(BlockV1),
@@ -971,6 +975,8 @@ pub enum VersionedBlock {
 }
 
 impl VersionedBlock {
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
     pub fn new_from_header_and_versioned_body(
         header: BlockHeader,
         versioned_block_body: &VersionedBlockBody,

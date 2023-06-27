@@ -2199,7 +2199,8 @@ impl Storage {
     /// Retrieves a single block from storage.
     fn get_single_block(
         &self,
-        txn: &mut RwTransaction, // TODO[RC]: Check if we can turn RoTransaction to RwTransation on demand (i.e.: only if the migration is needed)
+        txn: &mut RwTransaction, /* TODO[RC]: Check if we can turn RoTransaction to RwTransation
+                                  * on demand (i.e.: only if the migration is needed) */
         block_hash: &BlockHash,
     ) -> Result<Option<Block>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
