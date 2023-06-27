@@ -11,6 +11,7 @@ use std::{
 mod header;
 pub mod reader;
 pub mod varint;
+mod writer;
 
 /// A channel identifier.
 ///

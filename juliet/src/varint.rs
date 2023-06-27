@@ -60,6 +60,8 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
 pub struct Varint32([u8; 6]);
 
 impl Varint32 {
+    pub const SENTINEL: Varint32 = Varint32([0xFF; 6]);
+
     /// Encode a 32-bit integer to variable length.
     pub const fn encode(mut value: u32) -> Self {
         let mut output = [0u8; 6];
@@ -80,7 +82,14 @@ impl Varint32 {
 
     /// Returns the number of bytes in the encoded varint.
     pub const fn len(self) -> usize {
-        self.0[5] as usize + 1
+        match self.0[5] {
+            0xFF => 0,
+            n => (n + 1) as usize,
+        }
+    }
+
+    pub const fn is_sentinel(self) -> bool {
+        self.0[5] == 0xFF
     }
 }
 
