@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.  The format
 ### Fixed
 * Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
 
+### Changed
+* The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest block known to the node will be used to fulfil the request.
 
 
 ## 1.5.1
