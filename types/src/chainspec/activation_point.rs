@@ -58,6 +58,16 @@ impl ActivationPoint {
             ActivationPoint::Genesis(timestamp) => Some(*timestamp),
         }
     }
+
+    /// Returns a random `ActivationPoint`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        if rng.gen() {
+            ActivationPoint::EraId(EraId::random(rng))
+        } else {
+            ActivationPoint::Genesis(Timestamp::random(rng))
+        }
+    }
 }
 
 impl Display for ActivationPoint {
@@ -109,18 +119,6 @@ impl FromBytes for ActivationPoint {
                 Ok((ActivationPoint::Genesis(timestamp), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-impl ActivationPoint {
-    /// Generates a random instance using a `TestRng`.
-    pub fn random(rng: &mut TestRng) -> Self {
-        if rng.gen() {
-            ActivationPoint::EraId(rng.gen())
-        } else {
-            ActivationPoint::Genesis(Timestamp::random(rng))
         }
     }
 }

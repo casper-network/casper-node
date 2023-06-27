@@ -150,8 +150,7 @@ impl TestEnv {
             PublicKey::from(self.validator_keys[0].as_ref()),
             1,
         );
-        validator_matrix
-            .register_validator_weights(self.block.header().era_id(), validator_weights);
+        validator_matrix.register_validator_weights(self.block.era_id(), validator_weights);
 
         validator_matrix
     }
@@ -211,12 +210,8 @@ fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
 ) {
     for secret_key in validator_keys_iter {
         // Register a finality signature
-        let signature = FinalitySignature::create(
-            *block.hash(),
-            block.header().era_id(),
-            secret_key.as_ref(),
-            PublicKey::from(secret_key.as_ref()),
-        );
+        let signature =
+            FinalitySignature::create(*block.hash(), block.era_id(), secret_key.as_ref());
         assert!(signature.is_verified().is_ok());
         assert!(builder.register_finality_signature(signature, None).is_ok());
     }
@@ -580,7 +575,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
 
     // Update the validator matrix to now have an entry for the era of our random block.
     validator_matrix.register_validator_weights(
-        block.header().era_id(),
+        block.era_id(),
         iter::once((ALICE_PUBLIC_KEY.clone(), 100.into())).collect(),
     );
 
@@ -605,7 +600,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
             id,
             peer,
             ..
-        }) if peers.contains(&peer) && id.block_hash == *block.hash()
+        }) if peers.contains(&peer) && id.block_hash() == block.hash()
     );
 }
 
@@ -901,7 +896,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
                 id,
                 peer,
                 ..
-            }) if peers.contains(&peer) && id.block_hash == *block.hash() && id.era_id == block.header().era_id()
+            }) if peers.contains(&peer) && id.block_hash() == block.hash() && id.era_id() == block.era_id()
         );
     }
 }
@@ -941,9 +936,8 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     // Simulate a successful fetch of a single signature
     let signature = FinalitySignature::create(
         *block.hash(),
-        block.header().era_id(),
+        block.era_id(),
         validators_secret_keys[0].as_ref(),
-        PublicKey::from(validators_secret_keys[0].as_ref()),
     );
     assert!(signature.is_verified().is_ok());
     let effects = block_synchronizer.handle_event(
@@ -971,9 +965,9 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
                 ..
             }) => {
                 assert!(peers.contains(&peer));
-                assert_eq!(id.block_hash, *block.hash());
-                assert_eq!(id.era_id, block.header().era_id());
-                assert_ne!(id.public_key, PublicKey::from(validators_secret_keys[0].as_ref()));
+                assert_eq!(id.block_hash(), block.hash());
+                assert_eq!(id.era_id(), block.era_id());
+                assert_ne!(*id.public_key(), PublicKey::from(validators_secret_keys[0].as_ref()));
             }
         );
     }
@@ -986,12 +980,8 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
         .take(weak_finality_threshold(validators_secret_keys.len()))
     {
         // Register a finality signature
-        let signature = FinalitySignature::create(
-            *block.hash(),
-            block.header().era_id(),
-            secret_key.as_ref(),
-            PublicKey::from(secret_key.as_ref()),
-        );
+        let signature =
+            FinalitySignature::create(*block.hash(), block.era_id(), secret_key.as_ref());
         assert!(signature.is_verified().is_ok());
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
@@ -1088,9 +1078,9 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
                 ..
             }) => {
                 assert!(peers.contains(&peer));
-                assert_eq!(id.block_hash, *block.hash());
-                assert_eq!(id.era_id, block.header().era_id());
-                sigs_requested.push((peer, id.public_key));
+                assert_eq!(id.block_hash(), block.hash());
+                assert_eq!(id.era_id(), block.era_id());
+                sigs_requested.push((peer, id.public_key().clone()));
             }
         );
     }
@@ -1102,11 +1092,11 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
             mock_reactor.effect_builder(),
             &mut rng,
             Event::FinalitySignatureFetched(Err(FetcherError::Absent {
-                id: Box::new(Box::new(FinalitySignatureId {
-                    block_hash: *block.hash(),
-                    era_id: block.header().era_id(),
-                    public_key,
-                })),
+                id: Box::new(Box::new(FinalitySignatureId::new(
+                    *block.hash(),
+                    block.era_id(),
+                    public_key.clone(),
+                ))),
                 peer,
             })),
         );
@@ -1335,7 +1325,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
                 id,
                 peer,
                 ..
-            }) if peers.contains(&peer) && id.block_hash == *block.hash() && id.era_id == block.header().era_id()
+            }) if peers.contains(&peer) && id.block_hash() == block.hash() && id.era_id() == block.era_id()
         );
     }
 }

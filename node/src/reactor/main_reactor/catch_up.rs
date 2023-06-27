@@ -1,8 +1,9 @@
-use either::Either;
 use std::time::Duration;
+
+use either::Either;
 use tracing::{debug, info, warn};
 
-use casper_types::{ActivationPoint, TimeDiff, Timestamp};
+use casper_types::{ActivationPoint, BlockHash, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -17,7 +18,7 @@ use crate::{
         main_reactor::{MainEvent, MainReactor},
         wrap_effects,
     },
-    types::{BlockHash, NodeId, SyncLeap, SyncLeapIdentifier},
+    types::{NodeId, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 
@@ -123,7 +124,7 @@ impl MainReactor {
                 Either::Left(SyncIdentifier::LocalTip(
                     *block.hash(),
                     block.height(),
-                    block.header().era_id(),
+                    block.era_id(),
                 ))
             }
             Ok(None) => {
@@ -214,7 +215,7 @@ impl MainReactor {
                             Either::Left(SyncIdentifier::LocalTip(
                                 *block.hash(),
                                 block.height(),
-                                block.header().era_id(),
+                                block.era_id(),
                             ))
                         }
                     }

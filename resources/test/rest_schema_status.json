@@ -197,7 +197,7 @@
       "additionalProperties": false
     },
     "BlockHash": {
-      "description": "A cryptographic hash identifying a [`Block`](struct.Block.html).",
+      "description": "Hex-encoded cryptographic hash of a block.",
       "allOf": [
         {
           "$ref": "#/definitions/Digest"

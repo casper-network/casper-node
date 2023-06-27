@@ -1,9 +1,9 @@
 use datasize::DataSize;
 use derive_more::Display;
 
-use casper_types::{Deploy, DeployHash, DeployId, Digest, EraId, PublicKey};
+use casper_types::{Block, BlockHash, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey};
 
-use crate::types::{Block, BlockExecutionResultsOrChunkId, BlockHash, FinalizedBlock};
+use crate::types::{BlockExecutionResultsOrChunkId, FinalizedBlock};
 
 use super::execution_results_acquisition::ExecutionResultsChecksum;
 

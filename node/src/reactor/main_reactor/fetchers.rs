@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use prometheus::Registry;
 
-use casper_types::Deploy;
+use casper_types::{Block, BlockHeader, Deploy, FinalitySignature};
 
 use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
@@ -12,6 +12,7 @@ use crate::{
         ApprovalsHashes, BlockExecutionResultsOrChunk, BlockHeader, FinalitySignature,
         LegacyDeploy, SyncLeap, TrieOrChunk, VersionedBlock,
     },
+    types::{ApprovalsHashes, BlockExecutionResultsOrChunk, LegacyDeploy, SyncLeap, TrieOrChunk},
     utils::Source,
     FetcherConfig, NodeRng,
 };

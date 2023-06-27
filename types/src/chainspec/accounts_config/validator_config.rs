@@ -41,8 +41,8 @@ impl ValidatorConfig {
         self.bonded_amount
     }
 
+    /// Returns a random `ValidatorConfig`.
     #[cfg(any(feature = "testing", test))]
-    /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let bonded_amount = Motes::new(U512::from(rng.gen::<u64>()));
         let delegation_rate = rng.gen();

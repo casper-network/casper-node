@@ -13,9 +13,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::info;
 
-use casper_types::{EraId, PublicKey, SecretKey, U512};
-
-use super::{BlockHeader, FinalitySignature};
+use casper_types::{BlockHeader, EraId, FinalitySignature, PublicKey, SecretKey, U512};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
 const_assert!(MAX_VALIDATOR_MATRIX_ENTRIES % 2 == 0);
@@ -263,7 +261,6 @@ impl ValidatorMatrix {
                 block_header.block_hash(),
                 block_header.era_id(),
                 &self.secret_signing_key,
-                self.public_signing_key.clone(),
             ));
         }
         None

@@ -12,8 +12,9 @@ use casper_execution_engine::core::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes, Deploy, EraId,
-    Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes,
+    Deploy, EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp,
+    ValidatorConfig, U512,
 };
 
 use crate::{
@@ -37,7 +38,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockHeader, BlockPayload, DeployOrTransferHash, ExitCode, NodeRng},
+    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeRng},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -266,20 +267,20 @@ impl SwitchBlocks {
 
     /// Returns the list of equivocators in the given era.
     fn equivocators(&self, era_number: u64) -> &[PublicKey] {
-        &self.headers[era_number as usize]
+        self.headers[era_number as usize]
             .era_end()
             .expect("era end")
             .era_report()
-            .equivocators
+            .equivocators()
     }
 
     /// Returns the list of inactive validators in the given era.
     fn inactive_validators(&self, era_number: u64) -> &[PublicKey] {
-        &self.headers[era_number as usize]
+        self.headers[era_number as usize]
             .era_end()
             .expect("era end")
             .era_report()
-            .inactive_validators
+            .inactive_validators()
     }
 
     /// Returns the list of validators in the successor era.
@@ -625,8 +626,8 @@ async fn dont_upgrade_without_switch_block() {
                 },
             ) = &event
             {
-                if finalized_block.era_report().is_some()
-                    && finalized_block.era_id() == EraId::from(1)
+                if finalized_block.era_report.is_some()
+                    && finalized_block.era_id == EraId::from(1)
                     && !exec_request_received
                 {
                     info!("delaying {}", finalized_block);

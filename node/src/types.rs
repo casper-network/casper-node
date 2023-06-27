@@ -5,7 +5,6 @@ mod available_block_range;
 mod block;
 mod chunkable;
 mod deploy;
-pub mod error;
 mod exit_code;
 pub mod json_compatibility;
 mod node_config;
@@ -33,14 +32,16 @@ pub use block::{
     Block, BlockAndDeploys, BlockBody, BlockBodyV1, BlockBodyV2, BlockExecutionResultsOrChunk,
     BlockExecutionResultsOrChunkId, BlockExecutionResultsOrChunkIdDisplay, BlockHash, BlockHeader,
     BlockSignatures, FinalitySignature, FinalizedBlock, VersionedBlock, VersionedBlockBody,
+    compute_approvals_checksum, ApprovalsHashes, BlockExecutionResultsOrChunkId, BlockPayload,
+    MetaBlock, MetaBlockMergeError, MetaBlockState,
 };
+pub use block::{BlockExecutionResultsOrChunk, FinalizedBlock, SignedBlock};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub(crate) use deploy::{
     DeployHashWithApprovals, DeployMetadata, DeployMetadataExt, DeployOrTransferHash,
     DeployWithFinalizedApprovals, FinalizedApprovals, LegacyDeploy,
 };
-pub use error::BlockValidationError;
 pub use exit_code::ExitCode;
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;

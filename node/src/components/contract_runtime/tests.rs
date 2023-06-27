@@ -7,14 +7,13 @@ use serde::Serialize;
 use tempfile::TempDir;
 
 use casper_types::{
-    runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, ExecutableDeployItem, PublicKey,
-    RuntimeArgs, SecretKey, TimeDiff, U512,
+    runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, EraReport, ExecutableDeployItem,
+    PublicKey, RuntimeArgs, SecretKey, TimeDiff, U512,
 };
 
 use super::*;
 use crate::{
     components::{
-        consensus::EraReport,
         network::Identity as NetworkIdentity,
         storage::{self, Storage},
     },

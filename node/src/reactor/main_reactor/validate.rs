@@ -48,7 +48,7 @@ impl MainReactor {
                 let sync_identifier = SyncIdentifier::LocalTip(
                     *highest_complete_block.hash(),
                     highest_complete_block.height(),
-                    highest_complete_block.header().era_id(),
+                    highest_complete_block.era_id(),
                 );
                 match self.block_accumulator.sync_instruction(sync_identifier) {
                     SyncInstruction::Leap { .. } => return ValidateInstruction::CatchUp,
@@ -56,7 +56,7 @@ impl MainReactor {
                     SyncInstruction::CaughtUp { .. } => (),
                 }
 
-                if !highest_complete_block.header().is_switch_block() {
+                if !highest_complete_block.is_switch_block() {
                     return ValidateInstruction::CheckLater(
                         "tip is not a switch block, don't change from validate state".to_string(),
                         VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK,

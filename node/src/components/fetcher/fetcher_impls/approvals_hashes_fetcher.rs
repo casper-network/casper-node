@@ -3,10 +3,12 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
+use casper_types::BlockHash;
+
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{ApprovalsHashes, BlockHash, NodeId},
+    types::{ApprovalsHashes, NodeId},
 };
 
 #[async_trait]

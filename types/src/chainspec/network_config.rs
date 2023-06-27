@@ -25,9 +25,9 @@ pub struct NetworkConfig {
     pub accounts_config: AccountsConfig,
 }
 
-#[cfg(any(feature = "testing", test))]
 impl NetworkConfig {
-    /// Generates a random instance using a `TestRng`.
+    /// Returns a random `NetworkConfig`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let name = rng.gen::<char>().to_string();
         let accounts = vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()];

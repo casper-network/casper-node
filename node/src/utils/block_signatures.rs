@@ -3,9 +3,7 @@ use std::collections::BTreeMap;
 use num::rational::Ratio;
 use thiserror::Error;
 
-use casper_types::{PublicKey, U512};
-
-use crate::types::BlockSignatures;
+use casper_types::{BlockSignatures, PublicKey, U512};
 
 /// Computes the quorum for the fraction of weight of signatures that will be considered
 /// sufficient. This is the lowest weight so that any two sets of validators with that weight have
@@ -40,7 +38,7 @@ where
     match maybe_block_signatures {
         Some(block_signatures) => {
             let mut bogus_validators = vec![];
-            for (public_key, _) in block_signatures.proofs.iter() {
+            for public_key in block_signatures.signers() {
                 match trusted_validator_weights.get(public_key) {
                     None => {
                         bogus_validators.push(public_key.clone());
@@ -146,10 +144,9 @@ pub(crate) enum BlockSignatureError {
 mod tests {
     use rand::Rng;
 
-    use casper_types::{crypto, testing::TestRng, EraId, SecretKey};
+    use casper_types::{crypto, testing::TestRng, BlockHash, EraId, FinalitySignature, SecretKey};
 
     use super::*;
-    use crate::types::BlockHash;
 
     const TEST_VALIDATOR_WEIGHT: usize = 1;
 
@@ -173,15 +170,16 @@ mod tests {
         validators: &BTreeMap<PublicKey, SecretKey>,
         n_sigs: usize,
     ) -> BlockSignatures {
-        let era = rng.gen_range(10..100);
+        let era_id = EraId::new(rng.gen_range(10..100));
 
         let block_hash = BlockHash::random(rng);
 
-        let mut sigs = BlockSignatures::new(block_hash, EraId::from(era));
+        let mut sigs = BlockSignatures::new(block_hash, era_id);
 
         for (pub_key, secret_key) in validators.iter().take(n_sigs) {
             let sig = crypto::sign(block_hash, secret_key, pub_key);
-            sigs.insert_proof(pub_key.clone(), sig);
+            let finality_sig = FinalitySignature::new(block_hash, era_id, sig, pub_key.clone());
+            sigs.insert_signature(finality_sig);
         }
 
         sigs
@@ -339,16 +337,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Smuggle bogus proofs in.
-        let (_, pub_key_1) = crypto::generate_ed25519_keypair();
-        signatures.insert_proof(
-            pub_key_1.clone(),
-            *signatures.proofs.iter().next().unwrap().1,
-        );
-        let (_, pub_key_2) = crypto::generate_ed25519_keypair();
-        signatures.insert_proof(
-            pub_key_2.clone(),
-            *signatures.proofs.iter().next().unwrap().1,
-        );
+        let block_hash = *signatures.block_hash();
+        let era_id = signatures.era_id();
+        let finality_sig_1 = FinalitySignature::random_for_block(block_hash, era_id, &mut rng);
+        signatures.insert_signature(finality_sig_1.clone());
+        let finality_sig_2 = FinalitySignature::random_for_block(block_hash, era_id, &mut rng);
+        signatures.insert_signature(finality_sig_2.clone());
         let result = check_sufficient_block_signatures(
             &validator_weights,
             fault_tolerance_fraction,
@@ -361,8 +355,8 @@ mod tests {
             bogus_validators,
         } = error
         {
-            assert!(bogus_validators.contains(&pub_key_1));
-            assert!(bogus_validators.contains(&pub_key_2));
+            assert!(bogus_validators.contains(finality_sig_1.public_key()));
+            assert!(bogus_validators.contains(finality_sig_2.public_key()));
             assert_eq!(bogus_validators.len(), 2);
         } else {
             panic!("unexpected err: {}", error);

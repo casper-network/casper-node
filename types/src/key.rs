@@ -849,7 +849,7 @@ impl Distribution<Key> for Standard {
             2 => Key::URef(rng.gen()),
             3 => Key::Transfer(rng.gen()),
             4 => Key::DeployInfo(DeployHash::from_raw(rng.gen())),
-            5 => Key::EraInfo(rng.gen()),
+            5 => Key::EraInfo(EraId::new(rng.gen())),
             6 => Key::Balance(rng.gen()),
             7 => Key::Bid(rng.gen()),
             8 => Key::Withdraw(rng.gen()),

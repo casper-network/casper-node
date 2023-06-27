@@ -12,7 +12,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
-use casper_types::Deploy;
+use casper_types::{Block, Deploy, FinalitySignature};
 
 use crate::{
     components::{
@@ -29,7 +29,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, FinalitySignature, NodeId},
+    types::NodeId,
 };
 
 /// Reactor message.
