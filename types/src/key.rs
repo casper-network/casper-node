@@ -943,6 +943,7 @@ mod serde_helpers {
         Hash(&'a HashAddr),
         URef(&'a URef),
         Transfer(&'a TransferAddr),
+        #[serde(with = "crate::serde_helpers::deploy_hash_as_array")]
         DeployInfo(&'a DeployHash),
         EraInfo(&'a EraId),
         Balance(&'a URefAddr),
@@ -984,6 +985,7 @@ mod serde_helpers {
         Hash(HashAddr),
         URef(URef),
         Transfer(TransferAddr),
+        #[serde(with = "crate::serde_helpers::deploy_hash_as_array")]
         DeployInfo(DeployHash),
         EraInfo(EraId),
         Balance(URefAddr),

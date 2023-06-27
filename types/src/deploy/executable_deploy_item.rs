@@ -21,7 +21,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::DEFAULT_ENTRY_POINT_NAME,
-    runtime_args,
+    runtime_args, serde_helpers,
     system::mint::ARG_AMOUNT,
     ContractHash, ContractPackageHash, ContractVersion, Gas, Motes, Phase, PublicKey, RuntimeArgs,
     URef, U512,
@@ -66,6 +66,11 @@ pub enum ExecutableDeployItem {
     /// [`RuntimeArgs`].
     StoredContractByHash {
         /// Contract hash.
+        #[serde(with = "serde_helpers::contract_hash_as_digest")]
+        #[cfg_attr(
+            feature = "json-schema",
+            schemars(with = "String", description = "Hex-encoded contract hash.")
+        )]
         hash: ContractHash,
         /// Name of an entry point.
         entry_point: String,
@@ -86,6 +91,11 @@ pub enum ExecutableDeployItem {
     /// instance of [`RuntimeArgs`].
     StoredVersionedContractByHash {
         /// Contract package hash
+        #[serde(with = "serde_helpers::contract_package_hash_as_digest")]
+        #[cfg_attr(
+            feature = "json-schema",
+            schemars(with = "String", description = "Hex-encoded contract package hash.")
+        )]
         hash: ContractPackageHash,
         /// An optional version of the contract to call. It will default to the highest enabled
         /// version if no value is specified.
