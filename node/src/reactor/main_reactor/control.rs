@@ -1,11 +1,11 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_types::{Digest, EraId, PublicKey, Timestamp};
+use casper_types::{BlockHash, Digest, EraId, EraReport, PublicKey, Timestamp};
 
 use crate::{
     components::{
-        block_synchronizer, block_synchronizer::BlockSynchronizerProgress, consensus::EraReport,
+        block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
         rest_server, rpc_server, upgrade_watcher,
     },
@@ -17,7 +17,7 @@ use crate::{
         upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
         MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock, MetaBlockState},
+    types::{BlockPayload, FinalizedBlock, MetaBlockState},
     NodeRng,
 };
 
@@ -409,7 +409,7 @@ impl MainReactor {
             .map_err(|err| format!("Could not read highest complete block: {}", err))?
         {
             Some(highest_complete_block) => {
-                if highest_complete_block.header().is_switch_block() {
+                if highest_complete_block.is_switch_block() {
                     highest_complete_block.take_header()
                 } else {
                     return Err("Latest complete block is not a switch block".to_string());
@@ -438,7 +438,7 @@ impl MainReactor {
                         next_block_height,
                         post_state_hash,
                         previous_block_header.block_hash(),
-                        previous_block_header.accumulated_seed(),
+                        *previous_block_header.accumulated_seed(),
                     );
 
                     let finalized_block = FinalizedBlock::new(
@@ -486,9 +486,7 @@ impl MainReactor {
     pub(super) fn should_commit_upgrade(&self) -> bool {
         // header of latest complete block, and that block needs to be switch block
         let highest_switch_block_header = match self.storage.read_highest_complete_block() {
-            Ok(Some(highest_complete_block))
-                if highest_complete_block.header().is_switch_block() =>
-            {
+            Ok(Some(highest_complete_block)) if highest_complete_block.is_switch_block() => {
                 highest_complete_block.take_header()
             }
             Ok(Some(_)) | Ok(None) => {
@@ -513,7 +511,7 @@ impl MainReactor {
                 let block_height = block_header.height();
                 let state_root_hash = block_header.state_root_hash();
                 let block_hash = block_header.block_hash();
-                let accumulated_seed = block_header.accumulated_seed();
+                let accumulated_seed = *block_header.accumulated_seed();
                 self.initialize_contract_runtime(
                     block_height + 1,
                     *state_root_hash,

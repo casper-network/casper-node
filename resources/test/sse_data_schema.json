@@ -216,7 +216,7 @@
       "type": "string"
     },
     "BlockHash": {
-      "description": "A cryptographic hash identifying a [`Block`](struct.Block.html).",
+      "description": "Hex-encoded cryptographic hash of a block.",
       "allOf": [
         {
           "$ref": "#/definitions/Digest"
@@ -228,7 +228,7 @@
       "type": "string"
     },
     "JsonBlock": {
-      "description": "A JSON-friendly representation of `Block`.",
+      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain",
       "type": "object",
       "required": [
         "body",
@@ -238,7 +238,7 @@
       ],
       "properties": {
         "hash": {
-          "description": "`BlockHash`",
+          "description": "The block hash identifying this block.",
           "allOf": [
             {
               "$ref": "#/definitions/BlockHash"
@@ -246,7 +246,7 @@
           ]
         },
         "header": {
-          "description": "JSON-friendly block header.",
+          "description": "The header portion of the block.",
           "allOf": [
             {
               "$ref": "#/definitions/JsonBlockHeader"
@@ -254,7 +254,7 @@
           ]
         },
         "body": {
-          "description": "JSON-friendly block body.",
+          "description": "The body portion of the block.",
           "allOf": [
             {
               "$ref": "#/definitions/JsonBlockBody"
@@ -262,7 +262,7 @@
           ]
         },
         "proofs": {
-          "description": "JSON-friendly list of proofs for this block.",
+          "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/JsonProof"
@@ -272,7 +272,7 @@
       "additionalProperties": false
     },
     "JsonBlockHeader": {
-      "description": "JSON representation of a block header.",
+      "description": "The header portion of a block.",
       "type": "object",
       "required": [
         "accumulated_seed",
@@ -287,7 +287,7 @@
       ],
       "properties": {
         "parent_hash": {
-          "description": "The parent hash.",
+          "description": "The parent block's hash.",
           "allOf": [
             {
               "$ref": "#/definitions/BlockHash"
@@ -295,7 +295,7 @@
           ]
         },
         "state_root_hash": {
-          "description": "The state root hash.",
+          "description": "The root hash of global state after the deploys in this block have been executed.",
           "allOf": [
             {
               "$ref": "#/definitions/Digest"
@@ -303,7 +303,7 @@
           ]
         },
         "body_hash": {
-          "description": "The body hash.",
+          "description": "The hash of the block's body.",
           "allOf": [
             {
               "$ref": "#/definitions/Digest"
@@ -311,11 +311,11 @@
           ]
         },
         "random_bit": {
-          "description": "Randomness bit.",
+          "description": "A random bit needed for initializing a future era.",
           "type": "boolean"
         },
         "accumulated_seed": {
-          "description": "Accumulated seed.",
+          "description": "A seed needed for initializing a future era.",
           "allOf": [
             {
               "$ref": "#/definitions/Digest"
@@ -323,7 +323,7 @@
           ]
         },
         "era_end": {
-          "description": "The era end.",
+          "description": "The `EraEnd` of a block if it is a switch block.",
           "anyOf": [
             {
               "$ref": "#/definitions/JsonEraEnd"
@@ -334,7 +334,7 @@
           ]
         },
         "timestamp": {
-          "description": "The block timestamp.",
+          "description": "The timestamp from when the block was proposed.",
           "allOf": [
             {
               "$ref": "#/definitions/Timestamp"
@@ -342,7 +342,7 @@
           ]
         },
         "era_id": {
-          "description": "The block era id.",
+          "description": "The era ID in which this block was created.",
           "allOf": [
             {
               "$ref": "#/definitions/EraId"
@@ -350,13 +350,13 @@
           ]
         },
         "height": {
-          "description": "The block height.",
+          "description": "The height of this block, i.e. the number of ancestors.",
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
         },
         "protocol_version": {
-          "description": "The protocol version.",
+          "description": "The protocol version of the network from when this block was created.",
           "allOf": [
             {
               "$ref": "#/definitions/ProtocolVersion"
@@ -367,6 +367,7 @@
       "additionalProperties": false
     },
     "JsonEraEnd": {
+      "description": "Information related to the end of an era, and validator weights for the following era.",
       "type": "object",
       "required": [
         "era_report",
@@ -374,19 +375,25 @@
       ],
       "properties": {
         "era_report": {
-          "$ref": "#/definitions/JsonEraReport"
+          "description": "Equivocation, reward and validator inactivity information.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/JsonEraReport"
+            }
+          ]
         },
         "next_era_validator_weights": {
+          "description": "The validators for the upcoming era and their respective weights.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/ValidatorWeight"
+            "$ref": "#/definitions/JsonValidatorWeight"
           }
         }
       },
       "additionalProperties": false
     },
     "JsonEraReport": {
-      "description": "Equivocation and reward information to be included in the terminal block.",
+      "description": "Equivocation, reward and validator inactivity information.",
       "type": "object",
       "required": [
         "equivocators",
@@ -395,18 +402,21 @@
       ],
       "properties": {
         "equivocators": {
+          "description": "The set of equivocators.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/PublicKey"
           }
         },
         "rewards": {
+          "description": "Rewards for finalization of earlier blocks.",
           "type": "array",
           "items": {
-            "$ref": "#/definitions/Reward"
+            "$ref": "#/definitions/JsonReward"
           }
         },
         "inactive_validators": {
+          "description": "Validators that haven't produced any unit during the era.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/PublicKey"
@@ -419,7 +429,8 @@
       "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
       "type": "string"
     },
-    "Reward": {
+    "JsonReward": {
+      "description": "A validator's public key paired with a measure of the value of its contribution to consensus, as a fraction of the configured maximum block reward.",
       "type": "object",
       "required": [
         "amount",
@@ -427,9 +438,15 @@
       ],
       "properties": {
         "validator": {
-          "$ref": "#/definitions/PublicKey"
+          "description": "The validator's public key.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
         },
         "amount": {
+          "description": "The reward amount.",
           "type": "integer",
           "format": "uint64",
           "minimum": 0.0
@@ -437,7 +454,8 @@
       },
       "additionalProperties": false
     },
-    "ValidatorWeight": {
+    "JsonValidatorWeight": {
+      "description": "A validator's public key paired with its weight, i.e. the total number of motes staked by it and its delegators.",
       "type": "object",
       "required": [
         "validator",
@@ -445,10 +463,20 @@
       ],
       "properties": {
         "validator": {
-          "$ref": "#/definitions/PublicKey"
+          "description": "The validator's public key.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
         },
         "weight": {
-          "$ref": "#/definitions/U512"
+          "description": "The validator's weight.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -470,7 +498,7 @@
       "minimum": 0.0
     },
     "JsonBlockBody": {
-      "description": "A JSON-friendly representation of `Body`",
+      "description": "The body portion of a block.",
       "type": "object",
       "required": [
         "deploy_hashes",
@@ -479,15 +507,22 @@
       ],
       "properties": {
         "proposer": {
-          "$ref": "#/definitions/PublicKey"
+          "description": "The public key of the validator which proposed the block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
         },
         "deploy_hashes": {
+          "description": "The deploy hashes of the non-transfer deploys within the block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/DeployHash"
           }
         },
         "transfer_hashes": {
+          "description": "The deploy hashes of the transfers within the block.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/DeployHash"
@@ -505,7 +540,7 @@
       ]
     },
     "JsonProof": {
-      "description": "A JSON-friendly representation of a proof, i.e. a block's finality signature.",
+      "description": "A validator's public key paired with a corresponding signature of a given block hash.",
       "type": "object",
       "required": [
         "public_key",
@@ -513,10 +548,20 @@
       ],
       "properties": {
         "public_key": {
-          "$ref": "#/definitions/PublicKey"
+          "description": "The validator's public key.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
         },
         "signature": {
-          "$ref": "#/definitions/Signature"
+          "description": "The validator's signature.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Signature"
+            }
+          ]
         }
       },
       "additionalProperties": false
@@ -1988,7 +2033,7 @@
       "additionalProperties": false
     },
     "FinalitySignature": {
-      "description": "A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should wait until the signers' combined weight exceeds their fault tolerance threshold before accepting the block as finalized.",
+      "description": "A validator's signature of a block, confirming it is finalized.",
       "type": "object",
       "required": [
         "block_hash",
@@ -1998,7 +2043,7 @@
       ],
       "properties": {
         "block_hash": {
-          "description": "Hash of a block this signature is for.",
+          "description": "The block hash of the associated block.",
           "allOf": [
             {
               "$ref": "#/definitions/BlockHash"
@@ -2006,7 +2051,7 @@
           ]
         },
         "era_id": {
-          "description": "Era in which the block was created in.",
+          "description": "The era in which the associated block was created.",
           "allOf": [
             {
               "$ref": "#/definitions/EraId"
@@ -2014,7 +2059,7 @@
           ]
         },
         "signature": {
-          "description": "Signature over the block hash.",
+          "description": "The signature over the block hash of the associated block.",
           "allOf": [
             {
               "$ref": "#/definitions/Signature"
@@ -2022,7 +2067,7 @@
           ]
         },
         "public_key": {
-          "description": "Public key of the signing validator.",
+          "description": "The public key of the signing validator.",
           "allOf": [
             {
               "$ref": "#/definitions/PublicKey"

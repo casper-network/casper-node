@@ -122,11 +122,11 @@ lint: lint-contracts-rs lint-default-features lint-all-features lint-smart-contr
 
 .PHONY: lint-default-features
 lint-default-features:
-	$(CARGO) clippy --all-targets -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets -- -D warnings
 
 .PHONY: lint-all-features
 lint-all-features:
-	$(CARGO) clippy --all-targets --all-features -- -D warnings -A renamed_and_removed_lints
+	$(CARGO) clippy --all-targets --all-features -- -D warnings
 
 .PHONY: lint-smart-contracts
 lint-smart-contracts:

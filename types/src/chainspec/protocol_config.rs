@@ -52,7 +52,7 @@ impl ProtocolConfig {
         Ok(update_mapping)
     }
 
-    /// Generates a random instance using a `TestRng`.
+    /// Returns a random `ProtocolConfig`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let protocol_version = ProtocolVersion::from_parts(

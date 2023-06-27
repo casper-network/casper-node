@@ -154,6 +154,11 @@ impl DeployHeader {
     pub fn expires(&self) -> Timestamp {
         self.timestamp.saturating_add(self.ttl)
     }
+
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub(super) fn invalidate(&mut self) {
+        self.chain_name.clear();
+    }
 }
 
 impl ToBytes for DeployHeader {
@@ -220,12 +225,5 @@ impl Display for DeployHeader {
             DisplayIter::new(self.dependencies.iter()),
             self.chain_name,
         )
-    }
-}
-
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
-impl DeployHeader {
-    pub(super) fn invalidate(&mut self) {
-        self.chain_name.clear();
     }
 }

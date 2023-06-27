@@ -11,14 +11,14 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     CLType, CLTyped,
@@ -115,6 +115,12 @@ impl EraId {
     pub fn value(self) -> u64 {
         self.0
     }
+
+    /// Returns a random `EraId`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        EraId(rng.gen_range(0..1_000_000))
+    }
 }
 
 impl FromStr for EraId {
@@ -194,12 +200,6 @@ impl FromBytes for EraId {
 impl CLTyped for EraId {
     fn cl_type() -> CLType {
         CLType::U64
-    }
-}
-
-impl Distribution<EraId> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EraId {
-        EraId(rng.gen_range(0..1_000_000))
     }
 }
 

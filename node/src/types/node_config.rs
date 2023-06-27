@@ -1,9 +1,7 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::types::BlockHash;
-
-use casper_types::TimeDiff;
+use casper_types::{BlockHash, TimeDiff};
 
 const DEFAULT_IDLE_TOLERANCE: &str = "20min";
 const DEFAULT_MAX_ATTEMPTS: usize = 3;

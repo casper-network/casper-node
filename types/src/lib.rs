@@ -25,6 +25,7 @@ extern crate alloc;
 mod access_rights;
 pub mod account;
 pub mod api_error;
+mod block;
 mod block_time;
 pub mod bytesrepr;
 #[cfg(any(feature = "std", test))]
@@ -71,6 +72,16 @@ pub use access_rights::{
 };
 #[doc(inline)]
 pub use api_error::ApiError;
+pub use block::{
+    Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
+    BlockSignaturesMergeError, BlockValidationError, EraEnd, EraReport, FinalitySignature,
+    FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
+};
+#[cfg(all(feature = "std", feature = "json-schema"))]
+pub use block::{
+    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
+    JsonValidatorWeight,
+};
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{

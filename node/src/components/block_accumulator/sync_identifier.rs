@@ -1,7 +1,6 @@
-use casper_types::EraId;
 use std::fmt::{Display, Formatter};
 
-use crate::types::BlockHash;
+use casper_types::{BlockHash, EraId};
 
 #[derive(Clone, Debug)]
 pub(crate) enum SyncIdentifier {

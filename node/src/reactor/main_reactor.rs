@@ -26,7 +26,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Chainspec, ChainspecRawBytes, Deploy, EraId, PublicKey, TimeDiff, Timestamp, U512,
+    Block, BlockHash, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature, PublicKey,
+    TimeDiff, Timestamp, U512,
 };
 
 #[cfg(test)]
@@ -73,10 +74,7 @@ use crate::{
         main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
         EventQueueHandle, QueueKind,
     },
-    types::{
-        Block, BlockHash, FinalitySignature, MetaBlock, MetaBlockState, TrieOrChunk,
-        ValidatorMatrix,
-    },
+    types::{MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -489,7 +487,8 @@ impl reactor::Reactor for MainReactor {
             ) => {
                 debug!(
                     "notifying finality signature gossiper to start gossiping for: {} , {}",
-                    finality_signature.block_hash, finality_signature.public_key,
+                    finality_signature.block_hash(),
+                    finality_signature.public_key(),
                 );
                 let mut effects = reactor::wrap_effects(
                     MainEvent::FinalitySignatureGossiper,
@@ -582,9 +581,9 @@ impl reactor::Reactor for MainReactor {
                 let finality_signature = incoming.message;
                 debug!(
                     "FinalitySignatureIncoming({},{},{},{})",
-                    finality_signature.era_id,
-                    finality_signature.block_hash,
-                    finality_signature.public_key,
+                    finality_signature.era_id(),
+                    finality_signature.block_hash(),
+                    finality_signature.public_key(),
                     sender
                 );
                 let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
@@ -621,8 +620,8 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     block_accumulator::Event::RegisterPeer {
-                        block_hash: gossiped_finality_signature_id.block_hash,
-                        era_id: Some(gossiped_finality_signature_id.era_id),
+                        block_hash: *gossiped_finality_signature_id.block_hash(),
+                        era_id: Some(gossiped_finality_signature_id.era_id()),
                         sender,
                     },
                 ),
@@ -1279,7 +1278,7 @@ impl MainReactor {
 
         if state.register_updated_validator_matrix().was_updated() {
             if let Some(validator_weights) = block.header().next_era_validator_weights() {
-                let era_id = block.header().era_id();
+                let era_id = block.era_id();
                 let next_era_id = era_id.successor();
                 debug!(
                     "MetaBlock: updating validator matrix: {} {} {} {}",
@@ -1301,7 +1300,7 @@ impl MainReactor {
         // only gossip once the block is marked complete.
         if let Some(true) = self
             .validator_matrix
-            .is_self_validator_in_era(block.header().era_id())
+            .is_self_validator_in_era(block.era_id())
         {
             debug!(
                 "MetaBlock: updating validator gossip state: {} {}",
@@ -1359,7 +1358,7 @@ impl MainReactor {
                     ),
                 ));
 
-                let era_id = finality_signature.era_id;
+                let era_id = finality_signature.era_id();
                 let payload = Message::FinalitySignature(Box::new(finality_signature));
                 effects.extend(reactor::wrap_effects(
                     MainEvent::Network,

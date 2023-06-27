@@ -30,7 +30,7 @@ use derive_more::From;
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace};
 
-use casper_types::{EraId, Timestamp};
+use casper_types::{BlockHash, BlockHeader, EraId, Timestamp};
 
 use crate::{
     components::Component,
@@ -50,7 +50,7 @@ use crate::{
     },
     protocol::Message,
     reactor::ReactorEvent,
-    types::{BlockHash, BlockHeader, BlockPayload, NodeId},
+    types::{BlockPayload, NodeId},
     NodeRng,
 };
 use protocols::{highway::HighwayProtocol, zug::Zug};
@@ -58,7 +58,7 @@ use traits::Context;
 
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
-pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
+pub(crate) use consensus_protocol::{BlockContext, ProposedBlock};
 pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor, SerializedMessage};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;

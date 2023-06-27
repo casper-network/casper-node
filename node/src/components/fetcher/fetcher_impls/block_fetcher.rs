@@ -3,15 +3,36 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
+use casper_types::{Block, BlockHash, BlockValidationError};
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    components::fetcher::{
+        metrics::Metrics, EmptyValidationMetadata, FetchItem, Fetcher, ItemFetcher, ItemHandle,
+        StoringState, Tag,
+    },
     effect::{
         announcements::FetchedNewBlockAnnouncement,
         requests::{BlockAccumulatorRequest, StorageRequest},
         EffectBuilder,
     },
-    types::{Block, BlockHash, NodeId},
+    types::NodeId,
 };
+
+impl FetchItem for Block {
+    type Id = BlockHash;
+    type ValidationError = BlockValidationError;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    const TAG: Tag = Tag::Block;
+
+    fn fetch_id(&self) -> Self::Id {
+        *self.hash()
+    }
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        self.verify()
+    }
+}
 
 #[async_trait]
 impl ItemFetcher<Block> for Fetcher<Block> {

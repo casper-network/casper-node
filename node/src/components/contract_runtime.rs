@@ -42,8 +42,9 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Deploy,
-    Digest, EraId, ProtocolVersion, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
+    bytesrepr::Bytes, ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes,
+    ChainspecRegistry, Deploy, Digest, EraId, ProtocolVersion, SystemConfig, Timestamp,
+    UpgradeConfig, WasmConfig,
 };
 
 use crate::{
@@ -59,10 +60,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{
-        BlockHash, BlockHeader, ChunkingError, FinalizedBlock, MetaBlock, MetaBlockState,
-        TrieOrChunk, TrieOrChunkId,
-    },
+    types::{ChunkingError, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -168,7 +166,7 @@ impl ExecutionPreState {
             pre_state_root_hash: *block_header.state_root_hash(),
             next_block_height: block_header.height() + 1,
             parent_hash: block_header.block_hash(),
-            parent_seed: block_header.accumulated_seed(),
+            parent_seed: *block_header.accumulated_seed(),
         }
     }
 }
@@ -469,7 +467,7 @@ impl ContractRuntime {
             } => {
                 let mut effects = Effects::new();
                 let exec_queue = Arc::clone(&self.exec_queue);
-                let finalized_block_height = finalized_block.height();
+                let finalized_block_height = finalized_block.height;
                 let current_pre_state = self.execution_pre_state.lock().unwrap();
                 let next_block_height = current_pre_state.next_block_height;
                 match finalized_block_height.cmp(&next_block_height) {
@@ -821,7 +819,7 @@ impl ContractRuntime {
             }
         }
 
-        let current_era_id = block.header().era_id();
+        let current_era_id = block.era_id();
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_journal,
@@ -853,9 +851,9 @@ impl ContractRuntime {
 
         info!(
             block_hash = %block.hash(),
-            height = block.header().height(),
-            era = block.header().era_id().value(),
-            is_switch_block = block.header().is_switch_block(),
+            height = block.height(),
+            era = block.era_id().value(),
+            is_switch_block = block.is_switch_block(),
             "executed block"
         );
 

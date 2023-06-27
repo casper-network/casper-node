@@ -56,12 +56,12 @@ impl Metrics {
 
     /// Updates the metrics based on a newly finalized block.
     pub(super) fn finalized_block(&mut self, finalized_block: &FinalizedBlock) {
-        let time_since_block_payload = finalized_block.timestamp().elapsed().millis() as f64;
+        let time_since_block_payload = finalized_block.timestamp.elapsed().millis() as f64;
         self.finalization_time.set(time_since_block_payload);
         self.time_of_last_finalized_block
-            .set(finalized_block.timestamp().millis() as i64);
+            .set(finalized_block.timestamp.millis() as i64);
         self.finalized_block_count
-            .set(finalized_block.height() as i64);
+            .set(finalized_block.height as i64);
     }
 
     /// Updates the metrics and records a newly proposed block.

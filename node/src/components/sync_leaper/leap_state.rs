@@ -89,11 +89,11 @@ impl LeapState {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::testing::TestRng;
+    use casper_types::{testing::TestRng, BlockHash};
 
     use crate::{
         components::sync_leaper::{tests::make_test_sync_leap, LeapActivityError, LeapState},
-        types::{BlockHash, SyncLeapIdentifier},
+        types::SyncLeapIdentifier,
     };
 
     #[test]

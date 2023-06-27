@@ -36,11 +36,9 @@ impl HighwayConfig {
             Ok(())
         }
     }
-}
 
-#[cfg(any(feature = "testing", test))]
-impl HighwayConfig {
-    /// Generates a random instance using a `TestRng`.
+    /// Returns a random `HighwayConfig`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let maximum_round_length = TimeDiff::from_seconds(rng.gen_range(60..600));
         let reduced_reward_multiplier = Ratio::new(rng.gen_range(0..10), 10);

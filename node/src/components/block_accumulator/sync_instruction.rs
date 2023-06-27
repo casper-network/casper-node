@@ -1,4 +1,4 @@
-use crate::types::BlockHash;
+use casper_types::BlockHash;
 
 #[derive(Debug)]
 pub(crate) enum SyncInstruction {

@@ -26,6 +26,10 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 
+/// Example timestamp equal to 2020-11-17T00:39:24.072Z.
+#[cfg(feature = "json-schema")]
+const TIMESTAMP: Timestamp = Timestamp(1_605_573_564_072);
+
 /// A timestamp type, representing a concrete moment in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -85,16 +89,22 @@ impl Timestamp {
     pub fn trailing_zeros(&self) -> u8 {
         self.0.trailing_zeros() as u8
     }
-}
 
-#[cfg(any(feature = "testing", test))]
-impl Timestamp {
-    /// Generates a random instance using a `TestRng`.
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &TIMESTAMP
+    }
+
+    /// Returns a random `Timestamp`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         Timestamp(1_596_763_000_000 + rng.gen_range(200_000..1_000_000))
     }
 
     /// Checked subtraction for timestamps
+    #[cfg(any(feature = "testing", test))]
     pub fn checked_sub(self, other: TimeDiff) -> Option<Timestamp> {
         self.0.checked_sub(other.0).map(Timestamp)
     }

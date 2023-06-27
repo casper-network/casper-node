@@ -127,17 +127,15 @@ mod tests {
     use once_cell::sync::Lazy;
 
     use casper_types::{
-        bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
-        CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction,
-        HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
-        StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
+        bytesrepr::FromBytes, ActivationPoint, Block, BrTableCost, ChainspecRawBytes,
+        ControlFlowCosts, CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig,
+        HostFunction, HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion,
+        StorageCosts, StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
     };
 
     use super::*;
-
     use crate::{
         testing::init_logging,
-        types::Block,
         utils::{Loadable, RESOURCES_PATH},
     };
 

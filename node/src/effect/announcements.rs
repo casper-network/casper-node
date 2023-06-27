@@ -14,7 +14,10 @@ use datasize::DataSize;
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{Deploy, DeployHash, EraId, ExecutionEffect, PublicKey, Timestamp, U512};
+use casper_types::{
+    Block, Deploy, DeployHash, EraId, ExecutionEffect, FinalitySignature, PublicKey, Timestamp,
+    U512,
+};
 
 use crate::{
     components::{
@@ -26,7 +29,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{Block, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
+    types::{FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
 

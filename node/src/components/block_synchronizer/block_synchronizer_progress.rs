@@ -1,7 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use crate::types::BlockHash;
-use casper_types::{EraId, Timestamp};
+use casper_types::{BlockHash, EraId, Timestamp};
 
 #[derive(Debug)]
 pub(crate) enum BlockSynchronizerProgress {
