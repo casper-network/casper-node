@@ -9,7 +9,7 @@ use num_traits::{CheckedMul, CheckedSub};
 use casper_types::{
     account::AccountHash,
     system::auction::{
-        Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
+        Bid, BidKind, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
         ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, PublicKey, U512,
@@ -81,9 +81,10 @@ pub trait Auction:
         let source = self.get_main_purse()?;
 
         let account_hash = AccountHash::from(&public_key);
+        let account_key = account_hash.into();
 
         // Update bids or stakes
-        let updated_amount = match self.read_bid(&account_hash)? {
+        let updated_amount = match self.read_bid(&account_key)? {
             Some(mut bid) => {
                 if bid.inactive() {
                     bid.activate();
@@ -105,7 +106,7 @@ pub trait Auction:
                 let updated_amount = bid
                     .with_delegation_rate(delegation_rate)
                     .increase_stake(amount)?;
-                self.write_bid(account_hash, bid)?;
+                self.write_bid(account_key, BidKind::Unified(Box::new(bid)))?;
                 updated_amount
             }
             None => {
@@ -125,7 +126,7 @@ pub trait Auction:
                     ApiError::from(mint_error)
                 })?;
                 let bid = Bid::unlocked(public_key, bonding_purse, amount, delegation_rate);
-                self.write_bid(account_hash, bid)?;
+                self.write_bid(key, BidKind::Unified(Box::new(bid)))?;
                 amount
             }
         };
@@ -154,8 +155,10 @@ pub trait Auction:
             return Err(Error::InvalidContext);
         }
 
+        let account_key = provided_account_hash.into();
+
         let mut bid = self
-            .read_bid(&provided_account_hash)?
+            .read_bid(&account_key)?
             .ok_or(Error::ValidatorNotFound)?;
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
@@ -191,7 +194,7 @@ pub trait Auction:
             bid.deactivate();
         }
 
-        self.write_bid(provided_account_hash, bid)?;
+        self.write_bid(account_key, BidKind::Unified(Box::new(bid)))?;
 
         Ok(updated_stake)
     }
@@ -210,12 +213,12 @@ pub trait Auction:
         max_delegators_per_validator: Option<u32>,
         minimum_delegation_amount: u64,
     ) -> Result<U512, ApiError> {
-        let provided_account_hash =
-            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
-
         if amount.is_zero() {
             return Err(Error::BondTooSmall.into());
         }
+
+        let provided_account_hash =
+            AccountHash::from_public_key(&delegator_public_key, |x| self.blake2b(x));
 
         if !self.is_allowed_session_caller(&provided_account_hash) {
             return Err(Error::InvalidContext.into());

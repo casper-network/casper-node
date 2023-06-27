@@ -14,10 +14,10 @@ use serde_bytes::ByteBuf;
 
 use crate::{
     account::Account,
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::Contract,
     package::Package,
-    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
+    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
     AddressableEntity, CLValue, ContractWasm, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
@@ -60,8 +60,8 @@ pub enum StoredValue {
     DeployInfo(DeployInfo),
     /// Variant that stores [`EraInfo`].
     EraInfo(EraInfo),
-    /// Variant that stores [`Bid`].
-    Bid(Box<Bid>),
+    /// Variant that stores [`BidKind`].
+    Bid(BidKind),
     /// Variant that stores withdraw information.
     Withdraw(Vec<WithdrawPurse>),
     /// Variant that stores unbonding information.
@@ -128,7 +128,7 @@ impl StoredValue {
     }
 
     /// Returns a wrapped [`Bid`] if this is a `Bid` variant.
-    pub fn as_bid(&self) -> Option<&Bid> {
+    pub fn as_bid(&self) -> Option<&BidKind> {
         match self {
             StoredValue::Bid(bid) => Some(bid),
             _ => None,
@@ -222,9 +222,16 @@ impl From<Package> for StoredValue {
         StoredValue::ContractPackage(value)
     }
 }
+
 impl From<Bid> for StoredValue {
     fn from(bid: Bid) -> StoredValue {
-        StoredValue::Bid(Box::new(bid))
+        StoredValue::Bid(BidKind::Unified(Box::new(bid)))
+    }
+}
+
+impl From<BidKind> for StoredValue {
+    fn from(bid_kind: BidKind) -> StoredValue {
+        StoredValue::Bid(bid_kind)
     }
 }
 
@@ -334,6 +341,38 @@ impl TryFrom<StoredValue> for EraInfo {
     }
 }
 
+impl TryFrom<StoredValue> for Bid {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::Bid(bid_kind) => match bid_kind {
+                BidKind::Unified(bid) => Ok(*bid),
+                BidKind::Validator(_) => Err(TypeMismatch::new(
+                    "BidKind::UnifiedBid".to_string(),
+                    "BidKind::ValidatorBid".to_string(),
+                )),
+                BidKind::Delegator(_) => Err(TypeMismatch::new(
+                    "BidKind::UnifiedBid".to_string(),
+                    "BidKind::DelegatorBid".to_string(),
+                )),
+            },
+            _ => Err(TypeMismatch::new("Bid".to_string(), value.type_name())),
+        }
+    }
+}
+
+impl TryFrom<StoredValue> for BidKind {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::Bid(bid_kind) => Ok(bid_kind),
+            _ => Err(TypeMismatch::new("BidKind".to_string(), value.type_name())),
+        }
+    }
+}
+
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
@@ -350,7 +389,7 @@ impl ToBytes for StoredValue {
             StoredValue::Transfer(transfer) => (Tag::Transfer, transfer.to_bytes()?),
             StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
             StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
-            StoredValue::Bid(bid) => (Tag::Bid, bid.to_bytes()?),
+            StoredValue::Bid(bid_kind) => (Tag::Bid, bid_kind.to_bytes()?),
             StoredValue::Withdraw(withdraw_purses) => (Tag::Withdraw, withdraw_purses.to_bytes()?),
             StoredValue::Unbonding(unbonding_purses) => {
                 (Tag::Unbonding, unbonding_purses.to_bytes()?)
@@ -375,7 +414,7 @@ impl ToBytes for StoredValue {
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
-                StoredValue::Bid(bid) => bid.serialized_length(),
+                StoredValue::Bid(bid_kind) => bid_kind.serialized_length(),
                 StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
                 StoredValue::AddressableEntity(entity) => entity.serialized_length(),
@@ -395,7 +434,8 @@ impl ToBytes for StoredValue {
             StoredValue::Transfer(transfer) => transfer.write_bytes(writer)?,
             StoredValue::DeployInfo(deploy_info) => deploy_info.write_bytes(writer)?,
             StoredValue::EraInfo(era_info) => era_info.write_bytes(writer)?,
-            StoredValue::Bid(bid) => bid.write_bytes(writer)?,
+            // newly written instances of bid should always use the bid_kind type
+            StoredValue::Bid(bid_kind) => bid_kind.write_bytes(writer)?,
             StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::AddressableEntity(entity) => entity.write_bytes(writer)?,
@@ -430,8 +470,16 @@ impl FromBytes for StoredValue {
                 .map(|(deploy_info, remainder)| (StoredValue::DeployInfo(deploy_info), remainder)),
             tag if tag == Tag::EraInfo as u8 => EraInfo::from_bytes(remainder)
                 .map(|(deploy_info, remainder)| (StoredValue::EraInfo(deploy_info), remainder)),
-            tag if tag == Tag::Bid as u8 => Bid::from_bytes(remainder)
-                .map(|(bid, remainder)| (StoredValue::Bid(Box::new(bid)), remainder)),
+            tag if tag == Tag::Bid as u8 => match BidKind::from_bytes(remainder) {
+                // attempt new style first
+                Ok((bid_kind, remainder)) => Ok((StoredValue::Bid(bid_kind), remainder)),
+                Err(_) => {
+                    // attempt legacy before failing
+                    Bid::from_bytes(remainder).map(|(bid, remainder)| {
+                        (StoredValue::Bid(BidKind::Unified(Box::new(bid))), remainder)
+                    })
+                }
+            },
             tag if tag == Tag::Withdraw as u8 => {
                 Vec::<WithdrawPurse>::from_bytes(remainder).map(|(withdraw_purses, remainder)| {
                     (StoredValue::Withdraw(withdraw_purses), remainder)
@@ -444,7 +492,7 @@ impl FromBytes for StoredValue {
             }
             tag if tag == Tag::AddressableEntity as u8 => AddressableEntity::from_bytes(remainder)
                 .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
-            _ => Err(bytesrepr::Error::Formatting),
+            _ => Err(Error::Formatting),
         }
     }
 }

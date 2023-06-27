@@ -4,7 +4,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{
-        auction::{Bid, EraInfo, Error, UnbondingPurse},
+        auction::{Bid, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
     CLTyped, EraId, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
@@ -24,6 +24,9 @@ pub trait RuntimeProvider {
     /// Gets keys in a given keyspace
     fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error>;
 
+    /// Gets keys by prefix.
+    fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error>;
+
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
 
@@ -40,10 +43,10 @@ pub trait StorageProvider {
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error>;
 
     /// Reads [`Bid`] at account hash derived from given public key
-    fn read_bid(&mut self, account_hash: &AccountHash) -> Result<Option<Bid>, Error>;
+    fn read_bid(&mut self, key: &Key) -> Result<Option<Bid>, Error>;
 
-    /// Writes given [`Bid`] at account hash derived from given public key
-    fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error>;
+    /// Writes given [`BidKind`] at given key.
+    fn write_bid(&mut self, key: Key, bid_kind: BidKind) -> Result<(), Error>;
 
     /// Reads collection of [`UnbondingPurse`]s at account hash derived from given public key
     fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;

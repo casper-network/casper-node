@@ -6,7 +6,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     crypto,
     system::{
-        auction::{Bid, EraInfo, Error, UnbondingPurse},
+        auction::{BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
@@ -61,9 +61,9 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_bid(&mut self, account_hash: &AccountHash) -> Result<Option<Bid>, Error> {
-        match self.context.read_gs(&Key::Bid(*account_hash)) {
-            Ok(Some(StoredValue::Bid(bid))) => Ok(Some(*bid)),
+    fn read_bid(&mut self, key: Key) -> Result<Option<BidKind>, Error> {
+        match self.context.read_gs(&key) {
+            Ok(Some(StoredValue::Bid(bid_kind))) => Ok(Some(*bid_kind)),
             Ok(Some(_)) => Err(Error::Storage),
             Ok(None) => Ok(None),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
@@ -74,9 +74,9 @@ where
         }
     }
 
-    fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error> {
+    fn write_bid(&mut self, key: Key, bid_kind: BidKind) -> Result<(), Error> {
         self.context
-            .metered_write_gs_unsafe(Key::Bid(account_hash), StoredValue::Bid(Box::new(bid)))
+            .metered_write_gs_unsafe(key, StoredValue::Bid(bid_kind))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
@@ -131,6 +131,12 @@ where
 
     fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
         self.context.get_keys(key_tag).map_err(|_| Error::Storage)
+    }
+
+    fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
+        self.context
+            .get_keys_with_prefix(prefix)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {

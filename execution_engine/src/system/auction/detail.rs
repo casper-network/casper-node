@@ -7,8 +7,9 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     system::auction::{
         Bids, Delegator, Error, SeigniorageAllocation, SeigniorageRecipientsSnapshot,
-        UnbondingPurse, UnbondingPurses, AUCTION_DELAY_KEY, ERA_END_TIMESTAMP_MILLIS_KEY,
-        ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+        UnbondingPurse, UnbondingPurses, ValidatorBid, AUCTION_DELAY_KEY,
+        ERA_END_TIMESTAMP_MILLIS_KEY, ERA_ID_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY, VESTING_SCHEDULE_LENGTH_MILLIS,
     },
     ApiError, CLTyped, EraId, Key, KeyTag, PublicKey, URef, U512,
 };
@@ -497,6 +498,111 @@ pub(crate) fn era_validators_from_snapshot(
             (era_id, validator_weights)
         })
         .collect()
+}
+
+/// Initializes the vesting schedule of provided bid if the provided timestamp is greater than
+/// or equal to the bid's initial release timestamp and the bid is owned by a genesis
+/// validator. This method initializes with default 14 week vesting schedule.
+///
+/// Returns `true` if the provided bid's vesting schedule was initialized.
+pub(crate) fn process<P>(
+    provider: &mut P,
+    validator_bid: &mut ValidatorBid,
+    timestamp_millis: u64,
+) -> bool
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    process_with_vesting_schedule(
+        provider,
+        validator_bid,
+        timestamp_millis,
+        VESTING_SCHEDULE_LENGTH_MILLIS,
+    )
+}
+
+/// Initializes the vesting schedule of provided bid if the provided timestamp is greater than
+/// or equal to the bid's initial release timestamp and the bid is owned by a genesis
+/// validator.
+///
+/// Returns `true` if the provided bid's vesting schedule was initialized.
+pub(crate) fn process_with_vesting_schedule<P>(
+    _provider: &mut P,
+    validator_bid: &mut ValidatorBid,
+    timestamp_millis: u64,
+    vesting_schedule_period_millis: u64,
+) -> bool
+where
+    P: StorageProvider + RuntimeProvider + ?Sized,
+{
+    // Put timestamp-sensitive processing logic in here
+    let staked_amount = validator_bid.staked_amount();
+    let vesting_schedule = match validator_bid.vesting_schedule_mut() {
+        Some(vesting_schedule) => vesting_schedule,
+        None => return false,
+    };
+    if timestamp_millis < vesting_schedule.initial_release_timestamp_millis() {
+        return false;
+    }
+
+    let mut initialized = false;
+
+    if vesting_schedule.initialize_with_schedule(*staked_amount, vesting_schedule_period_millis) {
+        initialized = true;
+    }
+
+    todo!();
+    // TODO: iterate keys to get delegators and initialize them w/ vesting schedule
+
+    let prefix =
+        Key::Account(_validator_bid.validator_public_key().to_account_hash()).to_bytes()?;
+
+    let delegator_bid_keys = _provider.get_keys_by_prefix(&prefix)?;
+
+    // ORIGINAL LOGIC of bid record:
+    // for delegator in validator_bid.delegators_mut().values_mut() {
+    //     let staked_amount = *delegator.staked_amount();
+    //     if let Some(vesting_schedule) = delegator.vesting_schedule_mut() {
+    //         if timestamp_millis >= vesting_schedule.initial_release_timestamp_millis()
+    //             && vesting_schedule
+    //                 .initialize_with_schedule(staked_amount, vesting_schedule_period_millis)
+    //         {
+    //             initialized = true;
+    //         }
+    //     }
+    // }
+    //
+    // initialized
+}
+
+/// Returns the total staked amount of validator + all delegators
+pub(crate) fn total_staked_amount<P>(
+    _provider: &mut P,
+    _validator_bid: &mut ValidatorBid,
+) -> Result<U512, Error>
+where
+    P: RuntimeProvider + ?Sized,
+{
+    todo!();
+    // TODO: sum of staked amount of all delegator bid records
+    // corresponding to the keys in delegator_bid_keys, and add
+    // it to the validator's staked amount
+
+    let self_stake = validator_bid.staked_amount();
+
+    let prefix =
+        Key::Account(_validator_bid.validator_public_key().to_account_hash()).to_bytes()?;
+
+    let delegator_bid_keys = _provider.get_keys_by_prefix(&prefix)?;
+
+    // ORIGINAL LOGIC of bid record:
+    // self.delegators
+    //     .iter()
+    //     .fold(Some(U512::zero()), |maybe_a, (_, b)| {
+    //         maybe_a.and_then(|a| a.checked_add(*b.staked_amount()))
+    //     })
+    //     .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
+    //     .ok_or(Error::InvalidAmount)
 }
 
 fn is_under_max_delegator_cap(

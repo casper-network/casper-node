@@ -37,7 +37,7 @@ use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
+    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
@@ -536,7 +536,7 @@ pub enum Transform {
     /// Writes the given Transfer to global state.
     WriteTransfer(Transfer),
     /// Writes the given Bid to global state.
-    WriteBid(Box<Bid>),
+    WriteBid(BidKind),
     /// Writes the given Withdraw to global state.
     WriteWithdraw(Vec<WithdrawPurse>),
     /// Adds the given `i32`.
@@ -733,10 +733,17 @@ impl FromBytes for Transform {
                 let (value, remainder) = String::from_bytes(remainder)?;
                 Ok((Transform::Failure(value), remainder))
             }
-            TransformTag::WriteBid => {
-                let (bid, remainder) = Bid::from_bytes(remainder)?;
-                Ok((Transform::WriteBid(Box::new(bid)), remainder))
-            }
+            TransformTag::WriteBid => match BidKind::from_bytes(remainder) {
+                Ok((bid_kind, rem)) => Ok((Transform::WriteBid(bid_kind), rem)),
+                Err(_) => {
+                    // Attempt the legacy variation.
+                    let (bid, remainder) = Bid::from_bytes(remainder)?;
+                    Ok((
+                        Transform::WriteBid(BidKind::Unified(Box::new(bid))),
+                        remainder,
+                    ))
+                }
+            },
             TransformTag::WriteWithdraw => {
                 let (withdraw_purses, remainder) =
                     <Vec<WithdrawPurse> as FromBytes>::from_bytes(remainder)?;

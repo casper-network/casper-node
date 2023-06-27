@@ -41,6 +41,7 @@ use crate::{
     contracts::Contract,
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
     package::ContractPackageKind,
+    system::auction::{BidAddr, BidKind},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
@@ -104,7 +105,8 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         deploy_hash_arb().prop_map(Key::DeployInfo),
         era_id_arb().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
-        account_hash_arb().prop_map(Key::Bid),
+        bid_addr_validator_arb().prop_map(Key::Bid),
+        bid_addr_delegator_arb().prop_map(Key::Bid),
         account_hash_arb().prop_map(Key::Withdraw),
         u8_slice_32().prop_map(Key::Dictionary),
         Just(Key::EraSummary),
@@ -123,6 +125,16 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
 
 pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
     u8_slice_32().prop_map(AccountHash::new)
+}
+
+pub fn bid_addr_validator_arb() -> impl Strategy<Value = BidAddr> {
+    u8_slice_32().prop_map(BidAddr::new_validator_addr)
+}
+
+pub fn bid_addr_delegator_arb() -> impl Strategy<Value = BidAddr> {
+    let x = u8_slice_32();
+    let y = u8_slice_32();
+    (x, y).prop_map(BidAddr::new_delegator_addr)
 }
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
@@ -477,7 +489,7 @@ fn delegation_rate_arb() -> impl Strategy<Value = DelegationRate> {
     0..=DELEGATION_RATE_DENOMINATOR // Maximum, allowed value for delegation rate.
 }
 
-pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Value = Bid> {
+pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Value = BidKind> {
     (
         public_key_arb_no_system(),
         uref_arb(),
@@ -517,7 +529,7 @@ pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Va
                         .insert(delegator.delegator_public_key().clone(), delegator)
                         .is_none());
                 });
-                bid
+                BidKind::Unified(Box::new(bid))
             },
         )
 }
@@ -584,7 +596,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         transfer_arb().prop_map(StoredValue::Transfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
-        bid_arb(0..100).prop_map(|bid| StoredValue::Bid(Box::new(bid))),
+        bid_arb(0..100).prop_map(StoredValue::Bid),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
     ]

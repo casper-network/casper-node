@@ -591,6 +591,14 @@ where
             .map_err(Into::into)
     }
 
+    pub fn get_keys_with_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .reader()
+            .keys_with_prefix(self.correlation_id, prefix)
+            .map_err(Into::into)
+    }
+
     /// Write a transfer instance to the global state.
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
         if let Key::Transfer(_) = key {

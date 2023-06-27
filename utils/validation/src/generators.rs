@@ -12,7 +12,9 @@ use casper_types::{
     package::{
         ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
-    system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
+    system::auction::{
+        Bid, BidKind, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse,
+    },
     AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedKey, Package, Parameter,
@@ -114,6 +116,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         100,
         u64::MAX,
     );
+    let bid_kind = BidKind::Unified(Box::new(bid));
     let withdraw_purse_1 = WithdrawPurse::new(
         URef::new([10; 32], AccessRights::READ),
         PublicKey::from(&validator_secret_key),
@@ -194,7 +197,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
 
         transform.insert(
             "WriteBid".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteBid(Box::new(bid.clone())).into()])?,
+            ABITestCase::from_inputs(vec![Transform::WriteBid(bid_kind.clone()).into()])?,
         );
 
         transform.insert(
@@ -403,7 +406,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
         stored_value.insert(
             "Bid".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Bid(Box::new(bid)).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::Bid(bid_kind).into()])?,
         );
         stored_value.insert(
             "Withdraw".to_string(),

@@ -33,6 +33,7 @@ use crate::{
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     package::ContractPackageHash,
+    system::auction::BidAddr,
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
     UREF_ADDR_LENGTH,
@@ -133,7 +134,7 @@ pub enum Key {
     /// A `Key` under which we store a purse balance.
     Balance(URefAddr),
     /// A `Key` under which we store bid information
-    Bid(AccountHash),
+    Bid(BidAddr),
     /// A `Key` under which we store withdraw information.
     Withdraw(AccountHash),
     /// A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.
@@ -306,8 +307,8 @@ impl Key {
             Key::Balance(uref_addr) => {
                 format!("{}{}", BALANCE_PREFIX, base16::encode_lower(&uref_addr))
             }
-            Key::Bid(account_hash) => {
-                format!("{}{}", BID_PREFIX, base16::encode_lower(&account_hash))
+            Key::Bid(bid_addr) => {
+                format!("{}{}", BID_PREFIX, bid_addr)
             }
             Key::Withdraw(account_hash) => {
                 format!("{}{}", WITHDRAW_PREFIX, base16::encode_lower(&account_hash))
@@ -413,11 +414,31 @@ impl Key {
         }
 
         if let Some(hex) = input.strip_prefix(BID_PREFIX) {
-            let hash = checksummed_hex::decode(hex)
+            let bytes = checksummed_hex::decode(hex)
                 .map_err(|error| FromStrError::Bid(error.to_string()))?;
-            let account_hash = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(hash.as_ref())
-                .map_err(|error| FromStrError::Bid(error.to_string()))?;
-            return Ok(Key::Bid(AccountHash::new(account_hash)));
+            let len = bytes.len();
+            if len == BidAddr::DELEGATOR_BID_ADDR_LENGTH {
+                let addr = <[u8; BidAddr::DELEGATOR_BID_ADDR_LENGTH]>::try_from(bytes.as_ref())
+                    .map_err(|err| FromStrError::Bid(err.to_string()))?;
+                let validator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
+                    addr[0..BidAddr::VALIDATOR_BID_ADDR_LENGTH].as_ref(),
+                )
+                .map_err(|err| FromStrError::Bid(err.to_string()))?;
+                let delegator_bytes = <[u8; ACCOUNT_HASH_LENGTH]>::try_from(
+                    addr[BidAddr::VALIDATOR_BID_ADDR_LENGTH..].as_ref(),
+                )
+                .map_err(|err| FromStrError::Bid(err.to_string()))?;
+                return Ok(Key::Bid(BidAddr(
+                    AccountHash::new(validator_bytes),
+                    Some(AccountHash::new(delegator_bytes)),
+                )));
+            } else if len == BidAddr::VALIDATOR_BID_ADDR_LENGTH {
+                let addr = <[u8; BidAddr::VALIDATOR_BID_ADDR_LENGTH]>::try_from(bytes.as_ref())
+                    .map_err(|err| FromStrError::Bid(err.to_string()))?;
+                return Ok(Key::Bid(BidAddr(AccountHash::new(addr), None)));
+            } else {
+                return Err(FromStrError::Bid("invalid length".to_string()));
+            }
         }
 
         if let Some(hex) = input.strip_prefix(WITHDRAW_PREFIX) {
@@ -604,7 +625,7 @@ impl Display for Key {
             Key::Balance(uref_addr) => {
                 write!(f, "Key::Balance({})", base16::encode_lower(uref_addr))
             }
-            Key::Bid(account_hash) => write!(f, "Key::Bid({})", account_hash),
+            Key::Bid(bid_addr) => write!(f, "Key::Bid({})", bid_addr),
             Key::Withdraw(account_hash) => write!(f, "Key::Withdraw({})", account_hash),
             Key::Dictionary(addr) => {
                 write!(f, "Key::Dictionary({})", base16::encode_lower(addr))
@@ -746,7 +767,7 @@ impl ToBytes for Key {
             Key::DeployInfo(deploy_hash) => deploy_hash.write_bytes(writer),
             Key::EraInfo(era_id) => era_id.write_bytes(writer),
             Key::Balance(uref_addr) => uref_addr.write_bytes(writer),
-            Key::Bid(account_hash) => account_hash.write_bytes(writer),
+            Key::Bid(bid_addr) => bid_addr.write_bytes(writer),
             Key::Withdraw(account_hash) => account_hash.write_bytes(writer),
             Key::Dictionary(addr) => addr.write_bytes(writer),
             Key::Unbond(account_hash) => account_hash.write_bytes(writer),
@@ -791,8 +812,16 @@ impl FromBytes for Key {
                 Ok((Key::Balance(uref_addr), rem))
             }
             tag if tag == KeyTag::Bid as u8 => {
-                let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
-                Ok((Key::Bid(account_hash), rem))
+                match BidAddr::from_bytes(remainder) {
+                    // attempt new style first
+                    Ok((bid_addr, rem)) => Ok((Key::Bid(bid_addr), rem)),
+                    Err(_) => {
+                        // attempt legacy before failing
+                        let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
+                        let bid_addr = BidAddr(account_hash, None);
+                        Ok((Key::Bid(bid_addr), rem))
+                    }
+                }
             }
             tag if tag == KeyTag::Withdraw as u8 => {
                 let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
@@ -957,7 +986,7 @@ mod serde_helpers {
         DeployInfo(&'a DeployHash),
         EraInfo(&'a EraId),
         Balance(&'a URefAddr),
-        Bid(&'a AccountHash),
+        Bid(&'a BidAddr),
         Withdraw(&'a AccountHash),
         Dictionary(&'a HashAddr),
         SystemContractRegistry,
@@ -977,7 +1006,7 @@ mod serde_helpers {
                 Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
                 Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
                 Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
-                Key::Bid(account_hash) => BinarySerHelper::Bid(account_hash),
+                Key::Bid(bid_addr) => BinarySerHelper::Bid(bid_addr),
                 Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
                 Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
                 Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
@@ -999,7 +1028,7 @@ mod serde_helpers {
         DeployInfo(DeployHash),
         EraInfo(EraId),
         Balance(URefAddr),
-        Bid(AccountHash),
+        Bid(BidAddr),
         Withdraw(AccountHash),
         Dictionary(DictionaryAddr),
         SystemContractRegistry,
@@ -1019,7 +1048,7 @@ mod serde_helpers {
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
-                BinaryDeserHelper::Bid(account_hash) => Key::Bid(account_hash),
+                BinaryDeserHelper::Bid(bid_addr) => Key::Bid(bid_addr),
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
                 BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
@@ -1076,7 +1105,11 @@ mod tests {
     const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
     const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
     const BALANCE_KEY: Key = Key::Balance([42; 32]);
-    const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
+    const VALIDATOR_BID_KEY: Key = Key::Bid(BidAddr(AccountHash::new([42; 32]), None));
+    const DELEGATOR_BID_KEY: Key = Key::Bid(BidAddr(
+        AccountHash::new([42; 32]),
+        Some(AccountHash::new([24; 32])),
+    ));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
     const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
@@ -1092,7 +1125,8 @@ mod tests {
         DEPLOY_INFO_KEY,
         ERA_INFO_KEY,
         BALANCE_KEY,
-        BID_KEY,
+        VALIDATOR_BID_KEY,
+        DELEGATOR_BID_KEY,
         WITHDRAW_KEY,
         DICTIONARY_KEY,
         SYSTEM_CONTRACT_REGISTRY_KEY,
@@ -1102,6 +1136,8 @@ mod tests {
         CHECKSUM_REGISTRY_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
+    const DELEGATOR_HEX_STRING: &str =
+        "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a1818181818181818181818181818181818181818181818181818181818181818";
 
     fn test_readable(right: AccessRights, is_true: bool) {
         assert_eq!(right.is_readable(), is_true)
@@ -1178,7 +1214,14 @@ mod tests {
             format!("{}", BALANCE_KEY),
             format!("Key::Balance({})", HEX_STRING)
         );
-        assert_eq!(format!("{}", BID_KEY), format!("Key::Bid({})", HEX_STRING));
+        assert_eq!(
+            format!("{}", VALIDATOR_BID_KEY),
+            format!("Key::Bid({})", HEX_STRING)
+        );
+        assert_eq!(
+            format!("{}", DELEGATOR_BID_KEY),
+            format!("Key::Bid({})", DELEGATOR_HEX_STRING)
+        );
         assert_eq!(
             format!("{}", WITHDRAW_KEY),
             format!("Key::Withdraw({})", HEX_STRING)
@@ -1277,7 +1320,7 @@ mod tests {
     fn should_parse_key_from_str() {
         for key in KEYS {
             let string = key.to_formatted_string();
-            let parsed_key = Key::from_formatted_str(&string).unwrap();
+            let parsed_key = Key::from_formatted_str(&string).expect("{string} (key = {key:?})");
             assert_eq!(parsed_key, *key, "{string} (key = {key:?})");
         }
     }
@@ -1383,6 +1426,7 @@ mod tests {
             json!({ "EraInfo": "era-42" }),
             json!({ "Balance": format!("balance-{}", HEX_STRING) }),
             json!({ "Bid": format!("bid-{}", HEX_STRING) }),
+            json!({ "Bid": format!("bid-{}", DELEGATOR_HEX_STRING) }),
             json!({ "Withdraw": format!("withdraw-{}", HEX_STRING) }),
             json!({ "Dictionary": format!("dictionary-{}", HEX_STRING) }),
             json!({
@@ -1433,7 +1477,8 @@ mod tests {
     fn serialization_roundtrip_json() {
         let round_trip = |key: &Key| {
             let encoded = serde_json::to_value(key).unwrap();
-            let decoded = serde_json::from_value(encoded).unwrap();
+            let decoded =
+                serde_json::from_value(encoded.clone()).expect(&format!("{} {}", key, encoded));
             assert_eq!(key, &decoded);
         };
 
@@ -1442,6 +1487,7 @@ mod tests {
         }
 
         let zeros = [0; BLAKE2B_DIGEST_LENGTH];
+        let nines = [9; BLAKE2B_DIGEST_LENGTH];
 
         round_trip(&Key::Account(AccountHash::new(zeros)));
         round_trip(&Key::Hash(zeros));
@@ -1450,7 +1496,11 @@ mod tests {
         round_trip(&Key::DeployInfo(DeployHash::from_raw(zeros)));
         round_trip(&Key::EraInfo(EraId::from(0)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
-        round_trip(&Key::Bid(AccountHash::new(zeros)));
+        round_trip(&Key::Bid(BidAddr(AccountHash::new(zeros), None)));
+        round_trip(&Key::Bid(BidAddr(
+            AccountHash::new(zeros),
+            Some(AccountHash::new(nines)),
+        )));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::SystemContractRegistry);
