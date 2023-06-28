@@ -106,7 +106,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
@@ -115,13 +114,11 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-        GetBidsResult, QueryRequest, QueryResult,
-    },
-    shared::execution_journal::ExecutionJournal,
+use casper_execution_engine::engine_state::{
+    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, ExecutionJournal,
+    GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
 };
+use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash,
     BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage, Deploy, DeployHash,

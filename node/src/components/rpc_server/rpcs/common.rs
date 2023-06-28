@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, warn};
 
 use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{bytesrepr::ToBytes, Block, Digest, Key};
 
 use super::{

@@ -8,7 +8,7 @@ use tempfile::TempDir;
 use tokio::time;
 use tracing::{error, info};
 
-use casper_execution_engine::core::engine_state::GetBidsRequest;
+use casper_execution_engine::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
@@ -292,14 +292,11 @@ impl SwitchBlocks {
 
     /// Returns the set of bids in the auction contract at the end of the given era.
     fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
-        let correlation_id = Default::default();
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
             let request = GetBidsRequest::new(state_root_hash);
             let engine_state = runner.main_reactor().contract_runtime().engine_state();
-            let bids_result = engine_state
-                .get_bids(correlation_id, request)
-                .expect("get_bids failed");
+            let bids_result = engine_state.get_bids(request).expect("get_bids failed");
             if let Some(bids) = bids_result.into_success() {
                 return bids;
             }

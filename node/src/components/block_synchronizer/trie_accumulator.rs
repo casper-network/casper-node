@@ -13,7 +13,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 
-use casper_storage::global_state::storage::trie::TrieRaw;
+use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{bytesrepr::Bytes, ChunkWithProof, Digest, DisplayIter};
 
 use crate::{

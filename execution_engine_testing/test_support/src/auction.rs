@@ -1,21 +1,18 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
+use lmdb::{Cursor, Transaction};
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         self, run_genesis_request::RunGenesisRequest, EngineState, ExecConfig, ExecuteRequest,
     },
     execution,
 };
 use casper_storage::global_state::{
-    shared::CorrelationId,
-    storage::{
-        lmdb::{Cursor, Transaction},
-        state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie},
-    },
+    state::{CommitProvider, StateProvider},
+    trie::{Pointer, Trie},
 };
 use casper_types::{
     account::AccountHash,
@@ -226,7 +223,7 @@ fn find_necessary_tries<S>(
         necessary_tries.insert(root);
 
         let trie_bytes = engine_state
-            .get_trie_full(CorrelationId::new(), root)
+            .get_trie_full(root)
             .unwrap()
             .expect("trie should exist")
             .into_inner();

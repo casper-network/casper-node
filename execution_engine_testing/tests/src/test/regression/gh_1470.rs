@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         engine_config::{
             DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,

@@ -12,7 +12,7 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, trace};
 
-use casper_execution_engine::core::engine_state::MAX_PAYMENT;
+use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,

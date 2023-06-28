@@ -1,4 +1,4 @@
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     step::{EvictItem, SlashItem},
     StepRequest,
 };

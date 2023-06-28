@@ -66,6 +66,11 @@ mod transfer_result;
 mod uint;
 mod uref;
 
+#[cfg(feature = "std")]
+use libc::{c_long, sysconf, _SC_PAGESIZE};
+#[cfg(feature = "std")]
+use once_cell::sync::Lazy;
+
 pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
@@ -164,3 +169,18 @@ pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
+
+/// OS page size.
+#[cfg(feature = "std")]
+pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
+    /// Sensible default for many if not all systems.
+    const DEFAULT_PAGE_SIZE: usize = 4096;
+
+    // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
+    let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
+    if value <= 0 {
+        DEFAULT_PAGE_SIZE
+    } else {
+        value as usize
+    }
+});

@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
+use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
     account::Account, runtime_args, system::CallStackElement, CLValue, ContractHash,
     ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
@@ -235,8 +235,8 @@ fn assert_invalid_context(builder: &mut LmdbWasmTestBuilder, depth: usize) {
         let error = builder.get_error().unwrap();
         assert!(matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::InvalidContext
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::InvalidContext
             )
         ));
     }

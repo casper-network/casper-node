@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::TempDir;
 
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_execution_engine::core::engine_state::{
-    run_genesis_request::RunGenesisRequest, EngineConfig,
-};
+use casper_execution_engine::engine_state::{run_genesis_request::RunGenesisRequest, EngineConfig};
 #[cfg(test)]
 use casper_types::{AccessRights, Key, URef};
 use casper_types::{Digest, ProtocolVersion};

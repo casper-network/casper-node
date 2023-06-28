@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::Error;
+use casper_execution_engine::engine_state::Error;
 use casper_types::{account::AccountHash, RuntimeArgs};
 
 const CONTRACT_EE_532_REGRESSION: &str = "ee_532_regression.wasm";

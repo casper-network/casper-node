@@ -9,10 +9,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::{engine_state::Error, execution},
-    shared::wasm_prep::PreprocessingError,
-};
+use casper_execution_engine::{engine_state::Error, execution, runtime::PreprocessingError};
 use casper_types::{
     account::AccountHash,
     contracts::DEFAULT_ENTRY_POINT_NAME,
