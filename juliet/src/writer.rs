@@ -1,13 +1,12 @@
-use std::io::Cursor;
+use std::{collections::HashSet, io::Cursor};
 
 use bytemuck::{Pod, Zeroable};
 use bytes::{buf::Chain, Buf, Bytes};
+use thiserror::Error;
 
 use crate::{header::Header, varint::Varint32, ChannelConfiguration, ChannelId, Id};
 
-pub struct WriteTracker {}
-
-struct OutgoingMessage {
+pub struct OutgoingMessage {
     header: Header,
     payload: Option<Bytes>,
 }
@@ -116,6 +115,7 @@ impl OutgoingFrame {
 
 pub struct Channel {
     config: ChannelConfiguration,
+    outgoing_request_ids: HashSet<Id>,
 }
 
 pub struct MessageWriteTracker<const N: usize> {
@@ -123,20 +123,68 @@ pub struct MessageWriteTracker<const N: usize> {
     channels: [Channel; N],
 }
 
-impl WriteTracker {
-    fn create_request(
+#[derive(Copy, Clone, Debug, Error)]
+pub enum LocalProtocolViolation {
+    /// TODO: docs with hint what the programming error could be
+    #[error("sending would exceed request limit")]
+    WouldExceedRequestLimit,
+    /// TODO: docs with hint what the programming error could be
+    #[error("invalid channel")]
+    InvalidChannel(ChannelId),
+}
+
+impl<const N: usize> MessageWriteTracker<N> {
+    #[inline(always)]
+    fn channel_index(&self, channel: ChannelId) -> Result<usize, LocalProtocolViolation> {
+        if channel.0 as usize >= N {
+            Err(LocalProtocolViolation::InvalidChannel(channel))
+        } else {
+            Ok(channel.0 as usize)
+        }
+    }
+
+    /// Returns whether or not it is permissible to send another request on given channel.
+    #[inline]
+    pub fn allowed_to_send_request(
+        &self,
+        channel: ChannelId,
+    ) -> Result<bool, LocalProtocolViolation> {
+        let chan_idx = self.channel_index(channel)?;
+        let chan = &self.channels[chan_idx];
+
+        Ok(chan.outgoing_request_ids.len() < chan.config.request_limit as usize)
+    }
+
+    /// Creates a new request to be sent.
+    ///
+    /// # Note
+    ///
+    /// Any caller of this functions should call `allowed_to_send_request()` before this function
+    /// to ensure the channels request limit is not exceeded. Failure to do so may result in the
+    /// peer closing the connection due to a protocol violation.
+    pub fn create_request(
         &mut self,
         channel: ChannelId,
         payload: Option<Bytes>,
-    ) -> Option<OutgoingMessage> {
-        // TODO: check if we're allowed to send
-        let id = self.generate_id(channel); // TODO: properly generate ID
+    ) -> Result<OutgoingMessage, LocalProtocolViolation> {
+        let id = self.generate_id(channel);
+
+        if !self.allowed_to_send_request(channel)? {
+            return Err(LocalProtocolViolation::WouldExceedRequestLimit);
+        }
 
         if let Some(payload) = payload {
             let header = Header::new(crate::header::Kind::RequestPl, channel, id);
-            todo!()
+            Ok(OutgoingMessage {
+                header,
+                payload: Some(payload),
+            })
         } else {
-            todo!()
+            let header = Header::new(crate::header::Kind::Request, channel, id);
+            Ok(OutgoingMessage {
+                header,
+                payload: None,
+            })
         }
     }
 
