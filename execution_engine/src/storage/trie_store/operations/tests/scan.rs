@@ -1,4 +1,3 @@
-use assert_matches::assert_matches;
 use std::convert::TryInto;
 
 use casper_hashing::Digest;
@@ -42,7 +41,7 @@ where
     for (index, parent) in parents.into_iter().rev() {
         let expected_tip_hash = {
             match tip {
-                LazilyDeserializedTrie::Leaf(leaf_bytes) => Digest::hash(&leaf_bytes),
+                LazilyDeserializedTrie::Leaf(leaf_bytes) => Digest::hash(leaf_bytes.bytes()),
                 node @ LazilyDeserializedTrie::Node { .. }
                 | node @ LazilyDeserializedTrie::Extension { .. } => {
                     let tip_bytes = TryInto::<Trie<TestKey, TestValue>>::try_into(node)?
@@ -67,9 +66,11 @@ where
         }
     }
 
-    assert_matches!(
-        tip,
-        LazilyDeserializedTrie::Node { .. } | LazilyDeserializedTrie::Extension { .. },
+    assert!(
+        matches!(
+            tip,
+            LazilyDeserializedTrie::Node { .. } | LazilyDeserializedTrie::Extension { .. },
+        ),
         "Unexpected leaf found"
     );
     assert_eq!(root, tip.try_into()?);

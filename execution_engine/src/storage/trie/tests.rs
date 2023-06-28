@@ -105,7 +105,7 @@ mod proptests {
 
     use crate::storage::trie::{gens::*, LazilyDeserializedTrie, PointerBlock, Trie};
 
-    fn test_trie_roundtrip_to_lazy_trie<K, V>(trie: &Trie<K, V>, check_key: bool)
+    fn test_trie_roundtrip_to_lazy_trie<K, V>(trie: &Trie<K, V>)
     where
         K: ToBytes + FromBytes + PartialEq + std::fmt::Debug + Clone,
         V: ToBytes + FromBytes + PartialEq + std::fmt::Debug + Clone,
@@ -127,16 +127,12 @@ mod proptests {
                 .try_into()
                 .expect("Expected to be able to convert LazilyDeserializedTrie to Trie<K, V>")
         );
-        if check_key {
-            let (key, _) = deserialized_from_slice
+        if let LazilyDeserializedTrie::Leaf(leaf_bytes) = deserialized_from_slice {
+            let (key, _) = leaf_bytes
                 .try_deserialize_leaf_key::<K>()
                 .expect("Should have been able to deserialize key");
             assert_eq!(key, *trie.key().unwrap());
-        } else {
-            assert!(deserialized_from_slice
-                .try_deserialize_leaf_key::<K>()
-                .is_err());
-        }
+        };
 
         let deserialized: LazilyDeserializedTrie =
             bytesrepr::deserialize(serialized).expect("Unable to deserialize data");
@@ -148,16 +144,12 @@ mod proptests {
                 .try_into()
                 .expect("Expected to be able to convert LazilyDeserializedTrie to Trie<K, V>")
         );
-        if check_key {
-            let (key, _) = deserialized
+        if let LazilyDeserializedTrie::Leaf(leaf_bytes) = deserialized {
+            let (key, _) = leaf_bytes
                 .try_deserialize_leaf_key::<K>()
                 .expect("Should have been able to deserialize key");
             assert_eq!(key, *trie.key().unwrap());
-        } else {
-            assert!(deserialized_from_slice
-                .try_deserialize_leaf_key::<K>()
-                .is_err());
-        }
+        };
     }
 
     proptest! {
@@ -183,17 +175,17 @@ mod proptests {
 
         #[test]
         fn bytesrepr_roundtrip_trie_leaf_to_lazy_trie(trie_leaf in trie_leaf_arb()) {
-            test_trie_roundtrip_to_lazy_trie(&trie_leaf, true)
+            test_trie_roundtrip_to_lazy_trie(&trie_leaf)
         }
 
         #[test]
         fn bytesrepr_roundtrip_trie_extension_to_lazy_trie(trie_extension in trie_extension_arb()) {
-            test_trie_roundtrip_to_lazy_trie(&trie_extension, false)
+            test_trie_roundtrip_to_lazy_trie(&trie_extension)
         }
 
         #[test]
         fn bytesrepr_roundtrip_trie_node_to_lazy_trie(trie_node in trie_node_arb()) {
-            test_trie_roundtrip_to_lazy_trie(&trie_node, false);
+            test_trie_roundtrip_to_lazy_trie(&trie_node);
         }
 
         #[test]

@@ -435,12 +435,12 @@ where
 
     // Check that tip is a leaf
     match tip {
-        lazy_leaf @ LazilyDeserializedTrie::Leaf(_)
+        LazilyDeserializedTrie::Leaf(leaf_bytes)
             if {
                 // Partially deserialize a key of a leaf node to ensure that we can only continue if
                 // the key matches what we're looking for.
                 // _rem contains bytes of serialized V, but we don't need to inspect it.
-                let (key, _rem) = lazy_leaf.try_deserialize_leaf_key::<K>()?;
+                let (key, _rem) = leaf_bytes.try_deserialize_leaf_key::<K>()?;
                 key == *key_to_delete
             } => {}
         _ => return Ok(DeleteResult::DoesNotExist),
@@ -883,9 +883,9 @@ where
             let TrieScanRaw { tip, parents } =
                 scan_raw::<K, V, T, S, E>(txn, &store, &path, current_root_bytes)?;
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
-                lazy_leaf @ LazilyDeserializedTrie::Leaf(_) => {
+                LazilyDeserializedTrie::Leaf(leaf_bytes) => {
                     let (existing_leaf_key, existing_value_bytes) =
-                        lazy_leaf.try_deserialize_leaf_key()?;
+                        leaf_bytes.try_deserialize_leaf_key()?;
 
                     if key != &existing_leaf_key {
                         // If the "tip" is an existing leaf with a different key than
@@ -1024,6 +1024,7 @@ where
 
             match trie {
                 LazilyDeserializedTrie::Leaf(leaf_bytes) => {
+                    let leaf_bytes = leaf_bytes.bytes();
                     if leaf_bytes.is_empty() {
                         self.state = KeysIteratorState::Failed;
                         return Some(Err(bytesrepr::Error::Formatting.into()));
