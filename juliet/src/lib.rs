@@ -11,7 +11,6 @@ use std::{
 mod header;
 pub mod reader;
 pub mod varint;
-mod writer;
 
 /// A channel identifier.
 ///
@@ -91,7 +90,7 @@ pub enum Outcome<T, E> {
     /// The given data was incomplete, at least the given amount of additional bytes is needed.
     Incomplete(NonZeroU32),
     /// An fatal error was found in the given input.
-    Err(E),
+    Fatal(E),
     /// The parse was successful and the underlying buffer has been modified to extract `T`.
     Success(T),
 }
@@ -110,7 +109,7 @@ impl<T, E> Outcome<T, E> {
         match self {
             Outcome::Success(value) => value,
             Outcome::Incomplete(_) => panic!("incomplete: {}", msg),
-            Outcome::Err(_) => panic!("error: {}", msg),
+            Outcome::Fatal(_) => panic!("error: {}", msg),
         }
     }
 
@@ -122,7 +121,7 @@ impl<T, E> Outcome<T, E> {
     {
         match self {
             Outcome::Incomplete(n) => Outcome::Incomplete(n),
-            Outcome::Err(err) => Outcome::Err(f(err)),
+            Outcome::Fatal(err) => Outcome::Fatal(f(err)),
             Outcome::Success(value) => Outcome::Success(value),
         }
     }
@@ -146,7 +145,7 @@ macro_rules! try_outcome {
     ($src:expr) => {
         match $src {
             Outcome::Incomplete(n) => return Outcome::Incomplete(n),
-            Outcome::Err(err) => return Outcome::Err(err.into()),
+            Outcome::Fatal(err) => return Outcome::Fatal(err.into()),
             Outcome::Success(value) => value,
         }
     };

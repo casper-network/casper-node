@@ -9,7 +9,7 @@ use bytes::{Buf, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header},
-    reader::Outcome::{self, Err, Success},
+    reader::Outcome::{self, Fatal, Success},
     try_outcome,
     varint::decode_varint32,
 };
@@ -106,7 +106,7 @@ impl MultiframeReceiver {
                 {
                     {
                         if payload_size.value > max_payload_size {
-                            return Err(header.with_err(payload_exceeded_error_kind));
+                            return Fatal(header.with_err(payload_exceeded_error_kind));
                         }
 
                         // We have a valid varint32.
@@ -156,7 +156,7 @@ impl MultiframeReceiver {
             } => {
                 if header != *active_header {
                     // The newly supplied header does not match the one active.
-                    return Err(header.with_err(ErrorKind::InProgress));
+                    return Fatal(header.with_err(ErrorKind::InProgress));
                 }
 
                 // Determine whether we expect an intermediate or end segment.

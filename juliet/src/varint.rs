@@ -7,7 +7,7 @@ use std::num::{NonZeroU32, NonZeroU8};
 
 use bytemuck::{Pod, Zeroable};
 
-use crate::Outcome::{self, Err, Incomplete, Success};
+use crate::Outcome::{self, Fatal, Incomplete, Success};
 
 /// The bitmask to separate the data-follows bit from actual value bits.
 const VARINT_MASK: u8 = 0b0111_1111;
@@ -33,7 +33,7 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
 
     for (idx, &c) in input.iter().enumerate() {
         if idx >= 4 && c & 0b1111_0000 != 0 {
-            return Err(Overflow);
+            return Fatal(Overflow);
         }
 
         value |= ((c & 0b0111_1111) as u32) << (idx * 7);
@@ -176,19 +176,19 @@ mod tests {
         // Value is too long (no more than 5 bytes allowed).
         assert!(matches!(
             decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x01]),
-            Outcome::Err(Overflow)
+            Outcome::Fatal(Overflow)
         ));
 
         // This behavior should already trigger on the fifth byte.
         assert!(matches!(
             decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x80]),
-            Outcome::Err(Overflow)
+            Outcome::Fatal(Overflow)
         ));
 
         // Value is too big to be held by a `u32`.
         assert!(matches!(
             decode_varint32(&[0x80, 0x80, 0x80, 0x80, 0x10]),
-            Outcome::Err(Overflow)
+            Outcome::Fatal(Overflow)
         ));
     }
 

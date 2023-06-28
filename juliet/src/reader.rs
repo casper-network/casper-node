@@ -1,15 +1,18 @@
 //! Incoming message parser.
 
 mod multiframe;
+mod outgoing_message;
 
 use std::{collections::HashSet, num::NonZeroU32};
 
 use bytes::{Buf, Bytes, BytesMut};
+use thiserror::Error;
 
+use self::{multiframe::MultiframeReceiver, outgoing_message::OutgoingMessage};
 use crate::{
     header::{ErrorKind, Header, Kind},
     try_outcome, ChannelConfiguration, ChannelId, Id,
-    Outcome::{self, Err, Incomplete, Success},
+    Outcome::{self, Fatal, Incomplete, Success},
 };
 
 const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
@@ -61,10 +64,72 @@ pub enum CompletedRead {
     ResponseCancellation { id: Id },
 }
 
-use self::multiframe::MultiframeReceiver;
+#[derive(Copy, Clone, Debug, Error)]
+pub enum LocalProtocolViolation {
+    /// TODO: docs with hint what the programming error could be
+    #[error("sending would exceed request limit")]
+    WouldExceedRequestLimit,
+    /// TODO: docs with hint what the programming error could be
+    #[error("invalid channel")]
+    InvalidChannel(ChannelId),
+}
 
 impl<const N: usize> MessageReader<N> {
-    pub fn process(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {
+    // TODO: Make return channel ref.
+    #[inline(always)]
+    fn channel_index(&self, channel: ChannelId) -> Result<usize, LocalProtocolViolation> {
+        if channel.0 as usize >= N {
+            Err(LocalProtocolViolation::InvalidChannel(channel))
+        } else {
+            Ok(channel.0 as usize)
+        }
+    }
+
+    /// Returns whether or not it is permissible to send another request on given channel.
+    #[inline]
+    pub fn allowed_to_send_request(
+        &self,
+        channel: ChannelId,
+    ) -> Result<bool, LocalProtocolViolation> {
+        let chan_idx = self.channel_index(channel)?;
+        let chan = &self.channels[chan_idx];
+
+        Ok(chan.outgoing_requests.len() < chan.config.request_limit as usize)
+    }
+
+    /// Creates a new request to be sent.
+    ///
+    /// # Note
+    ///
+    /// Any caller of this functions should call `allowed_to_send_request()` before this function
+    /// to ensure the channels request limit is not exceeded. Failure to do so may result in the
+    /// peer closing the connection due to a protocol violation.
+    pub fn create_request(
+        &mut self,
+        channel: ChannelId,
+        payload: Option<Bytes>,
+    ) -> Result<OutgoingMessage, LocalProtocolViolation> {
+        let id = self.generate_request_id(channel);
+
+        if !self.allowed_to_send_request(channel)? {
+            return Err(LocalProtocolViolation::WouldExceedRequestLimit);
+        }
+
+        if let Some(payload) = payload {
+            let header = Header::new(crate::header::Kind::RequestPl, channel, id);
+            Ok(OutgoingMessage::new(header, Some(payload)))
+        } else {
+            let header = Header::new(crate::header::Kind::Request, channel, id);
+            Ok(OutgoingMessage::new(header, None))
+        }
+    }
+
+    /// Generate a new, unused request ID.
+    fn generate_request_id(&mut self, channel: ChannelId) -> Id {
+        todo!()
+    }
+
+    pub fn process_incoming(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {
         // First, attempt to complete a frame.
         loop {
             // We do not have enough data to extract a header, indicate and return.
@@ -77,7 +142,7 @@ impl<const N: usize> MessageReader<N> {
                 Some(header) => header,
                 None => {
                     // The header was invalid, return an error.
-                    return Err(Header::new_error(
+                    return Fatal(Header::new_error(
                         ErrorKind::InvalidHeader,
                         UNKNOWN_CHANNEL,
                         UNKNOWN_ID,
@@ -102,17 +167,17 @@ impl<const N: usize> MessageReader<N> {
             // At this point we are guaranteed a valid non-error frame, verify its channel.
             let channel = match self.channels.get_mut(header.channel().get() as usize) {
                 Some(channel) => channel,
-                None => return Err(header.with_err(ErrorKind::InvalidChannel)),
+                None => return Fatal(header.with_err(ErrorKind::InvalidChannel)),
             };
 
             match header.kind() {
                 Kind::Request => {
                     if channel.is_at_max_requests() {
-                        return Err(header.with_err(ErrorKind::RequestLimitExceeded));
+                        return Fatal(header.with_err(ErrorKind::RequestLimitExceeded));
                     }
 
                     if channel.incoming_requests.insert(header.id()) {
-                        return Err(header.with_err(ErrorKind::DuplicateRequest));
+                        return Fatal(header.with_err(ErrorKind::DuplicateRequest));
                     }
                     channel.increment_cancellation_allowance();
 
@@ -127,7 +192,7 @@ impl<const N: usize> MessageReader<N> {
                 }
                 Kind::Response => {
                     if !channel.outgoing_requests.remove(&header.id()) {
-                        return Err(header.with_err(ErrorKind::FictitiousRequest));
+                        return Fatal(header.with_err(ErrorKind::FictitiousRequest));
                     } else {
                         return Success(CompletedRead::ReceivedResponse {
                             id: header.id(),
@@ -143,12 +208,12 @@ impl<const N: usize> MessageReader<N> {
                         // If we're in the ready state, requests must be eagerly rejected if
                         // exceeding the limit.
                         if channel.is_at_max_requests() {
-                            return Err(header.with_err(ErrorKind::RequestLimitExceeded));
+                            return Fatal(header.with_err(ErrorKind::RequestLimitExceeded));
                         }
 
                         // We also check for duplicate requests early to avoid reading them.
                         if channel.incoming_requests.contains(&header.id()) {
-                            return Err(header.with_err(ErrorKind::DuplicateRequest));
+                            return Fatal(header.with_err(ErrorKind::DuplicateRequest));
                         }
                     };
 
@@ -164,7 +229,7 @@ impl<const N: usize> MessageReader<N> {
                     // If we made it to this point, we have consumed the frame. Record it.
                     if is_new_request {
                         if channel.incoming_requests.insert(header.id()) {
-                            return Err(header.with_err(ErrorKind::DuplicateRequest));
+                            return Fatal(header.with_err(ErrorKind::DuplicateRequest));
                         }
                         channel.increment_cancellation_allowance();
                     }
@@ -190,7 +255,7 @@ impl<const N: usize> MessageReader<N> {
                     // Ensure it is not a bogus response.
                     if is_new_response {
                         if !channel.outgoing_requests.contains(&header.id()) {
-                            return Err(header.with_err(ErrorKind::FictitiousRequest));
+                            return Fatal(header.with_err(ErrorKind::FictitiousRequest));
                         }
                     }
 
@@ -206,7 +271,7 @@ impl<const N: usize> MessageReader<N> {
                     // If we made it to this point, we have consumed the frame.
                     if is_new_response {
                         if !channel.outgoing_requests.remove(&header.id()) {
-                            return Err(header.with_err(ErrorKind::FictitiousRequest));
+                            return Fatal(header.with_err(ErrorKind::FictitiousRequest));
                         }
                     }
 
@@ -229,7 +294,7 @@ impl<const N: usize> MessageReader<N> {
                     // cancellation races. For security reasons they are subject to an allowance.
 
                     if channel.cancellation_allowance == 0 {
-                        return Err(header.with_err(ErrorKind::CancellationLimitExceeded));
+                        return Fatal(header.with_err(ErrorKind::CancellationLimitExceeded));
                     }
                     channel.cancellation_allowance -= 1;
 
@@ -241,7 +306,7 @@ impl<const N: usize> MessageReader<N> {
                     if channel.outgoing_requests.remove(&header.id()) {
                         return Success(CompletedRead::ResponseCancellation { id: header.id() });
                     } else {
-                        return Err(header.with_err(ErrorKind::FictitiousCancel));
+                        return Fatal(header.with_err(ErrorKind::FictitiousCancel));
                     }
                 }
             }
