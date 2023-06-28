@@ -3187,7 +3187,6 @@ fn get_body_for_block_header(
 
 /// Retrieves the versioned block body for the given block header, performing the migration to the
 /// new version of BlockBody if necessary.
-#[allow(unused)] // TODO[RC]: This function should be used by gossiper/fetcher in the historical sync process.
 fn get_versioned_body_for_block_header(
     txn: &mut RwTransaction,
     block_body_hash: &Digest,

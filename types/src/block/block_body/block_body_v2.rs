@@ -31,7 +31,7 @@ pub struct BlockBodyV2 {
 
 impl BlockBodyV2 {
     /// Constructs a new `BlockBody`.
-    pub(super) fn new(
+    pub(crate) fn new(
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,

@@ -73,7 +73,6 @@ pub use access_rights::{
 };
 #[doc(inline)]
 pub use api_error::ApiError;
-// TODO[RC]: Can we live without `BlockBodyV1` being exported?
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
     BlockSignaturesMergeError, BlockV1, BlockValidationError, EraEnd, EraReport, FinalitySignature,

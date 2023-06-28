@@ -1,6 +1,4 @@
 mod block_body;
-mod block_body_v1;
-mod block_body_v2;
 mod block_hash;
 mod block_hash_and_height;
 mod block_header;
@@ -11,7 +9,6 @@ mod finality_signature;
 mod finality_signature_id;
 mod json_compatibility;
 mod signed_block_header;
-mod versioned_block_body;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::collections::BTreeMap;
@@ -39,8 +36,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     DeployHash, Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
-pub use block_body::BlockBody;
-pub use block_body_v1::BlockBodyV1;
+pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2, VersionedBlockBody};
 pub use block_hash::BlockHash;
 pub use block_hash_and_height::BlockHashAndHeight;
 pub use block_header::BlockHeader;
@@ -55,9 +51,6 @@ pub use json_compatibility::{
     JsonValidatorWeight,
 };
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
-pub use versioned_block_body::VersionedBlockBody;
-
-use self::block_body_v2::BlockBodyV2;
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
 #[derive(Clone, Eq, PartialEq, Debug)]

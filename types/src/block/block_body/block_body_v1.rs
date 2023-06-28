@@ -8,7 +8,7 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
 #[cfg(all(feature = "std", feature = "json-schema"))]
-use super::JsonBlockBody;
+use crate::JsonBlockBody;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     DeployHash, Digest, PublicKey,
@@ -32,7 +32,7 @@ pub struct BlockBodyV1 {
 
 impl BlockBodyV1 {
     /// Constructs a new `BlockBody`.
-    pub(super) fn new(
+    pub(crate) fn new(
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,

@@ -23,9 +23,9 @@ pub struct JsonBlockBody {
 impl From<BlockBody> for JsonBlockBody {
     fn from(body: BlockBody) -> Self {
         JsonBlockBody {
-            proposer: body.proposer,
-            deploy_hashes: body.deploy_hashes,
-            transfer_hashes: body.transfer_hashes,
+            proposer: body.proposer().clone(),
+            deploy_hashes: body.deploy_hashes().into(),
+            transfer_hashes: body.transfer_hashes().into(),
         }
     }
 }
