@@ -3,6 +3,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_storage::global_state::storage::state::StateReader;
+use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
@@ -529,8 +530,8 @@ where
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
                 let package_status = ContractPackageStatus::new(is_locked);
-                let (hash_addr, access_addr) =
-                    self.create_contract_package_at_hash(package_status)?;
+                let (hash_addr, access_addr) = self
+                    .create_contract_package_at_hash(package_status, ContractPackageKind::Wasm)?;
 
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;

@@ -9,7 +9,7 @@ use casper_types::{
         auction::{Bid, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
+    CLTyped, CLValue, ContractHash, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
 };
 
@@ -154,12 +154,27 @@ where
             .context
             .read_gs_direct(&Key::Account(account_hash))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+
+        let contract_hash: ContractHash = match maybe_value {
+            Some(StoredValue::Account(cl_value)) => {
+                let contract_hash: ContractHash = cl_value.into_t().map_err(|_| Error::CLValue)?;
+                contract_hash
+            }
+            Some(_cl_value) => return Err(Error::CLValue),
+            None => return Err(Error::InvalidPublicKey),
+        };
+
+        let maybe_value = self
+            .context
+            .read_gs_direct(&contract_hash.into())
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+
         match maybe_value {
-            Some(StoredValue::Account(account)) => {
+            Some(StoredValue::Contract(contract)) => {
                 self.mint_transfer_direct(
                     Some(account_hash),
                     *unbonding_purse.bonding_purse(),
-                    account.main_purse(),
+                    contract.main_purse(),
                     *unbonding_purse.amount(),
                     None,
                 )

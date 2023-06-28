@@ -21,6 +21,7 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::storage::state::StateReader;
+use casper_types::contracts::{ActionThresholds, AssociatedKeys, ContractPackageKind};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
@@ -1235,7 +1236,7 @@ where
         let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
             EntryPointType::Session => (
                 self.context.contract().named_keys().clone(),
-                self.context.contract().extract_access_rights(),
+                self.context.contract().extract_access_rights(contract_hash),
             ),
             EntryPointType::Contract => (
                 contract.named_keys().clone(),
@@ -1248,7 +1249,7 @@ where
 
             let call_stack_element = match entry_point.entry_point_type() {
                 EntryPointType::Session => CallStackElement::stored_session(
-                    self.context.contract().account_hash(),
+                    *self.context.account_hash(),
                     contract.contract_package_hash(),
                     contract_hash,
                 ),
@@ -1532,6 +1533,7 @@ where
     fn create_contract_package(
         &mut self,
         is_locked: ContractPackageStatus,
+        contract_package_kind: ContractPackageKind,
     ) -> Result<(ContractPackage, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = ContractPackage::new(
@@ -1540,6 +1542,7 @@ where
             DisabledVersions::default(),
             Groups::default(),
             is_locked,
+            contract_package_kind,
         );
 
         Ok((contract_package, access_key))
@@ -1548,9 +1551,11 @@ where
     fn create_contract_package_at_hash(
         &mut self,
         lock_status: ContractPackageStatus,
+        contract_package_kind: ContractPackageKind,
     ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
-        let (contract_package, access_key) = self.create_contract_package(lock_status)?;
+        let (contract_package, access_key) =
+            self.create_contract_package(lock_status, contract_package_kind)?;
         self.context
             .metered_write_gs_unsafe(Key::Hash(addr), contract_package)?;
         Ok((addr, access_key.addr()))
@@ -1647,6 +1652,10 @@ where
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
+        if contract_package.get_contract_package_kind() != ContractPackageKind::Wasm {
+            return Err(Error::InvalidContext);
+        }
+
         let version = contract_package.current_contract_version();
 
         // Return an error if the contract is locked and has some version associated with it.
@@ -1674,12 +1683,35 @@ where
             named_keys.append(&mut previous_named_keys);
         }
 
+        let (main_purse, associated_keys, action_thresholds) =
+            match contract_package.current_contract_hash() {
+                Some(previous_contract_hash) => {
+                    let previous_contract: Contract =
+                        self.context.read_gs_typed(&previous_contract_hash.into())?;
+                    let mut previous_named_keys = previous_contract.named_keys().clone();
+                    named_keys.append(&mut previous_named_keys);
+                    (
+                        previous_contract.main_purse(),
+                        previous_contract.associated_keys().clone(),
+                        previous_contract.action_thresholds().clone(),
+                    )
+                }
+                None => (
+                    self.create_purse()?,
+                    AssociatedKeys::default(),
+                    ActionThresholds::default(),
+                ),
+            };
+
         let contract = Contract::new(
             contract_package_hash,
             contract_wasm_hash.into(),
             named_keys,
             entry_points,
             protocol_version,
+            main_purse,
+            associated_keys,
+            action_thresholds,
         );
 
         let insert_contract_result =
@@ -1809,7 +1841,7 @@ where
         let transfer_addr = self.context.new_transfer_addr()?;
         let transfer = {
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
-            let from: AccountHash = self.context.contract().account_hash();
+            let from: AccountHash = *self.context.account_hash();
             let fee: U512 = U512::zero(); // TODO
             Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
         };
@@ -2163,8 +2195,44 @@ where
 
         match result? {
             Ok(()) => {
-                let account = Account::create(target, Default::default(), target_purse);
-                self.context.write_account(target_key, account)?;
+                let (package_addr, _) = self.create_contract_package_at_hash(
+                    ContractPackageStatus::Locked,
+                    ContractPackageKind::Account(target),
+                )?;
+
+                let main_purse = self.create_purse()?;
+                let associated_keys = AssociatedKeys::new(target, Weight::new(1));
+
+                let contract_hash = self.context.new_hash_address()?;
+
+                let contract = Contract::new(
+                    package_addr.into(),
+                    [0u8; 32].into(),
+                    NamedKeys::default(),
+                    EntryPoints::default(),
+                    self.context.protocol_version(),
+                    main_purse,
+                    associated_keys,
+                    ActionThresholds::default(),
+                );
+
+                let mut package = self
+                    .context
+                    .read_gs_typed::<ContractPackage>(&Key::Hash(package_addr))?;
+                package.insert_contract_version(
+                    self.context.protocol_version().value().major,
+                    contract_hash.into(),
+                );
+
+                self.context
+                    .write_contract_package(Key::Hash(package_addr), package);
+                self.context
+                    .write_contract(Key::Hash(contract_hash), contract);
+
+                self.context.metered_write_gs(
+                    target_key,
+                    CLValue::from_t(ContractHash::new(contract_hash))?,
+                )?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
             Err(mint_error) => Ok(Err(mint_error.into())),
@@ -2215,7 +2283,7 @@ where
 
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
-        match self.context.read_account(&target_key)? {
+        match self.context.read_gs(&target_key)? {
             None => {
                 // If no account exists, create a new account and transfer the amount to its
                 // purse.
@@ -2223,7 +2291,14 @@ where
             }
             Some(StoredValue::Account(account)) => {
                 // Attenuate the target main purse
-                let target_uref = account.main_purse_add_only();
+                let contract_hash = CLValue::into_t::<ContractHash>(account)?;
+                let target_uref = if let Some(StoredValue::Contract(contract)) =
+                    self.context.read_gs(&contract_hash.into())?
+                {
+                    contract.main_purse_add_only()
+                } else {
+                    return Err(Error::InvalidContract(contract_hash));
+                };
 
                 if source.with_access_rights(AccessRights::ADD) == target_uref {
                     return Ok(Ok(TransferredTo::ExistingAccount));

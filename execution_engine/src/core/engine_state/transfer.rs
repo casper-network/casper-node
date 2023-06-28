@@ -3,7 +3,7 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
     contracts::AccountHash, system::mint, AccessRights, ApiError, CLType, CLValueError, Contract,
-    Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    ContractHash, Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::core::{
@@ -260,12 +260,21 @@ impl TransferRuntimeArgsBuilder {
         };
 
         self.to = Some(account_hash);
-        match tracking_copy
+
+        let contract_hash = match tracking_copy
             .borrow_mut()
             .read_account(correlation_id, account_hash)
         {
-            Ok(account) => Ok(TransferTargetMode::PurseExists(
-                account.main_purse().with_access_rights(AccessRights::ADD),
+            Ok(contract_hash) => contract_hash,
+            Err(_) => return Ok(TransferTargetMode::CreateAccount(account_hash)),
+        };
+
+        match tracking_copy
+            .borrow_mut()
+            .get_contract(correlation_id, contract_hash)
+        {
+            Ok(contract) => Ok(TransferTargetMode::PurseExists(
+                contract.main_purse().with_access_rights(AccessRights::ADD),
             )),
             Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
         }

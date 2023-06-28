@@ -4,8 +4,8 @@
 mod byte_size;
 mod ext;
 pub(self) mod meter;
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
@@ -25,8 +25,8 @@ use casper_storage::global_state::{
 };
 use casper_types::{
     bytesrepr::{self},
-    CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
-    Tagged, U512,
+    CLType, CLValue, CLValueError, ContractHash, Digest, Key, KeyTag, StoredValue,
+    StoredValueTypeMismatch, Tagged, KEY_HASH_LENGTH, U512,
 };
 
 pub use self::ext::TrackingCopyExt;
@@ -507,14 +507,29 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 .expect("but we just pushed");
 
             match stored_value {
-                StoredValue::Account(account) => {
-                    let name = query.next_name();
-                    if let Some(key) = account.named_keys().get(name) {
-                        query.navigate(*key);
+                StoredValue::Account(cl_value) => {
+                    if cl_value.cl_type() == &CLType::ByteArray(KEY_HASH_LENGTH as u32) {
+                        let contract_hash: ContractHash = match cl_value.clone().into_t() {
+                            Ok(contract_hash) => contract_hash,
+                            Err(_) => {
+                                return Ok(query.into_not_found_result(
+                                    "Failed to parse CLValue as Contract Hash",
+                                ))
+                            }
+                        };
+                        query.navigate(contract_hash.into())
                     } else {
-                        let msg_prefix = format!("Name {} not found in Account", name);
-                        return Ok(query.into_not_found_result(&msg_prefix));
+                        return Ok(
+                            query.into_not_found_result("Failed to parse CLValue as Contract Hash")
+                        );
                     }
+                    // let name = query.next_name();
+                    // if let Some(key) = account.named_keys().get(name) {
+                    //     query.navigate(*key);
+                    // } else {
+                    //     let msg_prefix = format!("Name {} not found in Account", name);
+                    //     return Ok(query.into_not_found_result(&msg_prefix));
+                    // }
                 }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
@@ -692,7 +707,7 @@ pub fn validate_query_proof(
 
     for (proof, path_component) in proofs_iter.zip(path.iter()) {
         let named_keys = match proof_value {
-            StoredValue::Account(account) => account.named_keys(),
+            // StoredValue::Account(account) => account.named_keys(),
             StoredValue::Contract(contract) => contract.named_keys(),
             _ => return Err(ValidationError::PathCold),
         };

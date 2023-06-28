@@ -4,10 +4,11 @@ use std::{cell::RefCell, fmt, rc::Rc};
 use thiserror::Error;
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
+use casper_types::contracts::{ActionThresholds, AssociatedKeys};
 use casper_types::{
     bytesrepr::{self},
     system::SystemContractType,
-    Contract, ContractHash, Digest, Key, ProtocolVersion, StoredValue,
+    Contract, ContractHash, Digest, Key, ProtocolVersion, StoredValue, URef,
 };
 
 use crate::core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy};
@@ -199,6 +200,9 @@ where
             contract.named_keys().clone(),
             entry_points,
             self.new_protocol_version,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
         );
         self.tracking_copy
             .borrow_mut()

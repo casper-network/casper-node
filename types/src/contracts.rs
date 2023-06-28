@@ -1030,6 +1030,10 @@ impl ContractPackage {
     pub fn get_lock_status(&self) -> ContractPackageStatus {
         self.lock_status.clone()
     }
+
+    pub fn get_contract_package_kind(&self) -> ContractPackageKind {
+        self.contract_package_kind.clone()
+    }
 }
 
 impl ToBytes for ContractPackage {
@@ -1587,6 +1591,11 @@ impl Contract {
     /// Removes given named key.
     pub fn remove_named_key(&mut self, key: &str) -> Option<Key> {
         self.named_keys.remove(key)
+    }
+
+    /// Returns a mutable reference to named keys.
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
     }
 
     /// Set protocol_version.

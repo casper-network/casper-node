@@ -123,6 +123,8 @@ where
         runtime_args: RuntimeArgs,
         authorization_keys: BTreeSet<AccountHash>,
         contract: &'a Contract,
+        account_hash: &'a AccountHash,
+        contract_hash: &'a ContractHash,
         base_key: Key,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
@@ -143,6 +145,7 @@ where
             access_rights,
             args: runtime_args,
             contract,
+            contract_hash,
             authorization_keys,
             blocktime,
             deploy_hash,
@@ -156,6 +159,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
+            account_hash,
         }
     }
 
@@ -174,6 +178,7 @@ where
         let authorization_keys = self.authorization_keys.clone();
         let contract = self.contract;
         let account_hash = self.account_hash;
+        let contract_hash = self.contract_hash;
         let blocktime = self.blocktime;
         let deploy_hash = self.deploy_hash;
         let gas_limit = self.gas_limit;
@@ -193,6 +198,7 @@ where
             access_rights,
             args: runtime_args,
             contract,
+            contract_hash,
             account_hash,
             authorization_keys,
             blocktime,
@@ -347,7 +353,7 @@ where
 
     /// Returns the caller of the contract.
     pub fn get_caller(&self) -> AccountHash {
-        self.contract.account_hash()
+        self.account_hash.clone()
     }
 
     /// Returns the block time.
@@ -608,6 +614,26 @@ where
         }
     }
 
+    pub fn write_contract_package(&mut self, key: Key, value: ContractPackage) {
+        if let Key::Hash(_) = key {
+            self.tracking_copy
+                .borrow_mut()
+                .write(key, StoredValue::ContractPackage(value))
+        } else {
+            panic!("Do not use this function for writing non-hash keys")
+        }
+    }
+
+    pub fn write_contract(&mut self, key: Key, value: Contract) {
+        if let Key::Hash(_) = key {
+            self.tracking_copy
+                .borrow_mut()
+                .write(key, StoredValue::Contract(value))
+        } else {
+            panic!("Do not use this function for writing non-hash keys")
+        }
+    }
+
     /// Write an era info instance to the global state.
     pub fn write_era_info(&mut self, key: Key, value: EraInfo) {
         if let Key::EraSummary = key {
@@ -710,13 +736,14 @@ where
     fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
-            StoredValue::Account(account) => {
+            StoredValue::Account(cl_value) => {
                 // This should never happen as accounts can't be created by contracts.
                 // I am putting this here for the sake of completeness.
-                account
-                    .named_keys()
-                    .values()
-                    .try_for_each(|key| self.validate_key(key))
+                // account
+                //     .named_keys()
+                //     .values()
+                //     .try_for_each(|key| self.validate_key(key))
+                self.validate_cl_value(cl_value)
             }
             StoredValue::ContractWasm(_) => Ok(()),
             StoredValue::Contract(contract_header) => contract_header
@@ -906,7 +933,7 @@ where
     where
         T: Into<Gas>,
     {
-        if self.contract.account_hash() == PublicKey::System.to_account_hash() {
+        if *self.account_hash() == PublicKey::System.to_account_hash() {
             // Don't try to charge a system account for calling a system contract's entry point.
             // This will make sure that (for example) calling a mint's transfer from within auction
             // wouldn't try to incur cost to system account.
@@ -1018,7 +1045,7 @@ where
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
 
-        let key = self.contract_hash().into();
+        let key: Key = Key::Hash(self.contract_hash().value());
 
         // Take a contract out of the global state
         let contract = {
@@ -1063,7 +1090,7 @@ where
 
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
-        let key = self.contract_hash().into();
+        let key: Key = Key::Hash(self.contract_hash().value());
 
         // Take an account out of the global state
         let mut contract: Contract = self.read_gs_typed(&key)?;
@@ -1103,7 +1130,7 @@ where
 
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
-        let key = self.contract_hash().into();
+        let key: Key = Key::Hash(self.contract_hash().value());
 
         // Take an account out of the global state
         let mut contract: Contract = self.read_gs_typed(&key)?;
@@ -1143,7 +1170,7 @@ where
 
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
-        let key = self.contract_hash().into();
+        let key: Key = Key::Hash(self.contract_hash().value());
 
         // Take an account out of the global state
         let mut contract: Contract = self.read_gs_typed(&key)?;
@@ -1175,7 +1202,7 @@ where
 
     /// Checks if the account context is valid.
     fn is_valid_context(&self) -> bool {
-        self.base_key() == Key::Account(self.contract().account_hash())
+        self.base_key() == Key::Account(*self.account_hash())
     }
 
     /// Gets main purse id
