@@ -9,6 +9,7 @@ mod finality_signature;
 mod finality_signature_id;
 mod json_compatibility;
 mod signed_block_header;
+mod versioned_block_body;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::collections::BTreeMap;
@@ -36,7 +37,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     DeployHash, Digest, EraId, ProtocolVersion, PublicKey, Timestamp,
 };
-pub use block_body::{BlockBody, BlockBodyV1, VersionedBlockBody};
+pub use block_body::{BlockBody, BlockBodyV1};
 pub use block_hash::BlockHash;
 pub use block_hash_and_height::BlockHashAndHeight;
 pub use block_header::BlockHeader;
@@ -51,6 +52,7 @@ pub use json_compatibility::{
     JsonValidatorWeight,
 };
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
+pub use versioned_block_body::VersionedBlockBody;
 
 use self::block_body::BlockBodyV2;
 
