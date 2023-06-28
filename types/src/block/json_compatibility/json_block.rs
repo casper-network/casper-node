@@ -5,10 +5,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    super::{Block, BlockHash, BlockSignatures, EraEnd, EraId},
+    super::{Block, BlockHash, BlockSignatures, EraEnd},
     JsonBlockBody, JsonBlockHeader, JsonProof,
 };
-use crate::{crypto, DeployHash, Digest, ProtocolVersion, PublicKey, SecretKey, Timestamp};
+use crate::{crypto, DeployHash, Digest, EraId, ProtocolVersion, PublicKey, SecretKey, Timestamp};
 
 static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     let parent_hash = BlockHash::new(Digest::from([7; Digest::LENGTH]));
