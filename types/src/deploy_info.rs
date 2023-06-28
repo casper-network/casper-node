@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    DeployHash, TransferAddr, URef, U512,
+    serde_helpers, DeployHash, TransferAddr, URef, U512,
 };
 
 /// Information relating to the given Deploy.
@@ -22,6 +22,11 @@ use crate::{
 #[serde(deny_unknown_fields)]
 pub struct DeployInfo {
     /// The relevant Deploy.
+    #[serde(with = "serde_helpers::deploy_hash_as_array")]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(with = "DeployHash", description = "Hex-encoded Deploy hash.")
+    )]
     pub deploy_hash: DeployHash,
     /// Transfers performed by the Deploy.
     pub transfers: Vec<TransferAddr>,
