@@ -9,7 +9,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
+use casper_storage::global_state::storage::state::StateProvider;
 use casper_types::{
     account::{Account, AccountHash},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
@@ -374,7 +374,6 @@ where
     S::Error: Into<execution::Error>,
 {
     protocol_version: ProtocolVersion,
-    correlation_id: CorrelationId,
     exec_config: ExecConfig,
     address_generator: Rc<RefCell<AddressGenerator>>,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
@@ -388,7 +387,6 @@ where
     pub(crate) fn new(
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
         exec_config: ExecConfig,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
@@ -415,7 +413,6 @@ where
 
         GenesisInstaller {
             protocol_version,
-            correlation_id,
             exec_config,
             address_generator,
             tracking_copy,
@@ -649,7 +646,6 @@ where
         };
 
         let _ = self.tracking_copy.borrow_mut().add(
-            CorrelationId::default(),
             total_supply_key,
             StoredValue::CLValue(
                 CLValue::from_t(total_staked_amount)
@@ -937,7 +933,7 @@ where
         let partial_cl_registry = self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &Key::SystemContractRegistry)
+            .read(&Key::SystemContractRegistry)
             .map_err(|_| GenesisError::FailedToCreateSystemRegistry)?
             .ok_or_else(|| {
                 GenesisError::CLValue("failed to convert registry as stored value".to_string())

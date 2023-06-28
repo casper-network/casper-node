@@ -17,7 +17,7 @@ use crate::{
     runtime_context::dictionary::DictionaryValue,
     tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
 };
-use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
+use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
     account::{
         Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
@@ -96,7 +96,6 @@ pub struct RuntimeContext<'a, R> {
     gas_counter: Gas,
     address_generator: Rc<RefCell<AddressGenerator>>,
     protocol_version: ProtocolVersion,
-    correlation_id: CorrelationId,
     phase: Phase,
     engine_config: EngineConfig,
     entry_point_type: EntryPointType,
@@ -128,7 +127,6 @@ where
         gas_counter: Gas,
         address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
         phase: Phase,
         engine_config: EngineConfig,
         transfers: Vec<TransferAddr>,
@@ -149,7 +147,6 @@ where
             gas_counter,
             address_generator,
             protocol_version,
-            correlation_id,
             phase,
             engine_config,
             transfers,
@@ -177,7 +174,6 @@ where
         let gas_counter = self.gas_counter;
         let address_generator = self.address_generator.clone();
         let protocol_version = self.protocol_version;
-        let correlation_id = self.correlation_id;
         let phase = self.phase;
         let engine_config = self.engine_config;
         let transfers = self.transfers.clone();
@@ -198,7 +194,6 @@ where
             gas_counter,
             address_generator,
             protocol_version,
-            correlation_id,
             phase,
             engine_config,
             transfers,
@@ -267,7 +262,7 @@ where
                     let value: StoredValue = self
                         .tracking_copy
                         .borrow_mut()
-                        .read(self.correlation_id, &contract_uref)
+                        .read(&contract_uref)
                         .map_err(Into::into)?
                         .ok_or(Error::KeyNotFound(contract_uref))?;
 
@@ -416,11 +411,6 @@ where
         self.protocol_version
     }
 
-    /// Returns the correlation id.
-    pub fn correlation_id(&self) -> CorrelationId {
-        self.correlation_id
-    }
-
     /// Returns the current phase.
     pub fn phase(&self) -> Phase {
         self.phase
@@ -477,7 +467,7 @@ where
         match self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &Key::Hash(purse_uref.addr()))
+            .read(&Key::Hash(purse_uref.addr()))
             .map_err(Into::into)?
         {
             Some(stored_value) => Ok(Some(stored_value.try_into().map_err(Error::TypeMismatch)?)),
@@ -502,7 +492,7 @@ where
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, key)
+            .read(key)
             .map_err(Into::into)?;
 
         let stored_value = match maybe_stored_value {
@@ -522,7 +512,7 @@ where
     pub fn read_gs_direct(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
         self.tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, key)
+            .read(key)
             .map_err(Into::into)
     }
 
@@ -552,7 +542,7 @@ where
     pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
         self.tracking_copy
             .borrow_mut()
-            .get_keys(self.correlation_id, key_tag)
+            .get_keys(key_tag)
             .map_err(Into::into)
     }
 
@@ -562,7 +552,7 @@ where
             self.validate_key(key)?;
             self.tracking_copy
                 .borrow_mut()
-                .read(self.correlation_id, key)
+                .read(key)
                 .map_err(Into::into)
         } else {
             panic!("Do not use this function for reading from non-account keys")
@@ -947,11 +937,7 @@ where
         let value_bytes_count = value.serialized_length();
         self.charge_gas_storage(value_bytes_count)?;
 
-        match self
-            .tracking_copy
-            .borrow_mut()
-            .add(self.correlation_id, key, value)
-        {
+        match self.tracking_copy.borrow_mut().add(key, value) {
             Err(storage_error) => Err(storage_error.into()),
             Ok(AddResult::Success) => Ok(()),
             Ok(AddResult::KeyNotFound(key)) => Err(Error::KeyNotFound(key)),
@@ -1205,7 +1191,7 @@ where
         let maybe_stored_value = self
             .tracking_copy
             .borrow_mut()
-            .read(self.correlation_id, &dictionary_key)
+            .read(&dictionary_key)
             .map_err(Into::into)?;
 
         if let Some(stored_value) = maybe_stored_value {
@@ -1263,7 +1249,7 @@ where
     pub fn system_contract_registry(&self) -> Result<SystemContractRegistry, Error> {
         self.tracking_copy
             .borrow_mut()
-            .get_system_contracts(self.correlation_id)
+            .get_system_contracts()
             .map_err(|_| {
                 error!("Missing system contract registry");
                 Error::MissingSystemContractRegistry

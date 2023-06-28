@@ -16,7 +16,7 @@ pub use self::lmdb::make_temporary_global_state;
 use crate::global_state::{
     shared::{
         transform::{self, Transform},
-        AdditiveMap, CorrelationId,
+        AdditiveMap,
     },
     storage::{
         transaction_source::{Transaction, TransactionSource},
@@ -36,21 +36,13 @@ pub trait StateReader<K, V> {
     type Error;
 
     /// Returns the state value from the corresponding key
-    fn read(&self, correlation_id: CorrelationId, key: &K) -> Result<Option<V>, Self::Error>;
+    fn read(&self, key: &K) -> Result<Option<V>, Self::Error>;
 
     /// Returns the merkle proof of the state value from the corresponding key
-    fn read_with_proof(
-        &self,
-        correlation_id: CorrelationId,
-        key: &K,
-    ) -> Result<Option<TrieMerkleProof<K, V>>, Self::Error>;
+    fn read_with_proof(&self, key: &K) -> Result<Option<TrieMerkleProof<K, V>>, Self::Error>;
 
     /// Returns the keys in the trie matching `prefix`.
-    fn keys_with_prefix(
-        &self,
-        correlation_id: CorrelationId,
-        prefix: &[u8],
-    ) -> Result<Vec<K>, Self::Error>;
+    fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<K>, Self::Error>;
 }
 
 /// An error emitted by the execution engine on commit
@@ -82,7 +74,6 @@ pub trait CommitProvider: StateProvider {
     /// block_hash is used for computing a deterministic and unique keys.
     fn commit(
         &self,
-        correlation_id: CorrelationId,
         state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error>;
@@ -103,26 +94,17 @@ pub trait StateProvider {
     fn empty_root(&self) -> Digest;
 
     /// Reads a full `Trie` (never chunked) from the state if it is present
-    fn get_trie_full(
-        &self,
-        correlation_id: CorrelationId,
-        trie_key: &Digest,
-    ) -> Result<Option<TrieRaw>, Self::Error>;
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error>;
 
     /// Insert a trie node into the trie
-    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error>;
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error>;
 
     /// Finds all the children of `trie_raw` which aren't present in the state.
-    fn missing_children(
-        &self,
-        correlation_id: CorrelationId,
-        trie_raw: &[u8],
-    ) -> Result<Vec<Digest>, Self::Error>;
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error>;
 
     /// Delete key from the global state.
     fn delete_keys(
         &self,
-        correlation_id: CorrelationId,
         root: Digest,
         keys_to_delete: &[Key],
     ) -> Result<DeleteResult, Self::Error>;
@@ -132,7 +114,6 @@ pub trait StateProvider {
 pub fn put_stored_values<'a, R, S, E>(
     environment: &'a R,
     store: &S,
-    correlation_id: CorrelationId,
     prestate_hash: Digest,
     stored_values: HashMap<Key, StoredValue>,
 ) -> Result<Digest, E>
@@ -149,8 +130,7 @@ where
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
     for (key, value) in stored_values.iter() {
-        let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, key, value)?;
+        let write_result = write::<_, _, _, _, E>(&mut txn, store, &state_root, key, value)?;
         match write_result {
             WriteResult::Written(root_hash) => {
                 state_root = root_hash;
@@ -170,7 +150,6 @@ where
 pub fn commit<'a, R, S, H, E>(
     environment: &'a R,
     store: &S,
-    correlation_id: CorrelationId,
     prestate_hash: Digest,
     effects: AdditiveMap<Key, Transform, H>,
 ) -> Result<Digest, E>
@@ -191,7 +170,7 @@ where
     };
 
     for (key, transform) in effects.into_iter() {
-        let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
+        let read_result = read::<_, _, _, _, E>(&txn, store, &state_root, &key)?;
 
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
@@ -227,8 +206,7 @@ where
             }
         };
 
-        let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
+        let write_result = write::<_, _, _, _, E>(&mut txn, store, &state_root, &key, &value)?;
 
         match write_result {
             WriteResult::Written(root_hash) => {

@@ -17,10 +17,7 @@ use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
 use casper_storage::global_state::{
-    shared::{
-        transform::{self, Transform},
-        CorrelationId,
-    },
+    shared::transform::{self, Transform},
     storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 use casper_types::{
@@ -294,15 +291,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         TrackingCopy::new(self)
     }
 
-    pub(super) fn get(
-        &mut self,
-        correlation_id: CorrelationId,
-        key: &Key,
-    ) -> Result<Option<StoredValue>, R::Error> {
+    pub(super) fn get(&mut self, key: &Key) -> Result<Option<StoredValue>, R::Error> {
         if let Some(value) = self.cache.get(key) {
             return Ok(Some(value.to_owned()));
         }
-        if let Some(value) = self.reader.read(correlation_id, key)? {
+        if let Some(value) = self.reader.read(key)? {
             self.cache.insert_read(*key, value.to_owned());
             Ok(Some(value))
         } else {
@@ -311,19 +304,13 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     /// Gets the set of keys in the state whose tag is `key_tag`.
-    pub fn get_keys(
-        &mut self,
-        correlation_id: CorrelationId,
-        key_tag: &KeyTag,
-    ) -> Result<BTreeSet<Key>, R::Error> {
+    pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, R::Error> {
         let mut ret: BTreeSet<Key> = BTreeSet::new();
         match self.cache.get_key_tag_reads_cached(key_tag) {
             Some(keys) => ret.extend(keys),
             None => {
                 let key_tag = key_tag.to_owned();
-                let keys = self
-                    .reader
-                    .keys_with_prefix(correlation_id, &[key_tag as u8])?;
+                let keys = self.reader.keys_with_prefix(&[key_tag as u8])?;
                 ret.extend(keys);
                 self.cache.insert_key_tag_read(key_tag, ret.to_owned())
             }
@@ -335,13 +322,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     }
 
     /// Reads the value stored under `key`.
-    pub fn read(
-        &mut self,
-        correlation_id: CorrelationId,
-        key: &Key,
-    ) -> Result<Option<StoredValue>, R::Error> {
+    pub fn read(&mut self, key: &Key) -> Result<Option<StoredValue>, R::Error> {
         let normalized_key = key.normalize();
-        if let Some(value) = self.get(correlation_id, &normalized_key)? {
+        if let Some(value) = self.get(&normalized_key)? {
             self.journal.push((normalized_key, Transform::Identity));
             Ok(Some(value))
         } else {
@@ -361,14 +344,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global
     /// state.
-    pub fn add(
-        &mut self,
-        correlation_id: CorrelationId,
-        key: Key,
-        value: StoredValue,
-    ) -> Result<AddResult, R::Error> {
+    pub fn add(&mut self, key: Key, value: StoredValue) -> Result<AddResult, R::Error> {
         let normalized_key = key.normalize();
-        let current_value = match self.get(correlation_id, &normalized_key)? {
+        let current_value = match self.get(&normalized_key)? {
             None => return Ok(AddResult::KeyNotFound(normalized_key)),
             Some(current_value) => current_value,
         };
@@ -453,7 +431,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// values.
     pub fn query(
         &self,
-        correlation_id: CorrelationId,
+
         config: &EngineConfig,
         base_key: Key,
         path: &[String],
@@ -471,10 +449,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 return Ok(query.into_circular_ref_result());
             }
 
-            let stored_value = match self
-                .reader
-                .read_with_proof(correlation_id, &query.current_key)?
-            {
+            let stored_value = match self.reader.read_with_proof(&query.current_key)? {
                 None => {
                     return Ok(query.into_not_found_result("Failed to find base key"));
                 }
@@ -577,15 +552,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &TrackingCopy<R> {
     type Error = R::Error;
 
-    fn read(
-        &self,
-        correlation_id: CorrelationId,
-        key: &Key,
-    ) -> Result<Option<StoredValue>, Self::Error> {
+    fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
         if let Some(value) = self.cache.muts_cached.get(key) {
             return Ok(Some(value.to_owned()));
         }
-        if let Some(value) = self.reader.read(correlation_id, key)? {
+        if let Some(value) = self.reader.read(key)? {
             Ok(Some(value))
         } else {
             Ok(None)
@@ -594,18 +565,13 @@ impl<R: StateReader<Key, StoredValue>> StateReader<Key, StoredValue> for &Tracki
 
     fn read_with_proof(
         &self,
-        correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
-        self.reader.read_with_proof(correlation_id, key)
+        self.reader.read_with_proof(key)
     }
 
-    fn keys_with_prefix(
-        &self,
-        correlation_id: CorrelationId,
-        prefix: &[u8],
-    ) -> Result<Vec<Key>, Self::Error> {
-        self.reader.keys_with_prefix(correlation_id, prefix)
+    fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Key>, Self::Error> {
+        self.reader.keys_with_prefix(prefix)
     }
 }
 

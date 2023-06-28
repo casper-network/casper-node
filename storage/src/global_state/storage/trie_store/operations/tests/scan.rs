@@ -1,16 +1,12 @@
 use casper_types::Digest;
 
 use super::*;
-use crate::global_state::{
-    shared::CorrelationId,
-    storage::{
-        error,
-        trie_store::operations::{scan, TrieScan},
-    },
+use crate::global_state::storage::{
+    error,
+    trie_store::operations::{scan, TrieScan},
 };
 
 fn check_scan<'a, R, S, E>(
-    _correlation_id: CorrelationId,
     environment: &'a R,
     store: &S,
     root_hash: &Digest,
@@ -59,14 +55,12 @@ mod partial_tries {
     #[test]
     fn lmdb_scans_from_n_leaf_partial_trie_had_expected_results() {
         for generator in &TEST_TRIE_GENERATORS {
-            let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
 
             for leaf in TEST_LEAVES.iter() {
                 let leaf_bytes = leaf.to_bytes().unwrap();
                 check_scan::<_, _, error::Error>(
-                    correlation_id,
                     &context.environment,
                     &context.store,
                     &root_hash,
@@ -83,7 +77,6 @@ mod full_tries {
 
     #[test]
     fn lmdb_scans_from_n_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
@@ -96,7 +89,6 @@ mod full_tries {
                 for leaf in TEST_LEAVES.iter() {
                     let leaf_bytes = leaf.to_bytes().unwrap();
                     check_scan::<_, _, error::Error>(
-                        correlation_id,
                         &context.environment,
                         &context.store,
                         state,

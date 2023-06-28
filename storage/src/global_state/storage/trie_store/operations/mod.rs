@@ -14,17 +14,14 @@ use casper_types::{
     Digest,
 };
 
-use crate::global_state::{
-    shared::CorrelationId,
-    storage::{
-        transaction_source::{Readable, Writable},
-        trie::{
-            self,
-            merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-            Parents, Pointer, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8,
-        },
-        trie_store::TrieStore,
+use crate::global_state::storage::{
+    transaction_source::{Readable, Writable},
+    trie::{
+        self,
+        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
+        Parents, Pointer, PointerBlock, Trie, TrieTag, RADIX, USIZE_EXCEEDS_U8,
     },
+    trie_store::TrieStore,
 };
 
 #[allow(clippy::enum_variant_names)]
@@ -43,13 +40,7 @@ impl<V> ReadResult<V> {
 }
 
 /// Returns a value from the corresponding key at a given root in a given store
-pub fn read<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
-    txn: &T,
-    store: &S,
-    root: &Digest,
-    key: &K,
-) -> Result<ReadResult<V>, E>
+pub fn read<K, V, T, S, E>(txn: &T, store: &S, root: &Digest, key: &K) -> Result<ReadResult<V>, E>
 where
     K: ToBytes + FromBytes + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes,
@@ -138,7 +129,6 @@ where
 /// Same as [`read`], except that a [`TrieMerkleProof`] is generated and returned along with the key
 /// and the value given the root and store.
 pub fn read_with_proof<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     root: &Digest,
@@ -238,7 +228,6 @@ where
 
 /// Given a serialized trie, find any children that are referenced but not present in the database.
 pub fn missing_children<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     trie_raw: &[u8],
@@ -449,7 +438,6 @@ pub enum DeleteResult {
 
 /// Delete provided key from a global state so it is not reachable from a resulting state root hash.
 pub(crate) fn delete<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -909,7 +897,6 @@ pub enum WriteResult {
 }
 
 pub fn write<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &mut T,
     store: &S,
     root: &Digest,
@@ -999,12 +986,7 @@ where
 }
 
 /// Puts a trie pointer block, extension node or leaf into the trie.
-pub fn put_trie<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
-    txn: &mut T,
-    store: &S,
-    trie_bytes: &[u8],
-) -> Result<Digest, E>
+pub fn put_trie<K, V, T, S, E>(txn: &mut T, store: &S, trie_bytes: &[u8]) -> Result<Digest, E>
 where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
@@ -1166,7 +1148,6 @@ where
 ///
 /// The root should be the apex of the trie.
 pub fn keys_with_prefix<'a, 'b, K, V, T, S>(
-    _correlation_id: CorrelationId,
     txn: &'b T,
     store: &'a S,
     root: &Digest,
@@ -1206,7 +1187,6 @@ where
 /// The root should be the apex of the trie.
 #[cfg(test)]
 pub fn keys<'a, 'b, K, V, T, S>(
-    correlation_id: CorrelationId,
     txn: &'b T,
     store: &'a S,
     root: &Digest,
@@ -1218,12 +1198,11 @@ where
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
 {
-    keys_with_prefix(correlation_id, txn, store, root, &[])
+    keys_with_prefix(txn, store, root, &[])
 }
 
 #[cfg(test)]
 pub fn check_integrity<K, V, T, S, E>(
-    _correlation_id: CorrelationId,
     txn: &T,
     store: &S,
     trie_keys_to_visit: Vec<Digest>,

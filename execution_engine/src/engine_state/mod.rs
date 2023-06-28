@@ -36,7 +36,7 @@ use tracing::{debug, error, trace, warn};
 use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
-        shared::{transform::Transform, AdditiveMap, CorrelationId},
+        shared::{transform::Transform, AdditiveMap},
         storage::{
             lmdb,
             state::{
@@ -165,7 +165,7 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
         let stored_values = scratch_global_state.into_inner();
         self.state
             .state()
-            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .put_stored_values(state_root_hash, stored_values)
             .map_err(Into::into)
     }
 }
@@ -200,7 +200,7 @@ impl EngineState<LmdbGlobalState> {
     ) -> Result<Digest, Error> {
         let stored_values = scratch_global_state.into_inner();
         self.state
-            .put_stored_values(CorrelationId::new(), state_root_hash, stored_values)
+            .put_stored_values(state_root_hash, stored_values)
             .map_err(Into::into)
     }
 }
@@ -238,7 +238,6 @@ where
     /// Returns a [`GenesisSuccess`] for a successful operation, or an error otherwise.
     pub fn commit_genesis(
         &self,
-        correlation_id: CorrelationId,
         genesis_config_hash: Digest,
         protocol_version: ProtocolVersion,
         ee_config: &ExecConfig,
@@ -258,7 +257,6 @@ where
         let mut genesis_installer: GenesisInstaller<S> = GenesisInstaller::new(
             genesis_config_hash,
             protocol_version,
-            correlation_id,
             ee_config.clone(),
             tracking_copy,
         );
@@ -270,11 +268,7 @@ where
 
         let post_state_hash = self
             .state
-            .commit(
-                correlation_id,
-                initial_root_hash,
-                execution_effect.transforms.to_owned(),
-            )
+            .commit(initial_root_hash, execution_effect.transforms.to_owned())
             .map_err(Into::<execution::Error>::into)?;
 
         // Return the result
@@ -289,11 +283,7 @@ where
     /// This process applies changes to the global state.
     ///
     /// Returns [`UpgradeSuccess`].
-    pub fn commit_upgrade(
-        &self,
-        correlation_id: CorrelationId,
-        upgrade_config: UpgradeConfig,
-    ) -> Result<UpgradeSuccess, Error> {
+    pub fn commit_upgrade(&self, upgrade_config: UpgradeConfig) -> Result<UpgradeSuccess, Error> {
         // per specification:
         // https://casperlabs.atlassian.net/wiki/spaces/EN/pages/139854367/Upgrading+System+Contracts+Specification
 
@@ -319,10 +309,7 @@ where
             return Err(Error::InvalidProtocolVersion(new_protocol_version));
         }
 
-        let registry = if let Ok(registry) = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)
-        {
+        let registry = if let Ok(registry) = tracking_copy.borrow_mut().get_system_contracts() {
             registry
         } else {
             // Check the upgrade config for the registry
@@ -385,7 +372,6 @@ where
 
         system_upgrader
             .refresh_system_contracts(
-                correlation_id,
                 mint_hash,
                 auction_hash,
                 handle_payment_hash,
@@ -396,9 +382,7 @@ where
         // 3.1.1.1.1.7 new total validator slots is optional
         if let Some(new_validator_slots) = upgrade_config.new_validator_slots() {
             // 3.1.2.4 if new total validator slots is provided, update auction contract state
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, *auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
             let validator_slots_key = auction_contract.named_keys()[VALIDATOR_SLOTS_KEY];
             let value = StoredValue::CLValue(
@@ -410,9 +394,7 @@ where
 
         if let Some(new_auction_delay) = upgrade_config.new_auction_delay() {
             debug!(%new_auction_delay, "Auction delay changed as part of the upgrade");
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, *auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
             let auction_delay_key = auction_contract.named_keys()[AUCTION_DELAY_KEY];
             let value = StoredValue::CLValue(
@@ -423,9 +405,7 @@ where
         }
 
         if let Some(new_locked_funds_period) = upgrade_config.new_locked_funds_period_millis() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, *auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
             let locked_funds_period_key = auction_contract.named_keys()[LOCKED_FUNDS_PERIOD_KEY];
             let value = StoredValue::CLValue(
@@ -443,9 +423,7 @@ where
                 Ratio::new(numer.into(), denom.into())
             };
 
-            let mint_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, *mint_hash)?;
+            let mint_contract = tracking_copy.borrow_mut().get_contract(*mint_hash)?;
 
             let locked_funds_period_key = mint_contract.named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
             let value = StoredValue::CLValue(
@@ -468,18 +446,16 @@ where
         {
             let withdraw_keys = tracking_copy
                 .borrow_mut()
-                .get_keys(correlation_id, &KeyTag::Withdraw)
+                .get_keys(&KeyTag::Withdraw)
                 .map_err(|_| Error::FailedToGetWithdrawKeys)?;
 
             let (unbonding_delay, current_era_id) = {
-                let auction_contract = tracking_copy
-                    .borrow_mut()
-                    .get_contract(correlation_id, *auction_hash)?;
+                let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
                 let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
                 let delay = tracking_copy
                     .borrow_mut()
-                    .read(correlation_id, &unbonding_delay_key)
+                    .read(&unbonding_delay_key)
                     .map_err(|error| error.into())?
                     .ok_or(Error::FailedToRetrieveUnbondingDelay)?
                     .as_cl_value()
@@ -492,7 +468,7 @@ where
 
                 let era_id = tracking_copy
                     .borrow_mut()
-                    .read(correlation_id, &era_id_key)
+                    .read(&era_id_key)
                     .map_err(|error| error.into())?
                     .ok_or(Error::FailedToRetrieveEraId)?
                     .as_cl_value()
@@ -509,7 +485,7 @@ where
                 // processed in the unbonding queue.
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
-                    .read(correlation_id, &key)
+                    .read(&key)
                     .map_err(|_| Error::FailedToGetWithdrawKeys)?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
@@ -521,7 +497,6 @@ where
                 Self::fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
                     &withdraw_purses,
                     &tracking_copy,
-                    correlation_id,
                 )?;
 
                 let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
@@ -547,9 +522,7 @@ where
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
         if let Some(new_unbonding_delay) = upgrade_config.new_unbonding_delay() {
-            let auction_contract = tracking_copy
-                .borrow_mut()
-                .get_contract(correlation_id, *auction_hash)?;
+            let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
 
             let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
             let value = StoredValue::CLValue(
@@ -568,7 +541,7 @@ where
 
             let get_result = tracking_copy
                 .borrow_mut()
-                .get(correlation_id, &highest_era_info_key)
+                .get(&highest_era_info_key)
                 .map_err(|error| Error::Exec(error.into()))?;
 
             match get_result {
@@ -598,11 +571,7 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(
-                correlation_id,
-                pre_state_hash,
-                execution_effect.transforms.to_owned(),
-            )
+            .commit(pre_state_hash, execution_effect.transforms.to_owned())
             .map_err(Into::into)?;
 
         // return result and effects
@@ -613,11 +582,7 @@ where
     }
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
-    pub fn commit_prune(
-        &self,
-        correlation_id: CorrelationId,
-        prune_config: PruneConfig,
-    ) -> Result<PruneResult, Error> {
+    pub fn commit_prune(&self, prune_config: PruneConfig) -> Result<PruneResult, Error> {
         let state_root_hash = prune_config.pre_state_hash();
 
         // Validate the state root hash just to make sure we can safely short circuit in case the
@@ -634,10 +599,7 @@ where
             });
         }
 
-        match self
-            .state
-            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
-        {
+        match self.state.delete_keys(state_root_hash, keys_to_delete) {
             Ok(DeleteResult::Deleted(post_state_hash)) => {
                 Ok(PruneResult::Success { post_state_hash })
             }
@@ -660,11 +622,7 @@ where
     /// For a given root [`Key`] it does a path lookup through the named keys.
     ///
     /// Returns the value stored under a [`URef`] wrapped in a [`QueryResult`].
-    pub fn run_query(
-        &self,
-        correlation_id: CorrelationId,
-        query_request: QueryRequest,
-    ) -> Result<QueryResult, Error> {
+    pub fn run_query(&self, query_request: QueryRequest) -> Result<QueryResult, Error> {
         let tracking_copy = match self.tracking_copy(query_request.state_hash())? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
             None => return Ok(QueryResult::RootNotFound),
@@ -673,12 +631,7 @@ where
         let tracking_copy = tracking_copy.borrow();
 
         Ok(tracking_copy
-            .query(
-                correlation_id,
-                self.config(),
-                query_request.key(),
-                query_request.path(),
-            )
+            .query(self.config(), query_request.key(), query_request.path())
             .map_err(|err| Error::Exec(err.into()))?
             .into())
     }
@@ -690,11 +643,7 @@ where
     /// Currently a special shortcut is taken to distinguish a native transfer, from a deploy.
     ///
     /// Return execution results which contains results from each deploy ran.
-    pub fn run_execute(
-        &self,
-        correlation_id: CorrelationId,
-        mut exec_request: ExecuteRequest,
-    ) -> Result<ExecutionResults, Error> {
+    pub fn run_execute(&self, mut exec_request: ExecuteRequest) -> Result<ExecutionResults, Error> {
         let executor = Executor::new(*self.config());
 
         let deploys = exec_request.take_deploys();
@@ -703,7 +652,6 @@ where
         for deploy_item in deploys {
             let result = match deploy_item.session {
                 ExecutableDeployItem::Transfer { .. } => self.transfer(
-                    correlation_id,
                     &executor,
                     exec_request.protocol_version,
                     exec_request.parent_state_hash,
@@ -712,7 +660,6 @@ where
                     exec_request.proposer.clone(),
                 ),
                 _ => self.deploy(
-                    correlation_id,
                     &executor,
                     exec_request.protocol_version,
                     exec_request.parent_state_hash,
@@ -734,15 +681,11 @@ where
 
     fn get_authorized_account(
         &self,
-        correlation_id: CorrelationId,
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<Account, Error> {
-        let account: Account = match tracking_copy
-            .borrow_mut()
-            .get_account(correlation_id, account_hash)
-        {
+        let account: Account = match tracking_copy.borrow_mut().get_account(account_hash) {
             Ok(account) => account,
             Err(_) => {
                 return Err(error::Error::Authorization);
@@ -765,7 +708,6 @@ where
     /// Get the balance of a passed purse referenced by its [`URef`].
     pub fn get_purse_balance(
         &self,
-        correlation_id: CorrelationId,
         state_hash: Digest,
         purse_uref: URef,
     ) -> Result<BalanceResult, Error> {
@@ -773,10 +715,8 @@ where
             Some(tracking_copy) => tracking_copy,
             None => return Ok(BalanceResult::RootNotFound),
         };
-        let purse_balance_key =
-            tracking_copy.get_purse_balance_key(correlation_id, purse_uref.into())?;
-        let (balance, proof) =
-            tracking_copy.get_purse_balance_with_proof(correlation_id, purse_balance_key)?;
+        let purse_balance_key = tracking_copy.get_purse_balance_key(purse_uref.into())?;
+        let (balance, proof) = tracking_copy.get_purse_balance_with_proof(purse_balance_key)?;
         let proof = Box::new(proof);
         let motes = balance.value();
         Ok(BalanceResult::Success { motes, proof })
@@ -791,7 +731,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn transfer(
         &self,
-        correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
         prestate_hash: Digest,
@@ -819,7 +758,6 @@ where
         let authorization_keys = deploy_item.authorization_keys;
 
         let account = match self.get_authorized_account(
-            correlation_id,
             account_hash,
             &authorization_keys,
             Rc::clone(&tracking_copy),
@@ -829,17 +767,12 @@ where
         };
 
         let proposer_addr = proposer.to_account_hash();
-        let proposer_account = match tracking_copy
-            .borrow_mut()
-            .get_account(correlation_id, proposer_addr)
-        {
+        let proposer_account = match tracking_copy.borrow_mut().get_account(proposer_addr) {
             Ok(proposer) => proposer,
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
 
-        let system_contract_registry = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)?;
+        let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
 
         let handle_payment_contract_hash = system_contract_registry
             .get(HANDLE_PAYMENT)
@@ -850,7 +783,7 @@ where
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, *handle_payment_contract_hash)
+            .get_contract(*handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -884,7 +817,7 @@ where
 
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, proposer_main_purse.into())
+                .get_purse_balance_key(proposer_main_purse.into())
             {
                 Ok(balance_key) => balance_key,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
@@ -897,7 +830,7 @@ where
 
         let account_main_purse_balance_key = match tracking_copy
             .borrow_mut()
-            .get_purse_balance_key(correlation_id, account_main_purse.into())
+            .get_purse_balance_key(account_main_purse.into())
         {
             Ok(balance_key) => balance_key,
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
@@ -905,7 +838,7 @@ where
 
         let account_main_purse_balance = match tracking_copy
             .borrow_mut()
-            .get_purse_balance(correlation_id, account_main_purse_balance_key)
+            .get_purse_balance(account_main_purse_balance_key)
         {
             Ok(balance_key) => balance_key,
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
@@ -938,7 +871,7 @@ where
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
 
-        match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
+        match runtime_args_builder.transfer_target_mode(Rc::clone(&tracking_copy)) {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
                 TransferTargetMode::CreateAccount(public_key) => {
@@ -953,7 +886,6 @@ where
                             deploy_item.deploy_hash,
                             gas_limit,
                             protocol_version,
-                            correlation_id,
                             Rc::clone(&tracking_copy),
                             Phase::Session,
                             create_purse_stack,
@@ -983,11 +915,10 @@ where
             Err(error) => return Ok(make_charged_execution_failure(error)),
         }
 
-        let transfer_args =
-            match runtime_args_builder.build(&account, correlation_id, Rc::clone(&tracking_copy)) {
-                Ok(transfer_args) => transfer_args,
-                Err(error) => return Ok(make_charged_execution_failure(error)),
-            };
+        let transfer_args = match runtime_args_builder.build(&account, Rc::clone(&tracking_copy)) {
+            Ok(transfer_args) => transfer_args,
+            Err(error) => return Ok(make_charged_execution_failure(error)),
+        };
 
         let payment_uref;
 
@@ -998,7 +929,7 @@ where
             let source_purse_balance = if source_uref != account_main_purse {
                 let source_purse_balance_key = match tracking_copy
                     .borrow_mut()
-                    .get_purse_balance_key(correlation_id, Key::URef(source_uref))
+                    .get_purse_balance_key(Key::URef(source_uref))
                 {
                     Ok(purse_balance_key) => purse_balance_key,
                     Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
@@ -1006,7 +937,7 @@ where
 
                 match tracking_copy
                     .borrow_mut()
-                    .get_purse_balance(correlation_id, source_purse_balance_key)
+                    .get_purse_balance(source_purse_balance_key)
                 {
                     Ok(purse_balance) => purse_balance,
                     Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
@@ -1042,7 +973,6 @@ where
                     deploy_item.deploy_hash,
                     gas_limit,
                     protocol_version,
-                    correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     get_payment_purse_stack,
@@ -1085,7 +1015,6 @@ where
                     deploy_item.deploy_hash,
                     gas_limit,
                     protocol_version,
-                    correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Payment,
                     transfer_to_payment_purse_stack,
@@ -1116,7 +1045,7 @@ where
             let payment_purse_balance = {
                 let payment_purse_balance_key = match tracking_copy
                     .borrow_mut()
-                    .get_purse_balance_key(correlation_id, Key::URef(payment_uref))
+                    .get_purse_balance_key(Key::URef(payment_uref))
                 {
                     Ok(payment_purse_balance_key) => payment_purse_balance_key,
                     Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
@@ -1124,7 +1053,7 @@ where
 
                 match tracking_copy
                     .borrow_mut()
-                    .get_purse_balance(correlation_id, payment_purse_balance_key)
+                    .get_purse_balance(payment_purse_balance_key)
                 {
                     Ok(payment_purse_balance) => payment_purse_balance,
                     Err(error) => return Ok(make_charged_execution_failure(Error::Exec(error))),
@@ -1171,7 +1100,6 @@ where
                 deploy_item.deploy_hash,
                 gas_limit,
                 protocol_version,
-                correlation_id,
                 Rc::clone(&tracking_copy),
                 Phase::Session,
                 transfer_stack,
@@ -1235,7 +1163,6 @@ where
                     deploy_item.deploy_hash,
                     gas_limit,
                     protocol_version,
-                    correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
                     finalize_payment_stack,
@@ -1292,7 +1219,6 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn deploy(
         &self,
-        correlation_id: CorrelationId,
         executor: &Executor,
         protocol_version: ProtocolVersion,
         prestate_hash: Digest,
@@ -1321,7 +1247,6 @@ where
         let account = {
             let account_hash = deploy_item.address;
             match self.get_authorized_account(
-                correlation_id,
                 account_hash,
                 &authorization_keys,
                 Rc::clone(&tracking_copy),
@@ -1344,7 +1269,6 @@ where
             Rc::clone(&tracking_copy),
             account.named_keys(),
             session,
-            correlation_id,
             &protocol_version,
             Phase::Session,
         ) {
@@ -1360,7 +1284,7 @@ where
             let account_key = Key::URef(account.main_purse());
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, account_key)
+                .get_purse_balance_key(account_key)
             {
                 Ok(key) => key,
                 Err(error) => {
@@ -1373,7 +1297,7 @@ where
         // transfer validation_spec_5: account main purse minimum balance
         let account_main_purse_balance: Motes = match tracking_copy
             .borrow_mut()
-            .get_purse_balance(correlation_id, account_main_purse_balance_key)
+            .get_purse_balance(account_main_purse_balance_key)
         {
             Ok(balance) => balance,
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -1444,7 +1368,6 @@ where
                     deploy_hash,
                     payment_gas_limit,
                     protocol_version,
-                    correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
                     payment_stack,
@@ -1454,7 +1377,6 @@ where
                     Rc::clone(&tracking_copy),
                     account.named_keys(),
                     payment,
-                    correlation_id,
                     &protocol_version,
                     phase,
                 ) {
@@ -1474,7 +1396,6 @@ where
                     deploy_hash,
                     payment_gas_limit,
                     protocol_version,
-                    correlation_id,
                     Rc::clone(&tracking_copy),
                     phase,
                     payment_stack,
@@ -1487,7 +1408,7 @@ where
         let proposer_purse = {
             let proposer_account: Account = match tracking_copy
                 .borrow_mut()
-                .get_account(correlation_id, AccountHash::from(&proposer))
+                .get_account(AccountHash::from(&proposer))
             {
                 Ok(account) => account,
                 Err(error) => {
@@ -1502,7 +1423,7 @@ where
             // payment_code_spec_6: system contract validity
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, proposer_purse.into())
+                .get_purse_balance_key(proposer_purse.into())
             {
                 Ok(key) => key,
                 Err(error) => {
@@ -1537,9 +1458,7 @@ where
 
         // Get handle payment system contract details
         // payment_code_spec_6: system contract validity
-        let system_contract_registry = tracking_copy
-            .borrow_mut()
-            .get_system_contracts(correlation_id)?;
+        let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
 
         let handle_payment_contract_hash = system_contract_registry
             .get(HANDLE_PAYMENT)
@@ -1550,7 +1469,7 @@ where
 
         let handle_payment_contract = match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, *handle_payment_contract_hash)
+            .get_contract(*handle_payment_contract_hash)
         {
             Ok(contract) => contract,
             Err(error) => {
@@ -1569,7 +1488,7 @@ where
         };
         let purse_balance_key = match tracking_copy
             .borrow_mut()
-            .get_purse_balance_key(correlation_id, payment_purse_key)
+            .get_purse_balance_key(payment_purse_key)
         {
             Ok(key) => key,
             Err(error) => {
@@ -1579,7 +1498,7 @@ where
         let payment_purse_balance: Motes = {
             match tracking_copy
                 .borrow_mut()
-                .get_purse_balance(correlation_id, purse_balance_key)
+                .get_purse_balance(purse_balance_key)
             {
                 Ok(balance) => balance,
                 Err(error) => {
@@ -1668,7 +1587,6 @@ where
                 deploy_hash,
                 session_gas_limit,
                 protocol_version,
-                correlation_id,
                 Rc::clone(&session_tracking_copy),
                 Phase::Session,
                 session_stack,
@@ -1768,9 +1686,7 @@ where
 
             // The Handle Payment keys may have changed because of effects during payment and/or
             // session, so we need to look them up again from the tracking copy
-            let system_contract_registry = finalization_tc
-                .borrow_mut()
-                .get_system_contracts(correlation_id)?;
+            let system_contract_registry = finalization_tc.borrow_mut().get_system_contracts()?;
 
             let handle_payment_contract_hash = system_contract_registry
                 .get(HANDLE_PAYMENT)
@@ -1781,7 +1697,7 @@ where
 
             let handle_payment_contract = match finalization_tc
                 .borrow_mut()
-                .get_contract(correlation_id, *handle_payment_contract_hash)
+                .get_contract(*handle_payment_contract_hash)
             {
                 Ok(info) => info,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -1810,7 +1726,6 @@ where
                     deploy_hash,
                     gas_limit,
                     protocol_version,
-                    correlation_id,
                     finalization_tc,
                     Phase::FinalizePayment,
                     handle_payment_stack,
@@ -1841,40 +1756,31 @@ where
     /// Returns new state root hash.
     pub fn apply_effect(
         &self,
-        correlation_id: CorrelationId,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Error> {
         self.state
-            .commit(correlation_id, pre_state_hash, effects)
+            .commit(pre_state_hash, effects)
             .map_err(|err| Error::Exec(err.into()))
     }
 
     /// Gets a trie object for given state root hash.
-    pub fn get_trie_full(
-        &self,
-        correlation_id: CorrelationId,
-        trie_key: Digest,
-    ) -> Result<Option<TrieRaw>, Error>
+    pub fn get_trie_full(&self, trie_key: Digest) -> Result<Option<TrieRaw>, Error>
     where
         Error: From<S::Error>,
     {
-        Ok(self.state.get_trie_full(correlation_id, &trie_key)?)
+        Ok(self.state.get_trie_full(&trie_key)?)
     }
 
     /// Puts a trie if no children are missing from the global state; otherwise reports the missing
     /// children hashes via the `Error` enum.
-    pub fn put_trie_if_all_children_present(
-        &self,
-        correlation_id: CorrelationId,
-        trie_bytes: &[u8],
-    ) -> Result<Digest, Error>
+    pub fn put_trie_if_all_children_present(&self, trie_bytes: &[u8]) -> Result<Digest, Error>
     where
         Error: From<S::Error>,
     {
-        let missing_children = self.state.missing_children(correlation_id, trie_bytes)?;
+        let missing_children = self.state.missing_children(trie_bytes)?;
         if missing_children.is_empty() {
-            Ok(self.state.put_trie(correlation_id, trie_bytes)?)
+            Ok(self.state.put_trie(trie_bytes)?)
         } else {
             Err(Error::MissingTrieNodeChildren(missing_children))
         }
@@ -1887,7 +1793,6 @@ where
     /// uses queries rather than execution to get the snapshot.
     pub fn get_era_validators(
         &self,
-        correlation_id: CorrelationId,
         system_contract_registry: Option<SystemContractRegistry>,
         get_era_validators_request: GetEraValidatorsRequest,
     ) -> Result<EraValidators, GetEraValidatorsError> {
@@ -1895,7 +1800,7 @@ where
 
         let system_contract_registry = match system_contract_registry {
             Some(system_contract_registry) => system_contract_registry,
-            None => match self.get_system_contract_registry(correlation_id, state_root_hash) {
+            None => match self.get_system_contract_registry(state_root_hash) {
                 Ok(system_contract_registry) => system_contract_registry,
                 Err(error) => {
                     error!(%state_root_hash, %error, "unable to get era validators");
@@ -1915,7 +1820,7 @@ where
             vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
         );
 
-        let snapshot = match self.run_query(correlation_id, query_request)? {
+        let snapshot = match self.run_query(query_request)? {
             QueryResult::RootNotFound => return Err(GetEraValidatorsError::RootNotFound),
             QueryResult::ValueNotFound(error) => {
                 error!(%error, "unexpected query failure; value not found");
@@ -1950,11 +1855,7 @@ where
     }
 
     /// Gets current bids from the auction system.
-    pub fn get_bids(
-        &self,
-        correlation_id: CorrelationId,
-        get_bids_request: GetBidsRequest,
-    ) -> Result<GetBidsResult, Error> {
+    pub fn get_bids(&self, get_bids_request: GetBidsRequest) -> Result<GetBidsResult, Error> {
         let tracking_copy = match self.tracking_copy(get_bids_request.state_hash())? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
             None => return Ok(GetBidsResult::RootNotFound),
@@ -1963,15 +1864,13 @@ where
         let mut tracking_copy = tracking_copy.borrow_mut();
 
         let bid_keys = tracking_copy
-            .get_keys(correlation_id, &KeyTag::Bid)
+            .get_keys(&KeyTag::Bid)
             .map_err(|err| Error::Exec(err.into()))?;
 
         let mut bids = BTreeMap::new();
 
         for key in bid_keys.iter() {
-            if let Some(StoredValue::Bid(bid)) =
-                tracking_copy.get(correlation_id, key).map_err(Into::into)?
-            {
+            if let Some(StoredValue::Bid(bid)) = tracking_copy.get(key).map_err(Into::into)? {
                 bids.insert(bid.validator_public_key().clone(), *bid);
             };
         }
@@ -1982,7 +1881,6 @@ where
     /// Distribute block rewards.
     pub fn distribute_block_rewards(
         &self,
-        correlation_id: CorrelationId,
         pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
         proposer: PublicKey,
@@ -2033,7 +1931,6 @@ where
             deploy_hash,
             gas_limit,
             protocol_version,
-            correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
             distribute_rewards_stack,
@@ -2050,18 +1947,14 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(correlation_id, pre_state_hash, execution_effect.transforms)
+            .commit(pre_state_hash, execution_effect.transforms)
             .map_err(Into::into)?;
 
         Ok(post_state_hash)
     }
 
     /// Executes a step request.
-    pub fn commit_step(
-        &self,
-        correlation_id: CorrelationId,
-        step_request: StepRequest,
-    ) -> Result<StepSuccess, StepError> {
+    pub fn commit_step(&self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
         let tracking_copy = match self.tracking_copy(step_request.pre_state_hash) {
             Err(error) => return Err(StepError::TrackingCopyError(error)),
             Ok(None) => return Err(StepError::RootNotFound(step_request.pre_state_hash)),
@@ -2113,7 +2006,6 @@ where
                     deploy_hash,
                     gas_limit,
                     step_request.protocol_version,
-                    correlation_id,
                     Rc::clone(&tracking_copy),
                     Phase::Session,
                     slash_stack,
@@ -2152,7 +2044,6 @@ where
             deploy_hash,
             gas_limit,
             step_request.protocol_version,
-            correlation_id,
             Rc::clone(&tracking_copy),
             Phase::Session,
             run_auction_stack,
@@ -2170,11 +2061,7 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(
-                correlation_id,
-                step_request.pre_state_hash,
-                execution_effect.transforms,
-            )
+            .commit(step_request.pre_state_hash, execution_effect.transforms)
             .map_err(Into::into)?;
 
         Ok(StepSuccess {
@@ -2186,7 +2073,6 @@ where
     /// Gets the balance of a given public key.
     pub fn get_balance(
         &self,
-        correlation_id: CorrelationId,
         state_hash: Digest,
         public_key: PublicKey,
     ) -> Result<BalanceResult, Error> {
@@ -2199,10 +2085,7 @@ where
 
         let account_addr = public_key.to_account_hash();
 
-        let account = match tracking_copy
-            .borrow_mut()
-            .get_account(correlation_id, account_addr)
-        {
+        let account = match tracking_copy.borrow_mut().get_account(account_addr) {
             Ok(account) => account,
             Err(error) => return Err(error.into()),
         };
@@ -2211,7 +2094,7 @@ where
             let main_purse = account.main_purse();
             match tracking_copy
                 .borrow()
-                .get_purse_balance_key(correlation_id, main_purse.into())
+                .get_purse_balance_key(main_purse.into())
             {
                 Ok(balance_key) => balance_key,
                 Err(error) => return Err(error.into()),
@@ -2220,7 +2103,7 @@ where
 
         let (account_balance, proof) = match tracking_copy
             .borrow()
-            .get_purse_balance_with_proof(correlation_id, main_purse_balance_key)
+            .get_purse_balance_with_proof(main_purse_balance_key)
         {
             Ok((balance, proof)) => (balance, proof),
             Err(error) => return Err(error.into()),
@@ -2234,7 +2117,6 @@ where
     /// Obtains an instance of a system contract registry for a given state root hash.
     pub fn get_system_contract_registry(
         &self,
-        correlation_id: CorrelationId,
         state_root_hash: Digest,
     ) -> Result<SystemContractRegistry, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
@@ -2243,7 +2125,7 @@ where
         };
         let result = tracking_copy
             .borrow_mut()
-            .get_system_contracts(correlation_id)
+            .get_system_contracts()
             .map_err(|error| {
                 warn!(%error, "Failed to retrieve system contract registry");
                 Error::MissingSystemContractRegistry
@@ -2252,12 +2134,8 @@ where
     }
 
     /// Returns mint system contract hash.
-    pub fn get_system_mint_hash(
-        &self,
-        correlation_id: CorrelationId,
-        state_hash: Digest,
-    ) -> Result<ContractHash, Error> {
-        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+    pub fn get_system_mint_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(state_hash)?;
         let mint_hash = registry.get(MINT).ok_or_else(|| {
             error!("Missing system mint contract hash");
             Error::MissingSystemContractHash(MINT.to_string())
@@ -2266,12 +2144,8 @@ where
     }
 
     /// Returns auction system contract hash.
-    pub fn get_system_auction_hash(
-        &self,
-        correlation_id: CorrelationId,
-        state_hash: Digest,
-    ) -> Result<ContractHash, Error> {
-        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+    pub fn get_system_auction_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(state_hash)?;
         let auction_hash = registry.get(AUCTION).ok_or_else(|| {
             error!("Missing system auction contract hash");
             Error::MissingSystemContractHash(AUCTION.to_string())
@@ -2280,12 +2154,8 @@ where
     }
 
     /// Returns handle payment system contract hash.
-    pub fn get_handle_payment_hash(
-        &self,
-        correlation_id: CorrelationId,
-        state_hash: Digest,
-    ) -> Result<ContractHash, Error> {
-        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+    pub fn get_handle_payment_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(state_hash)?;
         let handle_payment = registry.get(HANDLE_PAYMENT).ok_or_else(|| {
             error!("Missing system handle payment contract hash");
             Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
@@ -2294,12 +2164,8 @@ where
     }
 
     /// Returns standard payment system contract hash.
-    pub fn get_standard_payment_hash(
-        &self,
-        correlation_id: CorrelationId,
-        state_hash: Digest,
-    ) -> Result<ContractHash, Error> {
-        let registry = self.get_system_contract_registry(correlation_id, state_hash)?;
+    pub fn get_standard_payment_hash(&self, state_hash: Digest) -> Result<ContractHash, Error> {
+        let registry = self.get_system_contract_registry(state_hash)?;
         let standard_payment = registry.get(STANDARD_PAYMENT).ok_or_else(|| {
             error!("Missing system standard payment contract hash");
             Error::MissingSystemContractHash(STANDARD_PAYMENT.to_string())
@@ -2315,7 +2181,6 @@ where
     /// Returns the checksum registry at the given state root hash.
     pub fn get_checksum_registry(
         &self,
-        correlation_id: CorrelationId,
         state_root_hash: Digest,
     ) -> Result<Option<ChecksumRegistry>, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
@@ -2324,7 +2189,7 @@ where
         };
         let maybe_checksum_registry = tracking_copy
             .borrow_mut()
-            .get_checksum_registry(correlation_id)
+            .get_checksum_registry()
             .map_err(Error::Exec);
         maybe_checksum_registry
     }
@@ -2332,7 +2197,6 @@ where
     /// Returns the Merkle proof for the checksum registry at the given state root hash.
     pub fn get_checksum_registry_proof(
         &self,
-        correlation_id: CorrelationId,
         state_root_hash: Digest,
     ) -> Result<TrieMerkleProof<Key, StoredValue>, Error> {
         let tracking_copy = match self.tracking_copy(state_root_hash)? {
@@ -2344,7 +2208,7 @@ where
         let maybe_proof = tracking_copy
             .borrow_mut()
             .reader()
-            .read_with_proof(correlation_id, &key)
+            .read_with_proof(&key)
             .map_err(Into::into)?;
         maybe_proof.ok_or(Error::MissingChecksumRegistry)
     }
@@ -2353,7 +2217,6 @@ where
     fn fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
         withdraw_purses: &[WithdrawPurse],
         tracking_copy: &Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-        correlation_id: CorrelationId,
     ) -> Result<(), Error> {
         let mut balances = BTreeMap::new();
         for purse in withdraw_purses.iter() {
@@ -2373,15 +2236,12 @@ where
         for (unbond_purse_uref, unbond_amount) in balances {
             let key = match tracking_copy
                 .borrow_mut()
-                .get_purse_balance_key(correlation_id, unbond_purse_uref.into())
+                .get_purse_balance_key(unbond_purse_uref.into())
             {
                 Ok(key) => key,
                 Err(_) => return Err(Error::Mint("purse balance not found".into())),
             };
-            let current_balance = tracking_copy
-                .borrow_mut()
-                .get_purse_balance(CorrelationId::new(), key)?
-                .value();
+            let current_balance = tracking_copy.borrow_mut().get_purse_balance(key)?.value();
 
             if unbond_amount > current_balance {
                 // If we don't have enough balance to migrate, the only thing we can do

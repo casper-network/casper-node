@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use rand::RngCore;
 
 use casper_storage::global_state::{
-    shared::{transform::Transform, CorrelationId},
+    shared::transform::Transform,
     storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
 use casper_types::{
@@ -127,7 +127,6 @@ fn new_runtime_context<'a>(
         Gas::default(),
         Rc::new(RefCell::new(address_generator)),
         ProtocolVersion::V1_0_0,
-        CorrelationId::new(),
         Phase::Session,
         *TEST_ENGINE_CONFIG,
         Vec::default(),
@@ -388,7 +387,6 @@ fn contract_key_addable_valid() {
         Gas::default(),
         Rc::new(RefCell::new(address_generator)),
         ProtocolVersion::V1_0_0,
-        CorrelationId::new(),
         PHASE,
         EngineConfig::default(),
         Vec::default(),
@@ -462,7 +460,6 @@ fn contract_key_addable_invalid() {
         Gas::default(),
         Rc::new(RefCell::new(address_generator)),
         ProtocolVersion::V1_0_0,
-        CorrelationId::new(),
         PHASE,
         EngineConfig::default(),
         Vec::default(),

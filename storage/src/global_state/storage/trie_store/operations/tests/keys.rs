@@ -1,20 +1,16 @@
 mod partial_tries {
-    use crate::global_state::{
-        shared::CorrelationId,
-        storage::{
-            transaction_source::{Transaction, TransactionSource},
-            trie::Trie,
-            trie_store::operations::{
-                self,
-                tests::{LmdbTestContext, TestKey, TestValue, TEST_LEAVES, TEST_TRIE_GENERATORS},
-            },
+    use crate::global_state::storage::{
+        transaction_source::{Transaction, TransactionSource},
+        trie::Trie,
+        trie_store::operations::{
+            self,
+            tests::{LmdbTestContext, TestKey, TestValue, TEST_LEAVES, TEST_TRIE_GENERATORS},
         },
     };
 
     #[test]
     fn lmdb_keys_from_n_leaf_partial_trie_had_expected_results() {
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
             let test_leaves = TEST_LEAVES;
@@ -31,14 +27,10 @@ mod partial_tries {
             };
             let actual = {
                 let txn = context.environment.create_read_txn().unwrap();
-                let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
-                    correlation_id,
-                    &txn,
-                    &context.store,
-                    &root_hash,
-                )
-                .filter_map(Result::ok)
-                .collect::<Vec<TestKey>>();
+                let mut tmp =
+                    operations::keys::<TestKey, TestValue, _, _>(&txn, &context.store, &root_hash)
+                        .filter_map(Result::ok)
+                        .collect::<Vec<TestKey>>();
                 txn.commit().unwrap();
                 tmp.sort();
                 tmp
@@ -51,24 +43,20 @@ mod partial_tries {
 mod full_tries {
     use casper_types::Digest;
 
-    use crate::global_state::{
-        shared::CorrelationId,
-        storage::{
-            transaction_source::{Transaction, TransactionSource},
-            trie::Trie,
-            trie_store::operations::{
-                self,
-                tests::{
-                    LmdbTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
-                    TEST_TRIE_GENERATORS,
-                },
+    use crate::global_state::storage::{
+        transaction_source::{Transaction, TransactionSource},
+        trie::Trie,
+        trie_store::operations::{
+            self,
+            tests::{
+                LmdbTestContext, TestKey, TestValue, EMPTY_HASHED_TEST_TRIES, TEST_LEAVES,
+                TEST_TRIE_GENERATORS,
             },
         },
     };
 
     #[test]
     fn lmdb_keys_from_n_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
@@ -92,14 +80,10 @@ mod full_tries {
                 };
                 let actual = {
                     let txn = context.environment.create_read_txn().unwrap();
-                    let mut tmp = operations::keys::<TestKey, TestValue, _, _>(
-                        correlation_id,
-                        &txn,
-                        &context.store,
-                        state,
-                    )
-                    .filter_map(Result::ok)
-                    .collect::<Vec<TestKey>>();
+                    let mut tmp =
+                        operations::keys::<TestKey, TestValue, _, _>(&txn, &context.store, state)
+                            .filter_map(Result::ok)
+                            .collect::<Vec<TestKey>>();
                     txn.commit().unwrap();
                     tmp.sort();
                     tmp
@@ -114,17 +98,14 @@ mod full_tries {
 mod keys_iterator {
     use casper_types::{bytesrepr, Digest};
 
-    use crate::global_state::{
-        shared::CorrelationId,
-        storage::{
-            transaction_source::TransactionSource,
-            trie::{Pointer, Trie},
-            trie_store::operations::{
-                self,
-                tests::{
-                    hash_test_tries, HashedTestTrie, HashedTrie, LmdbTestContext, TestKey,
-                    TestValue, TEST_LEAVES,
-                },
+    use crate::global_state::storage::{
+        transaction_source::TransactionSource,
+        trie::{Pointer, Trie},
+        trie_store::operations::{
+            self,
+            tests::{
+                hash_test_tries, HashedTestTrie, HashedTrie, LmdbTestContext, TestKey, TestValue,
+                TEST_LEAVES,
             },
         },
     };
@@ -178,16 +159,10 @@ mod keys_iterator {
     }
 
     fn test_trie(root_hash: Digest, tries: Vec<HashedTestTrie>) {
-        let correlation_id = CorrelationId::new();
         let context = return_on_err!(LmdbTestContext::new(&tries));
         let txn = return_on_err!(context.environment.create_read_txn());
-        let _tmp = operations::keys::<TestKey, TestValue, _, _>(
-            correlation_id,
-            &txn,
-            &context.store,
-            &root_hash,
-        )
-        .collect::<Vec<_>>();
+        let _tmp = operations::keys::<TestKey, TestValue, _, _>(&txn, &context.store, &root_hash)
+            .collect::<Vec<_>>();
     }
 
     #[test]
@@ -213,15 +188,12 @@ mod keys_iterator {
 }
 
 mod keys_with_prefix_iterator {
-    use crate::global_state::{
-        shared::CorrelationId,
-        storage::{
-            transaction_source::TransactionSource,
-            trie::Trie,
-            trie_store::operations::{
-                self,
-                tests::{create_6_leaf_trie, LmdbTestContext, TestKey, TestValue, TEST_LEAVES},
-            },
+    use crate::global_state::storage::{
+        transaction_source::TransactionSource,
+        trie::Trie,
+        trie_store::operations::{
+            self,
+            tests::{create_6_leaf_trie, LmdbTestContext, TestKey, TestValue, TEST_LEAVES},
         },
     };
 
@@ -237,7 +209,6 @@ mod keys_with_prefix_iterator {
     }
 
     fn test_prefix(prefix: &[u8]) {
-        let correlation_id = CorrelationId::new();
         let (root_hash, tries) = create_6_leaf_trie().expect("should create a trie");
         let context = LmdbTestContext::new(&tries).expect("should create a new context");
         let txn = context
@@ -246,7 +217,6 @@ mod keys_with_prefix_iterator {
             .expect("should create a read txn");
         let expected = expected_keys(prefix);
         let mut actual = operations::keys_with_prefix::<TestKey, TestValue, _, _>(
-            correlation_id,
             &txn,
             &context.store,
             &root_hash,

@@ -22,14 +22,12 @@ mod partial_tries {
     #[test]
     fn lmdb_reads_from_n_leaf_partial_trie_had_expected_results() {
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
             let test_leaves = TEST_LEAVES;
             let (used, unused) = test_leaves.split_at(num_leaves);
 
             check_leaves::<_, _, _, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &root_hash,
@@ -53,7 +51,6 @@ mod full_tries {
 
     #[test]
     fn lmdb_reads_from_n_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
@@ -66,7 +63,6 @@ mod full_tries {
                 let test_leaves = TEST_LEAVES;
                 let (used, unused) = test_leaves.split_at(num_leaves);
                 check_leaves::<_, _, _, _, error::Error>(
-                    correlation_id,
                     &context.environment,
                     &context.store,
                     state,

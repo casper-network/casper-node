@@ -400,24 +400,19 @@ fn create_0_leaf_trie() -> Result<(Digest, Vec<HashedTrie<TestKey, TestValue>>),
 
 mod empty_tries {
     use super::*;
-    use crate::global_state::{
-        shared::CorrelationId,
-        storage::{
-            error,
-            trie_store::operations::tests::{self, LmdbTestContext},
-        },
+    use crate::global_state::storage::{
+        error,
+        trie_store::operations::tests::{self, LmdbTestContext},
     };
 
     #[test]
     fn lmdb_writes_to_n_leaf_empty_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
         let (root_hash, tries) = create_0_leaf_trie().unwrap();
         let context = LmdbTestContext::new(&tries).unwrap();
         let initial_states = vec![root_hash];
 
         let _states =
             tests::writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &initial_states,
@@ -433,12 +428,9 @@ mod proptests {
     use proptest::{collection::vec, proptest};
 
     use super::*;
-    use crate::global_state::{
-        shared::CorrelationId,
-        storage::{
-            error::{self},
-            trie_store::operations::tests::{self, LmdbTestContext},
-        },
+    use crate::global_state::storage::{
+        error::{self},
+        trie_store::operations::tests::{self, LmdbTestContext},
     };
 
     const DEFAULT_MIN_LENGTH: usize = 0;
@@ -455,13 +447,11 @@ mod proptests {
     }
 
     fn lmdb_roundtrip_succeeds(pairs: &[(TestKey, TestValue)]) -> bool {
-        let correlation_id = CorrelationId::new();
         let (root_hash, tries) = create_0_leaf_trie().unwrap();
         let context = LmdbTestContext::new(&tries).unwrap();
         let mut states_to_check = vec![];
 
         let root_hashes = tests::write_pairs::<_, _, _, _, error::Error>(
-            correlation_id,
             &context.environment,
             &context.store,
             &root_hash,
@@ -472,7 +462,6 @@ mod proptests {
         states_to_check.extend(root_hashes);
 
         tests::check_pairs::<_, _, _, _, error::Error>(
-            correlation_id,
             &context.environment,
             &context.store,
             &states_to_check,

@@ -4,7 +4,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
+use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
     bytesrepr::Bytes, contracts::NamedKeys, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, ExecutableDeployItem, Key, Phase, ProtocolVersion, StoredValue,
@@ -51,7 +51,6 @@ impl ExecutionKind {
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         named_keys: &NamedKeys,
         executable_deploy_item: ExecutableDeployItem,
-        correlation_id: CorrelationId,
         protocol_version: &ProtocolVersion,
         phase: Phase,
     ) -> Result<ExecutionKind, Error>
@@ -113,7 +112,7 @@ impl ExecutionKind {
 
                 contract_package = tracking_copy
                     .borrow_mut()
-                    .get_contract_package(correlation_id, contract_package_hash)?;
+                    .get_contract_package(contract_package_hash)?;
 
                 let maybe_version_key =
                     version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
@@ -150,7 +149,7 @@ impl ExecutionKind {
             } => {
                 contract_package = tracking_copy
                     .borrow_mut()
-                    .get_contract_package(correlation_id, contract_package_hash)?;
+                    .get_contract_package(contract_package_hash)?;
 
                 let maybe_version_key =
                     version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));

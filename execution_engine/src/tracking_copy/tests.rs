@@ -4,7 +4,7 @@ use assert_matches::assert_matches;
 use proptest::prelude::*;
 
 use casper_storage::global_state::{
-    shared::{transform::Transform, CorrelationId},
+    shared::transform::Transform,
     storage::{
         state::{self, StateProvider, StateReader},
         trie::merkle_proof::TrieMerkleProof,
@@ -50,11 +50,7 @@ impl CountingDb {
 
 impl StateReader<Key, StoredValue> for CountingDb {
     type Error = String;
-    fn read(
-        &self,
-        _correlation_id: CorrelationId,
-        _key: &Key,
-    ) -> Result<Option<StoredValue>, Self::Error> {
+    fn read(&self, _key: &Key) -> Result<Option<StoredValue>, Self::Error> {
         let count = self.count.get();
         let value = match self.value {
             Some(ref v) => v.clone(),
@@ -66,17 +62,12 @@ impl StateReader<Key, StoredValue> for CountingDb {
 
     fn read_with_proof(
         &self,
-        _correlation_id: CorrelationId,
         _key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         Ok(None)
     }
 
-    fn keys_with_prefix(
-        &self,
-        _correlation_id: CorrelationId,
-        _prefix: &[u8],
-    ) -> Result<Vec<Key>, Self::Error> {
+    fn keys_with_prefix(&self, _prefix: &[u8]) -> Result<Vec<Key>, Self::Error> {
         Ok(Vec::new())
     }
 }
@@ -92,7 +83,6 @@ fn tracking_copy_new() {
 
 #[test]
 fn tracking_copy_caching() {
-    let correlation_id = CorrelationId::new();
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(Rc::clone(&counter));
     let mut tc = TrackingCopy::new(db);
@@ -100,12 +90,12 @@ fn tracking_copy_caching() {
 
     let zero = StoredValue::CLValue(CLValue::from_t(0_i32).unwrap());
     // first read
-    let value = tc.read(correlation_id, &k).unwrap().unwrap();
+    let value = tc.read(&k).unwrap().unwrap();
     assert_eq!(value, zero);
 
     // second read; should use cache instead
     // of going back to the DB
-    let value = tc.read(correlation_id, &k).unwrap().unwrap();
+    let value = tc.read(&k).unwrap().unwrap();
     let db_value = counter.get();
     assert_eq!(value, zero);
     assert_eq!(db_value, 1);
@@ -113,14 +103,13 @@ fn tracking_copy_caching() {
 
 #[test]
 fn tracking_copy_read() {
-    let correlation_id = CorrelationId::new();
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(Rc::clone(&counter));
     let mut tc = TrackingCopy::new(db);
     let k = Key::Hash([0u8; 32]);
 
     let zero = StoredValue::CLValue(CLValue::from_t(0_i32).unwrap());
-    let value = tc.read(correlation_id, &k).unwrap().unwrap();
+    let value = tc.read(&k).unwrap().unwrap();
     // value read correctly
     assert_eq!(value, zero);
     // Reading does produce an identity transform.
@@ -163,7 +152,6 @@ fn tracking_copy_write() {
 
 #[test]
 fn tracking_copy_add_i32() {
-    let correlation_id = CorrelationId::new();
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db);
@@ -172,7 +160,7 @@ fn tracking_copy_add_i32() {
     let three = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
 
     // adding should work
-    let add = tc.add(correlation_id, k, three.clone());
+    let add = tc.add(k, three.clone());
     assert_matches!(add, Ok(_));
 
     // Adding creates an add transform.
@@ -182,7 +170,7 @@ fn tracking_copy_add_i32() {
     );
 
     // adding again should update the values
-    let add = tc.add(correlation_id, k, three);
+    let add = tc.add(k, three);
     assert_matches!(add, Ok(_));
     assert_eq!(
         tc.journal,
@@ -193,7 +181,6 @@ fn tracking_copy_add_i32() {
 #[test]
 fn tracking_copy_add_named_key() {
     let zero_account_hash = AccountHash::new([0u8; ACCOUNT_HASH_LENGTH]);
-    let correlation_id = CorrelationId::new();
     // DB now holds an `Account` so that we can test adding a `NamedKey`
     let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
     let account = Account::new(
@@ -217,16 +204,12 @@ fn tracking_copy_add_named_key() {
     map.insert(name1.clone(), u1);
 
     // adding the wrong type should fail
-    let failed_add = tc.add(
-        correlation_id,
-        k,
-        StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
-    );
+    let failed_add = tc.add(k, StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()));
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
     assert!(tc.journal.is_empty());
 
     // adding correct type works
-    let add = tc.add(correlation_id, k, named_key);
+    let add = tc.add(k, named_key);
     assert_matches!(add, Ok(_));
     assert_eq!(
         tc.journal,
@@ -238,7 +221,7 @@ fn tracking_copy_add_named_key() {
 
     // adding again updates the values
     map.insert(name2.clone(), u2);
-    let add = tc.add(correlation_id, k, other_named_key);
+    let add = tc.add(k, other_named_key);
     assert_matches!(add, Ok(_));
     assert_eq!(
         tc.journal,
@@ -251,7 +234,6 @@ fn tracking_copy_add_named_key() {
 
 #[test]
 fn tracking_copy_rw() {
-    let correlation_id = CorrelationId::new();
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db);
@@ -259,7 +241,7 @@ fn tracking_copy_rw() {
 
     // reading then writing should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
-    let _ = tc.read(correlation_id, &k);
+    let _ = tc.read(&k);
     tc.write(k, value.clone());
     assert_eq!(
         tc.journal,
@@ -269,7 +251,6 @@ fn tracking_copy_rw() {
 
 #[test]
 fn tracking_copy_ra() {
-    let correlation_id = CorrelationId::new();
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db);
@@ -277,8 +258,8 @@ fn tracking_copy_ra() {
 
     // reading then adding should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
-    let _ = tc.read(correlation_id, &k);
-    let _ = tc.add(correlation_id, k, value);
+    let _ = tc.read(&k);
+    let _ = tc.add(k, value);
     assert_eq!(
         tc.journal,
         ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::AddInt32(3))])
@@ -287,7 +268,6 @@ fn tracking_copy_ra() {
 
 #[test]
 fn tracking_copy_aw() {
-    let correlation_id = CorrelationId::new();
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
     let mut tc = TrackingCopy::new(db);
@@ -296,7 +276,7 @@ fn tracking_copy_aw() {
     // adding then writing should update the op
     let value = StoredValue::CLValue(CLValue::from_t(3_i32).unwrap());
     let write_value = StoredValue::CLValue(CLValue::from_t(7_i32).unwrap());
-    let _ = tc.add(correlation_id, k, value);
+    let _ = tc.add(k, value);
     tc.write(k, write_value.clone());
     assert_eq!(
         tc.journal,
@@ -310,7 +290,6 @@ fn tracking_copy_aw() {
 proptest! {
     #[test]
     fn query_empty_path(k in key_arb(), missing_key in key_arb(), v in stored_value_arb()) {
-        let correlation_id = CorrelationId::new();
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
 
@@ -318,14 +297,14 @@ proptest! {
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let empty_path = Vec::new();
-        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(correlation_id, &EngineConfig::default(), k, &empty_path) {
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query( &EngineConfig::default(), k, &empty_path) {
             assert_eq!(v, value);
         } else {
             panic!("Query failed when it should not have!");
         }
 
         if missing_key != k {
-            let result = tc.query(correlation_id, &EngineConfig::default(), missing_key, &empty_path);
+            let result = tc.query( &EngineConfig::default(), missing_key, &empty_path);
             assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
         }
     }
@@ -338,8 +317,7 @@ proptest! {
         missing_name in "\\PC*",
         hash in u8_slice_32(), // hash for contract key
     ) {
-        let correlation_id = CorrelationId::new();
-        let mut named_keys = NamedKeys::new();
+            let mut named_keys = NamedKeys::new();
         named_keys.insert(name.clone(), k);
         let contract =
             StoredValue::Contract(Contract::new(
@@ -359,14 +337,14 @@ proptest! {
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(name.clone());
-        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(correlation_id, &EngineConfig::default(), contract_key, &path) {
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query( &EngineConfig::default(), contract_key, &path) {
             assert_eq!(v, value);
         } else {
             panic!("Query failed when it should not have!");
         }
 
         if missing_name != name {
-            let result = tc.query(correlation_id, &EngineConfig::default(), contract_key, &[missing_name]);
+            let result = tc.query( &EngineConfig::default(), contract_key, &[missing_name]);
             assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
         }
     }
@@ -380,8 +358,7 @@ proptest! {
         pk in account_hash_arb(), // account hash
         address in account_hash_arb(), // address for account hash
     ) {
-        let correlation_id = CorrelationId::new();
-        let named_keys = iter::once((name.clone(), k)).collect();
+            let named_keys = iter::once((name.clone(), k)).collect();
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let account = Account::new(
@@ -401,14 +378,14 @@ proptest! {
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
         let path = vec!(name.clone());
-        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query(correlation_id, &EngineConfig::default(),account_key, &path) {
+        if let Ok(TrackingCopyQueryResult::Success { value, .. }) = tc.query( &EngineConfig::default(),account_key, &path) {
             assert_eq!(v, value);
         } else {
             panic!("Query failed when it should not have!");
         }
 
         if missing_name != name {
-            let result = tc.query(correlation_id, &EngineConfig::default(), account_key, &[missing_name]);
+            let result = tc.query( &EngineConfig::default(), account_key, &[missing_name]);
             assert_matches!(result, Ok(TrackingCopyQueryResult::ValueNotFound(_)));
         }
     }
@@ -423,8 +400,7 @@ proptest! {
         address in account_hash_arb(), // address for account hash
         hash in u8_slice_32(), // hash for contract key
     ) {
-        let correlation_id = CorrelationId::new();
-        // create contract which knows about value
+            // create contract which knows about value
         let mut contract_named_keys = NamedKeys::new();
         contract_named_keys.insert(state_name.clone(), k);
         let contract =
@@ -462,7 +438,7 @@ proptest! {
         let tc = TrackingCopy::new(view);
         let path = vec!(contract_name, state_name);
 
-        let results =  tc.query(correlation_id, &EngineConfig::default(), account_key, &path);
+        let results =  tc.query( &EngineConfig::default(), account_key, &path);
         if let Ok(TrackingCopyQueryResult::Success { value, .. }) = results {
             assert_eq!(v, value);
         } else {
@@ -540,7 +516,6 @@ fn query_for_circular_references_should_fail() {
         ProtocolVersion::V1_0_0,
     ));
 
-    let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (cl_value_key, cl_value),
         (contract_key, contract),
@@ -551,12 +526,9 @@ fn query_for_circular_references_should_fail() {
     // query for the self-referential key (second path element of arbitrary value required to cause
     // iteration _into_ the self-referential key)
     let path = vec![key_name, String::new()];
-    if let Ok(TrackingCopyQueryResult::CircularReference(msg)) = tracking_copy.query(
-        correlation_id,
-        &EngineConfig::default(),
-        contract_key,
-        &path,
-    ) {
+    if let Ok(TrackingCopyQueryResult::CircularReference(msg)) =
+        tracking_copy.query(&EngineConfig::default(), contract_key, &path)
+    {
         let expected_path_msg = format!("at path: {:?}/{}", contract_key, path[0]);
         assert!(msg.contains(&expected_path_msg));
     } else {
@@ -565,12 +537,9 @@ fn query_for_circular_references_should_fail() {
 
     // query for itself in its own named keys
     let path = vec![contract_name];
-    if let Ok(TrackingCopyQueryResult::CircularReference(msg)) = tracking_copy.query(
-        correlation_id,
-        &EngineConfig::default(),
-        contract_key,
-        &path,
-    ) {
+    if let Ok(TrackingCopyQueryResult::CircularReference(msg)) =
+        tracking_copy.query(&EngineConfig::default(), contract_key, &path)
+    {
         let expected_path_msg = format!("at path: {:?}/{}", contract_key, path[0]);
         assert!(msg.contains(&expected_path_msg));
     } else {
@@ -625,7 +594,6 @@ fn validate_query_proof_should_work() {
     let uref_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
 
     // persist them
-    let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (account_key, account_value.to_owned()),
         (contract_key, contract_value.to_owned()),
@@ -643,12 +611,7 @@ fn validate_query_proof_should_work() {
     let path = &[contract_name, account_name];
 
     let result = tracking_copy
-        .query(
-            correlation_id,
-            &EngineConfig::default(),
-            main_account_key,
-            path,
-        )
+        .query(&EngineConfig::default(), main_account_key, path)
         .expect("should query");
 
     let proofs = if let TrackingCopyQueryResult::Success { proofs, .. } = result {
@@ -731,7 +694,7 @@ fn validate_query_proof_should_work() {
     );
 
     let misfit_result = tracking_copy
-        .query(correlation_id, &EngineConfig::default(), uref_key, &[])
+        .query(&EngineConfig::default(), uref_key, &[])
         .expect("should query");
 
     let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {
@@ -799,12 +762,7 @@ fn validate_query_proof_should_work() {
     let misfit_tracking_copy = TrackingCopy::new(misfit_view);
 
     let misfit_result = misfit_tracking_copy
-        .query(
-            correlation_id,
-            &EngineConfig::default(),
-            main_account_key,
-            path,
-        )
+        .query(&EngineConfig::default(), main_account_key, path)
         .expect("should query");
 
     let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {
@@ -854,7 +812,6 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
     let uref_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
 
     // persist them
-    let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (account_1_key, account_1_value),
         (account_2_key, account_2_value),
@@ -868,9 +825,7 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
 
     let mut tracking_copy = TrackingCopy::new(view);
 
-    let key_set = tracking_copy
-        .get_keys(correlation_id, &KeyTag::Account)
-        .unwrap();
+    let key_set = tracking_copy.get_keys(&KeyTag::Account).unwrap();
 
     assert_eq!(key_set.len(), 2);
     assert!(key_set.contains(&account_1_key));
@@ -901,7 +856,6 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     let uref_2_key = Key::URef(URef::new([9; 32], AccessRights::READ_ADD_WRITE));
 
     // persist them
-    let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (account_key, account_value),
         (uref_1_key, uref_1_value),
@@ -915,9 +869,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
 
     let mut tracking_copy = TrackingCopy::new(view);
 
-    let key_set = tracking_copy
-        .get_keys(correlation_id, &KeyTag::URef)
-        .unwrap();
+    let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
     assert_eq!(key_set.len(), 2);
     assert!(key_set.contains(&uref_1_key.normalize()));
@@ -930,9 +882,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
     tracking_copy.write(uref_3_key, uref_3_value);
 
-    let key_set = tracking_copy
-        .get_keys(correlation_id, &KeyTag::URef)
-        .unwrap();
+    let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
     assert_eq!(key_set.len(), 3);
     assert!(key_set.contains(&uref_1_key.normalize()));
@@ -943,7 +893,6 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
 
 #[test]
 fn get_keys_should_handle_reads_from_empty_trie() {
-    let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([]);
 
     let view = global_state
@@ -953,9 +902,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
 
     let mut tracking_copy = TrackingCopy::new(view);
 
-    let key_set = tracking_copy
-        .get_keys(correlation_id, &KeyTag::URef)
-        .unwrap();
+    let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
     assert_eq!(key_set.len(), 0);
     assert!(key_set.is_empty());
@@ -966,9 +913,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let uref_1_key = Key::URef(URef::new([8; 32], AccessRights::READ_ADD_WRITE));
     tracking_copy.write(uref_1_key, uref_1_value);
 
-    let key_set = tracking_copy
-        .get_keys(correlation_id, &KeyTag::URef)
-        .unwrap();
+    let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
     assert_eq!(key_set.len(), 1);
     assert!(key_set.contains(&uref_1_key.normalize()));
@@ -979,9 +924,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let uref_2_key = Key::URef(URef::new([9; 32], AccessRights::READ_ADD_WRITE));
     tracking_copy.write(uref_2_key, uref_2_value);
 
-    let key_set = tracking_copy
-        .get_keys(correlation_id, &KeyTag::URef)
-        .unwrap();
+    let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
     assert_eq!(key_set.len(), 2);
     assert!(key_set.contains(&uref_1_key.normalize()));
@@ -1009,9 +952,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let uref_3_key = Key::URef(URef::new([10; 32], AccessRights::READ_ADD_WRITE));
     tracking_copy.write(uref_3_key, uref_3_value);
 
-    let key_set = tracking_copy
-        .get_keys(correlation_id, &KeyTag::URef)
-        .unwrap();
+    let key_set = tracking_copy.get_keys(&KeyTag::URef).unwrap();
 
     assert_eq!(key_set.len(), 3);
     assert!(key_set.contains(&uref_1_key.normalize()));
@@ -1061,14 +1002,13 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
         path.push(contract_name.clone());
     }
 
-    let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
     let tracking_copy = TrackingCopy::new(view);
 
     let contract_key = contract_keys[0];
-    let result = tracking_copy.query(correlation_id, &engine_config, contract_key, &path);
+    let result = tracking_copy.query(&engine_config, contract_key, &path);
 
     assert!(
         matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {
@@ -1119,7 +1059,6 @@ fn query_with_large_depth_with_urefs_should_fail() {
     let contract_key = Key::Hash([0; 32]);
     pairs.push((contract_key, contract));
 
-    let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state(pairs);
 
     let view = global_state.checkout(root_hash).unwrap().unwrap();
@@ -1128,7 +1067,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
     // query for the beginning of a long chain of urefs
     // (second path element of arbitrary value required to cause iteration _into_ the nested key)
     let path = vec![root_key_name, String::new()];
-    let result = tracking_copy.query(correlation_id, &engine_config, contract_key, &path);
+    let result = tracking_copy.query(&engine_config, contract_key, &path);
 
     assert!(
         matches!(result, Ok(TrackingCopyQueryResult::DepthLimit {

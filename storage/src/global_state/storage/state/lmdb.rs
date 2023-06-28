@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 use tempfile::TempDir;
 
 use crate::global_state::{
-    shared::{transform::Transform, AdditiveMap, CorrelationId},
+    shared::{transform::Transform, AdditiveMap},
     storage::{
         error,
         lmdb::DatabaseFlags,
@@ -92,7 +92,6 @@ impl LmdbGlobalState {
     /// Write stored values to LMDB.
     pub fn put_stored_values(
         &self,
-        correlation_id: CorrelationId,
         prestate_hash: Digest,
         stored_values: HashMap<Key, StoredValue>,
     ) -> Result<Digest, error::Error> {
@@ -100,7 +99,6 @@ impl LmdbGlobalState {
         let new_state_root = put_stored_values::<_, _, error::Error>(
             &scratch_trie,
             &scratch_trie,
-            correlation_id,
             prestate_hash,
             stored_values,
         )?;
@@ -139,14 +137,9 @@ fn compute_empty_root_hash() -> Result<(Digest, Trie<Key, StoredValue>), error::
 impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
     type Error = error::Error;
 
-    fn read(
-        &self,
-        correlation_id: CorrelationId,
-        key: &Key,
-    ) -> Result<Option<StoredValue>, Self::Error> {
+    fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-            correlation_id,
             &txn,
             self.store.deref(),
             &self.root_hash,
@@ -162,7 +155,6 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
 
     fn read_with_proof(
         &self,
-        correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
@@ -172,13 +164,8 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
             lmdb::RoTransaction,
             LmdbTrieStore,
             Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.store.deref(),
-            &self.root_hash,
-            key,
-        )? {
+        >(&txn, self.store.deref(), &self.root_hash, key)?
+        {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("LmdbGlobalState has invalid root"),
@@ -187,14 +174,9 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
         Ok(ret)
     }
 
-    fn keys_with_prefix(
-        &self,
-        correlation_id: CorrelationId,
-        prefix: &[u8],
-    ) -> Result<Vec<Key>, Self::Error> {
+    fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Key>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
-            correlation_id,
             &txn,
             self.store.deref(),
             &self.root_hash,
@@ -215,14 +197,12 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
 impl CommitProvider for LmdbGlobalState {
     fn commit(
         &self,
-        correlation_id: CorrelationId,
         prestate_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
         commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
             &self.environment,
             &self.trie_store,
-            correlation_id,
             prestate_hash,
             effects,
         )
@@ -251,11 +231,7 @@ impl StateProvider for LmdbGlobalState {
         self.empty_root_hash
     }
 
-    fn get_trie_full(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_key: &Digest,
-    ) -> Result<Option<TrieRaw>, Self::Error> {
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<TrieRaw> =
             Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
@@ -264,33 +240,27 @@ impl StateProvider for LmdbGlobalState {
         Ok(ret)
     }
 
-    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash = put_trie::<
-            Key,
-            StoredValue,
-            lmdb::RwTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(correlation_id, &mut txn, &self.trie_store, trie)?;
+        let trie_hash =
+            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, Self::Error>(
+                &mut txn,
+                &self.trie_store,
+                trie,
+            )?;
         txn.commit()?;
         Ok(trie_hash)
     }
 
     /// Finds all of the keys of missing directly descendant `Trie<K,V>` values.
-    fn missing_children(
-        &self,
-        correlation_id: CorrelationId,
-        trie_raw: &[u8],
-    ) -> Result<Vec<Digest>, Self::Error> {
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
-        let missing_hashes = missing_children::<
-            Key,
-            StoredValue,
-            lmdb::RoTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(correlation_id, &txn, self.trie_store.deref(), trie_raw)?;
+        let missing_hashes =
+            missing_children::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
+                &txn,
+                self.trie_store.deref(),
+                trie_raw,
+            )?;
         txn.commit()?;
         Ok(missing_hashes)
     }
@@ -298,7 +268,6 @@ impl StateProvider for LmdbGlobalState {
     /// Delete keys.
     fn delete_keys(
         &self,
-        correlation_id: CorrelationId,
         mut state_root_hash: Digest,
         keys: &[Key],
     ) -> Result<DeleteResult, Self::Error> {
@@ -308,7 +277,6 @@ impl StateProvider for LmdbGlobalState {
 
         for key in keys {
             let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
-                correlation_id,
                 &mut txn,
                 &scratch_trie_store,
                 &state_root_hash,
@@ -362,7 +330,7 @@ pub fn make_temporary_global_state(
     }
 
     root_hash = lmdb_global_state
-        .commit(CorrelationId::default(), root_hash, m)
+        .commit(root_hash, m)
         .expect("Creation of account should be a success.");
 
     (lmdb_global_state, root_hash, tempdir)
@@ -408,12 +376,11 @@ mod tests {
 
     #[test]
     fn reads_from_a_checkout_return_expected_values() {
-        let correlation_id = CorrelationId::new();
         let test_pairs = create_test_pairs();
         let (state, root_hash, _tempdir) = make_temporary_global_state(test_pairs.clone());
         let checkout = state.checkout(root_hash).unwrap().unwrap();
         for (key, value) in test_pairs {
-            assert_eq!(Some(value), checkout.read(correlation_id, &key).unwrap());
+            assert_eq!(Some(value), checkout.read(&key).unwrap());
         }
     }
 
@@ -427,7 +394,6 @@ mod tests {
 
     #[test]
     fn commit_updates_state() {
-        let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
         let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
@@ -440,21 +406,17 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state.commit(root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
 
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
-            assert_eq!(
-                Some(value),
-                updated_checkout.read(correlation_id, &key).unwrap()
-            );
+            assert_eq!(Some(value), updated_checkout.read(&key).unwrap());
         }
     }
 
     #[test]
     fn commit_updates_state_and_original_state_stays_intact() {
-        let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
         let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
@@ -467,28 +429,20 @@ mod tests {
             tmp
         };
 
-        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = state.commit(root_hash, effects).unwrap();
 
         let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
-            assert_eq!(
-                Some(value),
-                updated_checkout.read(correlation_id, &key).unwrap()
-            );
+            assert_eq!(Some(value), updated_checkout.read(&key).unwrap());
         }
 
         let original_checkout = state.checkout(root_hash).unwrap().unwrap();
         for (key, value) in create_test_pairs().iter().cloned() {
-            assert_eq!(
-                Some(value),
-                original_checkout.read(correlation_id, &key).unwrap()
-            );
+            assert_eq!(Some(value), original_checkout.read(&key).unwrap());
         }
         assert_eq!(
             None,
-            original_checkout
-                .read(correlation_id, &test_pairs_updated[2].key)
-                .unwrap()
+            original_checkout.read(&test_pairs_updated[2].key).unwrap()
         );
     }
 }

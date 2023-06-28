@@ -59,37 +59,24 @@ where
         self.state.empty_root()
     }
 
-    fn get_trie_full(
-        &self,
-        correlation_id: shared::CorrelationId,
-        trie_key: &Digest,
-    ) -> Result<Option<TrieRaw>, Self::Error> {
-        self.state.get_trie_full(correlation_id, trie_key)
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error> {
+        self.state.get_trie_full(trie_key)
     }
 
-    fn put_trie(
-        &self,
-        correlation_id: shared::CorrelationId,
-        trie: &[u8],
-    ) -> Result<Digest, Self::Error> {
-        self.state.put_trie(correlation_id, trie)
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error> {
+        self.state.put_trie(trie)
     }
 
-    fn missing_children(
-        &self,
-        correlation_id: shared::CorrelationId,
-        trie_raw: &[u8],
-    ) -> Result<Vec<Digest>, Self::Error> {
-        self.state.missing_children(correlation_id, trie_raw)
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error> {
+        self.state.missing_children(trie_raw)
     }
 
     fn delete_keys(
         &self,
-        correlation_id: shared::CorrelationId,
         root: Digest,
         keys_to_delete: &[casper_types::Key],
     ) -> Result<DeleteResult, Self::Error> {
-        self.state.delete_keys(correlation_id, root, keys_to_delete)
+        self.state.delete_keys(root, keys_to_delete)
     }
 }
 
@@ -99,10 +86,9 @@ where
 {
     fn commit(
         &self,
-        correlation_id: shared::CorrelationId,
         state_hash: Digest,
         effects: shared::AdditiveMap<casper_types::Key, shared::transform::Transform>,
     ) -> Result<Digest, Self::Error> {
-        self.state.commit(correlation_id, state_hash, effects)
+        self.state.commit(state_hash, effects)
     }
 }

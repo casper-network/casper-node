@@ -6,13 +6,11 @@ mod empty_tries {
     #[test]
     fn lmdb_non_colliding_writes_to_n_leaf_empty_trie_had_expected_results() {
         for num_leaves in 1..=TEST_LEAVES_LENGTH {
-            let correlation_id = CorrelationId::new();
             let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
             writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &initial_states,
@@ -25,13 +23,11 @@ mod empty_tries {
     #[test]
     fn lmdb_writes_to_n_leaf_empty_trie_had_expected_results() {
         for num_leaves in 1..=TEST_LEAVES_LENGTH {
-            let correlation_id = CorrelationId::new();
             let (root_hash, tries) = TEST_TRIE_GENERATORS[0]().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
             writes_to_n_leaf_empty_trie_had_expected_results::<_, _, _, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &initial_states,
@@ -46,7 +42,6 @@ mod partial_tries {
     use super::*;
 
     fn noop_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, S, E>(
-        correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         states: &[Digest],
@@ -60,7 +55,6 @@ mod partial_tries {
     {
         // Check that the expected set of leaves is in the trie
         check_leaves::<_, _, _, _, E>(
-            correlation_id,
             environment,
             store,
             &states[0],
@@ -70,7 +64,6 @@ mod partial_tries {
 
         // Rewrite that set of leaves
         let write_results = write_leaves::<_, _, _, _, E>(
-            correlation_id,
             environment,
             store,
             &states[0],
@@ -83,7 +76,6 @@ mod partial_tries {
 
         // Check that the expected set of leaves is in the trie
         check_leaves::<_, _, _, _, E>(
-            correlation_id,
             environment,
             store,
             &states[0],
@@ -95,13 +87,11 @@ mod partial_tries {
     #[test]
     fn lmdb_noop_writes_to_n_leaf_partial_trie_had_expected_results() {
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
             let states = vec![root_hash];
 
             noop_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &states,
@@ -112,7 +102,6 @@ mod partial_tries {
     }
 
     fn update_writes_to_n_leaf_partial_trie_had_expected_results<'a, R, S, E>(
-        correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         states: &[Digest],
@@ -128,7 +117,6 @@ mod partial_tries {
 
         // Check that the expected set of leaves is in the trie
         check_leaves::<_, _, _, _, E>(
-            correlation_id,
             environment,
             store,
             &states[0],
@@ -150,7 +138,6 @@ mod partial_tries {
             let root_hash = {
                 let current_root = states.last().unwrap();
                 let results = write_leaves::<_, _, _, _, E>(
-                    correlation_id,
                     environment,
                     store,
                     current_root,
@@ -167,7 +154,6 @@ mod partial_tries {
 
             // Check that the expected set of leaves is in the trie
             check_leaves::<_, _, _, _, E>(
-                correlation_id,
                 environment,
                 store,
                 states.last().unwrap(),
@@ -182,13 +168,11 @@ mod partial_tries {
     #[test]
     fn lmdb_update_writes_to_n_leaf_partial_trie_had_expected_results() {
         for (num_leaves, generator) in TEST_TRIE_GENERATORS.iter().enumerate() {
-            let correlation_id = CorrelationId::new();
             let (root_hash, tries) = generator().unwrap();
             let context = LmdbTestContext::new(&tries).unwrap();
             let initial_states = vec![root_hash];
 
             update_writes_to_n_leaf_partial_trie_had_expected_results::<_, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &initial_states,
@@ -203,7 +187,6 @@ mod full_tries {
     use super::*;
 
     fn noop_writes_to_n_leaf_full_trie_had_expected_results<'a, R, S, E>(
-        correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         states: &[Digest],
@@ -218,7 +201,6 @@ mod full_tries {
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
             check_leaves::<_, _, _, _, E>(
-                correlation_id,
                 environment,
                 store,
                 state,
@@ -229,7 +211,6 @@ mod full_tries {
 
         // Rewrite that set of leaves
         let write_results = write_leaves::<_, _, _, _, E>(
-            correlation_id,
             environment,
             store,
             states.last().unwrap(),
@@ -243,7 +224,6 @@ mod full_tries {
         // Check that the expected set of leaves is in the trie at every state reference
         for (num_leaves, state) in states[..index].iter().enumerate() {
             check_leaves::<_, _, _, _, E>(
-                correlation_id,
                 environment,
                 store,
                 state,
@@ -257,7 +237,6 @@ mod full_tries {
 
     #[test]
     fn lmdb_noop_writes_to_n_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
@@ -267,7 +246,6 @@ mod full_tries {
             states.push(root_hash);
 
             noop_writes_to_n_leaf_full_trie_had_expected_results::<_, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &states,
@@ -278,7 +256,6 @@ mod full_tries {
     }
 
     fn update_writes_to_n_leaf_full_trie_had_expected_results<'a, R, S, E>(
-        correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         states: &[Digest],
@@ -295,7 +272,6 @@ mod full_tries {
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
             check_leaves::<_, _, _, _, E>(
-                correlation_id,
                 environment,
                 store,
                 state,
@@ -306,7 +282,6 @@ mod full_tries {
 
         // Write set of leaves to the trie
         let hashes = write_leaves::<_, _, _, _, E>(
-            correlation_id,
             environment,
             store,
             states.last().unwrap(),
@@ -344,14 +319,7 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
-                correlation_id,
-                environment,
-                store,
-                state,
-                &expected[state_index],
-                &[],
-            )?;
+            check_leaves::<_, _, _, _, E>(environment, store, state, &expected[state_index], &[])?;
         }
 
         Ok(())
@@ -359,7 +327,6 @@ mod full_tries {
 
     #[test]
     fn lmdb_update_writes_to_n_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
@@ -369,7 +336,6 @@ mod full_tries {
             states.push(root_hash);
 
             update_writes_to_n_leaf_full_trie_had_expected_results::<_, _, error::Error>(
-                correlation_id,
                 &context.environment,
                 &context.store,
                 &states,
@@ -380,7 +346,6 @@ mod full_tries {
     }
 
     fn node_writes_to_5_leaf_full_trie_had_expected_results<'a, R, S, E>(
-        correlation_id: CorrelationId,
         environment: &'a R,
         store: &S,
         states: &[Digest],
@@ -397,7 +362,6 @@ mod full_tries {
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
             check_leaves::<_, _, _, _, E>(
-                correlation_id,
                 environment,
                 store,
                 state,
@@ -408,7 +372,6 @@ mod full_tries {
 
         // Write set of leaves to the trie
         let hashes = write_leaves::<_, _, _, _, E>(
-            correlation_id,
             environment,
             store,
             states.last().unwrap(),
@@ -446,21 +409,13 @@ mod full_tries {
 
         // Check that the expected set of leaves is in the trie at every state reference
         for (state_index, state) in states.iter().enumerate() {
-            check_leaves::<_, _, _, _, E>(
-                correlation_id,
-                environment,
-                store,
-                state,
-                &expected[state_index],
-                &[],
-            )?;
+            check_leaves::<_, _, _, _, E>(environment, store, state, &expected[state_index], &[])?;
         }
         Ok(())
     }
 
     #[test]
     fn lmdb_node_writes_to_5_leaf_full_trie_had_expected_results() {
-        let correlation_id = CorrelationId::new();
         let context = LmdbTestContext::new(EMPTY_HASHED_TEST_TRIES).unwrap();
         let mut states: Vec<Digest> = Vec::new();
 
@@ -471,7 +426,6 @@ mod full_tries {
         }
 
         node_writes_to_5_leaf_full_trie_had_expected_results::<_, _, error::Error>(
-            correlation_id,
             &context.environment,
             &context.store,
             &states,

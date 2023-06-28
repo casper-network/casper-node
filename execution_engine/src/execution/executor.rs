@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
-use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
+use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,
@@ -56,7 +56,6 @@ impl Executor {
         deploy_hash: DeployHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
@@ -90,7 +89,6 @@ impl Executor {
             gas_limit,
             address_generator,
             protocol_version,
-            correlation_id,
             tracking_copy,
             phase,
             spending_limit,
@@ -142,7 +140,6 @@ impl Executor {
         deploy_hash: DeployHash,
         payment_gas_limit: Gas,
         protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
@@ -176,7 +173,6 @@ impl Executor {
             payment_gas_limit,
             address_generator,
             protocol_version,
-            correlation_id,
             Rc::clone(&tracking_copy),
             phase,
             spending_limit,
@@ -216,7 +212,6 @@ impl Executor {
         deploy_hash: DeployHash,
         gas_limit: Gas,
         protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         stack: RuntimeStack,
@@ -237,7 +232,7 @@ impl Executor {
         // should cause the EE to panic. Do not remove the panics.
         let system_contract_registry = tracking_copy
             .borrow_mut()
-            .get_system_contracts(correlation_id)
+            .get_system_contracts()
             .unwrap_or_else(|error| panic!("Could not retrieve system contracts: {:?}", error));
 
         // Snapshot of effects before execution, so in case of error only nonce update
@@ -270,10 +265,7 @@ impl Executor {
             }
         };
 
-        let contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(CorrelationId::default(), contract_hash)
-        {
+        let contract = match tracking_copy.borrow_mut().get_contract(contract_hash) {
             Ok(contract) => contract,
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
@@ -295,7 +287,6 @@ impl Executor {
             gas_limit,
             address_generator,
             protocol_version,
-            correlation_id,
             tracking_copy,
             phase,
             remaining_spending_limit,
@@ -353,7 +344,6 @@ impl Executor {
         gas_limit: Gas,
         address_generator: Rc<RefCell<AddressGenerator>>,
         protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
         phase: Phase,
         remaining_spending_limit: U512,
@@ -380,7 +370,6 @@ impl Executor {
             gas_counter,
             address_generator,
             protocol_version,
-            correlation_id,
             phase,
             self.config,
             transfers,

@@ -10,7 +10,7 @@ use tracing::error;
 use casper_types::{Digest, Key, StoredValue};
 
 use crate::global_state::{
-    shared::{transform::Transform, AdditiveMap, CorrelationId},
+    shared::{transform::Transform, AdditiveMap},
     storage::{
         error,
         state::{CommitError, CommitProvider, StateProvider, StateReader},
@@ -112,17 +112,12 @@ impl ScratchGlobalState {
 impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
     type Error = error::Error;
 
-    fn read(
-        &self,
-        correlation_id: CorrelationId,
-        key: &Key,
-    ) -> Result<Option<StoredValue>, Self::Error> {
+    fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
         if let Some(value) = self.cache.read().unwrap().get(key) {
             return Ok(Some(value.clone()));
         }
         let txn = self.environment.create_read_txn()?;
         let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-            correlation_id,
             &txn,
             self.trie_store.deref(),
             &self.root_hash,
@@ -141,7 +136,6 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 
     fn read_with_proof(
         &self,
-        correlation_id: CorrelationId,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
@@ -151,13 +145,8 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             lmdb::RoTransaction,
             LmdbTrieStore,
             Self::Error,
-        >(
-            correlation_id,
-            &txn,
-            self.trie_store.deref(),
-            &self.root_hash,
-            key,
-        )? {
+        >(&txn, self.trie_store.deref(), &self.root_hash, key)?
+        {
             ReadResult::Found(value) => Some(value),
             ReadResult::NotFound => None,
             ReadResult::RootNotFound => panic!("LmdbWithCacheGlobalState has invalid root"),
@@ -166,14 +155,9 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         Ok(ret)
     }
 
-    fn keys_with_prefix(
-        &self,
-        correlation_id: CorrelationId,
-        prefix: &[u8],
-    ) -> Result<Vec<Key>, Self::Error> {
+    fn keys_with_prefix(&self, prefix: &[u8]) -> Result<Vec<Key>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let keys_iter = keys_with_prefix::<Key, StoredValue, _, _>(
-            correlation_id,
             &txn,
             self.trie_store.deref(),
             &self.root_hash,
@@ -196,7 +180,6 @@ impl CommitProvider for ScratchGlobalState {
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
     fn commit(
         &self,
-        correlation_id: CorrelationId,
         state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
     ) -> Result<Digest, Self::Error> {
@@ -215,11 +198,7 @@ impl CommitProvider for ScratchGlobalState {
                         LmdbTrieStore,
                         Self::Error,
                     >(
-                        correlation_id,
-                        &txn,
-                        self.trie_store.deref(),
-                        &state_hash,
-                        &key,
+                        &txn, self.trie_store.deref(), &state_hash, &key
                     )? {
                         ReadResult::Found(current_value) => {
                             match transform.apply(current_value.clone()) {
@@ -283,11 +262,7 @@ impl StateProvider for ScratchGlobalState {
         self.empty_root_hash
     }
 
-    fn get_trie_full(
-        &self,
-        _correlation_id: CorrelationId,
-        trie_key: &Digest,
-    ) -> Result<Option<TrieRaw>, Self::Error> {
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let ret: Option<TrieRaw> =
             Store::<Digest, Trie<Digest, StoredValue>>::get_raw(&*self.trie_store, &txn, trie_key)?
@@ -296,29 +271,23 @@ impl StateProvider for ScratchGlobalState {
         Ok(ret)
     }
 
-    fn put_trie(&self, correlation_id: CorrelationId, trie: &[u8]) -> Result<Digest, Self::Error> {
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
-        let trie_hash = put_trie::<
-            Key,
-            StoredValue,
-            lmdb::RwTransaction,
-            LmdbTrieStore,
-            Self::Error,
-        >(correlation_id, &mut txn, &self.trie_store, trie)?;
+        let trie_hash =
+            put_trie::<Key, StoredValue, lmdb::RwTransaction, LmdbTrieStore, Self::Error>(
+                &mut txn,
+                &self.trie_store,
+                trie,
+            )?;
         txn.commit()?;
         Ok(trie_hash)
     }
 
     /// Finds all of the keys of missing directly descendant `Trie<K,V>` values
-    fn missing_children(
-        &self,
-        correlation_id: CorrelationId,
-        trie_raw: &[u8],
-    ) -> Result<Vec<Digest>, Self::Error> {
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error> {
         let txn = self.environment.create_read_txn()?;
         let missing_descendants =
             missing_children::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
-                correlation_id,
                 &txn,
                 self.trie_store.deref(),
                 trie_raw,
@@ -329,14 +298,12 @@ impl StateProvider for ScratchGlobalState {
 
     fn delete_keys(
         &self,
-        correlation_id: CorrelationId,
         mut state_root_hash: Digest,
         keys_to_delete: &[Key],
     ) -> Result<DeleteResult, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         for key in keys_to_delete {
             let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
-                correlation_id,
                 &mut txn,
                 self.trie_store.deref(),
                 &state_root_hash,
@@ -427,7 +394,6 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn create_test_state() -> TestState {
-        let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
             LmdbEnvironment::new(
@@ -448,7 +414,6 @@ pub(crate) mod tests {
 
             for TestPair { key, value } in &create_test_pairs() {
                 match write::<_, _, _, LmdbTrieStore, error::Error>(
-                    correlation_id,
                     &mut txn,
                     &state.trie_store,
                     &current_root,
@@ -477,7 +442,6 @@ pub(crate) mod tests {
 
     #[test]
     fn commit_updates_state() {
-        let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
         let TestState { state, root_hash } = create_test_state();
@@ -492,21 +456,17 @@ pub(crate) mod tests {
             tmp
         };
 
-        let scratch_root_hash = scratch
-            .commit(correlation_id, root_hash, effects.clone())
-            .unwrap();
+        let scratch_root_hash = scratch.commit(root_hash, effects.clone()).unwrap();
 
         assert_eq!(
             scratch_root_hash, root_hash,
             "ScratchGlobalState should not modify the state root, as it does no hashing"
         );
 
-        let lmdb_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+        let lmdb_hash = state.commit(root_hash, effects).unwrap();
         let updated_checkout = state.checkout(lmdb_hash).unwrap().unwrap();
 
-        let all_keys = updated_checkout
-            .keys_with_prefix(correlation_id, &[])
-            .unwrap();
+        let all_keys = updated_checkout.keys_with_prefix(&[]).unwrap();
 
         let stored_values = scratch.into_inner();
         assert_eq!(all_keys.len(), stored_values.len());
@@ -515,24 +475,17 @@ pub(crate) mod tests {
             assert!(stored_values.get(&key).is_some());
             assert_eq!(
                 stored_values.get(&key),
-                updated_checkout
-                    .read(correlation_id, &key)
-                    .unwrap()
-                    .as_ref()
+                updated_checkout.read(&key).unwrap().as_ref()
             );
         }
 
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
-            assert_eq!(
-                Some(value),
-                updated_checkout.read(correlation_id, &key).unwrap()
-            );
+            assert_eq!(Some(value), updated_checkout.read(&key).unwrap());
         }
     }
 
     #[test]
     fn commit_updates_state_with_add() {
-        let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
         // create two lmdb instances, with a scratch instance on the first
@@ -553,46 +506,29 @@ pub(crate) mod tests {
         };
 
         // Commit effects to both databases.
-        scratch
-            .commit(correlation_id, root_hash, effects.clone())
-            .unwrap();
-        let updated_hash = state2
-            .commit(correlation_id, state_2_root_hash, effects)
-            .unwrap();
+        scratch.commit(root_hash, effects.clone()).unwrap();
+        let updated_hash = state2.commit(state_2_root_hash, effects).unwrap();
 
         // Create add transforms as well
         let add_effects = create_test_transforms();
-        scratch
-            .commit(correlation_id, root_hash, add_effects.clone())
-            .unwrap();
-        let updated_hash = state2
-            .commit(correlation_id, updated_hash, add_effects)
-            .unwrap();
+        scratch.commit(root_hash, add_effects.clone()).unwrap();
+        let updated_hash = state2.commit(updated_hash, add_effects).unwrap();
 
         let scratch_checkout = scratch.checkout(root_hash).unwrap().unwrap();
         let updated_checkout = state2.checkout(updated_hash).unwrap().unwrap();
-        let all_keys = updated_checkout
-            .keys_with_prefix(correlation_id, &[])
-            .unwrap();
+        let all_keys = updated_checkout.keys_with_prefix(&[]).unwrap();
 
         // Check that cache matches the contents of the second instance of lmdb
         for key in all_keys {
             assert_eq!(
-                scratch_checkout
-                    .read(correlation_id, &key)
-                    .unwrap()
-                    .as_ref(),
-                updated_checkout
-                    .read(correlation_id, &key)
-                    .unwrap()
-                    .as_ref()
+                scratch_checkout.read(&key).unwrap().as_ref(),
+                updated_checkout.read(&key).unwrap().as_ref()
             );
         }
     }
 
     #[test]
     fn commit_updates_state_and_original_state_stays_intact() {
-        let correlation_id = CorrelationId::new();
         let test_pairs_updated = create_test_pairs_updated();
 
         let TestState {
@@ -609,29 +545,24 @@ pub(crate) mod tests {
             tmp
         };
 
-        let updated_hash = scratch.commit(correlation_id, root_hash, effects).unwrap();
+        let updated_hash = scratch.commit(root_hash, effects).unwrap();
 
         let updated_checkout = scratch.checkout(updated_hash).unwrap().unwrap();
         for TestPair { key, value } in test_pairs_updated.iter().cloned() {
             assert_eq!(
                 Some(value),
-                updated_checkout.read(correlation_id, &key).unwrap(),
+                updated_checkout.read(&key).unwrap(),
                 "ScratchGlobalState should not yet be written to the underlying lmdb state"
             );
         }
 
         let original_checkout = state.checkout(root_hash).unwrap().unwrap();
         for TestPair { key, value } in create_test_pairs().iter().cloned() {
-            assert_eq!(
-                Some(value),
-                original_checkout.read(correlation_id, &key).unwrap()
-            );
+            assert_eq!(Some(value), original_checkout.read(&key).unwrap());
         }
         assert_eq!(
             None,
-            original_checkout
-                .read(correlation_id, &test_pairs_updated[2].key)
-                .unwrap()
+            original_checkout.read(&test_pairs_updated[2].key).unwrap()
         );
     }
 }

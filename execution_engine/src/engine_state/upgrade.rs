@@ -3,7 +3,7 @@ use std::{cell::RefCell, fmt, rc::Rc};
 
 use thiserror::Error;
 
-use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
+use casper_storage::global_state::storage::state::StateProvider;
 use casper_types::{
     bytesrepr::{self},
     system::SystemContractType,
@@ -93,29 +93,18 @@ where
     /// Bump major version and/or update the entry points for system contracts.
     pub(crate) fn refresh_system_contracts(
         &self,
-        correlation_id: CorrelationId,
         mint_hash: &ContractHash,
         auction_hash: &ContractHash,
         handle_payment_hash: &ContractHash,
         standard_payment_hash: &ContractHash,
     ) -> Result<(), ProtocolUpgradeError> {
+        self.refresh_system_contract_entry_points(*mint_hash, SystemContractType::Mint)?;
+        self.refresh_system_contract_entry_points(*auction_hash, SystemContractType::Auction)?;
         self.refresh_system_contract_entry_points(
-            correlation_id,
-            *mint_hash,
-            SystemContractType::Mint,
-        )?;
-        self.refresh_system_contract_entry_points(
-            correlation_id,
-            *auction_hash,
-            SystemContractType::Auction,
-        )?;
-        self.refresh_system_contract_entry_points(
-            correlation_id,
             *handle_payment_hash,
             SystemContractType::HandlePayment,
         )?;
         self.refresh_system_contract_entry_points(
-            correlation_id,
             *standard_payment_hash,
             SystemContractType::StandardPayment,
         )?;
@@ -127,7 +116,6 @@ where
     /// and bump the contract version at a major version upgrade.
     fn refresh_system_contract_entry_points(
         &self,
-        correlation_id: CorrelationId,
         contract_hash: ContractHash,
         system_contract_type: SystemContractType,
     ) -> Result<(), ProtocolUpgradeError> {
@@ -137,7 +125,7 @@ where
         let mut contract = if let StoredValue::Contract(contract) = self
             .tracking_copy
             .borrow_mut()
-            .read(correlation_id, &Key::Hash(contract_hash.value()))
+            .read(&Key::Hash(contract_hash.value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
             })?
@@ -168,7 +156,7 @@ where
         let mut contract_package = if let StoredValue::ContractPackage(contract_package) = self
             .tracking_copy
             .borrow_mut()
-            .read(correlation_id, &contract_package_key)
+            .read(&contract_package_key)
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                     contract_name.to_string(),

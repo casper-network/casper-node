@@ -1,6 +1,6 @@
 use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
-use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
+use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     system::mint,
@@ -117,27 +117,19 @@ impl TransferRuntimeArgsBuilder {
     }
 
     /// Checks if a purse exists.
-    fn purse_exists<R>(
-        &self,
-        uref: URef,
-        correlation_id: CorrelationId,
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    ) -> bool
+    fn purse_exists<R>(&self, uref: URef, tracking_copy: Rc<RefCell<TrackingCopy<R>>>) -> bool
     where
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
         let key = match tracking_copy
             .borrow_mut()
-            .get_purse_balance_key(correlation_id, uref.into())
+            .get_purse_balance_key(uref.into())
         {
             Ok(key) => key,
             Err(_) => return false,
         };
-        tracking_copy
-            .borrow_mut()
-            .get_purse_balance(correlation_id, key)
-            .is_ok()
+        tracking_copy.borrow_mut().get_purse_balance(key).is_ok()
     }
 
     /// Resolves the source purse of the transfer.
@@ -149,7 +141,6 @@ impl TransferRuntimeArgsBuilder {
     fn resolve_source_uref<R>(
         &self,
         account: &Account,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
     where
@@ -176,11 +167,7 @@ impl TransferRuntimeArgsBuilder {
                     Some(Key::URef(found_uref)) => {
                         if found_uref.is_writeable() {
                             // it is a URef and caller has access but is it a purse URef?
-                            if !self.purse_exists(
-                                found_uref.to_owned(),
-                                correlation_id,
-                                tracking_copy,
-                            ) {
+                            if !self.purse_exists(found_uref.to_owned(), tracking_copy) {
                                 return Err(Error::reverter(ApiError::InvalidPurse));
                             }
 
@@ -219,7 +206,6 @@ impl TransferRuntimeArgsBuilder {
     /// Returns [`TransferTargetMode`] with a resolved variant.
     fn resolve_transfer_target_mode<R>(
         &mut self,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
     where
@@ -233,7 +219,7 @@ impl TransferRuntimeArgsBuilder {
             Some(cl_value) if *cl_value.cl_type() == CLType::URef => {
                 let uref: URef = cl_value.clone().into_t().map_err(Error::reverter)?;
 
-                if !self.purse_exists(uref, correlation_id, tracking_copy) {
+                if !self.purse_exists(uref, tracking_copy) {
                     return Err(Error::reverter(ApiError::InvalidPurse));
                 }
 
@@ -262,10 +248,7 @@ impl TransferRuntimeArgsBuilder {
         };
 
         self.to = Some(account_hash);
-        match tracking_copy
-            .borrow_mut()
-            .read_account(correlation_id, account_hash)
-        {
+        match tracking_copy.borrow_mut().read_account(account_hash) {
             Ok(account) => Ok(TransferTargetMode::PurseExists(
                 account.main_purse().with_access_rights(AccessRights::ADD),
             )),
@@ -314,7 +297,6 @@ impl TransferRuntimeArgsBuilder {
     /// Returns a resolved [`TransferTargetMode`].
     pub(crate) fn transfer_target_mode<R>(
         &mut self,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
     where
@@ -325,7 +307,7 @@ impl TransferRuntimeArgsBuilder {
         if mode != TransferTargetMode::Unknown {
             return Ok(mode);
         }
-        match self.resolve_transfer_target_mode(correlation_id, tracking_copy) {
+        match self.resolve_transfer_target_mode(tracking_copy) {
             Ok(mode) => {
                 self.transfer_target_mode = mode;
                 Ok(mode)
@@ -338,7 +320,6 @@ impl TransferRuntimeArgsBuilder {
     pub fn build<R>(
         mut self,
         from: &Account,
-        correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
     where
@@ -347,16 +328,14 @@ impl TransferRuntimeArgsBuilder {
     {
         let to = self.to;
 
-        let target_uref =
-            match self.resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))? {
-                TransferTargetMode::PurseExists(uref) => uref,
-                _ => {
-                    return Err(Error::reverter(ApiError::Transfer));
-                }
-            };
+        let target_uref = match self.resolve_transfer_target_mode(Rc::clone(&tracking_copy))? {
+            TransferTargetMode::PurseExists(uref) => uref,
+            _ => {
+                return Err(Error::reverter(ApiError::Transfer));
+            }
+        };
 
-        let source_uref =
-            self.resolve_source_uref(from, correlation_id, Rc::clone(&tracking_copy))?;
+        let source_uref = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
 
         if source_uref.addr() == target_uref.addr() {
             return Err(Error::reverter(ApiError::InvalidPurse));

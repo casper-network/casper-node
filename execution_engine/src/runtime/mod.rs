@@ -570,11 +570,7 @@ where
 
         let mint_hash = self.context.get_system_contract(MINT)?;
         let base_key = Key::from(mint_hash);
-        let mint_contract = self
-            .context
-            .state()
-            .borrow_mut()
-            .get_contract(self.context.correlation_id(), mint_hash)?;
+        let mint_contract = self.context.state().borrow_mut().get_contract(mint_hash)?;
         let mut named_keys = mint_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
@@ -703,7 +699,7 @@ where
             .context
             .state()
             .borrow_mut()
-            .get_contract(self.context.correlation_id(), handle_payment_hash)?;
+            .get_contract(handle_payment_hash)?;
         let mut named_keys = handle_payment_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
@@ -802,7 +798,7 @@ where
             .context
             .state()
             .borrow_mut()
-            .get_contract(self.context.correlation_id(), auction_hash)?;
+            .get_contract(auction_hash)?;
         let mut named_keys = auction_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(

@@ -14,7 +14,7 @@ use casper_execution_engine::{
 use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
-        shared::{transform::Transform, AdditiveMap, CorrelationId},
+        shared::{transform::Transform, AdditiveMap},
         storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     },
 };
@@ -126,7 +126,6 @@ pub fn execute_finalized_block(
     // Pay out block rewards
     let proposer = *finalized_block.proposer.clone();
     state_root_hash = scratch_state.distribute_block_rewards(
-        CorrelationId::new(),
         state_root_hash,
         protocol_version,
         proposer.clone(),
@@ -188,7 +187,7 @@ pub fn execute_finalized_block(
                 .into(),
         ),
     );
-    scratch_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
+    scratch_state.apply_effect(state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -219,7 +218,6 @@ pub fn execute_finalized_block(
             let system_contract_registry = None;
 
             let upcoming_era_validators = engine_state.get_era_validators(
-                CorrelationId::new(),
                 system_contract_registry,
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
@@ -257,7 +255,7 @@ pub fn execute_finalized_block(
                 "commit prune: preparing prune config"
             );
             let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
-            match engine_state.commit_prune(CorrelationId::new(), prune_config) {
+            match engine_state.commit_prune(prune_config) {
                 Ok(PruneResult::RootNotFound) => {
                     error!(
                         previous_block_height,
@@ -347,8 +345,7 @@ pub fn execute_finalized_block(
         .into_iter()
         .map(|id| id.destructure().1)
         .collect();
-    let proof_of_checksum_registry =
-        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
+    let proof_of_checksum_registry = engine_state.get_checksum_registry_proof(state_root_hash)?;
     let approvals_hashes = Box::new(ApprovalsHashes::new(
         block.hash(),
         approvals_hashes,
@@ -422,9 +419,8 @@ where
     S::Error: Into<execution::Error>,
 {
     trace!(?state_root_hash, ?effects, "commit");
-    let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.apply_effect(correlation_id, state_root_hash, effects);
+    let result = engine_state.apply_effect(state_root_hash, effects);
     if let Some(metrics) = metrics {
         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     }
@@ -487,9 +483,8 @@ where
     S::Error: Into<execution::Error>,
 {
     trace!(?execute_request, "execute");
-    let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.run_execute(correlation_id, execute_request);
+    let result = engine_state.run_execute(execute_request);
     if let Some(metrics) = metrics {
         metrics.run_execute.observe(start.elapsed().as_secs_f64());
     }
@@ -530,9 +525,8 @@ where
     };
 
     // Have the EE commit the step.
-    let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.commit_step(correlation_id, step_request);
+    let result = engine_state.commit_step(step_request);
     if let Some(metrics) = maybe_metrics {
         let elapsed = start.elapsed().as_secs_f64();
         metrics.commit_step.observe(elapsed);
