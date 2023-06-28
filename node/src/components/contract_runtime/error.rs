@@ -7,7 +7,7 @@ use thiserror::Error;
 use casper_execution_engine::engine_state::{
     Error as EngineStateError, GetEraValidatorsError, StepError,
 };
-use casper_storage::global_state::storage::error::lmdb::Error as StorageLmdbError;
+use casper_storage::global_state::error::Error as StorageLmdbError;
 use casper_types::{bytesrepr, CLValueError, EraReport, PublicKey, U512};
 
 use crate::{components::contract_runtime::ExecutionPreState, types::FinalizedBlock};
@@ -85,7 +85,7 @@ pub enum BlockExecutionError {
     Lmdb(
         #[from]
         #[serde(skip_serializing)]
-        lmdb::Error,
+        StorageLmdbError,
     ),
     /// An error that occurred while getting era validators.
     #[error(transparent)]

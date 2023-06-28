@@ -36,19 +36,16 @@ use tracing::{debug, error, trace, warn};
 use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
+        self,
         shared::{transform::Transform, AdditiveMap},
-        storage::{
-            lmdb,
-            state::{
-                lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-                StateReader,
-            },
-            trie::{merkle_proof::TrieMerkleProof, TrieRaw},
-            trie_store::operations::DeleteResult,
+        state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
         },
+        trie::{merkle_proof::TrieMerkleProof, TrieRaw},
+        trie_store::operations::DeleteResult,
     },
 };
-
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
@@ -141,7 +138,7 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
     }
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
-    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+    pub fn flush_environment(&self) -> Result<(), global_state::error::Error> {
         if self.state.state().environment().is_manual_sync_enabled() {
             self.state.state().environment().sync()?
         }
@@ -171,13 +168,13 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
 }
 
 impl EngineState<LmdbGlobalState> {
-    /// Gets underlyng LmdbGlobalState
+    /// Gets underlying LmdbGlobalState
     pub fn get_state(&self) -> &LmdbGlobalState {
         &self.state
     }
 
     /// Flushes the LMDB environment to disk when manual sync is enabled in the config.toml.
-    pub fn flush_environment(&self) -> Result<(), lmdb::Error> {
+    pub fn flush_environment(&self) -> Result<(), global_state::error::Error> {
         if self.state.environment().is_manual_sync_enabled() {
             self.state.environment().sync()?
         }

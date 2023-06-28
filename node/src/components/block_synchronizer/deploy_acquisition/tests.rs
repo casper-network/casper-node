@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, VecDeque};
 use assert_matches::assert_matches;
 use rand::Rng;
 
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     testing::TestRng, AccessRights, Block, CLValue, Deploy, EraId, ProtocolVersion, StoredValue,
     URef,

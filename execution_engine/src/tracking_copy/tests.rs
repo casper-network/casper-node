@@ -5,10 +5,8 @@ use proptest::prelude::*;
 
 use casper_storage::global_state::{
     shared::transform::Transform,
-    storage::{
-        state::{self, StateProvider, StateReader},
-        trie::merkle_proof::TrieMerkleProof,
-    },
+    state::{self, StateProvider, StateReader},
+    trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},

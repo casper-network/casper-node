@@ -10,7 +10,6 @@ use std::{
     sync::Arc,
 };
 
-use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use serde::Serialize;
 use smallvec::SmallVec;
@@ -23,6 +22,7 @@ use casper_execution_engine::engine_state::{
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
 };
+use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash, BlockHeader,
     BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId, Digest,

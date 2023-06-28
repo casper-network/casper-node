@@ -1,8 +1,9 @@
 //! Execution error and supporting code.
+use casper_storage::global_state;
 use parity_wasm::elements;
 use thiserror::Error;
 
-use casper_storage::global_state::{shared::transform, storage};
+use casper_storage::global_state::shared::transform;
 use casper_types::{
     account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
@@ -23,7 +24,7 @@ pub enum Error {
     Interpreter(String),
     /// Storage error.
     #[error("Storage error: {}", _0)]
-    Storage(storage::error::Error),
+    Storage(global_state::error::Error),
     /// Failed to (de)serialize bytes.
     #[error("Serialization error: {}", _0)]
     BytesRepr(bytesrepr::Error),
@@ -214,8 +215,8 @@ impl From<wasmi::Error> for Error {
     }
 }
 
-impl From<storage::error::Error> for Error {
-    fn from(e: storage::error::Error) -> Self {
+impl From<global_state::error::Error> for Error {
+    fn from(e: global_state::error::Error) -> Self {
         Error::Storage(e)
     }
 }

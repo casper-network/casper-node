@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use casper_storage::global_state::storage::state::StateReader;
+use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},

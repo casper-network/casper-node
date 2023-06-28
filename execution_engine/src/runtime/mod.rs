@@ -21,7 +21,7 @@ use parity_wasm::elements::Module;
 use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
-use casper_storage::global_state::storage::state::StateReader;
+use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash, ActionType, Weight},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},

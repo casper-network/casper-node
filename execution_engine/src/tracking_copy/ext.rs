@@ -1,8 +1,6 @@
 use std::convert::TryInto;
 
-use casper_storage::global_state::storage::{
-    state::StateReader, trie::merkle_proof::TrieMerkleProof,
-};
+use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     account::{Account, AccountHash},
     CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,

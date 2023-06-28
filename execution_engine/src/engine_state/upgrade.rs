@@ -3,7 +3,7 @@ use std::{cell::RefCell, fmt, rc::Rc};
 
 use thiserror::Error;
 
-use casper_storage::global_state::storage::state::StateProvider;
+use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     bytesrepr::{self},
     system::SystemContractType,

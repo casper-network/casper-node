@@ -33,7 +33,7 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
-    global_state::storage::{
+    global_state::{
         state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
         trie_store::lmdb::LmdbTrieStore,
     },
@@ -968,10 +968,8 @@ mod trie_chunking_tests {
 
     use casper_storage::global_state::{
         shared::{transform::Transform, AdditiveMap},
-        storage::{
-            state::StateProvider,
-            trie::{Pointer, Trie},
-        },
+        state::StateProvider,
+        trie::{Pointer, Trie},
     };
     use casper_types::{
         account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,

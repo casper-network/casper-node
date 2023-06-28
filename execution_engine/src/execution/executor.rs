@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
-use casper_storage::global_state::storage::state::StateReader;
+use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::FromBytes,

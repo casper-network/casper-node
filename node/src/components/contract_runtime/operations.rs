@@ -15,7 +15,7 @@ use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
         shared::{transform::Transform, AdditiveMap},
-        storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     },
 };
 use casper_types::{

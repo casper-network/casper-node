@@ -17,7 +17,7 @@ use crate::{
     runtime_context::dictionary::DictionaryValue,
     tracking_copy::{AddResult, TrackingCopy, TrackingCopyExt},
 };
-use casper_storage::global_state::storage::state::StateReader;
+use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{
         Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,

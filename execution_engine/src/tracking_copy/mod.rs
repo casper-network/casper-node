@@ -18,7 +18,8 @@ use thiserror::Error;
 
 use casper_storage::global_state::{
     shared::transform::{self, Transform},
-    storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
+    state::StateReader,
+    trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
     bytesrepr::{self},

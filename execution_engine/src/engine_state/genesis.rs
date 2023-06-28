@@ -9,7 +9,7 @@ use rand::{
 };
 use serde::{Deserialize, Serialize};
 
-use casper_storage::global_state::storage::state::StateProvider;
+use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     account::{Account, AccountHash},
     contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},

@@ -4,7 +4,7 @@
 
 use std::{cell::RefCell, rc::Rc};
 
-use casper_storage::global_state::storage::state::StateReader;
+use casper_storage::global_state::state::StateReader;
 use casper_types::{
     bytesrepr::Bytes, contracts::NamedKeys, ContractHash, ContractPackage, ContractPackageHash,
     ContractVersionKey, ExecutableDeployItem, Key, Phase, ProtocolVersion, StoredValue,

@@ -11,7 +11,7 @@ use rand::RngCore;
 
 use casper_storage::global_state::{
     shared::transform::Transform,
-    storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
+    state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
 use casper_types::{
     account::{

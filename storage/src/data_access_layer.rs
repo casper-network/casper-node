@@ -2,11 +2,9 @@ use casper_types::{Digest, EraId};
 
 use crate::global_state::{
     shared,
-    storage::{
-        state::{CommitProvider, StateProvider},
-        trie::TrieRaw,
-        trie_store::operations::DeleteResult,
-    },
+    state::{CommitProvider, StateProvider},
+    trie::TrieRaw,
+    trie_store::operations::DeleteResult,
 };
 
 pub struct Block {

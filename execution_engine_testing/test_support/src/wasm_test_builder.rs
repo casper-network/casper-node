@@ -32,15 +32,13 @@ use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
         shared::{transform::Transform, AdditiveMap},
-        storage::{
-            state::{
-                lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-                StateReader,
-            },
-            transaction_source::lmdb::LmdbEnvironment,
-            trie::{merkle_proof::TrieMerkleProof, Trie},
-            trie_store::lmdb::LmdbTrieStore,
+        state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
         },
+        transaction_source::lmdb::LmdbEnvironment,
+        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{

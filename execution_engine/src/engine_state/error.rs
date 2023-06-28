@@ -2,7 +2,7 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_storage::global_state::storage::{self, lmdb, state::CommitError};
+use casper_storage::global_state::{self, state::CommitError};
 use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
 
 use crate::{
@@ -35,7 +35,7 @@ pub enum Error {
     Exec(execution::Error),
     /// Storage error.
     #[error("Storage error: {0}")]
-    Storage(#[from] storage::error::Error),
+    Storage(#[from] global_state::error::Error),
     /// Authorization error.
     #[error("Authorization failure: not authorized.")]
     Authorization,
@@ -126,12 +126,6 @@ impl From<execution::Error> for Error {
 impl From<bytesrepr::Error> for Error {
     fn from(error: bytesrepr::Error) -> Self {
         Error::Bytesrepr(format!("{}", error))
-    }
-}
-
-impl From<lmdb::Error> for Error {
-    fn from(error: lmdb::Error) -> Self {
-        Error::Storage(storage::error::Error::Lmdb(error))
     }
 }
 

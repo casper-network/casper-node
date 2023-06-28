@@ -1,5 +1,6 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
+use lmdb::{Cursor, Transaction};
 use rand::Rng;
 use tempfile::TempDir;
 
@@ -9,8 +10,7 @@ use casper_execution_engine::{
     },
     execution,
 };
-use casper_storage::global_state::storage::{
-    lmdb::{Cursor, Transaction},
+use casper_storage::global_state::{
     state::{CommitProvider, StateProvider},
     trie::{Pointer, Trie},
 };

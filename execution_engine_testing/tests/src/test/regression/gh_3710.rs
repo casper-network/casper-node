@@ -9,7 +9,7 @@ use casper_execution_engine::{
     engine_state::{self, PruneConfig, PruneResult},
     execution,
 };
-use casper_storage::global_state::storage::state::{CommitProvider, StateProvider};
+use casper_storage::global_state::state::{CommitProvider, StateProvider};
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
