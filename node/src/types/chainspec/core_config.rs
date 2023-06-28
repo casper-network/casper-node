@@ -101,7 +101,7 @@ pub struct CoreConfig {
     pub finality_signature_proportion: Ratio<u64>,
 
     /// Lookback interval indicating which past block we are looking at to reward.
-    pub rewards_lag: u64,
+    pub signature_rewards_max_delay: u64,
 }
 
 impl CoreConfig {
@@ -184,7 +184,7 @@ impl CoreConfig {
         let consensus_protocol = rng.gen();
         let finders_fee = Ratio::new(rng.gen_range(1..100), 100);
         let finality_signature_proportion = Ratio::new(rng.gen_range(1..100), 100);
-        let rewards_lag = rng.gen_range(1..10);
+        let signature_rewards_max_delay = rng.gen_range(1..10);
 
         CoreConfig {
             era_duration,
@@ -209,7 +209,7 @@ impl CoreConfig {
             max_delegators_per_validator: 0,
             finders_fee,
             finality_signature_proportion,
-            rewards_lag,
+            signature_rewards_max_delay,
         }
     }
 }
@@ -242,7 +242,7 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.max_delegators_per_validator.to_bytes()?);
         buffer.extend(self.finders_fee.to_bytes()?);
         buffer.extend(self.finality_signature_proportion.to_bytes()?);
-        buffer.extend(self.rewards_lag.to_bytes()?);
+        buffer.extend(self.signature_rewards_max_delay.to_bytes()?);
         Ok(buffer)
     }
 
@@ -271,7 +271,7 @@ impl ToBytes for CoreConfig {
             + self.max_delegators_per_validator.serialized_length()
             + self.finders_fee.serialized_length()
             + self.finality_signature_proportion.serialized_length()
-            + self.rewards_lag.serialized_length()
+            + self.signature_rewards_max_delay.serialized_length()
     }
 }
 
@@ -300,7 +300,7 @@ impl FromBytes for CoreConfig {
         let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
         let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
         let (finality_signature_proportion, remainder) = Ratio::from_bytes(remainder)?;
-        let (rewards_lag, remainder) = u64::from_bytes(remainder)?;
+        let (signature_rewards_max_delay, remainder) = u64::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -324,7 +324,7 @@ impl FromBytes for CoreConfig {
             max_delegators_per_validator,
             finders_fee,
             finality_signature_proportion,
-            rewards_lag,
+            signature_rewards_max_delay,
         };
         Ok((config, remainder))
     }

@@ -25,15 +25,16 @@ use rand_chacha::ChaCha20Rng;
 
 pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
-    compute_approvals_checksum, ApprovalsHashes, BlockHashAndHeight, BlockHeaderWithMetadata,
-    BlockPayload, BlockWithMetadata, FinalitySignatureId, MetaBlock, MetaBlockMergeError,
-    MetaBlockState,
+    compute_approvals_checksum, create_single_block_rewarded_signatures, ApprovalsHashes,
+    BlockHashAndHeight, BlockHeaderWithMetadata, BlockPayload, BlockWithMetadata,
+    FinalitySignatureId, MetaBlock, MetaBlockMergeError, MetaBlockState,
 };
 pub use block::{
     json_compatibility::{JsonBlock, JsonBlockHeader},
     Block, BlockAndDeploys, BlockBody, BlockExecutionResultsOrChunk,
     BlockExecutionResultsOrChunkId, BlockExecutionResultsOrChunkIdDisplay, BlockHash, BlockHeader,
-    BlockSignatures, FinalitySignature, FinalizedBlock, PastFinalitySignatures,
+    BlockSignatures, FinalitySignature, FinalizedBlock, RewardedSignatures,
+    SingleBlockRewardedSignatures,
 };
 pub use chainspec::Chainspec;
 pub(crate) use chainspec::{ActivationPoint, ChainspecRawBytes};

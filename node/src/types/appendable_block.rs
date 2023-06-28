@@ -13,7 +13,7 @@ use crate::types::{
     DeployHashWithApprovals,
 };
 
-use super::block::PastFinalitySignatures;
+use super::block::RewardedSignatures;
 
 #[derive(Debug, Error)]
 pub(crate) enum AddError {
@@ -161,7 +161,7 @@ impl AppendableBlock {
     pub(crate) fn into_block_payload(
         self,
         accusations: Vec<PublicKey>,
-        past_finality_signatures: PastFinalitySignatures,
+        rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> BlockPayload {
         let AppendableBlock {
@@ -171,7 +171,7 @@ impl AppendableBlock {
             deploys,
             transfers,
             accusations,
-            past_finality_signatures,
+            rewarded_signatures,
             random_bit,
         )
     }

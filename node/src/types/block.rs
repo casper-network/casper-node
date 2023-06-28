@@ -7,7 +7,7 @@ pub(crate) mod test_block_builder;
 
 mod approvals_hashes;
 mod meta_block;
-mod past_finality_signatures;
+mod rewarded_signatures;
 
 use std::{
     array::TryFromSliceError,
@@ -58,7 +58,8 @@ pub(crate) use approvals_hashes::ApprovalsHashes;
 pub(crate) use meta_block::{
     MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
-pub use past_finality_signatures::PastFinalitySignatures;
+pub(crate) use rewarded_signatures::create_single_block_rewarded_signatures;
+pub use rewarded_signatures::{RewardedSignatures, SingleBlockRewardedSignatures};
 
 static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let secret_key_1 = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
@@ -114,8 +115,11 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let public_key = PublicKey::from(secret_key);
     let era_report = EraReport::doc_example().clone();
     let validator_set = era_report.rewards.keys().cloned().collect();
-    let past_finality_signatures =
-        PastFinalitySignatures::from_validator_set(&validator_set, &validator_set);
+    let rewarded_signatures =
+        RewardedSignatures::new(vec![SingleBlockRewardedSignatures::from_validator_set(
+            &validator_set,
+            &validator_set,
+        )]);
     let block_payload = BlockPayload::new(
         vec![],
         transfer_hashes
@@ -128,7 +132,7 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
             })
             .collect(),
         vec![],
-        past_finality_signatures,
+        rewarded_signatures,
         random_bit,
     );
     let era_id = EraId::from(1);
@@ -236,7 +240,7 @@ impl From<TryFromSliceError> for Error {
 pub(crate) struct BlockPayload {
     deploys: Vec<DeployHashWithApprovals>,
     transfers: Vec<DeployHashWithApprovals>,
-    past_finality_signatures: PastFinalitySignatures,
+    rewarded_signatures: RewardedSignatures,
     accusations: Vec<PublicKey>,
     random_bit: bool,
 }
@@ -246,13 +250,13 @@ impl BlockPayload {
         deploys: Vec<DeployHashWithApprovals>,
         transfers: Vec<DeployHashWithApprovals>,
         accusations: Vec<PublicKey>,
-        past_finality_signatures: PastFinalitySignatures,
+        rewarded_signatures: RewardedSignatures,
         random_bit: bool,
     ) -> Self {
         BlockPayload {
             deploys,
             transfers,
-            past_finality_signatures,
+            rewarded_signatures,
             accusations,
             random_bit,
         }
@@ -288,9 +292,9 @@ impl BlockPayload {
         self.deploy_hashes().chain(self.transfer_hashes())
     }
 
-    /// The finality signature for the past block defined by the lag from the chainspec.
-    pub(crate) fn past_finality_signatures(&self) -> &PastFinalitySignatures {
-        &self.past_finality_signatures
+    /// The finality signatures for the past blocks that will be rewarded in this block.
+    pub(crate) fn rewarded_signatures(&self) -> &RewardedSignatures {
+        &self.rewarded_signatures
     }
 
     /// Returns an iterator over all deploys and transfers.
@@ -377,13 +381,14 @@ impl BlockPayload {
         let accusations = (0..num_accusations)
             .map(|_| PublicKey::random(rng))
             .collect();
-        let past_finality_signatures = PastFinalitySignatures::random(rng, 20);
+        let rewarded_signatures =
+            RewardedSignatures::new(vec![SingleBlockRewardedSignatures::random(rng, 20)]);
 
         Self {
             deploys,
             transfers,
             accusations,
-            past_finality_signatures,
+            rewarded_signatures,
             random_bit: rng.gen(),
         }
     }
@@ -447,7 +452,7 @@ impl DocExample for EraReport {
 pub struct FinalizedBlock {
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
-    past_finality_signatures: PastFinalitySignatures,
+    rewarded_signatures: RewardedSignatures,
     timestamp: Timestamp,
     random_bit: bool,
     era_report: Option<Box<EraReport>>,
@@ -468,7 +473,7 @@ impl FinalizedBlock {
         FinalizedBlock {
             deploy_hashes: block_payload.deploy_hashes().cloned().collect(),
             transfer_hashes: block_payload.transfer_hashes().cloned().collect(),
-            past_finality_signatures: block_payload.past_finality_signatures().clone(),
+            rewarded_signatures: block_payload.rewarded_signatures().clone(),
             timestamp,
             random_bit: block_payload.random_bit,
             era_report: era_report.map(Box::new),
@@ -564,7 +569,7 @@ impl FinalizedBlock {
             deploys,
             vec![],
             vec![],
-            PastFinalitySignatures::random(rng, 20),
+            RewardedSignatures::new(vec![SingleBlockRewardedSignatures::random(rng, 20)]),
             random_bit,
         );
 
@@ -621,7 +626,7 @@ impl From<Block> for FinalizedBlock {
         FinalizedBlock {
             deploy_hashes: block.body.deploy_hashes,
             transfer_hashes: block.body.transfer_hashes,
-            past_finality_signatures: block.body.past_finality_signatures,
+            rewarded_signatures: block.body.rewarded_signatures,
             timestamp: block.header.timestamp,
             random_bit: block.header.random_bit,
             era_report: block
@@ -1200,7 +1205,7 @@ pub struct BlockBody {
     proposer: PublicKey,
     deploy_hashes: Vec<DeployHash>,
     transfer_hashes: Vec<DeployHash>,
-    past_finality_signatures: PastFinalitySignatures,
+    rewarded_signatures: RewardedSignatures,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     hash: OnceCell<Digest>,
@@ -1215,13 +1220,13 @@ impl BlockBody {
         proposer: PublicKey,
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
-        past_finality_signatures: PastFinalitySignatures,
+        rewarded_signatures: RewardedSignatures,
     ) -> Self {
         BlockBody {
             proposer,
             deploy_hashes,
             transfer_hashes,
-            past_finality_signatures,
+            rewarded_signatures,
             hash: OnceCell::new(),
         }
     }
@@ -1242,8 +1247,8 @@ impl BlockBody {
     }
 
     /// List of identifiers for finality signatures for a particular past block.
-    pub(crate) fn past_finality_signatures(&self) -> &PastFinalitySignatures {
-        &self.past_finality_signatures
+    pub(crate) fn rewarded_signatures(&self) -> &RewardedSignatures {
+        &self.rewarded_signatures
     }
 
     /// Returns deploy hashes of transactions in an order in which they were executed.
@@ -1271,13 +1276,13 @@ impl PartialEq for BlockBody {
             proposer,
             deploy_hashes,
             transfer_hashes,
-            past_finality_signatures,
+            rewarded_signatures,
             hash: _,
         } = self;
         *proposer == other.proposer
             && *deploy_hashes == other.deploy_hashes
             && *transfer_hashes == other.transfer_hashes
-            && *past_finality_signatures == other.past_finality_signatures
+            && *rewarded_signatures == other.rewarded_signatures
     }
 }
 
@@ -1300,7 +1305,7 @@ impl ToBytes for BlockBody {
         buffer.extend(self.proposer.to_bytes()?);
         buffer.extend(self.deploy_hashes.to_bytes()?);
         buffer.extend(self.transfer_hashes.to_bytes()?);
-        buffer.extend(self.past_finality_signatures.to_bytes()?);
+        buffer.extend(self.rewarded_signatures.to_bytes()?);
         Ok(buffer)
     }
 
@@ -1308,7 +1313,7 @@ impl ToBytes for BlockBody {
         self.proposer.serialized_length()
             + self.deploy_hashes.serialized_length()
             + self.transfer_hashes.serialized_length()
-            + self.past_finality_signatures.serialized_length()
+            + self.rewarded_signatures.serialized_length()
     }
 }
 
@@ -1317,12 +1322,12 @@ impl FromBytes for BlockBody {
         let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
         let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
-        let (past_finality_signatures, bytes) = PastFinalitySignatures::from_bytes(bytes)?;
+        let (rewarded_signatures, bytes) = RewardedSignatures::from_bytes(bytes)?;
         let body = BlockBody {
             proposer,
             deploy_hashes,
             transfer_hashes,
-            past_finality_signatures,
+            rewarded_signatures,
             hash: OnceCell::new(),
         };
         Ok((body, bytes))
@@ -1426,7 +1431,7 @@ impl Block {
             *finalized_block.proposer,
             finalized_block.deploy_hashes,
             finalized_block.transfer_hashes,
-            finalized_block.past_finality_signatures,
+            finalized_block.rewarded_signatures,
         );
 
         let body_hash = body.hash();
@@ -2234,7 +2239,7 @@ pub(crate) mod json_compatibility {
         transfer_hashes: Vec<DeployHash>,
         /// A series of 1s and 0s defining whether the validator at the same index
         /// has signed or not.
-        past_finality_signatures: Vec<u8>,
+        rewarded_signatures: Vec<Vec<u8>>,
     }
 
     impl From<&BlockBody> for JsonBlockBody {
@@ -2243,7 +2248,7 @@ pub(crate) mod json_compatibility {
                 proposer: body.proposer().clone(),
                 deploy_hashes: body.deploy_hashes().clone(),
                 transfer_hashes: body.transfer_hashes().clone(),
-                past_finality_signatures: body.past_finality_signatures().unpack().collect(),
+                rewarded_signatures: body.rewarded_signatures().unpack(),
             }
         }
     }
@@ -2254,9 +2259,7 @@ pub(crate) mod json_compatibility {
                 proposer: json_body.proposer,
                 deploy_hashes: json_body.deploy_hashes,
                 transfer_hashes: json_body.transfer_hashes,
-                past_finality_signatures: PastFinalitySignatures::pack(
-                    json_body.past_finality_signatures.into_iter(),
-                ),
+                rewarded_signatures: RewardedSignatures::pack(json_body.rewarded_signatures),
                 hash: OnceCell::new(),
             }
         }

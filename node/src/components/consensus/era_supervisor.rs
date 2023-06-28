@@ -23,7 +23,7 @@ use std::{
 
 use anyhow::Error;
 use datasize::DataSize;
-use futures::FutureExt;
+use futures::{Future, FutureExt};
 use itertools::Itertools;
 use prometheus::Registry;
 use rand::Rng;
@@ -55,9 +55,10 @@ use crate::{
     },
     fatal, protocol,
     types::{
-        chainspec::ConsensusProtocolName, BlockHash, BlockHeader, Chainspec, Deploy, DeployHash,
-        DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId,
-        PastFinalitySignatures, ValidatorMatrix,
+        chainspec::ConsensusProtocolName, create_single_block_rewarded_signatures, BlockHash,
+        BlockHeader, BlockWithMetadata, Chainspec, Deploy, DeployHash, DeployOrTransferHash,
+        FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId, RewardedSignatures,
+        ValidatorMatrix,
     },
     NodeRng,
 };
@@ -65,7 +66,7 @@ use crate::{
 pub use self::era::Era;
 use crate::components::consensus::error::CreateNewEraError;
 
-use super::traits::ConsensusNetworkMessage;
+use super::{traits::ConsensusNetworkMessage, BlockContext};
 
 /// The delay in milliseconds before we shutdown after the number of faulty validators exceeded the
 /// fault tolerance threshold.
@@ -961,21 +962,23 @@ impl EraSupervisor {
                 .immediately()
                 .event(move |()| Event::Action { era_id, action_id }),
             ProtocolOutcome::CreateNewBlock(block_context) => {
+                let signature_rewards_max_delay =
+                    self.chainspec.core_config.signature_rewards_max_delay;
                 let initial_era_height = self.era(era_id).start_height;
                 let current_block_height =
                     initial_era_height + block_context.ancestor_values().len() as u64;
+                let minimum_block_height =
+                    current_block_height.saturating_sub(signature_rewards_max_delay);
 
-                let future_appendable_block =
+                let awaitable_appendable_block =
                     effect_builder.request_appendable_block(block_context.timestamp());
-                let rewards_lag = self.chainspec.core_config.rewards_lag;
-                let future_block_with_metadata = async move {
-                    if let Some(block_height) = current_block_height.checked_sub(rewards_lag) {
-                        effect_builder
-                            .get_block_at_height_with_metadata_from_storage(block_height, false)
-                            .await
-                    } else {
-                        None
-                    }
+                let awaitable_blocks_with_metadata = async move {
+                    effect_builder
+                        .collect_past_blocks_with_metadata(
+                            minimum_block_height..current_block_height,
+                            false,
+                        )
+                        .await
                 };
                 let accusations = self
                     .iter_past(era_id, PAST_EVIDENCE_ERAS)
@@ -988,31 +991,18 @@ impl EraSupervisor {
 
                 let validator_matrix = self.validator_matrix.clone();
 
-                async move { tokio::join!(future_appendable_block, future_block_with_metadata) }
-                    .event(move |(appendable_block, maybe_past_block_with_metadata)| {
-                        let past_finality_signatures = maybe_past_block_with_metadata
-                            .and_then(|past_block_with_metadata| {
-                                validator_matrix
-                                    .validator_weights(
-                                        past_block_with_metadata.block.header().era_id(),
-                                    )
-                                    .map(|weights| {
-                                        PastFinalitySignatures::from_validator_set(
-                                            &past_block_with_metadata
-                                                .block_signatures
-                                                .proofs
-                                                .keys()
-                                                .cloned()
-                                                .collect(),
-                                            weights.validator_public_keys(),
-                                        )
-                                    })
-                            })
-                            .unwrap_or_default();
+                join_2(awaitable_appendable_block, awaitable_blocks_with_metadata).event(
+                    move |(appendable_block, maybe_past_blocks_with_metadata)| {
+                        let rewarded_signatures = create_rewarded_signatures(
+                            &maybe_past_blocks_with_metadata,
+                            validator_matrix,
+                            &block_context,
+                            signature_rewards_max_delay,
+                        );
 
                         let block_payload = Arc::new(appendable_block.into_block_payload(
                             accusations,
-                            past_finality_signatures,
+                            rewarded_signatures,
                             random_bit,
                         ));
 
@@ -1021,7 +1011,8 @@ impl EraSupervisor {
                             block_payload,
                             block_context,
                         })
-                    })
+                    },
+                )
             }
             ProtocolOutcome::FinalizedBlock(CpFinalizedBlock {
                 value,
@@ -1399,4 +1390,70 @@ impl ProposedBlock<ClContext> {
             .find(|deploy| block_deploys_set.contains(deploy))
             .map(DeployOrTransferHash::into)
     }
+}
+
+/// When `async move { join!(…) }` is used inline, it prevents rustfmt
+/// to run on the chained `event` block.
+async fn join_2<T: Future, U: Future>(
+    t: T,
+    u: U,
+) -> (<T as Future>::Output, <U as Future>::Output) {
+    futures::join!(t, u)
+}
+
+fn create_rewarded_signatures(
+    maybe_past_blocks_with_metadata: &[Option<BlockWithMetadata>],
+    validator_matrix: ValidatorMatrix,
+    block_context: &BlockContext<ClContext>,
+    signature_rewards_max_delay: u64,
+) -> RewardedSignatures {
+    let num_ancestor_values = block_context.ancestor_values().len();
+    let mut rewarded_signatures =
+        RewardedSignatures::new(maybe_past_blocks_with_metadata.iter().rev().map(
+            |maybe_past_block_with_metadata| {
+                maybe_past_block_with_metadata
+                    .as_ref()
+                    .and_then(|past_block_with_metadata| {
+                        create_single_block_rewarded_signatures(
+                            &validator_matrix,
+                            past_block_with_metadata,
+                        )
+                    })
+                    .unwrap_or_default()
+            },
+        ));
+
+    // exclude the signatures that were already included in ancestor blocks
+    for (past_index, ancestor_rewarded_signatures) in block_context
+        .ancestor_values()
+        .iter()
+        .map(|value| value.rewarded_signatures().clone())
+        // the above will only cover the signatures from the same era - chain
+        // with signatures from the blocks read from storage
+        .chain(
+            maybe_past_blocks_with_metadata
+                .iter()
+                .rev()
+                // skip the blocks corresponding to heights covered by
+                // ancestor_values
+                .skip(num_ancestor_values)
+                .map(|maybe_past_block| {
+                    maybe_past_block.as_ref().map_or_else(
+                        // if we're missing a block, this could cause us to include duplicate
+                        // signatures and make our proposal invalid - but this is covered by the
+                        // requirement for a validator to have blocks spanning the max deploy TTL
+                        // in the past
+                        Default::default,
+                        |past_block| past_block.block.body().rewarded_signatures().clone(),
+                    )
+                }),
+        )
+        .enumerate()
+        .take(signature_rewards_max_delay as usize)
+    {
+        rewarded_signatures = rewarded_signatures
+            .difference(&ancestor_rewarded_signatures.left_padded(past_index.saturating_add(1)));
+    }
+
+    rewarded_signatures
 }

@@ -550,6 +550,9 @@ impl<'a> NetworkMessageEstimator<'a> {
             // Endorsements are currently hard-disabled (via code). If ever re-enabled, this
             // parameter should ideally be removed entirely.
             "endorsements_enabled" => 0,
+            "signature_rewards_max_delay" => {
+                self.chainspec.core_config.signature_rewards_max_delay as i64
+            }
             _ => return None,
         })
     }

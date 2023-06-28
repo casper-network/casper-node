@@ -11,12 +11,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+use crate::types::ValidatorMatrix;
+
+use super::BlockWithMetadata;
+
 /// List of identifiers for finality signatures for a particular past block.
 ///
-/// That past block height is current_height - rewards_lag, the latter being defined
+/// That past block height is current_height - signature_rewards_max_delay, the latter being defined
 /// in the chainspec.
 ///
-/// We need to wait for a few blocks to pass (`rewards_lag`) to store the finality
+/// We need to wait for a few blocks to pass (`signature_rewards_max_delay`) to store the finality
 /// signers because we need a bit of time to get the block finality.
 #[derive(
     Clone,
@@ -32,9 +36,9 @@ use tracing::error;
     Debug,
     Default,
 )]
-pub struct PastFinalitySignatures(Vec<u8>);
+pub struct SingleBlockRewardedSignatures(Vec<u8>);
 
-impl PastFinalitySignatures {
+impl SingleBlockRewardedSignatures {
     /// Creates a new set of recorded finality signaures from the era's validators +
     /// the list of validators which signed.
     pub fn from_validator_set<'a>(
@@ -96,7 +100,7 @@ impl PastFinalitySignatures {
             })
             .collect();
 
-        PastFinalitySignatures(inner)
+        SingleBlockRewardedSignatures(inner)
     }
 
     /// Unpacks the bytes to bits,
@@ -111,9 +115,17 @@ impl PastFinalitySignatures {
             .iter()
             .flat_map(|&byte| (0..8).into_iter().map(move |i| bit_at(byte, i)))
     }
+
+    /// Calculates the set difference of two instances of `SingleBlockRewardedSignatures`.
+    pub(crate) fn difference(mut self, other: &SingleBlockRewardedSignatures) -> Self {
+        for (self_byte, other_byte) in self.0.iter_mut().zip(other.0.iter()) {
+            *self_byte &= !other_byte;
+        }
+        self
+    }
 }
 
-impl ToBytes for PastFinalitySignatures {
+impl ToBytes for SingleBlockRewardedSignatures {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(Bytes::from(self.0.as_ref()).to_bytes()?);
@@ -125,16 +137,108 @@ impl ToBytes for PastFinalitySignatures {
     }
 }
 
-impl FromBytes for PastFinalitySignatures {
+impl FromBytes for SingleBlockRewardedSignatures {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (inner, rest) = Bytes::from_bytes(bytes)?;
-        Ok((PastFinalitySignatures(inner.into()), rest))
+        Ok((SingleBlockRewardedSignatures(inner.into()), rest))
+    }
+}
+
+/// Describes finality signatures that will be rewarded in a block. Consists of a vector of
+/// `SingleBlockRewardedSignatures`, each of which describes signatures for a single ancestor
+/// block. The first entry represents the signatures for the parent block, the second for the
+/// parent of the parent, and so on.
+#[derive(
+    Clone,
+    DataSize,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    Debug,
+    Default,
+)]
+pub struct RewardedSignatures(Vec<SingleBlockRewardedSignatures>);
+
+impl RewardedSignatures {
+    /// Creates a new instance of `RewardedSignatures`.
+    pub fn new<I: IntoIterator<Item = SingleBlockRewardedSignatures>>(
+        single_block_signatures: I,
+    ) -> Self {
+        Self(single_block_signatures.into_iter().collect())
+    }
+
+    /// Creates an instance of `RewardedSignatures` based on its unpacked (one byte per validator)
+    /// representation.
+    pub fn pack(unpacked: Vec<Vec<u8>>) -> Self {
+        Self(
+            unpacked
+                .into_iter()
+                .map(|single_block_signatures| {
+                    SingleBlockRewardedSignatures::pack(single_block_signatures.into_iter())
+                })
+                .collect(),
+        )
+    }
+
+    /// Creates an unpacked (one byte per validator) representation of the finality signatures to
+    /// be rewarded in this block.
+    pub fn unpack(&self) -> Vec<Vec<u8>> {
+        self.0
+            .iter()
+            .map(|single_block_signatures| single_block_signatures.unpack().collect())
+            .collect()
+    }
+
+    /// Returns this instance of `RewardedSignatures` with `num_blocks` of empty signatures
+    /// prepended.
+    pub fn left_padded(self, num_blocks: usize) -> Self {
+        Self(
+            std::iter::repeat_with(SingleBlockRewardedSignatures::default)
+                .take(num_blocks)
+                .chain(self.0)
+                .collect(),
+        )
+    }
+
+    /// Calculates the set difference between two instances of `RewardedSignatures`.
+    pub fn difference(self, other: &RewardedSignatures) -> Self {
+        Self(
+            self.0
+                .into_iter()
+                .zip(other.0.iter())
+                .map(|(single_block_signatures, other_block_signatures)| {
+                    single_block_signatures.difference(other_block_signatures)
+                })
+                .collect(),
+        )
+    }
+}
+
+impl ToBytes for RewardedSignatures {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+}
+
+impl FromBytes for RewardedSignatures {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        Vec::<SingleBlockRewardedSignatures>::from_bytes(bytes)
+            .map(|(inner, rest)| (RewardedSignatures(inner), rest))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::PastFinalitySignatures;
+    use super::SingleBlockRewardedSignatures;
     use casper_types::{
         bytesrepr::{FromBytes, ToBytes},
         testing::TestRng,
@@ -152,7 +256,7 @@ mod tests {
         let original_signed = BTreeSet::new();
 
         let past_finality_signatures =
-            PastFinalitySignatures::from_validator_set(&original_signed, validators.iter());
+            SingleBlockRewardedSignatures::from_validator_set(&original_signed, validators.iter());
 
         assert_eq!(past_finality_signatures.0, &[0]);
 
@@ -178,7 +282,7 @@ mod tests {
         };
 
         let past_finality_signatures =
-            PastFinalitySignatures::from_validator_set(&signed, validators.iter());
+            SingleBlockRewardedSignatures::from_validator_set(&signed, validators.iter());
 
         assert_eq!(past_finality_signatures.0, &[0b0010_0110, 0b1010_0000]);
 
@@ -189,13 +293,13 @@ mod tests {
 
     #[test]
     fn simple_serialization_roundtrip() {
-        let data = PastFinalitySignatures(vec![1, 2, 3, 4, 5]);
+        let data = SingleBlockRewardedSignatures(vec![1, 2, 3, 4, 5]);
 
         let serialized = data.to_bytes().unwrap();
         assert_eq!(serialized.len(), data.0.len() + 4);
         assert_eq!(data.serialized_length(), data.0.len() + 4);
 
-        let (deserialized, rest) = PastFinalitySignatures::from_bytes(&serialized).unwrap();
+        let (deserialized, rest) = SingleBlockRewardedSignatures::from_bytes(&serialized).unwrap();
 
         assert_eq!(data, deserialized);
         assert_eq!(rest, &[0u8; 0]);
@@ -203,13 +307,13 @@ mod tests {
 
     #[test]
     fn serialization_roundtrip_of_empty_data() {
-        let data = PastFinalitySignatures::default();
+        let data = SingleBlockRewardedSignatures::default();
 
         let serialized = data.to_bytes().unwrap();
         assert_eq!(serialized, &[0; 4]);
         assert_eq!(data.serialized_length(), 4);
 
-        let (deserialized, rest) = PastFinalitySignatures::from_bytes(&serialized).unwrap();
+        let (deserialized, rest) = SingleBlockRewardedSignatures::from_bytes(&serialized).unwrap();
 
         assert_eq!(data, deserialized);
         assert_eq!(rest, &[0u8; 0]);
@@ -231,40 +335,44 @@ mod tests {
             .collect();
 
         let past_finality_signatures =
-            PastFinalitySignatures::from_validator_set(&public_keys, all_validators.iter());
+            SingleBlockRewardedSignatures::from_validator_set(&public_keys, all_validators.iter());
 
         let serialized = past_finality_signatures.to_bytes().unwrap();
-        let (deserialized, rest) = PastFinalitySignatures::from_bytes(&serialized).unwrap();
+        let (deserialized, rest) = SingleBlockRewardedSignatures::from_bytes(&serialized).unwrap();
 
         assert_eq!(public_keys, deserialized.into_validator_set(all_validators));
         assert_eq!(rest, &[0u8; 0]);
     }
 }
 
-impl crate::utils::specimen::LargestSpecimen for PastFinalitySignatures {
-    fn largest_specimen<E: crate::utils::specimen::SizeEstimator>(
-        estimator: &E,
-        _cache: &mut crate::utils::specimen::Cache,
-    ) -> Self {
-        PastFinalitySignatures(vec![
-            u8::MAX;
-            div_by_8_ceil(estimator.parameter("validator_count"))
-        ])
-    }
-}
-
 #[cfg(any(feature = "testing", test))]
-impl PastFinalitySignatures {
+impl SingleBlockRewardedSignatures {
     pub(crate) fn random(rng: &mut casper_types::testing::TestRng, n_validators: usize) -> Self {
-        let mut bytes = vec![0; div_by_8_ceil(n_validators)];
+        let mut bytes = vec![0; (n_validators + 7) / 8];
 
         rand::RngCore::fill_bytes(rng, bytes.as_mut());
 
-        PastFinalitySignatures(bytes)
+        SingleBlockRewardedSignatures(bytes)
     }
 }
 
-/// Divides by 8 but round to the higher integer.
-fn div_by_8_ceil(n: usize) -> usize {
-    (n + 7) / 8
+/// Creates a new recorded finality signatures, from a validator matrix, and a block
+/// with metadata.
+pub(crate) fn create_single_block_rewarded_signatures(
+    validator_matrix: &ValidatorMatrix,
+    past_block_with_metadata: &BlockWithMetadata,
+) -> Option<SingleBlockRewardedSignatures> {
+    validator_matrix
+        .validator_weights(past_block_with_metadata.block.header().era_id())
+        .map(|weights| {
+            SingleBlockRewardedSignatures::from_validator_set(
+                &past_block_with_metadata
+                    .block_signatures
+                    .proofs
+                    .keys()
+                    .cloned()
+                    .collect(),
+                weights.validator_public_keys(),
+            )
+        })
 }
