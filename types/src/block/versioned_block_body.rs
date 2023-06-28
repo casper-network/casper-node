@@ -5,9 +5,9 @@ use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{BlockBody, BlockBodyV1, DeployHash};
+use crate::{BlockBody, DeployHash};
 
-use super::block_body::BlockBodyV2;
+use super::{block_body_v1::BlockBodyV1, block_body_v2::BlockBodyV2};
 
 /// The versioned body portion of a block. It encapsulates different variants of the BlockBody
 /// struct.
