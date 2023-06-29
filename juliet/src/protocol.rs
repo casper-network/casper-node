@@ -23,7 +23,7 @@ const UNKNOWN_ID: Id = Id::new(0);
 /// Does not handle IO, rather it expects a growing [`BytesMut`] buffer to be passed in, containing
 /// incoming data.
 #[derive(Debug)]
-pub struct MessageReader<const N: usize> {
+pub struct JulietProtocol<const N: usize> {
     /// Incoming channels
     channels: [Channel; N],
     max_frame_size: u32,
@@ -105,7 +105,7 @@ pub enum LocalProtocolViolation {
     NonexistantRequest,
 }
 
-impl<const N: usize> MessageReader<N> {
+impl<const N: usize> JulietProtocol<N> {
     #[inline(always)]
     fn lookup_channel(&self, channel: ChannelId) -> Result<&Channel, LocalProtocolViolation> {
         if channel.0 as usize >= N {

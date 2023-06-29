@@ -1,16 +1,17 @@
 //! A `juliet` protocol implementation.
 //!
-//! This crate implements the juliet multiplexing protocol as laid out in the juliet RFC. It aims to
-//! be a secure, simple, easy to verify/review implementation that is still reasonably performant.
+//! This crate implements the juliet multiplexing protocol as laid out in the [juliet
+//! RFC](https://github.com/marc-casperlabs/juliet-rfc/blob/master/juliet.md). It aims to be a
+//! secure, simple, easy to verify/review implementation that is still reasonably performant.
+
+mod header;
+pub mod protocol;
+pub mod varint;
 
 use std::{
     fmt::{self, Display},
     num::NonZeroU32,
 };
-
-mod header;
-pub mod protocol;
-pub mod varint;
 
 /// A channel identifier.
 ///
@@ -96,7 +97,7 @@ pub enum Outcome<T, E> {
 }
 
 impl<T, E> Outcome<T, E> {
-    /// Expects the outcome, similar to [`std::result::Result::unwrap`].
+    /// Expects the outcome, similar to [`std::result::Result::expect`].
     ///
     /// Returns the value of [`Outcome::Success`].
     ///
@@ -126,6 +127,7 @@ impl<T, E> Outcome<T, E> {
         }
     }
 
+    /// Helper function to construct an [`Outcome::Incomplete`].
     #[inline]
     #[track_caller]
     pub fn incomplete(remaining: usize) -> Outcome<T, E> {
@@ -151,7 +153,7 @@ macro_rules! try_outcome {
     };
 }
 
-/// Configuration values that need to be agreed upon by all clients.
+/// Channel configuration values that needs to be agreed upon by all clients.
 #[derive(Copy, Clone, Debug)]
 struct ChannelConfiguration {
     /// Maximum number of requests allowed on the channel.

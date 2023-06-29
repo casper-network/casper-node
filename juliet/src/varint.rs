@@ -3,7 +3,10 @@
 //! This module implements the variable length encoding of 32 bit integers, as described in the
 //! juliet RFC.
 
-use std::num::{NonZeroU32, NonZeroU8};
+use std::{
+    fmt::Debug,
+    num::{NonZeroU32, NonZeroU8},
+};
 
 use bytemuck::{Pod, Zeroable};
 
@@ -56,8 +59,17 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
 /// maximum length a 32 bit varint can posses is 5 bytes, the 6th bytes is used to record the
 /// length.
 #[repr(transparent)]
-#[derive(Copy, Clone, Debug, Pod, Zeroable)]
+#[derive(Copy, Clone, Pod, Zeroable)]
 pub struct Varint32([u8; 6]);
+
+impl Debug for Varint32 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            v if v.is_sentinel() => f.write_str("Varint32::SENTINEL"),
+            _ => f.debug_tuple("Varint32").field(&self.0).finish(),
+        }
+    }
+}
 
 impl Varint32 {
     /// `Varint32` sentinel.
@@ -86,8 +98,29 @@ impl Varint32 {
     }
 
     /// Returns the number of bytes in the encoded varint.
+    #[inline(always)]
     pub const fn len(self) -> usize {
         self.0[5] as usize
+    }
+
+    /// Returns whether or not the given value is the sentinel value.
+    #[inline(always)]
+    pub const fn is_sentinel(self) -> bool {
+        self.len() == 0
+    }
+
+    /// Decodes the contained `Varint32`.
+    ///
+    /// Should only be used in debug assertions. The sentinel values is decoded as 0.
+    #[cfg(debug_assertions)]
+    pub(crate) fn decode(self) -> u32 {
+        if self.is_sentinel() {
+            return 0;
+        }
+
+        decode_varint32(&self.0[..])
+            .expect("did not expect self-encoded varint32 to fail decoding")
+            .value
     }
 }
 
@@ -168,6 +201,7 @@ mod tests {
     fn roundtrip_value(value: u32) {
         let encoded = Varint32::encode(value);
         assert_eq!(encoded.len(), encoded.as_ref().len());
+        assert!(!encoded.is_sentinel());
         check_decode(value, encoded.as_ref());
     }
 
@@ -209,5 +243,6 @@ mod tests {
     #[test]
     fn sentinel_has_length_zero() {
         assert_eq!(Varint32::SENTINEL.len(), 0);
+        assert!(Varint32::SENTINEL.is_sentinel());
     }
 }

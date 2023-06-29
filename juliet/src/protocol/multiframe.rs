@@ -9,14 +9,15 @@ use bytes::{Buf, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header},
-    reader::Outcome::{self, Fatal, Success},
+    protocol::Outcome::{self, Fatal, Success},
     try_outcome,
     varint::decode_varint32,
 };
 
 /// Bytes offset with a lifetime.
 ///
-/// Helper type that ensures that offsets that are depending on a buffer are not being invalidated through accidental modification.
+/// Helper type that ensures that offsets that are depending on a buffer are not being invalidated
+/// through accidental modification.
 struct Index<'a> {
     /// The byte offset this `Index` represents.
     index: usize,
