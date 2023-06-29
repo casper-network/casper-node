@@ -5,9 +5,19 @@ use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::{BlockBody, DeployHash};
+use crate::{
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    BlockBody, DeployHash,
+};
 
 use super::{block_body_v1::BlockBodyV1, block_body_v2::BlockBodyV2};
+
+const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
+
+/// Tag for block body v1.
+pub const BLOCK_BODY_V1_TAG: u8 = 0;
+/// Tag for block body v2.
+pub const BLOCK_BODY_V2_TAG: u8 = 1;
 
 /// The versioned body portion of a block. It encapsulates different variants of the BlockBody
 /// struct.
@@ -76,5 +86,70 @@ impl From<&VersionedBlockBody> for BlockBody {
             VersionedBlockBody::V1(_) => todo!(),
             VersionedBlockBody::V2(v2) => v2.clone(),
         }
+    }
+}
+
+impl ToBytes for VersionedBlockBody {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        match self {
+            VersionedBlockBody::V1(v1) => {
+                buffer.insert(0, BLOCK_BODY_V1_TAG);
+                buffer.extend(v1.to_bytes()?);
+            }
+            VersionedBlockBody::V2(v2) => {
+                buffer.insert(0, BLOCK_BODY_V2_TAG);
+                buffer.extend(v2.to_bytes()?);
+            }
+        }
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        TAG_LENGTH
+            + match self {
+                VersionedBlockBody::V1(v1) => v1.serialized_length(),
+                VersionedBlockBody::V2(v2) => v2.serialized_length(),
+            }
+    }
+}
+
+impl FromBytes for VersionedBlockBody {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            BLOCK_BODY_V1_TAG => {
+                let (body, remainder): (BlockBodyV1, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::V1(body), remainder))
+            }
+            BLOCK_BODY_V2_TAG => {
+                let (body, remainder): (BlockBodyV2, _) = FromBytes::from_bytes(remainder)?;
+                Ok((Self::V2(body), remainder))
+            }
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        block::{block_v1::BlockV1, block_v2::BlockV2},
+        bytesrepr,
+        testing::TestRng,
+    };
+
+    use super::*;
+
+    #[test]
+    fn bytesrepr_roundtrip() {
+        let rng = &mut TestRng::new();
+        let block_body_v1 = BlockV1::random(rng).body().clone();
+        let versioned_block_body = VersionedBlockBody::V1(block_body_v1);
+        bytesrepr::test_serialization_roundtrip(&versioned_block_body);
+
+        let block_body_v2 = BlockV2::random(rng).body().clone();
+        let versioned_block_body = VersionedBlockBody::V2(block_body_v2);
+        bytesrepr::test_serialization_roundtrip(&versioned_block_body);
     }
 }
