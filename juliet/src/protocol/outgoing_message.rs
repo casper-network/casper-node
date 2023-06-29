@@ -4,7 +4,7 @@
 //! juliet networking protocol, this module contains the necessary output types like
 //! [`OutgoingMessage`].
 
-use std::io::Cursor;
+use std::{io::Cursor, iter};
 
 use bytemuck::{Pod, Zeroable};
 use bytes::{buf::Chain, Buf, Bytes};
@@ -36,7 +36,7 @@ impl OutgoingMessage {
     }
 
     /// Creates an iterator over all frames in the message.
-    pub fn frames<'a>(&'a self) -> FrameIter<'a> {
+    pub fn frames(self) -> FrameIter {
         FrameIter {
             msg: self,
             bytes_processed: 0,
@@ -90,18 +90,17 @@ impl AsRef<[u8]> for Preamble {
 }
 
 /// Iterator over frames of a message.
-///
-/// Since [`FrameIter::next()`] requires the configured maximum frame size to operate, this type
-/// does not implement the standard iterator interface.
+// Note: This type can be written just borrowing `msg`, by making it owned, we prevent accidental
+//       duplicate message sending. Furthermore we allow methods like `into_iter` to be added.
 #[must_use]
-pub struct FrameIter<'a> {
+pub struct FrameIter {
     /// The outgoing message in its entirety.
-    msg: &'a OutgoingMessage,
+    msg: OutgoingMessage,
     /// Number of bytes output using `OutgoingFrame`s so far.
     bytes_processed: usize,
 }
 
-impl<'a> FrameIter<'a> {
+impl FrameIter {
     /// Returns the next frame to send.
     ///
     /// # Note
@@ -147,6 +146,12 @@ impl<'a> FrameIter<'a> {
                 return None;
             }
         }
+    }
+
+    /// Returns a [`std::iter::Iterator`] implementing frame iterator.
+    #[inline]
+    pub fn into_iter(mut self, max_frame_size: usize) -> impl Iterator<Item = OutgoingFrame> {
+        iter::from_fn(move || self.next(max_frame_size))
     }
 }
 
