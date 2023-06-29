@@ -38,7 +38,7 @@ fn should_run_purse_to_purse_transfer() {
         .commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given
@@ -102,7 +102,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given

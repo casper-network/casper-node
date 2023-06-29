@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state, execution};
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_types::{contracts::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
 
@@ -26,7 +26,7 @@ fn regression_20220222_escalate() {
     builder.exec(transfer_request).commit().expect_success();
 
     let alice = builder
-        .get_account(ALICE_ADDR)
+        .get_contract_by_account_hash(ALICE_ADDR)
         .expect("should have account");
 
     let alice_main_purse = alice.main_purse();

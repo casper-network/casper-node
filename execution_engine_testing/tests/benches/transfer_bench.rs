@@ -12,7 +12,9 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{EngineConfig, ExecuteRequest};
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
+use casper_types::{
+    contracts::AccountHash, runtime_args, CLValue, ContractHash, Key, RuntimeArgs, URef, U512,
+};
 
 const CONTRACT_CREATE_ACCOUNTS: &str = "create_accounts.wasm";
 const CONTRACT_CREATE_PURSES: &str = "create_purses.wasm";
@@ -78,18 +80,15 @@ fn create_purses(
 
     builder.exec(exec_request).expect_success().commit();
 
-    // Return creates purses for given account by filtering named keys
-    let query_result = builder
-        .query(None, Key::Account(source), &[])
-        .expect("should query target");
-    let account = query_result
-        .as_account()
-        .unwrap_or_else(|| panic!("result should be account but received {:?}", query_result));
+    // Return creates purses for given account by filtering named key.
+    let contract = builder
+        .get_contract_by_account_hash(source)
+        .expect("must have contract");
 
     (0..total_purses)
         .map(|index| {
             let purse_lookup_key = format!("purse:{}", index);
-            let purse_uref = account
+            let purse_uref = contract
                 .named_keys()
                 .get(&purse_lookup_key)
                 .and_then(Key::as_uref)

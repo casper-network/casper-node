@@ -1,11 +1,15 @@
 //! Home of system contract type enum.
 
-use alloc::string::{String, ToString};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
 };
 
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::Serialize;
 

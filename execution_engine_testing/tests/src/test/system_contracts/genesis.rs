@@ -11,8 +11,8 @@ use casper_execution_engine::core::engine_state::{
     genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
-    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    contracts::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator,
+    Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];
@@ -76,15 +76,15 @@ fn should_run_genesis() {
     builder.run_genesis(&run_genesis_request);
 
     let system_account = builder
-        .get_account(PublicKey::System.to_account_hash())
+        .get_contract_by_account_hash(PublicKey::System.to_account_hash())
         .expect("system account should exist");
 
     let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("account 1 should exist");
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_contract_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let system_account_balance_actual = builder.get_purse_balance(system_account.main_purse());

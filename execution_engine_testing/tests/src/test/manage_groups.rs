@@ -55,11 +55,8 @@ fn should_create_and_remove_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -161,11 +158,8 @@ fn should_create_and_extend_user_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -272,12 +266,8 @@ fn should_create_and_remove_urefs_from_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)
@@ -382,12 +372,8 @@ fn should_limit_max_urefs_while_extending() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)

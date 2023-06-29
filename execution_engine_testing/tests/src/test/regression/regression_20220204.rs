@@ -36,7 +36,7 @@ fn regression_20220204_as_contract() {
     .build();
     builder.exec(exec_request_2).commit();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse().with_access_rights(expected);
     let error = builder.get_error().expect("should have returned an error");
@@ -70,7 +70,7 @@ fn regression_20220204_as_contract_attenuated() {
     .build();
     builder.exec(exec_request_2).commit();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse().with_access_rights(expected);
     let error = builder.get_error().expect("should have returned an error");
@@ -99,7 +99,7 @@ fn regression_20220204_as_contract_attenuated() {
     .build();
     builder.exec(exec_request_2).commit();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse().with_access_rights(expected);
     let error = builder.get_error().expect("should have returned an error");
@@ -122,7 +122,7 @@ fn regression_20220204_as_contract_by_hash() {
     let expected = AccessRights::READ_ADD_WRITE;
     let mut builder = setup();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse();
     let exec_request = ExecuteRequestBuilder::contract_call_by_name(
@@ -167,7 +167,7 @@ fn regression_20220204_nontrivial_arg_as_contract() {
     .build();
     builder.exec(exec_request_2).commit();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse().with_access_rights(expected);
     let error = builder.get_error().expect("should have returned an error");
@@ -190,7 +190,7 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
     let expected = AccessRights::READ_ADD_WRITE;
     let mut builder = setup();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse();
     let exec_request = ExecuteRequestBuilder::contract_call_by_name(
@@ -219,7 +219,7 @@ fn regression_20220204_as_contract_by_hash_attenuated() {
     let expected = AccessRights::READ_ADD_WRITE;
     let mut builder = setup();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse();
     let exec_request = ExecuteRequestBuilder::contract_call_by_name(
@@ -310,7 +310,7 @@ fn regression_20220204_as_session_by_hash() {
     let new_access_rights = AccessRights::READ_ADD_WRITE;
     let mut builder = setup();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse();
     let exec_request = ExecuteRequestBuilder::contract_call_by_name(
@@ -343,7 +343,7 @@ fn regression_20220204_as_session_by_hash_attenuated() {
     let new_access_rights = AccessRights::READ;
     let mut builder = setup();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse();
     let exec_request = ExecuteRequestBuilder::contract_call_by_name(
@@ -371,7 +371,7 @@ fn regression_20220204_as_session_by_hash_attenuated() {
     let new_access_rights = AccessRights::ADD;
     let mut builder = setup();
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let main_purse = account.main_purse();
     let exec_request = ExecuteRequestBuilder::contract_call_by_name(

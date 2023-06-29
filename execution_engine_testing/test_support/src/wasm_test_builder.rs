@@ -52,8 +52,8 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    account::{Account, AccountHash},
     bytesrepr::{self, FromBytes},
+    contracts::AccountHash,
     runtime_args,
     system::{
         auction::{
@@ -65,9 +65,9 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    UpgradeConfig, U512,
+    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, GenesisAccount, HandlePaymentCosts,
+    Key, KeyTag, MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, UpgradeConfig, U512,
 };
 use tempfile::TempDir;
 
@@ -109,7 +109,7 @@ pub struct WasmTestBuilder<S> {
     /// exec call etc.
     transforms: Vec<ExecutionJournal>,
     /// Cached genesis transforms
-    genesis_account: Option<Account>,
+    genesis_account: Option<ContractHash>,
     /// Genesis transforms
     genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// Scratch global state used for in-memory execution and commit optimization.
@@ -943,7 +943,7 @@ where
     }
 
     /// Gets genesis account (if present)
-    pub fn get_genesis_account(&self) -> &Account {
+    pub fn get_genesis_account(&self) -> &ContractHash {
         self.genesis_account
             .as_ref()
             .expect("Unable to obtain genesis account. Please run genesis first.")
@@ -1089,26 +1089,31 @@ where
 
     /// Gets the purse balance of a proposer.
     pub fn get_proposer_purse_balance(&self) -> U512 {
-        let proposer_account = self
-            .get_account(*DEFAULT_PROPOSER_ADDR)
+        let proposer_contract = self
+            .get_contract_by_account_hash(*DEFAULT_PROPOSER_ADDR)
             .expect("proposer account should exist");
-        self.get_purse_balance(proposer_account.main_purse())
+        self.get_purse_balance(proposer_contract.main_purse())
     }
 
     /// Queries for an `Account`.
-    pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
-        match self.query(None, Key::Account(account_hash), &[]) {
-            Ok(account_value) => match account_value {
-                StoredValue::Account(account) => Some(account),
-                _ => None,
-            },
-            Err(_) => None,
+    pub fn get_contract_by_account_hash(&self, account_hash: AccountHash) -> Option<Contract> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_hash =
+                    CLValue::into_t::<ContractHash>(cl_value).expect("must have contract hash");
+                match self.query(None, contract_hash.into(), &[]) {
+                    Ok(StoredValue::Contract(contract)) => Some(contract),
+                    Ok(_) | Err(_) => None,
+                }
+            }
+            Some(_) | None => None,
         }
     }
 
     /// Queries for an `Account` and panics if it can't be found.
-    pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
-        self.get_account(account_hash).expect("account to exist")
+    pub fn get_expected_account(&self, account_hash: AccountHash) -> Contract {
+        self.get_contract_by_account_hash(account_hash)
+            .expect("account to exist")
     }
 
     /// Queries for a contract by `ContractHash`.

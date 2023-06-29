@@ -1182,6 +1182,10 @@ where
             }
         };
 
+        if let ContractPackageKind::Account(_) = contract_package.get_contract_package_kind() {
+            return Err(Error::InvalidContext);
+        }
+
         let entry_point = contract
             .entry_point(entry_point_name)
             .cloned()
@@ -1306,17 +1310,36 @@ where
 
         access_rights.extend(&extended_access_rights);
 
-        if self.is_mint(context_key) {
-            return self.call_host_mint(entry_point.name(), &context_args, access_rights, stack);
-        } else if self.is_handle_payment(context_key) {
-            return self.call_host_handle_payment(
-                entry_point.name(),
-                &context_args,
-                access_rights,
-                stack,
-            );
-        } else if self.is_auction(context_key) {
-            return self.call_host_auction(entry_point.name(), &context_args, access_rights, stack);
+        if let ContractPackageKind::System(system_contract_type) =
+            contract_package.get_contract_package_kind()
+        {
+            match system_contract_type {
+                SystemContractType::Mint => {
+                    return self.call_host_mint(
+                        entry_point.name(),
+                        &context_args,
+                        access_rights,
+                        stack,
+                    );
+                }
+                SystemContractType::HandlePayment => {
+                    return self.call_host_handle_payment(
+                        entry_point.name(),
+                        &context_args,
+                        access_rights,
+                        stack,
+                    );
+                }
+                SystemContractType::StandardPayment => {}
+                SystemContractType::Auction => {
+                    return self.call_host_auction(
+                        entry_point.name(),
+                        &context_args,
+                        access_rights,
+                        stack,
+                    );
+                }
+            }
         }
 
         let module: Module = {

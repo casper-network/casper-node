@@ -84,7 +84,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -231,7 +231,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -349,7 +349,7 @@ fn delegate_and_undelegate_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -555,7 +555,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -674,7 +674,7 @@ fn mint_transfer_has_expected_costs() {
     builder.exec(transfer_request_1).expect_success().commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let purse_1 = default_account.named_keys()[NAMED_PURSE_NAME]
@@ -733,7 +733,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let system_config = *builder.get_engine_state().config().system_config();
@@ -860,7 +860,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let do_nothing_request = {
@@ -1031,7 +1031,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let add_bid_request = ExecuteRequestBuilder::standard(

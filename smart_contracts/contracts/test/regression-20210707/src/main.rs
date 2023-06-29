@@ -11,7 +11,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     contracts::NamedKeys,
     runtime_args,
     system::{handle_payment, mint},

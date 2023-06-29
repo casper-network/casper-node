@@ -2,7 +2,6 @@ use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
 use casper_storage::global_state::storage::trie::{Pointer, PointerBlock, Trie};
 use casper_types::{
-    account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     CLValue, Digest, Key, StoredValue,
 };
@@ -60,8 +59,8 @@ fn deserialize_trie_node_pointer(b: &mut Bencher) {
 }
 
 fn trie_bench(c: &mut Criterion) {
-    c.bench_function("serialize_trie_leaf", serialize_trie_leaf);
-    c.bench_function("deserialize_trie_leaf", deserialize_trie_leaf);
+    // c.bench_function("serialize_trie_leaf", serialize_trie_leaf);
+    // c.bench_function("deserialize_trie_leaf", deserialize_trie_leaf);
     c.bench_function("serialize_trie_node", serialize_trie_node);
     c.bench_function("deserialize_trie_node", deserialize_trie_node);
     c.bench_function("serialize_trie_node_pointer", serialize_trie_node_pointer);

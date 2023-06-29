@@ -18,8 +18,8 @@ use casper_storage::global_state::{
     },
 };
 use casper_types::{
-    account::AccountHash,
     bytesrepr::{self},
+    contracts::AccountHash,
     runtime_args,
     system::auction,
     ChainspecRegistry, Digest, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,

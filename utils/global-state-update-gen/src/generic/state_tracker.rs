@@ -7,7 +7,7 @@ use std::{
 use rand::Rng;
 
 use casper_types::{
-    account::{Account, AccountHash},
+    contracts::AccountHash,
     system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
 };

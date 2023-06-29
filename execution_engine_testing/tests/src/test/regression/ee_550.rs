@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs};
+use casper_types::{contracts::AccountHash, runtime_args, RuntimeArgs};
 
 const PASS_INIT_REMOVE: &str = "init_remove";
 const PASS_TEST_REMOVE: &str = "test_remove";

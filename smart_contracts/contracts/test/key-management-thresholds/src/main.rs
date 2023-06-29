@@ -10,7 +10,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::{
+    contracts::{
         AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
     },

@@ -4,7 +4,7 @@ use rand::Rng;
 
 use casper_execution_engine::core::engine_state::deploy_item::DeployItem;
 use casper_types::{
-    account::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash,
+    contracts::AccountHash, ContractHash, ContractPackageHash, ContractVersion, DeployHash,
     ExecutableDeployItem, HashAddr, RuntimeArgs,
 };
 

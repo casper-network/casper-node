@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_types::{contracts::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 const DO_NOTHING_WASM: &str = "do_nothing.wasm";
@@ -54,7 +54,7 @@ fn should_charge_non_main_purse() {
 
     // get account_1
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     // get purse
     let purse_key = account_1.named_keys()[TEST_PURSE_NAME];

@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE;
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, Gas, Motes, RuntimeArgs,
+    contracts::AccountHash, runtime_args, system::mint, Gas, Motes, RuntimeArgs,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
@@ -27,7 +27,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get default_account");
 
     let no_wasm_transfer_request_1 = {
@@ -61,7 +61,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
     let default_account_balance_after = builder.get_purse_balance(default_account.main_purse());
 
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should get default_account");
     let account_1_balance = builder.get_purse_balance(account_1.main_purse());
 
@@ -81,7 +81,7 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get default_account");
 
     let balance_before = builder.get_purse_balance(default_account.main_purse());
@@ -142,7 +142,7 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get default_account");
 
     let balance_before = builder.get_purse_balance(default_account.main_purse());

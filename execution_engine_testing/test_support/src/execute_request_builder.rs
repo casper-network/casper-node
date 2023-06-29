@@ -6,7 +6,7 @@ use casper_execution_engine::core::engine_state::{
     deploy_item::DeployItem, execute_request::ExecuteRequest,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ContractHash, ContractPackageHash, ContractVersion,
+    contracts::AccountHash, runtime_args, ContractHash, ContractPackageHash, ContractVersion,
     ProtocolVersion, RuntimeArgs,
 };
 

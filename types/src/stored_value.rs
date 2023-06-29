@@ -16,7 +16,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, Contract, ContractWasm, DeployInfo, Transfer,
+    CLValue, Contract, ContractHash, ContractWasm, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
 
@@ -74,13 +74,13 @@ impl StoredValue {
         }
     }
 
-    // /// Returns a wrapped [`Account`] if this is an `Account` variant.
-    // pub fn as_account(&self) -> Option<&Account> {
-    //     match self {
-    //         StoredValue::Account(account) => Some(account),
-    //         _ => None,
-    //     }
-    // }
+    /// Returns a wrapped [`Account`] if this is an `Account` variant.
+    pub fn as_account(&self) -> Option<&CLValue> {
+        match self {
+            StoredValue::Account(cl_value) => Some(cl_value),
+            _ => None,
+        }
+    }
 
     /// Returns a wrapped [`Contract`] if this is a `Contract` variant.
     pub fn as_contract(&self) -> Option<&Contract> {

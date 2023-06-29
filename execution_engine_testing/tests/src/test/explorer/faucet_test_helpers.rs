@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, runtime_args, system::mint, CLTyped, Contract,
+    bytesrepr::FromBytes, contracts::AccountHash, runtime_args, system::mint, CLTyped, Contract,
     ContractHash, Key, PublicKey, RuntimeArgs, URef, U512,
 };
 

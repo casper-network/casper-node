@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     runtime_args,
     system::auction::{DelegationRate, ARG_DELEGATOR, ARG_VALIDATOR},
     GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,

@@ -31,7 +31,9 @@ fn setup() -> (LmdbWasmTestBuilder, ContractPackageHash, ContractHash) {
         .expect_success()
         .commit();
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_package_hash_key = account
         .named_keys()
@@ -63,7 +65,9 @@ fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> Execu
 
     builder.exec(exec_request).expect_success().commit();
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
     let contract = builder
         .get_contract(contract_hash)
         .expect("should have contract");

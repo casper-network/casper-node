@@ -11,9 +11,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash,
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
+    contracts::AccountHash,
     ApiError, BlockTime, CLTyped, Key, PublicKey, URef, U512,
 };
 

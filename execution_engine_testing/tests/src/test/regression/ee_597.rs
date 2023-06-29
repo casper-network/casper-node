@@ -5,8 +5,8 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_types::{
-    account::AccountHash, system::auction, ApiError, GenesisAccount, Motes, PublicKey, RuntimeArgs,
-    SecretKey,
+    contracts::AccountHash, system::auction, ApiError, GenesisAccount, Motes, PublicKey,
+    RuntimeArgs, SecretKey,
 };
 
 const CONTRACT_EE_597_REGRESSION: &str = "ee_597_regression.wasm";

@@ -78,7 +78,9 @@ fn run_test_case(input_wasm_bytes: &[u8], expected_error: &str, execution_phase:
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let proposer_balance_before = builder.get_proposer_purse_balance();
 

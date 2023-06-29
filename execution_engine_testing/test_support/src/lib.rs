@@ -34,7 +34,7 @@ pub use casper_execution_engine::core::engine_state::engine_config::{
 };
 use casper_execution_engine::core::engine_state::{ExecConfig, GenesisConfig, RunGenesisRequest};
 use casper_types::{
-    account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, Motes, ProtocolVersion,
+    contracts::AccountHash, ChainspecRegistry, Digest, GenesisAccount, Motes, ProtocolVersion,
     PublicKey, SecretKey, SystemConfig, WasmConfig, U512,
 };
 

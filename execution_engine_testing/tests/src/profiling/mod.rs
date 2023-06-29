@@ -3,7 +3,7 @@ use std::{env, path::PathBuf, str::FromStr};
 use clap::{Arg, ArgMatches};
 
 use casper_engine_test_support::MINIMUM_ACCOUNT_CREATION_BALANCE;
-use casper_types::{account::AccountHash, U512};
+use casper_types::{contracts::AccountHash, U512};
 
 const DATA_DIR_ARG_NAME: &str = "data-dir";
 const DATA_DIR_ARG_SHORT: &str = "d";

@@ -19,8 +19,8 @@ use core::{
     array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
+    iter,
 };
-use std::iter;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;

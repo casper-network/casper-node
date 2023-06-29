@@ -1,6 +1,6 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
-    account::{Account, AccountHash},
+    contracts::AccountHash,
     system::{
         auction::{Bids, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::TOTAL_SUPPLY_KEY,
@@ -81,7 +81,7 @@ impl StateReader for LmdbWasmTestBuilder {
     }
 
     fn get_account(&mut self, account_hash: AccountHash) -> Option<Account> {
-        LmdbWasmTestBuilder::get_account(self, account_hash)
+        LmdbWasmTestBuilder::get_contract_by_account_hash(self, account_hash)
     }
 
     fn get_bids(&mut self) -> Bids {

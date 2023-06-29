@@ -16,7 +16,7 @@ use casper_execution_engine::core::engine_state::{
     EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    contracts::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,
     system::{
         auction::{
@@ -738,7 +738,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     }
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     assert!(account.associated_keys().len() > DEFAULT_MAX_ASSOCIATED_KEYS as usize);

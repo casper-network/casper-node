@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_types::{contracts::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_GET_PAYMENT_PURSE: &str = "get_payment_purse.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

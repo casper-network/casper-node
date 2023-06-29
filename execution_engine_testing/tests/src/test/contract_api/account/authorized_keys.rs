@@ -7,7 +7,7 @@ use casper_execution_engine::core::{
     execution,
 };
 use casper_types::{
-    account::{AccountHash, Weight},
+    contracts::{AccountHash, Weight},
     runtime_args,
     system::mint,
     RuntimeArgs, U512,

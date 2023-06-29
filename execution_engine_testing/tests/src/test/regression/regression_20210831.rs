@@ -9,7 +9,7 @@ use casper_execution_engine::core::{
     execution::Error as ExecError,
 };
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     runtime_args,
     system::{
         auction::{self, DelegationRate},

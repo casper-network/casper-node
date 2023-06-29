@@ -13,7 +13,7 @@ use casper_execution_engine::core::engine_state::{
     EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,
+    contracts::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,
     HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion, PublicKey,
     RuntimeArgs, SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_WASM_MAX_MEMORY, U512,
@@ -723,7 +723,7 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
     builder.exec(install_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let gh_2280_regression = account
         .named_keys()

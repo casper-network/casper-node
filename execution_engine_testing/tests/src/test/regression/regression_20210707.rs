@@ -7,10 +7,8 @@ use casper_execution_engine::core::{
     execution::Error as ExecError,
 };
 use casper_types::{
-    account::{Account, AccountHash},
-    runtime_args,
-    system::mint,
-    AccessRights, ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    contracts::AccountHash, runtime_args, system::mint, AccessRights, Contract, ContractHash,
+    PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -67,8 +65,8 @@ fn transfer(sender: AccountHash, target: AccountHash, amount: u64) -> ExecuteReq
     .build()
 }
 
-fn get_account_contract_hash(account: &Account) -> ContractHash {
-    account
+fn get_account_contract_hash(contract: &Contract) -> ContractHash {
+    contract
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .cloned()
@@ -109,7 +107,7 @@ fn should_transfer_funds_from_contract_to_new_account() {
 
     let contract_hash = get_account_contract_hash(&account);
 
-    assert!(builder.get_account(*BOB_ADDR).is_none());
+    assert!(builder.get_contract_by_account_hash(*BOB_ADDR).is_none());
 
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,

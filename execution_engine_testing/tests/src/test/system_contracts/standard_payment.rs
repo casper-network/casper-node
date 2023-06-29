@@ -13,7 +13,7 @@ use casper_execution_engine::core::{
 };
 use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
-    account::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
+    contracts::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
     RuntimeArgs, U512,
 };
 
@@ -111,7 +111,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(*DEFAULT_ACCOUNT_ADDR)
+            .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -180,7 +180,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(*DEFAULT_ACCOUNT_ADDR)
+            .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -288,7 +288,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         .commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -356,7 +356,7 @@ fn should_correctly_charge_when_session_code_fails() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -406,7 +406,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
     builder.exec(exec_request).expect_success().commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);

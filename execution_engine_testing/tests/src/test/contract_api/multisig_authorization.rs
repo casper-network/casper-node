@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
-    account::{AccountHash, Weight},
+    contracts::{AccountHash, Weight},
     runtime_args, ApiError, RuntimeArgs,
 };
 

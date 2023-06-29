@@ -16,7 +16,7 @@ use casper_execution_engine::core::{
     execution,
 };
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
@@ -129,10 +129,9 @@ fn gh_1470_call_contract_should_verify_group_access() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let account_stored_value = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .unwrap();
-    let account = account_stored_value.as_account().cloned().unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let contract_hash_key = account
         .named_keys()
@@ -334,10 +333,9 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let account_stored_value = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .unwrap();
-    let account = account_stored_value.as_account().cloned().unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let contract_hash_key = account
         .named_keys()
@@ -401,10 +399,9 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let account_stored_value = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .unwrap();
-    let account = account_stored_value.as_account().cloned().unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let contract_hash_key = account
         .named_keys()
@@ -468,10 +465,9 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let account_stored_value = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .unwrap();
-    let account = account_stored_value.as_account().cloned().unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let contract_hash_key = account
         .named_keys()
@@ -575,10 +571,9 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let account_stored_value = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .unwrap();
-    let account = account_stored_value.as_account().cloned().unwrap();
+    let account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let contract_hash_key = account
         .named_keys()
@@ -780,7 +775,7 @@ fn should_add_bid_after_major_bump() {
         .expect_upgrade_success();
 
     let _default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -829,7 +824,7 @@ fn should_add_bid_after_minor_bump() {
         .expect_upgrade_success();
 
     let _default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let add_bid_request = ExecuteRequestBuilder::standard(
@@ -875,7 +870,7 @@ fn should_wasm_transfer_after_major_bump() {
         .expect_upgrade_success();
 
     let _default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let wasm_transfer = ExecuteRequestBuilder::standard(
@@ -923,7 +918,7 @@ fn should_wasm_transfer_after_minor_bump() {
         .expect_upgrade_success();
 
     let _default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let wasm_transfer = ExecuteRequestBuilder::standard(

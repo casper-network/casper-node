@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
     PublicKey, RuntimeArgs, SecretKey, U512,
@@ -65,11 +65,11 @@ fn should_transfer_to_account_with_correct_balances() {
     );
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get default account");
 
     let account1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());
@@ -153,15 +153,15 @@ fn should_transfer_from_default_and_then_to_another_account() {
     );
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get default account");
 
     let account1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1");
 
     let account2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_contract_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("should get account 2");
 
     let default_account_balance = builder.get_purse_balance(default_account.main_purse());

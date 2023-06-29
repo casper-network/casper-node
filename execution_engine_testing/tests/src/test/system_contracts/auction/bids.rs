@@ -29,8 +29,8 @@ use casper_execution_engine::core::{
 };
 use casper_types::{
     self,
-    account::AccountHash,
     api_error::ApiError,
+    contracts::AccountHash,
     runtime_args,
     system::{
         self,
@@ -1261,7 +1261,7 @@ fn undelegated_funds_should_be_released() {
     }
 
     let delegator_1_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have default account")
         .main_purse();
 
@@ -1387,7 +1387,7 @@ fn fully_undelegated_funds_should_be_released() {
     }
 
     let delegator_1_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have default account")
         .main_purse();
 
@@ -1645,17 +1645,17 @@ fn should_undelegate_delegators_when_validator_unbonds() {
 
     // Process unbonding requests to verify delegators recevied their stakes
     let validator_1 = builder
-        .get_account(*VALIDATOR_1_ADDR)
+        .get_contract_by_account_hash(*VALIDATOR_1_ADDR)
         .expect("should have validator 1 account");
     let validator_1_balance_before = builder.get_purse_balance(validator_1.main_purse());
 
     let delegator_1 = builder
-        .get_account(*DELEGATOR_1_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_1_ADDR)
         .expect("should have delegator 1 account");
     let delegator_1_balance_before = builder.get_purse_balance(delegator_1.main_purse());
 
     let delegator_2 = builder
-        .get_account(*DELEGATOR_2_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_2_ADDR)
         .expect("should have delegator 1 account");
     let delegator_2_balance_before = builder.get_purse_balance(delegator_2.main_purse());
 
@@ -1837,17 +1837,17 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
 
     // Process unbonding requests to verify delegators received their stakes
     let validator_1 = builder
-        .get_account(*VALIDATOR_1_ADDR)
+        .get_contract_by_account_hash(*VALIDATOR_1_ADDR)
         .expect("should have validator 1 account");
     let validator_1_balance_before = builder.get_purse_balance(validator_1.main_purse());
 
     let delegator_1 = builder
-        .get_account(*DELEGATOR_1_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_1_ADDR)
         .expect("should have delegator 1 account");
     let delegator_1_balance_before = builder.get_purse_balance(delegator_1.main_purse());
 
     let delegator_2 = builder
-        .get_account(*DELEGATOR_2_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_2_ADDR)
         .expect("should have delegator 1 account");
     let delegator_2_balance_before = builder.get_purse_balance(delegator_2.main_purse());
 
@@ -2243,14 +2243,14 @@ fn should_setup_genesis_delegators() {
     builder.run_genesis(&run_genesis_request);
 
     let _account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should install account 1");
     let _account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_contract_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("should install account 2");
 
     let delegator_1 = builder
-        .get_account(*DELEGATOR_1_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_1_ADDR)
         .expect("should install delegator 1");
     assert_eq!(
         builder.get_purse_balance(delegator_1.main_purse()),
@@ -3221,7 +3221,7 @@ fn should_delegate_and_redelegate() {
     builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have default account")
         .main_purse();
 
@@ -3441,12 +3441,12 @@ fn should_handle_redelegation_to_inactive_validator() {
     builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_main_purse = builder
-        .get_account(*DELEGATOR_1_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_1_ADDR)
         .expect("should have default account")
         .main_purse();
 
     let delegator_2_main_purse = builder
-        .get_account(*DELEGATOR_2_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_2_ADDR)
         .expect("should have default account")
         .main_purse();
 
@@ -3563,17 +3563,17 @@ fn should_continue_auction_state_from_release_1_4_x() {
     assert!(unbond_list[2].new_validator().is_none());
 
     let delegator_1_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have account")
         .main_purse();
 
     let delegator_2_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_2_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_2_ADDR)
         .expect("should have account")
         .main_purse();
 
     let delegator_3_undelegate_purse = builder
-        .get_account(*DELEGATOR_1_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_1_ADDR)
         .expect("should have account")
         .main_purse();
 
@@ -3661,7 +3661,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
         .commit();
 
     let delegator_4_purse = builder
-        .get_account(*DELEGATOR_2_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_2_ADDR)
         .expect("must have account")
         .main_purse();
 
@@ -3756,7 +3756,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     assert!(unbond_list[2].new_validator().is_none());
 
     let delegator_1_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have account")
         .main_purse();
 
@@ -3774,7 +3774,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     );
 
     let delegator_2_undelegate_purse = builder
-        .get_account(*BID_ACCOUNT_2_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_2_ADDR)
         .expect("should have account")
         .main_purse();
 
@@ -3792,7 +3792,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     );
 
     let delegator_3_undelegate_purse = builder
-        .get_account(*DELEGATOR_1_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_1_ADDR)
         .expect("should have account")
         .main_purse();
 
@@ -3872,7 +3872,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     builder.advance_eras_by_default_auction_delay();
 
     let delegator_4_purse = builder
-        .get_account(*DELEGATOR_2_ADDR)
+        .get_contract_by_account_hash(*DELEGATOR_2_ADDR)
         .expect("must have account")
         .main_purse();
 
@@ -4423,7 +4423,7 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
     builder.advance_eras_by_default_auction_delay();
 
     let delegator_1_main_purse = builder
-        .get_account(*BID_ACCOUNT_1_ADDR)
+        .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have default account")
         .main_purse();
 

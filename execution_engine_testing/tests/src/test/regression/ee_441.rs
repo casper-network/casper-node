@@ -40,7 +40,7 @@ fn do_pass(pass: &str) -> (URef, URef) {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     (

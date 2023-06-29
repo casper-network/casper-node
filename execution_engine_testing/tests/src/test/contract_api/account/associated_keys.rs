@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::{AccountHash, Weight},
+    contracts::{AccountHash, Weight},
     runtime_args, RuntimeArgs, U512,
 };
 
@@ -47,11 +47,11 @@ fn should_manage_associated_key() {
 
     let genesis_key = *DEFAULT_ACCOUNT_ADDR;
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let gen_weight = account_1
+    let gen_weight = contract_1
         .associated_keys()
         .get(&genesis_key)
         .expect("weight");
@@ -68,11 +68,11 @@ fn should_manage_associated_key() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let new_weight = account_1.associated_keys().get(&genesis_key);
+    let new_weight = contract_1.associated_keys().get(&genesis_key);
 
     assert_eq!(new_weight, None, "key should be removed");
 

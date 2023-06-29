@@ -8,7 +8,7 @@ use casper_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, ApiError, Key, URef, U512};
+use casper_types::{contracts::AccountHash, ApiError, Key, URef, U512};
 
 const TRANSFER_RESULT_UREF_NAME: &str = "transfer_result";
 const MAIN_PURSE_FINAL_BALANCE_UREF_NAME: &str = "final_balance";

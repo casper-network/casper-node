@@ -15,7 +15,7 @@ use casper_execution_engine::core::engine_state::{
     Error,
 };
 use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
-use casper_types::{account::Account, Gas, GenesisAccount, Key, StoredValue};
+use casper_types::{CLValue, ContractHash, Gas, GenesisAccount, Key, StoredValue};
 
 use super::{DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY};
 use crate::{
@@ -225,10 +225,13 @@ pub fn get_error_message<T: AsRef<ExecutionResult>, I: IntoIterator<Item = T>>(
 
 /// Returns `Option<Account>`.
 #[allow(clippy::implicit_hasher)]
-pub fn get_account(transforms: &AdditiveMap<Key, Transform>, account: &Key) -> Option<Account> {
+pub fn get_account(
+    transforms: &AdditiveMap<Key, Transform>,
+    account: &Key,
+) -> Option<ContractHash> {
     transforms.get(account).and_then(|transform| {
         if let Transform::Write(StoredValue::Account(account)) = transform {
-            Some(account.to_owned())
+            CLValue::into_t(account.to_owned()).ok()
         } else {
             None
         }

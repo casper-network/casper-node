@@ -1,5 +1,7 @@
 use casper_execution_engine::core::engine_state::ExecuteRequest;
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
+use casper_types::{
+    contracts::AccountHash, runtime_args, CLValue, ContractHash, Key, RuntimeArgs, URef, U512,
+};
 
 use crate::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -90,10 +92,21 @@ pub fn create_test_purses(
         .as_account()
         .unwrap_or_else(|| panic!("result should be account but received {:?}", query_result));
 
+    let contract_hash: ContractHash =
+        CLValue::into_t(account.clone()).expect("must convert to contract hash");
+
+    let query_result = builder
+        .query(None, contract_hash.into(), &[])
+        .expect("should query target");
+
+    let contract = query_result
+        .as_contract()
+        .unwrap_or_else(|| panic!("result should be contract but received {:?}", query_result));
+
     (0..total_purses)
         .map(|index| {
             let purse_lookup_key = format!("purse:{}", index);
-            let purse_uref = account
+            let purse_uref = contract
                 .named_keys()
                 .get(&purse_lookup_key)
                 .and_then(Key::as_uref)

@@ -3,7 +3,9 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution::Error as ExecError};
-use casper_types::{account::AccountHash, runtime_args, system::mint, ApiError, RuntimeArgs, U512};
+use casper_types::{
+    contracts::AccountHash, runtime_args, system::mint, ApiError, RuntimeArgs, U512,
+};
 
 const REGRESSION_20220208_CONTRACT: &str = "regression_20220208.wasm";
 const ARG_AMOUNT_PART_1: &str = "amount_part_1";

@@ -6,7 +6,7 @@ use casper_execution_engine::core::{
     engine_state::Error as CoreError, execution::Error as ExecError,
 };
 use casper_types::{
-    account::AccountHash,
+    contracts::AccountHash,
     runtime_args,
     system::{mint, standard_payment},
     ContractHash, Key, RuntimeArgs, U512,

@@ -10,8 +10,8 @@ use casper_execution_engine::core::{
 };
 use casper_types::{
     self,
-    account::AccountHash,
     api_error::ApiError,
+    contracts::AccountHash,
     runtime_args,
     system::auction::{
         DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
@@ -241,7 +241,7 @@ fn should_fail_to_mint_transfer_over_the_limit() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let test_purse_2 = default_account.named_keys()[TEST_PURSE]

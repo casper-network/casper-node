@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_types::{contracts::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const CONTRACT_CREATE_PURSE_01: &str = "create_purse_01.wasm";
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -39,13 +39,13 @@ fn should_insert_account_into_named_keys() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
     assert!(
-        account_1.named_keys().contains_key(TEST_PURSE_NAME),
-        "account_1 named_keys should include test purse"
+        contract_1.named_keys().contains_key(TEST_PURSE_NAME),
+        "contract_1 named_keys should include test purse"
     );
 }
 
@@ -75,11 +75,11 @@ fn should_create_usable_purse() {
         .expect_success()
         .commit();
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let purse = account_1
+    let purse = contract_1
         .named_keys()
         .get(TEST_PURSE_NAME)
         .expect("should have known key")

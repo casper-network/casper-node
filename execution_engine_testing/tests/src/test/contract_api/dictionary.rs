@@ -9,7 +9,7 @@ use casper_execution_engine::core::{
     execution::Error,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
+    contracts::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
     ContractHash, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
@@ -52,18 +52,18 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
         .commit()
         .expect_success();
 
-    let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+    let contract = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    assert!(account
+    assert!(contract
         .named_keys()
         .contains_key(dictionary::MALICIOUS_KEY_NAME));
-    assert!(account
+    assert!(contract
         .named_keys()
         .contains_key(dictionary::DICTIONARY_REF));
 
-    let contract_hash = account
+    let contract_hash = contract
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
@@ -83,12 +83,29 @@ fn query_dictionary_item(
     let empty_path = vec![];
     let dictionary_key_bytes = dictionary_item_key.as_bytes();
     let address = match key {
-        Key::Account(_) | Key::Hash(_) => {
+        Key::Account(_) => {
+            if dictionary_name.is_none() {
+                return Err("No dictionary name was provided".to_string());
+            }
+            let stored_value = builder.query(None, key, &[])?;
+            if let StoredValue::Account(cl_value) = stored_value {
+                let contract_hash: ContractHash =
+                    CLValue::into_t(cl_value).expect("must convert to contract hash");
+                return query_dictionary_item(
+                    &builder,
+                    contract_hash.into(),
+                    dictionary_name,
+                    dictionary_item_key,
+                );
+            } else {
+                return Err("Provided base key is not an account".to_string());
+            }
+        }
+        Key::Hash(_) => {
             if let Some(name) = dictionary_name {
                 let stored_value = builder.query(None, key, &[])?;
 
                 let named_keys = match &stored_value {
-                    StoredValue::Account(account) => account.named_keys(),
                     StoredValue::Contract(contract) => contract.named_keys(),
                     _ => {
                         return Err(
@@ -566,7 +583,7 @@ fn should_query_dictionary_items_with_test_builder() {
     builder.exec(exec_request).commit().expect_success();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let contract_hash = default_account
         .named_keys()
