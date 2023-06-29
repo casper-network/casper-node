@@ -9,7 +9,7 @@ use std::{
 };
 
 mod header;
-pub mod reader;
+pub mod protocol;
 pub mod varint;
 
 /// A channel identifier.
