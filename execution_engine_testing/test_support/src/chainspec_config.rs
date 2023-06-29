@@ -9,9 +9,7 @@ use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::{
-    run_genesis_request::RunGenesisRequest, ExecConfig,
-};
+use casper_execution_engine::engine_state::{run_genesis_request::RunGenesisRequest, ExecConfig};
 use casper_types::{
     system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, GenesisAccount, ProtocolVersion, SystemConfig,
     TimeDiff, WasmConfig,

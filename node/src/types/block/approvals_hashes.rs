@@ -8,7 +8,7 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{bytesrepr, ApprovalsHash, DeployId, Digest, Key, StoredValue};
 
 use super::{Block, BlockHash};
@@ -173,7 +173,7 @@ mod specimen_support {
 
     use once_cell::sync::OnceCell;
 
-    use casper_storage::global_state::storage::trie::{
+    use casper_storage::global_state::trie::{
         merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
         Pointer,
     };

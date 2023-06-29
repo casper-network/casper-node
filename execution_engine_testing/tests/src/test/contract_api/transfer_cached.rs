@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
+use casper_execution_engine::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
 use casper_types::{
     account::AccountHash,
     runtime_args,

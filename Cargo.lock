@@ -408,6 +408,7 @@ dependencies = [
  "casper-execution-engine",
  "casper-storage",
  "casper-types",
+ "env_logger 0.10.0",
  "filesize",
  "humantime",
  "lmdb-rkv",
@@ -474,7 +475,6 @@ dependencies = [
  "hostname",
  "humantime",
  "itertools 0.10.5",
- "libc",
  "linked-hash-map",
  "log",
  "num",
@@ -505,7 +505,7 @@ name = "casper-json-rpc"
 version = "1.0.0"
 dependencies = [
  "bytes",
- "env_logger",
+ "env_logger 0.9.3",
  "futures",
  "http",
  "hyper",
@@ -653,6 +653,7 @@ dependencies = [
  "humantime",
  "itertools 0.10.5",
  "k256",
+ "libc",
  "num",
  "num-derive",
  "num-integer",
@@ -1691,6 +1692,19 @@ checksum = "a12e6657c4c97ebab115a42dcee77225f7f482cdd841cf7088c657a42e9e00e7"
 dependencies = [
  "atty",
  "humantime",
+ "log",
+ "regex",
+ "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85cdab6a89accf66733ad5a1693a4dcced6aeff64602b634530dd73c1f3ee9f0"
+dependencies = [
+ "humantime",
+ "is-terminal",
  "log",
  "regex",
  "termcolor",
@@ -4333,14 +4347,6 @@ checksum = "29f060a7d147e33490ec10da418795238fd7545bba241504d6b31a409f2e6210"
 dependencies = [
  "digest 0.9.0",
  "rand_core 0.5.1",
-]
-
-[[package]]
-name = "simple-transfer"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
 ]
 
 [[package]]

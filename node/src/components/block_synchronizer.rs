@@ -28,7 +28,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::core::engine_state;
+use casper_execution_engine::engine_state;
 use casper_types::{
     Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
     FinalitySignatureId, Timestamp, VersionedBlock,

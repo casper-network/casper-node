@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::{self, QueryResult};
+use casper_execution_engine::engine_state::{self, QueryResult};
 use casper_types::{
     Block, BlockHash, Digest, DigestError, JsonBlock, Key, ProtocolVersion, Transfer,
 };

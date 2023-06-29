@@ -12,7 +12,7 @@ use derive_more::From;
 use num_rational::Ratio;
 use rand::{seq::IteratorRandom, Rng};
 
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     testing::TestRng, AccessRights, CLValue, Chainspec, DeployId, EraId, Key,
     LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef,

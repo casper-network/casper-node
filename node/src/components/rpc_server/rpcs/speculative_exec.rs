@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::Error as EngineStateError;
+use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
 use casper_types::{BlockHash, Deploy, ExecutionResult, JsonBlock, ProtocolVersion};
 

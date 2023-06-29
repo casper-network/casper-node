@@ -102,8 +102,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::InvalidContractVersion(version)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
             if version == ContractVersionKey::new(1, 1),
         ),
@@ -159,8 +159,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::InvalidContractVersion(version)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
             if version == ContractVersionKey::new(1, 1),
         ),
@@ -219,8 +219,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::InvalidContractVersion(version)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
             if version == ContractVersionKey::new(1, 1),
         ),
@@ -272,8 +272,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::DisabledContract(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),
@@ -298,8 +298,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::DisabledContract(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),
@@ -338,8 +338,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::DisabledContract(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),

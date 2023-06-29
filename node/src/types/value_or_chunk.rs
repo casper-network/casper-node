@@ -6,7 +6,7 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_storage::global_state::storage::trie::TrieRaw;
+use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     ChunkWithProof, ChunkWithProofVerificationError, Digest, ExecutionResult,
     MerkleConstructionError,

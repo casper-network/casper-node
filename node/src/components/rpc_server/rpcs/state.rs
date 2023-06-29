@@ -11,11 +11,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::core::engine_state::{
-    self, BalanceResult, GetBidsResult, QueryResult,
-};
+use casper_execution_engine::engine_state::{self, BalanceResult, GetBidsResult, QueryResult};
 use casper_json_rpc::ReservedErrorCode;
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{Bytes, ToBytes},

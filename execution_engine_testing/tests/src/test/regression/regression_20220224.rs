@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution};
 use casper_types::{runtime_args, system::mint, ApiError, RuntimeArgs};
 
 const CONTRACT_REGRESSION_PAYMENT: &str = "regression_payment.wasm";

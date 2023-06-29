@@ -24,7 +24,7 @@ use datasize::DataSize;
 use futures::join;
 use tracing::{error, info, warn};
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
     QueryResult,
 };

@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError},
     execution::Error,
 };

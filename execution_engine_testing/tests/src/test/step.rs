@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
-use casper_execution_engine::core::engine_state::SlashItem;
+use casper_execution_engine::engine_state::SlashItem;
 use casper_types::{
     system::{
         auction::{

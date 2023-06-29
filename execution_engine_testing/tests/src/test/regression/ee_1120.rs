@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
-use casper_execution_engine::core::engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+use casper_execution_engine::engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT;
 use casper_types::{
     account::AccountHash,
     runtime_args,

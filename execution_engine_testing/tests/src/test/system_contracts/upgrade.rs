@@ -8,7 +8,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     engine_config::{
         DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,

@@ -15,7 +15,7 @@ use casper_engine_test_support::{
     DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
     MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, run_genesis_request::RunGenesisRequest,
     EngineConfig, ExecConfig, ExecuteRequest,
 };

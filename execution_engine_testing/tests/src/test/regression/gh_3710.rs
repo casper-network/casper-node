@@ -5,11 +5,11 @@ use casper_engine_test_support::{
     WasmTestBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{self, PruneConfig, PruneResult},
     execution,
 };
-use casper_storage::global_state::storage::state::{CommitProvider, StateProvider};
+use casper_storage::global_state::state::{CommitProvider, StateProvider};
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},

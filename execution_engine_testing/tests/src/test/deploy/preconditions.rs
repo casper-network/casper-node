@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::Error;
+use casper_execution_engine::engine_state::Error;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);

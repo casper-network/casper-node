@@ -6,7 +6,7 @@ use std::{
 use either::Either;
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::core::engine_state::GetEraValidatorsError;
+use casper_execution_engine::engine_state::GetEraValidatorsError;
 use casper_types::{ActivationPoint, BlockHash, BlockHeader, EraId, TimeDiff, Timestamp};
 
 use crate::{
