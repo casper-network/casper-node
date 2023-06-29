@@ -27,7 +27,7 @@ pub const BLOCK_V2_TAG: u8 = 1;
 pub enum VersionedBlock {
     /// The legacy, initial version of the block.
     V1(BlockV1),
-    /// The version 2 of the block, which uses the [VersionedBlockBody].
+    /// The version 2 of the block.
     V2(BlockV2),
 }
 
