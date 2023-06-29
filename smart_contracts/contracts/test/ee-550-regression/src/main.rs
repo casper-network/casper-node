@@ -10,7 +10,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::{AccountHash, ActionType, Weight},
+    contracts::{AccountHash, ActionType, Weight},
     ApiError,
 };
 

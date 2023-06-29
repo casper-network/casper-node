@@ -7,7 +7,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, AccessRights, ApiError, URef, URefAddr, U512};
+use casper_types::{contracts::AccountHash, AccessRights, ApiError, URef, URefAddr, U512};
 
 const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
 

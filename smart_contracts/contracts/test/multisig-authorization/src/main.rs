@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::{collections::BTreeSet, string::ToString};
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    account::AccountHash, contracts::Parameters, ApiError, CLType, EntryPoint, EntryPointAccess,
+    contracts::AccountHash, contracts::Parameters, ApiError, CLType, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints,
 };
 

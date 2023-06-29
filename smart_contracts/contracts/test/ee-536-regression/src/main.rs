@@ -6,7 +6,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::{
+    contracts::{
         AccountHash, ActionType, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     ApiError,

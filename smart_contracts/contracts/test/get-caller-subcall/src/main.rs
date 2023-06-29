@@ -10,7 +10,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::AccountHash, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
+    contracts::AccountHash, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, RuntimeArgs,
 };
 

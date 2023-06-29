@@ -5,7 +5,7 @@ use casper_contract::{
     contract_api::{account, runtime},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::account::{AccountHash, ActionType, Weight};
+use casper_types::contracts::{AccountHash, ActionType, Weight};
 
 const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";
 const ARG_DEPLOYMENT_THRESHOLD: &str = "deployment_threshold";

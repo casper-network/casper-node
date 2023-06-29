@@ -3,7 +3,7 @@
 
 use casper_contract::contract_api::runtime;
 
-use casper_types::{account::AccountHash, runtime_args, ContractHash, RuntimeArgs};
+use casper_types::{contracts::AccountHash, runtime_args, ContractHash, RuntimeArgs};
 
 const FAUCET_NAME: &str = "faucet";
 const ARG_TARGET: &str = "target";
