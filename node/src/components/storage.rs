@@ -712,9 +712,11 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::Block(ref serialized_id) => {
-                let id = decode_item_id::<Block>(serialized_id)?;
-                let opt_item = self.read_block(&id).map_err(FatalStorageError::from)?;
+            NetRequest::VersionedBlock(ref serialized_id) => {
+                let id = decode_item_id::<VersionedBlock>(serialized_id)?;
+                let opt_item = self
+                    .read_versioned_block(&id)
+                    .map_err(FatalStorageError::from)?;
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(

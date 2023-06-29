@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
-use casper_types::{Block, BlockHash, BlockValidationError, VersionedBlock};
+use casper_types::{BlockHash, BlockValidationError, VersionedBlock};
 
 use crate::{
     components::fetcher::{
@@ -18,31 +18,12 @@ use crate::{
     types::NodeId,
 };
 
-// TODO[RC]: This implementation should be not needed, we never fetch `BlockV2`, but some other code
-// relies on the trait being implemented. We should clean this up.
-impl FetchItem for Block {
-    type Id = BlockHash;
-    type ValidationError = BlockValidationError;
-    type ValidationMetadata = EmptyValidationMetadata;
-
-    // TODO[RC]: Tag duplicated for [VersionedBlock].
-    const TAG: Tag = Tag::Block;
-
-    fn fetch_id(&self) -> Self::Id {
-        *self.hash()
-    }
-
-    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
-        self.verify()
-    }
-}
-
 impl FetchItem for VersionedBlock {
     type Id = BlockHash;
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;
 
-    const TAG: Tag = Tag::Block;
+    const TAG: Tag = Tag::VersionedBlock;
 
     fn fetch_id(&self) -> Self::Id {
         *self.hash()
@@ -95,13 +76,7 @@ impl ItemFetcher<VersionedBlock> for Fetcher<VersionedBlock> {
         item: VersionedBlock,
         peer: NodeId,
     ) {
-        // We fetch and store `VersionedBlock`, but announce as a most recent version
         effect_builder
-            // TODO[RC]: Ideally, we'd like to yield `Block` instead of `VersionedBlock`, so that
-            // the `VersionedBlock` stays internal to the fetcher. This requires some
-            // trait juggling, so I'll leave it for later, since it's not strictly
-            // needed for the versioning to operate. i.e.:
-            //.announce_fetched_new_block(Arc::new(item.into()), peer)
             .announce_fetched_new_block(Arc::new(item), peer)
             .await
     }

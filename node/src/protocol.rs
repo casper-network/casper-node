@@ -83,7 +83,7 @@ impl Payload for Message {
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy | Tag::LegacyDeploy => MessageKind::DeployTransfer,
-                Tag::Block => MessageKind::BlockTransfer,
+                Tag::VersionedBlock => MessageKind::BlockTransfer,
                 Tag::BlockHeader => MessageKind::BlockTransfer,
                 Tag::TrieOrChunk => MessageKind::TrieTransfer,
                 Tag::FinalitySignature => MessageKind::Other,
@@ -124,7 +124,7 @@ impl Payload for Message {
             Message::AddressGossiper(_) => weights.gossip,
             Message::GetRequest { tag, .. } => match tag {
                 Tag::Deploy | Tag::LegacyDeploy => weights.deploy_requests,
-                Tag::Block => weights.block_requests,
+                Tag::VersionedBlock => weights.block_requests,
                 Tag::BlockHeader => weights.block_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
                 Tag::FinalitySignature => weights.gossip,
@@ -134,7 +134,7 @@ impl Payload for Message {
             },
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy | Tag::LegacyDeploy => weights.deploy_responses,
-                Tag::Block => weights.block_responses,
+                Tag::VersionedBlock => weights.block_responses,
                 Tag::BlockHeader => weights.block_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
                 Tag::FinalitySignature => weights.gossip,
@@ -351,9 +351,9 @@ where
                     message: Box::new(NetRequest::LegacyDeploy(serialized_id)),
                 }
                 .into(),
-                Tag::Block => NetRequestIncoming {
+                Tag::VersionedBlock => NetRequestIncoming {
                     sender,
-                    message: Box::new(NetRequest::Block(serialized_id)),
+                    message: Box::new(NetRequest::VersionedBlock(serialized_id)),
                 }
                 .into(),
                 Tag::BlockHeader => NetRequestIncoming {
@@ -401,7 +401,7 @@ where
                     message: Box::new(NetResponse::LegacyDeploy(serialized_item)),
                 }
                 .into(),
-                Tag::Block => NetResponseIncoming {
+                Tag::VersionedBlock => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::Block(serialized_item)),
                 }

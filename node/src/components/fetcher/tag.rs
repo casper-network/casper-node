@@ -32,7 +32,7 @@ pub enum Tag {
     LegacyDeploy,
     /// A block.
     #[display(fmt = "block")]
-    Block,
+    VersionedBlock,
     /// A block header.
     #[display(fmt = "block header")]
     BlockHeader,

@@ -9,10 +9,7 @@ use casper_types::{
 };
 
 use crate::{
-    components::{
-        block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
-        fetcher::{EmptyValidationMetadata, FetchItem},
-    },
+    components::block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
     types::{EraValidatorWeights, MetaBlock, NodeId, SignatureWeight},
 };
 
@@ -77,9 +74,9 @@ impl BlockAcceptor {
             });
         }
 
-        // TODO[RC]: validate() comes from the `FetchItem` trait. I'd be better to avoid the need of
-        // implementing the `FetchItem` for the type we actually don't fetch.
-        if let Err(error) = meta_block.block.validate(&EmptyValidationMetadata) {
+        // Verify is needed for the cases when the block comes from the gossiper. It it came here
+        // from the fetcher it'll already be verified.
+        if let Err(error) = meta_block.block.verify() {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
             return match peer {

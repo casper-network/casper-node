@@ -23,7 +23,8 @@ use casper_types::{
     Approval, ApprovalsHash, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures,
     ChunkWithProof, ContractPackageHash, Deploy, DeployHash, DeployId, Digest, EraEnd, EraId,
     EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId, ProtocolVersion,
-    RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
+    RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff, Timestamp, VersionedBlock,
+    KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -601,6 +602,36 @@ impl LargestSpecimen for Block {
     }
 }
 
+impl LargestSpecimen for VersionedBlock {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        // TODO[RC]: When 2.0 rewards are merged, we need to take into consideration the largest
+        // specimen for the `PastFinalitySignatures`.
+        let deploy_hashes = vec![
+            DeployHash::largest_specimen(estimator, cache);
+            estimator.parameter::<usize>("max_deploys_per_block")
+        ];
+        let transfer_hashes = vec![
+            DeployHash::largest_specimen(estimator, cache);
+            estimator.parameter::<usize>("max_transfers_per_block")
+        ];
+
+        VersionedBlock::V2(Block::new(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            deploy_hashes,
+            transfer_hashes,
+        ))
+    }
+}
+
 impl LargestSpecimen for FinalizedBlock {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         FinalizedBlock::new(
@@ -847,9 +878,9 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
             Tag::LegacyDeploy => Message::new_get_request::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::Block => Message::new_get_request::<Block>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
+            Tag::VersionedBlock => Message::new_get_request::<VersionedBlock>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
             Tag::BlockHeader => Message::new_get_request::<BlockHeader>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
@@ -883,9 +914,9 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
             Tag::LegacyDeploy => Message::new_get_response::<LegacyDeploy>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
-            Tag::Block => Message::new_get_response::<Block>(&LargestSpecimen::largest_specimen(
-                estimator, cache,
-            )),
+            Tag::VersionedBlock => Message::new_get_response::<VersionedBlock>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
             Tag::BlockHeader => Message::new_get_response::<BlockHeader>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
