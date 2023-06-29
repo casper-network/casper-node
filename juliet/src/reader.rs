@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use self::{multiframe::MultiframeReceiver, outgoing_message::OutgoingMessage};
 use crate::{
-    header::{ErrorKind, Header, Kind},
+    header::{self, ErrorKind, Header, Kind},
     try_outcome, ChannelConfiguration, ChannelId, Id,
     Outcome::{self, Fatal, Incomplete, Success},
 };
@@ -36,6 +36,7 @@ struct Channel {
     current_multiframe_receive: MultiframeReceiver,
     cancellation_allowance: u32,
     config: ChannelConfiguration,
+    prev_request_id: u16,
 }
 
 impl Channel {
@@ -49,10 +50,38 @@ impl Channel {
         self.in_flight_requests() == self.config.request_limit
     }
 
+    #[inline]
     fn increment_cancellation_allowance(&mut self) {
         if self.cancellation_allowance < self.config.request_limit {
             self.cancellation_allowance += 1;
         }
+    }
+
+    /// Generates an unused ID for an outgoing request on this channel.
+    ///
+    /// Returns `None` if the entire ID space has been exhausted. Note that this should never
+    /// occur under reasonable conditions, as the request limit should be less than [`u16::MAX`].
+    #[inline]
+    fn generate_request_id(&mut self) -> Option<Id> {
+        if self.outgoing_requests.len() == u16::MAX as usize {
+            // We've exhausted the entire ID space.
+            return None;
+        }
+
+        let mut candidate = Id(self.prev_request_id.wrapping_add(1));
+        while self.outgoing_requests.contains(&candidate) {
+            candidate = Id(candidate.0.wrapping_add(1));
+        }
+
+        self.prev_request_id = candidate.0;
+
+        Some(candidate)
+    }
+
+    /// Returns whether or not it is permissible to send another request on given channel.
+    #[inline]
+    pub fn allowed_to_send_request(&self) -> bool {
+        self.outgoing_requests.len() < self.config.request_limit as usize
     }
 }
 
@@ -72,16 +101,29 @@ pub enum LocalProtocolViolation {
     /// TODO: docs with hint what the programming error could be
     #[error("invalid channel")]
     InvalidChannel(ChannelId),
+    #[error("cannot respond to request that does not exist")]
+    NonexistantRequest,
 }
 
 impl<const N: usize> MessageReader<N> {
-    // TODO: Make return channel ref.
     #[inline(always)]
-    fn channel_index(&self, channel: ChannelId) -> Result<usize, LocalProtocolViolation> {
+    fn lookup_channel(&self, channel: ChannelId) -> Result<&Channel, LocalProtocolViolation> {
         if channel.0 as usize >= N {
             Err(LocalProtocolViolation::InvalidChannel(channel))
         } else {
-            Ok(channel.0 as usize)
+            Ok(&self.channels[channel.0 as usize])
+        }
+    }
+
+    #[inline(always)]
+    fn lookup_channel_mut(
+        &mut self,
+        channel: ChannelId,
+    ) -> Result<&mut Channel, LocalProtocolViolation> {
+        if channel.0 as usize >= N {
+            Err(LocalProtocolViolation::InvalidChannel(channel))
+        } else {
+            Ok(&mut self.channels[channel.0 as usize])
         }
     }
 
@@ -91,8 +133,7 @@ impl<const N: usize> MessageReader<N> {
         &self,
         channel: ChannelId,
     ) -> Result<bool, LocalProtocolViolation> {
-        let chan_idx = self.channel_index(channel)?;
-        let chan = &self.channels[chan_idx];
+        let chan = self.lookup_channel(channel)?;
 
         Ok(chan.outgoing_requests.len() < chan.config.request_limit as usize)
     }
@@ -101,34 +142,98 @@ impl<const N: usize> MessageReader<N> {
     ///
     /// # Note
     ///
-    /// Any caller of this functions should call `allowed_to_send_request()` before this function
-    /// to ensure the channels request limit is not exceeded. Failure to do so may result in the
-    /// peer closing the connection due to a protocol violation.
+    /// It is advisable to call [`MessageReader::allowed_to_send_request`] before calling
+    /// `create_request`, otherwise there is risk of a
+    /// [`LocalProtocolViolation::WouldExceedRateLimit`].
     pub fn create_request(
         &mut self,
         channel: ChannelId,
         payload: Option<Bytes>,
     ) -> Result<OutgoingMessage, LocalProtocolViolation> {
-        let id = self.generate_request_id(channel);
+        let chan = self.lookup_channel_mut(channel)?;
 
-        if !self.allowed_to_send_request(channel)? {
+        if !chan.allowed_to_send_request() {
             return Err(LocalProtocolViolation::WouldExceedRequestLimit);
         }
 
+        // The `unwrap_or_default` below should never be triggered, as long as we `u16::MAX` or less
+        // requests are currently in flight, which is always the case.
+        let id = chan.generate_request_id().unwrap_or(Id(0));
+
+        // Note the outgoing request for later.
+        chan.outgoing_requests.insert(id);
+
         if let Some(payload) = payload {
-            let header = Header::new(crate::header::Kind::RequestPl, channel, id);
+            let header = Header::new(header::Kind::RequestPl, channel, id);
             Ok(OutgoingMessage::new(header, Some(payload)))
         } else {
-            let header = Header::new(crate::header::Kind::Request, channel, id);
+            let header = Header::new(header::Kind::Request, channel, id);
             Ok(OutgoingMessage::new(header, None))
         }
     }
 
-    /// Generate a new, unused request ID.
-    fn generate_request_id(&mut self, channel: ChannelId) -> Id {
-        todo!()
+    pub fn create_response(
+        &mut self,
+        channel: ChannelId,
+        id: Id,
+        payload: Option<Bytes>,
+    ) -> Result<Option<OutgoingMessage>, LocalProtocolViolation> {
+        let chan = self.lookup_channel_mut(channel)?;
+
+        if !chan.incoming_requests.remove(&id) {
+            // The request has been cancelled, no need to send a response.
+            return Ok(None);
+        }
+
+        if let Some(payload) = payload {
+            let header = Header::new(header::Kind::ResponsePl, channel, id);
+            Ok(Some(OutgoingMessage::new(header, Some(payload))))
+        } else {
+            let header = Header::new(header::Kind::Response, channel, id);
+            Ok(Some(OutgoingMessage::new(header, None)))
+        }
     }
 
+    pub fn cancel_request(
+        &mut self,
+        channel: ChannelId,
+        id: Id,
+    ) -> Result<Option<OutgoingMessage>, LocalProtocolViolation> {
+        let chan = self.lookup_channel_mut(channel)?;
+
+        if !chan.outgoing_requests.remove(&id) {
+            // The request has been cancelled, no need to send a response.
+            return Ok(None);
+        }
+
+        let header = Header::new(header::Kind::CancelReq, channel, id);
+        Ok(Some(OutgoingMessage::new(header, None)))
+    }
+
+    pub fn cancel_response(
+        &mut self,
+        channel: ChannelId,
+        id: Id,
+    ) -> Result<Option<OutgoingMessage>, LocalProtocolViolation> {
+        let chan = self.lookup_channel_mut(channel)?;
+
+        if !chan.incoming_requests.remove(&id) {
+            // The request has been cancelled, no need to send a response.
+            return Ok(None);
+        }
+
+        let header = Header::new(header::Kind::CancelReq, channel, id);
+        Ok(Some(OutgoingMessage::new(header, None)))
+    }
+
+    pub fn custom_error(&mut self, channel: ChannelId, id: Id, payload: Bytes) -> OutgoingMessage {
+        let header = Header::new_error(header::ErrorKind::Other, channel, id);
+        OutgoingMessage::new(header, Some(payload))
+    }
+
+    /// Processes incoming data from a buffer.
+    ///
+    /// `buffer` should a continuously appended buffer receiving all incoming data.
     pub fn process_incoming(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {
         // First, attempt to complete a frame.
         loop {
