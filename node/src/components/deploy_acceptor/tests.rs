@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
     time::Duration,
@@ -54,6 +54,8 @@ use crate::{
 
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const TIMEOUT: Duration = Duration::from_secs(10);
+const ALICE_SECRET_KEY_BYTES: [u8; 32] = [123; 32];
+const BOB_SECRET_KEY_BYTES: [u8; 32] = [124; 32];
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]
@@ -149,7 +151,7 @@ enum ContractPackageScenario {
     MissingContractVersion,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 enum TestScenario {
     FromPeerInvalidDeploy,
     FromPeerValidDeploy,
@@ -183,6 +185,14 @@ enum TestScenario {
     BalanceCheckForDeploySentByPeer,
     ShouldNotAcceptExpiredDeploySentByClient,
     ShouldAcceptExpiredDeploySentByPeer,
+    ShouldAcceptDeployFromAdministrator {
+        administrators: BTreeSet<PublicKey>,
+        secret_keys: Vec<[u8; 32]>,
+    },
+    ShouldRejectDeployFromNonAdministrator {
+        administrators: BTreeSet<PublicKey>,
+        secret_keys: Vec<[u8; 32]>,
+    },
 }
 
 impl TestScenario {
@@ -221,7 +231,9 @@ impl TestScenario {
             | TestScenario::FromClientSessionContractPackage(_)
             | TestScenario::DeployWithEmptySessionModuleBytes
             | TestScenario::DeployWithNativeTransferInPayment
-            | TestScenario::ShouldNotAcceptExpiredDeploySentByClient => Source::Client,
+            | TestScenario::ShouldNotAcceptExpiredDeploySentByClient
+            | TestScenario::ShouldAcceptDeployFromAdministrator { .. }
+            | TestScenario::ShouldRejectDeployFromNonAdministrator { .. } => Source::Client,
         }
     }
 
@@ -328,6 +340,19 @@ impl TestScenario {
             | TestScenario::ShouldNotAcceptExpiredDeploySentByClient => {
                 Deploy::random_expired_deploy(rng)
             }
+            TestScenario::ShouldAcceptDeployFromAdministrator { secret_keys, .. }
+            | TestScenario::ShouldRejectDeployFromNonAdministrator { secret_keys, .. } => {
+                let mut deploy = Deploy::random_with_valid_session_package_by_name(rng);
+                deploy.replace_approvals(BTreeSet::new());
+
+                for secret_key_bytes in secret_keys {
+                    let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes)
+                        .expect("should create secret key");
+                    deploy.sign(&secret_key);
+                }
+
+                deploy
+            }
         }
     }
 
@@ -378,6 +403,8 @@ impl TestScenario {
                     | ContractPackageScenario::MissingContractVersion => false,
                 }
             }
+            TestScenario::ShouldAcceptDeployFromAdministrator { .. } => true,
+            TestScenario::ShouldRejectDeployFromNonAdministrator { .. } => false
         }
     }
 
@@ -387,14 +414,32 @@ impl TestScenario {
             TestScenario::FromClientRepeatedValidDeploy | TestScenario::FromPeerRepeatedValidDeploy
         )
     }
+
+    pub(crate) fn create_chainspec_for_test(&self) -> Chainspec {
+        let mut chainspec = Chainspec::from_resources("local");
+        match self {
+            TestScenario::ShouldAcceptDeployFromAdministrator { administrators, .. }
+            | TestScenario::ShouldRejectDeployFromNonAdministrator { administrators, .. } => {
+                chainspec.core_config.administrators.clear();
+                chainspec
+                    .core_config
+                    .administrators
+                    .extend(administrators.clone());
+            }
+            _ => {}
+        }
+        chainspec
+    }
 }
 
-fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Account {
+fn create_account(account_hash: AccountHash, test_scenario: &TestScenario) -> Account {
     match test_scenario {
         TestScenario::FromPeerAccountWithInvalidAssociatedKeys
-        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => {
-            Account::create(AccountHash::default(), BTreeMap::new(), URef::default())
-        }
+        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => Account::create(
+            AccountHash::default(),
+            NamedKeys::default(),
+            URef::default(),
+        ),
         TestScenario::FromPeerAccountWithInsufficientWeight
         | TestScenario::FromClientAccountWithInsufficientWeight => {
             let invalid_action_threshold =
@@ -408,7 +453,7 @@ fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Acc
                 invalid_action_threshold,
             )
         }
-        _ => Account::create(account_hash, BTreeMap::new(), URef::default()),
+        _ => Account::create(account_hash, NamedKeys::default(), URef::default()),
     }
 }
 
@@ -505,7 +550,7 @@ impl reactor::Reactor for Reactor {
                         QueryResult::ValueNotFound(String::new())
                     } else if let Key::Account(account_hash) = query_request.key() {
                         if query_request.path().is_empty() {
-                            let account = create_account(account_hash, self.test_scenario);
+                            let account = create_account(account_hash, &self.test_scenario);
                             QueryResult::Success {
                                 value: Box::new(StoredValue::Account(account)),
                                 proofs: vec![],
@@ -800,8 +845,9 @@ async fn run_deploy_acceptor_without_timeout(
 
     // Tests where the deploy is already in storage will not trigger any deploy acceptor
     // announcement, so use the deploy acceptor `PutToStorage` event as the condition.
+    let test_scenario_cloned = test_scenario.clone();
     let stopping_condition = move |event: &Event| -> bool {
-        match test_scenario {
+        match test_scenario_cloned {
             // Check that invalid deploys sent by a client raise the `InvalidDeploy` announcement
             // with the appropriate source.
             TestScenario::FromClientInvalidDeploy
@@ -1565,4 +1611,29 @@ async fn should_panic_when_balance_checking_for_deploy_sent_by_peer() {
     let test_scenario = TestScenario::BalanceCheckForDeploySentByPeer;
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_valid_deploy_from_peer_signed_by_administrator() {
+    let alice = SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).expect("should create alice");
+    let bob = SecretKey::ed25519_from_bytes(BOB_SECRET_KEY_BYTES).expect("should create alice");
+
+    let test_scenario = TestScenario::ShouldAcceptDeployFromAdministrator {
+        administrators: [alice, bob].iter().map(PublicKey::from).collect(),
+        secret_keys: vec![ALICE_SECRET_KEY_BYTES],
+    };
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_reject_valid_deploy_from_peer_signed_by_non_administrator() {
+    let alice = SecretKey::ed25519_from_bytes(ALICE_SECRET_KEY_BYTES).expect("should create alice");
+
+    let test_scenario = TestScenario::ShouldRejectDeployFromNonAdministrator {
+        administrators: [alice].iter().map(PublicKey::from).collect(),
+        secret_keys: vec![BOB_SECRET_KEY_BYTES],
+    };
+    let result = run_deploy_acceptor(test_scenario).await;
+    assert!(result.is_err())
 }

@@ -41,14 +41,24 @@ pub struct AccountsConfig {
     accounts: Vec<AccountConfig>,
     #[serde(default, deserialize_with = "sorted_vec_deserializer")]
     delegators: Vec<DelegatorConfig>,
+    #[serde(
+        default,
+        deserialize_with = "sorted_vec_deserializer",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    administrators: Vec<AdministratorAccount>,
 }
 
 impl AccountsConfig {
-    /// Creates a new `AccountsConfig`.
-    pub fn new(accounts: Vec<AccountConfig>, delegators: Vec<DelegatorConfig>) -> Self {
+    pub fn new(
+        accounts: Vec<AccountConfig>,
+        delegators: Vec<DelegatorConfig>,
+        administrators: Vec<AdministratorAccount>,
+    ) -> Self {
         Self {
             accounts,
             delegators,
+            administrators,
         }
     }
 
@@ -60,6 +70,11 @@ impl AccountsConfig {
     /// Delegators.
     pub fn delegators(&self) -> &[DelegatorConfig] {
         &self.delegators
+    }
+
+    /// Administrators.
+    pub fn administrators(&self) -> &[AdministratorAccount] {
+        &self.administrators
     }
 
     /// Account.
@@ -109,9 +124,12 @@ impl AccountsConfig {
 
         let delegators = vec![delegator];
 
+        let administrators = vec![AdministratorAccount::random(rng)];
+
         AccountsConfig {
             accounts,
             delegators,
+            administrators,
         }
     }
 }
@@ -121,11 +139,14 @@ impl ToBytes for AccountsConfig {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.accounts.to_bytes()?);
         buffer.extend(self.delegators.to_bytes()?);
+        buffer.extend(self.administrators.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.accounts.serialized_length() + self.delegators.serialized_length()
+        self.accounts.serialized_length()
+            + self.delegators.serialized_length()
+            + self.administrators.serialized_length()
     }
 }
 
@@ -133,7 +154,8 @@ impl FromBytes for AccountsConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (accounts, remainder) = FromBytes::from_bytes(bytes)?;
         let (delegators, remainder) = FromBytes::from_bytes(remainder)?;
-        let accounts_config = AccountsConfig::new(accounts, delegators);
+        let (administrators, remainder) = FromBytes::from_bytes(remainder)?;
+        let accounts_config = AccountsConfig::new(accounts, delegators, administrators);
         Ok((accounts_config, remainder))
     }
 }
@@ -148,6 +170,11 @@ impl From<AccountsConfig> for Vec<GenesisAccount> {
         for delegator_config in accounts_config.delegators {
             let genesis_account = delegator_config.into();
             genesis_accounts.push(genesis_account);
+        }
+
+        for administrator_config in accounts_config.administrators {
+            let administrator_account = administrator_config.into();
+            genesis_accounts.push(administrator_account);
         }
 
         genesis_accounts

@@ -27,6 +27,8 @@ use casper_types::testing::TestRng;
 
 use super::{tls::KeyFingerprint, Message, Metrics, Payload};
 use crate::{types::NodeId, utils};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 /// Lazily-evaluated network message ID generator.
 ///

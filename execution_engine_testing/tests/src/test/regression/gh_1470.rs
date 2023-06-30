@@ -698,7 +698,7 @@ fn should_transfer_after_major_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer_args = runtime_args! {
@@ -746,7 +746,7 @@ fn should_transfer_after_minor_version_bump_from_1_2_0() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let transfer = ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args)
@@ -779,7 +779,7 @@ fn should_add_bid_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -828,7 +828,7 @@ fn should_add_bid_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -874,7 +874,7 @@ fn should_wasm_transfer_after_major_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -922,7 +922,7 @@ fn should_wasm_transfer_after_minor_bump() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let _default_account = builder
@@ -970,6 +970,6 @@ fn should_upgrade_from_1_3_1_rel_fixture() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 }

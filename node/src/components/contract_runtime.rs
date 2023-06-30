@@ -603,6 +603,11 @@ impl ContractRuntime {
         vesting_schedule_period_millis: u64,
         max_delegators_per_validator: Option<u32>,
         registry: &Registry,
+        administrative_accounts: BTreeSet<PublicKey>,
+        allow_auction_bids: bool,
+        allow_unrestricted_transfers: bool,
+        refund_handling: RefundHandling,
+        fee_handling: FeeHandling,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {

@@ -1,5 +1,7 @@
 use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
 
+use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
+
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {
     /// Get named key under a `name`.
@@ -19,4 +21,13 @@ pub trait RuntimeProvider {
 
     /// Get caller.
     fn get_caller(&self) -> AccountHash;
+
+    /// Get refund handling.
+    fn refund_handling(&self) -> &RefundHandling;
+
+    /// Returns fee handling value.
+    fn fee_handling(&self) -> FeeHandling;
+
+    /// Returns list of administrative accounts.
+    fn administrative_accounts(&self) -> &BTreeSet<AccountHash>;
 }

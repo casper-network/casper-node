@@ -20,6 +20,8 @@ use crate::{
     storage::global_state::StateProvider,
 };
 
+use super::{engine_config::FeeHandling, EngineConfig};
+
 /// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
 pub struct UpgradeSuccess {
@@ -165,6 +167,9 @@ pub enum ProtocolUpgradeError {
     /// (De)serialization error.
     #[error("{0}")]
     Bytesrepr(bytesrepr::Error),
+    /// CLValue error.
+    #[error("{0}")]
+    CLValue(CLValueError),
     /// Failed to create system contract registry.
     #[error("Failed to insert system contract registry")]
     FailedToCreateSystemRegistry,
@@ -176,6 +181,12 @@ pub enum ProtocolUpgradeError {
 impl From<bytesrepr::Error> for ProtocolUpgradeError {
     fn from(error: bytesrepr::Error) -> Self {
         ProtocolUpgradeError::Bytesrepr(error)
+    }
+}
+
+impl From<CLValueError> for ProtocolUpgradeError {
+    fn from(v: CLValueError) -> Self {
+        Self::CLValue(v)
     }
 }
 
@@ -327,6 +338,77 @@ where
             contract_package_key,
             StoredValue::ContractPackage(contract_package),
         );
+
+        Ok(())
+    }
+
+    /// Creates an accumulation purse in the handle payment system contract if its not present.
+    ///
+    /// This can happen on older networks that did not have support for [`FeeHandling::Accumulate`]
+    /// at the genesis. In such cases we have to check the state of handle payment contract and
+    /// create an accumulation purse.
+    pub(crate) fn create_accumulation_purse_if_required(
+        &self,
+        correlation_id: CorrelationId,
+        handle_payment_hash: &ContractHash,
+        engine_config: &EngineConfig,
+    ) -> Result<(), ProtocolUpgradeError> {
+        match engine_config.fee_handling() {
+            FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
+            FeeHandling::Accumulate => {}
+        }
+
+        let mut address_generator = {
+            let seed_bytes = (self.old_protocol_version, self.new_protocol_version).to_bytes()?;
+
+            let phase = Phase::System;
+
+            AddressGenerator::new(&seed_bytes, phase)
+        };
+
+        let system_contract = SystemContractType::HandlePayment;
+        let contract_name = system_contract.contract_name();
+        let mut contract = if let StoredValue::Contract(contract) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(correlation_id, &Key::Hash(handle_payment_hash.value()))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })?
+            .ok_or_else(|| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
+            })? {
+            contract
+        } else {
+            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                contract_name,
+            ));
+        };
+
+        if !contract.named_keys().contains_key(ACCUMULATION_PURSE_KEY) {
+            let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
+            let balance_clvalue = CLValue::from_t(U512::zero())?;
+            self.tracking_copy.borrow_mut().write(
+                Key::Balance(purse_uref.addr()),
+                StoredValue::CLValue(balance_clvalue),
+                self.max_stored_value_size,
+            );
+            self.tracking_copy.borrow_mut().write(
+                Key::URef(purse_uref),
+                StoredValue::CLValue(CLValue::unit()),
+                self.max_stored_value_size,
+            );
+
+            let mut new_named_keys = NamedKeys::new();
+            new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
+            contract.named_keys_append(&mut new_named_keys);
+
+            self.tracking_copy.borrow_mut().write(
+                (*handle_payment_hash).into(),
+                StoredValue::Contract(contract),
+                self.max_stored_value_size,
+            );
+        }
 
         Ok(())
     }

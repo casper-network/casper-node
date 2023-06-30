@@ -11,6 +11,8 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use casper_types::testing::TestRng;
 
 use crate::{rpcs::docs::DocExample, tls::KeyFingerprint};
+#[cfg(test)]
+use casper_types::testing::TestRng;
 
 /// The network identifier for a node.
 ///

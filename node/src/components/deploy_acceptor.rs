@@ -206,6 +206,8 @@ pub struct DeployAcceptor {
     chain_name: String,
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
+    core_config: CoreConfig,
+    verify_accounts: bool,
     max_associated_keys: u32,
     #[data_size(skip)]
     metrics: metrics::Metrics,
@@ -220,6 +222,7 @@ impl DeployAcceptor {
             chain_name: chainspec.network_config.name.clone(),
             protocol_version: chainspec.protocol_version(),
             deploy_config: chainspec.deploy_config,
+            core_config: chainspec.core_config.clone(),
             max_associated_keys: chainspec.core_config.max_associated_keys,
             metrics: metrics::Metrics::new(registry)?,
         })
@@ -378,6 +381,26 @@ impl DeployAcceptor {
                     .iter()
                     .map(|approval| approval.signer().to_account_hash())
                     .collect();
+
+                let admin_set: BTreeSet<AccountHash> = {
+                    self.core_config
+                        .administrators
+                        .iter()
+                        .map(|public_key| public_key.to_account_hash())
+                        .collect()
+                };
+                if admin_set.intersection(&authorization_keys).next().is_some() {
+                    return effect_builder
+                        .check_purse_balance(prestate_hash, account.main_purse())
+                        .event(move |maybe_balance_value| Event::GetBalanceResult {
+                            event_metadata,
+                            prestate_hash,
+                            maybe_balance_value,
+                            account_hash: account.account_hash(),
+                            verification_start_timestamp,
+                        });
+                }
+
                 if !account.can_authorize(&authorization_keys) {
                     let error = Error::parameter_failure(
                         &block_header,
@@ -391,6 +414,7 @@ impl DeployAcceptor {
                         verification_start_timestamp,
                     );
                 }
+
                 if !account.can_deploy_with(&authorization_keys) {
                     let error = Error::parameter_failure(
                         &block_header,

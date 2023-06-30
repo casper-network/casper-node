@@ -19,6 +19,9 @@ pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
 pub struct Weight(u8);
 
 impl Weight {
+    /// Maximum possible weight.
+    pub const MAX: Weight = Weight(u8::MAX);
+
     /// Constructs a new `Weight`.
     pub const fn new(weight: u8) -> Weight {
         Weight(weight)

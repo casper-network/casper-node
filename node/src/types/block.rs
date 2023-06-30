@@ -37,6 +37,8 @@ use casper_types::{
 use casper_types::{
     crypto::generate_ed25519_keypair, system::auction::BLOCK_REWARD, testing::TestRng,
 };
+#[cfg(test)]
+use casper_types::{system::auction::BLOCK_REWARD, testing::TestRng};
 
 use crate::{
     components::{
