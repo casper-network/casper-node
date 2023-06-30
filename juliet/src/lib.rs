@@ -155,13 +155,49 @@ macro_rules! try_outcome {
 
 /// Channel configuration values that needs to be agreed upon by all clients.
 #[derive(Copy, Clone, Debug)]
-struct ChannelConfiguration {
+pub struct ChannelConfiguration {
     /// Maximum number of requests allowed on the channel.
     request_limit: u32,
     /// Maximum size of a request sent across the channel.
     max_request_payload_size: u32,
     /// Maximum size of a response sent across the channel.
     max_response_payload_size: u32,
+}
+
+impl Default for ChannelConfiguration {
+    fn default() -> Self {
+        Self {
+            request_limit: 1,
+            max_request_payload_size: 0,
+            max_response_payload_size: 0,
+        }
+    }
+}
+
+impl ChannelConfiguration {
+    /// Creates a configuration the given request limit (the default is 1).
+    pub fn with_request_limit(mut self, request_limit: u32) -> ChannelConfiguration {
+        self.request_limit = request_limit;
+        self
+    }
+
+    /// Creates a configuration the given maximum size for request payloads (the default is 0).
+    pub fn with_max_request_payload_size(
+        mut self,
+        max_request_payload_size: u32,
+    ) -> ChannelConfiguration {
+        self.max_request_payload_size = max_request_payload_size;
+        self
+    }
+
+    /// Creates a configuration the given maximum size for response payloads (the default is 0).
+    pub fn with_max_response_payload_size(
+        mut self,
+        max_response_payload_size: u32,
+    ) -> ChannelConfiguration {
+        self.max_response_payload_size = max_response_payload_size;
+        self
+    }
 }
 
 #[cfg(test)]

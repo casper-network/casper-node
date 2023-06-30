@@ -79,6 +79,9 @@ impl Varint32 {
     /// `SENTINEL` is guaranteed to be `0`.
     pub const SENTINEL: Varint32 = Varint32([0u8; 6]);
 
+    /// The maximum encoded length of a [`Varint32`].
+    pub const MAX_LEN: usize = 5;
+
     /// Encode a 32-bit integer to variable length.
     pub const fn encode(mut value: u32) -> Self {
         let mut output = [0u8; 6];

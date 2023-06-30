@@ -5,6 +5,7 @@ edition = "2021"
 authors = [ "Marc Brinkmann <marc@casperlabs.io>" ]
 
 [dependencies]
+array-init = "2.1.0"
 bytemuck = { version = "1.13.1", features = [ "derive" ] }
 bytes = "1.4.0"
 thiserror = "1.0.40"

@@ -31,10 +31,24 @@ impl OutgoingMessage {
     /// Constructs a new outgoing messages.
     // Note: Do not make this function available to users of the library, to avoid them constructing
     //       messages by accident that may violate the protocol.
+    #[inline(always)]
     pub(super) fn new(header: Header, payload: Option<Bytes>) -> Self {
         Self { header, payload }
     }
 
+    /// Returns whether or not a message will span multiple frames.
+    #[inline(always)]
+    pub fn is_multi_frame(&self, max_frame_size: usize) -> bool {
+        if let Some(ref payload) = self.payload {
+            let payload_size = payload.len();
+            payload_size + Header::SIZE + (Varint32::encode(payload_size as u32)).len()
+                > max_frame_size
+        } else {
+            false
+        }
+    }
+
+    #[inline(always)]
     /// Creates an iterator over all frames in the message.
     pub fn frames(self) -> FrameIter {
         FrameIter {
@@ -183,7 +197,8 @@ impl OutgoingFrame {
     ///
     /// # Panics
     ///
-    /// Panics in debug mode if [`Preamble`] does not have a correct payload length.
+    /// Panics in debug mode if [`Preamble`] does not have a correct payload length, or if the
+    /// payload exceeds `u32::MAX` in size.
     #[inline(always)]
     fn new_with_payload(preamble: Preamble, payload: Bytes) -> Self {
         debug_assert!(
@@ -195,6 +210,11 @@ impl OutgoingFrame {
             preamble.payload_length.is_sentinel()
                 || preamble.payload_length.decode() as usize == payload.len(),
             "frames with a payload must have a matching decoded payload length"
+        );
+
+        debug_assert!(
+            payload.len() <= u32::MAX as usize,
+            "payload exceeds maximum allowed payload"
         );
 
         OutgoingFrame(Cursor::new(preamble).chain(payload))
