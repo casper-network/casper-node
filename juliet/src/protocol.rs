@@ -472,7 +472,10 @@ impl<const N: usize> JulietProtocol<N> {
     ///
     /// Any successful frame read will cause `buffer` to be advanced by the length of the frame,
     /// thus eventually freeing the data if not held elsewhere.
-    pub fn process_incoming(&mut self, mut buffer: BytesMut) -> Outcome<CompletedRead, Header> {
+    pub fn process_incoming(
+        &mut self,
+        mut buffer: BytesMut,
+    ) -> Outcome<CompletedRead, OutgoingMessage> {
         // First, attempt to complete a frame.
         loop {
             // We do not have enough data to extract a header, indicate and return.
@@ -485,10 +488,9 @@ impl<const N: usize> JulietProtocol<N> {
                 Some(header) => header,
                 None => {
                     // The header was invalid, return an error.
-                    return Fatal(Header::new_error(
-                        ErrorKind::InvalidHeader,
-                        UNKNOWN_CHANNEL,
-                        UNKNOWN_ID,
+                    return Fatal(OutgoingMessage::new(
+                        Header::new_error(ErrorKind::InvalidHeader, UNKNOWN_CHANNEL, UNKNOWN_ID),
+                        None,
                     ));
                 }
             };
@@ -510,17 +512,17 @@ impl<const N: usize> JulietProtocol<N> {
             // At this point we are guaranteed a valid non-error frame, verify its channel.
             let channel = match self.channels.get_mut(header.channel().get() as usize) {
                 Some(channel) => channel,
-                None => return Fatal(header.with_err(ErrorKind::InvalidChannel)),
+                None => return err_msg(header, ErrorKind::InvalidChannel),
             };
 
             match header.kind() {
                 Kind::Request => {
                     if channel.is_at_max_incoming_requests() {
-                        return Fatal(header.with_err(ErrorKind::RequestLimitExceeded));
+                        return err_msg(header, ErrorKind::RequestLimitExceeded);
                     }
 
                     if channel.incoming_requests.insert(header.id()) {
-                        return Fatal(header.with_err(ErrorKind::DuplicateRequest));
+                        return err_msg(header, ErrorKind::DuplicateRequest);
                     }
                     channel.increment_cancellation_allowance();
 
@@ -535,7 +537,7 @@ impl<const N: usize> JulietProtocol<N> {
                 }
                 Kind::Response => {
                     if !channel.outgoing_requests.remove(&header.id()) {
-                        return Fatal(header.with_err(ErrorKind::FictitiousRequest));
+                        return err_msg(header, ErrorKind::FictitiousRequest);
                     } else {
                         return Success(CompletedRead::ReceivedResponse {
                             id: header.id(),
@@ -551,12 +553,12 @@ impl<const N: usize> JulietProtocol<N> {
                         // If we're in the ready state, requests must be eagerly rejected if
                         // exceeding the limit.
                         if channel.is_at_max_incoming_requests() {
-                            return Fatal(header.with_err(ErrorKind::RequestLimitExceeded));
+                            return err_msg(header, ErrorKind::RequestLimitExceeded);
                         }
 
                         // We also check for duplicate requests early to avoid reading them.
                         if channel.incoming_requests.contains(&header.id()) {
-                            return Fatal(header.with_err(ErrorKind::DuplicateRequest));
+                            return err_msg(header, ErrorKind::DuplicateRequest);
                         }
                     };
 
@@ -572,7 +574,7 @@ impl<const N: usize> JulietProtocol<N> {
                     // If we made it to this point, we have consumed the frame. Record it.
                     if is_new_request {
                         if channel.incoming_requests.insert(header.id()) {
-                            return Fatal(header.with_err(ErrorKind::DuplicateRequest));
+                            return err_msg(header, ErrorKind::DuplicateRequest);
                         }
                         channel.increment_cancellation_allowance();
                     }
@@ -598,7 +600,7 @@ impl<const N: usize> JulietProtocol<N> {
                     // Ensure it is not a bogus response.
                     if is_new_response {
                         if !channel.outgoing_requests.contains(&header.id()) {
-                            return Fatal(header.with_err(ErrorKind::FictitiousRequest));
+                            return err_msg(header, ErrorKind::FictitiousRequest);
                         }
                     }
 
@@ -614,7 +616,7 @@ impl<const N: usize> JulietProtocol<N> {
                     // If we made it to this point, we have consumed the frame.
                     if is_new_response {
                         if !channel.outgoing_requests.remove(&header.id()) {
-                            return Fatal(header.with_err(ErrorKind::FictitiousRequest));
+                            return err_msg(header, ErrorKind::FictitiousRequest);
                         }
                     }
 
@@ -637,7 +639,7 @@ impl<const N: usize> JulietProtocol<N> {
                     // cancellation races. For security reasons they are subject to an allowance.
 
                     if channel.cancellation_allowance == 0 {
-                        return Fatal(header.with_err(ErrorKind::CancellationLimitExceeded));
+                        return err_msg(header, ErrorKind::CancellationLimitExceeded);
                     }
                     channel.cancellation_allowance -= 1;
 
@@ -649,10 +651,19 @@ impl<const N: usize> JulietProtocol<N> {
                     if channel.outgoing_requests.remove(&header.id()) {
                         return Success(CompletedRead::ResponseCancellation { id: header.id() });
                     } else {
-                        return Fatal(header.with_err(ErrorKind::FictitiousCancel));
+                        return err_msg(header, ErrorKind::FictitiousCancel);
                     }
                 }
             }
         }
     }
+}
+
+/// Turn a header and an [`ErrorKind`] into an outgoing message.
+///
+/// Pure convenience function for the common use case of producing a response message from a
+/// received header with an appropriate error.
+#[inline(always)]
+fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
+    Fatal(OutgoingMessage::new(header.with_err(kind), None))
 }

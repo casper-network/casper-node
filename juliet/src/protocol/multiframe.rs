@@ -9,10 +9,15 @@ use bytes::{Buf, BytesMut};
 
 use crate::{
     header::{ErrorKind, Header},
-    protocol::Outcome::{self, Fatal, Success},
+    protocol::{
+        err_msg,
+        Outcome::{self, Success},
+    },
     try_outcome,
     varint::decode_varint32,
 };
+
+use super::outgoing_message::OutgoingMessage;
 
 /// Bytes offset with a lifetime.
 ///
@@ -73,7 +78,7 @@ impl MultiframeReceiver {
     /// intermediate segment was processed without completing the message, both are still consume,
     /// but `None` is returned instead. This method will never consume more than one frame.
     ///
-    /// On any error, [`Outcome::Err`] with a suitable header to return to the sender is returned.
+    /// On any error, [`Outcome::Err`] with a suitable message to return to the sender is returned.
     ///
     /// `max_payload_size` is the maximum size of a payload across multiple frames. If it is
     /// exceeded, the `payload_exceeded_error_kind` function is used to construct an error `Header`
@@ -90,7 +95,7 @@ impl MultiframeReceiver {
         max_frame_size: u32,
         max_payload_size: u32,
         payload_exceeded_error_kind: ErrorKind,
-    ) -> Outcome<Option<BytesMut>, Header> {
+    ) -> Outcome<Option<BytesMut>, OutgoingMessage> {
         debug_assert!(
             max_frame_size >= 10,
             "maximum frame size must be enough to hold header and varint"
@@ -101,13 +106,15 @@ impl MultiframeReceiver {
                 // We have a new segment, which has a variable size.
                 let segment_buf = &buffer[Header::SIZE..];
 
-                let payload_size = try_outcome!(decode_varint32(segment_buf)
-                    .map_err(|_overflow| header.with_err(ErrorKind::BadVarInt)));
+                let payload_size =
+                    try_outcome!(decode_varint32(segment_buf).map_err(|_overflow| {
+                        OutgoingMessage::new(header.with_err(ErrorKind::BadVarInt), None)
+                    }));
 
                 {
                     {
                         if payload_size.value > max_payload_size {
-                            return Fatal(header.with_err(payload_exceeded_error_kind));
+                            return err_msg(header, payload_exceeded_error_kind);
                         }
 
                         // We have a valid varint32.
@@ -157,7 +164,7 @@ impl MultiframeReceiver {
             } => {
                 if header != *active_header {
                     // The newly supplied header does not match the one active.
-                    return Fatal(header.with_err(ErrorKind::InProgress));
+                    return err_msg(header, ErrorKind::InProgress);
                 }
 
                 // Determine whether we expect an intermediate or end segment.
