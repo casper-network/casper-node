@@ -69,7 +69,7 @@ where
     where
         Trie<K, V>: ToBytes,
     {
-        value.to_bytes()
+        self.0.serialize_value(value)
     }
 
     #[inline]
