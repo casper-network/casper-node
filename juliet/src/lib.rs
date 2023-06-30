@@ -157,7 +157,7 @@ macro_rules! try_outcome {
 #[derive(Copy, Clone, Debug)]
 pub struct ChannelConfiguration {
     /// Maximum number of requests allowed on the channel.
-    request_limit: u32,
+    request_limit: u16,
     /// Maximum size of a request sent across the channel.
     max_request_payload_size: u32,
     /// Maximum size of a response sent across the channel.
@@ -176,7 +176,7 @@ impl Default for ChannelConfiguration {
 
 impl ChannelConfiguration {
     /// Creates a configuration the given request limit (the default is 1).
-    pub fn with_request_limit(mut self, request_limit: u32) -> ChannelConfiguration {
+    pub fn with_request_limit(mut self, request_limit: u16) -> ChannelConfiguration {
         self.request_limit = request_limit;
         self
     }

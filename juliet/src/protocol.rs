@@ -105,7 +105,7 @@ struct Channel {
     /// Number of requests received minus number of cancellations received.
     ///
     /// Capped at the request limit.
-    cancellation_allowance: u32,
+    cancellation_allowance: u16,
     /// Protocol-specific configuration values.
     config: ChannelConfiguration,
     /// The last request ID generated.
@@ -145,7 +145,7 @@ impl Channel {
     /// Additionally frames of a single message may also not be reordered.
     #[inline]
     pub fn is_at_max_incoming_requests(&self) -> bool {
-        self.incoming_requests.len() as u32 == self.config.request_limit
+        self.incoming_requests.len() == self.config.request_limit as usize
     }
 
     /// Increments the cancellation allowance if possible.
