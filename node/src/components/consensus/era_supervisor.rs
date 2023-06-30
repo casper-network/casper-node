@@ -860,7 +860,8 @@ impl EraSupervisor {
             .ok_or_else(|| "attempt to deactivate an era with no eras instantiated!".to_string())?;
         let era = self.era_mut(which_era);
         if false == era.consensus.is_active() {
-            return Err(format!("attempt to deactivate inactive era {}", which_era));
+            debug!(era_id=%which_era, "attempt to deactivate inactive era");
+            return Ok(which_era);
         }
         era.consensus.deactivate_validator();
         Ok(which_era)
