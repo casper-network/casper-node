@@ -221,13 +221,20 @@ impl EraSupervisor {
             .len()
             .saturating_sub(PAST_EVIDENCE_ERAS as usize)
             .max(1);
+        let old_current_era = self.current_era();
+        let now = Timestamp::now();
         for i in (from..=relevant_switch_block_headers.len()).rev() {
             effects.extend(self.create_new_era_effects(
                 effect_builder,
                 rng,
                 &relevant_switch_block_headers[..i],
+                now,
             ));
         }
+        if self.current_era() != old_current_era {
+            effects.extend(self.make_latest_era_current(effect_builder, rng, now));
+        }
+        effects.extend(self.activate_latest_era_if_needed(effect_builder, rng, now));
         Some(effects)
     }
 
@@ -312,8 +319,9 @@ impl EraSupervisor {
         effect_builder: EffectBuilder<REv>,
         rng: &mut NodeRng,
         switch_blocks: &[BlockHeader],
+        now: Timestamp,
     ) -> Effects<Event> {
-        match self.create_new_era(switch_blocks) {
+        match self.create_new_era(switch_blocks, now) {
             Ok((era_id, outcomes)) => {
                 self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
             }
@@ -326,16 +334,76 @@ impl EraSupervisor {
         }
     }
 
+    fn make_latest_era_current<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        now: Timestamp,
+    ) -> Effects<Event> {
+        let era_id = match self.current_era() {
+            Some(era_id) => era_id,
+            None => {
+                return Effects::new();
+            }
+        };
+        self.metrics
+            .consensus_current_era
+            .set(era_id.value() as i64);
+        let start_height = self.era(era_id).start_height;
+        self.next_block_height = self.next_block_height.max(start_height);
+        let outcomes = self.era_mut(era_id).consensus.handle_is_current(now);
+        self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
+    }
+
+    fn activate_latest_era_if_needed<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        rng: &mut NodeRng,
+        now: Timestamp,
+    ) -> Effects<Event> {
+        let era_id = match self.current_era() {
+            Some(era_id) => era_id,
+            None => {
+                return Effects::new();
+            }
+        };
+        if self.era(era_id).consensus.is_active() {
+            return Effects::new();
+        }
+        let our_id = self.public_signing_key.clone();
+        let outcomes = if !self.era(era_id).validators().contains_key(&our_id) {
+            info!(era = era_id.value(), %our_id, "not voting; not a validator");
+            vec![]
+        } else {
+            info!(era = era_id.value(), %our_id, "start voting");
+            let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
+            let instance_id = self.era(era_id).consensus.instance_id();
+            let unit_hash_file = self.unit_file(instance_id);
+            self.era_mut(era_id).consensus.activate_validator(
+                our_id,
+                secret,
+                now,
+                Some(unit_hash_file),
+            )
+        };
+        self.handle_consensus_outcomes(effect_builder, rng, era_id, outcomes)
+    }
+
     /// Initializes a new era. The switch blocks must contain the most recent `auction_delay + 1`
     /// ones, in order, but at most as far back as to the last activation point.
     fn create_new_era(
         &mut self,
         switch_blocks: &[BlockHeader],
+        now: Timestamp,
     ) -> Result<(EraId, Vec<ProtocolOutcome<ClContext>>), CreateNewEraError> {
         let key_block = switch_blocks
             .last()
             .ok_or(CreateNewEraError::AttemptedToCreateEraWithNoSwitchBlocks)?;
         let era_id = key_block.era_id().successor();
+
+        let chainspec_hash = self.chainspec.hash();
+        let key_block_hash = key_block.block_hash();
+        let instance_id = instance_id(chainspec_hash, era_id, key_block_hash);
 
         if self.open_eras.contains_key(&era_id) {
             debug!(era = era_id.value(), "era already exists");
@@ -408,11 +476,6 @@ impl EraSupervisor {
             .flat_map(|era_end| era_end.era_report().equivocators().iter().cloned())
             .collect();
 
-        let chainspec_hash = self.chainspec.hash();
-        let key_block_hash = key_block.block_hash();
-        let instance_id = instance_id(chainspec_hash, era_id, key_block_hash);
-        let now = Timestamp::now();
-
         info!(
             ?validators,
             %start_time,
@@ -436,7 +499,7 @@ impl EraSupervisor {
             .collect();
 
         // Create and insert the new era instance.
-        let (consensus, mut outcomes) = match self.chainspec.core_config.consensus_protocol {
+        let (consensus, outcomes) = match self.chainspec.core_config.consensus_protocol {
             ConsensusProtocolName::Highway => HighwayProtocol::new_boxed(
                 instance_id,
                 validators.clone(),
@@ -476,7 +539,6 @@ impl EraSupervisor {
 
         // Activate the era if this node was already running when the era began, it is still
         // ongoing based on its minimum duration, and we are one of the validators.
-        let our_id = self.public_signing_key.clone();
         if self
             .current_era()
             .map_or(false, |current_era| current_era > era_id)
@@ -491,25 +553,6 @@ impl EraSupervisor {
             if let Some(era) = self.open_eras.get_mut(&era_id) {
                 era.consensus.set_evidence_only();
             }
-        } else {
-            self.metrics
-                .consensus_current_era
-                .set(era_id.value() as i64);
-            self.next_block_height = self.next_block_height.max(start_height);
-            outcomes.extend(self.era_mut(era_id).consensus.handle_is_current(now));
-            if !self.era(era_id).validators().contains_key(&our_id) {
-                info!(era = era_id.value(), %our_id, "not voting; not a validator");
-            } else {
-                info!(era = era_id.value(), %our_id, "start voting");
-                let secret = Keypair::new(self.secret_signing_key.clone(), our_id.clone());
-                let unit_hash_file = self.unit_file(&instance_id);
-                outcomes.extend(self.era_mut(era_id).consensus.activate_validator(
-                    our_id,
-                    secret,
-                    now,
-                    Some(unit_hash_file),
-                ))
-            };
         }
 
         // Mark validators as faulty for which we have evidence in the previous era.
@@ -806,6 +849,21 @@ impl EraSupervisor {
             };
             effect_builder.set_timeout(delay).event(deactivate_era)
         }
+    }
+
+    /// Will deactivate voting for the current era.
+    /// Does nothing if the current era doesn't exist or is inactive already.
+    pub(crate) fn deactivate_current_era(&mut self) -> Result<EraId, String> {
+        let which_era = self
+            .current_era()
+            .ok_or_else(|| "attempt to deactivate an era with no eras instantiated!".to_string())?;
+        let era = self.era_mut(which_era);
+        if false == era.consensus.is_active() {
+            debug!(era_id=%which_era, "attempt to deactivate inactive era");
+            return Ok(which_era);
+        }
+        era.consensus.deactivate_validator();
+        Ok(which_era)
     }
 
     pub(super) fn resolve_validity<REv: ReactorEventT>(

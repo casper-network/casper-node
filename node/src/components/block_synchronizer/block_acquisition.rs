@@ -247,6 +247,11 @@ pub(super) enum Acceptance {
     NeededIt,
 }
 
+pub(super) struct RegisterExecResultsOutcome {
+    pub(super) exec_results: Option<HashMap<DeployHash, casper_types::ExecutionResult>>,
+    pub(super) acceptance: Option<Acceptance>,
+}
+
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// ```mermaid
 /// sequenceDiagram
@@ -313,7 +318,7 @@ impl BlockAcquisitionState {
         validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         is_historical: bool,
-        max_simultaneous_peers: usize,
+        max_simultaneous_peers: u8,
     ) -> Result<BlockAcquisitionAction, BlockAcquisitionError> {
         // self is the resting state we are in, ret is the next action that should be taken
         // to acquire the necessary data to get us to the next step (if any), or an error
@@ -977,12 +982,11 @@ impl BlockAcquisitionState {
         &mut self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
         need_execution_state: bool,
-    ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, BlockAcquisitionError>
-    {
+    ) -> Result<RegisterExecResultsOutcome, BlockAcquisitionError> {
         debug!(state=%self, need_execution_state,
             block_execution_results_or_chunk=%block_execution_results_or_chunk,
             "register_execution_results_or_chunk");
-        let (new_state, ret) = match self {
+        let (new_state, maybe_exec_results, acceptance) = match self {
             BlockAcquisitionState::HaveGlobalState(
                 block,
                 signatures,
@@ -1000,35 +1004,36 @@ impl BlockAcquisitionState {
                         block_execution_results_or_chunk,
                         deploy_hashes,
                     ) {
-                    Ok(new_effects) => match new_effects {
+                    Ok((new_acquisition, acceptance)) => match new_acquisition {
                         ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. } => {
                             debug!("apply_block_execution_results_or_chunk: Needed | Pending");
-                            return Ok(None);
+                            return Ok(RegisterExecResultsOutcome {
+                                exec_results: None,
+                                acceptance: Some(acceptance),
+                            });
                         }
                         ExecutionResultsAcquisition::Complete { ref results, .. } => {
                             debug!("apply_block_execution_results_or_chunk: Complete");
-                            (
-                                BlockAcquisitionState::HaveGlobalState(
-                                    block.clone(),
-                                    signatures.clone(),
-                                    deploys.clone(),
-                                    new_effects.clone(),
-                                ),
-                                Some(results.clone()),
-                            )
+                            let new_state = BlockAcquisitionState::HaveGlobalState(
+                                block.clone(),
+                                signatures.clone(),
+                                deploys.clone(),
+                                new_acquisition.clone(),
+                            );
+                            let maybe_exec_results = Some(results.clone());
+                            (new_state, maybe_exec_results, acceptance)
                         }
                         ExecutionResultsAcquisition::Acquiring { .. } => {
                             debug!("apply_block_execution_results_or_chunk: Acquiring");
-                            (
-                                BlockAcquisitionState::HaveGlobalState(
-                                    block.clone(),
-                                    signatures.clone(),
-                                    deploys.clone(),
-                                    new_effects,
-                                ),
-                                None,
-                            )
+                            let new_state = BlockAcquisitionState::HaveGlobalState(
+                                block.clone(),
+                                signatures.clone(),
+                                deploys.clone(),
+                                new_acquisition,
+                            );
+                            let maybe_exec_results = None;
+                            (new_state, maybe_exec_results, acceptance)
                         }
                     },
                     Err(error) => {
@@ -1049,11 +1054,17 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveFinalizedBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
-                return Ok(None);
+                return Ok(RegisterExecResultsOutcome {
+                    exec_results: None,
+                    acceptance: None,
+                });
             }
         };
         self.set_state(new_state);
-        Ok(ret)
+        Ok(RegisterExecResultsOutcome {
+            exec_results: maybe_exec_results,
+            acceptance: Some(acceptance),
+        })
     }
 
     /// Register execution results stored notification for this block.
@@ -1339,7 +1350,7 @@ impl BlockAcquisitionState {
 pub(super) fn signatures_from_missing_validators(
     validator_weights: &EraValidatorWeights,
     signatures: &mut SignatureAcquisition,
-    max_simultaneous_peers: usize,
+    max_simultaneous_peers: u8,
     peer_list: &PeerList,
     rng: &mut NodeRng,
     block_header: &BlockHeader,
@@ -1349,7 +1360,7 @@ pub(super) fn signatures_from_missing_validators(
         .cloned()
         .collect();
     // If there are too few, retry any in Pending state.
-    if missing_signatures_in_random_order.len() < max_simultaneous_peers {
+    if (missing_signatures_in_random_order.len() as u8) < max_simultaneous_peers {
         missing_signatures_in_random_order.extend(
             validator_weights
                 .missing_validators(signatures.not_pending())

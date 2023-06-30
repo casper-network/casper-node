@@ -96,6 +96,17 @@ impl ValidatorMatrix {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn public_keys(&self, era_id: &EraId) -> Vec<PublicKey> {
+        let mut ret = vec![];
+        if let Some(evw) = self.read_inner().get(era_id) {
+            for validator_public_key in evw.validator_public_keys() {
+                ret.push(validator_public_key.clone());
+            }
+        }
+        ret
+    }
+
     // Register the era of the highest orphaned block.
     pub(crate) fn register_retrograde_latch(&mut self, latch_era: Option<EraId>) {
         self.retrograde_latch = latch_era;

@@ -84,7 +84,7 @@ pub struct CoreConfig {
     pub strict_argument_checking: bool,
 
     /// How many peers to simultaneously ask when sync leaping.
-    pub simultaneous_peer_requests: u32,
+    pub simultaneous_peer_requests: u8,
 
     /// Which consensus protocol to use.
     pub consensus_protocol: ConsensusProtocolName,
@@ -253,7 +253,7 @@ impl FromBytes for CoreConfig {
         let (minimum_delegation_amount, remainder) = u64::from_bytes(remainder)?;
         let (prune_batch_size, remainder) = u64::from_bytes(remainder)?;
         let (strict_argument_checking, remainder) = bool::from_bytes(remainder)?;
-        let (simultaneous_peer_requests, remainder) = u32::from_bytes(remainder)?;
+        let (simultaneous_peer_requests, remainder) = u8::from_bytes(remainder)?;
         let (consensus_protocol, remainder) = ConsensusProtocolName::from_bytes(remainder)?;
         let (max_delegators_per_validator, remainder) = FromBytes::from_bytes(remainder)?;
         let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
