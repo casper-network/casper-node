@@ -52,7 +52,7 @@ where
     {
         #[cfg(debug_assertions)]
         {
-            let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(bytes)?;
+            let trie: Trie<K, V> = self.0.deserialize_value(bytes)?;
             if let Trie::Leaf { .. } = trie {
                 panic!("Tried to deserialize a value but expected no deserialization to happen.")
             }
@@ -60,7 +60,7 @@ where
         }
         #[cfg(not(debug_assertions))]
         {
-            bytesrepr::deserialize_from_slice(bytes)
+            self.0.deserialize_value(bytes)
         }
     }
 
@@ -165,7 +165,7 @@ where
     {
         #[cfg(debug_assertions)]
         {
-            let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(bytes)?;
+            let trie: Trie<K, V> = self.store.deserialize_value(bytes)?;
             if let Trie::Leaf { .. } = trie {
                 let trie_hash = trie.trie_hash()?;
                 let mut tracking = self.deserialize_tracking.lock().expect("Poisoned lock");
@@ -179,7 +179,7 @@ where
         }
         #[cfg(not(debug_assertions))]
         {
-            bytesrepr::deserialize_from_slice(bytes)
+            self.store.deserialize_value(bytes)
         }
     }
 
