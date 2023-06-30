@@ -192,7 +192,12 @@ pub enum CompletedRead {
     /// An error has been received.
     ///
     /// The connection on our end should be closed, the peer will do the same.
-    ErrorReceived(Header),
+    ErrorReceived {
+        /// The error header.
+        header: Header,
+        /// The error data (only with [`ErrorKind::Other`]).
+        data: Option<[u8; 4]>,
+    },
     /// A new request has been received.
     NewRequest {
         /// The ID of the request.
@@ -499,12 +504,24 @@ impl<const N: usize> JulietProtocol<N> {
             if header.is_error() {
                 match header.error_kind() {
                     ErrorKind::Other => {
-                        // TODO: `OTHER` errors may contain a payload.
+                        // `Other` allows for adding error data, which is fixed at 4 bytes.
+                        let expected_total_length = buffer.len() + Header::SIZE + 4;
 
-                        unimplemented!()
+                        if buffer.len() < expected_total_length {
+                            return Outcome::incomplete(expected_total_length - buffer.len());
+                        }
+
+                        let data = buffer[4..8]
+                            .try_into()
+                            .expect("did not expect previously bounds checked buffer read to fail");
+
+                        return Success(CompletedRead::ErrorReceived {
+                            header,
+                            data: Some(data),
+                        });
                     }
                     _ => {
-                        return Success(CompletedRead::ErrorReceived(header));
+                        return Success(CompletedRead::ErrorReceived { header, data: None });
                     }
                 }
             }
