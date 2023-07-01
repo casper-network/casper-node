@@ -247,6 +247,11 @@ pub enum LocalProtocolViolation {
     /// The given payload exceeds the configured limit.
     #[error("payload exceeds configured limit")]
     PayloadExceedsLimit,
+    /// The given error payload exceeds a single frame.
+    ///
+    /// Error payloads may not span multiple frames. Short the error payload or increase frame size.
+    #[error("error payload would be multi-frame")]
+    ErrorPayloadIsMultiFrame,
 }
 
 impl<const N: usize> JulietProtocol<N> {
@@ -456,9 +461,20 @@ impl<const N: usize> JulietProtocol<N> {
     /// # Local protocol violations
     ///
     /// Will return a [`LocalProtocolViolation`] when attempting to send on an invalid channel.
-    pub fn custom_error(&mut self, channel: ChannelId, id: Id, payload: Bytes) -> OutgoingMessage {
+    pub fn custom_error(
+        &mut self,
+        channel: ChannelId,
+        id: Id,
+        payload: Bytes,
+    ) -> Result<OutgoingMessage, LocalProtocolViolation> {
         let header = Header::new_error(header::ErrorKind::Other, channel, id);
-        OutgoingMessage::new(header, Some(payload))
+
+        let msg = OutgoingMessage::new(header, Some(payload));
+        if msg.is_multi_frame(self.max_frame_size as usize) {
+            Err(LocalProtocolViolation::ErrorPayloadIsMultiFrame)
+        } else {
+            Ok(msg)
+        }
     }
 
     /// Processes incoming data from a buffer.
@@ -681,6 +697,7 @@ impl<const N: usize> JulietProtocol<N> {
                     channel.cancellation_allowance -= 1;
 
                     // TODO: What to do with partially received multi-frame request?
+                    // TODO: Actually remove from incoming set.
 
                     return Success(CompletedRead::RequestCancellation { id: header.id() });
                 }
