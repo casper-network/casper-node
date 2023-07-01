@@ -19,7 +19,10 @@ use thiserror::Error;
 use self::{multiframe::MultiframeReceiver, outgoing_message::OutgoingMessage};
 use crate::{
     header::{self, ErrorKind, Header, Kind},
-    try_outcome, ChannelConfiguration, ChannelId, Id,
+    try_outcome,
+    util::Index,
+    varint::decode_varint32,
+    ChannelConfiguration, ChannelId, Id,
     Outcome::{self, Fatal, Incomplete, Success},
 };
 
@@ -196,7 +199,7 @@ pub enum CompletedRead {
         /// The error header.
         header: Header,
         /// The error data (only with [`ErrorKind::Other`]).
-        data: Option<[u8; 4]>,
+        data: Option<Bytes>,
     },
     /// A new request has been received.
     NewRequest {
@@ -504,20 +507,37 @@ impl<const N: usize> JulietProtocol<N> {
             if header.is_error() {
                 match header.error_kind() {
                     ErrorKind::Other => {
-                        // `Other` allows for adding error data, which is fixed at 4 bytes.
-                        let expected_total_length = buffer.len() + Header::SIZE + 4;
+                        // The error data is varint encoded, but must not exceed a single frame.
+                        let tail = &buffer[Header::SIZE..];
 
-                        if buffer.len() < expected_total_length {
-                            return Outcome::incomplete(expected_total_length - buffer.len());
+                        // This can be confusing for the other end, receiving an error for their
+                        // error, but they should not send malformed errors in the first place!
+                        let parsed_length =
+                            try_outcome!(decode_varint32(tail).map_err(|_overflow| {
+                                OutgoingMessage::new(header.with_err(ErrorKind::BadVarInt), None)
+                            }));
+
+                        // Create indices into buffer.
+                        let preamble_end =
+                            Index::new(&buffer, Header::SIZE + parsed_length.offset.get() as usize);
+                        let payload_length = parsed_length.value as usize;
+                        let frame_end = Index::new(&buffer, *preamble_end + payload_length);
+
+                        // No multi-frame messages allowed!
+                        if *frame_end > self.max_frame_size as usize {
+                            return err_msg(header, ErrorKind::SegmentViolation);
                         }
 
-                        let data = buffer[4..8]
-                            .try_into()
-                            .expect("did not expect previously bounds checked buffer read to fail");
+                        if buffer.len() < *frame_end {
+                            return Outcome::incomplete(*frame_end - buffer.len());
+                        }
+
+                        buffer.advance(*preamble_end);
+                        let payload = buffer.split_to(payload_length);
 
                         return Success(CompletedRead::ErrorReceived {
                             header,
-                            data: Some(data),
+                            data: Some(payload.freeze()),
                         });
                     }
                     _ => {

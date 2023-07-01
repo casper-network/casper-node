@@ -6,6 +6,7 @@
 
 mod header;
 pub mod protocol;
+pub(crate) mod util;
 pub mod varint;
 
 use std::{

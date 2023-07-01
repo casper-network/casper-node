@@ -3,7 +3,7 @@
 //! The juliet protocol supports multi-frame messages, which are subject to addtional rules and
 //! checks. The resulting state machine is encoded in the [`MultiframeReceiver`] type.
 
-use std::{marker::PhantomData, mem, ops::Deref};
+use std::mem;
 
 use bytes::{Buf, BytesMut};
 
@@ -14,40 +14,11 @@ use crate::{
         Outcome::{self, Success},
     },
     try_outcome,
+    util::Index,
     varint::decode_varint32,
 };
 
 use super::outgoing_message::OutgoingMessage;
-
-/// Bytes offset with a lifetime.
-///
-/// Helper type that ensures that offsets that are depending on a buffer are not being invalidated
-/// through accidental modification.
-struct Index<'a> {
-    /// The byte offset this `Index` represents.
-    index: usize,
-    /// Buffer it is tied to.
-    buffer: PhantomData<&'a BytesMut>,
-}
-
-impl<'a> Deref for Index<'a> {
-    type Target = usize;
-
-    fn deref(&self) -> &Self::Target {
-        &self.index
-    }
-}
-
-impl<'a> Index<'a> {
-    /// Creates a new `Index` with offset value `index`, borrowing `buffer`.
-    fn new(buffer: &'a BytesMut, index: usize) -> Self {
-        let _ = buffer;
-        Index {
-            index,
-            buffer: PhantomData,
-        }
-    }
-}
 
 /// The multi-frame message receival state of a single channel, as specified in the RFC.
 #[derive(Debug, Default)]
