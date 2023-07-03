@@ -1406,6 +1406,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "do-panic"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+]
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
