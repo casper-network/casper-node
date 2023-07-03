@@ -330,7 +330,7 @@ where
     let mut acc: Parents<K, V> = Vec::new();
 
     loop {
-        let maybe_trie_leaf = bytesrepr::deserialize(current.into())?;
+        let maybe_trie_leaf = bytesrepr::deserialize_from_slice(&current)?;
         match maybe_trie_leaf {
             leaf_bytes @ LazilyDeserializedTrie::Leaf(_) => {
                 return Ok(TrieScanRaw::new(leaf_bytes, acc))
@@ -1065,7 +1065,7 @@ where
                             maybe_next_trie = {
                                 match self.store.get_raw(self.txn, pointer.hash()) {
                                     Ok(Some(trie_bytes)) => {
-                                        match bytesrepr::deserialize(trie_bytes.into()) {
+                                        match bytesrepr::deserialize_from_slice(&trie_bytes) {
                                             Ok(lazy_trie) => Some(lazy_trie),
                                             Err(error) => {
                                                 self.state = KeysIteratorState::Failed;
@@ -1115,7 +1115,7 @@ where
                     // anyway
                     if affix.starts_with(&check_prefix) {
                         maybe_next_trie = match self.store.get_raw(self.txn, pointer.hash()) {
-                            Ok(Some(trie_bytes)) => match bytesrepr::deserialize(trie_bytes.into())
+                            Ok(Some(trie_bytes)) => match bytesrepr::deserialize_from_slice(&trie_bytes)
                             {
                                 Ok(lazy_trie) => Some(lazy_trie),
                                 Err(error) => {
@@ -1172,7 +1172,7 @@ where
     let (visited, init_state): (Vec<VisitedTrieNode>, _) = match store.get_raw(txn, root) {
         Ok(None) => (vec![], KeysIteratorState::Ok),
         Err(e) => (vec![], KeysIteratorState::ReturnError(e)),
-        Ok(Some(current_root_bytes)) => match bytesrepr::deserialize(current_root_bytes.into()) {
+        Ok(Some(current_root_bytes)) => match bytesrepr::deserialize_from_slice(current_root_bytes) {
             Ok(lazy_trie) => {
                 let visited = vec![VisitedTrieNode {
                     trie: lazy_trie,

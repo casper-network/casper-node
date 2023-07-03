@@ -220,7 +220,7 @@ impl ScratchTrieStore {
             };
 
             let lazy_trie: LazilyDeserializedTrie =
-                bytesrepr::deserialize(trie_bytes.clone().into())?;
+                bytesrepr::deserialize_from_slice(trie_bytes)?;
             tries_to_write.extend(lazy_trie.iter_children());
 
             Store::<Digest, Trie<Key, StoredValue>>::put_raw(
