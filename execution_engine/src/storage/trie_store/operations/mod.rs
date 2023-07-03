@@ -1115,14 +1115,15 @@ where
                     // anyway
                     if affix.starts_with(&check_prefix) {
                         maybe_next_trie = match self.store.get_raw(self.txn, pointer.hash()) {
-                            Ok(Some(trie_bytes)) => match bytesrepr::deserialize_from_slice(&trie_bytes)
-                            {
-                                Ok(lazy_trie) => Some(lazy_trie),
-                                Err(error) => {
-                                    self.state = KeysIteratorState::Failed;
-                                    return Some(Err(error.into()));
+                            Ok(Some(trie_bytes)) => {
+                                match bytesrepr::deserialize_from_slice(&trie_bytes) {
+                                    Ok(lazy_trie) => Some(lazy_trie),
+                                    Err(error) => {
+                                        self.state = KeysIteratorState::Failed;
+                                        return Some(Err(error.into()));
+                                    }
                                 }
-                            },
+                            }
                             Ok(None) => None,
                             Err(e) => {
                                 self.state = KeysIteratorState::Failed;
@@ -1172,7 +1173,8 @@ where
     let (visited, init_state): (Vec<VisitedTrieNode>, _) = match store.get_raw(txn, root) {
         Ok(None) => (vec![], KeysIteratorState::Ok),
         Err(e) => (vec![], KeysIteratorState::ReturnError(e)),
-        Ok(Some(current_root_bytes)) => match bytesrepr::deserialize_from_slice(current_root_bytes) {
+        Ok(Some(current_root_bytes)) => match bytesrepr::deserialize_from_slice(current_root_bytes)
+        {
             Ok(lazy_trie) => {
                 let visited = vec![VisitedTrieNode {
                     trie: lazy_trie,
