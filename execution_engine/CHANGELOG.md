@@ -14,6 +14,7 @@ All notable changes to this project will be documented in this file.  The format
 
 ### Changed
 * Default value for `max_stack_height` is increased to 500.
+* `current stack height` is written to `stderr` in case `Trap(Unreachable)` error is encountered during Wasm execution.
 
 
 

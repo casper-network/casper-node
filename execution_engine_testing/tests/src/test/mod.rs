@@ -10,6 +10,7 @@ mod get_balance;
 mod groups;
 mod host_function_costs;
 mod manage_groups;
+mod panic;
 mod regression;
 mod step;
 mod storage_costs;
