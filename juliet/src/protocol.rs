@@ -410,7 +410,7 @@ impl<const N: usize> JulietProtocol<N> {
 
     /// Creates a cancellation for an outgoing request.
     ///
-    /// If the ID is not in the outgoing set, due to already being responsed to or cancelled, `None`
+    /// If the ID is not in the outgoing set, due to already being responded to or cancelled, `None`
     /// will be returned.
     ///
     /// If the caller does not track the use of IDs separately to the [`JulietProtocol`] structure,
