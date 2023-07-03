@@ -116,7 +116,7 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    pub async fn run(mut self, read_buffer_size: usize) -> Result<(), CoreError> {
+    pub async fn run(mut self) -> Result<(), CoreError> {
         let mut bytes_until_next_parse = Header::SIZE;
 
         loop {
