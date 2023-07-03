@@ -11,6 +11,7 @@ mod groups;
 mod host_function_costs;
 mod manage_groups;
 mod private_chain;
+mod panic;
 mod regression;
 mod step;
 mod storage_costs;
