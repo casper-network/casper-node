@@ -8,7 +8,12 @@ use std::{
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
 
-use crate::storage::{store::Store, trie::Trie, trie_store::TrieStore};
+use crate::storage::{
+    store::Store,
+    transaction_source::{Readable, Writable},
+    trie::Trie,
+    trie_store::TrieStore,
+};
 
 /// A [`TrieStore`] wrapper that panics in debug mode whenever an attempt to deserialize [`V`] is
 /// made, otherwise it behaves as a [`TrieStore`].
@@ -47,7 +52,7 @@ where
     {
         #[cfg(debug_assertions)]
         {
-            let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(bytes)?;
+            let trie: Trie<K, V> = self.0.deserialize_value(bytes)?;
             if let Trie::Leaf { .. } = trie {
                 panic!("Tried to deserialize a value but expected no deserialization to happen.")
             }
@@ -55,8 +60,63 @@ where
         }
         #[cfg(not(debug_assertions))]
         {
-            bytesrepr::deserialize_from_slice(bytes)
+            self.0.deserialize_value(bytes)
         }
+    }
+
+    #[inline]
+    fn serialize_value(&self, value: &Trie<K, V>) -> Result<Vec<u8>, bytesrepr::Error>
+    where
+        Trie<K, V>: ToBytes,
+    {
+        self.0.serialize_value(value)
+    }
+
+    #[inline]
+    fn get<T>(&self, txn: &T, key: &Digest) -> Result<Option<Trie<K, V>>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Trie<K, V>: FromBytes,
+        Self::Error: From<T::Error>,
+    {
+        self.0.get(txn, key)
+    }
+
+    #[inline]
+    fn get_raw<T>(&self, txn: &T, key: &Digest) -> Result<Option<bytesrepr::Bytes>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        self.0.get_raw(txn, key)
+    }
+
+    #[inline]
+    fn put<T>(&self, txn: &mut T, key: &Digest, value: &Trie<K, V>) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Trie<K, V>: ToBytes,
+        Self::Error: From<T::Error>,
+    {
+        self.0.put(txn, key, value)
+    }
+
+    #[inline]
+    fn put_raw<T>(
+        &self,
+        txn: &mut T,
+        key: &Digest,
+        value_bytes: std::borrow::Cow<'_, [u8]>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        self.0.put_raw(txn, key, value_bytes)
     }
 }
 
@@ -105,7 +165,7 @@ where
     {
         #[cfg(debug_assertions)]
         {
-            let trie: Trie<K, V> = bytesrepr::deserialize_from_slice(bytes)?;
+            let trie: Trie<K, V> = self.store.deserialize_value(bytes)?;
             if let Trie::Leaf { .. } = trie {
                 let trie_hash = trie.trie_hash()?;
                 let mut tracking = self.deserialize_tracking.lock().expect("Poisoned lock");
@@ -119,7 +179,62 @@ where
         }
         #[cfg(not(debug_assertions))]
         {
-            bytesrepr::deserialize_from_slice(bytes)
+            self.store.deserialize_value(bytes)
         }
+    }
+
+    #[inline]
+    fn serialize_value(&self, value: &Trie<K, V>) -> Result<Vec<u8>, bytesrepr::Error>
+    where
+        Trie<K, V>: ToBytes,
+    {
+        self.store.serialize_value(value)
+    }
+
+    #[inline]
+    fn get<T>(&self, txn: &T, key: &Digest) -> Result<Option<Trie<K, V>>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Trie<K, V>: FromBytes,
+        Self::Error: From<T::Error>,
+    {
+        self.store.get(txn, key)
+    }
+
+    #[inline]
+    fn get_raw<T>(&self, txn: &T, key: &Digest) -> Result<Option<bytesrepr::Bytes>, Self::Error>
+    where
+        T: Readable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        self.store.get_raw(txn, key)
+    }
+
+    #[inline]
+    fn put<T>(&self, txn: &mut T, key: &Digest, value: &Trie<K, V>) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Trie<K, V>: ToBytes,
+        Self::Error: From<T::Error>,
+    {
+        self.store.put(txn, key, value)
+    }
+
+    #[inline]
+    fn put_raw<T>(
+        &self,
+        txn: &mut T,
+        key: &Digest,
+        value_bytes: std::borrow::Cow<'_, [u8]>,
+    ) -> Result<(), Self::Error>
+    where
+        T: Writable<Handle = Self::Handle>,
+        Digest: AsRef<[u8]>,
+        Self::Error: From<T::Error>,
+    {
+        self.store.put_raw(txn, key, value_bytes)
     }
 }
