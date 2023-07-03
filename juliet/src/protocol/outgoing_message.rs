@@ -122,7 +122,7 @@ impl FrameIter {
     /// While different [`OutgoingMessage`]s can have their send order mixed or interspersed, a
     /// caller MUST NOT send [`OutgoingFrame`]s in any order but the one produced by this method.
     /// In other words, reorder messages, but not frames within a message.
-    pub fn next(&mut self, max_frame_size: usize) -> Option<OutgoingFrame> {
+    pub fn next(&mut self, max_frame_size: u32) -> Option<OutgoingFrame> {
         if let Some(ref payload) = self.msg.payload {
             let payload_remaining = payload.len() - self.bytes_processed;
 
@@ -141,7 +141,7 @@ impl FrameIter {
                 Preamble::new(self.msg.header, Varint32::SENTINEL)
             };
 
-            let frame_capacity = max_frame_size - preamble.len();
+            let frame_capacity = max_frame_size as usize - preamble.len();
             let frame_payload_len = frame_capacity.min(payload_remaining);
 
             let range = self.bytes_processed..(self.bytes_processed + frame_payload_len);
@@ -164,7 +164,7 @@ impl FrameIter {
 
     /// Returns a [`std::iter::Iterator`] implementing frame iterator.
     #[inline]
-    pub fn into_iter(mut self, max_frame_size: usize) -> impl Iterator<Item = OutgoingFrame> {
+    pub fn into_iter(mut self, max_frame_size: u32) -> impl Iterator<Item = OutgoingFrame> {
         iter::from_fn(move || self.next(max_frame_size))
     }
 }

@@ -16,7 +16,8 @@ use std::{collections::HashSet, num::NonZeroU32};
 use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
 
-use self::{multiframe::MultiframeReceiver, outgoing_message::OutgoingMessage};
+use self::multiframe::MultiframeReceiver;
+pub use self::outgoing_message::{FrameIter, OutgoingFrame, OutgoingMessage};
 use crate::{
     header::{self, ErrorKind, Header, Kind},
     try_outcome,
@@ -298,6 +299,12 @@ impl<const N: usize> JulietProtocol<N> {
         }
     }
 
+    /// Returns the configured maximum frame size.
+    #[inline(always)]
+    pub fn max_frame_size(&self) -> u32 {
+        self.max_frame_size
+    }
+
     /// Returns whether or not it is permissible to send another request on given channel.
     #[inline]
     pub fn allowed_to_send_request(
@@ -498,7 +505,7 @@ impl<const N: usize> JulietProtocol<N> {
     /// thus eventually freeing the data if not held elsewhere.
     pub fn process_incoming(
         &mut self,
-        mut buffer: BytesMut,
+        mut buffer: &mut BytesMut,
     ) -> Outcome<CompletedRead, OutgoingMessage> {
         // First, attempt to complete a frame.
         loop {

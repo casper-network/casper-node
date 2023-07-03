@@ -5,6 +5,7 @@
 //! secure, simple, easy to verify/review implementation that is still reasonably performant.
 
 mod header;
+pub mod io;
 pub mod protocol;
 pub mod rpc;
 pub(crate) mod util;
