@@ -191,6 +191,19 @@ impl Header {
         self.kind_byte() & Self::KIND_ERR_BIT == Self::KIND_ERR_BIT
     }
 
+    /// Returns whether or not the given header is a request header.
+    #[inline]
+    pub fn is_request(self) -> bool {
+        if !self.is_error() {
+            match self.kind() {
+                Kind::Request | Kind::RequestPl => true,
+                _ => false,
+            }
+        } else {
+            false
+        }
+    }
+
     /// Returns the error kind.
     ///
     /// # Panics
@@ -319,6 +332,18 @@ mod tests {
             drop(header.error_kind());
         } else {
             drop(header.kind());
+        }
+
+        // Verify `is_request` does not panic.
+        drop(header.is_request());
+
+        // Ensure `is_request` returns the correct value.
+        if !header.is_error() {
+            if matches!(header.kind(), Kind::Request) || matches!(header.kind(), Kind::RequestPl) {
+                assert!(header.is_request());
+            } else {
+                assert!(!header.is_request());
+            }
         }
     }
 

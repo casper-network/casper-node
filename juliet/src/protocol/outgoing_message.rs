@@ -48,13 +48,19 @@ impl OutgoingMessage {
         }
     }
 
-    #[inline(always)]
     /// Creates an iterator over all frames in the message.
+    #[inline(always)]
     pub fn frames(self) -> FrameIter {
         FrameIter {
             msg: self,
             bytes_processed: 0,
         }
+    }
+
+    /// Returns the outgoing message's header.
+    #[inline(always)]
+    pub fn header(&self) -> Header {
+        self.header
     }
 }
 
@@ -89,9 +95,14 @@ impl Preamble {
     }
 
     /// Returns the length of the preamble when encoded as as a bytestring.
-    #[inline]
-    fn len(&self) -> usize {
+    #[inline(always)]
+    fn len(self) -> usize {
         Header::SIZE + self.payload_length.len()
+    }
+
+    #[inline(always)]
+    fn header(self) -> Header {
+        self.header
     }
 }
 
@@ -117,18 +128,18 @@ pub struct FrameIter {
 impl FrameIter {
     /// Returns the next frame to send.
     ///
+    /// Will return `Some(self)` is there are additional frames to send, `None` otherwise.
+    ///
     /// # Note
     ///
     /// While different [`OutgoingMessage`]s can have their send order mixed or interspersed, a
     /// caller MUST NOT send [`OutgoingFrame`]s in any order but the one produced by this method.
     /// In other words, reorder messages, but not frames within a message.
-    pub fn next(&mut self, max_frame_size: u32) -> Option<OutgoingFrame> {
+    pub fn next_owned(mut self, max_frame_size: u32) -> (OutgoingFrame, Option<Self>) {
         if let Some(ref payload) = self.msg.payload {
-            let payload_remaining = payload.len() - self.bytes_processed;
+            let mut payload_remaining = payload.len() - self.bytes_processed;
 
-            if payload_remaining == 0 {
-                return None;
-            }
+            debug_assert!(payload_remaining > 0);
 
             let length_prefix = if self.bytes_processed == 0 {
                 Varint32::encode(payload_remaining as u32)
@@ -148,24 +159,21 @@ impl FrameIter {
             let frame_payload = payload.slice(range);
             self.bytes_processed += frame_payload_len;
 
-            Some(OutgoingFrame::new_with_payload(preamble, frame_payload))
-        } else {
-            if self.bytes_processed == 0 {
-                self.bytes_processed = usize::MAX;
-                return Some(OutgoingFrame::new(Preamble::new(
-                    self.msg.header,
-                    Varint32::SENTINEL,
-                )));
-            } else {
-                return None;
-            }
-        }
-    }
+            // Update payload remaining, now that an additional frame has been produced.
+            payload_remaining = payload.len() - self.bytes_processed;
 
-    /// Returns a [`std::iter::Iterator`] implementing frame iterator.
-    #[inline]
-    pub fn into_iter(mut self, max_frame_size: u32) -> impl Iterator<Item = OutgoingFrame> {
-        iter::from_fn(move || self.next(max_frame_size))
+            let frame = OutgoingFrame::new_with_payload(preamble, frame_payload);
+            if payload_remaining > 0 {
+                (frame, Some(self))
+            } else {
+                (frame, None)
+            }
+        } else {
+            (
+                OutgoingFrame::new(Preamble::new(self.msg.header, Varint32::SENTINEL)),
+                None,
+            )
+        }
     }
 }
 
@@ -218,6 +226,12 @@ impl OutgoingFrame {
         );
 
         OutgoingFrame(Cursor::new(preamble).chain(payload))
+    }
+
+    /// Returns the outgoing frame's header.
+    #[inline]
+    pub fn header(&self) -> Header {
+        self.0.first_ref().get_ref().header()
     }
 }
 

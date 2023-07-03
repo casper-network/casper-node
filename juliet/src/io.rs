@@ -10,26 +10,48 @@
 //! receiving them as they arrive.
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     io,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    },
 };
 
-use bytes::{Buf, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc::Receiver,
+    sync::Notify,
 };
 
 use crate::{
     header::Header,
-    protocol::{CompletedRead, FrameIter, JulietProtocol, OutgoingFrame, OutgoingMessage},
-    ChannelId, Outcome,
+    protocol::{
+        CompletedRead, FrameIter, JulietProtocol, LocalProtocolViolation, OutgoingFrame,
+        OutgoingMessage,
+    },
+    ChannelId, Id, Outcome,
 };
 
-struct QueuedRequest {
-    channel: ChannelId,
-    message: OutgoingMessage,
+#[derive(Debug)]
+enum QueuedItem {
+    Request { payload: Option<Bytes> },
+    Response { id: Id, payload: Option<Bytes> },
+    RequestCancellation { id: Id },
+    ResponseCancellation { id: Id },
+    Error { id: Id, payload: Bytes },
+}
+
+impl QueuedItem {
+    #[inline(always)]
+    fn is_request(&self) -> bool {
+        matches!(self, QueuedItem::Request { .. })
+    }
+
+    fn is_multi_frame(&self, max_frame_size: u32) -> bool {
+        todo!()
+    }
 }
 
 /// [`IoCore`] error.
@@ -41,6 +63,9 @@ pub enum CoreError {
     /// Failed to write using underlying writer.
     #[error("write failed")]
     WriteFailed(#[source] io::Error),
+    #[error("local protocol violation")]
+    /// Local protocol violation - caller violated the crate's API.
+    LocalProtocolViolation(#[from] LocalProtocolViolation),
 }
 
 pub struct IoCore<const N: usize, R, W> {
@@ -54,17 +79,24 @@ pub struct IoCore<const N: usize, R, W> {
     /// Read buffer for incoming data.
     buffer: BytesMut,
 
-    /// The message that is in the process of being sent.
-    current_message: Option<FrameIter>,
-    /// The frame in the process of being sent.
+    /// The frame in the process of being sent, maybe be partially transferred.
     current_frame: Option<OutgoingFrame>,
-    run_queue: VecDeque<()>,
-    flagmap: [(); N],
-    counter: [(); N],
-    req_store: [HashMap<u16, ()>; N],
-    resp_store: [HashMap<u16, ()>; N],
-    request_input: Receiver<QueuedRequest>,
-    _confirmation_queue: (), // ?
+    /// The header of the current multi-frame transfer.
+    active_multi_frame: [Option<Header>; N],
+    /// Frames that can be sent next.
+    ready_queue: VecDeque<FrameIter>,
+
+    /// Shared data across handles and core.
+    shared: Arc<IoShared<N>>,
+}
+
+struct IoShared<const N: usize> {
+    /// Messages queued that are not yet ready to send.
+    wait_queue: [Mutex<VecDeque<QueuedItem>>; N],
+    /// Number of requests already buffered per channel.
+    requests_buffered: [AtomicUsize; N],
+    /// Maximum allowed number of requests to buffer per channel.
+    requests_limit: [usize; N],
 }
 
 impl<const N: usize, R, W> IoCore<N, R, W>
@@ -75,6 +107,8 @@ where
     pub async fn run(mut self, read_buffer_size: usize) -> Result<(), CoreError> {
         let mut bytes_until_next_parse = Header::SIZE;
 
+        let notified = self.shared.wait_queue_updated.notified();
+
         loop {
             // Note: There is a world in which we find a way to reuse some of the futures instead
             //       of recreating them with every loop iteration, but I was not able to convince
@@ -83,17 +117,13 @@ where
             tokio::select! {
                 biased;  // We do not need the bias, but we want to avoid randomness overhead.
 
-                // New requests coming in from clients:
-                new_request = self.request_input.recv() => {
-                    drop(new_request); // TODO: Sort new request into queues.
-                }
-
                 // Writing outgoing data:
                 write_result = self.writer.write_all_buf(self.current_frame.as_mut().unwrap())
                     , if self.current_frame.is_some() => {
                     write_result.map_err(CoreError::WriteFailed)?;
 
-                    self.advance_write();
+                    // We finished writing a frame, so prepare the next.
+                    self.current_frame = self.ready_next_frame()?;
                 }
 
                 // Reading incoming data:
@@ -140,57 +170,222 @@ where
         todo!()
     }
 
-    fn next_frame(&mut self, max_frame_size: usize) {
-        // If we still have frame data, return.
-        if self
-            .current_frame
-            .as_ref()
-            .map(Buf::has_remaining)
-            .unwrap_or(false)
-        {
-            return;
-        } else {
-            // Reset frame to be sure.
-            self.current_frame = None;
+    /// Clears a potentially finished frame and returns the best next frame to send.
+    ///
+    /// Returns `None` if no frames are ready to be sent. Note that there may be frames waiting
+    /// that cannot be sent due them being multi-frame messages when there already is a multi-frame
+    /// message in progress, or request limits being hit.
+    fn ready_next_frame(&mut self) -> Result<Option<OutgoingFrame>, LocalProtocolViolation> {
+        // If we still have frame data, return it or take something from the ready queue.
+        if let Some(current_frame) = self.current_frame.take() {
+            if current_frame.has_remaining() {
+                // Current frame is not done. This should usually not happen, but we can give a
+                // correct answer regardless.
+                return Ok(Some(current_frame));
+            }
         }
 
-        // At this point, we need to fetch another frame. This is only possible if we have a message
-        // to pull frames from.
-        loop {
-            if let Some(ref mut current_message) = self.current_message {
-                match current_message.next(self.juliet.max_frame_size()) {
-                    Some(frame) => {
-                        self.current_frame = Some(frame);
-                        // Successful, current message had another frame.
+        debug_assert!(self.current_frame.is_none()); // Guaranteed as this point.
+
+        // Try to fetch a frame from the run queue. If there is nothing, we are stuck for now.
+        let (frame, more) = match self.ready_queue.pop_front() {
+            Some(item) => item,
+            None => return Ok(None),
+        }
+        // Queue is empty, there is no next frame.
+        .next_owned(self.juliet.max_frame_size());
+
+        // If there are more frames after this one, schedule them again.
+        if let Some(next_frame_iter) = more {
+            self.ready_queue.push_back(next_frame_iter);
+        } else {
+            // No additional frames, check if we are about to finish a multi-frame transfer.
+            let about_to_finish = frame.header();
+            if let Some(ref active_multi) =
+                self.active_multi_frame[about_to_finish.channel().get() as usize]
+            {
+                if about_to_finish == *active_multi {
+                    // Once the scheduled frame is processed, we will finished the multi-frame
+                    // transfer, so we can allow for the next multi-frame transfer to be scheduled.
+                    self.active_multi_frame[about_to_finish.channel().get() as usize] = None;
+
+                    // There is a chance another multi-frame messages became ready now.
+                    self.process_wait_queue(about_to_finish.channel());
+                }
+            }
+        }
+
+        Ok(Some(frame))
+    }
+
+    /// Process the wait queue, moving messages that are ready to be sent to the ready queue.
+    fn process_wait_queue(&mut self, channel: ChannelId) -> Result<(), LocalProtocolViolation> {
+        let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
+        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
+            .lock()
+            .expect("lock poisoned");
+        for _ in 0..(wait_queue.len()) {
+            // Note: We do not use `drain` here, since we want to modify in-place. `retain` is also
+            //       not used, since it does not allow taking out items by-value. An alternative
+            //       might be sorting the list and splitting off the candidates instead.
+            let item = wait_queue
+                .pop_front()
+                .expect("did not expect to run out of items");
+
+            if item_is_ready(channel, &item, &self.juliet, active_multi_frame) {
+                match item {
+                    QueuedItem::Request { payload } => {
+                        let msg = self.juliet.create_request(channel, payload)?;
+                        self.ready_queue.push_back(msg.frames());
                     }
-                    None => {
-                        // There is no additional frame from the current message.
-                        self.current_message = None;
+                    QueuedItem::Response { id, payload } => {
+                        if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
+                            self.ready_queue.push_back(msg.frames());
+                        }
+                    }
+                    QueuedItem::RequestCancellation { id } => {
+                        if let Some(msg) = self.juliet.cancel_request(channel, id)? {
+                            self.ready_queue.push_back(msg.frames());
+                        }
+                    }
+                    QueuedItem::ResponseCancellation { id } => {
+                        if let Some(msg) = self.juliet.cancel_response(channel, id)? {
+                            self.ready_queue.push_back(msg.frames());
+                        }
+                    }
+                    QueuedItem::Error { id, payload } => {
+                        let msg = self.juliet.custom_error(channel, id, payload)?;
+                        // Errors go into the front.
+                        self.ready_queue.push_front(msg.frames());
                     }
                 }
-
-                // We neither have a message nor a frame, time to look into the queue.
-                let next_item = self.run_queue.pop_back();
+            } else {
+                wait_queue.push_back(item);
             }
+        }
+
+        Ok(())
+    }
+}
+
+fn item_is_ready<const N: usize>(
+    channel: ChannelId,
+    item: &QueuedItem,
+    juliet: &JulietProtocol<N>,
+    active_multi_frame: &Option<Header>,
+) -> bool {
+    // Check if we cannot schedule due to the message exceeding the request limit.
+    if item.is_request() {
+        if !juliet
+            .allowed_to_send_request(channel)
+            .expect("should not be called with invalid channel")
+        {
+            return false;
         }
     }
 
-    fn advance_write(&mut self) {
-        // Discard frame if finished.
-        if let Some(ref frame) = self.current_frame {
-            if frame.remaining() == 0 {
-                self.current_frame = None;
-            } else {
-                // We still have a frame to finish.
-                return;
-            }
+    // Check if we cannot schedule due to the message being multi-frame and there being a
+    // multi-frame send in progress:
+    if active_multi_frame.is_some() {
+        if item.is_multi_frame(juliet.max_frame_size()) {
+            return false;
         }
+    }
 
-        if let Some(ref message) = self.current_message {}
+    // Otherwise, this should be a legitimate add to the run queue.
+    true
+}
 
-        // Discard message if finished.
+struct IoHandle<const N: usize> {
+    shared: Arc<IoShared<N>>,
+}
 
-        // TODO: Pop item from queue.
+impl<const N: usize> IoHandle<N> {
+    fn enqueue_request(
+        &self,
+        channel: ChannelId,
+        payload: Option<Bytes>,
+    ) -> Result<Option<Option<Bytes>>, LocalProtocolViolation> {
+        bounds_check::<N>(channel)?;
+
+        let count = &self.shared.requests_buffered[channel.get() as usize];
+        let limit = self.shared.requests_limit[channel.get() as usize];
+
+        // TODO: relax ordering from `SeqCst`.
+        match count.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+            if current < limit {
+                Some(current + 1)
+            } else {
+                None
+            }
+        }) {
+            Ok(_prev) => {
+                // We successfully increment the count.
+                let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
+                    .lock()
+                    .expect("lock poisoned");
+                wait_queue.push_back(QueuedItem::Request { payload });
+                Ok(None)
+            }
+            Err(_prev) => Ok(Some(payload)),
+        }
+    }
+
+    fn enqueue_response(
+        &self,
+        channel: ChannelId,
+        id: Id,
+        payload: Option<Bytes>,
+    ) -> Result<(), LocalProtocolViolation> {
+        bounds_check::<N>(channel)?;
+
+        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
+            .lock()
+            .expect("lock poisoned");
+        wait_queue.push_back(QueuedItem::Response { id, payload });
+
+        Ok(())
+    }
+
+    fn enqueue_request_cancellation(
+        &self,
+        channel: ChannelId,
+        id: Id,
+    ) -> Result<(), LocalProtocolViolation> {
+        bounds_check::<N>(channel)?;
+
+        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
+            .lock()
+            .expect("lock poisoned");
+        wait_queue.push_back(QueuedItem::RequestCancellation { id });
+        Ok(())
+    }
+
+    fn enqueue_response_cancellation(
+        &self,
+        channel: ChannelId,
+        id: Id,
+    ) -> Result<(), LocalProtocolViolation> {
+        bounds_check::<N>(channel)?;
+
+        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
+            .lock()
+            .expect("lock poisoned");
+        wait_queue.push_back(QueuedItem::ResponseCancellation { id });
+        Ok(())
+    }
+
+    fn enqueue_error(
+        &self,
+        channel: ChannelId,
+        id: Id,
+        payload: Bytes,
+    ) -> Result<(), LocalProtocolViolation> {
+        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
+            .lock()
+            .expect("lock poisoned");
+        wait_queue.push_back(QueuedItem::Error { id, payload });
+        Ok(())
     }
 }
 
@@ -228,4 +423,13 @@ where
     }
 
     Ok(bytes_read)
+}
+
+#[inline(always)]
+fn bounds_check<const N: usize>(channel: ChannelId) -> Result<(), LocalProtocolViolation> {
+    if channel.get() as usize >= N {
+        Err(LocalProtocolViolation::InvalidChannel(channel))
+    } else {
+        Ok(())
+    }
 }
