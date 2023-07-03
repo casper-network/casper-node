@@ -10,11 +10,11 @@
 //! receiving them as they arrive.
 
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     io,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc,
     },
 };
 
@@ -22,7 +22,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::Notify,
+    sync::mpsc::{error::TryRecvError, error::TrySendError, Receiver, Sender},
 };
 
 use crate::{
@@ -51,6 +51,16 @@ impl QueuedItem {
 
     fn is_multi_frame(&self, max_frame_size: u32) -> bool {
         todo!()
+    }
+
+    fn into_payload(self) -> Option<Bytes> {
+        match self {
+            QueuedItem::Request { payload } => payload,
+            QueuedItem::Response { payload, .. } => payload,
+            QueuedItem::RequestCancellation { .. } => None,
+            QueuedItem::ResponseCancellation { .. } => None,
+            QueuedItem::Error { payload, .. } => Some(payload),
+        }
     }
 }
 
@@ -85,14 +95,16 @@ pub struct IoCore<const N: usize, R, W> {
     active_multi_frame: [Option<Header>; N],
     /// Frames that can be sent next.
     ready_queue: VecDeque<FrameIter>,
+    /// Messages queued that are not yet ready to send.
+    wait_queue: [VecDeque<QueuedItem>; N],
+    /// Receiver for new items to send.
+    receiver: Receiver<(ChannelId, QueuedItem)>,
 
     /// Shared data across handles and core.
     shared: Arc<IoShared<N>>,
 }
 
 struct IoShared<const N: usize> {
-    /// Messages queued that are not yet ready to send.
-    wait_queue: [Mutex<VecDeque<QueuedItem>>; N],
     /// Number of requests already buffered per channel.
     requests_buffered: [AtomicUsize; N],
     /// Maximum allowed number of requests to buffer per channel.
@@ -106,8 +118,6 @@ where
 {
     pub async fn run(mut self, read_buffer_size: usize) -> Result<(), CoreError> {
         let mut bytes_until_next_parse = Header::SIZE;
-
-        let notified = self.shared.wait_queue_updated.notified();
 
         loop {
             // Note: There is a world in which we find a way to reuse some of the futures instead
@@ -150,6 +160,45 @@ where
                     if bytes_read == 0 {
                         // Remote peer hung up.
                         return Ok(());
+                    }
+                }
+
+                incoming = self.receiver.recv() => {
+                    let mut modified_channels = HashSet::new();
+
+                    let shutdown = match incoming {
+                        Some((channel, item)) => {
+                            modified_channels.insert(channel);
+                            self.wait_queue[channel.get() as usize].push_back(item);
+
+
+                            // Loop in case there are more items, to avoid processing the wait queue
+                            // too often.
+                            loop {
+                                match self.receiver.try_recv() {
+                                    Ok((channel, item)) => {
+                                        modified_channels.insert(channel);
+                                        self.wait_queue[channel.get() as usize].push_back(item);
+                                    }
+                                    Err(TryRecvError::Empty) => {
+                                        break false;
+                                    }
+                                    Err(TryRecvError::Disconnected) => {
+                                        break true;
+                                    }
+                                }
+                            }
+                        },
+                        None => { true }
+                    };
+
+                    if shutdown {
+                        todo!("handle shutdown");
+                    } else {
+                        // Only process wait queue after having added all messages.
+                        for channel in modified_channels {
+                            self.process_wait_queue(channel)?;
+                        }
                     }
                 }
             }
@@ -221,9 +270,7 @@ where
     /// Process the wait queue, moving messages that are ready to be sent to the ready queue.
     fn process_wait_queue(&mut self, channel: ChannelId) -> Result<(), LocalProtocolViolation> {
         let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
-        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
-            .lock()
-            .expect("lock poisoned");
+        let wait_queue = &mut self.wait_queue[channel.get() as usize];
         for _ in 0..(wait_queue.len()) {
             // Note: We do not use `drain` here, since we want to modify in-place. `retain` is also
             //       not used, since it does not allow taking out items by-value. An alternative
@@ -298,6 +345,34 @@ fn item_is_ready<const N: usize>(
 
 struct IoHandle<const N: usize> {
     shared: Arc<IoShared<N>>,
+    /// Sender for queue items.
+    sender: Sender<(ChannelId, QueuedItem)>,
+}
+
+#[derive(Debug, Error)]
+enum EnqueueError {
+    /// The IO core was shut down, there is no connection anymore to send through.
+    #[error("IO closed")]
+    Closed(Option<Bytes>),
+    /// The request limit was hit, try again.
+    #[error("request limit hit")]
+    RequestLimitHit(Option<Bytes>),
+    /// API violation.
+    #[error("local protocol violation during enqueueing")]
+    LocalProtocolViolation(#[from] LocalProtocolViolation),
+}
+
+impl EnqueueError {
+    fn from_failed_send(err: TrySendError<(ChannelId, QueuedItem)>) -> Self {
+        match err {
+            // Note: The `Full` state should never happen unless our queue sizing is incorrect, we
+            //       sweep this under the rug here.
+            TrySendError::Full((_channel, item)) => {
+                EnqueueError::RequestLimitHit(item.into_payload())
+            }
+            TrySendError::Closed((_channel, item)) => EnqueueError::Closed(item.into_payload()),
+        }
+    }
 }
 
 impl<const N: usize> IoHandle<N> {
@@ -305,7 +380,7 @@ impl<const N: usize> IoHandle<N> {
         &self,
         channel: ChannelId,
         payload: Option<Bytes>,
-    ) -> Result<Option<Option<Bytes>>, LocalProtocolViolation> {
+    ) -> Result<(), EnqueueError> {
         bounds_check::<N>(channel)?;
 
         let count = &self.shared.requests_buffered[channel.get() as usize];
@@ -321,13 +396,11 @@ impl<const N: usize> IoHandle<N> {
         }) {
             Ok(_prev) => {
                 // We successfully increment the count.
-                let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
-                    .lock()
-                    .expect("lock poisoned");
-                wait_queue.push_back(QueuedItem::Request { payload });
-                Ok(None)
+                self.sender
+                    .try_send((channel, QueuedItem::Request { payload }))
+                    .map_err(EnqueueError::from_failed_send)
             }
-            Err(_prev) => Ok(Some(payload)),
+            Err(_prev) => Err(EnqueueError::RequestLimitHit(payload)),
         }
     }
 
@@ -336,43 +409,32 @@ impl<const N: usize> IoHandle<N> {
         channel: ChannelId,
         id: Id,
         payload: Option<Bytes>,
-    ) -> Result<(), LocalProtocolViolation> {
+    ) -> Result<(), EnqueueError> {
         bounds_check::<N>(channel)?;
 
-        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
-            .lock()
-            .expect("lock poisoned");
-        wait_queue.push_back(QueuedItem::Response { id, payload });
-
-        Ok(())
+        self.sender
+            .try_send((channel, QueuedItem::Response { id, payload }))
+            .map_err(EnqueueError::from_failed_send)
     }
 
-    fn enqueue_request_cancellation(
-        &self,
-        channel: ChannelId,
-        id: Id,
-    ) -> Result<(), LocalProtocolViolation> {
+    fn enqueue_request_cancellation(&self, channel: ChannelId, id: Id) -> Result<(), EnqueueError> {
         bounds_check::<N>(channel)?;
 
-        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
-            .lock()
-            .expect("lock poisoned");
-        wait_queue.push_back(QueuedItem::RequestCancellation { id });
-        Ok(())
+        self.sender
+            .try_send((channel, QueuedItem::RequestCancellation { id }))
+            .map_err(EnqueueError::from_failed_send)
     }
 
     fn enqueue_response_cancellation(
         &self,
         channel: ChannelId,
         id: Id,
-    ) -> Result<(), LocalProtocolViolation> {
+    ) -> Result<(), EnqueueError> {
         bounds_check::<N>(channel)?;
 
-        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
-            .lock()
-            .expect("lock poisoned");
-        wait_queue.push_back(QueuedItem::ResponseCancellation { id });
-        Ok(())
+        self.sender
+            .try_send((channel, QueuedItem::ResponseCancellation { id }))
+            .map_err(EnqueueError::from_failed_send)
     }
 
     fn enqueue_error(
@@ -380,12 +442,10 @@ impl<const N: usize> IoHandle<N> {
         channel: ChannelId,
         id: Id,
         payload: Bytes,
-    ) -> Result<(), LocalProtocolViolation> {
-        let mut wait_queue = self.shared.wait_queue[channel.get() as usize]
-            .lock()
-            .expect("lock poisoned");
-        wait_queue.push_back(QueuedItem::Error { id, payload });
-        Ok(())
+    ) -> Result<(), EnqueueError> {
+        self.sender
+            .try_send((channel, QueuedItem::Error { id, payload }))
+            .map_err(EnqueueError::from_failed_send)
     }
 }
 
