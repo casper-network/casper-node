@@ -192,6 +192,7 @@ impl Channel {
 
 /// A successful read from the peer.
 #[must_use]
+#[derive(Debug)]
 pub enum CompletedRead {
     /// An error has been received.
     ///

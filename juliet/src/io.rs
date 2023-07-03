@@ -12,13 +12,16 @@
 use std::{
     collections::{HashSet, VecDeque},
     io,
+    pin::Pin,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
+    task::{Context, Poll},
 };
 
 use bytes::{Buf, Bytes, BytesMut};
+use futures::Stream;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -73,6 +76,8 @@ pub enum CoreError {
     /// Failed to write using underlying writer.
     #[error("write failed")]
     WriteFailed(#[source] io::Error),
+    #[error("error sent to peer")]
+    ErrorSent(OutgoingFrame),
     #[error("local protocol violation")]
     /// Local protocol violation - caller violated the crate's API.
     LocalProtocolViolation(#[from] LocalProtocolViolation),
@@ -88,6 +93,8 @@ pub struct IoCore<const N: usize, R, W> {
     writer: W,
     /// Read buffer for incoming data.
     buffer: BytesMut,
+    /// How many more bytes are required until the next par
+    bytes_until_next_parse: usize,
 
     /// The frame in the process of being sent, maybe be partially transferred.
     current_frame: Option<OutgoingFrame>,
@@ -111,18 +118,43 @@ struct IoShared<const N: usize> {
     requests_limit: [usize; N],
 }
 
+#[derive(Debug)]
+pub enum IoEvent {
+    CompletedRead(CompletedRead),
+    RemoteClosed,
+    LocalShutdown,
+}
+
+impl IoEvent {
+    #[inline(always)]
+    fn should_shutdown(&self) -> bool {
+        match self {
+            IoEvent::CompletedRead(_) => false,
+            IoEvent::RemoteClosed => true,
+            IoEvent::LocalShutdown => true,
+        }
+    }
+}
+
 impl<const N: usize, R, W> IoCore<N, R, W>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    pub async fn run(mut self) -> Result<(), CoreError> {
-        let mut bytes_until_next_parse = Header::SIZE;
-
+    pub async fn next_event(&mut self) -> Result<IoEvent, CoreError> {
         loop {
-            // Note: There is a world in which we find a way to reuse some of the futures instead
-            //       of recreating them with every loop iteration, but I was not able to convince
-            //       the borrow checker yet.
+            if self.bytes_until_next_parse == 0 {
+                match self.juliet.process_incoming(&mut self.buffer) {
+                    Outcome::Incomplete(n) => {
+                        // Simply reset how many bytes we need until the next parse.
+                        self.bytes_until_next_parse = n.get() as usize;
+                    }
+                    Outcome::Fatal(err) => self.handle_fatal_read_err(err),
+                    Outcome::Success(successful_read) => {
+                        return self.handle_completed_read(successful_read);
+                    }
+                }
+            }
 
             tokio::select! {
                 biased;  // We do not need the bias, but we want to avoid randomness overhead.
@@ -132,35 +164,31 @@ where
                     , if self.current_frame.is_some() => {
                     write_result.map_err(CoreError::WriteFailed)?;
 
-                    // We finished writing a frame, so prepare the next.
+                    let frame_sent = self.current_frame.take().unwrap();
+
+                    if frame_sent.header().is_error() {
+                        // We finished sending an error frame, time to exit.
+                        return Err(CoreError::ErrorSent(frame_sent));
+                    }
+
+                    // Prepare the following frame, if any.
                     self.current_frame = self.ready_next_frame()?;
                 }
 
                 // Reading incoming data:
-                read_result = read_atleast_bytesmut(&mut self.reader, &mut self.buffer, bytes_until_next_parse) => {
+                read_result = read_atleast_bytesmut(&mut self.reader, &mut self.buffer, self.bytes_until_next_parse) => {
+                    // Our read function will not return before `bytes_until_next_parse` has
+                    // completed.
                     let bytes_read = read_result.map_err(CoreError::ReadFailed)?;
-
-                    bytes_until_next_parse = bytes_until_next_parse.saturating_sub(bytes_read);
-
-                    if bytes_until_next_parse == 0 {
-                        match self.juliet.process_incoming(&mut self.buffer) {
-                            Outcome::Incomplete(n) => {
-                                // Simply reset how many bytes we need until the next parse.
-                                bytes_until_next_parse = n.get() as usize;
-                            },
-                            Outcome::Fatal(err) => {
-                                self.handle_fatal_read_err(err)
-                            },
-                            Outcome::Success(successful_read) => {
-                                self.handle_completed_read(successful_read)
-                            },
-                        }
-                    }
 
                     if bytes_read == 0 {
                         // Remote peer hung up.
-                        return Ok(());
+                        return Ok(IoEvent::RemoteClosed);
                     }
+
+                    self.bytes_until_next_parse = self.bytes_until_next_parse.saturating_sub(bytes_read);
+
+                    // Fall through to start of loop, which parses data read.
                 }
 
                 incoming = self.receiver.recv() => {
@@ -170,7 +198,6 @@ where
                         Some((channel, item)) => {
                             modified_channels.insert(channel);
                             self.wait_queue[channel.get() as usize].push_back(item);
-
 
                             // Loop in case there are more items, to avoid processing the wait queue
                             // too often.
@@ -193,7 +220,7 @@ where
                     };
 
                     if shutdown {
-                        todo!("handle shutdown");
+                        return Ok(IoEvent::LocalShutdown);
                     } else {
                         // Only process wait queue after having added all messages.
                         for channel in modified_channels {
@@ -205,9 +232,12 @@ where
         }
     }
 
-    fn handle_completed_read(&mut self, read: CompletedRead) {
+    fn handle_completed_read(&mut self, read: CompletedRead) -> Result<IoEvent, CoreError> {
         match read {
-            CompletedRead::ErrorReceived { header, data } => todo!(),
+            CompletedRead::ErrorReceived { header, data } => {
+                // We've received an error, thus we should shut down the connection immediately.
+                todo!()
+            }
             CompletedRead::NewRequest { id, payload } => todo!(),
             CompletedRead::ReceivedResponse { id, payload } => todo!(),
             CompletedRead::RequestCancellation { id } => todo!(),
@@ -225,16 +255,7 @@ where
     /// that cannot be sent due them being multi-frame messages when there already is a multi-frame
     /// message in progress, or request limits being hit.
     fn ready_next_frame(&mut self) -> Result<Option<OutgoingFrame>, LocalProtocolViolation> {
-        // If we still have frame data, return it or take something from the ready queue.
-        if let Some(current_frame) = self.current_frame.take() {
-            if current_frame.has_remaining() {
-                // Current frame is not done. This should usually not happen, but we can give a
-                // correct answer regardless.
-                return Ok(Some(current_frame));
-            }
-        }
-
-        debug_assert!(self.current_frame.is_none()); // Guaranteed as this point.
+        debug_assert!(self.current_frame.is_none()); // Must be guaranteed by caller.
 
         // Try to fetch a frame from the run queue. If there is nothing, we are stuck for now.
         let (frame, more) = match self.ready_queue.pop_front() {
@@ -259,7 +280,7 @@ where
                     self.active_multi_frame[about_to_finish.channel().get() as usize] = None;
 
                     // There is a chance another multi-frame messages became ready now.
-                    self.process_wait_queue(about_to_finish.channel());
+                    self.process_wait_queue(about_to_finish.channel())?;
                 }
             }
         }
@@ -312,6 +333,20 @@ where
         }
 
         Ok(())
+    }
+
+    fn into_stream(self) -> impl Stream<Item = Result<IoEvent, CoreError>> {
+        futures::stream::unfold(Some(self), |state| async {
+            let mut this = state?;
+            let rv = this.next_event().await;
+
+            // Check if this was the last event. We shut down on close or any error.
+            if rv.as_ref().map(IoEvent::should_shutdown).unwrap_or(true) {
+                Some((rv, None))
+            } else {
+                Some((rv, Some(this)))
+            }
+        })
     }
 }
 
