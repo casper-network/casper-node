@@ -122,7 +122,7 @@ use crate::storage::{
     global_state::CommitError,
     store::Store,
     transaction_source::{lmdb::LmdbEnvironment, Readable, TransactionSource, Writable},
-    trie::{self, LazyTrieLeaf, Trie},
+    trie::{LazilyDeserializedTrie, Trie},
     trie_store::{self, TrieStore},
 };
 
@@ -219,9 +219,8 @@ impl ScratchTrieStore {
                 continue;
             };
 
-            let lazy_trie: LazyTrieLeaf<Key, StoredValue> =
-                trie::lazy_trie_deserialize(trie_bytes.clone())?;
-            tries_to_write.extend(trie::lazy_trie_iter_children(&lazy_trie));
+            let lazy_trie: LazilyDeserializedTrie = bytesrepr::deserialize_from_slice(trie_bytes)?;
+            tries_to_write.extend(lazy_trie.iter_children());
 
             Store::<Digest, Trie<Key, StoredValue>>::put_raw(
                 &*self.store,
