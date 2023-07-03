@@ -1080,6 +1080,7 @@ where
             }
         };
 
+        #[cfg(feature = "test-support")]
         if let wasmi::Error::Trap(Trap::Code(TrapCode::Unreachable)) = &error {
             if let Some(stack_height) = instance.globals().last() {
                 eprintln!("current stack height = {}", stack_height.get())
@@ -1424,6 +1425,7 @@ where
             }
         };
 
+        #[cfg(feature = "test-support")]
         if let wasmi::Error::Trap(Trap::Code(TrapCode::Unreachable)) = &error {
             if let Some(stack_height) = instance.globals().last() {
                 eprintln!("current stack height = {}", stack_height.get())
