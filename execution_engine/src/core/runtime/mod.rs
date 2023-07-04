@@ -1081,13 +1081,7 @@ where
         };
 
         #[cfg(feature = "test-support")]
-        if let wasmi::Error::Trap(Trap::Code(TrapCode::Unreachable)) = &error {
-            if let Some(stack_height) = instance.globals().last() {
-                eprintln!("current stack height = {}", stack_height.get())
-            } else {
-                eprintln!("current stack height unknown");
-            }
-        }
+        self.dump_runtime_debug_info(&error, instance);
 
         if let Some(host_error) = error.as_host_error() {
             // If the "error" was in fact a trap caused by calling `ret` then
@@ -1426,13 +1420,7 @@ where
         };
 
         #[cfg(feature = "test-support")]
-        if let wasmi::Error::Trap(Trap::Code(TrapCode::Unreachable)) = &error {
-            if let Some(stack_height) = instance.globals().last() {
-                eprintln!("current stack height = {}", stack_height.get())
-            } else {
-                eprintln!("current stack height unknown");
-            }
-        }
+        self.dump_runtime_debug_info(&error, instance);
 
         if let Some(host_error) = error.as_host_error() {
             // If the "error" was in fact a trap caused by calling `ret` then this is normal
@@ -2970,5 +2958,20 @@ where
         }
 
         Ok(Ok(()))
+    }
+
+    #[cfg(feature = "test-support")]
+    fn dump_runtime_debug_info(&self, error: &wasmi::Error, instance: wasmi::ModuleRef) {
+        eprintln!("Wasm execution error: {}", error);
+        if let Some(stack_height) = instance.globals().last() {
+            eprintln!("current_wasm_instance_stack_height={}", stack_height.get())
+        } else {
+            eprintln!("current_wasm_instance_stack_height=unknown");
+        }
+        if let Some(stack) = &self.stack {
+            eprintln!("{}", stack);
+        } else {
+            eprintln!("runtime_stack=unknown");
+        }
     }
 }

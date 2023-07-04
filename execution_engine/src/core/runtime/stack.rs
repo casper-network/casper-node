@@ -17,6 +17,20 @@ pub struct RuntimeStack {
     max_height: usize,
 }
 
+#[cfg(feature = "test-support")]
+impl std::fmt::Display for RuntimeStack {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "current_runtime_stack_height={}", self.frames.len())?;
+        writeln!(f, "max_runtime_stack_height={}", self.max_height)?;
+        writeln!(f)?;
+        for (index, frame) in self.frames.iter().enumerate().rev() {
+            writeln!(f, "--- frame {index} ---")?;
+            writeln!(f, "{frame}")?;
+        }
+        Ok(())
+    }
+}
+
 /// Error returned on an attempt to pop off an empty stack.
 #[cfg(test)]
 #[derive(Debug)]

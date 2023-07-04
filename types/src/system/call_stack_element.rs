@@ -47,6 +47,37 @@ pub enum CallStackElement {
     },
 }
 
+#[cfg(any(feature = "testing", test))]
+impl std::fmt::Display for CallStackElement {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            CallStackElement::Session { account_hash } => {
+                writeln!(f, "Session")?;
+                writeln!(f, "    account_hash={}", account_hash)?;
+            }
+            CallStackElement::StoredSession {
+                account_hash,
+                contract_package_hash,
+                contract_hash,
+            } => {
+                writeln!(f, "StoredSession")?;
+                writeln!(f, "    account_hash={}", account_hash)?;
+                writeln!(f, "    contract_hash={}", contract_hash)?;
+                writeln!(f, "    contract_package_hash={}", contract_package_hash)?;
+            }
+            CallStackElement::StoredContract {
+                contract_package_hash,
+                contract_hash,
+            } => {
+                writeln!(f, "StoredContract")?;
+                writeln!(f, "    contract_hash={}", contract_hash)?;
+                writeln!(f, "    contract_package_hash={}", contract_package_hash)?;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl CallStackElement {
     /// Creates a [`CallStackElement::Session`]. This represents a call into session code, and
     /// should only ever happen once in a call stack.
