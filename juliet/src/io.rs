@@ -20,6 +20,7 @@ use std::{
 
 use bytes::{Bytes, BytesMut};
 use futures::Stream;
+use portable_atomic::AtomicU128;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -29,8 +30,8 @@ use tokio::{
 use crate::{
     header::Header,
     protocol::{
-        CompletedRead, FrameIter, JulietProtocol, LocalProtocolViolation, OutgoingFrame,
-        OutgoingMessage,
+        payload_is_multi_frame, CompletedRead, FrameIter, JulietProtocol, LocalProtocolViolation,
+        OutgoingFrame, OutgoingMessage,
     },
     ChannelId, Id, Outcome,
 };
@@ -62,15 +63,6 @@ enum QueuedItem {
 }
 
 impl QueuedItem {
-    #[inline(always)]
-    fn is_request(&self) -> bool {
-        matches!(self, QueuedItem::Request { .. })
-    }
-
-    fn is_multi_frame(&self, max_frame_size: u32) -> bool {
-        todo!()
-    }
-
     fn into_payload(self) -> Option<Bytes> {
         match self {
             QueuedItem::Request { payload, .. } => payload,
@@ -256,26 +248,28 @@ where
                     // Fall through to start of loop, which parses data read.
                 }
 
-                mut incoming = self.receiver.recv() => {
+                incoming = self.receiver.recv() => {
                     let mut modified_channels = HashSet::new();
 
                     match incoming {
-                        Some(item) => self.handle_incoming_item(item, &mut modified_channels)?;
+                        Some(item) => {
+                            self.handle_incoming_item(item, &mut modified_channels)?;
+                        }
                         None => {
                             return Ok(IoEvent::RemoteClosed);
                         }
                     }
 
-                    todo!("loop over remainder")
+                    todo!("loop over remainder");
 
-                    if shutdown {
-                        return Ok(IoEvent::LocalShutdown);
-                    } else {
-                        // Only process wait queue after having added all messages.
-                        for channel in modified_channels {
-                            self.process_wait_queue(channel)?;
-                        }
-                    }
+                    // if shutdown {
+                    //     return Ok(IoEvent::LocalShutdown);
+                    // } else {
+                    //     // Only process wait queue after having added all messages.
+                    //     for channel in modified_channels {
+                    //         self.process_wait_queue(channel)?;
+                    //     }
+                    // }
                 }
             }
         }
@@ -300,21 +294,21 @@ where
 
     fn handle_incoming_item(
         &mut self,
-        item: QueuedItem,
+        mut item: QueuedItem,
         channels_to_process: &mut HashSet<ChannelId>,
     ) -> Result<(), LocalProtocolViolation> {
+        let ready = item_is_ready(&item, &self.juliet, &self.active_multi_frame);
+
         match item {
             QueuedItem::Request {
                 io_id,
                 channel,
-                payload,
+                ref mut payload,
             } => {
-                let active_multi_frame = self.active_multi_frame[channel.get() as usize];
-
                 // Check if we can eagerly schedule, saving a trip through the wait queue.
-                if item_is_ready(channel, &item, &self.juliet, &mut active_multi_frame) {
+                if ready {
                     // The item is ready, we can directly schedule it and skip the wait queue.
-                    let msg = self.juliet.create_request(channel, payload)?;
+                    let msg = self.juliet.create_request(channel, payload.take())?;
                     let id = msg.header().id();
                     self.ready_queue.push_back(msg.frames());
                     self.request_map
@@ -330,12 +324,11 @@ where
             QueuedItem::Response {
                 id,
                 channel,
-                payload,
+                ref mut payload,
             } => {
-                let active_multi_frame = self.active_multi_frame[channel.get() as usize];
-                if item_is_ready(channel, &item, &self.juliet, &mut active_multi_frame) {
+                if ready {
                     // The item is ready, we can directly schedule it and skip the wait queue.
-                    if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
+                    if let Some(msg) = self.juliet.create_response(channel, id, payload.take())? {
                         self.ready_queue.push_back(msg.frames())
                     }
                 } else {
@@ -436,49 +429,49 @@ where
 
     /// Process the wait queue, moving messages that are ready to be sent to the ready queue.
     fn process_wait_queue(&mut self, channel: ChannelId) -> Result<(), LocalProtocolViolation> {
-        // TODO: Rewrite, factoring out functions from `handle_incoming`.
+        // // TODO: Rewrite, factoring out functions from `handle_incoming`.
 
-        let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
-        let wait_queue = &mut self.wait_queue[channel.get() as usize];
-        for _ in 0..(wait_queue.len()) {
-            // Note: We do not use `drain` here, since we want to modify in-place. `retain` is also
-            //       not used, since it does not allow taking out items by-value. An alternative
-            //       might be sorting the list and splitting off the candidates instead.
-            let item = wait_queue
-                .pop_front()
-                .expect("did not expect to run out of items");
+        // let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
+        // let wait_queue = &mut self.wait_queue[channel.get() as usize];
+        // for _ in 0..(wait_queue.len()) {
+        //     // Note: We do not use `drain` here, since we want to modify in-place. `retain` is also
+        //     //       not used, since it does not allow taking out items by-value. An alternative
+        //     //       might be sorting the list and splitting off the candidates instead.
+        //     let item = wait_queue
+        //         .pop_front()
+        //         .expect("did not expect to run out of items");
 
-            if item_is_ready(channel, &item, &self.juliet, active_multi_frame) {
-                match item {
-                    QueuedItem::Request { payload } => {
-                        let msg = self.juliet.create_request(channel, payload)?;
-                        self.ready_queue.push_back(msg.frames());
-                    }
-                    QueuedItem::Response { io_id: id, payload } => {
-                        if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
-                            self.ready_queue.push_back(msg.frames());
-                        }
-                    }
-                    QueuedItem::RequestCancellation { io_id: id } => {
-                        if let Some(msg) = self.juliet.cancel_request(channel, id)? {
-                            self.ready_queue.push_back(msg.frames());
-                        }
-                    }
-                    QueuedItem::ResponseCancellation { io_id: id } => {
-                        if let Some(msg) = self.juliet.cancel_response(channel, id)? {
-                            self.ready_queue.push_back(msg.frames());
-                        }
-                    }
-                    QueuedItem::Error { id, payload } => {
-                        let msg = self.juliet.custom_error(channel, id, payload)?;
-                        // Errors go into the front.
-                        self.ready_queue.push_front(msg.frames());
-                    }
-                }
-            } else {
-                wait_queue.push_back(item);
-            }
-        }
+        //     if item_is_ready(channel, &item, &self.juliet, active_multi_frame) {
+        //         match item {
+        //             QueuedItem::Request { payload } => {
+        //                 let msg = self.juliet.create_request(channel, payload)?;
+        //                 self.ready_queue.push_back(msg.frames());
+        //             }
+        //             QueuedItem::Response { io_id: id, payload } => {
+        //                 if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
+        //                     self.ready_queue.push_back(msg.frames());
+        //                 }
+        //             }
+        //             QueuedItem::RequestCancellation { io_id: id } => {
+        //                 if let Some(msg) = self.juliet.cancel_request(channel, id)? {
+        //                     self.ready_queue.push_back(msg.frames());
+        //                 }
+        //             }
+        //             QueuedItem::ResponseCancellation { io_id: id } => {
+        //                 if let Some(msg) = self.juliet.cancel_response(channel, id)? {
+        //                     self.ready_queue.push_back(msg.frames());
+        //                 }
+        //             }
+        //             QueuedItem::Error { id, payload } => {
+        //                 let msg = self.juliet.custom_error(channel, id, payload)?;
+        //                 // Errors go into the front.
+        //                 self.ready_queue.push_front(msg.frames());
+        //             }
+        //         }
+        //     } else {
+        //         wait_queue.push_back(item);
+        //     }
+        // }
 
         Ok(())
     }
@@ -499,26 +492,43 @@ where
 }
 
 fn item_is_ready<const N: usize>(
-    channel: ChannelId,
     item: &QueuedItem,
     juliet: &JulietProtocol<N>,
-    active_multi_frame: &Option<Header>,
+    active_multi_frame: &[Option<Header>; N],
 ) -> bool {
-    // Check if we cannot schedule due to the message exceeding the request limit.
-    if item.is_request() {
-        if !juliet
-            .allowed_to_send_request(channel)
-            .expect("should not be called with invalid channel")
-        {
-            return false;
+    let (payload, channel) = match item {
+        QueuedItem::Request {
+            channel, payload, ..
+        } => {
+            // Check if we cannot schedule due to the message exceeding the request limit.
+            if !juliet
+                .allowed_to_send_request(*channel)
+                .expect("should not be called with invalid channel")
+            {
+                return false;
+            }
+
+            (payload, channel)
         }
-    }
+        QueuedItem::Response {
+            channel, payload, ..
+        } => (payload, channel),
+
+        // Other messages are always ready.
+        QueuedItem::RequestCancellation { .. }
+        | QueuedItem::ResponseCancellation { .. }
+        | QueuedItem::Error { .. } => return true,
+    };
+
+    let mut active_multi_frame = active_multi_frame[channel.get() as usize];
 
     // Check if we cannot schedule due to the message being multi-frame and there being a
     // multi-frame send in progress:
     if active_multi_frame.is_some() {
-        if item.is_multi_frame(juliet.max_frame_size()) {
-            return false;
+        if let Some(payload) = payload {
+            if payload_is_multi_frame(juliet.max_frame_size(), payload.len()) {
+                return false;
+            }
         }
     }
 
@@ -530,7 +540,7 @@ struct IoHandle<const N: usize> {
     shared: Arc<IoShared<N>>,
     /// Sender for queue items.
     sender: Sender<QueuedItem>,
-    next_io_id: u128,
+    next_io_id: Arc<AtomicU128>,
 }
 
 #[derive(Debug, Error)]
@@ -560,7 +570,7 @@ impl EnqueueError {
 
 impl<const N: usize> IoHandle<N> {
     fn enqueue_request(
-        &self,
+        &mut self,
         channel: ChannelId,
         payload: Option<Bytes>,
     ) -> Result<IoId, EnqueueError> {
@@ -578,11 +588,8 @@ impl<const N: usize> IoHandle<N> {
             }
         }) {
             Ok(_prev) => {
-                // We successfully increment the count.
-                let io_id = IoId(self.next_io_id);
-
-                // Does not roll over before at least 10^18 zettabytes have been sent.
-                self.next_io_id = self.next_io_id.wrapping_add(1);
+                // Does not overflow before at least 10^18 zettabytes have been sent.
+                let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
 
                 self.sender
                     .try_send(QueuedItem::Request {

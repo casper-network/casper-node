@@ -22,7 +22,7 @@ use crate::{
     header::{self, ErrorKind, Header, Kind},
     try_outcome,
     util::Index,
-    varint::decode_varint32,
+    varint::{decode_varint32, Varint32},
     ChannelConfiguration, ChannelId, Id,
     Outcome::{self, Fatal, Incomplete, Success},
 };
@@ -478,7 +478,7 @@ impl<const N: usize> JulietProtocol<N> {
         let header = Header::new_error(header::ErrorKind::Other, channel, id);
 
         let msg = OutgoingMessage::new(header, Some(payload));
-        if msg.is_multi_frame(self.max_frame_size as usize) {
+        if msg.is_multi_frame(self.max_frame_size) {
             Err(LocalProtocolViolation::ErrorPayloadIsMultiFrame)
         } else {
             Ok(msg)
@@ -728,4 +728,21 @@ impl<const N: usize> JulietProtocol<N> {
 #[inline(always)]
 fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
     Fatal(OutgoingMessage::new(header.with_err(kind), None))
+}
+
+/// Determines whether or not a payload with the given size is a multi-frame payload when sent
+/// using the provided maximum frame size.
+///
+/// # Panics
+///
+/// Panics in debug mode if the given payload length is larger than `u32::MAX`.
+#[inline]
+pub fn payload_is_multi_frame(max_frame_size: u32, payload_len: usize) -> bool {
+    debug_assert!(
+        payload_len <= u32::MAX as usize,
+        "payload cannot exceed `u32::MAX`"
+    );
+
+    payload_len as u64 + Header::SIZE as u64 + (Varint32::encode(payload_len as u32)).len() as u64
+        > max_frame_size as u64
 }

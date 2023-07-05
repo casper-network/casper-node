@@ -4,12 +4,14 @@
 //! juliet networking protocol, this module contains the necessary output types like
 //! [`OutgoingMessage`].
 
-use std::{io::Cursor, iter};
+use std::io::Cursor;
 
 use bytemuck::{Pod, Zeroable};
 use bytes::{buf::Chain, Buf, Bytes};
 
 use crate::{header::Header, varint::Varint32};
+
+use super::payload_is_multi_frame;
 
 /// A message to be sent to the peer.
 ///
@@ -38,11 +40,9 @@ impl OutgoingMessage {
 
     /// Returns whether or not a message will span multiple frames.
     #[inline(always)]
-    pub fn is_multi_frame(&self, max_frame_size: usize) -> bool {
+    pub fn is_multi_frame(&self, max_frame_size: u32) -> bool {
         if let Some(ref payload) = self.payload {
-            let payload_size = payload.len();
-            payload_size + Header::SIZE + (Varint32::encode(payload_size as u32)).len()
-                > max_frame_size
+            payload_is_multi_frame(max_frame_size, payload.len())
         } else {
             false
         }
