@@ -3179,12 +3179,14 @@ fn get_body_for_block_header(
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
 ) -> Result<Option<BlockBody>, LmdbExtError> {
-    let maybe_versioned_block_body: Option<VersionedBlockBody> =
-        txn.get_value(block_body_dbs.current, block_body_hash)?;
-    match maybe_versioned_block_body {
-        Some(VersionedBlockBody::V2(block_body_v2)) => Ok(Some(block_body_v2)),
-        Some(VersionedBlockBody::V1(_)) | None => Ok(None),
-    }
+    Ok(
+        get_versioned_body_for_block_header(txn, block_body_hash, block_body_dbs)?.and_then(
+            |body| match body {
+                VersionedBlockBody::V1(_) => None,
+                VersionedBlockBody::V2(inner) => Some(inner),
+            },
+        ),
+    )
 }
 
 /// Retrieves the versioned block body for the given block header, performing the migration to the
