@@ -78,12 +78,15 @@ impl Display for VersionedBlockBody {
     }
 }
 
-impl From<&VersionedBlockBody> for BlockBody {
-    fn from(value: &VersionedBlockBody) -> Self {
-        match value {
-            VersionedBlockBody::V1(_) => todo!(),
-            VersionedBlockBody::V2(v2) => v2.clone(),
-        }
+impl From<BlockBodyV1> for VersionedBlockBody {
+    fn from(body: BlockBodyV1) -> Self {
+        VersionedBlockBody::V1(body)
+    }
+}
+
+impl From<&BlockBody> for VersionedBlockBody {
+    fn from(body: &BlockBody) -> Self {
+        VersionedBlockBody::V2(body.clone())
     }
 }
 

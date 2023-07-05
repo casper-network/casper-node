@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Block, BlockBody, BlockHash, BlockHeader, BlockValidationError, VersionedBlockBody,
+    Block, BlockHash, BlockHeader, BlockValidationError, VersionedBlockBody,
 };
 
 use super::{block_v1::BlockV1, block_v2::BlockV2};
@@ -36,11 +36,22 @@ impl VersionedBlock {
     #[doc(hidden)]
     pub fn new_from_header_and_versioned_body(
         header: BlockHeader,
-        versioned_block_body: &VersionedBlockBody,
+        versioned_block_body: VersionedBlockBody,
     ) -> Result<Self, Box<BlockValidationError>> {
-        let body: BlockBody = versioned_block_body.into();
         let hash = header.block_hash();
-        let block = VersionedBlock::V2(Block { hash, header, body });
+        let block = match versioned_block_body {
+            VersionedBlockBody::V1(v1) => VersionedBlock::V1(BlockV1 {
+                hash,
+                header,
+                body: v1,
+            }),
+            VersionedBlockBody::V2(v2) => VersionedBlock::V2(Block {
+                hash,
+                header,
+                body: v2,
+            }),
+        };
+
         block.verify()?;
         Ok(block)
     }

@@ -1696,12 +1696,10 @@ impl Storage {
                 &mut self.switch_block_era_id_index,
                 block.header(),
             )?;
-            let versioned_block_body = &block.body();
-            let block_body: BlockBody = versioned_block_body.into();
-            insert_block_body_to_deploy_index(
+            insert_versioned_block_body_to_deploy_index(
                 &mut self.deploy_hash_index,
                 *block.hash(),
-                &block_body,
+                &block.body(),
                 block.header().height(),
             )?;
         }
@@ -2266,7 +2264,7 @@ impl Storage {
                 return Ok(None);
             }
         };
-        let block = VersionedBlock::new_from_header_and_versioned_body(block_header, &block_body)?;
+        let block = VersionedBlock::new_from_header_and_versioned_body(block_header, block_body)?;
         Ok(Some(block))
     }
 
@@ -3164,7 +3162,7 @@ where
         let maybe_legacy_block_body: Option<BlockBodyV1> =
             txn.get_value(block_body_dbs.legacy, block_body_hash)?;
         if let Some(block_body_v1) = maybe_legacy_block_body {
-            return Ok(Some(VersionedBlockBody::V1(block_body_v1)));
+            return Ok(Some(block_body_v1.into()));
         }
     } else {
         return Ok(maybe_block_body);
@@ -3226,7 +3224,7 @@ fn put_single_block_body(
     block_body: &BlockBody,
     db: Database,
 ) -> Result<bool, LmdbExtError> {
-    let versioned_block_body = VersionedBlockBody::V2(block_body.clone());
+    let versioned_block_body: VersionedBlockBody = block_body.into();
     put_single_versioned_block_body(txn, block_body_hash, &versioned_block_body, db)
 }
 
