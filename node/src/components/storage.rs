@@ -3200,7 +3200,7 @@ fn get_versioned_body_for_block_header(
         get_versioned_body_for_block_header_no_migration(txn, block_body_hash, block_body_dbs)?;
 
     if let Some(ref block_body) = maybe_block_body {
-        if matches!(block_body, VersionedBlockBody::V1(_)) {
+        if let VersionedBlockBody::V1(_) = block_body {
             migrate_to_versioned_block_body(txn, block_body_hash, block_body, block_body_dbs)?
         }
     }
