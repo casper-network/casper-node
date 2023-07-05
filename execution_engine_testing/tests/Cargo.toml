@@ -13,7 +13,7 @@ casper-types = { path = "../../types", features = ["datasize", "json-schema"] }
 clap = "2"
 fs_extra = "1.2.0"
 log = "0.4.8"
-parity-wasm = "0.41.0"
+parity-wasm = "0.45.0"
 rand = "0.8.3"
 serde = "1"
 serde_json = "1"

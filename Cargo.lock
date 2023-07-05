@@ -444,7 +444,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "once_cell",
- "parity-wasm 0.41.0",
+ "parity-wasm",
  "rand 0.8.5",
  "regex",
  "serde",
@@ -484,7 +484,7 @@ dependencies = [
  "num-traits",
  "num_cpus",
  "once_cell",
- "parity-wasm 0.45.0",
+ "parity-wasm",
  "proptest",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
@@ -716,7 +716,7 @@ checksum = "b49e4ef1382d48c312809fe8f09d0c7beb434a74f5026c5f12efe384df51ca42"
 dependencies = [
  "byteorder",
  "log",
- "parity-wasm 0.45.0",
+ "parity-wasm",
 ]
 
 [[package]]
@@ -3162,15 +3162,8 @@ dependencies = [
 
 [[package]]
 name = "parity-wasm"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddfc878dac00da22f8f61e7af3157988424567ab01d9920b962ef7dcbd7cd865"
-
-[[package]]
-name = "parity-wasm"
 version = "0.45.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e1ad0aff30c1da14b1254fcb2af73e1fa9a28670e584a626f53a369d0e157304"
+source = "git+https://github.com/casper-network/casper-wasm.git?branch=casper-0.45.0#49752a84f34d2f8748133cdd95e3064d1158b0af"
 
 [[package]]
 name = "parking_lot"
@@ -5429,7 +5422,7 @@ version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06c326c93fbf86419608361a2c925a31754cf109da1b8b55737070b4d6669422"
 dependencies = [
- "parity-wasm 0.45.0",
+ "parity-wasm",
  "wasmi-validation",
  "wasmi_core",
 ]
@@ -5440,7 +5433,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91ff416ad1ff0c42e5a926ed5d5fab74c0f098749aa0ad8b2a34b982ce0e867b"
 dependencies = [
- "parity-wasm 0.45.0",
+ "parity-wasm",
 ]
 
 [[package]]
