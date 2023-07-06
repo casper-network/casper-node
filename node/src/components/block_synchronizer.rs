@@ -491,8 +491,10 @@ impl BlockSynchronizer {
                             .then(move |maybe_execution_results| async move {
                                 match maybe_execution_results {
                                     Some(execution_results) => {
+                                        // TODO[RC] .into(), becasue we want to avoid polluting
+                                        // `MetaBlock` with `VersionedBlock`, but maybe we'd have to
                                         let meta_block = MetaBlock::new(
-                                            Arc::new(*block),
+                                            Arc::new((*block).into()),
                                             execution_results,
                                             MetaBlockState::new_after_historical_sync(),
                                         );

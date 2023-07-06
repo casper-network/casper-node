@@ -445,6 +445,24 @@ impl FromBytes for BlockV2 {
     }
 }
 
+impl From<VersionedBlock> for BlockV2 {
+    fn from(value: VersionedBlock) -> Self {
+        match value {
+            VersionedBlock::V1(_) => todo!(),
+            VersionedBlock::V2(v2) => v2,
+        }
+    }
+}
+
+impl From<&VersionedBlock> for BlockV2 {
+    fn from(value: &VersionedBlock) -> Self {
+        match value {
+            VersionedBlock::V1(_) => todo!(),
+            VersionedBlock::V2(v2) => v2.clone(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

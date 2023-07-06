@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Block, BlockHash, BlockHeader, BlockValidationError, VersionedBlockBody,
+    Block, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, VersionedBlockBody,
 };
 
 use super::{block_v1::BlockV1, block_v2::BlockV2};
@@ -87,6 +87,45 @@ impl VersionedBlock {
             VersionedBlock::V2(v2) => v2.verify(),
         }
     }
+
+    /// Returns the height of this block, i.e. the number of ancestors.
+    pub fn height(&self) -> u64 {
+        match self {
+            VersionedBlock::V1(v1) => v1.header.height(),
+            VersionedBlock::V2(v2) => v2.header.height(),
+        }
+    }
+
+    /// Returns the deploy hashes within the block.
+    pub fn deploy_hashes(&self) -> &[DeployHash] {
+        match self {
+            VersionedBlock::V1(v1) => v1.body.deploy_hashes(),
+            VersionedBlock::V2(v2) => v2.body.deploy_hashes(),
+        }
+    }
+
+    /// Returns the transfer hashes within the block.
+    pub fn transfer_hashes(&self) -> &[DeployHash] {
+        match self {
+            VersionedBlock::V1(v1) => v1.body.transfer_hashes(),
+            VersionedBlock::V2(v2) => v2.body.transfer_hashes(),
+        }
+    }
+
+    /// Returns the deploy and transfer hashes in the order in which they were executed.
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+        self.deploy_hashes()
+            .iter()
+            .chain(self.transfer_hashes().iter())
+    }
+
+    /// Returns the root hash of global state after the deploys in this block have been executed.
+    pub fn state_root_hash(&self) -> &Digest {
+        match self {
+            VersionedBlock::V1(v1) => v1.header.state_root_hash(),
+            VersionedBlock::V2(v2) => v2.header.state_root_hash(),
+        }
+    }
 }
 
 impl Display for VersionedBlock {
@@ -94,24 +133,6 @@ impl Display for VersionedBlock {
         match self {
             VersionedBlock::V1(v1) => fmt::Display::fmt(&v1, f),
             VersionedBlock::V2(v2) => fmt::Display::fmt(&v2, f),
-        }
-    }
-}
-
-impl From<VersionedBlock> for Block {
-    fn from(value: VersionedBlock) -> Self {
-        match value {
-            VersionedBlock::V1(_) => todo!(),
-            VersionedBlock::V2(v2) => v2,
-        }
-    }
-}
-
-impl From<&VersionedBlock> for Block {
-    fn from(value: &VersionedBlock) -> Self {
-        match value {
-            VersionedBlock::V1(_) => todo!(),
-            VersionedBlock::V2(v2) => v2.clone(),
         }
     }
 }
@@ -155,6 +176,18 @@ impl FromBytes for VersionedBlock {
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
+    }
+}
+
+impl From<&Block> for VersionedBlock {
+    fn from(block: &Block) -> Self {
+        VersionedBlock::V2(block.clone())
+    }
+}
+
+impl From<Block> for VersionedBlock {
+    fn from(block: Block) -> Self {
+        VersionedBlock::V2(block)
     }
 }
 
