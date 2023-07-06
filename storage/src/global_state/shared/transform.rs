@@ -32,6 +32,9 @@ pub enum Error {
     /// Type mismatch error.
     #[error("{0}")]
     TypeMismatch(StoredValueTypeMismatch),
+    /// Type no longer supported.
+    #[error("Type no longer supported")]
+    Deprecated,
 }
 
 impl From<StoredValueTypeMismatch> for Error {
@@ -182,13 +185,7 @@ impl Transform {
                     contract.named_keys_append(&mut keys);
                     Ok(StoredValue::Contract(contract))
                 }
-                StoredValue::Account(mut cl_value) => {
-                    // account.named_keys_append(&mut keys);
-                    // Ok(StoredValue::Account(account))
-                    let expected = "Contract or Account".to_string();
-                    let found = format!("{:?}", cl_value.cl_type());
-                    Err(StoredValueTypeMismatch::new(expected, found).into())
-                }
+                StoredValue::Account(_) => Err(Error::Deprecated),
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());

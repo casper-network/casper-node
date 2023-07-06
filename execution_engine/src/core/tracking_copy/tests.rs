@@ -10,11 +10,12 @@ use casper_storage::global_state::{
         trie::merkle_proof::TrieMerkleProof,
     },
 };
+use casper_types::contracts::ActionThresholds;
 use casper_types::{
     contracts::{AccountHash, AssociatedKeys, NamedKeys, Weight, ACCOUNT_HASH_LENGTH},
     gens::*,
-    AccessRights, CLValue, Contract, Digest, EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion,
-    StoredValue, URef, U256, U512,
+    AccessRights, CLValue, Contract, ContractHash, ContractPackageHash, Digest, EntryPoints,
+    HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
 };
 
 use super::{
@@ -23,6 +24,7 @@ use super::{
 use crate::{
     core::{engine_state::EngineConfig, runtime_context::dictionary, ValidationError},
     shared::execution_journal::ExecutionJournal,
+    ACCOUNT_WASM_ADDR,
 };
 
 struct CountingDb {
@@ -194,14 +196,19 @@ fn tracking_copy_add_named_key() {
     let correlation_id = CorrelationId::new();
     // DB now holds an `Account` so that we can test adding a `NamedKey`
     let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
-    let account = Account::new(
-        zero_account_hash,
+    let contract = Contract::new(
+        ContractPackageHash::new([3u8; 32]),
+        ACCOUNT_WASM_ADDR.into(),
         NamedKeys::new(),
+        EntryPoints::default(),
+        ProtocolVersion::V1_0_0,
         URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
         associated_keys,
         Default::default(),
     );
-    let db = CountingDb::new_init(StoredValue::Account(account));
+    let contract_hash =
+        CLValue::from_t(ContractHash::new([4u8; 32])).expect("must convert to CLValue");
+    let db = CountingDb::new_init(StoredValue::Contract(contract));
     let mut tc = TrackingCopy::new(db);
     let k = Key::Hash([0u8; 32]);
     let u1 = Key::URef(URef::new([1u8; 32], AccessRights::READ_WRITE));
@@ -346,6 +353,9 @@ proptest! {
             named_keys,
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
         ));
         let contract_key = Key::Hash(hash);
 
@@ -382,13 +392,19 @@ proptest! {
         let named_keys = iter::once((name.clone(), k)).collect();
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
-        let account = Account::new(
-            pk,
+        let account = Contract::new(
+            ContractPackageHash::new([1u8;32]),
+            ACCOUNT_WASM_ADDR.into(),
             named_keys,
+            EntryPoints::default(),
+            ProtocolVersion::V1_0_0,
             purse,
             associated_keys,
-            Default::default(),
+            ActionThresholds::default()
         );
+
+
+
         let account_key = Key::Account(address);
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
@@ -432,6 +448,9 @@ proptest! {
             contract_named_keys,
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
         ));
         let contract_key = Key::Hash(hash);
 
@@ -440,13 +459,7 @@ proptest! {
         account_named_keys.insert(contract_name.clone(), contract_key);
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
-        let account = Account::new(
-            pk,
-            account_named_keys,
-            purse,
-            associated_keys,
-            Default::default(),
-        );
+        let account_value = CLValue::from_t(ContractHash::new([10;32])).unwrap();
         let account_key = Key::Account(address);
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
@@ -454,7 +467,7 @@ proptest! {
         let (gs, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
             (k, value),
             (contract_key, contract),
-            (account_key, account.into()),
+            (account_key, account_value.into()),
         ]);
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
@@ -536,6 +549,9 @@ fn query_for_circular_references_should_fail() {
         named_keys,
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
+        URef::default(),
+        AssociatedKeys::default(),
+        ActionThresholds::default(),
     ));
 
     let correlation_id = CorrelationId::new();
@@ -581,12 +597,22 @@ fn validate_query_proof_should_work() {
     // create account
     let account_hash = AccountHash::new([3; 32]);
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
-    let account_value = StoredValue::Account(Account::create(
-        account_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let account_contract_hash = ContractHash::new([30; 32]);
+    let account_contract_key: Key = account_contract_hash.into();
+    let cl_value = CLValue::from_t(account_contract_hash).unwrap();
+    let account_value = StoredValue::Account(cl_value);
     let account_key = Key::Account(account_hash);
+
+    let account_contract = StoredValue::Contract(Contract::new(
+        ContractPackageHash::new([20; 32]),
+        ACCOUNT_WASM_ADDR.into(),
+        NamedKeys::default(),
+        EntryPoints::default(),
+        ProtocolVersion::V1_0_0,
+        fake_purse,
+        AssociatedKeys::new(account_hash, Weight::new(1)),
+        ActionThresholds::default(),
+    ));
 
     // create contract that refers to that account
     let account_name = "account".to_string();
@@ -595,12 +621,16 @@ fn validate_query_proof_should_work() {
         tmp.insert(account_name.clone(), account_key);
         tmp
     };
+
     let contract_value = StoredValue::Contract(Contract::new(
         [2; 32].into(),
         [3; 32].into(),
         named_keys,
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
+        URef::default(),
+        AssociatedKeys::default(),
+        ActionThresholds::default(),
     ));
     let contract_key = Key::Hash([5; 32]);
 
@@ -613,8 +643,23 @@ fn validate_query_proof_should_work() {
         tmp.insert(contract_name.clone(), contract_key);
         tmp
     };
-    let main_account_value =
-        StoredValue::Account(Account::create(account_hash, named_keys, fake_purse));
+
+    let main_contract_hash = ContractHash::new([31; 32]);
+    let main_contract_key: Key = main_contract_hash.into();
+    let cl_value_2 = CLValue::from_t(main_contract_hash).unwrap();
+
+    let main_contract = StoredValue::Contract(Contract::new(
+        ContractPackageHash::new([21; 32]),
+        ACCOUNT_WASM_ADDR.into(),
+        named_keys,
+        EntryPoints::default(),
+        ProtocolVersion::V1_0_0,
+        fake_purse,
+        AssociatedKeys::new(account_hash, Weight::new(1)),
+        ActionThresholds::default(),
+    ));
+
+    let main_account_value = StoredValue::Account(cl_value_2);
     let main_account_key = Key::Account(account_hash);
 
     // random value for proof injection attack
@@ -626,8 +671,10 @@ fn validate_query_proof_should_work() {
     let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (account_key, account_value.to_owned()),
+        (account_contract_key, account_contract.to_owned()),
         (contract_key, contract_value.to_owned()),
         (main_account_key, main_account_value.to_owned()),
+        (main_contract_key, main_contract.to_owned()),
         (uref_key, uref_value),
     ]);
 
@@ -817,21 +864,15 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
     // account 1
     let account_1_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-    let account_1_value = StoredValue::Account(Account::create(
-        account_1_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
+    let account_1_value = StoredValue::Account(account_cl_value);
     let account_1_key = Key::Account(account_1_hash);
 
     // account 2
     let account_2_hash = AccountHash::new([2; 32]);
     let fake_purse = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
-    let account_2_value = StoredValue::Account(Account::create(
-        account_2_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let fake_account_cl_value = CLValue::from_t(ContractHash::new([21; 32])).unwrap();
+    let account_2_value = StoredValue::Account(fake_account_cl_value);
     let account_2_key = Key::Account(account_2_hash);
 
     // random value
@@ -869,11 +910,8 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     // account
     let account_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-    let account_value = StoredValue::Account(Account::create(
-        account_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
+    let account_value = StoredValue::Account(account_cl_value);
     let account_key = Key::Account(account_hash);
 
     // random value 1
@@ -976,11 +1014,8 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     // persist account
     let account_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
-    let account_value = StoredValue::Account(Account::create(
-        account_hash,
-        NamedKeys::default(),
-        fake_purse,
-    ));
+    let account_value = CLValue::from_t(ContractHash::new([10; 32])).unwrap();
+    let account_value = StoredValue::Account(account_value);
     let account_key = Key::Account(account_hash);
     tracking_copy.write(account_key, account_value);
 
@@ -1041,6 +1076,9 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             named_keys,
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
         ));
         pairs.push((contract_key, contract));
         contract_keys.push(contract_key);
@@ -1101,6 +1139,9 @@ fn query_with_large_depth_with_urefs_should_fail() {
         named_keys,
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
+        URef::default(),
+        AssociatedKeys::default(),
+        ActionThresholds::default(),
     ));
     let contract_key = Key::Hash([0; 32]);
     pairs.push((contract_key, contract));

@@ -4,8 +4,8 @@
 mod byte_size;
 mod ext;
 pub(self) mod meter;
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
@@ -517,6 +517,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                                 ))
                             }
                         };
+                        println!("IN QUERY LOGIC");
                         query.navigate(contract_hash.into())
                     } else {
                         return Ok(

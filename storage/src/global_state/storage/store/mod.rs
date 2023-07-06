@@ -3,6 +3,7 @@ mod store_ext;
 pub(crate) mod tests;
 
 use std::borrow::Cow;
+use std::fmt::Debug;
 
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
@@ -26,13 +27,15 @@ pub trait Store<K, V> {
     fn get<T>(&self, txn: &T, key: &K) -> Result<Option<V>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
-        K: AsRef<[u8]>,
+        K: AsRef<[u8]> + Debug,
         V: FromBytes,
         Self::Error: From<T::Error>,
     {
+        println!("Base");
         let raw = self.get_raw(txn, key)?;
         match raw {
             Some(bytes) => {
+                println!("{:?}, {:?}", key, bytes.len());
                 let value = bytesrepr::deserialize_from_slice(bytes)?;
                 Ok(Some(value))
             }

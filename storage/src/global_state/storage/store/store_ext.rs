@@ -1,6 +1,7 @@
 //! Extension traits for store.
 
 use casper_types::bytesrepr::{FromBytes, ToBytes};
+use std::fmt::Debug;
 
 use crate::global_state::storage::{
     store::Store,
@@ -17,7 +18,7 @@ pub trait StoreExt<K, V>: Store<K, V> {
     ) -> Result<Vec<Option<V>>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
-        K: AsRef<[u8]> + 'a,
+        K: AsRef<[u8]> + 'a + Debug,
         V: FromBytes,
         Self::Error: From<T::Error>,
     {

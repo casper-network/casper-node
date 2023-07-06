@@ -768,6 +768,22 @@ pub enum ContractPackageKind {
     Account(AccountHash),
 }
 
+impl ContractPackageKind {
+    pub fn maybe_account_hash(&self) -> Option<AccountHash> {
+        match self {
+            Self::Account(account_hash) => Some(*account_hash),
+            Self::Wasm | Self::System(_) => None,
+        }
+    }
+
+    pub fn associated_keys(&self) -> AssociatedKeys {
+        match self {
+            Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
+            Self::Wasm | Self::System(_) => AssociatedKeys::default(),
+        }
+    }
+}
+
 impl ToBytes for ContractPackageKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;

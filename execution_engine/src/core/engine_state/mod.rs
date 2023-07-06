@@ -273,7 +273,8 @@ where
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
 
-        println!("Genesis installer finalized");
+        // println!("{:#?}", execution_effect);
+
         let post_state_hash = self
             .state
             .commit(
@@ -282,6 +283,8 @@ where
                 execution_effect.transforms.to_owned(),
             )
             .map_err(Into::<execution::Error>::into)?;
+
+        println!("Genesis committed");
 
         // Return the result
         Ok(GenesisSuccess {

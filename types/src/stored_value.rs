@@ -325,7 +325,9 @@ impl ToBytes for StoredValue {
         let mut result = bytesrepr::allocate_buffer(self)?;
         let (tag, mut serialized_data) = match self {
             StoredValue::CLValue(cl_value) => (Tag::CLValue, cl_value.to_bytes()?),
-            StoredValue::Account(account) => (Tag::Account, account.to_bytes()?),
+            StoredValue::Account(contract_hash_by_account) => {
+                (Tag::Account, contract_hash_by_account.to_bytes()?)
+            }
             StoredValue::ContractWasm(contract_wasm) => {
                 (Tag::ContractWasm, contract_wasm.to_bytes()?)
             }
@@ -351,7 +353,9 @@ impl ToBytes for StoredValue {
         U8_SERIALIZED_LENGTH
             + match self {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
-                StoredValue::Account(account) => account.serialized_length(),
+                StoredValue::Account(contract_hash_by_account) => {
+                    contract_hash_by_account.serialized_length()
+                }
                 StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
                 StoredValue::Contract(contract_header) => contract_header.serialized_length(),
                 StoredValue::ContractPackage(contract_package) => {
