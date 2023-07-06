@@ -190,14 +190,9 @@ where
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
 
-    let mut index = 0;
-
-    // println!("{:?}", effects.len());
-
     for (key, transform) in effects.into_iter() {
-        println!("About to read {:?}|{:?}", key, transform);
         let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
-        println!("Finished read {:?}", key);
+
         let value = match (read_result, transform) {
             (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
             (ReadResult::NotFound, transform) => {
@@ -232,13 +227,8 @@ where
             }
         };
 
-        println!("{}||{:?}", index, value);
-
         let write_result =
             write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
-
-        println!("{:?}||{:?}||{:?}", index, write_result, key);
-        index += 1;
 
         match write_result {
             WriteResult::Written(root_hash) => {

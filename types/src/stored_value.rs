@@ -16,7 +16,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::ContractPackage,
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, Contract, ContractHash, ContractWasm, DeployInfo, Transfer,
+    CLValue, Contract, ContractWasm, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
 

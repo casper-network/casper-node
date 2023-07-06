@@ -273,8 +273,6 @@ where
         // Commit the transforms.
         let execution_effect = genesis_installer.finalize();
 
-        // println!("{:#?}", execution_effect);
-
         let post_state_hash = self
             .state
             .commit(

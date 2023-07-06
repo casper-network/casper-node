@@ -517,7 +517,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                                 ))
                             }
                         };
-                        println!("IN QUERY LOGIC");
                         query.navigate(contract_hash.into())
                     } else {
                         return Ok(

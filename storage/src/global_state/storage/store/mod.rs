@@ -31,11 +31,9 @@ pub trait Store<K, V> {
         V: FromBytes,
         Self::Error: From<T::Error>,
     {
-        println!("Base");
         let raw = self.get_raw(txn, key)?;
         match raw {
             Some(bytes) => {
-                println!("{:?}, {:?}", key, bytes.len());
                 let value = bytesrepr::deserialize_from_slice(bytes)?;
                 Ok(Some(value))
             }

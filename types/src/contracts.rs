@@ -1060,6 +1060,7 @@ impl ToBytes for ContractPackage {
         self.disabled_versions().write_bytes(&mut result)?;
         self.groups().write_bytes(&mut result)?;
         self.lock_status.write_bytes(&mut result)?;
+        self.contract_package_kind.write_bytes(&mut result)?;
         Ok(result)
     }
 
@@ -1069,6 +1070,7 @@ impl ToBytes for ContractPackage {
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
             + self.lock_status.serialized_length()
+            + self.contract_package_kind.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1077,6 +1079,7 @@ impl ToBytes for ContractPackage {
         self.disabled_versions().write_bytes(writer)?;
         self.groups().write_bytes(writer)?;
         self.lock_status.write_bytes(writer)?;
+        self.contract_package_kind.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -1666,6 +1669,9 @@ impl ToBytes for Contract {
         self.named_keys().write_bytes(writer)?;
         self.entry_points().write_bytes(writer)?;
         self.protocol_version().write_bytes(writer)?;
+        self.main_purse().write_bytes(writer)?;
+        self.associated_keys().write_bytes(writer)?;
+        self.action_thresholds().write_bytes(writer)?;
         Ok(())
     }
 }

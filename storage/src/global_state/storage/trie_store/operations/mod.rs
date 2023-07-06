@@ -58,9 +58,7 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    println!("read: serialize key");
     let path: Vec<u8> = key.to_bytes()?;
-    println!("read: serialized key");
 
     let mut depth: usize = 0;
     let mut current: Trie<K, V> = match store.get(txn, root)? {
@@ -68,15 +66,12 @@ where
         None => return Ok(ReadResult::RootNotFound),
     };
 
-    println!("Should always be here");
-
     loop {
         match current {
             Trie::Leaf {
                 key: leaf_key,
                 value: leaf_value,
             } => {
-                println!("Found leaf value");
                 let result = if *key == leaf_key {
                     ReadResult::Found(leaf_value)
                 } else {
@@ -87,7 +82,6 @@ where
                 return Ok(result);
             }
             Trie::Node { pointer_block } => {
-                println!("Found node");
                 let index: usize = {
                     assert!(depth < path.len(), "depth must be < {}", path.len());
                     path[depth].into()
@@ -96,7 +90,7 @@ where
                     assert!(index < RADIX, "key length must be < {}", RADIX);
                     pointer_block[index]
                 };
-                println!("1");
+
                 match maybe_pointer {
                     Some(pointer) => match store.get(txn, pointer.hash()) {
                         Ok(Some(next)) => {
@@ -112,7 +106,6 @@ where
                             return Ok(ReadResult::NotFound);
                         }
                         Err(error) => {
-                            println!("2");
                             return Err(error.into());
                         }
                     },
@@ -120,10 +113,8 @@ where
                         return Ok(ReadResult::NotFound);
                     }
                 }
-                println!("3");
             }
             Trie::Extension { affix, pointer } => {
-                println!("Found extension");
                 let sub_path = &path[depth..depth + affix.len()];
                 if sub_path == affix.as_slice() {
                     match store.get(txn, pointer.hash())? {
@@ -335,28 +326,10 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let root_bytes = root.to_bytes()?;
-    let key: Key = bytesrepr::deserialize(key_bytes.to_vec()).expect("must convert to key");
-    println!("{:?}", key);
     let TrieScanRaw { tip, parents } =
-        match scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into()) {
-            Ok(trie) => trie,
-            Err(_) => panic!("Big kaboom"),
-        };
+        scan_raw::<K, V, T, S, E>(txn, store, key_bytes, root_bytes.into())?;
     let tip = match tip {
-        Either::Left(trie_leaf_bytes) => match bytesrepr::deserialize(trie_leaf_bytes.to_vec()) {
-            Ok(tip) => {
-                println!("good tip");
-                tip
-            }
-            Err(error) => {
-                println!(
-                    "First byte--->{:?}",
-                    trie_leaf_bytes.to_vec().first().unwrap()
-                );
-                println!("{:?}", error);
-                return Err(error.into());
-            }
-        },
+        Either::Left(trie_leaf_bytes) => bytesrepr::deserialize(trie_leaf_bytes.to_vec())?,
         Either::Right(tip) => tip,
     };
     Ok(TrieScan::new(tip, parents))
@@ -963,15 +936,9 @@ where
                 key: key.to_owned(),
                 value: value.to_owned(),
             };
-            println!("about to serialize path");
             let path: Vec<u8> = key.to_bytes()?;
-            println!("serialized path correctly");
             let TrieScan { tip, parents } =
                 scan::<K, V, T, S, E>(txn, store, &path, &current_root)?;
-
-            let tag = tip.tag_type();
-
-            println!("{:?}", tag);
             let new_elements: Vec<(Digest, Trie<K, V>)> = match tip {
                 // If the "tip" is the same as the new leaf, then the leaf
                 // is already in the Trie.

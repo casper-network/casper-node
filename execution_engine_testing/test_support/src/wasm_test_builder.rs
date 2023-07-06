@@ -570,8 +570,25 @@ where
         let transforms = execution_effect.transforms;
         let empty_path: Vec<String> = vec![];
 
-        let genesis_account =
-            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
+        // let genesis_account =
+        //     utils::get_account(&transforms, &system_account).expect("Unable to get system account");
+        //
+        //
+
+        let genesis_contract_by_account = self
+            .query(
+                Some(post_state_hash),
+                Key::Account(PublicKey::System.to_account_hash()),
+                &empty_path,
+            )
+            .expect("must have genesis contract hash by account")
+            .as_cl_value()
+            .unwrap()
+            .to_owned()
+            .into_t::<Key>()
+            .expect("must convert to contract hash");
+
+        let contract_hash = genesis_contract_by_account.into_hash().unwrap().into();
 
         self.system_contract_registry = match self.query(
             Some(post_state_hash),
@@ -589,7 +606,7 @@ where
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(genesis_account);
+        self.genesis_account = Some(contract_hash);
         self.genesis_transforms = Some(transforms);
         self
     }
@@ -1099,9 +1116,9 @@ where
     pub fn get_contract_by_account_hash(&self, account_hash: AccountHash) -> Option<Contract> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
             Some(StoredValue::CLValue(cl_value)) => {
-                let contract_hash =
-                    CLValue::into_t::<ContractHash>(cl_value).expect("must have contract hash");
-                match self.query(None, contract_hash.into(), &[]) {
+                let contract_key =
+                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                match self.query(None, contract_key, &[]) {
                     Ok(StoredValue::Contract(contract)) => Some(contract),
                     Ok(_) | Err(_) => None,
                 }

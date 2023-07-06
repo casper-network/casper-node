@@ -13,9 +13,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 
 use crate::{
     bytesrepr::{Bytes, Error, FromBytes, ToBytes},
-    checksummed_hex, contracts,
-    contracts::TryFromSliceForAccountHashError,
-    uref, CLType, CLTyped, HashAddr,
+    checksummed_hex, contracts, uref, CLType, CLTyped, HashAddr,
 };
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
@@ -42,12 +40,6 @@ impl From<base16::DecodeError> for FromStrError {
         FromStrError::Hex(error)
     }
 }
-
-// impl From<TryFromSliceForAccountHashError> for FromStrError {
-//     fn from(error: TryFromSliceForAccountHashError) -> Self {
-//         FromStrError::Account(error)
-//     }
-// }
 
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
