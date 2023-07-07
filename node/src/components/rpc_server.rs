@@ -467,6 +467,7 @@ where
             self.api_version,
             cfg.qps_limit,
             cfg.max_body_bytes,
+            cfg.cors_origin.clone(),
         ));
 
         Ok(Effects::new())
