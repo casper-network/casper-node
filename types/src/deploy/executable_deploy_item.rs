@@ -19,8 +19,7 @@ use serde::{Deserialize, Serialize};
 use super::Deploy;
 use crate::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::AccountHash,
-    contracts::DEFAULT_ENTRY_POINT_NAME,
+    contracts::{AccountHash, DEFAULT_ENTRY_POINT_NAME},
     runtime_args,
     system::mint::ARG_AMOUNT,
     ContractHash, ContractPackageHash, ContractVersion, Gas, Motes, Phase, PublicKey, RuntimeArgs,

@@ -10,9 +10,10 @@ use casper_storage::global_state::{
         trie::merkle_proof::TrieMerkleProof,
     },
 };
-use casper_types::contracts::ActionThresholds;
 use casper_types::{
-    contracts::{AccountHash, AssociatedKeys, NamedKeys, Weight, ACCOUNT_HASH_LENGTH},
+    contracts::{
+        AccountHash, ActionThresholds, AssociatedKeys, NamedKeys, Weight, ACCOUNT_HASH_LENGTH,
+    },
     gens::*,
     AccessRights, CLValue, Contract, ContractHash, ContractPackageHash, Digest, EntryPoints,
     HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,

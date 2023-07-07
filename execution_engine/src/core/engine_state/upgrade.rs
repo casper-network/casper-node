@@ -4,9 +4,9 @@ use std::{cell::RefCell, fmt, rc::Rc};
 use thiserror::Error;
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
-use casper_types::contracts::{ActionThresholds, AssociatedKeys};
 use casper_types::{
     bytesrepr::{self},
+    contracts::{ActionThresholds, AssociatedKeys},
     system::SystemContractType,
     Contract, ContractHash, Digest, Key, ProtocolVersion, StoredValue, URef,
 };

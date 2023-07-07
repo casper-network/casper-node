@@ -21,13 +21,13 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::storage::state::StateReader;
-use casper_types::contracts::{ActionThresholds, AssociatedKeys, ContractPackageKind};
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
-        self, AccountHash, ActionType, Contract, ContractPackage, ContractPackageStatus,
-        ContractVersion, ContractVersions, DisabledVersions, EntryPoint, EntryPointAccess,
-        EntryPoints, Group, Groups, NamedKeys, Weight, DEFAULT_ENTRY_POINT_NAME,
+        self, AccountHash, ActionThresholds, ActionType, AssociatedKeys, Contract, ContractPackage,
+        ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions,
+        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
+        Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     system::{
         self,

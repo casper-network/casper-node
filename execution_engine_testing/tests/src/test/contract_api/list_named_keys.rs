@@ -2,7 +2,10 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{contracts::AccountHash, contracts::NamedKeys, runtime_args, Key, RuntimeArgs};
+use casper_types::{
+    contracts::{AccountHash, NamedKeys},
+    runtime_args, Key, RuntimeArgs,
+};
 
 const CONTRACT_LIST_NAMED_KEYS: &str = "list_named_keys.wasm";
 const NEW_NAME_ACCOUNT: &str = "Account";

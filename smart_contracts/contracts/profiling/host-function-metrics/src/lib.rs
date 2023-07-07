@@ -13,8 +13,7 @@ use casper_contract::{
 };
 use casper_types::{
     bytesrepr::Bytes,
-    contracts::NamedKeys,
-    contracts::{AccountHash, ActionType, Weight},
+    contracts::{AccountHash, ActionType, NamedKeys, Weight},
     runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
 };

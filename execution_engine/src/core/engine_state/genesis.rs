@@ -10,11 +10,10 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
-use casper_types::contracts::{ActionThresholds, AssociatedKeys, ContractPackageKind, Weight};
-use casper_types::system::SystemContractType;
 use casper_types::{
     contracts::{
-        AccountHash, ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys,
+        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
+        ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
     },
     system::{
         auction::{
@@ -26,7 +25,7 @@ use casper_types::{
         },
         handle_payment,
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        standard_payment, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, CLValue, Chainspec, ChainspecRegistry, Contract, ContractHash, ContractPackage,
     ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,

@@ -48,13 +48,12 @@ use casper_storage::{
     },
 };
 
-use casper_types::contracts::{
-    ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus, ContractVersions,
-    DisabledVersions, Groups, Weight,
-};
 use casper_types::{
     bytesrepr::ToBytes,
-    contracts::{AccountHash, NamedKeys},
+    contracts::{
+        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
+        ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+    },
     system::{
         auction::{
             EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
@@ -92,7 +91,6 @@ pub use self::{
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
 };
-use crate::core::execution::AddressGenerator;
 use crate::{
     core::{
         engine_state::{
@@ -101,7 +99,7 @@ use crate::{
             genesis::GenesisInstaller,
             upgrade::{ProtocolUpgradeError, SystemUpgrader},
         },
-        execution::{self, DirectSystemContractCall, Executor},
+        execution::{self, AddressGenerator, DirectSystemContractCall, Executor},
         runtime::RuntimeStack,
         tracking_copy::{TrackingCopy, TrackingCopyExt},
     },

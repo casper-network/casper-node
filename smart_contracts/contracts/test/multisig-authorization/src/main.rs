@@ -6,8 +6,8 @@ extern crate alloc;
 use alloc::{collections::BTreeSet, string::ToString};
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    contracts::AccountHash, contracts::Parameters, ApiError, CLType, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints,
+    contracts::{AccountHash, Parameters},
+    ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
 };
 
 const ROLE_A_KEYS: [AccountHash; 3] = [

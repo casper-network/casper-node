@@ -40,13 +40,12 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-use crate::bytesrepr::U8_SERIALIZED_LENGTH;
-use crate::system::SystemContractType;
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     crypto::{self, PublicKey},
+    system::SystemContractType,
     uref,
     uref::URef,
     AccessRights, CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion,

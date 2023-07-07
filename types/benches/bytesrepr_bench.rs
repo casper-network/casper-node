@@ -5,11 +5,11 @@ use std::{
     iter,
 };
 
-use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
-        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageStatus, NamedKeys, Weight,
+        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
+        NamedKeys, Weight,
     },
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,

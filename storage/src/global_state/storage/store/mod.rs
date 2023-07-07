@@ -2,8 +2,7 @@ mod store_ext;
 #[cfg(test)]
 pub(crate) mod tests;
 
-use std::borrow::Cow;
-use std::fmt::Debug;
+use std::{borrow::Cow, fmt::Debug};
 
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 

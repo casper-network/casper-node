@@ -13,8 +13,11 @@ use core::{
 use datasize::DataSize;
 use serde::Serialize;
 
-use crate::bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
-use crate::{bytesrepr, ApiError, EntryPoints};
+use crate::{
+    bytesrepr,
+    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    ApiError, EntryPoints,
+};
 
 const MINT_TAG: u8 = 0;
 const HANDLE_PAYMENT_TAG: u8 = 1;

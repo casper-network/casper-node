@@ -3,12 +3,10 @@ use std::{collections::BTreeSet, convert::TryFrom};
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_storage::global_state::storage::state::StateReader;
-use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
-    contracts::AccountHash,
-    contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
+    contracts::{AccountHash, ContractPackageKind, ContractPackageStatus, EntryPoints, NamedKeys},
     crypto,
     system::auction::EraInfo,
     ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
