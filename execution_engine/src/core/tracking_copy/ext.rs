@@ -4,6 +4,7 @@ use casper_storage::global_state::{
     shared::CorrelationId,
     storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
+
 use casper_types::{
     contracts::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
     ContractWasm, ContractWasmHash, Key, Motes, StoredValue, StoredValueTypeMismatch, URef,
@@ -27,12 +28,26 @@ pub trait TrackingCopyExt<R> {
         account_hash: AccountHash,
     ) -> Result<ContractHash, Self::Error>;
 
+    /// Gets the contract for a given account by its account address
+    fn get_contract_by_account_hash(
+        &mut self,
+        correlation_id: CorrelationId,
+        account_hash: AccountHash,
+    ) -> Result<Contract, Self::Error>;
+
     /// Reads the contract hash for the account at a given account address.
     fn read_account(
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Self::Error>;
+    ) -> Result<Key, Self::Error>;
+
+    /// Reads the contract for a given account by its account address
+    fn read_contract_by_account_hash(
+        &mut self,
+        correlation_id: CorrelationId,
+        account_hash: AccountHash,
+    ) -> Result<Contract, Self::Error>;
 
     // TODO: make this a static method
     /// Gets the purse balance key for a given purse id.
@@ -112,7 +127,11 @@ where
         let account_key = Key::Account(account_hash);
         match self.get(correlation_id, &account_key).map_err(Into::into)? {
             Some(StoredValue::Account(cl_value)) => {
-                let contract_hash = CLValue::into_t::<ContractHash>(cl_value)?;
+                let contract_hash = CLValue::into_t::<Key>(cl_value)?;
+                let contract_hash = contract_hash
+                    .into_hash()
+                    .map(|addr| ContractHash::new(addr))
+                    .expect("must convert to contract hash");
                 Ok(contract_hash)
             }
             Some(other) => Err(execution::Error::TypeMismatch(
@@ -122,11 +141,42 @@ where
         }
     }
 
+    fn get_contract_by_account_hash(
+        &mut self,
+        correlation_id: CorrelationId,
+        account_hash: AccountHash,
+    ) -> Result<Contract, Self::Error> {
+        let account_key = Key::Account(account_hash);
+
+        let contract_key = match self.get(correlation_id, &account_key).map_err(Into::into)? {
+            Some(StoredValue::Account(contract_key_as_cl_value)) => {
+                let contract_key = CLValue::into_t::<Key>(contract_key_as_cl_value)?;
+                contract_key
+            }
+            Some(other) => {
+                return Err(execution::Error::TypeMismatch(
+                    StoredValueTypeMismatch::new("Key".to_string(), other.type_name()),
+                ))
+            }
+            None => return Err(execution::Error::KeyNotFound(account_key)),
+        };
+        match self
+            .get(correlation_id, &contract_key)
+            .map_err(Into::into)?
+        {
+            Some(StoredValue::Contract(contract)) => Ok(contract),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
+            )),
+            None => Err(execution::Error::KeyNotFound(contract_key)),
+        }
+    }
+
     fn read_account(
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Self::Error> {
+    ) -> Result<Key, Self::Error> {
         let account_key = Key::Account(account_hash);
         match self
             .read(correlation_id, &account_key)
@@ -138,6 +188,14 @@ where
             )),
             None => Err(execution::Error::KeyNotFound(account_key)),
         }
+    }
+
+    fn read_contract_by_account_hash(
+        &mut self,
+        correlation_id: CorrelationId,
+        account_hash: AccountHash,
+    ) -> Result<Contract, Self::Error> {
+        self.get_contract_by_account_hash(correlation_id, account_hash)
     }
 
     fn get_purse_balance_key(

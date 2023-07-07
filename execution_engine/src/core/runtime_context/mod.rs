@@ -821,7 +821,8 @@ where
     /// Tests whether reading from the `key` is valid.
     pub fn is_readable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) => &self.base_key() == key,
+            // Key::Account(_) => &self.base_key() == key,
+            Key::Account(_) => true,
             Key::Hash(_) => true,
             Key::URef(uref) => uref.is_readable(),
             Key::Transfer(_) => true,
@@ -1202,7 +1203,7 @@ where
 
     /// Checks if the account context is valid.
     fn is_valid_context(&self) -> bool {
-        self.base_key() == Key::Account(*self.account_hash())
+        self.base_key() == Key::Hash(self.contract_hash().value())
     }
 
     /// Gets main purse id

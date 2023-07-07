@@ -155,10 +155,10 @@ where
             .read_gs_direct(&Key::Account(account_hash))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
 
-        let contract_hash: ContractHash = match maybe_value {
+        let contract_key: Key = match maybe_value {
             Some(StoredValue::Account(cl_value)) => {
-                let contract_hash: ContractHash = cl_value.into_t().map_err(|_| Error::CLValue)?;
-                contract_hash
+                let contract_key: Key = cl_value.into_t().map_err(|_| Error::CLValue)?;
+                contract_key
             }
             Some(_cl_value) => return Err(Error::CLValue),
             None => return Err(Error::InvalidPublicKey),
@@ -166,7 +166,7 @@ where
 
         let maybe_value = self
             .context
-            .read_gs_direct(&contract_hash.into())
+            .read_gs_direct(&contract_key)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
 
         match maybe_value {

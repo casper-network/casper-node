@@ -976,9 +976,10 @@ where
             let contract_by_account = CLValue::from_t(contract_key)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
 
-            self.tracking_copy
-                .borrow_mut()
-                .write(Key::Account(account_hash), contract_by_account.into());
+            self.tracking_copy.borrow_mut().write(
+                Key::Account(account_hash),
+                StoredValue::Account(contract_by_account),
+            );
         }
 
         Ok(contract_hash)

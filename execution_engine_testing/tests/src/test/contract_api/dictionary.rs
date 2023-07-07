@@ -89,8 +89,11 @@ fn query_dictionary_item(
             }
             let stored_value = builder.query(None, key, &[])?;
             if let StoredValue::Account(cl_value) = stored_value {
-                let contract_hash: ContractHash =
-                    CLValue::into_t(cl_value).expect("must convert to contract hash");
+                let contract_hash: ContractHash = CLValue::into_t::<Key>(cl_value)
+                    .expect("must convert to contract hash")
+                    .into_hash()
+                    .map(|hash_add| ContractHash::new(hash_add))
+                    .expect("must convert to contract hash");
                 return query_dictionary_item(
                     &builder,
                     contract_hash.into(),

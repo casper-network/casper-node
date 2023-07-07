@@ -575,20 +575,20 @@ where
         //
         //
 
-        let genesis_contract_by_account = self
-            .query(
-                Some(post_state_hash),
-                Key::Account(PublicKey::System.to_account_hash()),
-                &empty_path,
-            )
-            .expect("must have genesis contract hash by account")
-            .as_cl_value()
-            .unwrap()
-            .to_owned()
-            .into_t::<Key>()
-            .expect("must convert to contract hash");
-
-        let contract_hash = genesis_contract_by_account.into_hash().unwrap().into();
+        let system_contract_by_account =
+            match self.query(Some(post_state_hash), system_account, &empty_path) {
+                Ok(StoredValue::Account(cl_value)) => {
+                    let contract_key =
+                        CLValue::into_t::<Key>(cl_value).expect("must convert to contract key");
+                    let contract_hash = contract_key
+                        .into_hash()
+                        .map(|hash_addr| ContractHash::new(hash_addr))
+                        .expect("must convert to contract hash");
+                    contract_hash
+                }
+                Ok(_) => panic!("Failed to get system contract by account hash"),
+                Err(err) => panic!("{}", err),
+            };
 
         self.system_contract_registry = match self.query(
             Some(post_state_hash),
@@ -606,7 +606,7 @@ where
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(contract_hash);
+        self.genesis_account = Some(system_contract_by_account);
         self.genesis_transforms = Some(transforms);
         self
     }
@@ -1115,7 +1115,7 @@ where
     /// Queries for an `Account`.
     pub fn get_contract_by_account_hash(&self, account_hash: AccountHash) -> Option<Contract> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
-            Some(StoredValue::CLValue(cl_value)) => {
+            Some(StoredValue::Account(cl_value)) => {
                 let contract_key =
                     CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
                 match self.query(None, contract_key, &[]) {

@@ -14,6 +14,7 @@ use crate::{
 };
 
 use casper_storage::global_state::storage::{self, lmdb, state::CommitError};
+use casper_types::contracts::AccountHash;
 
 /// Engine state errors.
 #[derive(Clone, Error, Debug)]
@@ -103,6 +104,8 @@ pub enum Error {
     /// Failed to put a trie node into global state because some of its children were missing.
     #[error("Failed to put a trie into global state because some of its children were missing")]
     MissingTrieNodeChildren(Vec<Digest>),
+    #[error("Failed to retrieve contract by account hash {0}")]
+    MissingContractByAccountHash(AccountHash),
 }
 
 impl Error {

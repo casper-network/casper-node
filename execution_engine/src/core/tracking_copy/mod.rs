@@ -508,16 +508,16 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
 
             match stored_value {
                 StoredValue::Account(cl_value) => {
-                    if cl_value.cl_type() == &CLType::ByteArray(KEY_HASH_LENGTH as u32) {
-                        let contract_hash: ContractHash = match cl_value.clone().into_t() {
-                            Ok(contract_hash) => contract_hash,
+                    if cl_value.cl_type() == &CLType::Key {
+                        let contract_key: Key = match cl_value.clone().into_t() {
+                            Ok(contract_key) => contract_key,
                             Err(_) => {
                                 return Ok(query.into_not_found_result(
                                     "Failed to parse CLValue as Contract Hash",
                                 ))
                             }
                         };
-                        query.navigate(contract_hash.into())
+                        query.navigate(contract_key)
                     } else {
                         return Ok(
                             query.into_not_found_result("Failed to parse CLValue as Contract Hash")

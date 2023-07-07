@@ -177,6 +177,9 @@ pub enum Error {
     /// Transform error.
     #[error(transparent)]
     Transform(transform::Error),
+    /// Invalid key
+    #[error("Invalid key {0}")]
+    InvalidKey(Key),
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

@@ -261,17 +261,9 @@ impl TransferRuntimeArgsBuilder {
 
         self.to = Some(account_hash);
 
-        let contract_hash = match tracking_copy
-            .borrow_mut()
-            .read_account(correlation_id, account_hash)
-        {
-            Ok(contract_hash) => contract_hash,
-            Err(_) => return Ok(TransferTargetMode::CreateAccount(account_hash)),
-        };
-
         match tracking_copy
             .borrow_mut()
-            .get_contract(correlation_id, contract_hash)
+            .get_contract_by_account_hash(correlation_id, account_hash)
         {
             Ok(contract) => Ok(TransferTargetMode::PurseExists(
                 contract.main_purse().with_access_rights(AccessRights::ADD),
