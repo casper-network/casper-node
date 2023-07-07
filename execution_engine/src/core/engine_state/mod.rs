@@ -223,7 +223,6 @@ where
             genesis_config_hash,
             protocol_version,
             correlation_id,
-            self.config().clone(),
             ee_config.clone(),
             tracking_copy,
         );
@@ -983,10 +982,9 @@ where
                             Account::create(account_hash, named_keys, main_purse)
                         };
                         // write new account
-                        let _ = tracking_copy.borrow_mut().write(
+                        tracking_copy.borrow_mut().write(
                             Key::Account(account_hash),
                             StoredValue::Account(new_account),
-                            self.config.max_stored_value_size(),
                         );
                     }
                     None => {
@@ -2555,7 +2553,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::RuntimeStackOverflow
                 | ExecError::ValueTooLarge
                 | ExecError::MissingRuntimeStack
-                | ExecError::DisabledContract(_) => false,
+                | ExecError::DisabledContract(_)
+                | ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,
             Error::WasmSerialization(_) => true,
@@ -2583,7 +2582,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId
-            | Error::MissingTrieNodeChildren(_) => false,
+            | Error::MissingTrieNodeChildren(_)
+            | Error::FailedToRetrieveAccumulationPurse => false,
         },
         ExecutionResult::Success { .. } => false,
     }

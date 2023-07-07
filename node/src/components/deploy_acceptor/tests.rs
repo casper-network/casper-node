@@ -25,8 +25,9 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
+    contracts::NamedKeys,
     testing::TestRng,
-    CLValue, EraId, StoredValue, URef, U512,
+    CLValue, EraId, PublicKey, SecretKey, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -415,20 +416,30 @@ impl TestScenario {
         )
     }
 
-    pub(crate) fn create_chainspec_for_test(&self) -> Chainspec {
-        let mut chainspec = Chainspec::from_resources("local");
+    pub(crate) fn create_chainspec_for_test(&self, chainspec: Arc<Chainspec>) -> Arc<Chainspec> {
         match self {
             TestScenario::ShouldAcceptDeployFromAdministrator { administrators, .. }
             | TestScenario::ShouldRejectDeployFromNonAdministrator { administrators, .. } => {
+                let mut chainspec = Chainspec {
+                    protocol_config: chainspec.protocol_config.clone(),
+                    network_config: chainspec.network_config.clone(),
+                    core_config: chainspec.core_config.clone(),
+                    highway_config: chainspec.highway_config,
+                    deploy_config: chainspec.deploy_config,
+                    wasm_config: chainspec.wasm_config,
+                    system_costs_config: chainspec.system_costs_config,
+                };
+
                 chainspec.core_config.administrators.clear();
                 chainspec
                     .core_config
                     .administrators
                     .extend(administrators.clone());
+
+                Arc::new(chainspec)
             }
-            _ => {}
+            _ => chainspec,
         }
-        chainspec
     }
 }
 
@@ -481,7 +492,11 @@ impl reactor::Reactor for Reactor {
         let (storage_config, storage_tempdir) = storage::Config::default_for_tests();
         let storage_withdir = WithDir::new(storage_tempdir.path(), storage_config);
 
-        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry).unwrap();
+        let deploy_acceptor = DeployAcceptor::new(
+            &config.create_chainspec_for_test(Arc::clone(&chainspec)),
+            registry,
+        )
+        .unwrap();
 
         let storage = Storage::new(
             &storage_withdir,
@@ -768,7 +783,7 @@ async fn run_deploy_acceptor_without_timeout(
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
     let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
-        test_scenario,
+        test_scenario.clone(),
         Arc::new(chainspec),
         Arc::new(chainspec_raw_bytes),
         &mut rng,
@@ -979,6 +994,25 @@ async fn run_deploy_acceptor_without_timeout(
                 event,
                 Event::DeployAcceptor(super::Event::StoredFinalizedApprovals { is_new: false, .. })
             ),
+            TestScenario::ShouldAcceptDeployFromAdministrator { .. } => {
+                matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(
+                        DeployAcceptorAnnouncement::AcceptedNewDeploy {
+                            source: Source::Client,
+                            ..
+                        }
+                    )
+                )
+            }
+            TestScenario::ShouldRejectDeployFromNonAdministrator { .. } => {
+                matches!(
+                    event,
+                    Event::DeployAcceptorAnnouncement(
+                        DeployAcceptorAnnouncement::InvalidDeploy { .. }
+                    )
+                )
+            }
         }
     };
     runner

@@ -12,12 +12,15 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,
     },
-    Key, Phase, PublicKey, URef, U512,
+    Key, Phase, PublicKey, StoredValue, URef, U512,
 };
 
-use crate::system::mint::{
-    runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
-    system_provider::SystemProvider,
+use crate::{
+    core::engine_state::SystemContractRegistry,
+    system::mint::{
+        runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
+        system_provider::SystemProvider,
+    },
 };
 
 /// Mint trait.
@@ -121,7 +124,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
             match immediate_caller {
                 Some(CallStackElement::StoredSession { contract_hash, .. })
                 | Some(CallStackElement::StoredContract { contract_hash, .. })
-                    if registry.values().any(|x| x == &contract_hash) =>
+                    if registry.has_contract_hash(&contract_hash) =>
                 {
                     // System contract calling a mint is fine (i.e. standard payment calling mint's
                     // transfer)

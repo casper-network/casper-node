@@ -4,7 +4,7 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{fmt::Debug, sync::Arc};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -35,8 +35,8 @@ use crate::{
     },
     fatal,
     types::{
-        chainspec::DeployConfig, BlockHash, BlockHeader, Chainspec, Deploy,
-        DeployConfigurationFailure, FinalizedApprovals,
+        chainspec::{CoreConfig, DeployConfig},
+        BlockHash, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure, FinalizedApprovals,
     },
     utils::Source,
     NodeRng,
@@ -207,7 +207,6 @@ pub struct DeployAcceptor {
     protocol_version: ProtocolVersion,
     deploy_config: DeployConfig,
     core_config: CoreConfig,
-    verify_accounts: bool,
     max_associated_keys: u32,
     #[data_size(skip)]
     metrics: metrics::Metrics,
@@ -391,13 +390,13 @@ impl DeployAcceptor {
                 };
                 if admin_set.intersection(&authorization_keys).next().is_some() {
                     return effect_builder
-                        .check_purse_balance(prestate_hash, account.main_purse())
+                        .check_purse_balance(*block_header.state_root_hash(), account.main_purse())
                         .event(move |maybe_balance_value| Event::GetBalanceResult {
                             event_metadata,
-                            prestate_hash,
                             maybe_balance_value,
                             account_hash: account.account_hash(),
                             verification_start_timestamp,
+                            block_header,
                         });
                 }
 

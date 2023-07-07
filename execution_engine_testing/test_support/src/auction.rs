@@ -6,8 +6,11 @@ use tempfile::TempDir;
 use casper_execution_engine::{
     core::{
         engine_state::{
-            self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest,
-            ChainspecRegistry, EngineState, ExecConfig, ExecuteRequest, GenesisAccount, RewardItem,
+            self,
+            engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+            genesis::{ExecConfigBuilder, GenesisValidator},
+            run_genesis_request::RunGenesisRequest,
+            ChainspecRegistry, EngineState, ExecuteRequest, GenesisAccount, RewardItem,
         },
         execution,
     },

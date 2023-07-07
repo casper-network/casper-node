@@ -1,7 +1,7 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_RUN_GENESIS_REQUEST, MINIMUM_ACCOUNT_CREATION_BALANCE, TIMESTAMP_MILLIS_INCREMENT,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::FeeHandling, EngineConfigBuilder, RewardItem,
@@ -36,7 +36,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 #[test]
 fn default_genesis_config_should_not_have_rewards_purse() {
     let mut builder = InMemoryWasmTestBuilder::default();
-    builder.run_genesis(&*DEFAULT_RUN_GENESIS_REQUEST);
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder

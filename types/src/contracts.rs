@@ -1709,7 +1709,7 @@ mod tests {
         let mut contract_package = make_contract_package();
 
         assert!(
-            !contract_package.is_contract_enabled(&CONTRACT_HASH),
+            !contract_package.is_contract_enabled(&NEW_CONTRACT_HASH),
             "nonexisting contract contract should return false"
         );
 
@@ -1745,17 +1745,18 @@ mod tests {
             "should return contract not found error"
         );
 
-        assert!(!contract_package.is_contract_enabled(&NEW_CONTRACT_HASH), "disabling missing contract shouldnt change outcome");
+        assert!(
+            !contract_package.is_contract_enabled(&NEW_CONTRACT_HASH),
+            "disabling missing contract shouldnt change outcome"
+        );
 
         let next_version = contract_package.insert_contract_version(1, NEW_CONTRACT_HASH);
         assert!(
             contract_package.is_version_enabled(next_version),
             "version should exist and be enabled"
         );
-        assert!(contract_package.is_contract_enabled(&NEW_CONTRACT_HASH));
-
         assert!(
-            contract_package.is_contract_enabled(&CONTRACT_HASH),
+            contract_package.is_contract_enabled(&NEW_CONTRACT_HASH),
             "contract should be enabled"
         );
 
@@ -1765,11 +1766,6 @@ mod tests {
             "should be able to disable version"
         );
         assert!(!contract_package.is_contract_enabled(&NEW_CONTRACT_HASH));
-
-        assert!(
-            !contract_package.is_contract_enabled(&CONTRACT_HASH),
-            "contract should be disabled"
-        );
 
         assert_eq!(
             contract_package.lookup_contract_hash(next_version),

@@ -75,7 +75,7 @@ fn gh_3710_should_copy_latest_era_info_to_stable_key_at_upgrade_point() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgrade_result = builder.get_upgrade_result(0).expect("result");

@@ -3,20 +3,15 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS,
-    DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS, DEFAULT_WASM_CONFIG,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
+    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROPOSER_ADDR,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
 };
 use casper_execution_engine::core::{
     engine_state::{
         self,
-        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
-        genesis::GenesisValidator,
-        EngineConfig, ExecConfig, GenesisAccount, RunGenesisRequest, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+        genesis::{ExecConfigBuilder, GenesisValidator},
+        EngineConfigBuilder, GenesisAccount, RunGenesisRequest,
     },
     execution,
 };
@@ -163,25 +158,7 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
 
     let exec_config = {
         let accounts = ACCOUNTS_WITH_GENESIS_VALIDATORS.clone();
-        let wasm_config = *DEFAULT_WASM_CONFIG;
-        let system_config = *DEFAULT_SYSTEM_CONFIG;
-        let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-        let auction_delay = DEFAULT_AUCTION_DELAY;
-        let locked_funds_period_millis = DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
-        let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-        let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-        let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-        ExecConfig::new(
-            accounts,
-            wasm_config,
-            system_config,
-            validator_slots,
-            auction_delay,
-            locked_funds_period_millis,
-            round_seigniorage_rate,
-            unbonding_delay,
-            genesis_timestamp_millis,
-        )
+        ExecConfigBuilder::new().with_accounts(accounts).build()
     };
 
     let genesis_request = RunGenesisRequest::new(
@@ -191,17 +168,9 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule()
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        vesting_schedule_period_millis,
-        None,
-        Default::default(),
-        Default::default(),
-    );
+    let engine_config = EngineConfigBuilder::new()
+        .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+        .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
     builder.run_genesis(&genesis_request);
@@ -313,24 +282,10 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
 
     let exec_config = {
         let accounts = ACCOUNTS_WITH_GENESIS_VALIDATORS.clone();
-        let wasm_config = *DEFAULT_WASM_CONFIG;
-        let system_config = *DEFAULT_SYSTEM_CONFIG;
-        let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-        let auction_delay = DEFAULT_AUCTION_DELAY;
-        let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-        let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-        let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-        ExecConfig::new(
-            accounts,
-            wasm_config,
-            system_config,
-            validator_slots,
-            auction_delay,
-            locked_funds_period_millis,
-            round_seigniorage_rate,
-            unbonding_delay,
-            genesis_timestamp_millis,
-        )
+        ExecConfigBuilder::new()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(locked_funds_period_millis)
+            .build()
     };
 
     let genesis_request = RunGenesisRequest::new(
@@ -340,17 +295,9 @@ fn should_immediatelly_unbond_genesis_validator_with_zero_day_vesting_schedule_a
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        vesting_schedule_period_millis,
-        None,
-        Default::default(),
-        Default::default(),
-    );
+    let engine_config = EngineConfigBuilder::new()
+        .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+        .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
     builder.run_genesis(&genesis_request);

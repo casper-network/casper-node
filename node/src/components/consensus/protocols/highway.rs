@@ -157,7 +157,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
-        let block_reward = if protocol_config.compute_rewards {
+        let block_reward = if chainspec.core_config.compute_rewards {
             BLOCK_REWARD
         } else {
             // Set the block reward parameter to 0 so Highway can skip the computation.

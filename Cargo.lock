@@ -19,14 +19,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "add-associated-key"
-version = "0.1.0"
-dependencies = [
- "casper-contract",
- "casper-types",
-]
-
-[[package]]
 name = "add-bid"
 version = "0.1.0"
 dependencies = [
@@ -1708,6 +1700,14 @@ dependencies = [
  "rand_core 0.5.1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "enable-contract"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]
@@ -3586,6 +3586,14 @@ checksum = "d273983c5a657a70a3e8f2a01329822f3b8c8172b73826411a55751e404a0a4a"
 dependencies = [
  "memchr",
  "minimal-lexical",
+]
+
+[[package]]
+name = "non-standard-payment"
+version = "0.1.0"
+dependencies = [
+ "casper-contract",
+ "casper-types",
 ]
 
 [[package]]

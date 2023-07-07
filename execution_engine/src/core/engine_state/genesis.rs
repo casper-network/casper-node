@@ -12,8 +12,6 @@ use rand::{
 use serde::{Deserialize, Serialize};
 
 use casper_hashing::Digest;
-#[cfg(any(test, feature = "test-support"))]
-use casper_types::testing::TestRng;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -183,22 +181,6 @@ impl AdministratorAccount {
     /// Gets a reference to the administrator account's public key.
     pub fn public_key(&self) -> &PublicKey {
         &self.public_key
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl AdministratorAccount {
-    /// Generates a random instance using a `TestRng`.
-    pub fn random(rng: &mut TestRng) -> Self {
-        let public_key = {
-            let secret_key_bytes: [u8; 32] = rng.gen();
-            let secret_key = SecretKey::ed25519_from_bytes(secret_key_bytes).unwrap();
-            PublicKey::from(&secret_key)
-        };
-        Self {
-            public_key,
-            balance: Motes::new(rng.gen()),
-        }
     }
 }
 
@@ -1165,14 +1147,12 @@ where
 
     fn create_handle_payment(
         &self,
-        payment_purse_uref: URef,
-    ) -> Result<ContractHash, GenesisError> {
+        handle_payment_payment_purse: URef,
+    ) -> Result<ContractHash, Box<GenesisError>> {
         let named_keys = {
             let mut named_keys = NamedKeys::new();
-            named_keys.insert(
-                handle_payment::PAYMENT_PURSE_KEY.to_string(),
-                payment_purse_uref.into(),
-            );
+            let named_key = Key::URef(handle_payment_payment_purse);
+            named_keys.insert(handle_payment::PAYMENT_PURSE_KEY.to_string(), named_key);
 
             // This purse is used only in FeeHandling::Accumulate setting.
             let rewards_purse_uref = self.create_purse(U512::zero())?;
@@ -1476,7 +1456,7 @@ where
         &self,
         total_supply_key: Key,
         payment_purse_uref: URef,
-    ) -> Result<(), GenesisError> {
+    ) -> Result<(), Box<GenesisError>> {
         let accounts = {
             let mut ret: Vec<GenesisAccount> = self.exec_config.accounts_iter().cloned().collect();
             let system_account = GenesisAccount::system();
@@ -1494,12 +1474,12 @@ where
         {
             // Ensure no duplicate administrator accounts are specified as this might raise errors
             // during genesis process when administrator accounts are added to associated keys.
-            return Err(GenesisError::DuplicatedAdministratorEntry);
+            return Err(GenesisError::DuplicatedAdministratorEntry.into());
         }
 
         let mut total_supply = U512::zero();
 
-        for account in accounts.iter() {
+        for account in accounts {
             let account_hash = account.account_hash();
             let main_purse = match account {
                 GenesisAccount::System
@@ -1509,10 +1489,14 @@ where
                 }
                 _ => self.create_purse(account.balance().value())?,
             };
-            total_supply += account.balance().value();
 
             let key = Key::Account(account_hash);
-            let stored_value = StoredValue::Account(account);
+            let stored_value = StoredValue::Account(Account::create(
+                account_hash,
+                Default::default(),
+                main_purse,
+            ));
+
             self.tracking_copy.borrow_mut().write(key, stored_value);
 
             total_supply += account.balance().value();
@@ -1697,6 +1681,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use casper_types::AsymmetricType;
     use rand::RngCore;
 
     #[test]
@@ -1757,8 +1742,10 @@ mod tests {
 
     #[test]
     fn administrator_account_bytesrepr_roundtrip() {
-        let mut rng = TestRng::new();
-        let administrator_account = AdministratorAccount::random(&mut rng);
+        let administrator_account = AdministratorAccount::new(
+            PublicKey::ed25519_from_bytes([123u8; 32]).unwrap(),
+            Motes::new(U512::MAX),
+        );
         bytesrepr::test_serialization_roundtrip(&administrator_account);
     }
 }

@@ -9,7 +9,7 @@ use std::path::Path;
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use casper_execution_engine::core::engine_state::GenesisAccount;
+use casper_execution_engine::core::engine_state::{genesis::AdministratorAccount, GenesisAccount};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
@@ -50,6 +50,7 @@ pub struct AccountsConfig {
 }
 
 impl AccountsConfig {
+    /// Create new accounts config instance.
     pub fn new(
         accounts: Vec<AccountConfig>,
         delegators: Vec<DelegatorConfig>,
@@ -99,7 +100,7 @@ impl AccountsConfig {
     ) -> Result<(Self, Option<Bytes>), ChainspecAccountsLoadError> {
         let accounts_path = dir_path.as_ref().join(CHAINSPEC_ACCOUNTS_FILENAME);
         if !accounts_path.is_file() {
-            let config = AccountsConfig::new(vec![], vec![]);
+            let config = AccountsConfig::new(vec![], vec![], vec![]);
             let maybe_bytes = None;
             return Ok((config, maybe_bytes));
         }
@@ -111,6 +112,9 @@ impl AccountsConfig {
     #[cfg(test)]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
+        use casper_types::{Motes, U512};
+        use rand::Rng;
+
         let alpha = AccountConfig::random(rng);
         let accounts = vec![
             alpha.clone(),
@@ -124,7 +128,11 @@ impl AccountsConfig {
 
         let delegators = vec![delegator];
 
-        let administrators = vec![AdministratorAccount::random(rng)];
+        let admin_balance: u32 = rng.gen();
+        let administrators = vec![AdministratorAccount::new(
+            PublicKey::random(rng),
+            Motes::new(U512::from(admin_balance)),
+        )];
 
         AccountsConfig {
             accounts,

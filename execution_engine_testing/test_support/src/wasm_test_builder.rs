@@ -25,9 +25,10 @@ use casper_execution_engine::{
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
             step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            PruneConfig, PruneResult, QueryRequest, QueryResult, RewardItem, StepError,
-            SystemContractRegistry, UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+            BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
+            GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, RewardItem,
+            StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+            DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
@@ -68,14 +69,13 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, Transfer, TransferAddr, URef, U512,
+    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, Motes, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
-use num_rational::Ratio;
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_PROPOSER_ADDR,
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
@@ -214,20 +214,26 @@ impl InMemoryWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            chainspec_config
-                .core_config
-                .vesting_schedule_period
-                .millis(),
-            chainspec_config.core_config.max_delegators_per_validator,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(
+                chainspec_config
+                    .core_config
+                    .vesting_schedule_period
+                    .millis(),
+            )
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build();
 
         let global_state = InMemoryGlobalState::empty().expect("should create global state");
 
@@ -332,20 +338,26 @@ impl LmdbWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            chainspec_config
-                .core_config
-                .vesting_schedule_period
-                .millis(),
-            chainspec_config.core_config.max_delegators_per_validator,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(
+                chainspec_config
+                    .core_config
+                    .vesting_schedule_period
+                    .millis(),
+            )
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build();
 
         Self::new_with_config(data_dir, engine_config)
     }

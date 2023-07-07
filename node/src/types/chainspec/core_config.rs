@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use tracing::error;
+use tracing::{error, warn};
 
 use casper_execution_engine::core::engine_state::engine_config::{FeeHandling, RefundHandling};
 #[cfg(test)]
@@ -22,17 +22,10 @@ use serde::{
     Deserialize, Serialize, Serializer,
 };
 
-#[cfg(test)]
-use casper_types::testing::TestRng;
-use casper_types::{
-    bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::VESTING_SCHEDULE_LENGTH_MILLIS,
-    ProtocolVersion, TimeDiff,
-};
-use tracing::{error, warn};
+use casper_types::{system::auction::VESTING_SCHEDULE_LENGTH_MILLIS, ProtocolVersion, TimeDiff};
 
 /// Configuration values associated with the core protocol.
-#[derive(Copy, Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, DataSize, PartialEq, Eq, Serialize, Deserialize, Debug)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
 pub struct CoreConfig {
@@ -103,8 +96,6 @@ pub struct CoreConfig {
     /// The maximum amount of delegators per validator.
     /// if the value is 0, there is no maximum capacity.
     pub max_delegators_per_validator: u32,
-    /// The minimum bound of motes that can be delegated to a validator.
-    pub(crate) minimum_delegation_amount: u64,
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `false`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.

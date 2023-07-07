@@ -22,7 +22,10 @@ use serde::Serialize;
 use tracing::{error, info, warn};
 
 use casper_execution_engine::{
-    core::engine_state::{genesis::ExecConfig, ChainspecRegistry, UpgradeConfig},
+    core::engine_state::{
+        genesis::{ExecConfig, ExecConfigBuilder},
+        ChainspecRegistry, UpgradeConfig,
+    },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
 use casper_hashing::Digest;

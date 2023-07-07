@@ -223,11 +223,12 @@ pub struct EngineConfigBuilder {
     max_query_depth: Option<u64>,
     max_associated_keys: Option<u32>,
     max_runtime_call_stack_height: Option<u32>,
-    max_stored_value_size: Option<u32>,
-    max_delegator_size_limit: Option<u32>,
+    minimum_delegation_amount: Option<u64>,
+    strict_argument_checking: Option<bool>,
+    vesting_schedule_period_millis: Option<u64>,
+    max_delegators_per_validator: Option<u32>,
     wasm_config: Option<WasmConfig>,
     system_config: Option<SystemConfig>,
-    minimum_delegation_amount: Option<u64>,
     administrative_accounts: Option<BTreeSet<PublicKey>>,
     allow_auction_bids: Option<bool>,
     allow_unrestricted_transfers: Option<bool>,
@@ -262,15 +263,21 @@ impl EngineConfigBuilder {
         self
     }
 
-    /// Sets the max stored value size.
-    pub fn with_max_stored_value_size(mut self, max_stored_value_size: u32) -> Self {
-        self.max_stored_value_size = Some(max_stored_value_size);
+    /// Sets the strict argument checking config option.
+    pub fn with_strict_argument_checking(mut self, value: bool) -> Self {
+        self.strict_argument_checking = Some(value);
         self
     }
 
-    /// Sets the max delegator size limit.
-    pub fn with_max_delegator_size_limit(mut self, max_delegator_size_limit: u32) -> Self {
-        self.max_delegator_size_limit = Some(max_delegator_size_limit);
+    /// Sets the vesting schedule period millis config option.
+    pub fn with_vesting_schedule_period_millis(mut self, value: u64) -> Self {
+        self.vesting_schedule_period_millis = Some(value);
+        self
+    }
+
+    /// Sets the max delegators per validator config option.
+    pub fn with_max_delegators_per_validator(mut self, value: Option<u32>) -> Self {
+        self.max_delegators_per_validator = value;
         self
     }
 
@@ -350,12 +357,6 @@ impl EngineConfigBuilder {
         let max_runtime_call_stack_height = self
             .max_runtime_call_stack_height
             .unwrap_or(DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT);
-        let max_stored_value_size = self
-            .max_stored_value_size
-            .unwrap_or(DEFAULT_MAX_STORED_VALUE_SIZE);
-        let max_delegator_size_limit = self
-            .max_delegator_size_limit
-            .unwrap_or(DEFAULT_MAX_DELEGATOR_SIZE_LIMIT);
         let minimum_delegation_amount = self
             .minimum_delegation_amount
             .unwrap_or(DEFAULT_MINIMUM_DELEGATION_AMOUNT);
@@ -377,6 +378,14 @@ impl EngineConfigBuilder {
         let refund_handling = self.refund_handling.unwrap_or(DEFAULT_REFUND_HANDLING);
         let fee_handling = self.fee_handling.unwrap_or(DEFAULT_FEE_HANDLING);
 
+        let strict_argument_checking = self
+            .strict_argument_checking
+            .unwrap_or(DEFAULT_STRICT_ARGUMENT_CHECKING);
+        let vesting_schedule_period_millis = self
+            .vesting_schedule_period_millis
+            .unwrap_or(DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS);
+        let max_delegators_per_validator = self.max_delegators_per_validator;
+
         EngineConfig {
             max_query_depth,
             max_associated_keys,
@@ -389,8 +398,9 @@ impl EngineConfigBuilder {
             allow_unrestricted_transfers,
             refund_handling,
             fee_handling,
-            max_stored_value_size,
-            max_delegator_size_limit,
+            strict_argument_checking,
+            vesting_schedule_period_millis,
+            max_delegators_per_validator,
         }
     }
 }

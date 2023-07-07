@@ -7,7 +7,7 @@ use casper_types::{
 
 use super::Runtime;
 use crate::{
-    core::execution,
+    core::{engine_state::SystemContractRegistry, execution},
     storage::global_state::StateReader,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,

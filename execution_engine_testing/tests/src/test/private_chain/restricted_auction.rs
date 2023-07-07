@@ -54,7 +54,7 @@ fn should_not_distribute_rewards_but_compute_next_set() {
 
     let era_info = {
         let era_info_value = builder
-            .query(None, Key::EraInfo(last_trusted_era), &[])
+            .query(None, Key::EraSummary, &[])
             .expect("should have value");
 
         era_info_value

@@ -9,22 +9,17 @@ use casper_engine_test_support::{
     UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::{
-                DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
-                DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-                DEFAULT_STRICT_ARGUMENT_CHECKING, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            genesis::{GenesisAccount, GenesisValidator},
+            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            genesis::{ExecConfigBuilder, GenesisAccount, GenesisValidator},
             run_genesis_request::RunGenesisRequest,
-            EngineConfig, Error, RewardItem,
+            EngineConfigBuilder, Error, RewardItem,
         },
         execution,
     },
@@ -46,7 +41,7 @@ use casper_types::{
     EraId, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
 };
 
-use crate::{lmdb_fixture, test::system_contracts::auction::bids::engine_state::ExecConfig};
+use crate::lmdb_fixture;
 
 const ARG_TARGET: &str = "target";
 
@@ -697,17 +692,10 @@ fn should_get_first_seigniorage_recipients() {
 
     // We can't use `utils::create_run_genesis_request` as the snapshot used an auction delay of 3.
     let auction_delay = 3;
-    let exec_config = ExecConfig::new(
-        accounts,
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        auction_delay,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    );
+    let exec_config = ExecConfigBuilder::new()
+        .with_accounts(accounts)
+        .with_auction_delay(auction_delay)
+        .build();
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
@@ -3321,7 +3309,7 @@ fn should_upgrade_unbonding_purses_from_rel_1_4_2() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let unbonding_purses: UnbondingPurses = builder.get_unbonds();
@@ -3558,7 +3546,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let unbonding_purses: UnbondingPurses = builder.get_unbonds();
@@ -3759,7 +3747,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let unbonding_purses: UnbondingPurses = builder.get_unbonds();
@@ -4146,17 +4134,9 @@ fn should_allow_delegations_with_minimal_floor_amount() {
 #[ignore]
 #[test]
 fn should_enforce_max_delegators_per_validator_cap() {
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        Some(2u32),
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::new()
+        .with_max_delegators_per_validator(Some(2u32))
+        .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
 
@@ -4441,17 +4421,9 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
         delegator_1_validator_2_delegate_request,
     ];
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        Some(1u32),
-        WasmConfig::default(),
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::new()
+        .with_max_delegators_per_validator(Some(1u32))
+        .build();
 
     let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
 

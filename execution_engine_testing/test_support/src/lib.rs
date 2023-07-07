@@ -31,6 +31,8 @@ pub use casper_execution_engine::core::engine_state::engine_config::{
 };
 use casper_execution_engine::{
     core::engine_state::{
+        engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+        genesis::ExecConfigBuilder,
         ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},

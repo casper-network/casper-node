@@ -1,6 +1,7 @@
 use casper_types::{
+    account::Account,
     system::{handle_payment, mint},
-    ApiError, Key, RuntimeArgs, StoredValue, URef, U512,
+    ApiError, Key, RuntimeArgs, StoredValue, TransferredTo, URef, U512,
 };
 
 use crate::{

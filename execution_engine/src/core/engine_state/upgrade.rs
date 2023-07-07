@@ -6,14 +6,17 @@ use thiserror::Error;
 
 use casper_hashing::Digest;
 use casper_types::{
-    bytesrepr::{self},
-    system::SystemContractType,
-    Contract, ContractHash, EraId, Key, ProtocolVersion, StoredValue,
+    bytesrepr::{self, ToBytes},
+    contracts::NamedKeys,
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemContractType},
+    AccessRights, CLValue, CLValueError, Contract, ContractHash, EraId, Key, Phase,
+    ProtocolVersion, StoredValue, U512,
 };
 
 use crate::{
     core::{
         engine_state::{execution_effect::ExecutionEffect, ChainspecRegistry},
+        execution::AddressGenerator,
         tracking_copy::TrackingCopy,
     },
     shared::newtypes::CorrelationId,
@@ -391,13 +394,10 @@ where
             self.tracking_copy.borrow_mut().write(
                 Key::Balance(purse_uref.addr()),
                 StoredValue::CLValue(balance_clvalue),
-                self.max_stored_value_size,
             );
-            self.tracking_copy.borrow_mut().write(
-                Key::URef(purse_uref),
-                StoredValue::CLValue(CLValue::unit()),
-                self.max_stored_value_size,
-            );
+            self.tracking_copy
+                .borrow_mut()
+                .write(Key::URef(purse_uref), StoredValue::CLValue(CLValue::unit()));
 
             let mut new_named_keys = NamedKeys::new();
             new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
@@ -406,7 +406,6 @@ where
             self.tracking_copy.borrow_mut().write(
                 (*handle_payment_hash).into(),
                 StoredValue::Contract(contract),
-                self.max_stored_value_size,
             );
         }
 

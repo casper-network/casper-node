@@ -139,8 +139,12 @@ fn should_track_total_token_supply_in_mint() {
         .with_fee_handling(fee_handling)
         .build();
 
-    let run_genesis_request =
-        RunGenesisRequest::new(GENESIS_CONFIG_HASH.into(), protocol_version, ee_config);
+    let run_genesis_request = RunGenesisRequest::new(
+        GENESIS_CONFIG_HASH.into(),
+        protocol_version,
+        ee_config,
+        DEFAULT_CHAINSPEC_REGISTRY.clone(),
+    );
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
