@@ -50,10 +50,11 @@ impl MainReactor {
                     highest_complete_block.height(),
                     highest_complete_block.era_id(),
                 );
-                match self.block_accumulator.sync_instruction(sync_identifier) {
-                    SyncInstruction::Leap { .. } => return ValidateInstruction::CatchUp,
-                    SyncInstruction::BlockSync { .. } => return ValidateInstruction::KeepUp,
-                    SyncInstruction::CaughtUp { .. } => (),
+
+                if let SyncInstruction::Leap { .. } =
+                    self.block_accumulator.sync_instruction(sync_identifier)
+                {
+                    return ValidateInstruction::CatchUp;
                 }
 
                 if !highest_complete_block.is_switch_block() {
@@ -127,15 +128,6 @@ impl MainReactor {
             height = highest_switch_block_header.height(),
             "{}: highest_switch_block_header", self.state
         );
-
-        if let Some(current_era) = self.consensus.current_era() {
-            debug!(state = %self.state,
-                era = current_era.value(),
-                "{}: consensus current_era", self.state);
-            if highest_switch_block_header.next_block_era_id() <= current_era {
-                return Ok(Some(Effects::new()));
-            }
-        }
 
         let highest_era_weights = match highest_switch_block_header.next_era_validator_weights() {
             None => {
