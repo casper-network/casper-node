@@ -2,6 +2,7 @@
 use std::fmt::Debug;
 
 use bytemuck::{Pod, Zeroable};
+use thiserror::Error;
 
 use crate::{ChannelId, Id};
 
@@ -38,38 +39,52 @@ impl Debug for Header {
 }
 
 /// Error kind, from the kind byte.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Error)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum ErrorKind {
     /// Application defined error.
+    #[error("application defined error")]
     Other = 0,
     /// The maximum frame size has been exceeded. This error cannot occur in this implementation,
     /// which operates solely on streams.
+    #[error("maximum frame size exceeded")]
     MaxFrameSizeExceeded = 1,
     /// An invalid header was received.
+    #[error("invalid header")]
     InvalidHeader = 2,
     /// A segment was sent with a frame where none was allowed, or a segment was too small or missing.
+    #[error("segment violation")]
     SegmentViolation = 3,
     /// A `varint32` could not be decoded.
+    #[error("bad varint")]
     BadVarInt = 4,
     /// Invalid channel: A channel number greater or equal the highest channel number was received.
+    #[error("invalid channel")]
     InvalidChannel = 5,
     /// A new request or response was sent without completing the previous one.
+    #[error("multi-frame in progress")]
     InProgress = 6,
     /// The indicated size of the response would be exceeded the configured limit.
+    #[error("response too large")]
     ResponseTooLarge = 7,
     /// The indicated size of the request would be exceeded the configured limit.
+    #[error("request too large")]
     RequestTooLarge = 8,
     /// Peer attempted to create two in-flight requests with the same ID on the same channel.
+    #[error("duplicate request")]
     DuplicateRequest = 9,
     /// Sent a response for request not in-flight.
+    #[error("response for ficticious request")]
     FictitiousRequest = 10,
     /// The dynamic request limit has been exceeded.
+    #[error("request limit exceeded")]
     RequestLimitExceeded = 11,
     /// Response cancellation for a request not in-flight.
+    #[error("cancellation for ficticious request")]
     FictitiousCancel = 12,
     /// Peer sent a request cancellation exceeding the cancellation allowance.
+    #[error("cancellation limit exceeded")]
     CancellationLimitExceeded = 13,
     // Note: When adding additional kinds, update the `HIGHEST` associated constant.
 }

@@ -205,6 +205,8 @@ pub enum CompletedRead {
     },
     /// A new request has been received.
     NewRequest {
+        /// The channel of the request.
+        channel: ChannelId,
         /// The ID of the request.
         id: Id,
         /// Request payload.
@@ -212,6 +214,8 @@ pub enum CompletedRead {
     },
     /// A response to one of our requests has been received.
     ReceivedResponse {
+        /// The channel of the response.
+        channel: ChannelId,
         /// The ID of the request received.
         id: Id,
         /// The response payload.
@@ -219,11 +223,15 @@ pub enum CompletedRead {
     },
     /// A request was cancelled by the peer.
     RequestCancellation {
+        /// The channel of the request cancellation.
+        channel: ChannelId,
         /// ID of the request to be cancelled.
         id: Id,
     },
     /// A response was cancelled by the peer.
     ResponseCancellation {
+        /// The channel of the response cancellation.
+        channel: ChannelId,
         /// The ID of the response to be cancelled.
         id: Id,
     },
@@ -592,6 +600,7 @@ impl<const N: usize> JulietProtocol<N> {
                     buffer.advance(Header::SIZE);
 
                     return Success(CompletedRead::NewRequest {
+                        channel: header.channel(),
                         id: header.id(),
                         payload: None,
                     });
@@ -601,6 +610,7 @@ impl<const N: usize> JulietProtocol<N> {
                         return err_msg(header, ErrorKind::FictitiousRequest);
                     } else {
                         return Success(CompletedRead::ReceivedResponse {
+                            channel: header.channel(),
                             id: header.id(),
                             payload: None,
                         });
@@ -707,11 +717,17 @@ impl<const N: usize> JulietProtocol<N> {
                     // TODO: What to do with partially received multi-frame request?
                     // TODO: Actually remove from incoming set.
 
-                    return Success(CompletedRead::RequestCancellation { id: header.id() });
+                    return Success(CompletedRead::RequestCancellation {
+                        channel: header.channel(),
+                        id: header.id(),
+                    });
                 }
                 Kind::CancelResp => {
                     if channel.outgoing_requests.remove(&header.id()) {
-                        return Success(CompletedRead::ResponseCancellation { id: header.id() });
+                        return Success(CompletedRead::ResponseCancellation {
+                            channel: header.channel(),
+                            id: header.id(),
+                        });
                     } else {
                         return err_msg(header, ErrorKind::FictitiousCancel);
                     }

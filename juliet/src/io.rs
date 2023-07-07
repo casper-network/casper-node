@@ -11,6 +11,7 @@
 
 use std::{
     collections::{HashMap, HashSet, VecDeque},
+    intrinsics::unreachable,
     io,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -18,6 +19,7 @@ use std::{
     },
 };
 
+use bimap::BiMap;
 use bytes::{Bytes, BytesMut};
 use futures::Stream;
 use portable_atomic::AtomicU128;
@@ -74,28 +76,6 @@ impl QueuedItem {
     }
 }
 
-fn x(q: QueuedItem) {
-    match q {
-        QueuedItem::Request {
-            io_id,
-            channel,
-            payload,
-        } => todo!(),
-        QueuedItem::Response {
-            id,
-            channel,
-            payload,
-        } => todo!(),
-        QueuedItem::RequestCancellation { io_id } => todo!(),
-        QueuedItem::ResponseCancellation { id, channel } => todo!(),
-        QueuedItem::Error {
-            id,
-            channel,
-            payload,
-        } => todo!(),
-    }
-}
-
 /// [`IoCore`] error.
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -105,11 +85,28 @@ pub enum CoreError {
     /// Failed to write using underlying writer.
     #[error("write failed")]
     WriteFailed(#[source] io::Error),
+    /// Remote peer disconnecting due to error.
+    #[error("remote peer sent error [channel {}/id {}]: {} (payload: {} bytes)",
+        header.channel(),
+        header.id(),
+        header.error_kind(),
+        data.map(|b| b.len()).unwrap_or(0))
+    ]
+    RemoteReportedError { header: Header, data: Option<Bytes> },
+
     #[error("error sent to peer")]
     ErrorSent(OutgoingFrame),
     #[error("local protocol violation")]
     /// Local protocol violation - caller violated the crate's API.
     LocalProtocolViolation(#[from] LocalProtocolViolation),
+    /// Bug - mapping of `IoID` to request broke.
+    #[error("internal error: IO id disappeared on channel {channel}, id {id}")]
+    IoIdDisappeared { channel: ChannelId, id: Id },
+    /// Internal error.
+    ///
+    /// An error occured that should be impossible, thus this indicative of a bug in the library.
+    #[error("internal consistency error: {0}")]
+    ConsistencyError(&'static str),
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -139,27 +136,10 @@ pub struct IoCore<const N: usize, R, W> {
     /// Receiver for new items to send.
     receiver: Receiver<QueuedItem>,
     /// Mapping for outgoing requests, mapping internal IDs to public ones.
-    request_map: HashMap<IoId, (ChannelId, RequestState)>,
+    request_map: BiMap<IoId, (ChannelId, Id)>,
 
     /// Shared data across handles and core.
     shared: Arc<IoShared<N>>,
-}
-
-#[derive(Copy, Clone, Debug)]
-enum RequestState {
-    /// The request is currently waiting and thus has not been assigned an ID yet.
-    Waiting,
-    /// The request has been sent.
-    Allocated {
-        /// ID assigned by the protocol core.
-        id: Id,
-    },
-    /// The request has been sent out.
-    Sent { id: Id },
-    /// Request has been cancelled, we are waiting for the allocated ID to be reused.
-    CancellationPending,
-    /// Request has been sent, but a cancellation has been sent shortly after.
-    CancellationSent { id: Id },
 }
 
 struct IoShared<const N: usize> {
@@ -177,7 +157,22 @@ impl<const N: usize> IoShared<N> {
 
 #[derive(Debug)]
 pub enum IoEvent {
-    CompletedRead(CompletedRead),
+    NewRequest {
+        channel: ChannelId,
+        id: Id,
+        payload: Option<Bytes>,
+    },
+    ReceivedResponse {
+        io_id: IoId,
+        payload: Option<Bytes>,
+    },
+    RequestCancellation {
+        id: Id,
+    },
+    ResponseCancellation {
+        io_id: IoId,
+    },
+
     RemoteClosed,
     LocalShutdown,
 }
@@ -186,9 +181,11 @@ impl IoEvent {
     #[inline(always)]
     fn should_shutdown(&self) -> bool {
         match self {
-            IoEvent::CompletedRead(_) => false,
-            IoEvent::RemoteClosed => true,
-            IoEvent::LocalShutdown => true,
+            IoEvent::NewRequest { .. }
+            | IoEvent::ReceivedResponse { .. }
+            | IoEvent::RequestCancellation { .. }
+            | IoEvent::ResponseCancellation { .. } => false,
+            IoEvent::RemoteClosed | IoEvent::LocalShutdown => true,
         }
     }
 }
@@ -261,30 +258,54 @@ where
                     }
 
                     todo!("loop over remainder");
-
-                    // if shutdown {
-                    //     return Ok(IoEvent::LocalShutdown);
-                    // } else {
-                    //     // Only process wait queue after having added all messages.
-                    //     for channel in modified_channels {
-                    //         self.process_wait_queue(channel)?;
-                    //     }
-                    // }
                 }
             }
         }
     }
 
-    fn handle_completed_read(&mut self, read: CompletedRead) -> Result<IoEvent, CoreError> {
-        match read {
+    fn handle_completed_read(
+        &mut self,
+        completed_read: CompletedRead,
+    ) -> Result<Option<IoEvent>, CoreError> {
+        match completed_read {
             CompletedRead::ErrorReceived { header, data } => {
-                // We've received an error, thus we should shut down the connection immediately.
-                todo!()
+                // We've received an error from the peer, they will be closing the connection.
+                return Err(CoreError::RemoteReportedError { header, data });
             }
-            CompletedRead::NewRequest { id, payload } => todo!(),
-            CompletedRead::ReceivedResponse { id, payload } => todo!(),
-            CompletedRead::RequestCancellation { id } => todo!(),
-            CompletedRead::ResponseCancellation { id } => todo!(),
+
+            CompletedRead::NewRequest {
+                channel,
+                id,
+                payload,
+            } => {
+                // Requests have their id passed through, since they are not given an `IoId`.
+                return Ok(Some(IoEvent::NewRequest {
+                    channel,
+                    id,
+                    payload,
+                }));
+            }
+            CompletedRead::RequestCancellation { channel, id } => {
+                todo!("ensure the request is cancelled - do we need an io-id as well?")
+            }
+
+            // It is not our job to ensure we do not receive duplicate responses or cancellations;
+            // this is taken care of by `JulietProtocol`.
+            CompletedRead::ReceivedResponse {
+                channel,
+                id,
+                payload,
+            } => Ok(self
+                .request_map
+                .remove_by_right(&(channel, id))
+                .map(move |(io_id, _)| IoEvent::ReceivedResponse { io_id, payload })),
+            CompletedRead::ResponseCancellation { channel, id } => {
+                // Responses are mapped to the respective `IoId`.
+                Ok(self
+                    .request_map
+                    .remove_by_right(&(channel, id))
+                    .map(|(io_id, _)| IoEvent::ResponseCancellation { io_id }))
+            }
         }
     }
 
