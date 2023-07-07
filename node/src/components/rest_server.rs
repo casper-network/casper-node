@@ -25,12 +25,12 @@ mod http_server;
 
 use std::{fmt::Debug, time::Instant};
 
-use casper_json_rpc::CorsOrigin;
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
+use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::Component;

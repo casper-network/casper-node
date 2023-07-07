@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 /// Default rate limit in qps.
 const DEFAULT_QPS_LIMIT: u64 = 100;
-/// Default cors origin.
+/// Default CORS origin.
 const DEFAULT_CORS_ORIGIN: &str = "";
 
 /// REST HTTP server configuration.

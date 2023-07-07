@@ -1,6 +1,5 @@
 use std::{convert::Infallible, time::Duration};
 
-use casper_json_rpc::CorsOrigin;
 use futures::{future, TryFutureExt};
 use hyper::server::{conn::AddrIncoming, Builder};
 use tokio::sync::oneshot;
@@ -8,6 +7,7 @@ use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
 use warp::Filter;
 
+use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::{filters, ReactorEventT};
@@ -61,7 +61,7 @@ pub(super) async fn run<REv: ReactorEventT>(
         .await;
 }
 
-/// Run the REST HTTP server.
+/// Run the REST HTTP server with CORS enabled.
 ///
 /// A message received on `shutdown_receiver` will cause the server to exit cleanly.
 pub(super) async fn run_with_cors<REv: ReactorEventT>(

@@ -10,7 +10,7 @@ const DEFAULT_QPS_LIMIT: u64 = 100;
 /// Default max body bytes.  This is 2.5MB which should be able to accommodate the largest valid
 /// JSON-RPC request, which would be an "account_put_deploy".
 const DEFAULT_MAX_BODY_BYTES: u32 = 2_621_440;
-/// Default cors origin.
+/// Default CORS origin.
 const DEFAULT_CORS_ORIGIN: &str = "";
 
 /// JSON-RPC HTTP server configuration.

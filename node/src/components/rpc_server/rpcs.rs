@@ -254,7 +254,7 @@ pub(super) trait RpcWithOptionalParams {
     ) -> Result<Self::ResponseResult, Error>;
 }
 
-/// Start JSON RPC server in a background.
+/// Start JSON RPC server with CORS enabled in a background.
 pub(super) async fn run_with_cors(
     builder: Builder<AddrIncoming>,
     handlers: RequestHandlers,
