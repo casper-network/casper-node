@@ -30,7 +30,7 @@ pub use block::{BlockExecutionResultsOrChunk, FinalizedBlock, SignedBlock};
 pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub(crate) use deploy::{
-    DeployHashWithApprovals, DeployMetadata, DeployMetadataExt, DeployOrTransferHash,
+    DeployExecutionInfo, DeployHashWithApprovals, DeployOrTransferHash,
     DeployWithFinalizedApprovals, FinalizedApprovals, LegacyDeploy,
 };
 pub use exit_code::ExitCode;

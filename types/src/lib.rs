@@ -140,9 +140,6 @@ pub use digest::{
 };
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
-// pub use execution_result::{
-//     ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
-// };
 pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]

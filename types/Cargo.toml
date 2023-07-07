@@ -73,13 +73,14 @@ untrusted = "0.7.1"
 [features]
 json-schema = ["once_cell", "schemars", "serde-map-to-array/json-schema"]
 std = ["base16/std", "derp", "getrandom/std", "humantime", "itertools/use_std", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
-testing = ["proptest", "proptest-derive", "rand_pcg", "strum"]
+testing = ["proptest", "proptest-derive", "rand/default", "rand_pcg", "strum"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
 
 [[bench]]
 name = "bytesrepr_bench"
 harness = false
+required-features = ["testing"]
 
 [package.metadata.docs.rs]
 all-features = true

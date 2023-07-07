@@ -156,8 +156,7 @@
               "type": "object",
               "required": [
                 "api_version",
-                "deploy",
-                "execution_results"
+                "deploy"
               ],
               "properties": {
                 "api_version": {
@@ -168,24 +167,26 @@
                   "description": "The deploy.",
                   "$ref": "#/components/schemas/Deploy"
                 },
-                "execution_results": {
-                  "description": "The map of block hash to execution result.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/JsonExecutionResult"
-                  }
-                },
                 "block_hash": {
-                  "description": "The hash of the block.",
                   "$ref": "#/components/schemas/BlockHash"
                 },
                 "block_height": {
-                  "description": "The height of the block.",
                   "type": "integer",
                   "format": "uint64",
                   "minimum": 0.0
+                },
+                "execution_result": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/VersionedExecutionResult"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
-              }
+              },
+              "additionalProperties": false
             }
           },
           "examples": [
@@ -255,44 +256,31 @@
                       }
                     ]
                   },
-                  "execution_results": [
-                    {
-                      "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
-                      "result": {
-                        "Success": {
-                          "effects": {
-                            "operations": [
-                              {
-                                "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
-                                "kind": "Write"
-                              },
-                              {
-                                "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                                "kind": "Read"
-                              }
-                            ],
-                            "transforms": [
-                              {
-                                "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
-                                "kind": {
-                                  "AddUInt64": 8
-                                }
-                              },
-                              {
-                                "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                                "kind": "Identity"
-                              }
-                            ]
+                  "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                  "block_height": 10,
+                  "execution_result": {
+                    "Version2": {
+                      "Success": {
+                        "effects": [
+                          {
+                            "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                            "kind": {
+                              "AddUInt64": 8
+                            }
                           },
-                          "transfers": [
-                            "transfer-5959595959595959595959595959595959595959595959595959595959595959",
-                            "transfer-8282828282828282828282828282828282828282828282828282828282828282"
-                          ],
-                          "cost": "123456"
-                        }
+                          {
+                            "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                            "kind": "Identity"
+                          }
+                        ],
+                        "transfers": [
+                          "transfer-5959595959595959595959595959595959595959595959595959595959595959",
+                          "transfer-8282828282828282828282828282828282828282828282828282828282828282"
+                        ],
+                        "cost": "123456"
                       }
                     }
-                  ]
+                  }
                 }
               }
             }
@@ -2358,38 +2346,1050 @@
             "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
             "type": "string"
           },
-          "JsonExecutionResult": {
-            "description": "The execution result of a single deploy.",
+          "BlockHash": {
+            "description": "Hex-encoded cryptographic hash of a block.",
+            "type": "string"
+          },
+          "VersionedExecutionResult": {
+            "description": "The versioned result of executing a single deploy.",
+            "oneOf": [
+              {
+                "description": "Version 1 of execution result type.",
+                "type": "object",
+                "required": [
+                  "Version1"
+                ],
+                "properties": {
+                  "Version1": {
+                    "$ref": "#/components/schemas/ExecutionResultV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Version 2 of execution result type.",
+                "type": "object",
+                "required": [
+                  "Version2"
+                ],
+                "properties": {
+                  "Version2": {
+                    "$ref": "#/components/schemas/ExecutionResultV2"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "ExecutionResultV1": {
+            "description": "The result of executing a single deploy.",
+            "oneOf": [
+              {
+                "description": "The result of a failed execution.",
+                "type": "object",
+                "required": [
+                  "Failure"
+                ],
+                "properties": {
+                  "Failure": {
+                    "type": "object",
+                    "required": [
+                      "cost",
+                      "effect",
+                      "error_message",
+                      "transfers"
+                    ],
+                    "properties": {
+                      "effect": {
+                        "description": "The effect of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ExecutionEffect"
+                          }
+                        ]
+                      },
+                      "transfers": {
+                        "description": "A record of Transfers performed while executing the deploy.",
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/TransferAddr"
+                        }
+                      },
+                      "cost": {
+                        "description": "The cost of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ]
+                      },
+                      "error_message": {
+                        "description": "The error message associated with executing the deploy.",
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "The result of a successful execution.",
+                "type": "object",
+                "required": [
+                  "Success"
+                ],
+                "properties": {
+                  "Success": {
+                    "type": "object",
+                    "required": [
+                      "cost",
+                      "effect",
+                      "transfers"
+                    ],
+                    "properties": {
+                      "effect": {
+                        "description": "The effect of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/ExecutionEffect"
+                          }
+                        ]
+                      },
+                      "transfers": {
+                        "description": "A record of Transfers performed while executing the deploy.",
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/TransferAddr"
+                        }
+                      },
+                      "cost": {
+                        "description": "The cost of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "ExecutionEffect": {
+            "description": "The journal of execution transforms from a single deploy.",
             "type": "object",
             "required": [
-              "block_hash",
-              "result"
+              "operations",
+              "transforms"
             ],
             "properties": {
-              "block_hash": {
-                "description": "The block hash.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/BlockHash"
-                  }
-                ]
+              "operations": {
+                "description": "The resulting operations.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Operation"
+                }
               },
-              "result": {
-                "description": "Execution result.",
+              "transforms": {
+                "description": "The journal of execution transforms.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TransformEntry"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "Operation": {
+            "description": "An operation performed while executing a deploy.",
+            "type": "object",
+            "required": [
+              "key",
+              "kind"
+            ],
+            "properties": {
+              "key": {
+                "description": "The formatted string of the `Key`.",
+                "type": "string"
+              },
+              "kind": {
+                "description": "The type of operation.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/ExecutionResult"
+                    "$ref": "#/components/schemas/OpKind"
                   }
                 ]
               }
             },
             "additionalProperties": false
           },
-          "BlockHash": {
-            "description": "Hex-encoded cryptographic hash of a block.",
+          "OpKind": {
+            "description": "The type of operation performed while executing a deploy.",
+            "oneOf": [
+              {
+                "description": "A read operation.",
+                "type": "string",
+                "enum": [
+                  "Read"
+                ]
+              },
+              {
+                "description": "A write operation.",
+                "type": "string",
+                "enum": [
+                  "Write"
+                ]
+              },
+              {
+                "description": "An addition.",
+                "type": "string",
+                "enum": [
+                  "Add"
+                ]
+              },
+              {
+                "description": "An operation which has no effect.",
+                "type": "string",
+                "enum": [
+                  "NoOp"
+                ]
+              }
+            ]
+          },
+          "TransformEntry": {
+            "description": "A transformation performed while executing a deploy.",
+            "type": "object",
+            "required": [
+              "key",
+              "transform"
+            ],
+            "properties": {
+              "key": {
+                "description": "The formatted string of the `Key`.",
+                "type": "string"
+              },
+              "transform": {
+                "description": "The transformation.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Transform"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "Transform": {
+            "description": "The actual transformation performed while executing a deploy.",
+            "oneOf": [
+              {
+                "description": "A transform having no effect.",
+                "type": "string",
+                "enum": [
+                  "Identity"
+                ]
+              },
+              {
+                "description": "Writes the given CLValue to global state.",
+                "type": "object",
+                "required": [
+                  "WriteCLValue"
+                ],
+                "properties": {
+                  "WriteCLValue": {
+                    "$ref": "#/components/schemas/CLValue"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given Account to global state.",
+                "type": "object",
+                "required": [
+                  "WriteAccount"
+                ],
+                "properties": {
+                  "WriteAccount": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes a smart contract as Wasm to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContractWasm"
+                ]
+              },
+              {
+                "description": "Writes a smart contract to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContract"
+                ]
+              },
+              {
+                "description": "Writes a smart contract package to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContractPackage"
+                ]
+              },
+              {
+                "description": "Writes the given DeployInfo to global state.",
+                "type": "object",
+                "required": [
+                  "WriteDeployInfo"
+                ],
+                "properties": {
+                  "WriteDeployInfo": {
+                    "$ref": "#/components/schemas/DeployInfo"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given EraInfo to global state.",
+                "type": "object",
+                "required": [
+                  "WriteEraInfo"
+                ],
+                "properties": {
+                  "WriteEraInfo": {
+                    "$ref": "#/components/schemas/EraInfo"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given Transfer to global state.",
+                "type": "object",
+                "required": [
+                  "WriteTransfer"
+                ],
+                "properties": {
+                  "WriteTransfer": {
+                    "$ref": "#/components/schemas/Transfer"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given Bid to global state.",
+                "type": "object",
+                "required": [
+                  "WriteBid"
+                ],
+                "properties": {
+                  "WriteBid": {
+                    "$ref": "#/components/schemas/Bid"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given Withdraw to global state.",
+                "type": "object",
+                "required": [
+                  "WriteWithdraw"
+                ],
+                "properties": {
+                  "WriteWithdraw": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/WithdrawPurse"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Adds the given `i32`.",
+                "type": "object",
+                "required": [
+                  "AddInt32"
+                ],
+                "properties": {
+                  "AddInt32": {
+                    "type": "integer",
+                    "format": "int32"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Adds the given `u64`.",
+                "type": "object",
+                "required": [
+                  "AddUInt64"
+                ],
+                "properties": {
+                  "AddUInt64": {
+                    "type": "integer",
+                    "format": "uint64",
+                    "minimum": 0.0
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Adds the given `U128`.",
+                "type": "object",
+                "required": [
+                  "AddUInt128"
+                ],
+                "properties": {
+                  "AddUInt128": {
+                    "$ref": "#/components/schemas/U128"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Adds the given `U256`.",
+                "type": "object",
+                "required": [
+                  "AddUInt256"
+                ],
+                "properties": {
+                  "AddUInt256": {
+                    "$ref": "#/components/schemas/U256"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Adds the given `U512`.",
+                "type": "object",
+                "required": [
+                  "AddUInt512"
+                ],
+                "properties": {
+                  "AddUInt512": {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Adds the given collection of named keys.",
+                "type": "object",
+                "required": [
+                  "AddKeys"
+                ],
+                "properties": {
+                  "AddKeys": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/NamedKey"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A failed transformation, containing an error message.",
+                "type": "object",
+                "required": [
+                  "Failure"
+                ],
+                "properties": {
+                  "Failure": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given Unbonding to global state.",
+                "type": "object",
+                "required": [
+                  "WriteUnbonding"
+                ],
+                "properties": {
+                  "WriteUnbonding": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/UnbondingPurse"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "AccountHash": {
+            "description": "Account hash as a formatted string.",
             "type": "string"
           },
-          "ExecutionResult": {
+          "DeployInfo": {
+            "description": "Information relating to the given Deploy.",
+            "type": "object",
+            "required": [
+              "deploy_hash",
+              "from",
+              "gas",
+              "source",
+              "transfers"
+            ],
+            "properties": {
+              "deploy_hash": {
+                "description": "Hex-encoded Deploy hash.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/DeployHash"
+                  }
+                ]
+              },
+              "transfers": {
+                "description": "Transfers performed by the Deploy.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TransferAddr"
+                }
+              },
+              "from": {
+                "description": "Account identifier of the creator of the Deploy.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                ]
+              },
+              "source": {
+                "description": "Source purse used for payment of the Deploy.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "gas": {
+                "description": "Gas cost of executing the Deploy.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "TransferAddr": {
+            "description": "Hex-encoded transfer address.",
+            "type": "string"
+          },
+          "URef": {
+            "description": "Hex-encoded, formatted URef.",
+            "type": "string"
+          },
+          "U512": {
+            "description": "Decimal representation of a 512-bit integer.",
+            "type": "string"
+          },
+          "EraInfo": {
+            "description": "Auction metadata.  Intended to be recorded at each era.",
+            "type": "object",
+            "required": [
+              "seigniorage_allocations"
+            ],
+            "properties": {
+              "seigniorage_allocations": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SeigniorageAllocation"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "SeigniorageAllocation": {
+            "description": "Information about a seigniorage allocation",
+            "oneOf": [
+              {
+                "description": "Info about a seigniorage allocation for a validator",
+                "type": "object",
+                "required": [
+                  "Validator"
+                ],
+                "properties": {
+                  "Validator": {
+                    "type": "object",
+                    "required": [
+                      "amount",
+                      "validator_public_key"
+                    ],
+                    "properties": {
+                      "validator_public_key": {
+                        "description": "Validator's public key",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/PublicKey"
+                          }
+                        ]
+                      },
+                      "amount": {
+                        "description": "Allocated amount",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Info about a seigniorage allocation for a delegator",
+                "type": "object",
+                "required": [
+                  "Delegator"
+                ],
+                "properties": {
+                  "Delegator": {
+                    "type": "object",
+                    "required": [
+                      "amount",
+                      "delegator_public_key",
+                      "validator_public_key"
+                    ],
+                    "properties": {
+                      "delegator_public_key": {
+                        "description": "Delegator's public key",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/PublicKey"
+                          }
+                        ]
+                      },
+                      "validator_public_key": {
+                        "description": "Validator's public key",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/PublicKey"
+                          }
+                        ]
+                      },
+                      "amount": {
+                        "description": "Allocated amount",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "Transfer": {
+            "description": "Represents a transfer from one purse to another",
+            "type": "object",
+            "required": [
+              "amount",
+              "deploy_hash",
+              "from",
+              "gas",
+              "source",
+              "target"
+            ],
+            "properties": {
+              "deploy_hash": {
+                "description": "Hex-encoded Deploy hash of Deploy that created the transfer.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/DeployHash"
+                  }
+                ]
+              },
+              "from": {
+                "description": "Account from which transfer was executed",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                ]
+              },
+              "to": {
+                "description": "Account to which funds are transferred",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "source": {
+                "description": "Source purse",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "target": {
+                "description": "Target purse",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "amount": {
+                "description": "Transfer amount",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              },
+              "gas": {
+                "description": "Gas",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              },
+              "id": {
+                "description": "User-defined id",
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "uint64",
+                "minimum": 0.0
+              }
+            },
+            "additionalProperties": false
+          },
+          "Bid": {
+            "description": "An entry in the validator map.",
+            "type": "object",
+            "required": [
+              "bonding_purse",
+              "delegation_rate",
+              "delegators",
+              "inactive",
+              "staked_amount",
+              "validator_public_key"
+            ],
+            "properties": {
+              "validator_public_key": {
+                "description": "Validator public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "bonding_purse": {
+                "description": "The purse that was used for bonding.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "staked_amount": {
+                "description": "The amount of tokens staked by a validator (not including delegators).",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              },
+              "delegation_rate": {
+                "description": "Delegation rate.",
+                "type": "integer",
+                "format": "uint8",
+                "minimum": 0.0
+              },
+              "vesting_schedule": {
+                "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/VestingSchedule"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "delegators": {
+                "description": "This validator's delegators, indexed by their public keys.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_PublicKeyAndDelegator"
+                  }
+                ]
+              },
+              "inactive": {
+                "description": "`true` if validator has been \"evicted\".",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "VestingSchedule": {
+            "type": "object",
+            "required": [
+              "initial_release_timestamp_millis"
+            ],
+            "properties": {
+              "initial_release_timestamp_millis": {
+                "type": "integer",
+                "format": "uint64",
+                "minimum": 0.0
+              },
+              "locked_amounts": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "$ref": "#/components/schemas/U512"
+                },
+                "maxItems": 14,
+                "minItems": 14
+              }
+            },
+            "additionalProperties": false
+          },
+          "Array_of_PublicKeyAndDelegator": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicKeyAndDelegator"
+            }
+          },
+          "PublicKeyAndDelegator": {
+            "description": "A delegator associated with the given validator.",
+            "type": "object",
+            "required": [
+              "delegator",
+              "delegator_public_key"
+            ],
+            "properties": {
+              "delegator_public_key": {
+                "description": "The public key of the delegator.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "delegator": {
+                "description": "The delegator details.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Delegator"
+                  }
+                ]
+              }
+            }
+          },
+          "Delegator": {
+            "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
+            "type": "object",
+            "required": [
+              "bonding_purse",
+              "delegator_public_key",
+              "staked_amount",
+              "validator_public_key"
+            ],
+            "properties": {
+              "delegator_public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "staked_amount": {
+                "$ref": "#/components/schemas/U512"
+              },
+              "bonding_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "validator_public_key": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "vesting_schedule": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/VestingSchedule"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "WithdrawPurse": {
+            "description": "A withdraw purse, a legacy structure.",
+            "type": "object",
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
+            ],
+            "properties": {
+              "bonding_purse": {
+                "description": "Bonding Purse",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "validator_public_key": {
+                "description": "Validators public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "unbonder_public_key": {
+                "description": "Unbonders public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "era_of_creation": {
+                "description": "Era in which this unbonding request was created.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ]
+              },
+              "amount": {
+                "description": "Unbonding Amount.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "EraId": {
+            "description": "Era ID newtype.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "U128": {
+            "description": "Decimal representation of a 128-bit integer.",
+            "type": "string"
+          },
+          "U256": {
+            "description": "Decimal representation of a 256-bit integer.",
+            "type": "string"
+          },
+          "NamedKey": {
+            "description": "A key with a name.",
+            "type": "object",
+            "required": [
+              "key",
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "description": "The name of the entry.",
+                "type": "string"
+              },
+              "key": {
+                "description": "The value of the entry: a casper `Key` type.",
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "UnbondingPurse": {
+            "description": "Unbonding purse.",
+            "type": "object",
+            "required": [
+              "amount",
+              "bonding_purse",
+              "era_of_creation",
+              "unbonder_public_key",
+              "validator_public_key"
+            ],
+            "properties": {
+              "bonding_purse": {
+                "description": "Bonding Purse",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "validator_public_key": {
+                "description": "Validators public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "unbonder_public_key": {
+                "description": "Unbonders public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "era_of_creation": {
+                "description": "Era in which this unbonding request was created.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                ]
+              },
+              "amount": {
+                "description": "Unbonding Amount.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              },
+              "new_validator": {
+                "description": "The validator public key to re-delegate to.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "ExecutionResultV2": {
             "description": "The result of executing a single deploy.",
             "oneOf": [
               {
@@ -2489,222 +3489,266 @@
           },
           "ExecutionJournal": {
             "description": "A log of all transforms produced during execution.",
-            "type": "object",
-            "required": [
-              "operations",
-              "transforms"
-            ],
-            "properties": {
-              "operations": {
-                "description": "The resulting operations.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Operation"
-                }
-              },
-              "transforms": {
-                "description": "The journal of execution transforms.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Transform"
-                }
-              }
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Transform"
             }
           },
-          "Operation": {
-            "description": "An operation performed while executing a deploy.",
-            "type": "object",
-            "required": [
-              "key",
-              "kind"
-            ],
-            "properties": {
-              "key": {
-                "description": "The `Key` under which the operation was performed.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Key"
-                  }
-                ]
-              },
-              "kind": {
-                "description": "The type of operation.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/OpKind"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "Key": {
-            "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
-            "type": "string"
-          },
-          "OpKind": {
-            "description": "The type of operation performed while executing a deploy.",
+          "BlockIdentifier": {
+            "description": "Identifier for possible ways to retrieve a block.",
             "oneOf": [
               {
-                "description": "A read operation.",
-                "type": "string",
-                "enum": [
-                  "Read"
-                ]
-              },
-              {
-                "description": "A write operation.",
-                "type": "string",
-                "enum": [
-                  "Write"
-                ]
-              },
-              {
-                "description": "An addition.",
-                "type": "string",
-                "enum": [
-                  "Add"
-                ]
-              },
-              {
-                "description": "An operation which has no effect.",
-                "type": "string",
-                "enum": [
-                  "NoOp"
-                ]
-              }
-            ]
-          },
-          "Transform": {
-            "description": "A transformation performed while executing a deploy.",
-            "type": "object",
-            "required": [
-              "key",
-              "kind"
-            ],
-            "properties": {
-              "key": {
-                "$ref": "#/components/schemas/Key"
-              },
-              "kind": {
-                "$ref": "#/components/schemas/TransformKind"
-              }
-            },
-            "additionalProperties": false
-          },
-          "TransformKind": {
-            "description": "Representation of a single transformation occurring during execution.\n\nNote that all arithmetic variants of [`TransformKind`] are commutative which means that a given collection of them can be executed in any order to produce the same end result.",
-            "oneOf": [
-              {
-                "description": "An identity transformation that does not modify a value in the global state.\n\nCreated as a result of reading from the global state.",
-                "type": "string",
-                "enum": [
-                  "Identity"
-                ]
-              },
-              {
-                "description": "Writes a new value in the global state.",
+                "description": "Identify and retrieve the block with its hash.",
                 "type": "object",
                 "required": [
-                  "Write"
+                  "Hash"
                 ],
                 "properties": {
-                  "Write": {
-                    "$ref": "#/components/schemas/StoredValue"
+                  "Hash": {
+                    "$ref": "#/components/schemas/BlockHash"
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "A wrapping addition of an `i32` to an existing numeric value (not necessarily an `i32`) in the global state.",
+                "description": "Identify and retrieve the block with its height.",
                 "type": "object",
                 "required": [
-                  "AddInt32"
+                  "Height"
                 ],
                 "properties": {
-                  "AddInt32": {
-                    "type": "integer",
-                    "format": "int32"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A wrapping addition of a `u64` to an existing numeric value (not necessarily an `u64`) in the global state.",
-                "type": "object",
-                "required": [
-                  "AddUInt64"
-                ],
-                "properties": {
-                  "AddUInt64": {
+                  "Height": {
                     "type": "integer",
                     "format": "uint64",
                     "minimum": 0.0
                   }
                 },
                 "additionalProperties": false
+              }
+            ]
+          },
+          "Account": {
+            "description": "Represents an Account in the global state.",
+            "type": "object",
+            "required": [
+              "account_hash",
+              "action_thresholds",
+              "associated_keys",
+              "main_purse",
+              "named_keys"
+            ],
+            "properties": {
+              "account_hash": {
+                "$ref": "#/components/schemas/AccountHash"
               },
+              "named_keys": {
+                "$ref": "#/components/schemas/NamedKeys"
+              },
+              "main_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "associated_keys": {
+                "$ref": "#/components/schemas/AssociatedKeys"
+              },
+              "action_thresholds": {
+                "$ref": "#/components/schemas/ActionThresholds"
+              }
+            },
+            "additionalProperties": false
+          },
+          "NamedKeys": {
+            "description": "A collection of named keys.",
+            "allOf": [
               {
-                "description": "A wrapping addition of a `U128` to an existing numeric value (not necessarily an `U128`) in the global state.",
+                "$ref": "#/components/schemas/Array_of_NamedKey"
+              }
+            ]
+          },
+          "Array_of_NamedKey": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedKey"
+            }
+          },
+          "Key": {
+            "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+            "type": "string"
+          },
+          "AssociatedKeys": {
+            "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Array_of_AssociatedKey"
+              }
+            ]
+          },
+          "Array_of_AssociatedKey": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssociatedKey"
+            }
+          },
+          "AssociatedKey": {
+            "description": "A weighted public key.",
+            "type": "object",
+            "required": [
+              "account_hash",
+              "weight"
+            ],
+            "properties": {
+              "account_hash": {
+                "description": "The account hash of the public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                ]
+              },
+              "weight": {
+                "description": "The weight assigned to the public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Weight"
+                  }
+                ]
+              }
+            }
+          },
+          "Weight": {
+            "description": "The weight associated with public keys in an account's associated keys.",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
+          },
+          "ActionThresholds": {
+            "description": "Thresholds that have to be met when executing an action of a certain type.",
+            "type": "object",
+            "required": [
+              "deployment",
+              "key_management"
+            ],
+            "properties": {
+              "deployment": {
+                "description": "Threshold for deploy execution.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Weight"
+                  }
+                ]
+              },
+              "key_management": {
+                "description": "Threshold for managing action threshold.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Weight"
+                  }
+                ]
+              }
+            }
+          },
+          "DictionaryIdentifier": {
+            "description": "Options for dictionary item lookups.",
+            "oneOf": [
+              {
+                "description": "Lookup a dictionary item via an Account's named keys.",
                 "type": "object",
                 "required": [
-                  "AddUInt128"
+                  "AccountNamedKey"
                 ],
                 "properties": {
-                  "AddUInt128": {
-                    "$ref": "#/components/schemas/U128"
+                  "AccountNamedKey": {
+                    "type": "object",
+                    "required": [
+                      "dictionary_item_key",
+                      "dictionary_name",
+                      "key"
+                    ],
+                    "properties": {
+                      "key": {
+                        "description": "The account key as a formatted string whose named keys contains dictionary_name.",
+                        "type": "string"
+                      },
+                      "dictionary_name": {
+                        "description": "The named key under which the dictionary seed URef is stored.",
+                        "type": "string"
+                      },
+                      "dictionary_item_key": {
+                        "description": "The dictionary item key formatted as a string.",
+                        "type": "string"
+                      }
+                    }
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "A wrapping addition of a `U256` to an existing numeric value (not necessarily an `U256`) in the global state.",
+                "description": "Lookup a dictionary item via a Contract's named keys.",
                 "type": "object",
                 "required": [
-                  "AddUInt256"
+                  "ContractNamedKey"
                 ],
                 "properties": {
-                  "AddUInt256": {
-                    "$ref": "#/components/schemas/U256"
+                  "ContractNamedKey": {
+                    "type": "object",
+                    "required": [
+                      "dictionary_item_key",
+                      "dictionary_name",
+                      "key"
+                    ],
+                    "properties": {
+                      "key": {
+                        "description": "The contract key as a formatted string whose named keys contains dictionary_name.",
+                        "type": "string"
+                      },
+                      "dictionary_name": {
+                        "description": "The named key under which the dictionary seed URef is stored.",
+                        "type": "string"
+                      },
+                      "dictionary_item_key": {
+                        "description": "The dictionary item key formatted as a string.",
+                        "type": "string"
+                      }
+                    }
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "A wrapping addition of a `U512` to an existing numeric value (not necessarily an `U512`) in the global state.",
+                "description": "Lookup a dictionary item via its seed URef.",
                 "type": "object",
                 "required": [
-                  "AddUInt512"
+                  "URef"
                 ],
                 "properties": {
-                  "AddUInt512": {
-                    "$ref": "#/components/schemas/U512"
+                  "URef": {
+                    "type": "object",
+                    "required": [
+                      "dictionary_item_key",
+                      "seed_uref"
+                    ],
+                    "properties": {
+                      "seed_uref": {
+                        "description": "The dictionary's seed URef.",
+                        "type": "string"
+                      },
+                      "dictionary_item_key": {
+                        "description": "The dictionary item key formatted as a string.",
+                        "type": "string"
+                      }
+                    }
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "Adds new named keys to an existing entry in the global state.\n\nThis transform assumes that the existing stored value is either an Account or a Contract.",
+                "description": "Lookup a dictionary item via its unique key.",
                 "type": "object",
                 "required": [
-                  "AddKeys"
+                  "Dictionary"
                 ],
                 "properties": {
-                  "AddKeys": {
-                    "$ref": "#/components/schemas/NamedKeys"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "Represents the case where applying a transform would cause an error.",
-                "type": "object",
-                "required": [
-                  "Failure"
-                ],
-                "properties": {
-                  "Failure": {
-                    "$ref": "#/components/schemas/TransformError"
+                  "Dictionary": {
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -2864,151 +3908,6 @@
                 "additionalProperties": false
               }
             ]
-          },
-          "Account": {
-            "description": "Represents an Account in the global state.",
-            "type": "object",
-            "required": [
-              "account_hash",
-              "action_thresholds",
-              "associated_keys",
-              "main_purse",
-              "named_keys"
-            ],
-            "properties": {
-              "account_hash": {
-                "$ref": "#/components/schemas/AccountHash"
-              },
-              "named_keys": {
-                "$ref": "#/components/schemas/NamedKeys"
-              },
-              "main_purse": {
-                "$ref": "#/components/schemas/URef"
-              },
-              "associated_keys": {
-                "$ref": "#/components/schemas/AssociatedKeys"
-              },
-              "action_thresholds": {
-                "$ref": "#/components/schemas/ActionThresholds"
-              }
-            },
-            "additionalProperties": false
-          },
-          "AccountHash": {
-            "description": "Account hash as a formatted string.",
-            "type": "string"
-          },
-          "NamedKeys": {
-            "description": "A collection of named keys.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Array_of_NamedKey"
-              }
-            ]
-          },
-          "Array_of_NamedKey": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/NamedKey"
-            }
-          },
-          "NamedKey": {
-            "description": "A key with a name.",
-            "type": "object",
-            "required": [
-              "key",
-              "name"
-            ],
-            "properties": {
-              "name": {
-                "description": "The name of the entry.",
-                "type": "string"
-              },
-              "key": {
-                "description": "The value of the entry: a casper `Key` type.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Key"
-                  }
-                ]
-              }
-            }
-          },
-          "URef": {
-            "description": "Hex-encoded, formatted URef.",
-            "type": "string"
-          },
-          "AssociatedKeys": {
-            "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Array_of_AssociatedKey"
-              }
-            ]
-          },
-          "Array_of_AssociatedKey": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AssociatedKey"
-            }
-          },
-          "AssociatedKey": {
-            "description": "A weighted public key.",
-            "type": "object",
-            "required": [
-              "account_hash",
-              "weight"
-            ],
-            "properties": {
-              "account_hash": {
-                "description": "The account hash of the public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AccountHash"
-                  }
-                ]
-              },
-              "weight": {
-                "description": "The weight assigned to the public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Weight"
-                  }
-                ]
-              }
-            }
-          },
-          "Weight": {
-            "description": "The weight associated with public keys in an account's associated keys.",
-            "type": "integer",
-            "format": "uint8",
-            "minimum": 0.0
-          },
-          "ActionThresholds": {
-            "description": "Thresholds that have to be met when executing an action of a certain type.",
-            "type": "object",
-            "required": [
-              "deployment",
-              "key_management"
-            ],
-            "properties": {
-              "deployment": {
-                "description": "Threshold for deploy execution.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Weight"
-                  }
-                ]
-              },
-              "key_management": {
-                "description": "Threshold for managing action threshold.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Weight"
-                  }
-                ]
-              }
-            }
           },
           "ContractWasm": {
             "description": "A container for contract's WASM bytes.",
@@ -3342,783 +4241,6 @@
                 "enum": [
                   "Unlocked"
                 ]
-              }
-            ]
-          },
-          "Transfer": {
-            "description": "Represents a transfer from one purse to another",
-            "type": "object",
-            "required": [
-              "amount",
-              "deploy_hash",
-              "from",
-              "gas",
-              "source",
-              "target"
-            ],
-            "properties": {
-              "deploy_hash": {
-                "description": "Hex-encoded Deploy hash of Deploy that created the transfer.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/DeployHash"
-                  }
-                ]
-              },
-              "from": {
-                "description": "Account from which transfer was executed",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AccountHash"
-                  }
-                ]
-              },
-              "to": {
-                "description": "Account to which funds are transferred",
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/AccountHash"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "source": {
-                "description": "Source purse",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "target": {
-                "description": "Target purse",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "amount": {
-                "description": "Transfer amount",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              },
-              "gas": {
-                "description": "Gas",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              },
-              "id": {
-                "description": "User-defined id",
-                "type": [
-                  "integer",
-                  "null"
-                ],
-                "format": "uint64",
-                "minimum": 0.0
-              }
-            },
-            "additionalProperties": false
-          },
-          "U512": {
-            "description": "Decimal representation of a 512-bit integer.",
-            "type": "string"
-          },
-          "DeployInfo": {
-            "description": "Information relating to the given Deploy.",
-            "type": "object",
-            "required": [
-              "deploy_hash",
-              "from",
-              "gas",
-              "source",
-              "transfers"
-            ],
-            "properties": {
-              "deploy_hash": {
-                "description": "Hex-encoded Deploy hash.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/DeployHash"
-                  }
-                ]
-              },
-              "transfers": {
-                "description": "Transfers performed by the Deploy.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/TransferAddr"
-                }
-              },
-              "from": {
-                "description": "Account identifier of the creator of the Deploy.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/AccountHash"
-                  }
-                ]
-              },
-              "source": {
-                "description": "Source purse used for payment of the Deploy.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "gas": {
-                "description": "Gas cost of executing the Deploy.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "TransferAddr": {
-            "description": "Hex-encoded transfer address.",
-            "type": "string"
-          },
-          "EraInfo": {
-            "description": "Auction metadata.  Intended to be recorded at each era.",
-            "type": "object",
-            "required": [
-              "seigniorage_allocations"
-            ],
-            "properties": {
-              "seigniorage_allocations": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/SeigniorageAllocation"
-                }
-              }
-            },
-            "additionalProperties": false
-          },
-          "SeigniorageAllocation": {
-            "description": "Information about a seigniorage allocation",
-            "oneOf": [
-              {
-                "description": "Info about a seigniorage allocation for a validator",
-                "type": "object",
-                "required": [
-                  "Validator"
-                ],
-                "properties": {
-                  "Validator": {
-                    "type": "object",
-                    "required": [
-                      "amount",
-                      "validator_public_key"
-                    ],
-                    "properties": {
-                      "validator_public_key": {
-                        "description": "Validator's public key",
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/PublicKey"
-                          }
-                        ]
-                      },
-                      "amount": {
-                        "description": "Allocated amount",
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/U512"
-                          }
-                        ]
-                      }
-                    },
-                    "additionalProperties": false
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "Info about a seigniorage allocation for a delegator",
-                "type": "object",
-                "required": [
-                  "Delegator"
-                ],
-                "properties": {
-                  "Delegator": {
-                    "type": "object",
-                    "required": [
-                      "amount",
-                      "delegator_public_key",
-                      "validator_public_key"
-                    ],
-                    "properties": {
-                      "delegator_public_key": {
-                        "description": "Delegator's public key",
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/PublicKey"
-                          }
-                        ]
-                      },
-                      "validator_public_key": {
-                        "description": "Validator's public key",
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/PublicKey"
-                          }
-                        ]
-                      },
-                      "amount": {
-                        "description": "Allocated amount",
-                        "allOf": [
-                          {
-                            "$ref": "#/components/schemas/U512"
-                          }
-                        ]
-                      }
-                    },
-                    "additionalProperties": false
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
-          },
-          "Bid": {
-            "description": "An entry in the validator map.",
-            "type": "object",
-            "required": [
-              "bonding_purse",
-              "delegation_rate",
-              "delegators",
-              "inactive",
-              "staked_amount",
-              "validator_public_key"
-            ],
-            "properties": {
-              "validator_public_key": {
-                "description": "Validator public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "bonding_purse": {
-                "description": "The purse that was used for bonding.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "staked_amount": {
-                "description": "The amount of tokens staked by a validator (not including delegators).",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              },
-              "delegation_rate": {
-                "description": "Delegation rate.",
-                "type": "integer",
-                "format": "uint8",
-                "minimum": 0.0
-              },
-              "vesting_schedule": {
-                "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/VestingSchedule"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "delegators": {
-                "description": "This validator's delegators, indexed by their public keys.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Array_of_PublicKeyAndDelegator"
-                  }
-                ]
-              },
-              "inactive": {
-                "description": "`true` if validator has been \"evicted\".",
-                "type": "boolean"
-              }
-            },
-            "additionalProperties": false
-          },
-          "VestingSchedule": {
-            "type": "object",
-            "required": [
-              "initial_release_timestamp_millis"
-            ],
-            "properties": {
-              "initial_release_timestamp_millis": {
-                "type": "integer",
-                "format": "uint64",
-                "minimum": 0.0
-              },
-              "locked_amounts": {
-                "type": [
-                  "array",
-                  "null"
-                ],
-                "items": {
-                  "$ref": "#/components/schemas/U512"
-                },
-                "maxItems": 14,
-                "minItems": 14
-              }
-            },
-            "additionalProperties": false
-          },
-          "Array_of_PublicKeyAndDelegator": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/PublicKeyAndDelegator"
-            }
-          },
-          "PublicKeyAndDelegator": {
-            "description": "A delegator associated with the given validator.",
-            "type": "object",
-            "required": [
-              "delegator",
-              "delegator_public_key"
-            ],
-            "properties": {
-              "delegator_public_key": {
-                "description": "The public key of the delegator.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "delegator": {
-                "description": "The delegator details.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/Delegator"
-                  }
-                ]
-              }
-            }
-          },
-          "Delegator": {
-            "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
-            "type": "object",
-            "required": [
-              "bonding_purse",
-              "delegator_public_key",
-              "staked_amount",
-              "validator_public_key"
-            ],
-            "properties": {
-              "delegator_public_key": {
-                "$ref": "#/components/schemas/PublicKey"
-              },
-              "staked_amount": {
-                "$ref": "#/components/schemas/U512"
-              },
-              "bonding_purse": {
-                "$ref": "#/components/schemas/URef"
-              },
-              "validator_public_key": {
-                "$ref": "#/components/schemas/PublicKey"
-              },
-              "vesting_schedule": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/VestingSchedule"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "WithdrawPurse": {
-            "description": "A withdraw purse, a legacy structure.",
-            "type": "object",
-            "required": [
-              "amount",
-              "bonding_purse",
-              "era_of_creation",
-              "unbonder_public_key",
-              "validator_public_key"
-            ],
-            "properties": {
-              "bonding_purse": {
-                "description": "Bonding Purse",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "validator_public_key": {
-                "description": "Validators public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "unbonder_public_key": {
-                "description": "Unbonders public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "era_of_creation": {
-                "description": "Era in which this unbonding request was created.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/EraId"
-                  }
-                ]
-              },
-              "amount": {
-                "description": "Unbonding Amount.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "EraId": {
-            "description": "Era ID newtype.",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0.0
-          },
-          "UnbondingPurse": {
-            "description": "Unbonding purse.",
-            "type": "object",
-            "required": [
-              "amount",
-              "bonding_purse",
-              "era_of_creation",
-              "unbonder_public_key",
-              "validator_public_key"
-            ],
-            "properties": {
-              "bonding_purse": {
-                "description": "Bonding Purse",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "validator_public_key": {
-                "description": "Validators public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "unbonder_public_key": {
-                "description": "Unbonders public key.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "era_of_creation": {
-                "description": "Era in which this unbonding request was created.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/EraId"
-                  }
-                ]
-              },
-              "amount": {
-                "description": "Unbonding Amount.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              },
-              "new_validator": {
-                "description": "The validator public key to re-delegate to.",
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
-          "U128": {
-            "description": "Decimal representation of a 128-bit integer.",
-            "type": "string"
-          },
-          "U256": {
-            "description": "Decimal representation of a 256-bit integer.",
-            "type": "string"
-          },
-          "TransformError": {
-            "description": "Error type for applying and combining transforms.\n\nA `TypeMismatch` occurs when a transform cannot be applied because the types are not compatible (e.g. trying to add a number to a string).",
-            "oneOf": [
-              {
-                "description": "Error while (de)serializing data.",
-                "type": "object",
-                "required": [
-                  "Serialization"
-                ],
-                "properties": {
-                  "Serialization": {
-                    "$ref": "#/components/schemas/Error"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "Type mismatch error.",
-                "type": "object",
-                "required": [
-                  "TypeMismatch"
-                ],
-                "properties": {
-                  "TypeMismatch": {
-                    "$ref": "#/components/schemas/TypeMismatch"
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
-          },
-          "Error": {
-            "description": "Serialization and deserialization errors.",
-            "oneOf": [
-              {
-                "description": "Early end of stream while deserializing.",
-                "type": "string",
-                "enum": [
-                  "EarlyEndOfStream"
-                ]
-              },
-              {
-                "description": "Formatting error while deserializing.",
-                "type": "string",
-                "enum": [
-                  "Formatting"
-                ]
-              },
-              {
-                "description": "Not all input bytes were consumed in [`deserialize`].",
-                "type": "string",
-                "enum": [
-                  "LeftOverBytes"
-                ]
-              },
-              {
-                "description": "Out of memory error.",
-                "type": "string",
-                "enum": [
-                  "OutOfMemory"
-                ]
-              },
-              {
-                "description": "No serialized representation is available for a value.",
-                "type": "string",
-                "enum": [
-                  "NotRepresentable"
-                ]
-              },
-              {
-                "description": "Exceeded a recursion depth limit.",
-                "type": "string",
-                "enum": [
-                  "ExceededRecursionDepth"
-                ]
-              }
-            ]
-          },
-          "TypeMismatch": {
-            "description": "An error struct representing a type mismatch in [`StoredValue`](crate::StoredValue) operations.",
-            "type": "object",
-            "required": [
-              "expected",
-              "found"
-            ],
-            "properties": {
-              "expected": {
-                "description": "The name of the expected type.",
-                "type": "string"
-              },
-              "found": {
-                "description": "The actual type found.",
-                "type": "string"
-              }
-            }
-          },
-          "BlockIdentifier": {
-            "description": "Identifier for possible ways to retrieve a block.",
-            "oneOf": [
-              {
-                "description": "Identify and retrieve the block with its hash.",
-                "type": "object",
-                "required": [
-                  "Hash"
-                ],
-                "properties": {
-                  "Hash": {
-                    "$ref": "#/components/schemas/BlockHash"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "Identify and retrieve the block with its height.",
-                "type": "object",
-                "required": [
-                  "Height"
-                ],
-                "properties": {
-                  "Height": {
-                    "type": "integer",
-                    "format": "uint64",
-                    "minimum": 0.0
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
-          },
-          "DictionaryIdentifier": {
-            "description": "Options for dictionary item lookups.",
-            "oneOf": [
-              {
-                "description": "Lookup a dictionary item via an Account's named keys.",
-                "type": "object",
-                "required": [
-                  "AccountNamedKey"
-                ],
-                "properties": {
-                  "AccountNamedKey": {
-                    "type": "object",
-                    "required": [
-                      "dictionary_item_key",
-                      "dictionary_name",
-                      "key"
-                    ],
-                    "properties": {
-                      "key": {
-                        "description": "The account key as a formatted string whose named keys contains dictionary_name.",
-                        "type": "string"
-                      },
-                      "dictionary_name": {
-                        "description": "The named key under which the dictionary seed URef is stored.",
-                        "type": "string"
-                      },
-                      "dictionary_item_key": {
-                        "description": "The dictionary item key formatted as a string.",
-                        "type": "string"
-                      }
-                    }
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "Lookup a dictionary item via a Contract's named keys.",
-                "type": "object",
-                "required": [
-                  "ContractNamedKey"
-                ],
-                "properties": {
-                  "ContractNamedKey": {
-                    "type": "object",
-                    "required": [
-                      "dictionary_item_key",
-                      "dictionary_name",
-                      "key"
-                    ],
-                    "properties": {
-                      "key": {
-                        "description": "The contract key as a formatted string whose named keys contains dictionary_name.",
-                        "type": "string"
-                      },
-                      "dictionary_name": {
-                        "description": "The named key under which the dictionary seed URef is stored.",
-                        "type": "string"
-                      },
-                      "dictionary_item_key": {
-                        "description": "The dictionary item key formatted as a string.",
-                        "type": "string"
-                      }
-                    }
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "Lookup a dictionary item via its seed URef.",
-                "type": "object",
-                "required": [
-                  "URef"
-                ],
-                "properties": {
-                  "URef": {
-                    "type": "object",
-                    "required": [
-                      "dictionary_item_key",
-                      "seed_uref"
-                    ],
-                    "properties": {
-                      "seed_uref": {
-                        "description": "The dictionary's seed URef.",
-                        "type": "string"
-                      },
-                      "dictionary_item_key": {
-                        "description": "The dictionary item key formatted as a string.",
-                        "type": "string"
-                      }
-                    }
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "Lookup a dictionary item via its unique key.",
-                "type": "object",
-                "required": [
-                  "Dictionary"
-                ],
-                "properties": {
-                  "Dictionary": {
-                    "type": "string"
-                  }
-                },
-                "additionalProperties": false
               }
             ]
           },

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
 use casper_types::{
-    bytesrepr, execution::ExecutionResult, BlockHash, ChunkWithProof, DeployHash, Digest,
+    bytesrepr, execution::VersionedExecutionResult, BlockHash, ChunkWithProof, DeployHash, Digest,
 };
 
 use super::block_acquisition::Acceptance;
@@ -201,7 +201,7 @@ pub(super) enum ExecutionResultsAcquisition {
     Complete {
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
-        results: HashMap<DeployHash, ExecutionResult>,
+        results: HashMap<DeployHash, VersionedExecutionResult>,
     },
 }
 
@@ -456,7 +456,7 @@ enum ApplyChunkOutcome {
         next: u64,
     },
     Complete {
-        execution_results: Vec<ExecutionResult>,
+        execution_results: Vec<VersionedExecutionResult>,
     },
 }
 
@@ -469,7 +469,7 @@ impl ApplyChunkOutcome {
         }
     }
 
-    fn execution_results(execution_results: Vec<ExecutionResult>) -> Self {
+    fn execution_results(execution_results: Vec<VersionedExecutionResult>) -> Self {
         ApplyChunkOutcome::Complete { execution_results }
     }
 }

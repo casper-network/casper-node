@@ -24,7 +24,7 @@ default-members = [
     "storage",
     "types",
     "utils/global-state-update-gen",
-#    "utils/validation",
+    "utils/validation",
 ]
 
 exclude = ["utils/nctl/remotes/casper-client-rs"]

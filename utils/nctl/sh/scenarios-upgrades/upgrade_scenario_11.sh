@@ -262,7 +262,7 @@ function _step_08()
 
     USER_PATH=$(get_path_to_user "$USER_ID")
     HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].delegator_public_key | ascii_downcase == $node_hex)')
 
     log_step_upgrades 8 "Asserting user-$USER_ID is NOT a delegatee"
 
@@ -289,10 +289,10 @@ function _step_09()
             ejections=0
 }
 
-# Step 11: Successful test cleanup.
+# Step 10: Successful test cleanup.
 function _step_10()
 {
-    log_step_upgrades 11 "test successful - tidying up"
+    log_step_upgrades 10 "test successful - tidying up"
 
     source "$NCTL/sh/assets/teardown.sh"
 

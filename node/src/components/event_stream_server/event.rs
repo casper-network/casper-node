@@ -6,7 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use casper_types::{
-    execution::{ExecutionJournal, ExecutionResult},
+    execution::{ExecutionJournal, VersionedExecutionResult},
     Block, BlockHash, Deploy, DeployHash, DeployHeader, EraId, FinalitySignature, PublicKey,
     Timestamp,
 };
@@ -20,7 +20,7 @@ pub enum Event {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
         block_hash: BlockHash,
-        execution_result: Box<ExecutionResult>,
+        execution_result: Box<VersionedExecutionResult>,
     },
     DeploysExpired(Vec<DeployHash>),
     Fault {

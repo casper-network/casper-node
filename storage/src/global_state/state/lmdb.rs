@@ -3,9 +3,8 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 use lmdb::DatabaseFlags;
 use tempfile::TempDir;
 
-use casper_types::execution::TransformKind;
 use casper_types::{
-    execution::{ExecutionJournal, Transform},
+    execution::{ExecutionJournal, Transform, TransformKind},
     Digest, Key, StoredValue,
 };
 
@@ -337,8 +336,7 @@ pub fn make_temporary_global_state(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::execution::TransformKind;
-    use casper_types::{account::AccountHash, CLValue, Digest};
+    use casper_types::{account::AccountHash, execution::TransformKind, CLValue, Digest};
 
     use crate::global_state::state::scratch::tests::TestPair;
 

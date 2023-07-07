@@ -12,6 +12,8 @@ use core::{
     str::FromStr,
 };
 
+#[cfg(doc)]
+use crate::CLValue;
 use blake2::{
     digest::{Update, VariableOutput},
     VarBlake2b,

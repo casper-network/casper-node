@@ -5,7 +5,7 @@
 //!
 //! * storing and loading blocks,
 //! * storing and loading deploys,
-//! * [temporary until refactored] holding `DeployMetadata` for each deploy,
+//! * [temporary until refactored] holding `DeployExecutionInfo` for each deploy,
 //! * keeping an index of blocks by height and
 //! * [unimplemented] managing disk usage by pruning blocks and deploys from storage.
 //!
@@ -30,6 +30,7 @@
 //! The storage component itself is panic free and in general reports three classes of errors:
 //! Corruption, temporary resource exhaustion and potential bugs.
 
+mod deploy_metadata_v1;
 pub(crate) mod disjoint_sequences;
 mod error;
 mod lmdb_ext;
@@ -47,7 +48,7 @@ use std::{
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
     io::ErrorKind,
-    mem,
+    iter, mem,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -70,7 +71,10 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    execution::{ExecutionResult, TransformKind},
+    execution::{
+        execution_result_v1, ExecutionResultV1, ExecutionResultV2, TransformKind,
+        VersionedExecutionResult,
+    },
     ApprovalsHash, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
     Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature, ProtocolVersion,
     PublicKey, SignedBlockHeader, StoredValue, TimeDiff, Timestamp, Transfer,
@@ -93,13 +97,14 @@ use crate::{
     protocol::Message,
     types::{
         ApprovalsHashes, AvailableBlockRange, BlockExecutionResultsOrChunk,
-        BlockExecutionResultsOrChunkId, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, NodeId,
-        SignedBlock, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
+        BlockExecutionResultsOrChunkId, DeployExecutionInfo, DeployWithFinalizedApprovals,
+        FinalizedApprovals, FinalizedBlock, LegacyDeploy, NodeId, SignedBlock, SyncLeap,
+        SyncLeapIdentifier,
     },
     utils::{display_error, WithDir},
     NodeRng,
 };
+use deploy_metadata_v1::DeployMetadataV1;
 use disjoint_sequences::{DisjointSequences, Sequence};
 pub use error::FatalStorageError;
 use error::GetRequestError;
@@ -128,7 +133,7 @@ const DEFAULT_MAX_DEPLOY_METADATA_STORE_SIZE: usize = 300 * GIB;
 /// Default max state store size.
 const DEFAULT_MAX_STATE_STORE_SIZE: usize = 10 * GIB;
 /// Maximum number of allowed dbs.
-const MAX_DB_COUNT: u32 = 9;
+const MAX_DB_COUNT: u32 = 10;
 /// Key under which completed blocks are to be stored.
 const COMPLETED_BLOCKS_STORAGE_KEY: &[u8] = b"completed_blocks_disjoint_sequences";
 /// Name of the file created when initializing a force resync.
@@ -179,9 +184,12 @@ pub struct Storage {
     /// The deploy database.
     #[data_size(skip)]
     deploy_db: Database,
-    /// The deploy metadata database.
+    /// Database of `ExecutionResultV1`s indexed by deploy hash.
     #[data_size(skip)]
-    deploy_metadata_db: Database,
+    execution_results_v1_db: Database,
+    /// Database of `VersionedExecutionResult`s indexed by deploy hash.
+    #[data_size(skip)]
+    execution_results_db: Database,
     /// The transfer database.
     #[data_size(skip)]
     transfer_db: Database,
@@ -408,7 +416,10 @@ impl Storage {
         let block_header_db = env.create_db(Some("block_header"), DatabaseFlags::empty())?;
         let block_metadata_db = env.create_db(Some("block_metadata"), DatabaseFlags::empty())?;
         let deploy_db = env.create_db(Some("deploys"), DatabaseFlags::empty())?;
-        let deploy_metadata_db = env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
+        let execution_results_v1_db =
+            env.create_db(Some("deploy_metadata"), DatabaseFlags::empty())?;
+        let execution_results_db =
+            env.create_db(Some("execution_results"), DatabaseFlags::empty())?;
         let transfer_db = env.create_db(Some("transfer"), DatabaseFlags::empty())?;
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
         let finalized_approvals_db =
@@ -468,8 +479,8 @@ impl Storage {
                 insert_to_deploy_index(
                     &mut deploy_hash_index,
                     block_header.block_hash(),
-                    &block_body,
                     block_header.height(),
+                    block_body.deploy_and_transfer_hashes(),
                 )?;
             }
         }
@@ -490,7 +501,18 @@ impl Storage {
         )?;
 
         initialize_block_metadata_db(&env, &block_metadata_db, &deleted_block_hashes_raw)?;
-        initialize_deploy_metadata_db(&env, &deploy_metadata_db, &deleted_deploy_hashes)?;
+        initialize_execution_results_db(
+            &env,
+            &execution_results_v1_db,
+            "execution results v1 db",
+            &deleted_deploy_hashes,
+        )?;
+        initialize_execution_results_db(
+            &env,
+            &execution_results_db,
+            "execution results db",
+            &deleted_deploy_hashes,
+        )?;
 
         let metrics = registry.map(Metrics::new).transpose()?;
 
@@ -502,7 +524,8 @@ impl Storage {
             block_metadata_db,
             approvals_hashes_db,
             deploy_db,
-            deploy_metadata_db,
+            execution_results_v1_db,
+            execution_results_db,
             transfer_db,
             state_store_db,
             finalized_approvals_db,
@@ -922,16 +945,22 @@ impl Storage {
                 .ignore(),
             StorageRequest::PutExecutionResults {
                 block_hash,
+                block_height,
                 execution_results,
                 responder,
             } => {
                 let env = Rc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
-                self.write_execution_results(&mut txn, &block_hash, execution_results)?;
+                self.write_execution_results(
+                    &mut txn,
+                    &block_hash,
+                    block_height,
+                    execution_results,
+                )?;
                 txn.commit()?;
                 responder.respond(()).ignore()
             }
-            StorageRequest::GetDeployAndMetadata {
+            StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash,
                 responder,
             } => {
@@ -948,19 +977,21 @@ impl Storage {
                     }
                 };
 
-                // Missing metadata is filled using a default.
-                let metadata_ext: DeployMetadataExt =
-                    if let Some(metadata) = self.get_deploy_metadata(&mut txn, &deploy_hash)? {
-                        metadata.into()
-                    } else if let Some(block_hash_and_height) =
-                        self.get_block_hash_and_height_by_deploy_hash(deploy_hash)?
-                    {
-                        block_hash_and_height.into()
-                    } else {
-                        DeployMetadataExt::Empty
+                let block_hash_and_height =
+                    match self.get_block_hash_and_height_by_deploy_hash(deploy_hash)? {
+                        Some(value) => value,
+                        None => return Ok(responder.respond(Some((deploy, None))).ignore()),
                     };
+                let execution_result = self.get_execution_result(&mut txn, &deploy_hash)?;
+                let execution_info = DeployExecutionInfo {
+                    block_hash: *block_hash_and_height.block_hash(),
+                    block_height: block_hash_and_height.block_height(),
+                    execution_result,
+                };
 
-                responder.respond(Some((deploy, metadata_ext))).ignore()
+                responder
+                    .respond(Some((deploy, Some(execution_info))))
+                    .ignore()
             }
             StorageRequest::GetSignedBlockByHash {
                 block_hash,
@@ -1265,7 +1296,7 @@ impl Storage {
         &mut self,
         block: &Block,
         approvals_hashes: &ApprovalsHashes,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
@@ -1275,7 +1306,12 @@ impl Storage {
         }
 
         let _ = self.write_approvals_hashes(&mut txn, approvals_hashes)?;
-        let _ = self.write_execution_results(&mut txn, block.hash(), execution_results)?;
+        let _ = self.write_execution_results(
+            &mut txn,
+            block.hash(),
+            block.height(),
+            execution_results,
+        )?;
         txn.commit()?;
 
         Ok(true)
@@ -1462,44 +1498,63 @@ impl Storage {
         &mut self,
         txn: &mut RwTransaction,
         block_hash: &BlockHash,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        block_height: u64,
+        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
+        insert_to_deploy_index(
+            &mut self.deploy_hash_index,
+            *block_hash,
+            block_height,
+            execution_results.keys(),
+        )?;
         let mut transfers: Vec<Transfer> = vec![];
-        for (deploy_hash, execution_result) in execution_results {
-            let mut metadata = self
-                .get_deploy_metadata(txn, &deploy_hash)?
-                .unwrap_or_default();
-
-            // If we have a previous execution result, we can continue if it is the same.
-            if let Some(prev) = metadata.execution_results.get(block_hash) {
-                if prev == &execution_result {
-                    continue;
-                } else {
-                    debug!(%deploy_hash, %block_hash, "different execution result");
-                }
-            }
-
-            if let ExecutionResult::Success { effects, .. } = &execution_result {
-                for transform in effects.transforms() {
-                    if let TransformKind::Write(StoredValue::Transfer(transfer)) = transform.kind()
-                    {
-                        transfers.push(*transfer);
+        for (deploy_hash, execution_result) in execution_results.into_iter() {
+            match &execution_result {
+                VersionedExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
+                    for transform_entry in &effect.transforms {
+                        if let execution_result_v1::Transform::WriteTransfer(transfer) =
+                            &transform_entry.transform
+                        {
+                            transfers.push(*transfer);
+                        }
                     }
                 }
+                VersionedExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
+                    for transform in effects.transforms() {
+                        if let TransformKind::Write(StoredValue::Transfer(transfer)) =
+                            transform.kind()
+                        {
+                            transfers.push(*transfer);
+                        }
+                    }
+                }
+                VersionedExecutionResult::V1(ExecutionResultV1::Failure { .. })
+                | VersionedExecutionResult::V2(ExecutionResultV2::Failure { .. }) => {
+                    // No-op: we only record transfers from successful executions.
+                }
             }
 
-            // TODO: this is currently done like this because rpc get_deploy returns the
-            // data, but the organization of deploy, block_hash, and
-            // execution_result is incorrectly represented. it should be
-            // inverted; for a given block_hash 0n deploys and each deploy has exactly 1
-            // result (aka deploy_metadata in this context).
+            // Write the execution result to the appropriate DB.
+            let was_written = match execution_result {
+                VersionedExecutionResult::V1(v1_result) => {
+                    let v1_results = DeployMetadataV1 {
+                        execution_results: iter::once((*block_hash, v1_result)).collect(),
+                    };
+                    txn.put_value(
+                        self.execution_results_v1_db,
+                        &deploy_hash,
+                        &v1_results,
+                        true,
+                    )?
+                }
+                versioned_result => txn.put_value(
+                    self.execution_results_db,
+                    &deploy_hash,
+                    &versioned_result,
+                    true,
+                )?,
+            };
 
-            // Update metadata and write back to db.
-            metadata
-                .execution_results
-                .insert(*block_hash, execution_result);
-            let was_written =
-                txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
             if !was_written {
                 error!(?block_hash, ?deploy_hash, "failed to write deploy metadata");
                 debug_assert!(was_written);
@@ -1589,8 +1644,8 @@ impl Storage {
             insert_to_deploy_index(
                 &mut self.deploy_hash_index,
                 *block.hash(),
-                block.body(),
                 block.height(),
+                block.body().deploy_and_transfer_hashes(),
             )?;
         }
         Ok(true)
@@ -2161,16 +2216,36 @@ impl Storage {
         }
     }
 
-    /// Retrieves deploy metadata associated with deploy.
-    ///
-    /// If no deploy metadata is stored for the specific deploy, an empty metadata instance will be
-    /// created, but not stored.
-    fn get_deploy_metadata<Tx: Transaction>(
+    /// Retrieves the execution result associated with the given deploy.
+    fn get_execution_result<Tx: Transaction>(
         &self,
         txn: &mut Tx,
         deploy_hash: &DeployHash,
-    ) -> Result<Option<DeployMetadata>, FatalStorageError> {
-        Ok(txn.get_value(self.deploy_metadata_db, deploy_hash)?)
+    ) -> Result<Option<VersionedExecutionResult>, FatalStorageError> {
+        if let Some(exec_result) = txn.get_value(self.execution_results_db, deploy_hash)? {
+            return Ok(Some(exec_result));
+        };
+
+        // If we don't have this execution result stored as a VersionedExecutionResult, try to read
+        // from the `execution_results_v1_db`, where they were stored as a newtyped HashMap with a
+        // single entry prior to `casper-node` v2.0.0.
+        let v1_results: DeployMetadataV1 =
+            match txn.get_value(self.execution_results_v1_db, deploy_hash)? {
+                Some(results) => results,
+                None => return Ok(None),
+            };
+
+        if v1_results.execution_results.len() != 1 {
+            return Err(FatalStorageError::InvalidExecutionResultsV1Length {
+                deploy_hash: *deploy_hash,
+                results_length: v1_results.execution_results.len(),
+            });
+        }
+
+        // Safe to unwrap due to length check immediately above.
+        let v1_result = v1_results.execution_results.into_iter().next().unwrap().1;
+
+        Ok(Some(VersionedExecutionResult::V1(v1_result)))
     }
 
     /// Retrieves transfers associated with block.
@@ -2452,16 +2527,8 @@ impl Storage {
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(DeployHash, ExecutionResult)>>, FatalStorageError> {
-        // There's no mapping between block_hash -> execution results.
-        // We store execution results under the deploy hash for the txn.
-        // In order to pull it out, we have to:
-        // 1. Find the block header for `block_hash`.
-        // 2. Find the block body for `block_header.body_hash`.
-        // 3. For every txns in the block's body, we load its deploy metadata.
-        // 4. We extract txn's execution results from the `deploy_metadata` for the block
-        // we're interested in.
-        let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
+    ) -> Result<Option<Vec<(DeployHash, VersionedExecutionResult)>>, FatalStorageError> {
+        let block_header = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
         };
@@ -2480,7 +2547,7 @@ impl Storage {
 
         let mut execution_results = vec![];
         for deploy_hash in block_body.deploy_and_transfer_hashes() {
-            match self.get_deploy_metadata(txn, deploy_hash)? {
+            match self.get_execution_result(txn, deploy_hash)? {
                 None => {
                     debug!(
                         %block_hash,
@@ -2489,24 +2556,8 @@ impl Storage {
                     );
                     return Ok(None);
                 }
-                Some(mut metadata) => {
-                    match metadata.execution_results.remove(block_hash) {
-                        Some(execution_result) => {
-                            execution_results.push((*deploy_hash, execution_result));
-                        }
-                        None => {
-                            // We have the block, we've got the deploy but its metadata doesn't
-                            // include the reference to the block. This is an error b/c even though
-                            // types seem to allow for a single deploy map to multiple blocks, it
-                            // shouldn't happen in practice.
-                            error!(
-                                %block_hash,
-                                %deploy_hash,
-                                "missing execution results for a deploy in particular block"
-                            );
-                            return Ok(None);
-                        }
-                    }
+                Some(execution_result) => {
+                    execution_results.push((*deploy_hash, execution_result));
                 }
             }
         }
@@ -2517,7 +2568,8 @@ impl Storage {
     fn read_execution_results(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>, FatalStorageError> {
+    ) -> Result<Option<Vec<(DeployHash, DeployHeader, VersionedExecutionResult)>>, FatalStorageError>
+    {
         let mut txn = self.env.begin_rw_txn()?;
         let execution_results = match self.get_execution_results(&mut txn, block_hash)? {
             Some(execution_results) => execution_results,
@@ -2553,21 +2605,11 @@ impl Storage {
                 .collect(),
             None => return Ok(None),
         };
-        let value_or_chunk = match ValueOrChunk::new(execution_results, request.chunk_index()) {
-            Ok(value_or_chunk) => value_or_chunk,
-            Err(error) => {
-                // Failure shouldn't be fatal as the node can continue operating but won't be able
-                // to answer this particular query. We choose to return `None` instead, signaling
-                // other nodes to not query this one for that data.
-                error!(
-                    ?request,
-                    ?error,
-                    "failed to construct `BlockExecutionResultsOrChunk`"
-                );
-                return Ok(None);
-            }
-        };
-        Ok(Some(request.response(value_or_chunk)))
+        Ok(BlockExecutionResultsOrChunk::new(
+            *request.block_hash(),
+            request.chunk_index(),
+            execution_results,
+        ))
     }
 
     fn update_chain_height_metrics(&self) {
@@ -2634,13 +2676,13 @@ fn insert_to_block_header_indices(
 /// Inserts the relevant entries to the index.
 ///
 /// If a duplicate entry is encountered, index is not updated and an error is returned.
-fn insert_to_deploy_index(
+fn insert_to_deploy_index<'a>(
     deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
     block_hash: BlockHash,
-    block_body: &BlockBody,
     block_height: u64,
+    deploy_hash_iter: impl Iterator<Item = &'a DeployHash> + Clone,
 ) -> Result<(), FatalStorageError> {
-    if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
+    if let Some(hash) = deploy_hash_iter.clone().find(|hash| {
         deploy_hash_index
             .get(hash)
             .map_or(false, |old_block_hash_and_height| {
@@ -2654,7 +2696,7 @@ fn insert_to_deploy_index(
         });
     }
 
-    for hash in block_body.deploy_and_transfer_hashes() {
+    for hash in deploy_hash_iter {
         deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
     }
 
@@ -2804,15 +2846,15 @@ impl Storage {
     /// # Panics
     ///
     /// Panics if an IO error occurs.
-    pub(crate) fn get_deploy_metadata_by_hash(
+    pub(crate) fn read_execution_result(
         &self,
         deploy_hash: &DeployHash,
-    ) -> Option<DeployMetadata> {
+    ) -> Option<VersionedExecutionResult> {
         let mut txn = self
             .env
             .begin_ro_txn()
             .expect("could not create RO transaction");
-        self.get_deploy_metadata(&mut txn, deploy_hash)
+        self.get_execution_result(&mut txn, deploy_hash)
             .expect("could not retrieve deploy metadata from storage")
     }
 
@@ -2995,19 +3037,22 @@ fn initialize_block_metadata_db(
 }
 
 /// Purges stale entries from the deploy metadata database.
-fn initialize_deploy_metadata_db(
+fn initialize_execution_results_db(
     env: &Environment,
-    deploy_metadata_db: &Database,
+    db: &Database,
+    db_name: &str,
     deleted_deploy_hashes: &HashSet<DeployHash>,
 ) -> Result<(), LmdbExtError> {
-    info!("initializing deploy metadata database");
+    info!("initializing {}", db_name);
 
     let mut txn = env.begin_rw_txn()?;
-    deleted_deploy_hashes.iter().for_each(|deleted_deploy_hash| {
-        if txn.del(*deploy_metadata_db, deleted_deploy_hash, None).is_err() {
-            debug!(%deleted_deploy_hash, "not purging from 'deploy_metadata_db' because not existing");
-        }
-    });
+    deleted_deploy_hashes
+        .iter()
+        .for_each(|deleted_deploy_hash| {
+            if txn.del(*db, deleted_deploy_hash, None).is_err() {
+                debug!(%deleted_deploy_hash, db_name, "not purging entry: doesn't exist");
+            }
+        });
     txn.commit()?;
 
     info!("deploy metadata database initialized");

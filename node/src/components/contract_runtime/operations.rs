@@ -1,4 +1,4 @@
-use std::{cmp, collections::BTreeMap, ops::Range, sync::Arc, time::Instant};
+use std::{cmp, collections::BTreeMap, convert::TryInto, ops::Range, sync::Arc, time::Instant};
 
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
@@ -15,11 +15,13 @@ use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
 };
-use casper_types::execution::ExecutionJournal;
 use casper_types::{
-    execution::{ExecutionResult, Transform, TransformKind},
-    Block, CLValue, Deploy, DeployHash, DeployHeader, Digest, EraEnd, EraId, EraReport, Key,
-    ProtocolVersion, PublicKey, U512,
+    bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
+    execution::{
+        ExecutionJournal, ExecutionResultV2, Transform, TransformKind, VersionedExecutionResult,
+    },
+    Block, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport, Key, ProtocolVersion,
+    PublicKey, U512,
 };
 
 use crate::{
@@ -110,8 +112,6 @@ pub fn execute_finalized_block(
         next_block_height,
     } = execution_pre_state;
     let mut state_root_hash = pre_state_root_hash;
-    let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
-        Vec::with_capacity(deploys.len());
     // Run any deploys that must be executed
     let block_time = finalized_block.timestamp.millis();
     let start = Instant::now();
@@ -132,6 +132,7 @@ pub fn execute_finalized_block(
         block_time,
     )?;
 
+    let mut execution_results = Vec::with_capacity(deploys.len());
     // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
     for deploy in deploys {
         let deploy_hash = *deploy.hash();
@@ -164,15 +165,9 @@ pub fn execute_finalized_block(
         state_root_hash = state_hash;
     }
 
-    // Write the deploy approvals and execution results Merkle root hashes to global state if there
-    // were any deploys.
-    let execution_results_checksum = compute_execution_results_checksum(
-        &execution_results
-            .iter()
-            .map(|(_, _, result)| result)
-            .cloned()
-            .collect(),
-    )?;
+    // Write the deploy approvals' and execution results' checksums to global state.
+    let execution_results_checksum =
+        compute_execution_results_checksum(execution_results.iter().map(|(_, _, result)| result))?;
 
     let mut checksum_registry = ChecksumRegistry::new();
     checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
@@ -366,7 +361,7 @@ fn commit_execution_results<S>(
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, ExecutionResult), BlockExecutionError>
+) -> Result<(Digest, VersionedExecutionResult), BlockExecutionError>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -397,8 +392,9 @@ where
         }
     };
     let new_state_root = commit_transforms(engine_state, metrics, state_root_hash, effects)?;
-    let json_execution_result = ExecutionResult::from(ee_execution_result);
-    Ok((new_state_root, json_execution_result))
+    let versioned_execution_result =
+        VersionedExecutionResult::from(ExecutionResultV2::from(ee_execution_result));
+    Ok((new_state_root, versioned_execution_result))
 }
 
 fn commit_transforms<S>(
@@ -421,7 +417,7 @@ where
     result.map(Digest::from)
 }
 
-/// Execute the transaction without commiting the effects.
+/// Execute the transaction without committing the effects.
 /// Intended to be used for discovery operations on read-only nodes.
 ///
 /// Returns effects of the execution.
@@ -429,7 +425,7 @@ pub fn execute_only<S>(
     engine_state: &EngineState<S>,
     execution_state: SpeculativeExecutionState,
     deploy: DeployItem,
-) -> Result<Option<ExecutionResult>, engine_state::Error>
+) -> Result<Option<ExecutionResultV2>, engine_state::Error>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -529,16 +525,49 @@ where
     result
 }
 
-/// Computes the root hash for a Merkle tree constructed from the hashes of execution results.
+/// Computes the checksum of the given set of execution results.
 ///
-/// NOTE: We're hashing vector of execution results, instead of just their hashes, b/c when a joiner
-/// node receives the chunks of *full data* it has to be able to verify it against the Merkle root.
-fn compute_execution_results_checksum(
-    execution_results: &Vec<ExecutionResult>,
+/// This will either be a simple hash of the bytesrepr-encoded results (in the case that the
+/// serialized results are not greater than `ChunkWithProof::CHUNK_SIZE_BYTES`), or otherwise will
+/// be a Merkle root hash of the chunks derived from the serialized results.
+pub(crate) fn compute_execution_results_checksum<'a>(
+    execution_results_iter: impl Iterator<Item = &'a VersionedExecutionResult> + Clone,
 ) -> Result<Digest, BlockExecutionError> {
-    execution_results
-        .hash()
-        .map_err(BlockExecutionError::FailedToComputeExecutionResultsChecksum)
+    // Serialize the execution results as if they were `Vec<VersionedExecutionResult>`.
+    let serialized_length = U32_SERIALIZED_LENGTH
+        + execution_results_iter
+            .clone()
+            .map(|exec_result| exec_result.serialized_length())
+            .sum::<usize>();
+    let mut serialized = vec![];
+    serialized
+        .try_reserve_exact(serialized_length)
+        .map_err(|_| {
+            BlockExecutionError::FailedToComputeApprovalsChecksum(bytesrepr::Error::OutOfMemory)
+        })?;
+    let item_count: u32 = execution_results_iter
+        .clone()
+        .count()
+        .try_into()
+        .map_err(|_| {
+            BlockExecutionError::FailedToComputeApprovalsChecksum(
+                bytesrepr::Error::NotRepresentable,
+            )
+        })?;
+    item_count
+        .write_bytes(&mut serialized)
+        .map_err(BlockExecutionError::FailedToComputeExecutionResultsChecksum)?;
+    for execution_result in execution_results_iter {
+        execution_result
+            .write_bytes(&mut serialized)
+            .map_err(BlockExecutionError::FailedToComputeExecutionResultsChecksum)?;
+    }
+
+    // Now hash the serialized execution results, using the `Chunkable` trait's `hash` method to
+    // chunk if required.
+    serialized.hash().map_err(|_| {
+        BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
+    })
 }
 
 #[cfg(test)]

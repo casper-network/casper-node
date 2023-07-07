@@ -63,6 +63,8 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
+#[cfg(test)]
+pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
@@ -846,7 +848,6 @@ impl ContractRuntime {
             .cloned()
             .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
             .collect();
-
         if meta_block_state.register_as_stored().was_updated() {
             effect_builder
                 .put_executed_block_to_storage(
@@ -860,7 +861,11 @@ impl ContractRuntime {
                 .put_approvals_hashes_to_storage(approvals_hashes)
                 .await;
             effect_builder
-                .put_execution_results_to_storage(*block.hash(), execution_results_map)
+                .put_execution_results_to_storage(
+                    *block.hash(),
+                    block.height(),
+                    execution_results_map,
+                )
                 .await;
         }
         if meta_block_state

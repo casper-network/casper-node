@@ -2,7 +2,7 @@ use std::{borrow::Cow, convert::Infallible};
 
 use casper_types::{
     bytesrepr::{self, Bytes, ToBytes},
-    execution::ExecutionResult,
+    execution::{ExecutionResultV1, VersionedExecutionResult},
     Digest,
 };
 
@@ -54,7 +54,7 @@ impl Chunkable for HashingTrieRaw {
     }
 }
 
-impl Chunkable for &Vec<ExecutionResult> {
+impl Chunkable for &Vec<VersionedExecutionResult> {
     type Error = bytesrepr::Error;
 
     fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
@@ -62,7 +62,15 @@ impl Chunkable for &Vec<ExecutionResult> {
     }
 }
 
-impl Chunkable for Vec<ExecutionResult> {
+impl Chunkable for Vec<VersionedExecutionResult> {
+    type Error = bytesrepr::Error;
+
+    fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {
+        Ok(Cow::Owned(self.to_bytes()?))
+    }
+}
+
+impl Chunkable for Vec<&ExecutionResultV1> {
     type Error = bytesrepr::Error;
 
     fn as_bytes(&self) -> Result<Cow<Vec<u8>>, Self::Error> {

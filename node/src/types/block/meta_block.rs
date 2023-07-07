@@ -6,7 +6,9 @@ use std::sync::Arc;
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_types::{execution::ExecutionResult, ActivationPoint, Block, DeployHash, DeployHeader};
+use casper_types::{
+    execution::VersionedExecutionResult, ActivationPoint, Block, DeployHash, DeployHeader,
+};
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
@@ -21,14 +23,14 @@ pub(crate) use state::State;
 #[derive(Clone, Eq, PartialEq, Serialize, Debug, DataSize)]
 pub(crate) struct MetaBlock {
     pub(crate) block: Arc<Block>,
-    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+    pub(crate) execution_results: Vec<(DeployHash, DeployHeader, VersionedExecutionResult)>,
     pub(crate) state: State,
 }
 
 impl MetaBlock {
     pub(crate) fn new(
         block: Arc<Block>,
-        execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
+        execution_results: Vec<(DeployHash, DeployHeader, VersionedExecutionResult)>,
         state: State,
     ) -> Self {
         MetaBlock {
@@ -78,7 +80,7 @@ impl MetaBlock {
 mod tests {
     use std::iter;
 
-    use casper_types::{testing::TestRng, Deploy};
+    use casper_types::{execution::ExecutionResultV2, testing::TestRng, Deploy};
 
     use super::*;
 
@@ -91,7 +93,7 @@ mod tests {
         let execution_results = vec![(
             *deploy.hash(),
             deploy.take_header(),
-            ExecutionResult::random(rng),
+            VersionedExecutionResult::from(ExecutionResultV2::random(rng)),
         )];
         let state = State::new_already_stored();
 
@@ -133,7 +135,7 @@ mod tests {
         let execution_results = vec![(
             *deploy.hash(),
             deploy.take_header(),
-            ExecutionResult::random(rng),
+            VersionedExecutionResult::from(ExecutionResultV2::random(rng)),
         )];
         let state = State::new_not_to_be_gossiped();
 
@@ -165,7 +167,7 @@ mod tests {
         let execution_results = vec![(
             *deploy.hash(),
             deploy.take_header(),
-            ExecutionResult::random(rng),
+            VersionedExecutionResult::from(ExecutionResultV2::random(rng)),
         )];
         let state = State::new();
 
@@ -191,13 +193,13 @@ mod tests {
         let execution_results1 = vec![(
             *deploy1.hash(),
             deploy1.take_header(),
-            ExecutionResult::random(rng),
+            VersionedExecutionResult::from(ExecutionResultV2::random(rng)),
         )];
         let deploy2 = Deploy::random(rng);
         let execution_results2 = vec![(
             *deploy2.hash(),
             deploy2.take_header(),
-            ExecutionResult::random(rng),
+            VersionedExecutionResult::from(ExecutionResultV2::random(rng)),
         )];
         let state = State::new();
 

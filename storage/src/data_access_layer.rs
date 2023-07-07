@@ -1,5 +1,4 @@
-use casper_types::execution::ExecutionJournal;
-use casper_types::{Digest, EraId};
+use casper_types::{execution::ExecutionJournal, Digest, EraId};
 
 use crate::global_state::{
     state::{CommitProvider, StateProvider},

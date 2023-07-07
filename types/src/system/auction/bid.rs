@@ -1,6 +1,7 @@
 mod vesting;
 
 use alloc::{collections::BTreeMap, vec::Vec};
+use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -365,6 +366,32 @@ impl FromBytes for Bid {
             },
             bytes,
         ))
+    }
+}
+
+impl Display for Bid {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "bid {{ bonding purse {}, staked {}, delegation rate {}, delegators {{",
+            self.bonding_purse, self.staked_amount, self.delegation_rate
+        )?;
+
+        let count = self.delegators.len();
+        for (index, delegator) in self.delegators.values().enumerate() {
+            write!(
+                formatter,
+                "{}{}",
+                delegator,
+                if index + 1 == count { "" } else { ", " }
+            )?;
+        }
+
+        write!(
+            formatter,
+            "}}, is {}inactive }}",
+            if self.inactive { "" } else { "not " }
+        )
     }
 }
 

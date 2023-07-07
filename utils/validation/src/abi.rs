@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    execution::TransformKind,
     CLValue, Key, StoredValue, U512,
 };
 
@@ -23,7 +22,6 @@ pub enum Input {
     U512(U512),
     CLValue(CLValue),
     Key(Key),
-    TransformKind(TransformKind),
     StoredValue(StoredValue),
 }
 
@@ -39,7 +37,6 @@ impl ToBytes for Input {
             Input::U512(value) => value.to_bytes(),
             Input::CLValue(value) => value.to_bytes(),
             Input::Key(value) => value.to_bytes(),
-            Input::TransformKind(value) => value.to_bytes(),
             Input::StoredValue(value) => value.to_bytes(),
         }
     }
@@ -55,7 +52,6 @@ impl ToBytes for Input {
             Input::U512(value) => value.serialized_length(),
             Input::CLValue(value) => value.serialized_length(),
             Input::Key(value) => value.serialized_length(),
-            Input::TransformKind(value) => value.serialized_length(),
             Input::StoredValue(value) => value.serialized_length(),
         }
     }

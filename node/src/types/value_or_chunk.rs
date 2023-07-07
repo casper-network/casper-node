@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    execution::ExecutionResult, ChunkWithProof, ChunkWithProofVerificationError, Digest,
+    execution::VersionedExecutionResult, ChunkWithProof, ChunkWithProofVerificationError, Digest,
     MerkleConstructionError,
 };
 
@@ -93,7 +93,7 @@ impl Display for ValueOrChunk<HashingTrieRaw> {
     }
 }
 
-impl Display for ValueOrChunk<Vec<ExecutionResult>> {
+impl Display for ValueOrChunk<Vec<VersionedExecutionResult>> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
             ValueOrChunk::Value(data) => write!(f, "value: {} execution results", data.len()),

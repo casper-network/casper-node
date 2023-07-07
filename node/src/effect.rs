@@ -122,7 +122,7 @@ use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     account::Account,
     bytesrepr::Bytes,
-    execution::{ExecutionJournal, ExecutionResult},
+    execution::{ExecutionJournal, ExecutionResultV2},
     system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage,
     Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature,
@@ -148,7 +148,7 @@ use crate::{
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployMetadataExt,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployExecutionInfo,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
         MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
     },
@@ -161,6 +161,7 @@ use announcements::{
     MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, UnexecutedBlockAnnouncement,
     UpgradeWatcherAnnouncement,
 };
+use casper_types::execution::VersionedExecutionResult;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
@@ -1089,7 +1090,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block: Arc<Block>,
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
     ) -> bool
     where
         REv: From<StorageRequest>,
@@ -1215,7 +1216,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_execution_results_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>
+    ) -> Option<Vec<(DeployHash, DeployHeader, VersionedExecutionResult)>>
     where
         REv: From<StorageRequest>,
     {
@@ -1537,13 +1538,15 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_execution_results_to_storage(
         self,
         block_hash: BlockHash,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
+        block_height: u64,
+        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
     ) where
         REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::PutExecutionResults {
                 block_hash: Box::new(block_hash),
+                block_height,
                 execution_results,
                 responder,
             },
@@ -1553,15 +1556,15 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploy_and_metadata_from_storage(
+    pub(crate) async fn get_deploy_and_execution_info_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>
+    ) -> Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployAndMetadata {
+            |responder| StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash,
                 responder,
             },
@@ -2179,7 +2182,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         execution_prestate: SpeculativeExecutionState,
         deploy: Arc<Deploy>,
-    ) -> Result<Option<ExecutionResult>, engine_state::Error>
+    ) -> Result<Option<ExecutionResultV2>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -2200,7 +2203,7 @@ impl<REv> EffectBuilder<REv> {
         id: BlockExecutionResultsOrChunkId,
     ) -> Option<BlockExecutionResultsOrChunk>
     where
-        REv: From<StorageRequest>, // TODO: Extract to a separate component for caching.
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockExecutionResultsOrChunk { id, responder },

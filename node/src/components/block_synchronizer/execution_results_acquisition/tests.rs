@@ -1,6 +1,6 @@
 use assert_matches::assert_matches;
 
-use casper_types::{bytesrepr::ToBytes, testing::TestRng, Block};
+use casper_types::{bytesrepr::ToBytes, execution::ExecutionResultV2, testing::TestRng, Block};
 
 use super::*;
 use crate::components::block_synchronizer::tests::test_utils::chunks_with_proof_from_data;
@@ -13,9 +13,9 @@ fn execution_results_chunks_apply_correctly() {
     let block = Block::random(rng);
 
     // Create chunkable execution results
-    let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| ExecutionResult::random(rng))
+        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
     assert!(test_chunks.len() >= 3);
@@ -93,7 +93,8 @@ fn execution_results_chunks_from_block_with_different_hash_are_not_applied() {
         3,
         1,
     );
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash()).response(
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
         ValueOrChunk::ChunkWithProof(test_chunks.last_key_value().unwrap().1.clone()),
     );
     acquisition = assert_matches!(
@@ -103,7 +104,8 @@ fn execution_results_chunks_from_block_with_different_hash_are_not_applied() {
     assert_matches!(acquisition, ExecutionResultsAcquisition::Acquiring { .. });
 
     // Applying execution results from other block should return an error
-    let exec_result = BlockExecutionResultsOrChunkId::new(*Block::random(rng).hash()).response(
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *Block::random(rng).hash(),
         ValueOrChunk::ChunkWithProof(test_chunks.first_key_value().unwrap().1.clone()),
     );
     assert_matches!(
@@ -163,9 +165,9 @@ fn cant_apply_chunk_from_different_exec_results_or_invalid_checksum() {
     let block = Block::random(rng);
 
     // Create valid execution results
-    let valid_exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let valid_exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| ExecutionResult::random(rng))
+        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let valid_test_chunks = chunks_with_proof_from_data(&valid_exec_results.to_bytes().unwrap());
     assert!(valid_test_chunks.len() >= 3);
@@ -265,7 +267,7 @@ impl ExecutionResultsAcquisition {
     fn new_complete(
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
-        results: HashMap<DeployHash, ExecutionResult>,
+        results: HashMap<DeployHash, VersionedExecutionResult>,
     ) -> Self {
         let acq = Self::Complete {
             block_hash,
@@ -300,7 +302,8 @@ fn acquisition_needed_state_has_correct_transitions() {
     let mut test_chunks = chunks_with_proof_from_data(&[0; ChunkWithProof::CHUNK_SIZE_BYTES]);
     assert_eq!(test_chunks.len(), 1);
 
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash()).response(
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
         ValueOrChunk::ChunkWithProof(test_chunks.remove(&0).unwrap()),
     );
     assert_matches!(
@@ -327,9 +330,13 @@ fn acquisition_pending_state_has_correct_transitions() {
 
     // Acquisition can transition from `Pending` to `Complete` if a value and deploy hashes are
     // applied
-    let execution_results: Vec<ExecutionResult> = vec![ExecutionResult::random(rng)];
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash())
-        .response(ValueOrChunk::new(execution_results, 0).unwrap());
+    let execution_results = vec![VersionedExecutionResult::from(ExecutionResultV2::random(
+        rng,
+    ))];
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
+        ValueOrChunk::new(execution_results, 0).unwrap(),
+    );
     assert_matches!(
         acquisition
             .clone()
@@ -348,16 +355,18 @@ fn acquisition_pending_state_has_correct_transitions() {
     );
 
     // Acquisition can transition from `Pending` to `Acquiring` if a single chunk is applied
-    let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| ExecutionResult::random(rng))
+        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
     assert!(test_chunks.len() >= 3);
 
     let first_chunk = test_chunks.first_key_value().unwrap().1;
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash())
-        .response(ValueOrChunk::ChunkWithProof(first_chunk.clone()));
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
+        ValueOrChunk::ChunkWithProof(first_chunk.clone()),
+    );
     let deploy_hashes: Vec<DeployHash> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
         .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())))
@@ -377,9 +386,9 @@ fn acquisition_acquiring_state_has_correct_transitions() {
     let block = Block::random(rng);
 
     // Generate valid execution results that are chunkable
-    let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| ExecutionResult::random(rng))
+        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
     assert!(test_chunks.len() >= 3);
@@ -400,8 +409,10 @@ fn acquisition_acquiring_state_has_correct_transitions() {
 
     // Apply all chunks except the last and check if the acquisition state remains `Acquiring`
     for (_, chunk) in test_chunks.iter().take(test_chunks.len() - 1).skip(1) {
-        let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash())
-            .response(ValueOrChunk::ChunkWithProof(chunk.clone()));
+        let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+            *block.hash(),
+            ValueOrChunk::ChunkWithProof(chunk.clone()),
+        );
         acquisition = assert_matches!(
             acquisition.apply_block_execution_results_or_chunk(exec_result, vec![]),
             Ok((acq, Acceptance::NeededIt)) => acq
@@ -411,8 +422,10 @@ fn acquisition_acquiring_state_has_correct_transitions() {
 
     // Now apply the last chunk and check if the acquisition completes
     let last_chunk = test_chunks.last_key_value().unwrap().1;
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash())
-        .response(ValueOrChunk::ChunkWithProof(last_chunk.clone()));
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
+        ValueOrChunk::ChunkWithProof(last_chunk.clone()),
+    );
     let deploy_hashes: Vec<DeployHash> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
         .map(|index| DeployHash::new(Digest::hash(index.to_bytes().unwrap())))
@@ -438,7 +451,8 @@ fn acquisition_acquiring_state_gets_overridden_by_value() {
         3,
         1,
     );
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash()).response(
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
         ValueOrChunk::ChunkWithProof(test_chunks.last_key_value().unwrap().1.clone()),
     );
     acquisition = assert_matches!(
@@ -451,9 +465,13 @@ fn acquisition_acquiring_state_gets_overridden_by_value() {
     // Since we don't have a checksum for the execution results, we can't really determine which
     // data is the better one. We expect to overwrite the execution results chunks that
     // we previously acquired with this complete result.
-    let execution_results: Vec<ExecutionResult> = vec![ExecutionResult::random(rng)];
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash())
-        .response(ValueOrChunk::new(execution_results, 0).unwrap());
+    let execution_results = vec![VersionedExecutionResult::from(ExecutionResultV2::random(
+        rng,
+    ))];
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
+        ValueOrChunk::new(execution_results, 0).unwrap(),
+    );
     assert_matches!(
         acquisition
             .clone()
@@ -500,7 +518,8 @@ fn acquisition_complete_state_has_correct_transitions() {
     let mut test_chunks = chunks_with_proof_from_data(&[0; ChunkWithProof::CHUNK_SIZE_BYTES]);
     assert_eq!(test_chunks.len(), 1);
 
-    let exec_result = BlockExecutionResultsOrChunkId::new(*block.hash()).response(
+    let exec_result = BlockExecutionResultsOrChunk::new_from_value(
+        *block.hash(),
         ValueOrChunk::ChunkWithProof(test_chunks.remove(&0).unwrap()),
     );
     assert_matches!(

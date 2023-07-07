@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use casper_types::{
-    execution::ExecutionResult, BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy,
-    DeployHash, EraId, JsonBlock, ProtocolVersion, PublicKey,
+    execution::{ExecutionResultV2, VersionedExecutionResult},
+    ChainspecRawBytes, Deploy, DeployHash, EraId, JsonBlock, ProtocolVersion, PublicKey,
 };
 
 use super::{
@@ -21,7 +21,7 @@ use crate::{
     components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{DeployMetadataExt, GetStatusResult, PeersMap},
+    types::{DeployExecutionInfo, GetStatusResult, PeersMap},
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -31,11 +31,13 @@ static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
 static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
-    execution_results: vec![JsonExecutionResult {
+    execution_info: Some(DeployExecutionInfo {
         block_hash: JsonBlock::doc_example().hash,
-        result: ExecutionResult::example().clone(),
-    }],
-    block_hash_and_height: None,
+        block_height: JsonBlock::doc_example().header.height,
+        execution_result: Some(VersionedExecutionResult::from(
+            ExecutionResultV2::example().clone(),
+        )),
+    }),
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -78,16 +80,6 @@ impl DocExample for GetDeployParams {
     }
 }
 
-/// The execution result of a single deploy.
-#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JsonExecutionResult {
-    /// The block hash.
-    pub block_hash: BlockHash,
-    /// Execution result.
-    pub result: ExecutionResult,
-}
-
 /// Result for "info_get_deploy" RPC response.
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -97,12 +89,9 @@ pub struct GetDeployResult {
     pub api_version: ProtocolVersion,
     /// The deploy.
     pub deploy: Deploy,
-    /// The map of block hash to execution result.
-    pub execution_results: Vec<JsonExecutionResult>,
-    /// The hash and height of the block in which this deploy was executed,
-    /// only provided if the full execution results are not know on this node.
+    /// Execution info, if available.
     #[serde(skip_serializing_if = "Option::is_none", flatten)]
-    pub block_hash_and_height: Option<BlockHashAndHeight>,
+    pub execution_info: Option<DeployExecutionInfo>,
 }
 
 impl DocExample for GetDeployResult {
@@ -125,52 +114,31 @@ impl RpcWithParams for GetDeploy {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        // Try to get the deploy and metadata from storage.
-        let maybe_deploy_and_metadata = effect_builder
-            .make_request(
-                |responder| RpcRequest::GetDeploy {
-                    hash: params.deploy_hash,
-                    finalized_approvals: params.finalized_approvals,
-                    responder,
-                },
-                QueueKind::Api,
-            )
-            .await;
-
-        let (deploy, metadata_ext) = match maybe_deploy_and_metadata {
-            Some(inner) => (inner.0, inner.1),
+        match effect_builder
+            .get_deploy_and_execution_info_from_storage(params.deploy_hash)
+            .await
+        {
+            Some((deploy_with_finalized_approvals, execution_info)) => {
+                let deploy = if params.finalized_approvals {
+                    deploy_with_finalized_approvals.into_naive()
+                } else {
+                    deploy_with_finalized_approvals.discard_finalized_approvals()
+                };
+                Ok(Self::ResponseResult {
+                    api_version,
+                    deploy,
+                    execution_info,
+                })
+            }
             None => {
                 let message = format!(
-                    "failed to get {} and metadata from storage",
+                    "failed to get {} and execution info from storage",
                     params.deploy_hash
                 );
                 info!("{}", message);
-                return Err(Error::new(ErrorCode::NoSuchDeploy, message));
+                Err(Error::new(ErrorCode::NoSuchDeploy, message))
             }
-        };
-
-        let (execution_results, block_hash_and_height) = match metadata_ext {
-            DeployMetadataExt::Metadata(metadata) => (
-                metadata
-                    .execution_results
-                    .into_iter()
-                    .map(|(block_hash, result)| JsonExecutionResult { block_hash, result })
-                    .collect(),
-                None,
-            ),
-            DeployMetadataExt::BlockInfo(block_hash_and_height) => {
-                (Vec::new(), Some(block_hash_and_height))
-            }
-            DeployMetadataExt::Empty => (Vec::new(), None),
-        };
-
-        let result = Self::ResponseResult {
-            api_version,
-            deploy,
-            execution_results,
-            block_hash_and_height,
-        };
-        Ok(result)
+        }
     }
 }
 

@@ -160,6 +160,17 @@ pub enum FatalStorageError {
         /// The number of approvals hashes.
         actual: usize,
     },
+    /// V1 execution results hashmap doesn't have exactly one entry.
+    #[error(
+        "stored v1 execution results doesn't have exactly one entry: deploy: {deploy_hash}, number \
+        of entries: {results_length}"
+    )]
+    InvalidExecutionResultsV1Length {
+        /// The deploy hash.
+        deploy_hash: DeployHash,
+        /// The number of execution results.
+        results_length: usize,
+    },
     /// Error initializing metrics.
     #[error("failed to initialize metrics for storage: {0}")]
     Prometheus(#[from] prometheus::Error),

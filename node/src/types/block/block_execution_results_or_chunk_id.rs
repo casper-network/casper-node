@@ -4,13 +4,9 @@ use std::{
 };
 
 use datasize::DataSize;
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{execution::ExecutionResult, BlockHash};
-
-use super::BlockExecutionResultsOrChunk;
-use crate::types::ValueOrChunk;
+use casper_types::BlockHash;
 
 /// ID of the request for block execution results or chunk.
 #[derive(DataSize, Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -46,18 +42,6 @@ impl BlockExecutionResultsOrChunkId {
 
     pub(crate) fn chunk_index(&self) -> u64 {
         self.chunk_index
-    }
-
-    /// Constructs a response for the request, retaining the requests' variant and `block_hash`.
-    pub(crate) fn response(
-        &self,
-        value: ValueOrChunk<Vec<ExecutionResult>>,
-    ) -> BlockExecutionResultsOrChunk {
-        BlockExecutionResultsOrChunk {
-            block_hash: self.block_hash,
-            value,
-            is_valid: OnceCell::new(),
-        }
     }
 }
 

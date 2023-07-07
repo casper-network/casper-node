@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 use casper_types::{
     bytesrepr::FromBytes,
     execution::{
-        ExecutionJournal, ExecutionResult as TypesExecutionResult, Transform, TransformKind,
+        ExecutionJournal, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind,
     },
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };

@@ -31,7 +31,7 @@ use crate::{
 use crate::{Key, KEY_HASH_LENGTH};
 
 #[cfg(feature = "json-schema")]
-static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
+static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
     let key1 = Key::from_formatted_str(
         "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
     )
@@ -49,7 +49,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
         TransferAddr::new([130; KEY_HASH_LENGTH]),
     ];
 
-    ExecutionResult::Success {
+    ExecutionResultV2::Success {
         effects,
         transfers,
         cost: U512::from(123_456),
@@ -61,7 +61,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub enum ExecutionResult {
+pub enum ExecutionResultV2 {
     /// The result of a failed execution.
     Failure {
         /// The effects of executing the deploy.
@@ -84,7 +84,7 @@ pub enum ExecutionResult {
     },
 }
 
-impl ExecutionResult {
+impl ExecutionResultV2 {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
@@ -92,7 +92,7 @@ impl ExecutionResult {
         &EXECUTION_RESULT
     }
 
-    /// Returns a random `ExecutionResult`.
+    /// Returns a random `ExecutionResultV2`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let effects = ExecutionJournal::random(rng);
@@ -106,14 +106,14 @@ impl ExecutionResult {
         let cost = U512::from(rng.gen::<u64>());
 
         if rng.gen() {
-            ExecutionResult::Failure {
+            ExecutionResultV2::Failure {
                 effects,
                 transfers,
                 cost,
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
-            ExecutionResult::Success {
+            ExecutionResultV2::Success {
                 effects,
                 transfers,
                 cost,
@@ -122,10 +122,10 @@ impl ExecutionResult {
     }
 }
 
-impl ToBytes for ExecutionResult {
+impl ToBytes for ExecutionResultV2 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            ExecutionResult::Failure {
+            ExecutionResultV2::Failure {
                 effects,
                 transfers,
                 cost,
@@ -137,7 +137,7 @@ impl ToBytes for ExecutionResult {
                 cost.write_bytes(writer)?;
                 error_message.write_bytes(writer)
             }
-            ExecutionResult::Success {
+            ExecutionResultV2::Success {
                 effects,
                 transfers,
                 cost,
@@ -159,7 +159,7 @@ impl ToBytes for ExecutionResult {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ExecutionResult::Failure {
+                ExecutionResultV2::Failure {
                     effects,
                     transfers,
                     cost,
@@ -170,7 +170,7 @@ impl ToBytes for ExecutionResult {
                         + cost.serialized_length()
                         + error_message.serialized_length()
                 }
-                ExecutionResult::Success {
+                ExecutionResultV2::Success {
                     effects,
                     transfers,
                     cost,
@@ -183,7 +183,7 @@ impl ToBytes for ExecutionResult {
     }
 }
 
-impl FromBytes for ExecutionResult {
+impl FromBytes for ExecutionResultV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
@@ -192,7 +192,7 @@ impl FromBytes for ExecutionResult {
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
-                let execution_result = ExecutionResult::Failure {
+                let execution_result = ExecutionResultV2::Failure {
                     effects,
                     transfers,
                     cost,
@@ -204,7 +204,7 @@ impl FromBytes for ExecutionResult {
                 let (effects, remainder) = ExecutionJournal::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
-                let execution_result = ExecutionResult::Success {
+                let execution_result = ExecutionResultV2::Success {
                     effects,
                     transfers,
                     cost,
@@ -224,7 +224,7 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
-            let execution_result = ExecutionResult::random(rng);
+            let execution_result = ExecutionResultV2::random(rng);
             bytesrepr::test_serialization_roundtrip(&execution_result);
         }
     }

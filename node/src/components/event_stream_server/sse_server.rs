@@ -32,13 +32,13 @@ use warp::{
     Filter, Reply,
 };
 
+#[cfg(test)]
+use casper_types::{execution::ExecutionResultV2, testing::TestRng, Block};
 use casper_types::{
-    execution::{ExecutionJournal, ExecutionResult},
+    execution::{ExecutionJournal, VersionedExecutionResult},
     BlockHash, Deploy, DeployHash, EraId, FinalitySignature, JsonBlock, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
-#[cfg(test)]
-use casper_types::{testing::TestRng, Block};
 
 #[cfg(test)]
 use crate::testing;
@@ -97,7 +97,7 @@ pub enum SseData {
         dependencies: Vec<DeployHash>,
         block_hash: Box<BlockHash>,
         #[data_size(skip)]
-        execution_result: Box<ExecutionResult>,
+        execution_result: Box<VersionedExecutionResult>,
     },
     /// The given deploy has expired.
     DeployExpired { deploy_hash: DeployHash },
@@ -173,7 +173,9 @@ impl SseData {
             ttl: deploy.header().ttl(),
             dependencies: deploy.header().dependencies().clone(),
             block_hash: Box::new(BlockHash::random(rng)),
-            execution_result: Box::new(ExecutionResult::random(rng)),
+            execution_result: Box::new(VersionedExecutionResult::from(ExecutionResultV2::random(
+                rng,
+            ))),
         }
     }
 
@@ -205,10 +207,9 @@ impl SseData {
 
     /// Returns a random `SseData::Step`.
     pub(super) fn random_step(rng: &mut TestRng) -> Self {
-        let execution_effects = match ExecutionResult::random(rng) {
-            ExecutionResult::Success { effects, .. } | ExecutionResult::Failure { effects, .. } => {
-                effects
-            }
+        let execution_effects = match ExecutionResultV2::random(rng) {
+            ExecutionResultV2::Success { effects, .. }
+            | ExecutionResultV2::Failure { effects, .. } => effects,
         };
         SseData::Step {
             era_id: EraId::new(rng.gen()),
