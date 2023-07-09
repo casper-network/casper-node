@@ -1,17 +1,15 @@
 //! `juliet` IO layer
 //!
 //! The IO layer combines a lower-level transport like a TCP Stream with the
-//! [`JulietProtocol`](crate::juliet::JulietProtocol) protocol implementation and some memory buffer
-//! to provide a working high-level transport for juliet messages. It allows users of this layer to
-//! send messages across over multiple channels, without having to worry about frame multiplexing or
-//! request limits.
+//! [`JulietProtocol`](crate::juliet::JulietProtocol) protocol implementation and some memory
+//! buffers to provide a working high-level transport for juliet messages. It allows users of this
+//! layer to send messages across over multiple channels, without having to worry about frame
+//! multiplexing or request limits.
 //!
-//! The layer is designed to run in its own task, with handles to allow sending messages in, or
-//! receiving them as they arrive.
+//! See [`IoCore`] for more information about how to use this module.
 
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
-    intrinsics::unreachable,
+    collections::{HashSet, VecDeque},
     io,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -20,13 +18,16 @@ use std::{
 };
 
 use bimap::BiMap;
-use bytes::{Bytes, BytesMut};
+use bytes::{Buf, Bytes, BytesMut};
 use futures::Stream;
 use portable_atomic::AtomicU128;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc::{error::TrySendError, Receiver, Sender},
+    sync::mpsc::{
+        error::{TryRecvError, TrySendError},
+        Receiver, Sender,
+    },
 };
 
 use crate::{
@@ -38,6 +39,9 @@ use crate::{
     ChannelId, Id, Outcome,
 };
 
+/// An item in the outgoing queue.
+///
+/// Requests are not transformed into messages in the queue to conserve limited request ID space.
 #[derive(Debug)]
 enum QueuedItem {
     Request {
@@ -65,6 +69,7 @@ enum QueuedItem {
 }
 
 impl QueuedItem {
+    /// Retrieves the payload from the queued item.
     fn into_payload(self) -> Option<Bytes> {
         match self {
             QueuedItem::Request { payload, .. } => payload,
@@ -93,25 +98,34 @@ pub enum CoreError {
         data.map(|b| b.len()).unwrap_or(0))
     ]
     RemoteReportedError { header: Header, data: Option<Bytes> },
-
+    /// The remote peer violated the protocol and has been sent an error.
     #[error("error sent to peer")]
-    ErrorSent(OutgoingFrame),
+    RemoteProtocolViolation(OutgoingFrame),
     #[error("local protocol violation")]
     /// Local protocol violation - caller violated the crate's API.
     LocalProtocolViolation(#[from] LocalProtocolViolation),
-    /// Bug - mapping of `IoID` to request broke.
-    #[error("internal error: IO id disappeared on channel {channel}, id {id}")]
-    IoIdDisappeared { channel: ChannelId, id: Id },
     /// Internal error.
     ///
-    /// An error occured that should be impossible, thus this indicative of a bug in the library.
+    /// An error occured that should be impossible, this is indicative of a bug in this library.
     #[error("internal consistency error: {0}")]
     ConsistencyError(&'static str),
 }
 
+/// An IO layer request ID.
+///
+/// Request layer IO IDs are unique across the program per request that originated from the local
+/// endpoint. They are used to allow for buffering large numbers of items without exhausting the
+/// pool of protocol level request IDs, which are limited to `u16`s.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct IoId(u128);
 
+/// IO layer for the juliet protocol.
+///
+/// The central structure for the IO layer built on top the juliet protocol, once instance per
+/// connection. It manages incoming (`R`) and outgoing (`W`) transports, as well as a queue for
+/// items to be sent.
+///
+/// Once instantiated, a continuously polling of [`IoCore::next_event`] is expected.
 pub struct IoCore<const N: usize, R, W> {
     /// The actual protocol state.
     juliet: JulietProtocol<N>,
@@ -122,26 +136,34 @@ pub struct IoCore<const N: usize, R, W> {
     writer: W,
     /// Read buffer for incoming data.
     buffer: BytesMut,
-    /// How many more bytes are required until the next par
-    bytes_until_next_parse: usize,
+    /// How many more bytes are required until the next parse.
+    ///
+    /// Used to ensure we don't attempt to parse too often.
+    next_parse_at: usize,
+    /// Whether or not we are shutting down due to an error.
+    shutting_down_due_to_err: bool,
 
-    /// The frame in the process of being sent, maybe be partially transferred.
+    /// The frame in the process of being sent, which may be partially transferred already.
     current_frame: Option<OutgoingFrame>,
-    /// The header of the current multi-frame transfer.
+    /// The headers of active current multi-frame transfers.
     active_multi_frame: [Option<Header>; N],
-    /// Frames that can be sent next.
+    /// Frames waiting to be sent.
     ready_queue: VecDeque<FrameIter>,
-    /// Messages queued that are not yet ready to send.
+    /// Messages that are not yet ready to be sent.
     wait_queue: [VecDeque<QueuedItem>; N],
-    /// Receiver for new items to send.
+    /// Receiver for new messages to be queued.
     receiver: Receiver<QueuedItem>,
     /// Mapping for outgoing requests, mapping internal IDs to public ones.
     request_map: BiMap<IoId, (ChannelId, Id)>,
 
-    /// Shared data across handles and core.
+    /// Shared data across handles and [`IoCore`].
     shared: Arc<IoShared<N>>,
 }
 
+/// Shared data between an [`IoCore`] handle and the core itself.
+///
+/// Its core functionality is to determine whether or not there is room to buffer additional
+/// messages.
 struct IoShared<const N: usize> {
     /// Number of requests already buffered per channel.
     requests_buffered: [AtomicUsize; N],
@@ -149,44 +171,59 @@ struct IoShared<const N: usize> {
     requests_limit: [usize; N],
 }
 
-impl<const N: usize> IoShared<N> {
-    fn next_id(&self) -> IoId {
-        todo!()
-    }
-}
-
+/// Events produced by the IO layer.
 #[derive(Debug)]
+#[must_use]
 pub enum IoEvent {
+    /// A new request has been received.
+    ///
+    /// Eventually a received request must be handled by one of the following:
+    ///
+    /// * A response sent (through [`IoHandle::enqueue_response`]).
+    /// * A response cancellation sent (through [`IoHandle::enqueue_response_cancellation`]).
+    /// * The connection being closed, either regularly or due to an error, on either side.
+    /// * The reception of an [`IoEvent::RequestCancellation`] with the same ID and channel.
     NewRequest {
+        /// Channel the new request arrived on.
         channel: ChannelId,
+        /// Request ID (set by peer).
         id: Id,
+        /// The payload provided with the request.
         payload: Option<Bytes>,
     },
+    /// A response has been received.
+    ///
+    /// For every [`IoId`] there will eventually be exactly either one [`IoEvent::ReceivedResponse`]
+    /// or [`IoEvent::ReceivedCancellationResponse`], unless the connection is shutdown beforehand.
     ReceivedResponse {
+        /// The local request ID for which the response was sent.
         io_id: IoId,
+        /// The payload of the response.
         payload: Option<Bytes>,
     },
-    RequestCancellation {
-        id: Id,
-    },
-    ResponseCancellation {
+    /// A response cancellation has been received.
+    ///
+    /// Indicates the peer is not going to answer the request.
+    ///
+    /// For every [`IoId`] there will eventually be exactly either one [`IoEvent::ReceivedResponse`]
+    /// or [`IoEvent::ReceivedCancellationResponse`], unless the connection is shutdown beforehand.
+    ReceivedCancellationResponse {
+        /// The local request ID which will not be answered.
         io_id: IoId,
     },
-
-    RemoteClosed,
-    LocalShutdown,
+    /// The connection was cleanly shut down without any error.
+    ///
+    /// Clients must no longer call [`IoCore::next_event`] after receiving this and drop the
+    /// [`IoCore`] instead, likely causing the underlying transports to be closed as well.
+    Closed,
 }
 
 impl IoEvent {
+    /// Determine whether or not the received [`IoEvent`] is an [`IoEvent::Closed`], which indicated
+    /// we should stop polling the connection.
     #[inline(always)]
-    fn should_shutdown(&self) -> bool {
-        match self {
-            IoEvent::NewRequest { .. }
-            | IoEvent::ReceivedResponse { .. }
-            | IoEvent::RequestCancellation { .. }
-            | IoEvent::ResponseCancellation { .. } => false,
-            IoEvent::RemoteClosed | IoEvent::LocalShutdown => true,
-        }
+    fn is_closed(&self) -> bool {
+        matches!(self, IoEvent::Closed)
     }
 }
 
@@ -195,57 +232,81 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
+    /// Retrieve the next event.
+    ///
+    /// This is the central loop of the IO layer. It polls all underlying transports and reads/write
+    /// if data is available, until enough processing has been done to produce an [`IoEvent`]. Thus
+    /// any application using the IO layer should loop over calling this function, or call
+    /// `[IoCore::into_stream]` to process it using the standard futures stream interface.
     pub async fn next_event(&mut self) -> Result<IoEvent, CoreError> {
         loop {
-            if self.bytes_until_next_parse == 0 {
-                match self.juliet.process_incoming(&mut self.buffer) {
-                    Outcome::Incomplete(n) => {
-                        // Simply reset how many bytes we need until the next parse.
-                        self.bytes_until_next_parse = n.get() as usize;
-                    }
-                    Outcome::Fatal(err) => self.handle_fatal_read_err(err),
-                    Outcome::Success(successful_read) => {
-                        return self.handle_completed_read(successful_read);
+            if self.next_parse_at <= self.buffer.remaining() {
+                // Simplify reasoning about this code.
+                self.next_parse_at = 0;
+
+                loop {
+                    match self.juliet.process_incoming(&mut self.buffer) {
+                        Outcome::Incomplete(n) => {
+                            // Simply reset how many bytes we need until the next parse.
+                            self.next_parse_at = self.buffer.remaining() + n.get() as usize;
+                            break;
+                        }
+                        Outcome::Fatal(err_msg) => {
+                            // The remote messed up, begin shutting down due to an error.
+                            self.inject_error(err_msg);
+
+                            // Stop processing incoming data.
+                            break;
+                        }
+                        Outcome::Success(successful_read) => {
+                            // Check if we have produced an event.
+                            if let Some(event) = self.handle_completed_read(successful_read)? {
+                                return Ok(event);
+                            }
+
+                            // We did not produce anything useful from the read, which may be due to
+                            // redundant cancellations/responses. Continue parsing if data is
+                            // available.
+                            continue;
+                        }
                     }
                 }
             }
 
             tokio::select! {
-                biased;  // We do not need the bias, but we want to avoid randomness overhead.
+                biased;  // We actually like the bias, avoid the randomness overhead.
 
-                // Writing outgoing data:
+                // Writing outgoing data if there is more to send.
                 write_result = self.writer.write_all_buf(self.current_frame.as_mut().unwrap())
                     , if self.current_frame.is_some() => {
                     write_result.map_err(CoreError::WriteFailed)?;
 
+                    // If we just finished sending an error, it's time to exit.
                     let frame_sent = self.current_frame.take().unwrap();
-
                     if frame_sent.header().is_error() {
                         // We finished sending an error frame, time to exit.
-                        return Err(CoreError::ErrorSent(frame_sent));
+                        return Err(CoreError::RemoteProtocolViolation(frame_sent));
                     }
 
-                    // Prepare the following frame, if any.
+                    // Otherwise prepare the next frame.
                     self.current_frame = self.ready_next_frame()?;
                 }
 
-                // Reading incoming data:
-                read_result = read_atleast_bytesmut(&mut self.reader, &mut self.buffer, self.bytes_until_next_parse) => {
-                    // Our read function will not return before `bytes_until_next_parse` has
-                    // completed.
+                // Reading incoming data.
+                read_result = read_until_bytesmut(&mut self.reader, &mut self.buffer, self.next_parse_at), if !self.shutting_down_due_to_err => {
+                    // Our read function will not return before `read_until_bytesmut` has completed.
                     let bytes_read = read_result.map_err(CoreError::ReadFailed)?;
 
                     if bytes_read == 0 {
                         // Remote peer hung up.
-                        return Ok(IoEvent::RemoteClosed);
+                        return Ok(IoEvent::Closed);
                     }
-
-                    self.bytes_until_next_parse = self.bytes_until_next_parse.saturating_sub(bytes_read);
 
                     // Fall through to start of loop, which parses data read.
                 }
 
-                incoming = self.receiver.recv() => {
+                // Processing locally queued things.
+                incoming = self.receiver.recv(), if !self.shutting_down_due_to_err => {
                     let mut modified_channels = HashSet::new();
 
                     match incoming {
@@ -253,13 +314,60 @@ where
                             self.handle_incoming_item(item, &mut modified_channels)?;
                         }
                         None => {
-                            return Ok(IoEvent::RemoteClosed);
+                            // If the receiver was closed it means that we locally shut down the
+                            // connection.
+                            return Ok(IoEvent::Closed);
                         }
                     }
 
-                    todo!("loop over remainder");
+                    loop {
+                        match self.receiver.try_recv() {
+                            Ok(item) => {
+                                self.handle_incoming_item(item, &mut modified_channels)?;
+                            }
+                            Err(TryRecvError::Disconnected) => {
+                                // While processing incoming items, the last handle was closed.
+                                return Ok(IoEvent::Closed);
+                            }
+                            Err(TryRecvError::Empty) => {
+                                // Everything processed.
+                                break
+                            }
+                        }
+                    }
+
+                    // All incoming items have been handled, now process the wait queue of every
+                    // channel we just touched.
+                    for channel in modified_channels {
+                        self.process_wait_queue(channel)?;
+                    }
                 }
             }
+        }
+    }
+
+    /// Ensures the next message sent is an error message.
+    ///
+    /// Clears all buffers related to sending and closes the local incoming channel.
+    fn inject_error(&mut self, err_msg: OutgoingMessage) {
+        // Stop accepting any new local data.
+        self.receiver.close();
+
+        // Ensure the error message is the next frame sent.
+        self.ready_queue.push_front(err_msg.frames());
+
+        // Set the error state.
+        self.shutting_down_due_to_err = true;
+
+        // We do not continue parsing, ever again.
+        self.next_parse_at = usize::MAX;
+
+        // Clear queues and data structures that are no longer needed.
+        self.buffer.clear();
+        self.ready_queue.clear();
+        self.request_map.clear();
+        for queue in &mut self.wait_queue {
+            queue.clear();
         }
     }
 
@@ -304,13 +412,9 @@ where
                 Ok(self
                     .request_map
                     .remove_by_right(&(channel, id))
-                    .map(|(io_id, _)| IoEvent::ResponseCancellation { io_id }))
+                    .map(|(io_id, _)| IoEvent::ReceivedCancellationResponse { io_id }))
             }
         }
-    }
-
-    fn handle_fatal_read_err(&mut self, err: OutgoingMessage) {
-        todo!()
     }
 
     fn handle_incoming_item(
@@ -409,15 +513,15 @@ where
         Ok(())
     }
 
-    /// Clears a potentially finished frame and returns the best next frame to send.
+    /// Clears a potentially finished frame and returns the next frame to send.
     ///
     /// Returns `None` if no frames are ready to be sent. Note that there may be frames waiting
     /// that cannot be sent due them being multi-frame messages when there already is a multi-frame
-    /// message in progress, or request limits being hit.
+    /// message in progress, or request limits are being hit.
     fn ready_next_frame(&mut self) -> Result<Option<OutgoingFrame>, LocalProtocolViolation> {
         debug_assert!(self.current_frame.is_none()); // Must be guaranteed by caller.
 
-        // Try to fetch a frame from the run queue. If there is nothing, we are stuck for now.
+        // Try to fetch a frame from the ready queue. If there is nothing, we are stuck for now.
         let (frame, more) = match self.ready_queue.pop_front() {
             Some(item) => item,
             None => return Ok(None),
@@ -425,11 +529,11 @@ where
         // Queue is empty, there is no next frame.
         .next_owned(self.juliet.max_frame_size());
 
-        // If there are more frames after this one, schedule them again.
+        // If there are more frames after this one, schedule the remainder.
         if let Some(next_frame_iter) = more {
             self.ready_queue.push_back(next_frame_iter);
         } else {
-            // No additional frames, check if we are about to finish a multi-frame transfer.
+            // No additional frames, check if sending the next frame will finish a multi-frame.
             let about_to_finish = frame.header();
             if let Some(ref active_multi) =
                 self.active_multi_frame[about_to_finish.channel().get() as usize]
@@ -503,7 +607,7 @@ where
             let rv = this.next_event().await;
 
             // Check if this was the last event. We shut down on close or any error.
-            if rv.as_ref().map(IoEvent::should_shutdown).unwrap_or(true) {
+            if rv.as_ref().map(IoEvent::is_closed).unwrap_or(true) {
                 Some((rv, None))
             } else {
                 Some((rv, Some(this)))
@@ -683,14 +787,14 @@ impl<const N: usize> IoHandle<N> {
 /// Read bytes into a buffer.
 ///
 /// Similar to [`AsyncReadExt::read_buf`], except it performs multiple read calls until at least
-/// `target` bytes have been read.
+/// `target` bytes are in `buf`.
 ///
 /// Will automatically retry if an [`io::ErrorKind::Interrupted`] is returned.
 ///
 /// # Cancellation safety
 ///
 /// This function is cancellation safe in the same way that [`AsyncReadExt::read_buf`] is.
-async fn read_atleast_bytesmut<'a, R>(
+async fn read_until_bytesmut<'a, R>(
     reader: &'a mut R,
     buf: &mut BytesMut,
     target: usize,
@@ -701,7 +805,7 @@ where
     let mut bytes_read = 0;
     buf.reserve(target);
 
-    while bytes_read < target {
+    while buf.remaining() < target {
         match reader.read_buf(buf).await {
             Ok(n) => bytes_read += n,
             Err(err) => {
