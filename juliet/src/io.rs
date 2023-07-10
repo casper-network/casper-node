@@ -184,6 +184,7 @@ pub struct IoCore<const N: usize, R, W> {
 ///
 /// Its core functionality is to determine whether or not there is room to buffer additional
 /// messages.
+#[derive(Debug)]
 struct IoShared<const N: usize> {
     /// Number of requests already buffered per channel.
     requests_buffered: [AtomicUsize; N],
@@ -558,6 +559,14 @@ where
             let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
             let wait_queue = &mut self.wait_queue[channel.get() as usize];
 
+            // The code below is not as bad it looks complexity wise, anticipating two common cases:
+            //
+            // 1. A multi-frame read has finished, with capacity for requests to spare. Only
+            //    multi-frame requests will be waiting in the wait queue, so we will likely pop the
+            //    first item, only scanning the rest once.
+            // 2. One or more requests finished, so we also have a high chance of picking the first
+            //    few requests out of the queue.
+
             let mut err = None;
             wait_queue.retain_mut(|item| {
                 if err.is_some() {
@@ -573,11 +582,19 @@ where
                     false
                 }
             });
+
+            // Report protocol violations upwards.
+            if let Some(err) = err {
+                return Err(err);
+            };
         }
 
         Ok(())
     }
 
+    /// Converts the [`IoCore`] into a stream.
+    ///
+    /// The stream will continuously call [`IoCore::next_event`] until the connection is
     fn into_stream(self) -> impl Stream<Item = Result<IoEvent, CoreError>> {
         futures::stream::unfold(Some(self), |state| async {
             let mut this = state?;
@@ -593,6 +610,7 @@ where
     }
 }
 
+/// Determines whether an item is ready to be moved from the wait queue from the ready queue.
 fn item_should_wait<const N: usize>(
     item: &QueuedItem,
     juliet: &JulietProtocol<N>,
@@ -638,13 +656,24 @@ fn item_should_wait<const N: usize>(
     None
 }
 
+/// A handle to the input queue to the [`IoCore`].
+///
+/// The handle is roughly three pointers in size and can be cloned at will. Dropping the last handle
+/// will cause the [`IoCore`] to shutdown and close the connection.
+#[derive(Clone, Debug)]
 struct IoHandle<const N: usize> {
+    /// Shared portion of the [`IoCore`], required for backpressuring onto clients.
     shared: Arc<IoShared<N>>,
     /// Sender for queue items.
     sender: Sender<QueuedItem>,
+    /// The next generation [`IoId`].
+    ///
+    /// IoIDs are just generated sequentially until they run out (which at 1 billion at second takes
+    /// roughly 10^22 years).
     next_io_id: Arc<AtomicU128>,
 }
 
+/// An error that can occur while attempting to enqueue an item.
 #[derive(Debug, Error)]
 enum EnqueueError {
     /// The IO core was shut down, there is no connection anymore to send through.
@@ -653,12 +682,13 @@ enum EnqueueError {
     /// The request limit was hit, try again.
     #[error("request limit hit")]
     RequestLimitHit(Option<Bytes>),
-    /// API violation.
+    /// Violation of local invariants, this is likely a bug in this library or the calling code.
     #[error("local protocol violation during enqueueing")]
     LocalProtocolViolation(#[from] LocalProtocolViolation),
 }
 
 impl EnqueueError {
+    /// Creates an [`EnqueueError`] from a failure to enqueue an item.
     #[inline(always)]
     fn from_failed_send(err: TrySendError<QueuedItem>) -> Self {
         match err {
@@ -671,17 +701,20 @@ impl EnqueueError {
 }
 
 impl<const N: usize> IoHandle<N> {
+    /// Enqueues a new request.
+    ///
+    /// Returns an [`IoId`] that can be used to refer to the request.
     fn enqueue_request(
         &mut self,
         channel: ChannelId,
         payload: Option<Bytes>,
     ) -> Result<IoId, EnqueueError> {
-        bounds_check::<N>(channel)?;
+        bounds_check_channel::<N>(channel)?;
 
         let count = &self.shared.requests_buffered[channel.get() as usize];
         let limit = self.shared.requests_limit[channel.get() as usize];
 
-        // TODO: relax ordering from `SeqCst`.
+        // TODO: Relax ordering from `SeqCst`.
         match count.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
             if current < limit {
                 Some(current + 1)
@@ -690,7 +723,6 @@ impl<const N: usize> IoHandle<N> {
             }
         }) {
             Ok(_prev) => {
-                // Does not overflow before at least 10^18 zettabytes have been sent.
                 let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
 
                 self.sender
@@ -706,6 +738,9 @@ impl<const N: usize> IoHandle<N> {
         }
     }
 
+    /// Enqueues a response to an existing request.
+    ///
+    /// Callers are supposed to send only one response or cancellation per incoming request.
     fn enqueue_response(
         &self,
         channel: ChannelId,
@@ -721,30 +756,41 @@ impl<const N: usize> IoHandle<N> {
             .map_err(EnqueueError::from_failed_send)
     }
 
+    /// Enqueues a cancellation to an existing outgoing request.
+    ///
+    /// If the request has already been answered or cancelled, the enqueue cancellation will
+    /// ultimately have no effect.
     fn enqueue_request_cancellation(
         &self,
         channel: ChannelId,
         io_id: IoId,
     ) -> Result<(), EnqueueError> {
-        bounds_check::<N>(channel)?;
+        bounds_check_channel::<N>(channel)?;
 
         self.sender
             .try_send(QueuedItem::RequestCancellation { io_id })
             .map_err(EnqueueError::from_failed_send)
     }
 
+    /// Enqueues a cancellation as a response to a received request.
+    ///
+    /// Callers are supposed to send only one response or cancellation per incoming request.
     fn enqueue_response_cancellation(
         &self,
         channel: ChannelId,
         id: Id,
     ) -> Result<(), EnqueueError> {
-        bounds_check::<N>(channel)?;
+        bounds_check_channel::<N>(channel)?;
 
         self.sender
             .try_send(QueuedItem::ResponseCancellation { id, channel })
             .map_err(EnqueueError::from_failed_send)
     }
 
+    /// Enqueus an error.
+    ///
+    /// Enqueuing an error causes the [`IoCore`] to begin shutting down immediately, only making an
+    /// effort to finish sending the error before doing so.
     fn enqueue_error(
         &self,
         channel: ChannelId,
@@ -797,8 +843,9 @@ where
     Ok(bytes_read)
 }
 
+/// Bounds checks a channel ID.
 #[inline(always)]
-fn bounds_check<const N: usize>(channel: ChannelId) -> Result<(), LocalProtocolViolation> {
+fn bounds_check_channel<const N: usize>(channel: ChannelId) -> Result<(), LocalProtocolViolation> {
     if channel.get() as usize >= N {
         Err(LocalProtocolViolation::InvalidChannel(channel))
     } else {
