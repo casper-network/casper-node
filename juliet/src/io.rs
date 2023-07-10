@@ -10,7 +10,7 @@
 
 use ::std::mem;
 use std::{
-    collections::{HashSet, VecDeque},
+    collections::{BTreeSet, VecDeque},
     io,
     sync::{
         atomic::{AtomicUsize, Ordering},
@@ -174,7 +174,7 @@ pub struct IoCore<const N: usize, R, W> {
     /// Mapping for outgoing requests, mapping internal IDs to public ones.
     request_map: BiMap<IoId, (ChannelId, Id)>,
     /// A set of channels whose wait queues should be checked again for data to send.
-    dirty_channels: HashSet<ChannelId>,
+    dirty_channels: BTreeSet<ChannelId>,
 
     /// Shared data across handles and [`IoCore`].
     shared: Arc<IoShared<N>>,
@@ -542,9 +542,9 @@ where
 
     /// Process the wait queue of all channels marked dirty, promoting messages that are ready to be
     /// sent to the ready queue.
-    fn process_dirty_channels(&mut self) -> Result<(), LocalProtocolViolation> {
-        for channel in mem::take(&mut self.dirty_channels) {
-            let wait_queue = &mut self.wait_queue[channel.get() as usize];
+    fn process_dirty_channels(&mut self) -> Result<(), CoreError> {
+        while let Some(channel) = self.dirty_channels.pop_first() {
+            let wait_queue_len = self.wait_queue[channel.get() as usize].len();
 
             // The code below is not as bad it looks complexity wise, anticipating two common cases:
             //
@@ -554,26 +554,18 @@ where
             // 2. One or more requests finished, so we also have a high chance of picking the first
             //    few requests out of the queue.
 
-            let mut err = None;
-            wait_queue.retain_mut(|item| {
-                if err.is_some() {
-                    return true;
-                }
+            for _ in 0..(wait_queue_len) {
+                let mut item = self.wait_queue[channel.get() as usize].pop_front().ok_or(
+                    CoreError::InternalError("did not expect wait_queue to disappear"),
+                )?;
 
-                if item_should_wait(item, &self.juliet, &self.active_multi_frame).is_some() {
-                    true
+                if item_should_wait(&item, &self.juliet, &self.active_multi_frame).is_some() {
+                    // Put it right back into the queue.
+                    self.wait_queue[channel.get() as usize].push_back(item);
                 } else {
-                    if let Err(protocol_violation) = self.send_to_ready_queue(item) {
-                        err = Some(protocol_violation);
-                    }
-                    false
+                    self.send_to_ready_queue(&mut item)?;
                 }
-            });
-
-            // Report protocol violations upwards.
-            if let Some(err) = err {
-                return Err(err);
-            };
+            }
         }
 
         Ok(())
