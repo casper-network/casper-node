@@ -44,26 +44,43 @@ use crate::{
 /// Requests are not transformed into messages in the queue to conserve limited request ID space.
 #[derive(Debug)]
 enum QueuedItem {
+    /// An outgoing request.
     Request {
+        /// Channel to send it out on.
+        channel: ChannelId,
+        /// [`IoId`] mapped to the request.
         io_id: IoId,
-        channel: ChannelId,
+        /// The requests payload.
         payload: Option<Bytes>,
     },
-    Response {
-        channel: ChannelId,
-        id: Id,
-        payload: Option<Bytes>,
-    },
+    /// Cancellation of one of our own requests.
     RequestCancellation {
+        /// [`IoId`] mapped to the request that should be cancelled.
         io_id: IoId,
     },
-    ResponseCancellation {
+    /// Outgoing response to a received request.
+    Response {
+        /// Channel the original request was received on.
         channel: ChannelId,
+        /// Id of the original request.
+        id: Id,
+        /// Payload to send along with the response.
+        payload: Option<Bytes>,
+    },
+    /// A cancellation response.
+    ResponseCancellation {
+        /// Channel the original request was received on.
+        channel: ChannelId,
+        /// Id of the original request.
         id: Id,
     },
+    /// An error.
     Error {
+        /// Channel to send error on.
         channel: ChannelId,
+        /// Id to send with error.
         id: Id,
+        /// Error payload.
         payload: Bytes,
     },
 }
@@ -108,7 +125,7 @@ pub enum CoreError {
     ///
     /// An error occured that should be impossible, this is indicative of a bug in this library.
     #[error("internal consistency error: {0}")]
-    ConsistencyError(&'static str),
+    InternalError(&'static str),
 }
 
 /// An IO layer request ID.
@@ -155,6 +172,8 @@ pub struct IoCore<const N: usize, R, W> {
     receiver: Receiver<QueuedItem>,
     /// Mapping for outgoing requests, mapping internal IDs to public ones.
     request_map: BiMap<IoId, (ChannelId, Id)>,
+    /// A set of channels whose wait queues should be checked again for data to send.
+    dirty_channels: HashSet<ChannelId>,
 
     /// Shared data across handles and [`IoCore`].
     shared: Arc<IoShared<N>>,
@@ -190,6 +209,12 @@ pub enum IoEvent {
         id: Id,
         /// The payload provided with the request.
         payload: Option<Bytes>,
+    },
+    RequestCancelled {
+        /// Channel the original request arrived on.
+        channel: ChannelId,
+        /// Request ID (set by peer).
+        id: Id,
     },
     /// A response has been received.
     ///
@@ -240,6 +265,8 @@ where
     /// `[IoCore::into_stream]` to process it using the standard futures stream interface.
     pub async fn next_event(&mut self) -> Result<IoEvent, CoreError> {
         loop {
+            self.process_dirty_channels()?;
+
             if self.next_parse_at <= self.buffer.remaining() {
                 // Simplify reasoning about this code.
                 self.next_parse_at = 0;
@@ -260,14 +287,7 @@ where
                         }
                         Outcome::Success(successful_read) => {
                             // Check if we have produced an event.
-                            if let Some(event) = self.handle_completed_read(successful_read)? {
-                                return Ok(event);
-                            }
-
-                            // We did not produce anything useful from the read, which may be due to
-                            // redundant cancellations/responses. Continue parsing if data is
-                            // available.
-                            continue;
+                            return self.handle_completed_read(successful_read);
                         }
                     }
                 }
@@ -307,11 +327,9 @@ where
 
                 // Processing locally queued things.
                 incoming = self.receiver.recv(), if !self.shutting_down_due_to_err => {
-                    let mut modified_channels = HashSet::new();
-
                     match incoming {
                         Some(item) => {
-                            self.handle_incoming_item(item, &mut modified_channels)?;
+                            self.handle_incoming_item(item)?;
                         }
                         None => {
                             // If the receiver was closed it means that we locally shut down the
@@ -323,7 +341,7 @@ where
                     loop {
                         match self.receiver.try_recv() {
                             Ok(item) => {
-                                self.handle_incoming_item(item, &mut modified_channels)?;
+                                self.handle_incoming_item(item)?;
                             }
                             Err(TryRecvError::Disconnected) => {
                                 // While processing incoming items, the last handle was closed.
@@ -334,12 +352,6 @@ where
                                 break
                             }
                         }
-                    }
-
-                    // All incoming items have been handled, now process the wait queue of every
-                    // channel we just touched.
-                    for channel in modified_channels {
-                        self.process_wait_queue(channel)?;
                     }
                 }
             }
@@ -352,9 +364,6 @@ where
     fn inject_error(&mut self, err_msg: OutgoingMessage) {
         // Stop accepting any new local data.
         self.receiver.close();
-
-        // Ensure the error message is the next frame sent.
-        self.ready_queue.push_front(err_msg.frames());
 
         // Set the error state.
         self.shutting_down_due_to_err = true;
@@ -369,32 +378,35 @@ where
         for queue in &mut self.wait_queue {
             queue.clear();
         }
+
+        // Ensure the error message is the next frame sent.
+        self.ready_queue.push_front(err_msg.frames());
     }
 
+    /// Processes a completed read into a potential event.
     fn handle_completed_read(
         &mut self,
         completed_read: CompletedRead,
-    ) -> Result<Option<IoEvent>, CoreError> {
+    ) -> Result<IoEvent, CoreError> {
         match completed_read {
             CompletedRead::ErrorReceived { header, data } => {
                 // We've received an error from the peer, they will be closing the connection.
-                return Err(CoreError::RemoteReportedError { header, data });
+                Err(CoreError::RemoteReportedError { header, data })
             }
-
             CompletedRead::NewRequest {
                 channel,
                 id,
                 payload,
             } => {
                 // Requests have their id passed through, since they are not given an `IoId`.
-                return Ok(Some(IoEvent::NewRequest {
+                Ok(IoEvent::NewRequest {
                     channel,
                     id,
                     payload,
-                }));
+                })
             }
             CompletedRead::RequestCancellation { channel, id } => {
-                todo!("ensure the request is cancelled - do we need an io-id as well?")
+                Ok(IoEvent::RequestCancelled { channel, id })
             }
 
             // It is not our job to ensure we do not receive duplicate responses or cancellations;
@@ -403,110 +415,91 @@ where
                 channel,
                 id,
                 payload,
-            } => Ok(self
+            } => self
                 .request_map
                 .remove_by_right(&(channel, id))
-                .map(move |(io_id, _)| IoEvent::ReceivedResponse { io_id, payload })),
+                .ok_or(CoreError::InternalError(
+                    "juliet protocol should have dropped response after cancellation",
+                ))
+                .map(move |(io_id, _)| IoEvent::ReceivedResponse { io_id, payload }),
             CompletedRead::ResponseCancellation { channel, id } => {
                 // Responses are mapped to the respective `IoId`.
-                Ok(self
-                    .request_map
+                self.request_map
                     .remove_by_right(&(channel, id))
-                    .map(|(io_id, _)| IoEvent::ReceivedCancellationResponse { io_id }))
+                    .ok_or(CoreError::InternalError(
+                        "juliet protocol should not have allowed fictitious response through",
+                    ))
+                    .map(|(io_id, _)| IoEvent::ReceivedCancellationResponse { io_id })
             }
         }
     }
 
-    fn handle_incoming_item(
-        &mut self,
-        mut item: QueuedItem,
-        channels_to_process: &mut HashSet<ChannelId>,
-    ) -> Result<(), LocalProtocolViolation> {
-        let ready = item_is_ready(&item, &self.juliet, &self.active_multi_frame);
+    /// Handles a new item to send out that arrived through the incoming channel.
+    fn handle_incoming_item(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
+        // Check if the item is sendable immediately.
+        if let Some(channel) = item_should_wait(&item, &self.juliet, &self.active_multi_frame) {
+            self.wait_queue[channel.get() as usize].push_back(item);
+            return Ok(());
+        }
 
+        self.send_to_ready_queue(item)
+    }
+
+    /// Sends an item directly to the ready queue, causing it to be sent out eventually.
+    fn send_to_ready_queue(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
         match item {
             QueuedItem::Request {
                 io_id,
                 channel,
-                ref mut payload,
+                payload,
             } => {
-                // Check if we can eagerly schedule, saving a trip through the wait queue.
-                if ready {
-                    // The item is ready, we can directly schedule it and skip the wait queue.
-                    let msg = self.juliet.create_request(channel, payload.take())?;
+                // "Chase" our own requests here -- if the request was still in the wait queue,
+                // we can cancel it by checking if the `IoId` has been removed in the meantime.
+                //
+                // Note that this only cancels multi-frame requests.
+                if self.request_map.contains_left(&io_id) {
+                    let msg = self.juliet.create_request(channel, payload)?;
                     let id = msg.header().id();
+                    self.request_map.insert(io_id, (channel, id));
                     self.ready_queue.push_back(msg.frames());
-                    self.request_map
-                        .insert(io_id, (channel, RequestState::Sent { id }));
-                } else {
-                    // Item not ready, put it into the wait queue.
-                    self.wait_queue[channel.get() as usize].push_back(item);
-                    self.request_map
-                        .insert(io_id, (channel, RequestState::Waiting));
-                    channels_to_process.insert(channel);
-                }
-            }
-            QueuedItem::Response {
-                id,
-                channel,
-                ref mut payload,
-            } => {
-                if ready {
-                    // The item is ready, we can directly schedule it and skip the wait queue.
-                    if let Some(msg) = self.juliet.create_response(channel, id, payload.take())? {
-                        self.ready_queue.push_back(msg.frames())
-                    }
-                } else {
-                    // Item not ready, put it into the wait queue.
-                    self.wait_queue[channel.get() as usize].push_back(item);
-                    channels_to_process.insert(channel);
                 }
             }
             QueuedItem::RequestCancellation { io_id } => {
-                let (channel, state) = self.request_map.get(&io_id).expect("request map corrupted");
-                match state {
-                    RequestState::Waiting => {
-                        // The request is in the wait or run queue, cancel it during processing.
-                        self.request_map
-                            .insert(io_id, (*channel, RequestState::CancellationPending));
+                if let Some((_, (channel, id))) = self.request_map.remove_by_left(&io_id) {
+                    if let Some(msg) = self.juliet.cancel_request(channel, id)? {
+                        self.ready_queue.push_back(msg.frames());
                     }
-                    RequestState::Allocated { id } => {
-                        // Create the cancellation, but don't send it, since we caught it in time.
-                        self.juliet.cancel_request(*channel, *id)?;
-                        self.request_map
-                            .insert(io_id, (*channel, RequestState::CancellationPending));
-                    }
-                    RequestState::Sent { id } => {
-                        // Request has already been sent, schedule the cancellation message. We can
-                        // bypass the wait queue, since cancellations are always valid to add. We'll
-                        // also add it to the front of the queue to ensure they arrive in time.
+                } else {
+                    // Already cancelled or answered by peer - no need to do anything.
+                }
+            }
 
-                        if let Some(msg) = self.juliet.cancel_request(*channel, *id)? {
-                            self.ready_queue.push_front(msg.frames());
-                        }
-                    }
-                    RequestState::CancellationPending
-                    | RequestState::CancellationSent { id: _ } => {
-                        // Someone copied the `IoId`, we got a duplicated cancellation. Do nothing.
-                    }
+            // `juliet` already tracks whether we still need to send the cancellation.
+            // Unlike requests, we do not attempt to fish responses out of the queue,
+            // cancelling a response after it has been created should be rare.
+            QueuedItem::Response {
+                id,
+                channel,
+                payload,
+            } => {
+                if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
+                    self.ready_queue.push_back(msg.frames())
                 }
             }
             QueuedItem::ResponseCancellation { id, channel } => {
-                // `juliet` already tracks whether we still need to send the cancellation.
-                // Unlike requests, we do not attempt to fish responses out of the queue,
-                // cancelling a response after it has been created should be rare.
                 if let Some(msg) = self.juliet.cancel_response(channel, id)? {
                     self.ready_queue.push_back(msg.frames());
                 }
             }
+
+            // Errors go straight to the front of the line.
             QueuedItem::Error {
                 id,
                 channel,
                 payload,
             } => {
-                // Errors go straight to the front of the line.
-                let msg = self.juliet.custom_error(channel, id, payload)?;
-                self.ready_queue.push_front(msg.frames());
+                let err_msg = self.juliet.custom_error(channel, id, payload)?;
+                self.inject_error(err_msg);
             }
         }
 
@@ -544,7 +537,7 @@ where
                     self.active_multi_frame[about_to_finish.channel().get() as usize] = None;
 
                     // There is a chance another multi-frame messages became ready now.
-                    self.process_wait_queue(about_to_finish.channel())?;
+                    self.dirty_channels.insert(about_to_finish.channel());
                 }
             }
         }
@@ -553,7 +546,9 @@ where
     }
 
     /// Process the wait queue, moving messages that are ready to be sent to the ready queue.
-    fn process_wait_queue(&mut self, channel: ChannelId) -> Result<(), LocalProtocolViolation> {
+    fn process_dirty_channels(&mut self) -> Result<(), LocalProtocolViolation> {
+        // TODO: process dirty channels
+
         // // TODO: Rewrite, factoring out functions from `handle_incoming`.
 
         // let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
@@ -616,11 +611,11 @@ where
     }
 }
 
-fn item_is_ready<const N: usize>(
+fn item_should_wait<const N: usize>(
     item: &QueuedItem,
     juliet: &JulietProtocol<N>,
     active_multi_frame: &[Option<Header>; N],
-) -> bool {
+) -> Option<ChannelId> {
     let (payload, channel) = match item {
         QueuedItem::Request {
             channel, payload, ..
@@ -630,7 +625,7 @@ fn item_is_ready<const N: usize>(
                 .allowed_to_send_request(*channel)
                 .expect("should not be called with invalid channel")
             {
-                return false;
+                return Some(*channel);
             }
 
             (payload, channel)
@@ -642,7 +637,7 @@ fn item_is_ready<const N: usize>(
         // Other messages are always ready.
         QueuedItem::RequestCancellation { .. }
         | QueuedItem::ResponseCancellation { .. }
-        | QueuedItem::Error { .. } => return true,
+        | QueuedItem::Error { .. } => return None,
     };
 
     let mut active_multi_frame = active_multi_frame[channel.get() as usize];
@@ -652,13 +647,13 @@ fn item_is_ready<const N: usize>(
     if active_multi_frame.is_some() {
         if let Some(payload) = payload {
             if payload_is_multi_frame(juliet.max_frame_size(), payload.len()) {
-                return false;
+                return Some(*channel);
             }
         }
     }
 
     // Otherwise, this should be a legitimate add to the run queue.
-    true
+    None
 }
 
 struct IoHandle<const N: usize> {
