@@ -1,3 +1,5 @@
+#![allow(dead_code, unused)]
+
 //! RPC layer.
 //!
 //! Typically the outermost layer of the `juliet` stack is the RPC layer, which combines the

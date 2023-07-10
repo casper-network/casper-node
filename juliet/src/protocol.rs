@@ -654,6 +654,7 @@ impl<const N: usize> JulietProtocol<N> {
                         Some(payload) => {
                             // Message is complete.
                             return Success(CompletedRead::NewRequest {
+                                channel: header.channel(),
                                 id: header.id(),
                                 payload: Some(payload.freeze()),
                             });
@@ -695,6 +696,7 @@ impl<const N: usize> JulietProtocol<N> {
                         Some(payload) => {
                             // Message is complete.
                             return Success(CompletedRead::ReceivedResponse {
+                                channel: header.channel(),
                                 id: header.id(),
                                 payload: Some(payload.freeze()),
                             });

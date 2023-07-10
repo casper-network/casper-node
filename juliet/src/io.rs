@@ -113,7 +113,7 @@ pub enum CoreError {
         header.channel(),
         header.id(),
         header.error_kind(),
-        data.map(|b| b.len()).unwrap_or(0))
+        data.as_ref().map(|b| b.len()).unwrap_or(0))
     ]
     RemoteReportedError { header: Header, data: Option<Bytes> },
     /// The remote peer violated the protocol and has been sent an error.
@@ -425,7 +425,7 @@ where
     }
 
     /// Handles a new item to send out that arrived through the incoming channel.
-    fn handle_incoming_item(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
+    fn handle_incoming_item(&mut self, mut item: QueuedItem) -> Result<(), LocalProtocolViolation> {
         // Check if the item is sendable immediately.
         if let Some(channel) = item_should_wait(&item, &self.juliet, &self.active_multi_frame) {
             self.wait_queue[channel.get() as usize].push_back(item);
@@ -543,8 +543,7 @@ where
     /// Process the wait queue of all channels marked dirty, promoting messages that are ready to be
     /// sent to the ready queue.
     fn process_dirty_channels(&mut self) -> Result<(), LocalProtocolViolation> {
-        for channel in self.dirty_channels.drain() {
-            let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
+        for channel in mem::take(&mut self.dirty_channels) {
             let wait_queue = &mut self.wait_queue[channel.get() as usize];
 
             // The code below is not as bad it looks complexity wise, anticipating two common cases:
@@ -629,7 +628,7 @@ fn item_should_wait<const N: usize>(
         | QueuedItem::Error { .. } => return None,
     };
 
-    let mut active_multi_frame = active_multi_frame[channel.get() as usize];
+    let active_multi_frame = active_multi_frame[channel.get() as usize];
 
     // Check if we cannot schedule due to the message being multi-frame and there being a
     // multi-frame send in progress:
