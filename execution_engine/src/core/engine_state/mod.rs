@@ -985,8 +985,7 @@ where
                         );
                     match maybe_uref {
                         Some(main_purse) => {
-                            // let new_account =
-                            //     Account::create(public_key, Default::default(), main_purse);
+                            println!("Creating new account {}", public_key);
                             let mut generator =
                                 AddressGenerator::new(main_purse.addr().as_ref(), Phase::Session);
 

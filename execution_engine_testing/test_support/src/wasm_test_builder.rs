@@ -1113,6 +1113,22 @@ where
         self.get_purse_balance(proposer_contract.main_purse())
     }
 
+    pub fn get_contract_hash_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<ContractHash> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::Account(cl_value)) => {
+                let contract_key =
+                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                Some(ContractHash::new(
+                    contract_key.into_hash().expect("must have hash addr"),
+                ))
+            }
+            Some(_) | None => None,
+        }
+    }
+
     /// Queries for an `Account`.
     pub fn get_contract_by_account_hash(&self, account_hash: AccountHash) -> Option<Contract> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
