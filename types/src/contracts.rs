@@ -2,7 +2,7 @@
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
-pub mod account_hash;
+mod account_hash;
 pub mod action_thresholds;
 mod action_type;
 pub mod associated_keys;
@@ -57,8 +57,11 @@ pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
 
+/// The tag for Contract Packages associated with Wasm stored on chain.
 pub const PACKAGE_KIND_WASM_TAG: u8 = 0;
+/// The tag for Contract Package associated with a native contract implementation.
 pub const PACKAGE_KIND_SYSTEM_CONTRACT_TAG: u8 = 1;
+/// The tag for Contract Package associated with an Account hash.
 pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
@@ -760,14 +763,19 @@ impl FromBytes for ContractPackageStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+/// The type of contract package.
 pub enum ContractPackageKind {
     #[default]
+    /// Contract Packages associated with Wasm stored on chain.
     Wasm,
+    /// Contract Package associated with a native contract implementation.
     System(SystemContractType),
+    /// Contract Package associated with an Account hash.
     Account(AccountHash),
 }
 
 impl ContractPackageKind {
+    /// Returns the Account hash associated with a Contract Package based on the package kind.
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
             Self::Account(account_hash) => Some(*account_hash),
@@ -775,6 +783,7 @@ impl ContractPackageKind {
         }
     }
 
+    /// Returns the associated key set based on the Account hash set in the package kind.
     pub fn associated_keys(&self) -> AssociatedKeys {
         match self {
             Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
@@ -1046,6 +1055,7 @@ impl ContractPackage {
         self.lock_status.clone()
     }
 
+    /// Returns the kind of Contract Package.
     pub fn get_contract_package_kind(&self) -> ContractPackageKind {
         self.contract_package_kind.clone()
     }

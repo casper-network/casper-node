@@ -10,7 +10,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
     contracts::{self, CONTRACT_INITIAL_VERSION, MAX_GROUPS},
-    runtime_args, Group, Key, RuntimeArgs,
+    runtime_args, Group, RuntimeArgs,
 };
 
 const CONTRACT_GROUPS: &str = "manage_groups.wasm";

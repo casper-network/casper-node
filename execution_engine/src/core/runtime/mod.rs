@@ -486,42 +486,6 @@ where
         self.context.is_system_contract(&contract_hash)
     }
 
-    /// Checks if current context is the mint system contract.
-    pub(crate) fn is_mint(&self, key: Key) -> bool {
-        let hash = match self.context.get_system_contract(MINT) {
-            Ok(hash) => hash,
-            Err(_) => {
-                error!("Failed to get system mint contract hash");
-                return false;
-            }
-        };
-        key.into_hash() == Some(hash.value())
-    }
-
-    /// Checks if current context is the `handle_payment` system contract.
-    pub(crate) fn is_handle_payment(&self, key: Key) -> bool {
-        let hash = match self.context.get_system_contract(HANDLE_PAYMENT) {
-            Ok(hash) => hash,
-            Err(_) => {
-                error!("Failed to get system handle payment contract hash");
-                return false;
-            }
-        };
-        key.into_hash() == Some(hash.value())
-    }
-
-    /// Checks if current context is the auction system contract.
-    pub(crate) fn is_auction(&self, key: Key) -> bool {
-        let hash = match self.context.get_system_contract(AUCTION) {
-            Ok(hash) => hash,
-            Err(_) => {
-                error!("Failed to get system auction contract hash");
-                return false;
-            }
-        };
-        key.into_hash() == Some(hash.value())
-    }
-
     fn get_named_argument<T: FromBytes + CLTyped>(
         args: &RuntimeArgs,
         name: &str,
@@ -2188,8 +2152,6 @@ where
     ) -> Result<TransferResult, Error> {
         let mint_contract_hash = self.get_mint_contract()?;
 
-        let target_key = Key::Account(target);
-
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount > self.get_balance(source)?.unwrap_or_default() {
@@ -2269,8 +2231,10 @@ where
 
                 let contract_by_account = CLValue::from_t(contract_key)?;
 
+                let target_key = Key::Account(target);
+
                 self.context.metered_write_gs_unsafe(
-                    Key::Account(target),
+                    target_key,
                     StoredValue::Account(contract_by_account),
                 )?;
 

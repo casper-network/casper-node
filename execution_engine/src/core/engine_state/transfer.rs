@@ -3,7 +3,7 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
     contracts::AccountHash, system::mint, AccessRights, ApiError, CLType, CLValueError, Contract,
-    ContractHash, Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::core::{

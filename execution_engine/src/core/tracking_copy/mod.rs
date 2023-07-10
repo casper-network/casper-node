@@ -25,8 +25,8 @@ use casper_storage::global_state::{
 };
 use casper_types::{
     bytesrepr::{self},
-    CLType, CLValue, CLValueError, ContractHash, Digest, Key, KeyTag, StoredValue,
-    StoredValueTypeMismatch, Tagged, KEY_HASH_LENGTH, U512,
+    CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
+    Tagged, U512,
 };
 
 pub use self::ext::TrackingCopyExt;

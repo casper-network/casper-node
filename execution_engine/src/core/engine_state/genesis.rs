@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
 use casper_types::{
     contracts::{
-        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
-        ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+        AccountHash, ActionThresholds, ContractPackageKind, ContractPackageStatus,
+        ContractVersions, DisabledVersions, Groups, NamedKeys,
     },
     system::{
         auction::{
@@ -41,7 +41,6 @@ use crate::core::{
 };
 
 const NO_WASM: bool = true;
-const WASM: bool = false;
 const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Represents an outcome of a successful genesis run.

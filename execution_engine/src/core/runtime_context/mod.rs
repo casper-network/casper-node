@@ -381,6 +381,7 @@ where
         self.contract
     }
 
+    /// Returns the contract hash based on the context.
     pub fn contract_hash(&self) -> &'a ContractHash {
         self.contract_hash
     }
@@ -611,26 +612,6 @@ where
                 .write(key, StoredValue::Transfer(value));
         } else {
             panic!("Do not use this function for writing non-transfer keys")
-        }
-    }
-
-    pub fn write_contract_package(&mut self, key: Key, value: ContractPackage) {
-        if let Key::Hash(_) = key {
-            self.tracking_copy
-                .borrow_mut()
-                .write(key, StoredValue::ContractPackage(value))
-        } else {
-            panic!("Do not use this function for writing non-hash keys")
-        }
-    }
-
-    pub fn write_contract(&mut self, key: Key, value: Contract) {
-        if let Key::Hash(_) = key {
-            self.tracking_copy
-                .borrow_mut()
-                .write(key, StoredValue::Contract(value))
-        } else {
-            panic!("Do not use this function for writing non-hash keys")
         }
     }
 

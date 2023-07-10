@@ -104,6 +104,7 @@ pub enum Error {
     /// Failed to put a trie node into global state because some of its children were missing.
     #[error("Failed to put a trie into global state because some of its children were missing")]
     MissingTrieNodeChildren(Vec<Digest>),
+    /// Failed to retrieve contract record by a given account hash.
     #[error("Failed to retrieve contract by account hash {0}")]
     MissingContractByAccountHash(AccountHash),
 }

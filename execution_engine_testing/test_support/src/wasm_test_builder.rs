@@ -65,9 +65,9 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, GenesisAccount, HandlePaymentCosts,
-    Key, KeyTag, MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, UpgradeConfig, U512,
+    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
+    MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
+    UpgradeConfig, U512,
 };
 use tempfile::TempDir;
 
@@ -569,12 +569,6 @@ where
 
         let transforms = execution_effect.transforms;
         let empty_path: Vec<String> = vec![];
-
-        // let genesis_account =
-        //     utils::get_account(&transforms, &system_account).expect("Unable to get system
-        // account");
-        //
-        //
 
         let system_contract_by_account =
             match self.query(Some(post_state_hash), system_account, &empty_path) {
@@ -1113,6 +1107,7 @@ where
         self.get_purse_balance(proposer_contract.main_purse())
     }
 
+    /// Gets the contract hash associated with a given account hash.
     pub fn get_contract_hash_by_account_hash(
         &self,
         account_hash: AccountHash,

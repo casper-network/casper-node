@@ -9,7 +9,7 @@ use casper_types::{
         auction::{Bid, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, ContractHash, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
+    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
 };
 

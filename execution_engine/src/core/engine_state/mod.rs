@@ -281,8 +281,6 @@ where
             )
             .map_err(Into::<execution::Error>::into)?;
 
-        println!("Genesis committed");
-
         // Return the result
         Ok(GenesisSuccess {
             post_state_hash,
@@ -832,7 +830,7 @@ where
 
         let authorization_keys = deploy_item.authorization_keys;
 
-        let (contract, contract_hash) = match self.get_authorized_contract(
+        let (contract, _contract_hash) = match self.get_authorized_contract(
             correlation_id,
             account_hash,
             &authorization_keys,
@@ -1488,10 +1486,6 @@ where
         let system_contract_by_account = tracking_copy
             .borrow_mut()
             .read_contract_by_account_hash(correlation_id, PublicKey::System.to_account_hash())?;
-
-        let system_contract_hash_by_account = tracking_copy
-            .borrow_mut()
-            .get_account(correlation_id, PublicKey::System.to_account_hash())?;
 
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();

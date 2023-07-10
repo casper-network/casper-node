@@ -11,7 +11,7 @@ use casper_types::{
     contracts::{AccountHash, ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
-    ApiError, Contract, ContractHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
+    ApiError, Contract, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);

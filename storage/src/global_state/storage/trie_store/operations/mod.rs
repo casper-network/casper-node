@@ -11,7 +11,7 @@ use tracing::{error, warn};
 
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    Digest, Key,
+    Digest,
 };
 
 use crate::global_state::{
