@@ -123,6 +123,19 @@ impl SingleBlockRewardedSignatures {
         }
         self
     }
+
+    /// Calculates the set intersection of two instances of `SingleBlockRewardedSignatures`.
+    pub(crate) fn intersection(mut self, other: &SingleBlockRewardedSignatures) -> Self {
+        for (self_byte, other_byte) in self.0.iter_mut().zip(other.0.iter()) {
+            *self_byte &= other_byte;
+        }
+        self
+    }
+
+    /// Returns `true` if the set contains at least one signature.
+    pub(crate) fn has_some(&self) -> bool {
+        self.0.iter().any(|byte| *byte != 0)
+    }
 }
 
 impl ToBytes for SingleBlockRewardedSignatures {
@@ -216,6 +229,31 @@ impl RewardedSignatures {
                 })
                 .collect(),
         )
+    }
+
+    /// Calculates the set intersection between two instances of `RewardedSignatures`.
+    pub fn intersection(&self, other: &RewardedSignatures) -> Self {
+        Self(
+            self.0
+                .iter()
+                .zip(other.0.iter())
+                .map(|(single_block_signatures, other_block_signatures)| {
+                    single_block_signatures
+                        .clone()
+                        .intersection(other_block_signatures)
+                })
+                .collect(),
+        )
+    }
+
+    /// Iterates over the `SingleBlockRewardedSignatures` for each rewarded block.
+    pub fn iter(&self) -> impl Iterator<Item = &SingleBlockRewardedSignatures> {
+        self.0.iter()
+    }
+
+    /// Returns `true` if there is at least one cited signature.
+    pub fn has_some(&self) -> bool {
+        self.0.iter().any(|signatures| signatures.has_some())
     }
 }
 
