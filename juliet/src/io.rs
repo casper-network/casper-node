@@ -8,6 +8,7 @@
 //!
 //! See [`IoCore`] for more information about how to use this module.
 
+use ::std::mem;
 use std::{
     collections::{HashSet, VecDeque},
     io,
@@ -442,25 +443,28 @@ where
             return Ok(());
         }
 
-        self.send_to_ready_queue(item)
+        self.send_to_ready_queue(&mut item)
     }
 
     /// Sends an item directly to the ready queue, causing it to be sent out eventually.
-    fn send_to_ready_queue(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
+    ///
+    /// `item` is passed as a mutable reference for compatibility with functions like `retain_mut`,
+    /// but will be left with all payloads removed, thus should likely not be reused.
+    fn send_to_ready_queue(&mut self, item: &mut QueuedItem) -> Result<(), LocalProtocolViolation> {
         match item {
             QueuedItem::Request {
                 io_id,
                 channel,
-                payload,
+                ref mut payload,
             } => {
                 // "Chase" our own requests here -- if the request was still in the wait queue,
                 // we can cancel it by checking if the `IoId` has been removed in the meantime.
                 //
                 // Note that this only cancels multi-frame requests.
                 if self.request_map.contains_left(&io_id) {
-                    let msg = self.juliet.create_request(channel, payload)?;
+                    let msg = self.juliet.create_request(*channel, payload.take())?;
                     let id = msg.header().id();
-                    self.request_map.insert(io_id, (channel, id));
+                    self.request_map.insert(*io_id, (*channel, id));
                     self.ready_queue.push_back(msg.frames());
                 }
             }
@@ -480,14 +484,14 @@ where
             QueuedItem::Response {
                 id,
                 channel,
-                payload,
+                ref mut payload,
             } => {
-                if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
+                if let Some(msg) = self.juliet.create_response(*channel, *id, payload.take())? {
                     self.ready_queue.push_back(msg.frames())
                 }
             }
             QueuedItem::ResponseCancellation { id, channel } => {
-                if let Some(msg) = self.juliet.cancel_response(channel, id)? {
+                if let Some(msg) = self.juliet.cancel_response(*channel, *id)? {
                     self.ready_queue.push_back(msg.frames());
                 }
             }
@@ -498,7 +502,9 @@ where
                 channel,
                 payload,
             } => {
-                let err_msg = self.juliet.custom_error(channel, id, payload)?;
+                let err_msg = self
+                    .juliet
+                    .custom_error(*channel, *id, mem::take(payload))?;
                 self.inject_error(err_msg);
             }
         }
@@ -514,19 +520,19 @@ where
     fn ready_next_frame(&mut self) -> Result<Option<OutgoingFrame>, LocalProtocolViolation> {
         debug_assert!(self.current_frame.is_none()); // Must be guaranteed by caller.
 
-        // Try to fetch a frame from the ready queue. If there is nothing, we are stuck for now.
-        let (frame, more) = match self.ready_queue.pop_front() {
+        // Try to fetch a frame from the ready queue. If there is nothing, we are stuck until the
+        // next time the wait queue is processed or new data arrives.
+        let (frame, additional_frames) = match self.ready_queue.pop_front() {
             Some(item) => item,
             None => return Ok(None),
         }
-        // Queue is empty, there is no next frame.
         .next_owned(self.juliet.max_frame_size());
 
         // If there are more frames after this one, schedule the remainder.
-        if let Some(next_frame_iter) = more {
+        if let Some(next_frame_iter) = additional_frames {
             self.ready_queue.push_back(next_frame_iter);
         } else {
-            // No additional frames, check if sending the next frame will finish a multi-frame.
+            // No additional frames. Check if sending the next frame finishes a multi-frame message.
             let about_to_finish = frame.header();
             if let Some(ref active_multi) =
                 self.active_multi_frame[about_to_finish.channel().get() as usize]
@@ -545,53 +551,29 @@ where
         Ok(Some(frame))
     }
 
-    /// Process the wait queue, moving messages that are ready to be sent to the ready queue.
+    /// Process the wait queue of all channels marked dirty, promoting messages that are ready to be
+    /// sent to the ready queue.
     fn process_dirty_channels(&mut self) -> Result<(), LocalProtocolViolation> {
-        // TODO: process dirty channels
+        for channel in self.dirty_channels.drain() {
+            let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
+            let wait_queue = &mut self.wait_queue[channel.get() as usize];
 
-        // // TODO: Rewrite, factoring out functions from `handle_incoming`.
+            let mut err = None;
+            wait_queue.retain_mut(|item| {
+                if err.is_some() {
+                    return true;
+                }
 
-        // let active_multi_frame = &self.active_multi_frame[channel.get() as usize];
-        // let wait_queue = &mut self.wait_queue[channel.get() as usize];
-        // for _ in 0..(wait_queue.len()) {
-        //     // Note: We do not use `drain` here, since we want to modify in-place. `retain` is also
-        //     //       not used, since it does not allow taking out items by-value. An alternative
-        //     //       might be sorting the list and splitting off the candidates instead.
-        //     let item = wait_queue
-        //         .pop_front()
-        //         .expect("did not expect to run out of items");
-
-        //     if item_is_ready(channel, &item, &self.juliet, active_multi_frame) {
-        //         match item {
-        //             QueuedItem::Request { payload } => {
-        //                 let msg = self.juliet.create_request(channel, payload)?;
-        //                 self.ready_queue.push_back(msg.frames());
-        //             }
-        //             QueuedItem::Response { io_id: id, payload } => {
-        //                 if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
-        //                     self.ready_queue.push_back(msg.frames());
-        //                 }
-        //             }
-        //             QueuedItem::RequestCancellation { io_id: id } => {
-        //                 if let Some(msg) = self.juliet.cancel_request(channel, id)? {
-        //                     self.ready_queue.push_back(msg.frames());
-        //                 }
-        //             }
-        //             QueuedItem::ResponseCancellation { io_id: id } => {
-        //                 if let Some(msg) = self.juliet.cancel_response(channel, id)? {
-        //                     self.ready_queue.push_back(msg.frames());
-        //                 }
-        //             }
-        //             QueuedItem::Error { id, payload } => {
-        //                 let msg = self.juliet.custom_error(channel, id, payload)?;
-        //                 // Errors go into the front.
-        //                 self.ready_queue.push_front(msg.frames());
-        //             }
-        //         }
-        //     } else {
-        //         wait_queue.push_back(item);
-        //     }
-        // }
+                if item_should_wait(item, &self.juliet, &self.active_multi_frame).is_some() {
+                    true
+                } else {
+                    if let Err(protocol_violation) = self.send_to_ready_queue(item) {
+                        err = Some(protocol_violation);
+                    }
+                    false
+                }
+            });
+        }
 
         Ok(())
     }
