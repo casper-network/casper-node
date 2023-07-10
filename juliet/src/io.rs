@@ -238,20 +238,6 @@ pub enum IoEvent {
         /// The local request ID which will not be answered.
         io_id: IoId,
     },
-    /// The connection was cleanly shut down without any error.
-    ///
-    /// Clients must no longer call [`IoCore::next_event`] after receiving this and drop the
-    /// [`IoCore`] instead, likely causing the underlying transports to be closed as well.
-    Closed,
-}
-
-impl IoEvent {
-    /// Determine whether or not the received [`IoEvent`] is an [`IoEvent::Closed`], which indicated
-    /// we should stop polling the connection.
-    #[inline(always)]
-    fn is_closed(&self) -> bool {
-        matches!(self, IoEvent::Closed)
-    }
 }
 
 impl<const N: usize, R, W> IoCore<N, R, W>
@@ -265,7 +251,9 @@ where
     /// if data is available, until enough processing has been done to produce an [`IoEvent`]. Thus
     /// any application using the IO layer should loop over calling this function, or call
     /// `[IoCore::into_stream]` to process it using the standard futures stream interface.
-    pub async fn next_event(&mut self) -> Result<IoEvent, CoreError> {
+    ///
+    /// Polling of this function should continue until `Err(_)` or `Ok(None)` is returned.
+    pub async fn next_event(&mut self) -> Result<Option<IoEvent>, CoreError> {
         loop {
             self.process_dirty_channels()?;
 
@@ -289,7 +277,7 @@ where
                         }
                         Outcome::Success(successful_read) => {
                             // Check if we have produced an event.
-                            return self.handle_completed_read(successful_read);
+                            return self.handle_completed_read(successful_read).map(Some);
                         }
                     }
                 }
@@ -321,7 +309,7 @@ where
 
                     if bytes_read == 0 {
                         // Remote peer hung up.
-                        return Ok(IoEvent::Closed);
+                        return Ok(None);
                     }
 
                     // Fall through to start of loop, which parses data read.
@@ -336,7 +324,7 @@ where
                         None => {
                             // If the receiver was closed it means that we locally shut down the
                             // connection.
-                            return Ok(IoEvent::Closed);
+                            return Ok(None);
                         }
                     }
 
@@ -347,7 +335,7 @@ where
                             }
                             Err(TryRecvError::Disconnected) => {
                                 // While processing incoming items, the last handle was closed.
-                                return Ok(IoEvent::Closed);
+                                return Ok(None);
                             }
                             Err(TryRecvError::Empty) => {
                                 // Everything processed.
@@ -594,17 +582,18 @@ where
 
     /// Converts the [`IoCore`] into a stream.
     ///
-    /// The stream will continuously call [`IoCore::next_event`] until the connection is
+    /// The stream will continuously call [`IoCore::next_event`] until the connection is closed or
+    /// an error has been produced.
     fn into_stream(self) -> impl Stream<Item = Result<IoEvent, CoreError>> {
         futures::stream::unfold(Some(self), |state| async {
             let mut this = state?;
-            let rv = this.next_event().await;
-
-            // Check if this was the last event. We shut down on close or any error.
-            if rv.as_ref().map(IoEvent::is_closed).unwrap_or(true) {
-                Some((rv, None))
-            } else {
-                Some((rv, Some(this)))
+            match this.next_event().await {
+                // Regular event -- keep both the state and return it.
+                Ok(Some(event)) => Some((Ok(event), Some(this))),
+                // Connection closed - we can immediately stop the stream.
+                Ok(None) => None,
+                // Error sent - return the error, but stop polling afterwards.
+                Err(err) => Some((Err(err), None)),
             }
         })
     }
