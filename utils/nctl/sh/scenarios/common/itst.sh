@@ -225,6 +225,14 @@ function do_await_era_change() {
     nctl-await-n-eras offset="$ERA_COUNT" sleep_interval='5.0'
 }
 
+function do_await_era_change_with_timeout() {
+    # allow chain height to grow
+    local ERA_COUNT=${1:-"1"}
+    local TIME_OUT=${2:-''}
+    log_step "awaiting $ERA_COUNT eras…"
+    nctl-await-n-eras offset="$ERA_COUNT" sleep_interval='5.0' timeout="$TIME_OUT"
+}
+
 function check_current_era {
     local NODE_ID=${1:-$(get_node_for_dispatch)}
     local ERA="null"
