@@ -1736,20 +1736,13 @@ impl Storage {
     }
 
     /// Get the switch block for a specified era number in a read-only LMDB database transaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics on any IO or db corruption error.
     pub(crate) fn transactional_get_switch_block_header_by_era_id(
         &self,
         era_id: EraId,
     ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let mut txn = self
-            .env
-            .begin_ro_txn()
-            .expect("Could not start read only transaction for lmdb");
+        let mut txn = self.env.begin_ro_txn()?;
         let ret = self.get_switch_block_header_by_era_id(&mut txn, era_id);
-        txn.commit().expect("Could not commit transaction");
+        txn.commit()?;
         ret
     }
 
