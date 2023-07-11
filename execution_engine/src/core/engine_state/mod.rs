@@ -330,6 +330,8 @@ where
             CLValue::from_t(upgrade_config.chainspec_registry().clone())
                 .map_err(|error| Error::Bytesrepr(error.to_string()))?;
 
+        // We write the checksums of the chainspec settings to global state
+        // allowing verification of the reported chainspec data via the RPC.
         tracking_copy.borrow_mut().write(
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_chainspec_registry),
@@ -417,92 +419,13 @@ where
                 .write(locked_funds_period_key, value);
         }
 
-        // apply the arbitrary modifications
+        // apply the accepted modifications to global state.
         for (key, value) in upgrade_config.global_state_update() {
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
 
-        // This is a one time data transformation which will be removed
-        // in a following upgrade.
-        // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
-        {
-            let withdraw_keys = tracking_copy
-                .borrow_mut()
-                .get_keys(correlation_id, &KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
-
-            let (unbonding_delay, current_era_id) = {
-                let auction_contract = tracking_copy
-                    .borrow_mut()
-                    .get_contract(correlation_id, *auction_hash)?;
-
-                let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
-                let delay = tracking_copy
-                    .borrow_mut()
-                    .read(correlation_id, &unbonding_delay_key)
-                    .map_err(|error| error.into())?
-                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
-                    .as_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
-                    .clone()
-                    .into_t::<u64>()
-                    .map_err(execution::Error::from)?;
-
-                let era_id_key = auction_contract.named_keys()[ERA_ID_KEY];
-
-                let era_id = tracking_copy
-                    .borrow_mut()
-                    .read(correlation_id, &era_id_key)
-                    .map_err(|error| error.into())?
-                    .ok_or(Error::FailedToRetrieveEraId)?
-                    .as_cl_value()
-                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
-                    .clone()
-                    .into_t::<EraId>()
-                    .map_err(execution::Error::from)?;
-
-                (delay, era_id)
-            };
-
-            for key in withdraw_keys {
-                // Transform only those withdraw purses that are still to be
-                // processed in the unbonding queue.
-                let withdraw_purses = tracking_copy
-                    .borrow_mut()
-                    .read(correlation_id, &key)
-                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
-                    .ok_or(Error::FailedToGetStoredWithdraws)?
-                    .as_withdraw()
-                    .ok_or(Error::FailedToGetWithdrawPurses)?
-                    .to_owned();
-
-                // Ensure that sufficient balance exists for all unbond purses that are to be
-                // migrated.
-                Self::fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
-                    &withdraw_purses,
-                    &tracking_copy,
-                    correlation_id,
-                )?;
-
-                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
-                    .into_iter()
-                    .filter_map(|purse| {
-                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
-                            return Some(UnbondingPurse::from(purse));
-                        }
-                        None
-                    })
-                    .collect();
-
-                let unbonding_key = key
-                    .withdraw_to_unbond()
-                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
-
-                tracking_copy
-                    .borrow_mut()
-                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
-            }
-        }
+        // Migrate the withdraw purses if needed.
+        self.migrate_withdraw_purses(correlation_id, &tracking_copy, *auction_hash)?;
 
         // We insert the new unbonding delay once the purses to be paid out have been transformed
         // based on the previous unbonding delay.
@@ -517,40 +440,6 @@ where
                     .map_err(|_| Error::Bytesrepr("new_unbonding_delay".to_string()))?,
             );
             tracking_copy.borrow_mut().write(unbonding_delay_key, value);
-        }
-
-        // Perform global state migrations that require state.
-
-        if let Some(activation_point) = upgrade_config.activation_point() {
-            // The highest stored era is the immediate predecessor of the activation point.
-            let highest_era_info_id = activation_point.saturating_sub(1);
-            let highest_era_info_key = Key::EraInfo(highest_era_info_id);
-
-            let get_result = tracking_copy
-                .borrow_mut()
-                .get(correlation_id, &highest_era_info_key)
-                .map_err(|error| Error::Exec(error.into()))?;
-
-            match get_result {
-                Some(stored_value @ StoredValue::EraInfo(_)) => {
-                    tracking_copy
-                        .borrow_mut()
-                        .write(Key::EraSummary, stored_value);
-                }
-                Some(other_stored_value) => {
-                    // This should not happen as we only write EraInfo variants.
-                    error!(stored_value_type_name=%other_stored_value.type_name(),
-                        "EraInfo key contains unexpected StoredValue variant");
-                    return Err(Error::ProtocolUpgrade(
-                        ProtocolUpgradeError::UnexpectedStoredValueVariant,
-                    ));
-                }
-                None => {
-                    // Can't find key
-                    // Most likely this chain did not yet ran an auction, or recently completed a
-                    // prune
-                }
-            };
         }
 
         let execution_effect = tracking_copy.borrow().effect();
@@ -2268,6 +2157,113 @@ where
             .read_with_proof(correlation_id, &key)
             .map_err(Into::into)?;
         maybe_proof.ok_or(Error::MissingChecksumRegistry)
+    }
+
+    // This is a one time data transformation which will be removed
+    // in a following upgrade.
+    // TODO: CRef={https://github.com/casper-network/casper-node/issues/2479}
+    /// Transform the withdraw purses that have yet to be paid out into Unbonding purses.
+    fn migrate_withdraw_purses(
+        &self,
+        correlation_id: CorrelationId,
+        tracking_copy: &Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+        auction_hash: ContractHash,
+    ) -> Result<(), Error> {
+        let unbonding_keys = tracking_copy
+            .borrow_mut()
+            .get_keys(correlation_id, &KeyTag::Unbond)
+            .map_err(Into::into)?;
+
+        // If Unbonding keys have already been written to global state it
+        // must mean the transformation has been performed and we can early exit.
+        if !unbonding_keys.is_empty() {
+            return Ok(());
+        }
+
+        let withdraw_keys = tracking_copy
+            .borrow_mut()
+            .get_keys(correlation_id, &KeyTag::Withdraw)
+            .map_err(|_| Error::FailedToGetWithdrawKeys)?;
+
+        if withdraw_keys.is_empty() {
+            return Ok(());
+        }
+
+        {
+            let (unbonding_delay, current_era_id) = {
+                let auction_contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, auction_hash)?;
+
+                let unbonding_delay_key = auction_contract.named_keys()[UNBONDING_DELAY_KEY];
+                let delay = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &unbonding_delay_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveUnbondingDelay)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
+                    .clone()
+                    .into_t::<u64>()
+                    .map_err(execution::Error::from)?;
+
+                let era_id_key = auction_contract.named_keys()[ERA_ID_KEY];
+
+                let era_id = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &era_id_key)
+                    .map_err(|error| error.into())?
+                    .ok_or(Error::FailedToRetrieveEraId)?
+                    .as_cl_value()
+                    .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
+                    .clone()
+                    .into_t::<EraId>()
+                    .map_err(execution::Error::from)?;
+
+                (delay, era_id)
+            };
+
+            for key in withdraw_keys {
+                // Transform only those withdraw purses that are still to be
+                // processed in the unbonding queue.
+                let withdraw_purses = tracking_copy
+                    .borrow_mut()
+                    .read(correlation_id, &key)
+                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                    .ok_or(Error::FailedToGetStoredWithdraws)?
+                    .as_withdraw()
+                    .ok_or(Error::FailedToGetWithdrawPurses)?
+                    .to_owned();
+
+                // Ensure that sufficient balance exists for all unbond purses that are to be
+                // migrated.
+                Self::fail_upgrade_if_withdraw_purses_lack_sufficient_balance(
+                    &withdraw_purses,
+                    tracking_copy,
+                    correlation_id,
+                )?;
+
+                let unbonding_purses: Vec<UnbondingPurse> = withdraw_purses
+                    .into_iter()
+                    .filter_map(|purse| {
+                        if purse.era_of_creation() + unbonding_delay >= current_era_id {
+                            return Some(UnbondingPurse::from(purse));
+                        }
+                        None
+                    })
+                    .collect();
+
+                let unbonding_key = key
+                    .withdraw_to_unbond()
+                    .ok_or_else(|| Error::Bytesrepr("unbond".to_string()))?;
+
+                tracking_copy
+                    .borrow_mut()
+                    .write(unbonding_key, StoredValue::Unbonding(unbonding_purses));
+            }
+        }
+
+        Ok(())
     }
 
     /// As the name suggests, used to ensure commit_upgrade fails if we lack sufficient balances.
