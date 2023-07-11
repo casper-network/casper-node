@@ -507,29 +507,23 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 .expect("but we just pushed");
 
             match stored_value {
-                StoredValue::Account(cl_value) => {
-                    if cl_value.cl_type() == &CLType::Key {
-                        let contract_key: Key = match cl_value.clone().into_t() {
-                            Ok(contract_key) => contract_key,
-                            Err(_) => {
-                                return Ok(query.into_not_found_result(
-                                    "Failed to parse CLValue as Contract Hash",
-                                ))
-                            }
-                        };
-                        query.navigate(contract_key)
+                StoredValue::Account(account) => {
+                    let name = query.next_name();
+                    if let Some(key) = account.named_keys().get(name) {
+                        query.navigate(*key);
                     } else {
-                        return Ok(
-                            query.into_not_found_result("Failed to parse CLValue as Contract Hash")
-                        );
+                        let msg_prefix = format!("Name {} not found in Account", name);
+                        return Ok(query.into_not_found_result(&msg_prefix));
                     }
-                    // let name = query.next_name();
-                    // if let Some(key) = account.named_keys().get(name) {
-                    //     query.navigate(*key);
-                    // } else {
-                    //     let msg_prefix = format!("Name {} not found in Account", name);
-                    //     return Ok(query.into_not_found_result(&msg_prefix));
-                    // }
+                }
+                StoredValue::Contract(contract) => {
+                    let name = query.next_name();
+                    if let Some(key) = contract.named_keys().get(name) {
+                        query.navigate(*key);
+                    } else {
+                        let msg_prefix = format!("Name {} not found in Contract", name);
+                        return Ok(query.into_not_found_result(&msg_prefix));
+                    }
                 }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
@@ -546,9 +540,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     );
                     return Ok(query.into_not_found_result(&msg_prefix));
                 }
-                StoredValue::Contract(contract) => {
+                StoredValue::AddressableEntity(entity) => {
                     let name = query.next_name();
-                    if let Some(key) = contract.named_keys().get(name) {
+                    if let Some(key) = entity.named_keys().get(name) {
                         query.navigate(*key);
                     } else {
                         let msg_prefix = format!("Name {} not found in Contract", name);
@@ -708,7 +702,7 @@ pub fn validate_query_proof(
     for (proof, path_component) in proofs_iter.zip(path.iter()) {
         let named_keys = match proof_value {
             // StoredValue::Account(account) => account.named_keys(),
-            StoredValue::Contract(contract) => contract.named_keys(),
+            StoredValue::AddressableEntity(contract) => contract.named_keys(),
             _ => return Err(ValidationError::PathCold),
         };
 

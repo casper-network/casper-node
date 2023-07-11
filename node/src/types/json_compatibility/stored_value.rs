@@ -59,7 +59,7 @@ impl TryFrom<ExecutionEngineStoredValue> for StoredValue {
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
                 StoredValue::ContractWasm(base16::encode_lower(&contract_wasm.to_bytes()?))
             }
-            ExecutionEngineStoredValue::Contract(contract) => {
+            ExecutionEngineStoredValue::AddressableEntity(contract) => {
                 StoredValue::Contract((&contract).into())
             }
             ExecutionEngineStoredValue::ContractPackage(contract_package) => {

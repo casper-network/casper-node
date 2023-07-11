@@ -7,7 +7,7 @@ pub fn mocked_account(account_hash: AccountHash) -> Vec<(Key, StoredValue)> {
     let contract_hash = ContractHash::default();
     vec![(
         Key::Account(account_hash),
-        StoredValue::Account(
+        StoredValue::CLValue(
             CLValue::from_t(contract_hash).expect("must convert from contract hash"),
         ),
     )]

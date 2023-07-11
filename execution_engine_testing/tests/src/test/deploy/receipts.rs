@@ -7,8 +7,8 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, AccessRights, Contract, ContractHash,
-    DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr,
+    contracts::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
+    ContractHash, DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
@@ -441,7 +441,7 @@ fn should_record_wasm_transfers_with_subcall() {
         .map(ContractHash::new)
         .expect("should have contract hash");
 
-    let contract: Contract = builder
+    let contract: AddressableEntity = builder
         .get_contract(contract_hash)
         .expect("should have stored contract");
 

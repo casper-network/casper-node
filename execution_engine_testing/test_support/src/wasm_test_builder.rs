@@ -64,10 +64,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    UpgradeConfig, U512,
+    AddressableEntity, AuctionCosts, CLTyped, CLValue, ContractHash, ContractPackage,
+    ContractPackageHash, ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas,
+    HandlePaymentCosts, Key, KeyTag, MintCosts, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, U512,
 };
 use tempfile::TempDir;
 
@@ -572,7 +572,7 @@ where
 
         let system_contract_by_account =
             match self.query(Some(post_state_hash), system_account, &empty_path) {
-                Ok(StoredValue::Account(cl_value)) => {
+                Ok(StoredValue::CLValue(cl_value)) => {
                     let contract_key =
                         CLValue::into_t::<Key>(cl_value).expect("must convert to contract key");
                     let contract_hash = contract_key
@@ -1061,7 +1061,7 @@ where
     }
 
     /// Returns the "handle payment" contract, panics if it can't be found.
-    pub fn get_handle_payment_contract(&self) -> Contract {
+    pub fn get_handle_payment_contract(&self) -> AddressableEntity {
         let handle_payment_contract: Key = self
             .get_system_contract_hash(HANDLE_PAYMENT)
             .cloned()
@@ -1113,7 +1113,7 @@ where
         account_hash: AccountHash,
     ) -> Option<ContractHash> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
-            Some(StoredValue::Account(cl_value)) => {
+            Some(StoredValue::CLValue(cl_value)) => {
                 let contract_key =
                     CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
                 Some(ContractHash::new(
@@ -1125,13 +1125,16 @@ where
     }
 
     /// Queries for an `Account`.
-    pub fn get_contract_by_account_hash(&self, account_hash: AccountHash) -> Option<Contract> {
+    pub fn get_contract_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<AddressableEntity> {
         match self.query(None, Key::Account(account_hash), &[]).ok() {
-            Some(StoredValue::Account(cl_value)) => {
+            Some(StoredValue::CLValue(cl_value)) => {
                 let contract_key =
                     CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
                 match self.query(None, contract_key, &[]) {
-                    Ok(StoredValue::Contract(contract)) => Some(contract),
+                    Ok(StoredValue::AddressableEntity(contract)) => Some(contract),
                     Ok(_) | Err(_) => None,
                 }
             }
@@ -1140,18 +1143,18 @@ where
     }
 
     /// Queries for an `Account` and panics if it can't be found.
-    pub fn get_expected_account(&self, account_hash: AccountHash) -> Contract {
+    pub fn get_expected_account(&self, account_hash: AccountHash) -> AddressableEntity {
         self.get_contract_by_account_hash(account_hash)
             .expect("account to exist")
     }
 
     /// Queries for a contract by `ContractHash`.
-    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<AddressableEntity> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
 
-        if let StoredValue::Contract(contract) = contract_value {
+        if let StoredValue::AddressableEntity(contract) = contract_value {
             Some(contract)
         } else {
             None

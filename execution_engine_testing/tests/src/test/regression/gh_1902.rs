@@ -14,7 +14,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         mint, standard_payment,
     },
-    Contract, Gas, PublicKey, RuntimeArgs, SecretKey, U512,
+    AddressableEntity, Gas, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const BOND_AMOUNT: u64 = 42;
@@ -45,7 +45,7 @@ fn setup() -> LmdbWasmTestBuilder {
 fn exec_and_assert_costs(
     builder: &mut LmdbWasmTestBuilder,
     exec_request: ExecuteRequest,
-    caller: Contract,
+    caller: AddressableEntity,
     expected_tokens_paid: U512,
     expected_payment_charge: U512,
     expected_gas_cost: Gas,

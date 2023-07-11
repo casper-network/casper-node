@@ -15,8 +15,8 @@ use casper_types::{
         AccountHash, ActionThresholds, AssociatedKeys, NamedKeys, Weight, ACCOUNT_HASH_LENGTH,
     },
     gens::*,
-    AccessRights, CLValue, Contract, ContractHash, ContractPackageHash, Digest, EntryPoints,
-    HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, Digest,
+    EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
 };
 
 use super::{
@@ -197,7 +197,7 @@ fn tracking_copy_add_named_key() {
     let correlation_id = CorrelationId::new();
     // DB now holds an `Account` so that we can test adding a `NamedKey`
     let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
-    let contract = Contract::new(
+    let contract = AddressableEntity::new(
         ContractPackageHash::new([3u8; 32]),
         ACCOUNT_WASM_ADDR.into(),
         NamedKeys::new(),
@@ -209,7 +209,7 @@ fn tracking_copy_add_named_key() {
     );
     let contract_hash =
         CLValue::from_t(ContractHash::new([4u8; 32])).expect("must convert to CLValue");
-    let db = CountingDb::new_init(StoredValue::Contract(contract));
+    let db = CountingDb::new_init(StoredValue::AddressableEntity(contract));
     let mut tc = TrackingCopy::new(db);
     let k = Key::Hash([0u8; 32]);
     let u1 = Key::URef(URef::new([1u8; 32], AccessRights::READ_WRITE));
@@ -348,7 +348,7 @@ proptest! {
         let mut named_keys = NamedKeys::new();
         named_keys.insert(name.clone(), k);
         let contract =
-            StoredValue::Contract(Contract::new(
+            StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
             named_keys,
@@ -393,7 +393,7 @@ proptest! {
         let named_keys = iter::once((name.clone(), k)).collect();
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
-        let account = Contract::new(
+        let account = AddressableEntity::new(
             ContractPackageHash::new([1u8;32]),
             ACCOUNT_WASM_ADDR.into(),
             named_keys,
@@ -443,7 +443,7 @@ proptest! {
         let mut contract_named_keys = NamedKeys::new();
         contract_named_keys.insert(state_name.clone(), k);
         let contract =
-            StoredValue::Contract(Contract::new(
+            StoredValue::Contract(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
             contract_named_keys,
@@ -544,7 +544,7 @@ fn query_for_circular_references_should_fail() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(key_name.clone(), cl_value_key);
     named_keys.insert(contract_name.clone(), contract_key);
-    let contract = StoredValue::Contract(Contract::new(
+    let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
         named_keys,
@@ -604,7 +604,7 @@ fn validate_query_proof_should_work() {
     let account_value = StoredValue::Account(cl_value);
     let account_key = Key::Account(account_hash);
 
-    let account_contract = StoredValue::Contract(Contract::new(
+    let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([20; 32]),
         ACCOUNT_WASM_ADDR.into(),
         NamedKeys::default(),
@@ -623,7 +623,7 @@ fn validate_query_proof_should_work() {
         tmp
     };
 
-    let contract_value = StoredValue::Contract(Contract::new(
+    let contract_value = StoredValue::AddressableEntity(AddressableEntity::new(
         [2; 32].into(),
         [3; 32].into(),
         named_keys,
@@ -649,7 +649,7 @@ fn validate_query_proof_should_work() {
     let main_contract_key: Key = main_contract_hash.into();
     let cl_value_2 = CLValue::from_t(main_contract_hash).unwrap();
 
-    let main_contract = StoredValue::Contract(Contract::new(
+    let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([21; 32]),
         ACCOUNT_WASM_ADDR.into(),
         named_keys,
@@ -1071,7 +1071,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             named_keys.insert(contract_name.clone(), next_contract_key);
             named_keys
         };
-        let contract = StoredValue::Contract(Contract::new(
+        let contract = StoredValue::AddressableEntity(AddressableEntity::new(
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
             named_keys,
@@ -1134,7 +1134,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
         named_keys.insert(root_key_name.clone(), uref_keys[0]);
         named_keys
     };
-    let contract = StoredValue::Contract(Contract::new(
+    let contract = StoredValue::AddressableEntity(AddressableEntity::new(
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),
         named_keys,

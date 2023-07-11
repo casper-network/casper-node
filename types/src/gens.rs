@@ -23,11 +23,13 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
-    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractPackage,
+    ContractVersionKey, ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    EraId, Group, Key, NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef,
+    U128, U256, U512,
 };
 
+use crate::contracts::{Account, Contract};
 use crate::{
     contracts::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
@@ -320,7 +322,55 @@ pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
     collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
 }
 
+pub fn account_arb() -> impl Strategy<Value = Account> {
+    (
+        account_hash_arb(),
+        named_keys_arb(20),
+        uref_arb(),
+        associated_keys_arb(),
+        action_thresholds_arb(),
+    )
+        .prop_map(
+            |(account_hash, named_keys, main_purse, associated_keys, action_thresholds)| {
+                Account::new(
+                    account_hash,
+                    named_keys,
+                    main_purse,
+                    associated_keys,
+                    action_thresholds,
+                )
+            },
+        )
+}
+
 pub fn contract_arb() -> impl Strategy<Value = Contract> {
+    (
+        protocol_version_arb(),
+        entry_points_arb(),
+        u8_slice_32(),
+        u8_slice_32(),
+        named_keys_arb(20),
+    )
+        .prop_map(
+            |(
+                protocol_version,
+                entry_points,
+                contract_package_hash_arb,
+                contract_wasm_hash,
+                named_keys,
+            )| {
+                Contract::new(
+                    contract_package_hash_arb.into(),
+                    contract_wasm_hash.into(),
+                    named_keys,
+                    entry_points,
+                    protocol_version,
+                )
+            },
+        )
+}
+
+pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
     (
         protocol_version_arb(),
         entry_points_arb(),
@@ -342,7 +392,7 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
                 associated_keys,
                 action_thresholds,
             )| {
-                Contract::new(
+                AddressableEntity::new(
                     contract_package_hash_arb.into(),
                     contract_wasm_hash.into(),
                     named_keys,
@@ -517,9 +567,10 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
-        // account_arb().prop_map(StoredValue::Account),
+        account_arb().prop_map(StoredValue::Account),
         contract_wasm_arb().prop_map(StoredValue::ContractWasm),
         contract_arb().prop_map(StoredValue::Contract),
+        addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
         contract_package_arb().prop_map(StoredValue::ContractPackage),
         transfer_arb().prop_map(StoredValue::Transfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
@@ -543,5 +594,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Bid(_) => stored_value,
             StoredValue::Withdraw(_) => stored_value,
             StoredValue::Unbonding(_) => stored_value,
+            StoredValue::AddressableEntity(_) => stored_value,
         })
 }

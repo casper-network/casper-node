@@ -601,7 +601,7 @@ impl DictionaryIdentifier {
             } => {
                 let named_keys = match &maybe_stored_value {
                     Some(DomainStoredValue::Account(account)) => account.named_keys(),
-                    Some(DomainStoredValue::Contract(contract)) => contract.named_keys(),
+                    Some(DomainStoredValue::AddressableEntity(contract)) => contract.named_keys(),
                     Some(other) => {
                         return Err(Error::new(
                             ErrorCode::FailedToGetDictionaryURef,

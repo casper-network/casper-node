@@ -88,8 +88,9 @@ pub fn create_test_purses(
     let query_result = builder
         .query(None, Key::Account(source), &[])
         .expect("should query target");
+
     let account = query_result
-        .as_account()
+        .as_cl_value()
         .unwrap_or_else(|| panic!("result should be account but received {:?}", query_result));
 
     let contract_hash: ContractHash =

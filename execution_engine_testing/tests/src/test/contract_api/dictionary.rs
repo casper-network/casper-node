@@ -88,7 +88,7 @@ fn query_dictionary_item(
                 return Err("No dictionary name was provided".to_string());
             }
             let stored_value = builder.query(None, key, &[])?;
-            if let StoredValue::Account(cl_value) = stored_value {
+            if let StoredValue::CLValue(cl_value) = stored_value {
                 let contract_hash: ContractHash = CLValue::into_t::<Key>(cl_value)
                     .expect("must convert to contract hash")
                     .into_hash()
@@ -109,7 +109,7 @@ fn query_dictionary_item(
                 let stored_value = builder.query(None, key, &[])?;
 
                 let named_keys = match &stored_value {
-                    StoredValue::Contract(contract) => contract.named_keys(),
+                    StoredValue::AddressableEntity(contract) => contract.named_keys(),
                     _ => {
                         return Err(
                             "Provided base key is nether an account or a contract".to_string()

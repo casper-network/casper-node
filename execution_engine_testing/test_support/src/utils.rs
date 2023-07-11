@@ -230,7 +230,7 @@ pub fn get_account(
     account: &Key,
 ) -> Option<ContractHash> {
     transforms.get(account).and_then(|transform| {
-        if let Transform::Write(StoredValue::Account(account)) = transform {
+        if let Transform::Write(StoredValue::CLValue(account)) = transform {
             CLValue::into_t(account.to_owned()).ok()
         } else {
             None

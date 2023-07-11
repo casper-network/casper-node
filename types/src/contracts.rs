@@ -357,7 +357,7 @@ pub type DisabledVersions = BTreeSet<ContractVersionKey>;
 /// Collection of named groups.
 pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
 
-/// A newtype wrapping a `HashAddr` which references a [`Contract`] in the global state.
+/// A newtype wrapping a `HashAddr` which references a [`AddressableEntity`] in the global state.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractHash(HashAddr);
@@ -1350,10 +1350,164 @@ impl From<Vec<EntryPoint>> for EntryPoints {
 /// Collection of named keys
 pub type NamedKeys = BTreeMap<String, Key>;
 
+/// Represents an Account in the global state.
+#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub struct Account {
+    account_hash: AccountHash,
+    named_keys: NamedKeys,
+    main_purse: URef,
+    associated_keys: AssociatedKeys,
+    action_thresholds: ActionThresholds,
+}
+
+impl Account {
+    /// `Account` constructor.
+    pub fn new(
+        account_hash: AccountHash,
+        named_keys: NamedKeys,
+        main_purse: URef,
+        associated_keys: AssociatedKeys,
+        action_thresholds: ActionThresholds,
+    ) -> Self {
+        Account {
+            account_hash,
+            named_keys,
+            main_purse,
+            associated_keys,
+            action_thresholds,
+        }
+    }
+
+    /// Returns account hash.
+    pub fn account_hash(&self) -> AccountHash {
+        self.account_hash
+    }
+
+    /// Returns a reference to `named_keys`
+    pub fn named_keys(&self) -> &NamedKeys {
+        &self.named_keys
+    }
+}
+
+impl ToBytes for Account {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
+        self.account_hash.write_bytes(&mut result)?;
+        self.named_keys.write_bytes(&mut result)?;
+        self.main_purse.write_bytes(&mut result)?;
+        self.associated_keys.write_bytes(&mut result)?;
+        self.action_thresholds.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.account_hash.serialized_length()
+            + self.named_keys.serialized_length()
+            + self.main_purse.serialized_length()
+            + self.associated_keys.serialized_length()
+            + self.action_thresholds.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.account_hash.write_bytes(writer)?;
+        self.named_keys.write_bytes(writer)?;
+        self.main_purse.write_bytes(writer)?;
+        self.associated_keys.write_bytes(writer)?;
+        self.action_thresholds.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for Account {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (account_hash, rem) = AccountHash::from_bytes(bytes)?;
+        let (named_keys, rem) = NamedKeys::from_bytes(rem)?;
+        let (main_purse, rem) = URef::from_bytes(rem)?;
+        let (associated_keys, rem) = AssociatedKeys::from_bytes(rem)?;
+        let (action_thresholds, rem) = ActionThresholds::from_bytes(rem)?;
+        Ok((
+            Account {
+                account_hash,
+                named_keys,
+                main_purse,
+                associated_keys,
+                action_thresholds,
+            },
+            rem,
+        ))
+    }
+}
+
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct Contract {
+    contract_package_hash: ContractPackageHash,
+    contract_wasm_hash: ContractWasmHash,
+    named_keys: NamedKeys,
+    entry_points: EntryPoints,
+    protocol_version: ProtocolVersion,
+}
+
+impl Contract {
+    /// `Contract` constructor.
+    pub fn new(
+        contract_package_hash: ContractPackageHash,
+        contract_wasm_hash: ContractWasmHash,
+        named_keys: NamedKeys,
+        entry_points: EntryPoints,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
+        Contract {
+            contract_package_hash,
+            contract_wasm_hash,
+            named_keys,
+            entry_points,
+            protocol_version,
+        }
+    }
+
+    /// Hash for accessing contract package
+    pub fn contract_package_hash(&self) -> ContractPackageHash {
+        self.contract_package_hash
+    }
+
+    /// Hash for accessing contract WASM
+    pub fn contract_wasm_hash(&self) -> ContractWasmHash {
+        self.contract_wasm_hash
+    }
+
+    /// Checks whether there is a method with the given name
+    pub fn has_entry_point(&self, name: &str) -> bool {
+        self.entry_points.has_entry_point(name)
+    }
+
+    /// Returns the type signature for the given `method`.
+    pub fn entry_point(&self, method: &str) -> Option<&EntryPoint> {
+        self.entry_points.get(method)
+    }
+
+    /// Get the protocol version this header is targeting.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    /// Returns a reference to `named_keys`
+    pub fn named_keys(&self) -> &NamedKeys {
+        &self.named_keys
+    }
+
+    /// Returns immutable reference to methods
+    pub fn entry_points(&self) -> &EntryPoints {
+        &self.entry_points
+    }
+}
+
+/// Methods and type signatures supported by a contract.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub struct AddressableEntity {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
     named_keys: NamedKeys,
@@ -1364,7 +1518,7 @@ pub struct Contract {
     action_thresholds: ActionThresholds,
 }
 
-impl From<Contract>
+impl From<AddressableEntity>
     for (
         ContractPackageHash,
         ContractWasmHash,
@@ -1376,7 +1530,7 @@ impl From<Contract>
         ActionThresholds,
     )
 {
-    fn from(contract: Contract) -> Self {
+    fn from(contract: AddressableEntity) -> Self {
         (
             contract.contract_package_hash,
             contract.contract_wasm_hash,
@@ -1390,7 +1544,7 @@ impl From<Contract>
     }
 }
 
-impl Contract {
+impl AddressableEntity {
     /// `Contract` constructor.
     pub fn new(
         contract_package_hash: ContractPackageHash,
@@ -1402,7 +1556,7 @@ impl Contract {
         associated_keys: AssociatedKeys,
         action_thresholds: ActionThresholds,
     ) -> Self {
-        Contract {
+        AddressableEntity {
             contract_package_hash,
             contract_wasm_hash,
             named_keys,
@@ -1650,6 +1804,55 @@ impl Contract {
 impl ToBytes for Contract {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
+        self.contract_package_hash.write_bytes(&mut result)?;
+        self.contract_wasm_hash.write_bytes(&mut result)?;
+        self.named_keys.write_bytes(&mut result)?;
+        self.entry_points.write_bytes(&mut result)?;
+        self.protocol_version.write_bytes(&mut result)?;
+        Ok(result)
+    }
+
+    fn serialized_length(&self) -> usize {
+        ToBytes::serialized_length(&self.entry_points)
+            + ToBytes::serialized_length(&self.contract_package_hash)
+            + ToBytes::serialized_length(&self.contract_wasm_hash)
+            + ToBytes::serialized_length(&self.protocol_version)
+            + ToBytes::serialized_length(&self.named_keys)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.contract_package_hash.write_bytes(writer)?;
+        self.contract_wasm_hash.write_bytes(writer)?;
+        self.named_keys.write_bytes(writer)?;
+        self.entry_points.write_bytes(writer)?;
+        self.protocol_version.write_bytes(writer)?;
+        Ok(())
+    }
+}
+
+impl FromBytes for Contract {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (contract_package_hash, bytes) = FromBytes::from_bytes(bytes)?;
+        let (contract_wasm_hash, bytes) = FromBytes::from_bytes(bytes)?;
+        let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
+        let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
+        let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
+        Ok((
+            Contract {
+                contract_package_hash,
+                contract_wasm_hash,
+                named_keys,
+                entry_points,
+                protocol_version,
+            },
+            bytes,
+        ))
+    }
+}
+
+impl ToBytes for AddressableEntity {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut result = bytesrepr::allocate_buffer(self)?;
         self.contract_package_hash().write_bytes(&mut result)?;
         self.contract_wasm_hash().write_bytes(&mut result)?;
         self.named_keys().write_bytes(&mut result)?;
@@ -1685,7 +1888,7 @@ impl ToBytes for Contract {
     }
 }
 
-impl FromBytes for Contract {
+impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (contract_package_hash, bytes) = FromBytes::from_bytes(bytes)?;
         let (contract_wasm_hash, bytes) = FromBytes::from_bytes(bytes)?;
@@ -1696,7 +1899,7 @@ impl FromBytes for Contract {
         let (associated_keys, bytes) = AssociatedKeys::from_bytes(bytes)?;
         let (action_thresholds, bytes) = ActionThresholds::from_bytes(bytes)?;
         Ok((
-            Contract {
+            AddressableEntity {
                 contract_package_hash,
                 contract_wasm_hash,
                 named_keys,
@@ -1711,9 +1914,9 @@ impl FromBytes for Contract {
     }
 }
 
-impl Default for Contract {
+impl Default for AddressableEntity {
     fn default() -> Self {
-        Contract {
+        AddressableEntity {
             named_keys: NamedKeys::default(),
             entry_points: EntryPoints::default(),
             contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
@@ -2386,7 +2589,7 @@ mod tests {
         named_keys.insert("c".to_string(), Key::URef(uref_w));
         named_keys.insert("d".to_string(), Key::URef(uref));
         let associated_keys = AssociatedKeys::new(AccountHash::new([254; 32]), Weight::new(1));
-        let contract = Contract::new(
+        let contract = AddressableEntity::new(
             ContractPackageHash::new([254; 32]),
             ContractWasmHash::new([253; 32]),
             named_keys,
@@ -2423,7 +2626,7 @@ mod prop_tests {
         // })]
 
         #[test]
-        fn test_value_contract(contract in gens::contract_arb()) {
+        fn test_value_contract(contract in gens::addressable_entity_arb()) {
             bytesrepr::test_serialization_roundtrip(&contract);
         }
 

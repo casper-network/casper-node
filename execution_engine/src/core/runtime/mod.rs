@@ -24,10 +24,10 @@ use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
-        self, AccountHash, ActionThresholds, ActionType, AssociatedKeys, Contract, ContractPackage,
-        ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions,
-        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
-        Weight, DEFAULT_ENTRY_POINT_NAME,
+        self, AccountHash, ActionThresholds, ActionType, AddressableEntity, AssociatedKeys,
+        ContractPackage, ContractPackageKind, ContractPackageStatus, ContractVersion,
+        ContractVersions, DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group,
+        Groups, NamedKeys, Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     system::{
         self,
@@ -1098,7 +1098,7 @@ where
         let (contract, contract_hash, contract_package) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
                 let contract_key = contract_hash.into();
-                let contract: Contract = self.context.read_gs_typed(&contract_key)?;
+                let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
                 let contract_package_key = Key::from(contract.contract_package_hash());
                 let contract_package: ContractPackage =
                     self.context.read_gs_typed(&contract_package_key)?;
@@ -1141,7 +1141,7 @@ where
                     .ok_or(Error::InvalidContractVersion(contract_version_key))?;
 
                 let contract_key = contract_hash.into();
-                let contract: Contract = self.context.read_gs_typed(&contract_key)?;
+                let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
 
                 (contract, contract_hash, contract_package)
             }
@@ -1664,7 +1664,7 @@ where
 
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys
         if let Some(previous_contract_hash) = contract_package.current_contract_hash() {
-            let previous_contract: Contract =
+            let previous_contract: AddressableEntity =
                 self.context.read_gs_typed(&previous_contract_hash.into())?;
 
             let mut previous_named_keys = previous_contract.take_named_keys();
@@ -1674,7 +1674,7 @@ where
         let (main_purse, associated_keys, action_thresholds) =
             match contract_package.current_contract_hash() {
                 Some(previous_contract_hash) => {
-                    let previous_contract: Contract =
+                    let previous_contract: AddressableEntity =
                         self.context.read_gs_typed(&previous_contract_hash.into())?;
                     let mut previous_named_keys = previous_contract.named_keys().clone();
                     named_keys.append(&mut previous_named_keys);
@@ -1691,7 +1691,7 @@ where
                 ),
             };
 
-        let contract = Contract::new(
+        let contract = AddressableEntity::new(
             contract_package_hash,
             contract_wasm_hash.into(),
             named_keys,
@@ -2191,7 +2191,7 @@ where
                 let named_keys = NamedKeys::default();
                 let entry_points = EntryPoints::new();
 
-                let contract = Contract::new(
+                let contract = AddressableEntity::new(
                     contract_package_hash,
                     contract_wasm_hash,
                     named_keys,
@@ -2219,8 +2219,10 @@ where
 
                 let contract_key: Key = contract_hash.into();
 
-                self.context
-                    .metered_write_gs_unsafe(contract_key, StoredValue::Contract(contract))?;
+                self.context.metered_write_gs_unsafe(
+                    contract_key,
+                    StoredValue::AddressableEntity(contract),
+                )?;
 
                 let contract_package_key: Key = contract_package_hash.into();
 
@@ -2235,7 +2237,7 @@ where
 
                 self.context.metered_write_gs_unsafe(
                     target_key,
-                    StoredValue::Account(contract_by_account),
+                    StoredValue::CLValue(contract_by_account),
                 )?;
 
                 Ok(Ok(TransferredTo::NewAccount))
@@ -2295,7 +2297,7 @@ where
 
                 self.transfer_to_new_account(source, target, amount, id)
             }
-            Some(StoredValue::Account(account)) => {
+            Some(StoredValue::CLValue(account)) => {
                 // Attenuate the target main purse
                 let contract_key = CLValue::into_t::<Key>(account)?;
                 let contract_hash = if let Some(contract_hash) = contract_key
@@ -2306,7 +2308,7 @@ where
                 } else {
                     return Err(Error::InvalidKey(contract_key));
                 };
-                let target_uref = if let Some(StoredValue::Contract(contract)) =
+                let target_uref = if let Some(StoredValue::AddressableEntity(contract)) =
                     self.context.read_gs(&contract_hash.into())?
                 {
                     contract.main_purse_add_only()
@@ -2633,7 +2635,8 @@ where
         let versions = package.versions();
         for contract_hash in versions.values() {
             let entry_points = {
-                let contract: Contract = self.context.read_gs_typed(&Key::from(*contract_hash))?;
+                let contract: AddressableEntity =
+                    self.context.read_gs_typed(&Key::from(*contract_hash))?;
                 contract.entry_points().clone().take_entry_points()
             };
             for entry_point in entry_points {

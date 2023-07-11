@@ -156,7 +156,7 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
 
         let contract_key: Key = match maybe_value {
-            Some(StoredValue::Account(cl_value)) => {
+            Some(StoredValue::CLValue(cl_value)) => {
                 let contract_key: Key = cl_value.into_t().map_err(|_| Error::CLValue)?;
                 contract_key
             }
@@ -170,7 +170,7 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
 
         match maybe_value {
-            Some(StoredValue::Contract(contract)) => {
+            Some(StoredValue::AddressableEntity(contract)) => {
                 self.mint_transfer_direct(
                     Some(account_hash),
                     *unbonding_purse.bonding_purse(),

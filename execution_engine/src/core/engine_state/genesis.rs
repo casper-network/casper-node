@@ -27,10 +27,10 @@ use casper_types::{
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, CLValue, Chainspec, ChainspecRegistry, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
-    GenesisAccount, Key, Motes, Phase, ProtocolVersion, PublicKey, StoredValue, SystemConfig, URef,
-    WasmConfig, U512,
+    AccessRights, AddressableEntity, CLValue, Chainspec, ChainspecRegistry, ContractHash,
+    ContractPackage, ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints,
+    EraId, GenesisAccount, Key, Motes, Phase, ProtocolVersion, PublicKey, StoredValue,
+    SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::core::{
@@ -928,7 +928,7 @@ where
             }
         };
 
-        let contract = Contract::new(
+        let contract = AddressableEntity::new(
             contract_package_hash,
             contract_wasm_hash,
             named_keys,
@@ -962,9 +962,10 @@ where
             contract_wasm_hash.into(),
             StoredValue::ContractWasm(contract_wasm),
         );
-        self.tracking_copy
-            .borrow_mut()
-            .write(contract_hash.into(), StoredValue::Contract(contract));
+        self.tracking_copy.borrow_mut().write(
+            contract_hash.into(),
+            StoredValue::AddressableEntity(contract),
+        );
         self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
             StoredValue::ContractPackage(contract_package),
@@ -976,7 +977,7 @@ where
 
             self.tracking_copy.borrow_mut().write(
                 Key::Account(account_hash),
-                StoredValue::Account(contract_by_account),
+                StoredValue::CLValue(contract_by_account),
             );
         }
 

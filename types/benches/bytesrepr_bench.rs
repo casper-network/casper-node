@@ -12,7 +12,7 @@ use casper_types::{
         NamedKeys, Weight,
     },
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
+    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Group, Key, Parameter, ProtocolVersion,
     PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
@@ -491,8 +491,8 @@ fn serialize_contract(b: &mut Bencher) {
 
 fn deserialize_contract(b: &mut Bencher) {
     let contract = sample_contract(10, 10);
-    let contract_bytes = Contract::to_bytes(&contract).unwrap();
-    b.iter(|| Contract::from_bytes(black_box(&contract_bytes)).unwrap());
+    let contract_bytes = AddressableEntity::to_bytes(&contract).unwrap();
+    b.iter(|| AddressableEntity::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
 fn sample_named_keys(len: u8) -> BTreeMap<String, Key> {
@@ -506,7 +506,7 @@ fn sample_named_keys(len: u8) -> BTreeMap<String, Key> {
         .collect()
 }
 
-fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
+fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntity {
     let named_keys: NamedKeys = sample_named_keys(named_keys_len);
 
     let entry_points = {
@@ -528,7 +528,7 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
         tmp
     };
 
-    casper_types::contracts::Contract::new(
+    casper_types::contracts::AddressableEntity::new(
         ContractPackageHash::default(),
         ContractWasmHash::default(),
         named_keys,

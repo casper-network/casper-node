@@ -181,11 +181,11 @@ impl Transform {
             Transform::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
             Transform::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
             Transform::AddKeys(mut keys) => match stored_value {
-                StoredValue::Contract(mut contract) => {
-                    contract.named_keys_append(&mut keys);
-                    Ok(StoredValue::Contract(contract))
+                StoredValue::AddressableEntity(mut entity) => {
+                    entity.named_keys_append(&mut keys);
+                    Ok(StoredValue::AddressableEntity(entity))
                 }
-                StoredValue::Account(_) => Err(Error::Deprecated),
+                StoredValue::Account(_) | StoredValue::Contract(_) => Err(Error::Deprecated),
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());
@@ -346,13 +346,16 @@ impl From<&Transform> for casper_types::Transform {
             Transform::Write(StoredValue::CLValue(cl_value)) => {
                 casper_types::Transform::WriteCLValue(cl_value.clone())
             }
-            Transform::Write(StoredValue::Account(cl_value)) => {
-                casper_types::Transform::WriteCLValue(cl_value.clone())
+            Transform::Write(StoredValue::Account(account)) => {
+                casper_types::Transform::WriteAccount(account.account_hash())
             }
             Transform::Write(StoredValue::ContractWasm(_)) => {
                 casper_types::Transform::WriteContractWasm
             }
             Transform::Write(StoredValue::Contract(_)) => casper_types::Transform::WriteContract,
+            Transform::Write(StoredValue::AddressableEntity(_)) => {
+                casper_types::Transform::WriteAddressableEntity
+            }
             Transform::Write(StoredValue::ContractPackage(_)) => {
                 casper_types::Transform::WriteContractPackage
             }

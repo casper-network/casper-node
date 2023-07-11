@@ -8,7 +8,7 @@ use casper_types::{
     bytesrepr::{self},
     contracts::{ActionThresholds, AssociatedKeys},
     system::SystemContractType,
-    Contract, ContractHash, Digest, Key, ProtocolVersion, StoredValue, URef,
+    AddressableEntity, ContractHash, Digest, Key, ProtocolVersion, StoredValue, URef,
 };
 
 use crate::core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy};
@@ -194,7 +194,7 @@ where
             })?;
         contract.set_protocol_version(self.new_protocol_version);
 
-        let new_contract = Contract::new(
+        let new_contract = AddressableEntity::new(
             contract.contract_package_hash(),
             contract.contract_wasm_hash(),
             contract.named_keys().clone(),
@@ -204,9 +204,10 @@ where
             AssociatedKeys::default(),
             ActionThresholds::default(),
         );
-        self.tracking_copy
-            .borrow_mut()
-            .write(contract_hash.into(), StoredValue::Contract(new_contract));
+        self.tracking_copy.borrow_mut().write(
+            contract_hash.into(),
+            StoredValue::AddressableEntity(new_contract),
+        );
 
         contract_package
             .insert_contract_version(self.new_protocol_version.value().major, contract_hash);

@@ -103,7 +103,7 @@ pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::{
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
+    AddressableEntity, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
     ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
     Parameter,
 };

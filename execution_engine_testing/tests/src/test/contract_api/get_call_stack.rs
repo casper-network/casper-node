@@ -6,8 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
-    runtime_args, system::CallStackElement, CLValue, Contract, ContractHash, ContractPackageHash,
-    EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
+    runtime_args, system::CallStackElement, AddressableEntity, CLValue, ContractHash,
+    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -101,7 +101,7 @@ trait AccountExt {
     fn get_hash(&self, key: &str) -> HashAddr;
 }
 
-impl AccountExt for Contract {
+impl AccountExt for AddressableEntity {
     fn get_hash(&self, key: &str) -> HashAddr {
         self.named_keys()
             .get(key)

@@ -99,13 +99,13 @@ fn should_run_genesis() {
     let handle_payment_contract_hash = builder.get_handle_payment_contract_hash();
 
     let result = builder.query(None, mint_contract_hash.into(), &[]);
-    if let Ok(StoredValue::Contract(_)) = result {
+    if let Ok(StoredValue::AddressableEntity(_)) = result {
         // Contract exists at mint contract hash
     } else {
         panic!("contract not found at mint hash");
     }
 
-    if let Ok(StoredValue::Contract(_)) =
+    if let Ok(StoredValue::AddressableEntity(_)) =
         builder.query(None, handle_payment_contract_hash.into(), &[])
     {
         // Contract exists at handle payment contract hash

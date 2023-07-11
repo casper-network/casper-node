@@ -90,7 +90,7 @@ fn should_call_group_restricted_session() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -150,7 +150,7 @@ fn should_call_group_restricted_session_caller() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -217,7 +217,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
@@ -295,7 +295,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
@@ -367,7 +367,7 @@ fn should_call_group_restricted_contract() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -499,7 +499,7 @@ fn should_call_group_unrestricted_contract_caller() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -941,7 +941,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 

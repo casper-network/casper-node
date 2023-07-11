@@ -6,8 +6,9 @@ use casper_storage::global_state::{
 };
 
 use casper_types::{
-    contracts::AccountHash, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, Key, Motes, StoredValue, StoredValueTypeMismatch, URef,
+    contracts::AccountHash, AddressableEntity, CLValue, ContractHash, ContractPackage,
+    ContractPackageHash, ContractWasm, ContractWasmHash, Key, Motes, StoredValue,
+    StoredValueTypeMismatch, URef,
 };
 
 use crate::core::{
@@ -33,7 +34,7 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
-    ) -> Result<Contract, Self::Error>;
+    ) -> Result<AddressableEntity, Self::Error>;
 
     /// Reads the contract hash for the account at a given account address.
     fn read_account(
@@ -47,7 +48,7 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
-    ) -> Result<Contract, Self::Error>;
+    ) -> Result<AddressableEntity, Self::Error>;
 
     // TODO: make this a static method
     /// Gets the purse balance key for a given purse id.
@@ -90,7 +91,7 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         correlation_id: CorrelationId,
         contract_hash: ContractHash,
-    ) -> Result<Contract, Self::Error>;
+    ) -> Result<AddressableEntity, Self::Error>;
 
     /// Gets a contract package by Key.
     fn get_contract_package(
@@ -126,7 +127,7 @@ where
     ) -> Result<ContractHash, Self::Error> {
         let account_key = Key::Account(account_hash);
         match self.get(correlation_id, &account_key).map_err(Into::into)? {
-            Some(StoredValue::Account(cl_value)) => {
+            Some(StoredValue::CLValue(cl_value)) => {
                 let contract_hash = CLValue::into_t::<Key>(cl_value)?;
                 let contract_hash = contract_hash
                     .into_hash()
@@ -145,11 +146,11 @@ where
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
-    ) -> Result<Contract, Self::Error> {
+    ) -> Result<AddressableEntity, Self::Error> {
         let account_key = Key::Account(account_hash);
 
         let contract_key = match self.get(correlation_id, &account_key).map_err(Into::into)? {
-            Some(StoredValue::Account(contract_key_as_cl_value)) => {
+            Some(StoredValue::CLValue(contract_key_as_cl_value)) => {
                 let contract_key = CLValue::into_t::<Key>(contract_key_as_cl_value)?;
                 contract_key
             }
@@ -164,7 +165,7 @@ where
             .get(correlation_id, &contract_key)
             .map_err(Into::into)?
         {
-            Some(StoredValue::Contract(contract)) => Ok(contract),
+            Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
             )),
@@ -182,7 +183,7 @@ where
             .read(correlation_id, &account_key)
             .map_err(Into::into)?
         {
-            Some(StoredValue::Account(cl_value)) => Ok(CLValue::into_t(cl_value)?),
+            Some(StoredValue::CLValue(cl_value)) => Ok(CLValue::into_t(cl_value)?),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
             )),
@@ -194,7 +195,7 @@ where
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
-    ) -> Result<Contract, Self::Error> {
+    ) -> Result<AddressableEntity, Self::Error> {
         self.get_contract_by_account_hash(correlation_id, account_hash)
     }
 
@@ -285,10 +286,10 @@ where
         &mut self,
         correlation_id: CorrelationId,
         contract_hash: ContractHash,
-    ) -> Result<Contract, Self::Error> {
+    ) -> Result<AddressableEntity, Self::Error> {
         let key = contract_hash.into();
         match self.read(correlation_id, &key).map_err(Into::into)? {
-            Some(StoredValue::Contract(contract)) => Ok(contract),
+            Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
             )),

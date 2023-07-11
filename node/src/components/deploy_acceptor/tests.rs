@@ -541,7 +541,9 @@ impl reactor::Reactor for Reactor {
                                 ) => match contract_scenario {
                                     ContractScenario::Valid
                                     | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::Contract(Contract::default())),
+                                        value: Box::new(StoredValue::AddressableEntity(
+                                            AddressableEntity::default(),
+                                        )),
                                         proofs: vec![],
                                     },
                                     _ => QueryResult::ValueNotFound(String::new()),
@@ -558,7 +560,9 @@ impl reactor::Reactor for Reactor {
                                 match contract_scenario {
                                     ContractScenario::Valid
                                     | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::Contract(Contract::default())),
+                                        value: Box::new(StoredValue::AddressableEntity(
+                                            AddressableEntity::default(),
+                                        )),
                                         proofs: vec![],
                                     },
                                     ContractScenario::MissingContractAtHash

@@ -123,8 +123,8 @@ use casper_execution_engine::{
     shared::execution_journal::ExecutionJournal,
 };
 use casper_types::{
-    account::Account, bytesrepr::Bytes, system::auction::EraValidators, ChainspecRawBytes,
-    Contract, ContractPackage, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId,
+    account::Account, bytesrepr::Bytes, system::auction::EraValidators, AddressableEntity,
+    ChainspecRawBytes, ContractPackage, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId,
     ExecutionEffect, ExecutionResult, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
@@ -1936,7 +1936,7 @@ impl<REv> EffectBuilder<REv> {
         state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<Box<Contract>>
+    ) -> Option<Box<AddressableEntity>>
     where
         REv: From<ContractRuntimeRequest>,
     {

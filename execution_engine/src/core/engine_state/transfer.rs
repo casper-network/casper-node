@@ -2,8 +2,8 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
-    contracts::AccountHash, system::mint, AccessRights, ApiError, CLType, CLValueError, Contract,
-    Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    contracts::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
+    CLValueError, Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::core::{
@@ -146,7 +146,7 @@ impl TransferRuntimeArgsBuilder {
     /// Returns resolved [`URef`].
     fn resolve_source_uref<R>(
         &self,
-        account: &Contract,
+        account: &AddressableEntity,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
@@ -336,7 +336,7 @@ impl TransferRuntimeArgsBuilder {
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
-        from: &Contract,
+        from: &AddressableEntity,
         correlation_id: CorrelationId,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>

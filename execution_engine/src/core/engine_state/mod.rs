@@ -65,7 +65,7 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, BlockTime, CLValue, ChainspecRegistry, Contract, ContractHash,
+    AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash,
     ContractPackage, ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest,
     EntryPoints, EraId, ExecutableDeployItem, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion,
     PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
@@ -742,7 +742,7 @@ where
         account_hash: AccountHash,
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<(Contract, ContractHash), Error> {
+    ) -> Result<(AddressableEntity, ContractHash), Error> {
         let contract_hash: ContractHash = match tracking_copy
             .borrow_mut()
             .get_account(correlation_id, account_hash)
@@ -996,7 +996,7 @@ where
                             let named_keys = NamedKeys::default();
                             let entry_points = EntryPoints::new();
 
-                            let contract = Contract::new(
+                            let contract = AddressableEntity::new(
                                 contract_package_hash,
                                 contract_wasm_hash,
                                 named_keys,
@@ -1044,7 +1044,7 @@ where
 
                             tracking_copy.borrow_mut().write(
                                 Key::Account(public_key),
-                                StoredValue::Account(contract_by_account),
+                                StoredValue::CLValue(contract_by_account),
                             );
                         }
                         None => {

@@ -16,10 +16,10 @@ use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{
     account::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
-    Chainspec, Contract, ContractHash, ContractIdentifier, ContractPackage, ContractPackageHash,
-    ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy, DeployConfig,
-    DeployConfigurationFailure, Digest, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key,
-    ProtocolVersion, Timestamp, U512,
+    AddressableEntity, Chainspec, ContractHash, ContractIdentifier, ContractPackage,
+    ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy,
+    DeployConfig, DeployConfigurationFailure, Digest, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, Key, ProtocolVersion, Timestamp, U512,
 };
 
 use crate::{
@@ -706,7 +706,7 @@ impl DeployAcceptor {
         is_payment: bool,
         entry_point: String,
         contract_hash: ContractHash,
-        maybe_contract: Option<Box<Contract>>,
+        maybe_contract: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         if let Some(contract) = maybe_contract {

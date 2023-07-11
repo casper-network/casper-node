@@ -26,7 +26,7 @@ use casper_types::{
         UpdateKeyFailure, Weight,
     },
     system::auction::EraInfo,
-    AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
+    AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
     Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
     Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
@@ -84,7 +84,7 @@ pub struct RuntimeContext<'a, R> {
     // Used to check uref is known before use (prevents forging urefs)
     access_rights: ContextAccessRights,
     // Original account/contract for read only tasks taken before execution
-    contract: &'a Contract,
+    contract: &'a AddressableEntity,
     contract_hash: &'a ContractHash,
     account_hash: &'a AccountHash,
     args: RuntimeArgs,
@@ -122,7 +122,7 @@ where
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
         authorization_keys: BTreeSet<AccountHash>,
-        contract: &'a Contract,
+        contract: &'a AddressableEntity,
         account_hash: &'a AccountHash,
         contract_hash: &'a ContractHash,
         base_key: Key,
@@ -245,7 +245,7 @@ where
     fn remove_key_from_contract(
         &mut self,
         key: Key,
-        mut contract: Contract,
+        mut contract: AddressableEntity,
         name: &str,
     ) -> Result<(), Error> {
         if contract.remove_named_key(name).is_none() {
@@ -262,12 +262,12 @@ where
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
         match self.base_key() {
             account_hash @ Key::Account(_) => {
-                let (contract, contract_hash): (Contract, Key) = {
+                let (contract, contract_hash): (AddressableEntity, Key) = {
                     let contract_hash = self
                         .read_gs_typed::<CLValue>(&account_hash)?
                         .into_t::<ContractHash>()?;
 
-                    let mut contract: Contract = self.read_gs_typed(&account_hash)?;
+                    let mut contract: AddressableEntity = self.read_gs_typed(&account_hash)?;
                     contract.named_keys_mut().remove(name);
                     (contract, contract_hash.into())
                 };
@@ -275,7 +275,7 @@ where
                 self.remove_key_from_contract(contract_hash, contract, name)
             }
             contract_uref @ Key::URef(_) => {
-                let contract: Contract = {
+                let contract: AddressableEntity = {
                     let value: StoredValue = self
                         .tracking_copy
                         .borrow_mut()
@@ -290,7 +290,7 @@ where
                 self.remove_key_from_contract(contract_uref, contract, name)
             }
             contract_hash @ Key::Hash(_) => {
-                let contract: Contract = self.read_gs_typed(&contract_hash)?;
+                let contract: AddressableEntity = self.read_gs_typed(&contract_hash)?;
                 self.named_keys.remove(name);
                 self.remove_key_from_contract(contract_hash, contract, name)
             }
@@ -377,7 +377,7 @@ where
     }
 
     /// Returns contract of the caller.
-    pub fn contract(&self) -> &'a Contract {
+    pub fn contract(&self) -> &'a AddressableEntity {
         self.contract
     }
 
@@ -717,17 +717,10 @@ where
     fn validate_value(&self, value: &StoredValue) -> Result<(), Error> {
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
-            StoredValue::Account(cl_value) => {
-                // This should never happen as accounts can't be created by contracts.
-                // I am putting this here for the sake of completeness.
-                // account
-                //     .named_keys()
-                //     .values()
-                //     .try_for_each(|key| self.validate_key(key))
-                self.validate_cl_value(cl_value)
-            }
+            StoredValue::Account(_) => Ok(()),
             StoredValue::ContractWasm(_) => Ok(()),
-            StoredValue::Contract(contract_header) => contract_header
+            StoredValue::Contract(_) => Ok(()),
+            StoredValue::AddressableEntity(contract_header) => contract_header
                 .named_keys()
                 .values()
                 .try_for_each(|key| self.validate_key(key)),
@@ -1031,7 +1024,7 @@ where
 
         // Take a contract out of the global state
         let contract = {
-            let mut contract: Contract = self.read_gs_typed(&key)?;
+            let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
 
             if contract.associated_keys().len()
                 >= (self.engine_config.max_associated_keys() as usize)
@@ -1075,7 +1068,7 @@ where
         let key: Key = Key::Hash(self.contract_hash().value());
 
         // Take an account out of the global state
-        let mut contract: Contract = self.read_gs_typed(&key)?;
+        let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
         contract
@@ -1115,7 +1108,7 @@ where
         let key: Key = Key::Hash(self.contract_hash().value());
 
         // Take an account out of the global state
-        let mut contract: Contract = self.read_gs_typed(&key)?;
+        let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
         contract
@@ -1155,7 +1148,7 @@ where
         let key: Key = Key::Hash(self.contract_hash().value());
 
         // Take an account out of the global state
-        let mut contract: Contract = self.read_gs_typed(&key)?;
+        let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
         contract
@@ -1176,8 +1169,11 @@ where
     //     Ok(value)
     // }
 
-    fn contract_to_validated_value(&self, contract: Contract) -> Result<StoredValue, Error> {
-        let value = StoredValue::Contract(contract);
+    fn contract_to_validated_value(
+        &self,
+        contract: AddressableEntity,
+    ) -> Result<StoredValue, Error> {
+        let value = StoredValue::AddressableEntity(contract);
         self.validate_value(&value)?;
         Ok(value)
     }

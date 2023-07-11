@@ -9,7 +9,7 @@ use casper_types::{
         ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
     },
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
-    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
+    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackage,
     ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
     DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
     NamedKey, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer,
@@ -339,7 +339,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             entry_points
         };
 
-        let contract = Contract::new(
+        let contract = AddressableEntity::new(
             ContractPackageHash::new([100; 32]),
             ContractWasmHash::new([101; 32]),
             contract_named_keys,
@@ -351,7 +351,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
         stored_value.insert(
             "Contract".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Contract(contract).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::AddressableEntity(contract).into()])?,
         );
 
         let mut active_versions = ContractVersions::new();

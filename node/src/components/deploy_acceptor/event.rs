@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use casper_types::{
     account::{Account, AccountHash},
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Deploy,
+    AddressableEntity, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Deploy,
     Timestamp, U512,
 };
 
@@ -85,7 +85,7 @@ pub(crate) enum Event {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_hash: ContractHash,
-        maybe_contract: Option<Box<Contract>>,
+        maybe_contract: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for a `ContractPackage` to verify the executable logic.
