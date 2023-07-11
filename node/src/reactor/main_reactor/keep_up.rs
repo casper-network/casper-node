@@ -22,7 +22,8 @@ use crate::{
     },
     reactor::main_reactor::{MainEvent, MainReactor},
     types::{
-        ActivationPoint, BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier,
+        ActivationPoint, BlockHash, BlockHeader, EraValidatorWeights, GlobalStatesMetadata,
+        SyncLeap, SyncLeapIdentifier,
     },
     NodeRng,
 };
@@ -300,6 +301,44 @@ impl MainReactor {
                     parent_hash,
                     era_id,
                 } => {
+                    if era_id.is_genesis() && !self.validator_matrix.has_era(&era_id) {
+                        // We're syncing back and we're already in the genesis era. This means
+                        // that SyncLeap might not be able to provide us with the correct validator
+                        // set in case the chain has been started with pre 1.5 binary and the node
+                        // was just restarted. We might try to read the switch block of era 0 from
+                        // our local storage and populate the validator matrix.
+                        debug!("KeepUp: SyncBackInstruction: trying to saturate the validators for {era_id} from storage");
+                        match self
+                            .storage
+                            .transactional_get_switch_block_header_by_era_id(era_id)
+                        {
+                            Ok(maybe_switch_block) => {
+                                if let Some(switch_block) = maybe_switch_block {
+                                    if let Some(evw) = switch_block.next_era_validator_weights() {
+                                        self.validator_matrix.register_era_validator_weights(
+                                            EraValidatorWeights::new(
+                                                era_id,
+                                                evw.clone(),
+                                                self.validator_matrix.fault_tolerance_threshold(),
+                                            ),
+                                        );
+                                    } else {
+                                        warn!("KeepUp: SyncBackInstruction: switch block doesn't have next era validator weights");
+                                    };
+                                } else {
+                                    debug!(
+                                        "KeepUp: SyncBackInstruction: no switch block for {era_id}"
+                                    );
+                                }
+                            }
+                            Err(err) => {
+                                return Some(KeepUpInstruction::Fatal(format!(
+                                    "KeepUp: SyncBackInstruction: can't read switch block for {era_id}: {}",
+                                    err
+                                )))
+                            }
+                        };
+                    };
                     debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "KeepUp: historical sync back instruction");
                     if self.validator_matrix.has_era(&era_id) {
                         Some(self.sync_back_register(effect_builder, rng, parent_hash))
