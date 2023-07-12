@@ -3,6 +3,7 @@ use parity_wasm::elements;
 use thiserror::Error;
 
 use casper_storage::global_state::{shared::transform, storage};
+use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     bytesrepr,
     contracts::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
@@ -180,6 +181,9 @@ pub enum Error {
     /// Invalid key
     #[error("Invalid key {0}")]
     InvalidKey(Key),
+    /// Invalid Contract package kind.
+    #[error("Invalid contract package kind")]
+    InvalidContractPackageKind(ContractPackageKind),
 }
 
 impl From<wasm_prep::PreprocessingError> for Error {

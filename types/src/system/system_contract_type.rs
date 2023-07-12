@@ -33,7 +33,7 @@ use super::{
 ///
 /// Used by converting to a `u32` and passing as the `system_contract_index` argument of
 /// `ext_ffi::casper_get_system_contract()`.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum SystemContractType {
     /// Mint contract.

@@ -3001,4 +3001,53 @@ where
 
         Ok(Ok(()))
     }
+
+    pub(crate) fn migrate_contract_and_contract_package(
+        &mut self,
+        contract_hash: ContractHash,
+    ) -> Result<(), Error> {
+        let contract_key: Key = contract_hash.into();
+        let maybe_legacy_contract = self.context.read_gs(&contract_key)?;
+        match maybe_legacy_contract {
+            Some(StoredValue::Contract(contract)) => {
+                let contract_package_key = Key::Hash(contract.contract_package_hash().value());
+
+                let mut legacy_contract_package: ContractPackage =
+                    self.context.read_gs_typed(&contract_package_key)?;
+                // Update the contract package from Legacy to Wasm
+                legacy_contract_package.update_package_kind(ContractPackageKind::Wasm);
+                legacy_contract_package.insert_contract_version(
+                    self.context.protocol_version().value().major,
+                    contract_hash,
+                );
+
+                if legacy_contract_package.is_legacy() {
+                    return Err(Error::InvalidContractPackageKind(
+                        legacy_contract_package.get_contract_package_kind(),
+                    ));
+                }
+
+                self.context
+                    .metered_write_gs(contract_package_key, legacy_contract_package)?;
+
+                let entity_main_purse = self.create_purse()?;
+
+                let updated_entity = AddressableEntity::new(
+                    contract.contract_package_hash(),
+                    contract.contract_wasm_hash(),
+                    contract.named_keys().clone(),
+                    contract.entry_points().clone(),
+                    self.context.protocol_version(),
+                    entity_main_purse,
+                    AssociatedKeys::default(),
+                    ActionThresholds::default(),
+                );
+
+                self.context.metered_write_gs(contract_key, updated_entity)
+            }
+            Some(StoredValue::AddressableEntity(_)) => Ok(()),
+            Some(_) => return Err(Error::UnexpectedStoredValueVariant),
+            None => return Err(Error::InvalidContract(contract_hash)),
+        }
+    }
 }

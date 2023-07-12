@@ -4,6 +4,7 @@ use std::{cell::RefCell, fmt, rc::Rc};
 use thiserror::Error;
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
+use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     bytesrepr::{self},
     contracts::{ActionThresholds, AssociatedKeys},
@@ -135,22 +136,8 @@ where
         let contract_name = system_contract_type.contract_name();
         let entry_points = system_contract_type.contract_entry_points();
 
-        let mut contract = if let StoredValue::Contract(contract) = self
-            .tracking_copy
-            .borrow_mut()
-            .read(correlation_id, &Key::Hash(contract_hash.value()))
-            .map_err(|_| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
-            })?
-            .ok_or_else(|| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
-            })? {
-            contract
-        } else {
-            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                contract_name,
-            ));
-        };
+        let mut contract =
+            self.retrieve_system_contract(correlation_id, contract_hash, system_contract_type)?;
 
         let is_major_bump = self
             .old_protocol_version
@@ -187,14 +174,20 @@ where
             ));
         };
 
+        // Update the package kind from legacy to system contract
+        if contract_package.is_legacy() {
+            contract_package.update_package_kind(ContractPackageKind::System(system_contract_type))
+        }
+
         contract_package
             .disable_contract_version(contract_hash)
             .map_err(|_| {
                 ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
             })?;
+
         contract.set_protocol_version(self.new_protocol_version);
 
-        let new_contract = AddressableEntity::new(
+        let new_entity = AddressableEntity::new(
             contract.contract_package_hash(),
             contract.contract_wasm_hash(),
             contract.named_keys().clone(),
@@ -206,7 +199,7 @@ where
         );
         self.tracking_copy.borrow_mut().write(
             contract_hash.into(),
-            StoredValue::AddressableEntity(new_contract),
+            StoredValue::AddressableEntity(new_entity),
         );
 
         contract_package
@@ -218,5 +211,35 @@ where
         );
 
         Ok(())
+    }
+
+    fn retrieve_system_contract(
+        &self,
+        correlation_id: CorrelationId,
+        contract_hash: ContractHash,
+        system_contract_type: SystemContractType,
+    ) -> Result<AddressableEntity, ProtocolUpgradeError> {
+        match self
+            .tracking_copy
+            .borrow_mut()
+            .read(correlation_id, &contract_hash.into())
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                )
+            })? {
+            None => {
+                return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                ));
+            }
+            Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
+            Some(StoredValue::Contract(contract)) => Ok(contract.into()),
+            Some(_) => {
+                return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                ));
+            }
+        }
     }
 }

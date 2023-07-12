@@ -63,6 +63,8 @@ pub const PACKAGE_KIND_WASM_TAG: u8 = 0;
 pub const PACKAGE_KIND_SYSTEM_CONTRACT_TAG: u8 = 1;
 /// The tag for Contract Package associated with an Account hash.
 pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
+/// The tag for Contract Packages associated with legacy packages.
+pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
 const PACKAGE_STRING_PREFIX: &str = "contract-package-";
@@ -765,13 +767,15 @@ impl FromBytes for ContractPackageStatus {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 /// The type of contract package.
 pub enum ContractPackageKind {
-    #[default]
     /// Contract Packages associated with Wasm stored on chain.
     Wasm,
     /// Contract Package associated with a native contract implementation.
     System(SystemContractType),
     /// Contract Package associated with an Account hash.
     Account(AccountHash),
+    /// Contract Packages from the previous format.
+    #[default]
+    Legacy,
 }
 
 impl ContractPackageKind {
@@ -779,7 +783,7 @@ impl ContractPackageKind {
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
             Self::Account(account_hash) => Some(*account_hash),
-            Self::Wasm | Self::System(_) => None,
+            Self::Wasm | Self::System(_) | Self::Legacy => None,
         }
     }
 
@@ -787,7 +791,7 @@ impl ContractPackageKind {
     pub fn associated_keys(&self) -> AssociatedKeys {
         match self {
             Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
-            Self::Wasm | Self::System(_) => AssociatedKeys::default(),
+            Self::Wasm | Self::System(_) | Self::Legacy => AssociatedKeys::default(),
         }
     }
 }
@@ -807,6 +811,9 @@ impl ToBytes for ContractPackageKind {
                 result.insert(0, PACKAGE_KIND_ACCOUNT_TAG);
                 result.extend_from_slice(&account_hash.to_bytes()?);
             }
+            ContractPackageKind::Legacy => {
+                result.insert(0, PACKAGE_KIND_LEGACY_TAG);
+            }
         }
         Ok(result)
     }
@@ -814,7 +821,7 @@ impl ToBytes for ContractPackageKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ContractPackageKind::Wasm => 0 as usize,
+                ContractPackageKind::Wasm | ContractPackageKind::Legacy => 0 as usize,
                 ContractPackageKind::System(system_contract_type) => {
                     system_contract_type.serialized_length()
                 }
@@ -836,6 +843,7 @@ impl FromBytes for ContractPackageKind {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((ContractPackageKind::Account(account_hash), remainder))
             }
+            PACKAGE_KIND_LEGACY_TAG => Ok((ContractPackageKind::Legacy, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -1059,6 +1067,19 @@ impl ContractPackage {
     pub fn get_contract_package_kind(&self) -> ContractPackageKind {
         self.contract_package_kind.clone()
     }
+
+    /// Returns whether the contract package is of the legacy format.
+    pub fn is_legacy(&self) -> bool {
+        match self.contract_package_kind {
+            ContractPackageKind::Legacy => true,
+            _ => false,
+        }
+    }
+
+    /// Update the contract package kind.
+    pub fn update_package_kind(&mut self, new_package_kind: ContractPackageKind) {
+        self.contract_package_kind = new_package_kind
+    }
 }
 
 impl ToBytes for ContractPackage {
@@ -1100,7 +1121,8 @@ impl FromBytes for ContractPackage {
         let (disabled_versions, bytes) = DisabledVersions::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
-        let (contract_package_kind, bytes) = ContractPackageKind::from_bytes(bytes)?;
+        let (contract_package_kind, bytes) =
+            ContractPackageKind::from_bytes(bytes).unwrap_or_default();
         let result = ContractPackage {
             access_key,
             versions,
@@ -1388,6 +1410,21 @@ impl Account {
     pub fn named_keys(&self) -> &NamedKeys {
         &self.named_keys
     }
+
+    /// Returns main purse.
+    pub fn main_purse(&self) -> URef {
+        self.main_purse
+    }
+
+    /// Returns associated keys.
+    pub fn associated_keys(&self) -> &AssociatedKeys {
+        &self.associated_keys
+    }
+
+    /// Returns action thresholds.
+    pub fn action_thresholds(&self) -> &ActionThresholds {
+        &self.action_thresholds
+    }
 }
 
 impl ToBytes for Account {
@@ -1501,6 +1538,11 @@ impl Contract {
     /// Returns immutable reference to methods
     pub fn entry_points(&self) -> &EntryPoints {
         &self.entry_points
+    }
+
+    /// Set protocol_version.
+    pub fn set_protocol_version(&mut self, protocol_version: ProtocolVersion) {
+        self.protocol_version = protocol_version;
     }
 }
 
@@ -1926,6 +1968,21 @@ impl Default for AddressableEntity {
             action_thresholds: ActionThresholds::default(),
             associated_keys: AssociatedKeys::default(),
         }
+    }
+}
+
+impl From<Contract> for AddressableEntity {
+    fn from(value: Contract) -> Self {
+        AddressableEntity::new(
+            value.contract_package_hash(),
+            value.contract_wasm_hash(),
+            value.named_keys().clone(),
+            value.entry_points().clone(),
+            value.protocol_version(),
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+        )
     }
 }
 

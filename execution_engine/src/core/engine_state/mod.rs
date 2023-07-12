@@ -774,6 +774,82 @@ where
         Ok((contract_record, contract_hash))
     }
 
+    fn migrate_account(
+        &self,
+        correlation_id: CorrelationId,
+        account_hash: AccountHash,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    ) -> Result<(), Error> {
+        let maybe_stored_value = tracking_copy
+            .borrow_mut()
+            .read(correlation_id, &Key::Account(account_hash))
+            .map_err(Into::into)?;
+
+        match maybe_stored_value {
+            Some(StoredValue::Account(account)) => {
+                let mut generator =
+                    AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
+
+                let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
+                let contract_hash = ContractHash::new(generator.new_hash_address());
+                let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
+
+                let entry_points = EntryPoints::new();
+
+                let contract = AddressableEntity::new(
+                    contract_package_hash,
+                    contract_wasm_hash,
+                    account.named_keys().clone(),
+                    entry_points,
+                    protocol_version,
+                    account.main_purse(),
+                    account.associated_keys().clone(),
+                    account.action_thresholds().clone(),
+                );
+
+                let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
+
+                let contract_package = {
+                    let mut contract_package = ContractPackage::new(
+                        access_key,
+                        ContractVersions::default(),
+                        DisabledVersions::default(),
+                        Groups::default(),
+                        ContractPackageStatus::Locked,
+                        ContractPackageKind::Account(account_hash),
+                    );
+                    contract_package
+                        .insert_contract_version(protocol_version.value().major, contract_hash);
+                    contract_package
+                };
+
+                let contract_key: Key = contract_hash.into();
+
+                tracking_copy
+                    .borrow_mut()
+                    .write(contract_key, contract.into());
+                tracking_copy
+                    .borrow_mut()
+                    .write(contract_package_hash.into(), contract_package.into());
+                let contract_by_account = match CLValue::from_t(contract_key) {
+                    Ok(cl_value) => cl_value,
+                    Err(_) => {
+                        return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string()))
+                    }
+                };
+
+                tracking_copy.borrow_mut().write(
+                    Key::Account(account_hash),
+                    StoredValue::CLValue(contract_by_account),
+                );
+                Ok(())
+            }
+            Some(StoredValue::CLValue(_)) => Ok(()),
+            Some(_) | None => return Err(Error::InvalidKeyVariant),
+        }
+    }
+
     /// Get the balance of a passed purse referenced by its [`URef`].
     pub fn get_purse_balance(
         &self,
@@ -829,6 +905,14 @@ where
         };
 
         let authorization_keys = deploy_item.authorization_keys;
+
+        // Migrate the legacy account structure if necessary.
+        self.migrate_account(
+            correlation_id,
+            account_hash,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+        )?;
 
         let (contract, _contract_hash) = match self.get_authorized_contract(
             correlation_id,
@@ -983,7 +1067,6 @@ where
                         );
                     match maybe_uref {
                         Some(main_purse) => {
-                            println!("Creating new account {}", public_key);
                             let mut generator =
                                 AddressGenerator::new(main_purse.addr().as_ref(), Phase::Session);
 
@@ -2589,6 +2672,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::MissingRuntimeStack
                 | ExecError::DisabledContract(_)
                 | ExecError::InvalidKey(_)
+                | ExecError::InvalidContractPackageKind(_)
                 | ExecError::Transform(_) => false,
             },
             Error::WasmPreprocessing(_) => true,
