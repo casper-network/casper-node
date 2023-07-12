@@ -73,15 +73,22 @@ pub struct ProtocolBuilder<const N: usize> {
 }
 
 impl<const N: usize> Default for ProtocolBuilder<N> {
+    #[inline]
     fn default() -> Self {
-        Self {
-            channel_config: [Default::default(); N],
-            max_frame_size: 4096,
-        }
+        Self::with_default_channel_config(Default::default())
     }
 }
 
 impl<const N: usize> ProtocolBuilder<N> {
+    /// Creates a new protocol builder with all channels preconfigured using the given config.
+    #[inline]
+    pub fn with_default_channel_config(config: ChannelConfiguration) -> Self {
+        Self {
+            channel_config: [config; N],
+            max_frame_size: 4096,
+        }
+    }
+
     /// Update the channel configuration for a given channel.
     pub fn channel_config(mut self, channel: ChannelId, config: ChannelConfiguration) -> Self {
         self.channel_config[channel.get() as usize] = config;
