@@ -22,6 +22,7 @@ use super::payload_is_multi_frame;
 /// interspersed with other messages at will. In general, the [`OutgoingMessage::frames()`] iterator
 /// should be used, even for single-frame messages.
 #[must_use]
+#[derive(Debug)]
 pub struct OutgoingMessage {
     /// The common header for all outgoing messages.
     header: Header,
@@ -117,6 +118,7 @@ impl AsRef<[u8]> for Preamble {
 /// Iterator over frames of a message.
 // Note: This type can be written just borrowing `msg`, by making it owned, we prevent accidental
 //       duplicate message sending. Furthermore we allow methods like `into_iter` to be added.
+#[derive(Debug)]
 #[must_use]
 pub struct FrameIter {
     /// The outgoing message in its entirety.

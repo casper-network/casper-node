@@ -332,6 +332,7 @@ pub enum RequestError {
     Error(LocalProtocolViolation),
 }
 
+#[derive(Debug)]
 #[must_use = "dropping the request guard will immediately cancel the request"]
 pub struct RequestGuard {
     inner: Arc<RequestGuardInner>,

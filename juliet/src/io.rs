@@ -365,6 +365,11 @@ where
                 }
             }
 
+
+            if self.current_frame.is_none() && !self.ready_queue.is_empty() {
+                self.ready_next_frame()?;
+            }
+
             tokio::select! {
                 biased;  // We actually like the bias, avoid the randomness overhead.
 
@@ -379,9 +384,6 @@ where
                         // We finished sending an error frame, time to exit.
                         return Err(CoreError::RemoteProtocolViolation(frame_sent));
                     }
-
-                    // Otherwise prepare the next frame.
-                    self.current_frame = self.ready_next_frame()?;
                 }
 
                 // Reading incoming data.
@@ -595,14 +597,14 @@ where
     /// Returns `None` if no frames are ready to be sent. Note that there may be frames waiting
     /// that cannot be sent due them being multi-frame messages when there already is a multi-frame
     /// message in progress, or request limits are being hit.
-    fn ready_next_frame(&mut self) -> Result<Option<OutgoingFrame>, LocalProtocolViolation> {
+    fn ready_next_frame(&mut self) -> Result<(), LocalProtocolViolation> {
         debug_assert!(self.current_frame.is_none()); // Must be guaranteed by caller.
 
         // Try to fetch a frame from the ready queue. If there is nothing, we are stuck until the
         // next time the wait queue is processed or new data arrives.
         let (frame, additional_frames) = match self.ready_queue.pop_front() {
             Some(item) => item,
-            None => return Ok(None),
+            None => return Ok(()),
         }
         .next_owned(self.juliet.max_frame_size());
 
@@ -626,7 +628,8 @@ where
             }
         }
 
-        Ok(Some(frame))
+        self.current_frame = Some(frame);
+        Ok(())
     }
 
     /// Process the wait queue of all channels marked dirty, promoting messages that are ready to be
