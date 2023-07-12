@@ -212,6 +212,7 @@ pub enum IoEvent {
         /// The payload provided with the request.
         payload: Option<Bytes>,
     },
+    /// A received request has been cancelled.
     RequestCancelled {
         /// Channel the original request arrived on.
         channel: ChannelId,

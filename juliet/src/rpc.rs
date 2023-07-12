@@ -171,7 +171,7 @@ where
                 }
 
                 opt_event = self.core.next_event() => {
-                    if let Some(event) = self.core.next_event().await? {
+                    if let Some(event) = opt_event? {
                         match event {
                             IoEvent::NewRequest {
                                 channel,
@@ -183,9 +183,30 @@ where
                                 payload,
                                 handle: Some(self.handle.clone()),
                             })),
-                            IoEvent::RequestCancelled { channel, id } => todo!(),
-                            IoEvent::ReceivedResponse { io_id, payload } => todo!(),
-                            IoEvent::ReceivedCancellationResponse { io_id } => todo!(),
+                            IoEvent::RequestCancelled { channel, id } => {
+                                // Request cancellation is currently not implemented; there is no
+                                // harm in sending the reply.
+                            },
+                            IoEvent::ReceivedResponse { io_id, payload } => {
+                                match self.pending.remove(&io_id) {
+                                    None => {
+                                        // The request has been cancelled on our end, no big deal.
+                                    }
+                                    Some(guard) => {
+                                        guard.set_and_notify(Ok(payload))
+                                    }
+                                }
+                            },
+                            IoEvent::ReceivedCancellationResponse { io_id } => {
+                                match self.pending.remove(&io_id) {
+                                    None => {
+                                        // The request has been cancelled on our end, no big deal.
+                                    }
+                                    Some(guard) => {
+                                        guard.set_and_notify(Err(RequestError::RemoteCancelled))
+                                    }
+                                }
+                            },
                         }
                     } else {
                         return Ok(None)
