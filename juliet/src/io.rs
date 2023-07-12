@@ -8,14 +8,10 @@
 //!
 //! See [`IoCore`] for more information about how to use this module.
 
-use ::std::mem;
 use std::{
     collections::{BTreeSet, VecDeque},
     io,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::{atomic::Ordering, Arc},
 };
 
 use bimap::BiMap;
@@ -25,9 +21,9 @@ use portable_atomic::AtomicU128;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc::{
-        error::{TryRecvError, TrySendError},
-        Receiver, Sender,
+    sync::{
+        mpsc::{error::TryRecvError, UnboundedReceiver, UnboundedSender},
+        OwnedSemaphorePermit, Semaphore, TryAcquireError,
     },
 };
 
@@ -53,6 +49,8 @@ enum QueuedItem {
         io_id: IoId,
         /// The requests payload.
         payload: Option<Bytes>,
+        /// The semaphore permit for the request.
+        permit: OwnedSemaphorePermit,
     },
     /// Cancellation of one of our own requests.
     RequestCancellation {
@@ -170,7 +168,7 @@ pub struct IoCore<const N: usize, R, W> {
     /// Messages that are not yet ready to be sent.
     wait_queue: [VecDeque<QueuedItem>; N],
     /// Receiver for new messages to be queued.
-    receiver: Receiver<QueuedItem>,
+    receiver: UnboundedReceiver<QueuedItem>,
     /// Mapping for outgoing requests, mapping internal IDs to public ones.
     request_map: BiMap<IoId, (ChannelId, Id)>,
     /// A set of channels whose wait queues should be checked again for data to send.
@@ -180,16 +178,18 @@ pub struct IoCore<const N: usize, R, W> {
     shared: Arc<IoShared<N>>,
 }
 
-/// Shared data between an [`IoCore`] handle and the core itself.
-///
-/// Its core functionality is to determine whether or not there is room to buffer additional
-/// messages.
+/// Shared data between a handles and the core itself.
 #[derive(Debug)]
+#[repr(transparent)]
 struct IoShared<const N: usize> {
-    /// Number of requests already buffered per channel.
-    requests_buffered: [AtomicUsize; N],
-    /// Maximum allowed number of requests to buffer per channel.
-    requests_limit: [usize; N],
+    /// Tracks how many requests are in the wait queue.
+    ///
+    /// Tickets are freed once the item is in the wait queue, thus the semaphore permit count
+    /// controls how many requests can be buffered in addition to those already permitted due to the
+    /// protocol.
+    ///
+    /// The maximum number of available tickets must be >= 1 for the IO layer to function.
+    buffered_requests: [Arc<Semaphore>; N],
 }
 
 /// Events produced by the IO layer.
@@ -425,37 +425,41 @@ where
     }
 
     /// Handles a new item to send out that arrived through the incoming channel.
-    fn handle_incoming_item(&mut self, mut item: QueuedItem) -> Result<(), LocalProtocolViolation> {
+    fn handle_incoming_item(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
         // Check if the item is sendable immediately.
         if let Some(channel) = item_should_wait(&item, &self.juliet, &self.active_multi_frame) {
             self.wait_queue[channel.get() as usize].push_back(item);
             return Ok(());
         }
 
-        self.send_to_ready_queue(&mut item)
+        self.send_to_ready_queue(item)
     }
 
     /// Sends an item directly to the ready queue, causing it to be sent out eventually.
     ///
     /// `item` is passed as a mutable reference for compatibility with functions like `retain_mut`,
     /// but will be left with all payloads removed, thus should likely not be reused.
-    fn send_to_ready_queue(&mut self, item: &mut QueuedItem) -> Result<(), LocalProtocolViolation> {
+    fn send_to_ready_queue(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
         match item {
             QueuedItem::Request {
                 io_id,
                 channel,
-                ref mut payload,
+                payload,
+                permit,
             } => {
                 // "Chase" our own requests here -- if the request was still in the wait queue,
                 // we can cancel it by checking if the `IoId` has been removed in the meantime.
                 //
                 // Note that this only cancels multi-frame requests.
                 if self.request_map.contains_left(&io_id) {
-                    let msg = self.juliet.create_request(*channel, payload.take())?;
+                    let msg = self.juliet.create_request(channel, payload)?;
                     let id = msg.header().id();
-                    self.request_map.insert(*io_id, (*channel, id));
+                    self.request_map.insert(io_id, (channel, id));
                     self.ready_queue.push_back(msg.frames());
                 }
+
+                // Explicitly drop permit, allowing another request to be buffered on the channel.
+                drop(permit);
             }
             QueuedItem::RequestCancellation { io_id } => {
                 if let Some((_, (channel, id))) = self.request_map.remove_by_left(&io_id) {
@@ -473,14 +477,14 @@ where
             QueuedItem::Response {
                 id,
                 channel,
-                ref mut payload,
+                payload,
             } => {
-                if let Some(msg) = self.juliet.create_response(*channel, *id, payload.take())? {
+                if let Some(msg) = self.juliet.create_response(channel, id, payload)? {
                     self.ready_queue.push_back(msg.frames())
                 }
             }
             QueuedItem::ResponseCancellation { id, channel } => {
-                if let Some(msg) = self.juliet.cancel_response(*channel, *id)? {
+                if let Some(msg) = self.juliet.cancel_response(channel, id)? {
                     self.ready_queue.push_back(msg.frames());
                 }
             }
@@ -491,9 +495,7 @@ where
                 channel,
                 payload,
             } => {
-                let err_msg = self
-                    .juliet
-                    .custom_error(*channel, *id, mem::take(payload))?;
+                let err_msg = self.juliet.custom_error(channel, id, payload)?;
                 self.inject_error(err_msg);
             }
         }
@@ -555,7 +557,7 @@ where
             //    few requests out of the queue.
 
             for _ in 0..(wait_queue_len) {
-                let mut item = self.wait_queue[channel.get() as usize].pop_front().ok_or(
+                let item = self.wait_queue[channel.get() as usize].pop_front().ok_or(
                     CoreError::InternalError("did not expect wait_queue to disappear"),
                 )?;
 
@@ -563,7 +565,7 @@ where
                     // Put it right back into the queue.
                     self.wait_queue[channel.get() as usize].push_back(item);
                 } else {
-                    self.send_to_ready_queue(&mut item)?;
+                    self.send_to_ready_queue(item)?;
                 }
             }
         }
@@ -636,16 +638,16 @@ fn item_should_wait<const N: usize>(
     None
 }
 
-/// A handle to the input queue to the [`IoCore`].
+/// A handle to the input queue to the [`IoCore`] that allows sending requests and responses.
 ///
 /// The handle is roughly three pointers in size and can be cloned at will. Dropping the last handle
 /// will cause the [`IoCore`] to shutdown and close the connection.
 #[derive(Clone, Debug)]
-struct IoHandle<const N: usize> {
+pub struct RequestHandle<const N: usize> {
     /// Shared portion of the [`IoCore`], required for backpressuring onto clients.
     shared: Arc<IoShared<N>>,
     /// Sender for queue items.
-    sender: Sender<QueuedItem>,
+    sender: UnboundedSender<QueuedItem>,
     /// The next generation [`IoId`].
     ///
     /// IoIDs are just generated sequentially until they run out (which at 1 billion at second takes
@@ -653,137 +655,163 @@ struct IoHandle<const N: usize> {
     next_io_id: Arc<AtomicU128>,
 }
 
+#[derive(Clone, Debug)]
+#[repr(transparent)]
+pub struct Handle {
+    /// Sender for queue items.
+    sender: UnboundedSender<QueuedItem>,
+}
+
 /// An error that can occur while attempting to enqueue an item.
 #[derive(Debug, Error)]
-enum EnqueueError {
+pub enum EnqueueError {
     /// The IO core was shut down, there is no connection anymore to send through.
     #[error("IO closed")]
     Closed(Option<Bytes>),
-    /// The request limit was hit, try again.
+    /// The request limit for locally buffered requests was hit, try again.
     #[error("request limit hit")]
-    RequestLimitHit(Option<Bytes>),
+    BufferLimitHit(Option<Bytes>),
     /// Violation of local invariants, this is likely a bug in this library or the calling code.
     #[error("local protocol violation during enqueueing")]
     LocalProtocolViolation(#[from] LocalProtocolViolation),
 }
 
-impl EnqueueError {
-    /// Creates an [`EnqueueError`] from a failure to enqueue an item.
-    #[inline(always)]
-    fn from_failed_send(err: TrySendError<QueuedItem>) -> Self {
-        match err {
-            // Note: The `Full` state should never happen unless our queue sizing is incorrect, we
-            //       sweep this under the rug here.
-            TrySendError::Full(item) => EnqueueError::RequestLimitHit(item.into_payload()),
-            TrySendError::Closed(item) => EnqueueError::Closed(item.into_payload()),
-        }
-    }
-}
-
-impl<const N: usize> IoHandle<N> {
-    /// Enqueues a new request.
+impl<const N: usize> RequestHandle<N> {
+    /// Attempts to enqueues a new request.
     ///
-    /// Returns an [`IoId`] that can be used to refer to the request.
-    fn enqueue_request(
+    /// Returns an [`IoId`] that can be used to refer to the request if successful. The operation
+    /// may fail if there is no buffer available for another request.
+    pub fn try_enqueue_request(
         &mut self,
         channel: ChannelId,
         payload: Option<Bytes>,
     ) -> Result<IoId, EnqueueError> {
         bounds_check_channel::<N>(channel)?;
 
-        let count = &self.shared.requests_buffered[channel.get() as usize];
-        let limit = self.shared.requests_limit[channel.get() as usize];
+        let permit = match self.shared.buffered_requests[channel.get() as usize]
+            .clone()
+            .try_acquire_owned()
+        {
+            Ok(permit) => permit,
 
-        // TODO: Relax ordering from `SeqCst`.
-        match count.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-            if current < limit {
-                Some(current + 1)
-            } else {
-                None
-            }
-        }) {
-            Ok(_prev) => {
-                let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
+            Err(TryAcquireError::Closed) => return Err(EnqueueError::Closed(payload)),
+            Err(TryAcquireError::NoPermits) => return Err(EnqueueError::BufferLimitHit(payload)),
+        };
 
-                self.sender
-                    .try_send(QueuedItem::Request {
-                        io_id,
-                        channel,
-                        payload,
-                    })
-                    .map_err(EnqueueError::from_failed_send)?;
-                Ok(io_id)
-            }
-            Err(_prev) => Err(EnqueueError::RequestLimitHit(payload)),
-        }
+        let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
+
+        self.sender
+            .send(QueuedItem::Request {
+                io_id,
+                channel,
+                payload,
+                permit,
+            })
+            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))?;
+
+        Ok(io_id)
+    }
+    /// Enqueues a new request.
+    ///
+    /// Returns an [`IoId`] that can be used to refer to the request if successful. The operation
+    /// may fail if there is no buffer available for another request.
+    pub async fn enqueue_request(
+        &mut self,
+        channel: ChannelId,
+        payload: Option<Bytes>,
+    ) -> Result<IoId, EnqueueError> {
+        bounds_check_channel::<N>(channel)?;
+
+        let permit = match self.shared.buffered_requests[channel.get() as usize]
+            .clone()
+            .acquire_owned()
+            .await
+        {
+            Ok(permit) => permit,
+            Err(_) => return Err(EnqueueError::Closed(payload)),
+        };
+
+        let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
+
+        self.sender
+            .send(QueuedItem::Request {
+                io_id,
+                channel,
+                payload,
+                permit,
+            })
+            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))?;
+
+        Ok(io_id)
     }
 
+    #[inline(always)]
+    pub fn downgrade(self) -> Handle {
+        Handle {
+            sender: self.sender,
+        }
+    }
+}
+
+impl Handle {
     /// Enqueues a response to an existing request.
     ///
     /// Callers are supposed to send only one response or cancellation per incoming request.
-    fn enqueue_response(
+    pub fn enqueue_response(
         &self,
         channel: ChannelId,
         id: Id,
         payload: Option<Bytes>,
     ) -> Result<(), EnqueueError> {
         self.sender
-            .try_send(QueuedItem::Response {
+            .send(QueuedItem::Response {
                 channel,
                 id,
                 payload,
             })
-            .map_err(EnqueueError::from_failed_send)
+            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))
     }
 
     /// Enqueues a cancellation to an existing outgoing request.
     ///
     /// If the request has already been answered or cancelled, the enqueue cancellation will
     /// ultimately have no effect.
-    fn enqueue_request_cancellation(
-        &self,
-        channel: ChannelId,
-        io_id: IoId,
-    ) -> Result<(), EnqueueError> {
-        bounds_check_channel::<N>(channel)?;
-
+    pub fn enqueue_request_cancellation(&self, io_id: IoId) -> Result<(), EnqueueError> {
         self.sender
-            .try_send(QueuedItem::RequestCancellation { io_id })
-            .map_err(EnqueueError::from_failed_send)
+            .send(QueuedItem::RequestCancellation { io_id })
+            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))
     }
 
     /// Enqueues a cancellation as a response to a received request.
     ///
     /// Callers are supposed to send only one response or cancellation per incoming request.
-    fn enqueue_response_cancellation(
+    pub fn enqueue_response_cancellation(
         &self,
         channel: ChannelId,
         id: Id,
     ) -> Result<(), EnqueueError> {
-        bounds_check_channel::<N>(channel)?;
-
         self.sender
-            .try_send(QueuedItem::ResponseCancellation { id, channel })
-            .map_err(EnqueueError::from_failed_send)
+            .send(QueuedItem::ResponseCancellation { id, channel })
+            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))
     }
 
     /// Enqueus an error.
     ///
     /// Enqueuing an error causes the [`IoCore`] to begin shutting down immediately, only making an
     /// effort to finish sending the error before doing so.
-    fn enqueue_error(
+    pub fn enqueue_error(
         &self,
         channel: ChannelId,
         id: Id,
         payload: Bytes,
     ) -> Result<(), EnqueueError> {
         self.sender
-            .try_send(QueuedItem::Error {
+            .send(QueuedItem::Error {
                 id,
                 channel,
                 payload,
             })
-            .map_err(EnqueueError::from_failed_send)
+            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))
     }
 }
 
