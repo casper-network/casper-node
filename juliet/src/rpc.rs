@@ -1,7 +1,7 @@
 //! RPC layer.
 //!
-//! Typically the outermost layer of the `juliet` stack is the RPC layer, which combines the
-//! underlying IO and protocol primites into a convenient, type safe RPC system.
+//! The outermost layer of the `juliet` stack, combines the underlying IO and protocol primites into
+//! a convenient, type safe RPC system.
 
 use std::{cell::OnceCell, collections::HashMap, sync::Arc, time::Duration};
 
@@ -10,32 +10,57 @@ use bytes::Bytes;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
-    sync::{mpsc::Receiver, Notify},
+    sync::{
+        mpsc::{self, Receiver, UnboundedReceiver, UnboundedSender},
+        Notify,
+    },
 };
 
 use crate::{
-    io::{CoreError, EnqueueError, Handle, IoCore, IoEvent, IoId, RequestHandle},
-    protocol::{LocalProtocolViolation, ProtocolBuilder},
+    io::{
+        CoreError, EnqueueError, Handle, IoCore, IoCoreBuilder, IoEvent, IoId, RequestHandle,
+        RequestTicket, ReservationError,
+    },
+    protocol::LocalProtocolViolation,
     ChannelId, Id,
 };
 
-#[derive(Default)]
+/// Builder for a new RPC interface.
 pub struct RpcBuilder<const N: usize> {
-    protocol: ProtocolBuilder<N>,
+    /// The IO core builder used.
+    core: IoCoreBuilder<N>,
 }
 
 impl<const N: usize> RpcBuilder<N> {
-    fn new(protocol: ProtocolBuilder<N>) -> Self {
-        RpcBuilder { protocol }
+    /// Constructs a new RPC builder.
+    ///
+    /// The builder can be reused to create instances for multiple connections.
+    pub fn new(core: IoCoreBuilder<N>) -> Self {
+        RpcBuilder { core }
     }
 
-    /// Update the channel configuration for a given channel.
+    /// Creates new RPC client and server instances.
     pub fn build<R, W>(
         &self,
         reader: R,
         writer: W,
     ) -> (JulietRpcClient<N>, JulietRpcServer<N, R, W>) {
-        todo!()
+        let (core, core_handle) = self.core.build(reader, writer);
+
+        let (new_request_sender, new_requests_receiver) = mpsc::unbounded_channel();
+
+        let client = JulietRpcClient {
+            new_request_sender,
+            request_handle: core_handle.clone(),
+        };
+        let server = JulietRpcServer {
+            core,
+            handle: core_handle.downgrade(),
+            pending: Default::default(),
+            new_requests_receiver,
+        };
+
+        (client, server)
     }
 }
 
@@ -43,7 +68,15 @@ impl<const N: usize> RpcBuilder<N> {
 ///
 /// The client is used to create new RPC calls.
 pub struct JulietRpcClient<const N: usize> {
-    // TODO
+    new_request_sender: UnboundedSender<NewRequest>,
+    request_handle: RequestHandle<N>,
+}
+
+pub struct JulietRpcRequestBuilder<'a, const N: usize> {
+    client: &'a JulietRpcClient<N>,
+    channel: ChannelId,
+    payload: Option<Bytes>,
+    timeout: Option<Duration>,
 }
 
 /// Juliet RPC Server.
@@ -53,7 +86,13 @@ pub struct JulietRpcServer<const N: usize, R, W> {
     core: IoCore<N, R, W>,
     handle: Handle,
     pending: HashMap<IoId, Arc<RequestGuardInner>>,
-    new_requests: Receiver<(IoId, Arc<RequestGuardInner>)>,
+    new_requests_receiver: UnboundedReceiver<NewRequest>,
+}
+
+struct NewRequest {
+    ticket: RequestTicket,
+    guard: Arc<RequestGuardInner>,
+    payload: Option<Bytes>,
 }
 
 #[derive(Debug)]
@@ -64,13 +103,13 @@ struct RequestGuardInner {
     ready: Option<Notify>,
 }
 
-type RequestOutcome = Arc<OnceCell<Result<(), RequestError>>>;
-
-pub struct JulietRpcRequestBuilder<const N: usize> {
-    request_handle: RequestHandle<N>,
-    channel: ChannelId,
-    payload: Option<Bytes>,
-    timeout: Duration, // TODO: Properly handle.
+impl RequestGuardInner {
+    fn new() -> Self {
+        RequestGuardInner {
+            outcome: OnceCell::new(),
+            ready: Some(Notify::new()),
+        }
+    }
 }
 
 impl<const N: usize> JulietRpcClient<N> {
@@ -78,7 +117,12 @@ impl<const N: usize> JulietRpcClient<N> {
     ///
     /// The returned builder can be used to create a single request on the given channel.
     fn create_request(&self, channel: ChannelId) -> JulietRpcRequestBuilder<N> {
-        todo!()
+        JulietRpcRequestBuilder {
+            client: &self,
+            channel,
+            payload: None,
+            timeout: None,
+        }
     }
 }
 
@@ -117,7 +161,7 @@ where
     }
 }
 
-impl<const N: usize> JulietRpcRequestBuilder<N> {
+impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     /// Sets the payload for the request.
     pub fn with_payload(mut self, payload: Bytes) -> Self {
         self.payload = Some(payload);
@@ -126,66 +170,58 @@ impl<const N: usize> JulietRpcRequestBuilder<N> {
 
     /// Sets the timeout for the request.
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
+        self.timeout = Some(timeout);
         self
     }
 
     /// Schedules a new request on an outgoing channel.
     ///
     /// Blocks until space to store it is available.
-    pub async fn queue_for_sending(mut self) -> RequestGuard {
-        let outcome = OnceCell::new();
-
-        let inner = match self
+    pub async fn queue_for_sending(self) -> RequestGuard {
+        let ticket = match self
+            .client
             .request_handle
-            .enqueue_request(self.channel, self.payload)
+            .reserve_request(self.channel)
             .await
         {
-            Ok(io_id) => RequestGuardInner {
-                outcome,
-                ready: Some(Notify::new()),
-            },
-            Err(payload) => {
-                outcome.set(Err(RequestError::RemoteClosed(payload)));
-                RequestGuardInner {
-                    outcome,
-                    ready: None,
-                }
+            Some(ticket) => ticket,
+            None => {
+                // We cannot queue the request, since the connection was closed.
+                return RequestGuard::error(RequestError::RemoteClosed(self.payload));
             }
         };
 
-        RequestGuard {
-            inner: Arc::new(inner),
-        }
+        self.do_enqueue_request(ticket)
     }
 
-    /// Try to schedule a new request.
-    ///
-    /// Fails if local buffer is full.
-    pub fn try_queue_for_sending(mut self) -> Result<RequestGuard, Self> {
-        match self
-            .request_handle
-            .try_enqueue_request(self.channel, self.payload)
-        {
-            Ok(io_id) => Ok(RequestGuard {
-                inner: Arc::new(RequestGuardInner {
-                    outcome: OnceCell::new(),
-                    ready: Some(Notify::new()),
-                }),
-            }),
-            Err(EnqueueError::Closed(payload)) => {
-                // Drop the payload, give a handle that is already "expired".
-                Ok(RequestGuard::error(RequestError::RemoteClosed(payload)))
+    /// Schedules a new request on an outgoing channel if space is available.
+    pub fn try_queue_for_sending(self) -> Option<RequestGuard> {
+        let ticket = match self.client.request_handle.try_reserve_request(self.channel) {
+            Ok(ticket) => ticket,
+            Err(ReservationError::Closed) => {
+                return Some(RequestGuard::error(RequestError::RemoteClosed(
+                    self.payload,
+                )));
             }
-            Err(EnqueueError::LocalProtocolViolation(violation)) => {
-                Ok(RequestGuard::error(RequestError::Error(violation)))
+            Err(ReservationError::NoBufferSpaceAvailable) => {
+                return None;
             }
-            Err(EnqueueError::BufferLimitHit(payload)) => Err(JulietRpcRequestBuilder {
-                request_handle: self.request_handle,
-                channel: self.channel,
-                payload,
-                timeout: self.timeout,
-            }),
+        };
+
+        Some(self.do_enqueue_request(ticket))
+    }
+
+    #[inline(always)]
+    fn do_enqueue_request(self, ticket: RequestTicket) -> RequestGuard {
+        let inner = Arc::new(RequestGuardInner::new());
+
+        match self.client.new_request_sender.send(NewRequest {
+            ticket,
+            guard: inner.clone(),
+            payload: self.payload,
+        }) {
+            Ok(()) => RequestGuard { inner },
+            Err(send_err) => RequestGuard::error(RequestError::RemoteClosed(send_err.0.payload)),
         }
     }
 }

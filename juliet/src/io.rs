@@ -22,8 +22,8 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::{
-        mpsc::{error::TryRecvError, UnboundedReceiver, UnboundedSender},
-        OwnedSemaphorePermit, Semaphore, TryAcquireError,
+        mpsc::{self, error::TryRecvError, UnboundedReceiver, UnboundedSender},
+        AcquireError, OwnedSemaphorePermit, Semaphore, TryAcquireError,
     },
 };
 
@@ -31,7 +31,7 @@ use crate::{
     header::Header,
     protocol::{
         payload_is_multi_frame, CompletedRead, FrameIter, JulietProtocol, LocalProtocolViolation,
-        OutgoingFrame, OutgoingMessage,
+        OutgoingFrame, OutgoingMessage, ProtocolBuilder,
     },
     ChannelId, Id, Outcome,
 };
@@ -238,6 +238,74 @@ pub enum IoEvent {
         /// The local request ID which will not be answered.
         io_id: IoId,
     },
+}
+
+/// A builder for the [`IoCore`].
+#[derive(Debug)]
+pub struct IoCoreBuilder<const N: usize> {
+    /// The builder for the underlying protocol.
+    protocol: ProtocolBuilder<N>,
+    /// Number of additional requests to buffer, per channel.
+    buffer_size: [usize; N],
+}
+
+impl<const N: usize> IoCoreBuilder<N> {
+    /// Creates a new builder for an [`IoCore`].
+    #[inline]
+    pub fn new(protocol: ProtocolBuilder<N>) -> Self {
+        Self {
+            protocol,
+            buffer_size: [1; N],
+        }
+    }
+
+    /// Sets the wait queue buffer size for a given channel.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if given an invalid channel or a size less than one.
+    pub fn buffer_size(mut self, channel: ChannelId, size: usize) -> Self {
+        assert!(size > 0, "cannot have a memory buffer size of zero");
+
+        self.buffer_size[channel.get() as usize] = size;
+
+        self
+    }
+
+    /// Builds a new [`IoCore`] with a single request handle.
+    pub fn build<R, W>(&self, reader: R, writer: W) -> (IoCore<N, R, W>, RequestHandle<N>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let shared = Arc::new(IoShared {
+            buffered_requests: array_init::map_array_init(&self.buffer_size, |&sz| {
+                Arc::new(Semaphore::new(sz))
+            }),
+        });
+
+        let core = IoCore {
+            juliet: self.protocol.build(),
+            reader,
+            writer,
+            buffer: BytesMut::new(),
+            next_parse_at: 0,
+            shutting_down_due_to_err: false,
+            current_frame: None,
+            active_multi_frame: [Default::default(); N],
+            ready_queue: Default::default(),
+            wait_queue: array_init::array_init(|_| Default::default()),
+            receiver,
+            request_map: Default::default(),
+            dirty_channels: Default::default(),
+            shared: shared.clone(),
+        };
+
+        let handle = RequestHandle {
+            shared,
+            sender,
+            next_io_id: Default::default(),
+        };
+
+        (core, handle)
+    }
 }
 
 impl<const N: usize, R, W> IoCore<N, R, W>
@@ -676,58 +744,79 @@ pub enum EnqueueError {
     LocalProtocolViolation(#[from] LocalProtocolViolation),
 }
 
+#[derive(Debug)]
+pub struct RequestTicket {
+    channel: ChannelId,
+    permit: OwnedSemaphorePermit,
+    io_id: IoId,
+}
+
+pub enum ReservationError {
+    NoBufferSpaceAvailable,
+    Closed,
+}
+
 impl<const N: usize> RequestHandle<N> {
-    /// Attempts to enqueues a new request.
-    ///
-    /// Returns an [`IoId`] that can be used to refer to the request if successful. The operation
-    /// may fail if there is no buffer available for another request.
-    pub fn try_enqueue_request(
-        &mut self,
+    /// Attempts to reserve a new request ticket.
+    #[inline]
+    pub fn try_reserve_request(
+        &self,
         channel: ChannelId,
-        payload: Option<Bytes>,
-    ) -> Result<IoId, EnqueueError> {
-        let permit = match self.shared.buffered_requests[channel.get() as usize]
+    ) -> Result<RequestTicket, ReservationError> {
+        match self.shared.buffered_requests[channel.get() as usize]
             .clone()
             .try_acquire_owned()
         {
-            Ok(permit) => permit,
-
-            Err(TryAcquireError::Closed) => return Err(EnqueueError::Closed(payload)),
-            Err(TryAcquireError::NoPermits) => return Err(EnqueueError::BufferLimitHit(payload)),
-        };
-
-        let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
-
-        self.sender
-            .send(QueuedItem::Request {
-                io_id,
+            Ok(permit) => Ok(RequestTicket {
                 channel,
-                payload,
                 permit,
-            })
-            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))?;
+                io_id: IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed)),
+            }),
 
-        Ok(io_id)
+            Err(TryAcquireError::Closed) => Err(ReservationError::Closed),
+            Err(TryAcquireError::NoPermits) => Err(ReservationError::NoBufferSpaceAvailable),
+        }
     }
-    /// Enqueues a new request.
-    ///
-    /// Returns an [`IoId`] that can be used to refer to the request if successful. The operation
-    /// may fail if there is no buffer available for another request.
-    pub async fn enqueue_request(
-        &mut self,
-        channel: ChannelId,
-        payload: Option<Bytes>,
-    ) -> Result<IoId, Option<Bytes>> {
-        let permit = match self.shared.buffered_requests[channel.get() as usize]
+
+    /// Reserves a new request ticket.
+    #[inline]
+    pub async fn reserve_request(&self, channel: ChannelId) -> Option<RequestTicket> {
+        self.shared.buffered_requests[channel.get() as usize]
             .clone()
             .acquire_owned()
             .await
-        {
-            Ok(permit) => permit,
-            Err(_) => return Err(payload),
-        };
+            .map(|permit| RequestTicket {
+                channel,
+                permit,
+                io_id: IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed)),
+            })
+            .ok()
+    }
 
-        let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
+    #[inline(always)]
+    pub fn downgrade(self) -> Handle {
+        Handle {
+            sender: self.sender,
+        }
+    }
+}
+
+impl Handle {
+    /// Enqueues a new request.
+    ///
+    /// Returns an [`IoId`] that can be used to refer to the request if successful. Returns the
+    /// payload as an error if the underlying IO layer has been closed.
+    #[inline]
+    pub fn enqueue_request(
+        &mut self,
+        RequestTicket {
+            channel,
+            permit,
+            io_id,
+        }: RequestTicket,
+        payload: Option<Bytes>,
+    ) -> Result<IoId, Option<Bytes>> {
+        // TODO: Panic if given semaphore ticket from wrong instance?
 
         self.sender
             .send(QueuedItem::Request {
@@ -741,15 +830,6 @@ impl<const N: usize> RequestHandle<N> {
         Ok(io_id)
     }
 
-    #[inline(always)]
-    pub fn downgrade(self) -> Handle {
-        Handle {
-            sender: self.sender,
-        }
-    }
-}
-
-impl Handle {
     /// Enqueues a response to an existing request.
     ///
     /// Callers are supposed to send only one response or cancellation per incoming request.
