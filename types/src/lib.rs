@@ -61,6 +61,7 @@ mod tagged;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 mod timestamp;
+mod transaction;
 mod transfer;
 mod transfer_result;
 mod uint;
@@ -96,7 +97,7 @@ pub use chainspec::{
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MintCosts,
     NetworkConfig, OpcodeCosts, ProtocolConfig, StandardPaymentCosts, StorageCosts, SystemConfig,
-    UpgradeConfig, ValidatorConfig, WasmConfig,
+    TransactionConfig, UpgradeConfig, ValidatorConfig, WasmConfig,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -125,6 +126,8 @@ pub use contracts::{
     Parameter,
 };
 pub use crypto::*;
+#[cfg(any(feature = "std", test))]
+pub(crate) use deploy::AccountAndSecretKey;
 pub use deploy::{
     runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
     DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
@@ -162,6 +165,16 @@ pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub use transaction::TestTransactionBuilder;
+pub use transaction::{
+    AuctionTransaction, DirectCall, NativeTransaction, PricingMode, Transaction,
+    TransactionApproval, TransactionConfigFailure, TransactionDecodeFromJsonError,
+    TransactionError, TransactionExcessiveSizeError, TransactionHash, TransactionHeader,
+    TransactionKind, UserlandTransaction,
+};
+#[cfg(any(feature = "std", test))]
+pub use transaction::{TransactionBuilder, TransactionBuilderError};
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
 };

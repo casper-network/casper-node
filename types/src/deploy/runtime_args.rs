@@ -7,10 +7,14 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::{bytesrepr::Bytes, testing::TestRng};
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     CLType, CLTyped, CLValue, CLValueError, U512,
@@ -169,6 +173,25 @@ impl RuntimeArgs {
             CLType::U64 => amount_arg.clone().into_t::<u64>().map(U512::from),
             _ => Ok(U512::zero()),
         }
+    }
+
+    /// Returns a random `RuntimeArgs`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        fn random_bytes(rng: &mut TestRng) -> Bytes {
+            let mut buffer = vec![0u8; rng.gen_range(0..100)];
+            rng.fill_bytes(buffer.as_mut());
+            Bytes::from(buffer)
+        }
+
+        let count = rng.gen_range(0..6);
+        let mut args = RuntimeArgs::new();
+        for _ in 0..count {
+            let key = rng.random_string(1..21);
+            let value = random_bytes(rng);
+            let _ = args.insert(key, value);
+        }
+        args
     }
 }
 
