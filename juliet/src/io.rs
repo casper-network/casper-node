@@ -659,24 +659,6 @@ where
 
         Ok(())
     }
-
-    /// Converts the [`IoCore`] into a stream.
-    ///
-    /// The stream will continuously call [`IoCore::next_event`] until the connection is closed or
-    /// an error has been produced.
-    fn into_stream(self) -> impl Stream<Item = Result<IoEvent, CoreError>> {
-        futures::stream::unfold(Some(self), |state| async {
-            let mut this = state?;
-            match this.next_event().await {
-                // Regular event -- keep both the state and return it.
-                Ok(Some(event)) => Some((Ok(event), Some(this))),
-                // Connection closed - we can immediately stop the stream.
-                Ok(None) => None,
-                // Error sent - return the error, but stop polling afterwards.
-                Err(err) => Some((Err(err), None)),
-            }
-        })
-    }
 }
 
 /// Determines whether an item is ready to be moved from the wait queue from the ready queue.
