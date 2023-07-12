@@ -64,11 +64,21 @@ pub struct JulietProtocol<const N: usize> {
 /// Typically a single instance of the [`ProtocolBuilder`] can be kept around in an application
 /// handling multiple connections, as its `build()` method can be reused for every new connection
 /// instance.
+#[derive(Debug)]
 pub struct ProtocolBuilder<const N: usize> {
     /// Configuration for every channel.
     channel_config: [ChannelConfiguration; N],
     /// Maximum frame size.
     max_frame_size: u32,
+}
+
+impl<const N: usize> Default for ProtocolBuilder<N> {
+    fn default() -> Self {
+        Self {
+            channel_config: [Default::default(); N],
+            max_frame_size: 4096,
+        }
+    }
 }
 
 impl<const N: usize> ProtocolBuilder<N> {
@@ -87,6 +97,19 @@ impl<const N: usize> ProtocolBuilder<N> {
             channels,
             max_frame_size: self.max_frame_size,
         }
+    }
+
+    /// Sets the maximum frame size.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the maximum size is too small to holder a header, payload length and at least
+    /// one byte of payload.
+    pub fn max_frame_size(mut self, max_frame_size: u32) -> Self {
+        assert!(max_frame_size as usize > Header::SIZE + Varint32::MAX_LEN);
+
+        self.max_frame_size = max_frame_size;
+        self
     }
 }
 

@@ -686,8 +686,6 @@ impl<const N: usize> RequestHandle<N> {
         channel: ChannelId,
         payload: Option<Bytes>,
     ) -> Result<IoId, EnqueueError> {
-        bounds_check_channel::<N>(channel)?;
-
         let permit = match self.shared.buffered_requests[channel.get() as usize]
             .clone()
             .try_acquire_owned()
@@ -719,16 +717,14 @@ impl<const N: usize> RequestHandle<N> {
         &mut self,
         channel: ChannelId,
         payload: Option<Bytes>,
-    ) -> Result<IoId, EnqueueError> {
-        bounds_check_channel::<N>(channel)?;
-
+    ) -> Result<IoId, Option<Bytes>> {
         let permit = match self.shared.buffered_requests[channel.get() as usize]
             .clone()
             .acquire_owned()
             .await
         {
             Ok(permit) => permit,
-            Err(_) => return Err(EnqueueError::Closed(payload)),
+            Err(_) => return Err(payload),
         };
 
         let io_id = IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed));
@@ -740,7 +736,7 @@ impl<const N: usize> RequestHandle<N> {
                 payload,
                 permit,
             })
-            .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))?;
+            .map_err(|send_err| send_err.0.into_payload())?;
 
         Ok(io_id)
     }
@@ -849,14 +845,4 @@ where
     }
 
     Ok(bytes_read)
-}
-
-/// Bounds checks a channel ID.
-#[inline(always)]
-fn bounds_check_channel<const N: usize>(channel: ChannelId) -> Result<(), LocalProtocolViolation> {
-    if channel.get() as usize >= N {
-        Err(LocalProtocolViolation::InvalidChannel(channel))
-    } else {
-        Ok(())
-    }
 }
