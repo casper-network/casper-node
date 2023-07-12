@@ -3,7 +3,11 @@
 //! The outermost layer of the `juliet` stack, combines the underlying IO and protocol primites into
 //! a convenient, type safe RPC system.
 
-use std::{cell::OnceCell, collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use bytes::Bytes;
 
@@ -98,7 +102,7 @@ struct NewRequest {
 #[derive(Debug)]
 struct RequestGuardInner {
     /// The returned response of the request.
-    outcome: OnceCell<Result<Option<Bytes>, RequestError>>,
+    outcome: OnceLock<Result<Option<Bytes>, RequestError>>,
     /// A notifier for when the result arrives.
     ready: Option<Notify>,
 }
@@ -106,7 +110,7 @@ struct RequestGuardInner {
 impl RequestGuardInner {
     fn new() -> Self {
         RequestGuardInner {
-            outcome: OnceCell::new(),
+            outcome: OnceLock::new(),
             ready: Some(Notify::new()),
         }
     }
@@ -125,7 +129,7 @@ impl<const N: usize> JulietRpcClient<N> {
     /// Creates a new RPC request builder.
     ///
     /// The returned builder can be used to create a single request on the given channel.
-    fn create_request(&self, channel: ChannelId) -> JulietRpcRequestBuilder<N> {
+    pub fn create_request(&self, channel: ChannelId) -> JulietRpcRequestBuilder<N> {
         JulietRpcRequestBuilder {
             client: &self,
             channel,
@@ -147,7 +151,7 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
+    pub async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
         loop {
             tokio::select! {
                 biased;
@@ -305,19 +309,26 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     }
 }
 
-#[derive(Clone, Debug)]
+/// An RPC request error.
+#[derive(Clone, Debug, Error)]
 pub enum RequestError {
     /// Remote closed, could not send.
+    #[error("remote closed connection before request could be sent")]
     RemoteClosed(Option<Bytes>),
     /// Sent, but never received a reply.
+    #[error("never received reply before remote closed connection")]
     Shutdown,
     /// Local timeout.
+    #[error("request timed out ")]
     TimedOut,
     /// Remote said "no".
+    #[error("remote cancelled our request")]
     RemoteCancelled,
     /// Cancelled locally.
+    #[error("request cancelled locally")]
     Cancelled,
     /// API misuse
+    #[error("API misused or other internal error")]
     Error(LocalProtocolViolation),
 }
 
@@ -328,7 +339,7 @@ pub struct RequestGuard {
 
 impl RequestGuard {
     fn new_error(error: RequestError) -> Self {
-        let outcome = OnceCell::new();
+        let outcome = OnceLock::new();
         outcome
             .set(Err(error))
             .expect("newly constructed cell should always be empty");

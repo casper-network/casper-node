@@ -2497,6 +2497,7 @@ dependencies = [
  "proptest",
  "proptest-attr-macro",
  "proptest-derive",
+ "rand 0.8.5",
  "thiserror",
  "tokio",
 ]

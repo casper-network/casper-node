@@ -12,9 +12,11 @@ bytes = "1.4.0"
 futures = "0.3.28"
 portable-atomic = "1.3.3"
 thiserror = "1.0.40"
-tokio = { version = "1.29.1", features = ["macros", "io-util", "sync"] }
+tokio = { version = "1.29.1", features = [ "macros", "io-util", "sync" ] }
 
 [dev-dependencies]
+tokio = { features = [ "net", "rt-multi-thread", "time" ] }
 proptest = "1.1.0"
 proptest-attr-macro = "1.0.0"
 proptest-derive = "0.3.0"
+rand = "0.8.5"
