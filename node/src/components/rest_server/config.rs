@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_ADDRESS: &str = "0.0.0.0:0";
 /// Default rate limit in qps.
 const DEFAULT_QPS_LIMIT: u64 = 100;
+/// Default CORS origin.
+const DEFAULT_CORS_ORIGIN: &str = "";
 
 /// REST HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
@@ -21,6 +23,9 @@ pub struct Config {
 
     /// Max rate limit in qps.
     pub qps_limit: u64,
+
+    /// CORS origin.
+    pub cors_origin: String,
 }
 
 impl Config {
@@ -30,6 +35,7 @@ impl Config {
             enable_server: true,
             address: DEFAULT_ADDRESS.to_string(),
             qps_limit: DEFAULT_QPS_LIMIT,
+            cors_origin: DEFAULT_CORS_ORIGIN.to_string(),
         }
     }
 }

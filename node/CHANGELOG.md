@@ -12,6 +12,12 @@ All notable changes to this project will be documented in this file.  The format
 ## [Unreleased]
 
 
+## 1.5.2
+
+### Added
+* Added the `cors_origin` config option under the `[rest_server]`, `[rpc_server]`, `[event_stream_server]` and `[speculative_exec_server]` sections to allow configuration of the CORS mechanism.
+
+
 ## 1.5.1
 
 ### Added
