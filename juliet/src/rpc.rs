@@ -219,7 +219,22 @@ where
 
 impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
     fn drop(&mut self) {
-        todo!("ensure all handles get the news")
+        // When the server is dropped, ensure all waiting requests are informed.
+
+        self.new_requests_receiver.close();
+
+        for (_io_id, guard) in self.pending.drain() {
+            guard.set_and_notify(Err(RequestError::Shutdown));
+        }
+
+        while let Ok(NewRequest {
+            ticket: _,
+            guard,
+            payload,
+        }) = self.new_requests_receiver.try_recv()
+        {
+            guard.set_and_notify(Err(RequestError::RemoteClosed(payload)))
+        }
     }
 }
 
@@ -290,10 +305,12 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum RequestError {
     /// Remote closed, could not send.
     RemoteClosed(Option<Bytes>),
+    /// Sent, but never received a reply.
+    Shutdown,
     /// Local timeout.
     TimedOut,
     /// Remote said "no".
@@ -326,36 +343,58 @@ impl RequestGuard {
     /// Cancels the request, causing it to not be sent if it is still in the queue.
     ///
     /// No response will be available for the request, any call to `wait_for_finish` will result in an error.
-    pub fn cancel(self) {
-        todo!()
+    pub fn cancel(mut self) {
+        self.do_cancel();
+
+        self.forget()
+    }
+
+    fn do_cancel(&mut self) {
+        // TODO: Implement actual sending of the cancellation.
     }
 
     /// Forgets the request was made.
     ///
     /// Any response will be accepted, but discarded.
     pub fn forget(self) {
-        todo!()
+        // TODO: Implement eager cancellation locally, potentially removing this request from the
+        //       outbound queue.
     }
 
     /// Waits for the response to come back.
     pub async fn wait_for_response(self) -> Result<Option<Bytes>, RequestError> {
-        todo!()
+        // Wait for notification.
+        if let Some(ref ready) = self.inner.ready {
+            ready.notified().await;
+        }
+
+        self.take_inner()
     }
 
     /// Waits for the response, non-blockingly.
     pub fn try_wait_for_response(self) -> Result<Result<Option<Bytes>, RequestError>, Self> {
-        todo!()
+        if self.inner.outcome.get().is_some() {
+            Ok(self.take_inner())
+        } else {
+            Err(self)
+        }
     }
 
-    /// Waits for the sending to complete.
-    pub async fn wait_for_send(&mut self) {
-        todo!()
+    fn take_inner(self) -> Result<Option<Bytes>, RequestError> {
+        // TODO: Best to move `Notified` + `OnceCell` into a separate struct for testing and upholding
+        // these invariants, avoiding the extra clones.
+
+        self.inner
+            .outcome
+            .get()
+            .expect("should not have called notified without setting cell contents")
+            .clone()
     }
 }
 
 impl Drop for RequestGuard {
     fn drop(&mut self) {
-        todo!("on drop, cancel request")
+        self.do_cancel();
     }
 }
 
