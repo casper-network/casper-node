@@ -11,7 +11,7 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{
-        mpsc::{self, Receiver, UnboundedReceiver, UnboundedSender},
+        mpsc::{self, UnboundedReceiver, UnboundedSender},
         Notify,
     },
 };
@@ -110,6 +110,15 @@ impl RequestGuardInner {
             ready: Some(Notify::new()),
         }
     }
+
+    fn set_and_notify(&self, value: Result<Option<Bytes>, RequestError>) {
+        if self.outcome.set(value).is_ok() {
+            // If this is the first time the outcome is changed, notify exactly once.
+            if let Some(ref ready) = self.ready {
+                ready.notify_one()
+            }
+        };
+    }
 }
 
 impl<const N: usize> JulietRpcClient<N> {
@@ -139,25 +148,57 @@ where
     W: AsyncWrite + Unpin,
 {
     async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
-        if let Some(event) = self.core.next_event().await? {
-            match event {
-                IoEvent::NewRequest {
-                    channel,
-                    id,
-                    payload,
-                } => Ok(Some(IncomingRequest {
-                    channel,
-                    id,
-                    payload,
-                    handle: Some(self.handle.clone()),
-                })),
-                IoEvent::RequestCancelled { channel, id } => todo!(),
-                IoEvent::ReceivedResponse { io_id, payload } => todo!(),
-                IoEvent::ReceivedCancellationResponse { io_id } => todo!(),
-            }
-        } else {
-            Ok(None)
+        loop {
+            tokio::select! {
+                biased;
+
+                opt_new_request = self.new_requests_receiver.recv() => {
+                    if let Some(NewRequest { ticket, guard, payload }) = opt_new_request {
+                        match self.handle.enqueue_request(ticket, payload) {
+                            Ok(io_id) => {
+                                // The request will be sent out, store it in our pending map.
+                                self.pending.insert(io_id, guard);
+                            },
+                            Err(payload) => {
+                                // Failed to send -- time to shut down.
+                                guard.set_and_notify(Err(RequestError::RemoteClosed(payload)))
+                            }
+                        }
+                    } else {
+                        // The client has been dropped, time for us to shut down as well.
+                        return Ok(None);
+                    }
+                }
+
+                opt_event = self.core.next_event() => {
+                    if let Some(event) = self.core.next_event().await? {
+                        match event {
+                            IoEvent::NewRequest {
+                                channel,
+                                id,
+                                payload,
+                            } => return Ok(Some(IncomingRequest {
+                                channel,
+                                id,
+                                payload,
+                                handle: Some(self.handle.clone()),
+                            })),
+                            IoEvent::RequestCancelled { channel, id } => todo!(),
+                            IoEvent::ReceivedResponse { io_id, payload } => todo!(),
+                            IoEvent::ReceivedCancellationResponse { io_id } => todo!(),
+                        }
+                    } else {
+                        return Ok(None)
+                    }
+                }
+            };
         }
+    }
+}
+
+impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
+    fn drop(&mut self) {
+        todo!("ensure all handles get the news")
     }
 }
 
@@ -187,7 +228,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
             Some(ticket) => ticket,
             None => {
                 // We cannot queue the request, since the connection was closed.
-                return RequestGuard::error(RequestError::RemoteClosed(self.payload));
+                return RequestGuard::new_error(RequestError::RemoteClosed(self.payload));
             }
         };
 
@@ -199,7 +240,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
         let ticket = match self.client.request_handle.try_reserve_request(self.channel) {
             Ok(ticket) => ticket,
             Err(ReservationError::Closed) => {
-                return Some(RequestGuard::error(RequestError::RemoteClosed(
+                return Some(RequestGuard::new_error(RequestError::RemoteClosed(
                     self.payload,
                 )));
             }
@@ -221,7 +262,9 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
             payload: self.payload,
         }) {
             Ok(()) => RequestGuard { inner },
-            Err(send_err) => RequestGuard::error(RequestError::RemoteClosed(send_err.0.payload)),
+            Err(send_err) => {
+                RequestGuard::new_error(RequestError::RemoteClosed(send_err.0.payload))
+            }
         }
     }
 }
@@ -240,12 +283,13 @@ pub enum RequestError {
     Error(LocalProtocolViolation),
 }
 
+#[must_use = "dropping the request guard will immediately cancel the request"]
 pub struct RequestGuard {
     inner: Arc<RequestGuardInner>,
 }
 
 impl RequestGuard {
-    fn error(error: RequestError) -> Self {
+    fn new_error(error: RequestError) -> Self {
         let outcome = OnceCell::new();
         outcome
             .set(Err(error))
