@@ -514,14 +514,18 @@ where
             return Ok(());
         }
 
-        self.send_to_ready_queue(item)
+        self.send_to_ready_queue(item, false)
     }
 
     /// Sends an item directly to the ready queue, causing it to be sent out eventually.
     ///
     /// `item` is passed as a mutable reference for compatibility with functions like `retain_mut`,
     /// but will be left with all payloads removed, thus should likely not be reused.
-    fn send_to_ready_queue(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
+    fn send_to_ready_queue(
+        &mut self,
+        item: QueuedItem,
+        check_for_cancellation: bool,
+    ) -> Result<(), LocalProtocolViolation> {
         match item {
             QueuedItem::Request {
                 io_id,
@@ -533,14 +537,15 @@ where
                 // we can cancel it by checking if the `IoId` has been removed in the meantime.
                 //
                 // Note that this only cancels multi-frame requests.
-                if self.request_map.contains_left(&io_id) {
+                if check_for_cancellation && !self.request_map.contains_left(&io_id) {
+                    // We just ignore the request, as it has been cancelled in the meantime.
+                } else {
                     let msg = self.juliet.create_request(channel, payload)?;
                     let id = msg.header().id();
                     self.request_map.insert(io_id, (channel, id));
                     self.ready_queue.push_back(msg.frames());
                 }
 
-                // Explicitly drop permit, allowing another request to be buffered on the channel.
                 drop(permit);
             }
             QueuedItem::RequestCancellation { io_id } => {
@@ -647,7 +652,7 @@ where
                     // Put it right back into the queue.
                     self.wait_queue[channel.get() as usize].push_back(item);
                 } else {
-                    self.send_to_ready_queue(item)?;
+                    self.send_to_ready_queue(item, true)?;
                 }
             }
         }
