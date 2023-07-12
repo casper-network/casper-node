@@ -352,12 +352,25 @@ where
                 }
             }
 
+            // TODO: Can we find something more elegant than this abomination?
+            #[inline(always)]
+            async fn write_all_buf_if_some<W: AsyncWrite + Unpin>(
+                writer: &mut W,
+                buf: Option<&mut impl Buf>,
+            ) -> Result<(), io::Error> {
+                if let Some(buf) = buf {
+                    writer.write_all_buf(buf).await
+                } else {
+                    Ok(())
+                }
+            }
+
             tokio::select! {
                 biased;  // We actually like the bias, avoid the randomness overhead.
 
-                // Writing outgoing data if there is more to send.
-                write_result = self.writer.write_all_buf(self.current_frame.as_mut().unwrap())
-                    , if self.current_frame.is_some() => {
+                write_result = write_all_buf_if_some(&mut self.writer, self.current_frame.as_mut())
+                , if self.current_frame.is_some() => {
+
                     write_result.map_err(CoreError::WriteFailed)?;
 
                     // If we just finished sending an error, it's time to exit.
