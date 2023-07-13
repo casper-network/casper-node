@@ -11,11 +11,15 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Fixed
+* Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
+
+
+
+## 1.5.1
+
 ### Added
 * Added the `upgrade_timeout` config option under the `[node]` section.
-
-
-## Unreleased
 
 ### Changed
 * `speculative_exec` server now routes deploys to `DeployAcceptor` for more comprehensive validation, including cryptographic verification of signatures.

@@ -86,8 +86,7 @@ impl MainReactor {
                 // this code path should be unreachable because we're not
                 // supposed to enqueue historical blocks for execution.
                 Either::Right(CatchUpInstruction::Fatal(format!(
-                    "CatchUp: block synchronizer attempted to execute \
-                                        block: {}",
+                    "CatchUp: block synchronizer attempted to execute block: {}",
                     block_hash
                 )))
             }
@@ -96,19 +95,6 @@ impl MainReactor {
                 // effects, any referenced deploys, & sufficient finality (by weight) of signatures
                 SyncIdentifier::SyncedBlockIdentifier(block_hash, block_height, era_id),
             ),
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                // working on syncing a block
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "CatchUp: block synchronizer stalled while syncing block; purging historical builder"
-                );
-                self.block_synchronizer.purge_historical();
-                match self.trusted_hash {
-                    Some(trusted_hash) => self.catch_up_trusted_hash(trusted_hash),
-                    None => self.catch_up_no_trusted_hash(),
-                }
-            }
         }
     }
 
