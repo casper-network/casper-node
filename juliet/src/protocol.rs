@@ -310,7 +310,7 @@ macro_rules! log_frame {
         #[cfg(feature = "tracing")]
         {
             use tracing::trace;
-            trace!(header=%$header, payload=%crate::util::tracing_support::PayloadFormat(&$payload), "received");
+            trace!(header=%$header, payload=%crate::util::PayloadFormat(&$payload), "received");
         }
         #[cfg(not(feature = "tracing"))]
         {

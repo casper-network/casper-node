@@ -208,10 +208,7 @@ impl Display for OutgoingFrame {
         let payload = self.0.last_ref();
 
         if !payload.as_ref().is_empty() {
-            Display::fmt(
-                &crate::util::tracing_support::PayloadFormat(self.0.last_ref()),
-                f,
-            )?;
+            Display::fmt(&crate::util::PayloadFormat(self.0.last_ref()), f)?;
         }
 
         f.write_str(">")

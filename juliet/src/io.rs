@@ -16,14 +16,13 @@ use std::{
 
 use bimap::BiMap;
 use bytes::{Buf, Bytes, BytesMut};
-use futures::Stream;
 use portable_atomic::AtomicU128;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     sync::{
         mpsc::{self, error::TryRecvError, UnboundedReceiver, UnboundedSender},
-        AcquireError, OwnedSemaphorePermit, Semaphore, TryAcquireError,
+        OwnedSemaphorePermit, Semaphore, TryAcquireError,
     },
 };
 
@@ -173,9 +172,6 @@ pub struct IoCore<const N: usize, R, W> {
     request_map: BiMap<IoId, (ChannelId, Id)>,
     /// A set of channels whose wait queues should be checked again for data to send.
     dirty_channels: BTreeSet<ChannelId>,
-
-    /// Shared data across handles and [`IoCore`].
-    shared: Arc<IoShared<N>>,
 }
 
 /// Shared data between a handles and the core itself.
@@ -276,11 +272,6 @@ impl<const N: usize> IoCoreBuilder<N> {
     /// Builds a new [`IoCore`] with a single request handle.
     pub fn build<R, W>(&self, reader: R, writer: W) -> (IoCore<N, R, W>, RequestHandle<N>) {
         let (sender, receiver) = mpsc::unbounded_channel();
-        let shared = Arc::new(IoShared {
-            buffered_requests: array_init::map_array_init(&self.buffer_size, |&sz| {
-                Arc::new(Semaphore::new(sz))
-            }),
-        });
 
         let core = IoCore {
             juliet: self.protocol.build(),
@@ -296,9 +287,13 @@ impl<const N: usize> IoCoreBuilder<N> {
             receiver,
             request_map: Default::default(),
             dirty_channels: Default::default(),
-            shared: shared.clone(),
         };
 
+        let shared = Arc::new(IoShared {
+            buffered_requests: array_init::map_array_init(&self.buffer_size, |&sz| {
+                Arc::new(Semaphore::new(sz))
+            }),
+        });
         let handle = RequestHandle {
             shared,
             sender,

@@ -187,7 +187,7 @@ where
                                 payload,
                                 handle: Some(self.handle.clone()),
                             })),
-                            IoEvent::RequestCancelled { channel, id } => {
+                            IoEvent::RequestCancelled { .. } => {
                                 // Request cancellation is currently not implemented; there is no
                                 // harm in sending the reply.
                             },

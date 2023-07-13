@@ -1,8 +1,12 @@
 //! Miscellaneous utilities used across multiple modules.
 
-use std::{marker::PhantomData, ops::Deref};
+use std::{
+    fmt::{self, Display, Formatter},
+    marker::PhantomData,
+    ops::Deref,
+};
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 
 /// Bytes offset with a lifetime.
 ///
@@ -34,43 +38,23 @@ impl<'a> Index<'a> {
     }
 }
 
-#[cfg(feature = "tracing")]
-pub mod tracing_support {
-    //! Display helper for formatting messages in `tracing` log messages.
-    use std::fmt::{self, Display, Formatter};
+/// Pretty prints a single payload.
+pub(crate) struct PayloadFormat<'a>(pub &'a Bytes);
 
-    use bytes::Bytes;
+impl<'a> Display for PayloadFormat<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let raw = self.0.as_ref();
 
-    /// Pretty prints a single payload.
-    pub struct PayloadFormat<'a>(pub &'a Bytes);
-
-    impl<'a> Display for PayloadFormat<'a> {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            let raw = self.0.as_ref();
-
-            for &byte in &raw[0..raw.len().min(16)] {
-                write!(f, "{:02x} ", byte)?;
-            }
-
-            if raw.len() > 16 {
-                f.write_str("...")?;
-            }
-
-            write!(f, " ({} bytes)", raw.len())?;
-
-            Ok(())
+        for &byte in &raw[0..raw.len().min(16)] {
+            write!(f, "{:02x} ", byte)?;
         }
-    }
 
-    /// Pretty prints an optional payload.
-    pub struct OptPayloadFormat<'a>(pub Option<&'a Bytes>);
-
-    impl<'a> Display for OptPayloadFormat<'a> {
-        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-            match self.0 {
-                None => f.write_str("(no payload)"),
-                Some(inner) => PayloadFormat(inner).fmt(f),
-            }
+        if raw.len() > 16 {
+            f.write_str("...")?;
         }
+
+        write!(f, " ({} bytes)", raw.len())?;
+
+        Ok(())
     }
 }
