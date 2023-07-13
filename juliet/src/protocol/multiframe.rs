@@ -99,7 +99,7 @@ impl MultiframeReceiver {
                                 + (max_data_in_frame as usize).min(payload_size.value as usize),
                         );
                         if buffer.remaining() < *frame_end {
-                            return Outcome::incomplete(buffer.remaining() - *frame_end);
+                            return Outcome::incomplete(*frame_end - buffer.remaining());
                         }
 
                         // At this point we are sure to complete a frame, so drop the preamble.
