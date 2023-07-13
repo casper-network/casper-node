@@ -27,8 +27,8 @@ use std::{
     rc::Rc,
 };
 
-use num::Zero;
 use num_rational::Ratio;
+use num_traits::Zero;
 use once_cell::sync::Lazy;
 use tracing::{debug, error, trace, warn};
 
@@ -387,6 +387,8 @@ where
             tracking_copy.clone(),
         );
 
+        system_upgrader.migrate_system_account(pre_state_hash)?;
+
         system_upgrader
             .refresh_system_contracts(
                 correlation_id,
@@ -740,9 +742,19 @@ where
         &self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
+        protocol_version: ProtocolVersion,
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(AddressableEntity, ContractHash), Error> {
+        let contract_record = match tracking_copy.borrow_mut().get_contract_by_account_hash(
+            correlation_id,
+            protocol_version,
+            account_hash,
+        ) {
+            Ok(contract) => contract,
+            Err(_) => return Err(error::Error::MissingContractByAccountHash(account_hash)),
+        };
+
         let contract_hash: ContractHash = match tracking_copy
             .borrow_mut()
             .get_account(correlation_id, account_hash)
@@ -751,14 +763,6 @@ where
             Err(error) => {
                 return Err(error.into());
             }
-        };
-
-        let contract_record = match tracking_copy
-            .borrow_mut()
-            .get_contract_by_account_hash(correlation_id, account_hash)
-        {
-            Ok(contract) => contract,
-            Err(_) => return Err(error::Error::MissingContractByAccountHash(account_hash)),
         };
 
         // Authorize using provided authorization keys
@@ -917,6 +921,7 @@ where
         let (contract, _contract_hash) = match self.get_authorized_contract(
             correlation_id,
             account_hash,
+            protocol_version,
             &authorization_keys,
             Rc::clone(&tracking_copy),
         ) {
@@ -925,18 +930,12 @@ where
         };
 
         let proposer_addr = proposer.to_account_hash();
-        let proposer_contract_hash = match tracking_copy
-            .borrow_mut()
-            .get_account(correlation_id, proposer_addr)
-        {
-            Ok(proposer) => proposer,
-            Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
-        };
 
-        let proposer_contract = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, proposer_contract_hash)
-        {
+        let proposer_contract = match tracking_copy.borrow_mut().get_contract_by_account_hash(
+            correlation_id,
+            protocol_version,
+            proposer_addr,
+        ) {
             Ok(contract) => contract,
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
@@ -1042,7 +1041,11 @@ where
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
 
-        match runtime_args_builder.transfer_target_mode(correlation_id, Rc::clone(&tracking_copy)) {
+        match runtime_args_builder.transfer_target_mode(
+            correlation_id,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+        ) {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
                 TransferTargetMode::CreateAccount(public_key) => {
@@ -1147,6 +1150,7 @@ where
         let transfer_args = match runtime_args_builder.build(
             &contract,
             correlation_id,
+            protocol_version,
             Rc::clone(&tracking_copy),
         ) {
             Ok(transfer_args) => transfer_args,
@@ -1381,6 +1385,7 @@ where
             let system_contract_by_account = {
                 tracking_copy.borrow_mut().get_contract_by_account_hash(
                     correlation_id,
+                    protocol_version,
                     PublicKey::System.to_account_hash(),
                 )?
             };
@@ -1484,12 +1489,20 @@ where
         let authorization_keys = deploy_item.authorization_keys;
         let account_hash = deploy_item.address;
 
+        self.migrate_account(
+            correlation_id,
+            account_hash,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+        )?;
+
         // Get account from tracking copy
         // validation_spec_3: account validity
         let (contract, contract_hash) = {
             match self.get_authorized_contract(
                 correlation_id,
                 account_hash,
+                protocol_version,
                 &authorization_keys,
                 Rc::clone(&tracking_copy),
             ) {
@@ -1500,6 +1513,7 @@ where
 
         let payment = deploy_item.payment;
         let session = deploy_item.session;
+
         let deploy_hash = deploy_item.deploy_hash;
 
         let session_args = session.args().clone();
@@ -1566,9 +1580,11 @@ where
         //     Default::default(),
         // );
 
-        let system_contract_by_account = tracking_copy
-            .borrow_mut()
-            .read_contract_by_account_hash(correlation_id, PublicKey::System.to_account_hash())?;
+        let system_contract_by_account = tracking_copy.borrow_mut().read_contract_by_account_hash(
+            correlation_id,
+            protocol_version,
+            PublicKey::System.to_account_hash(),
+        )?;
 
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
@@ -1660,10 +1676,11 @@ where
 
         // the proposer of the block this deploy is in receives the gas from this deploy execution
         let proposer_purse = {
-            let proposer_contract = match tracking_copy
-                .borrow_mut()
-                .get_contract_by_account_hash(correlation_id, AccountHash::from(&proposer))
-            {
+            let proposer_contract = match tracking_copy.borrow_mut().get_contract_by_account_hash(
+                correlation_id,
+                protocol_version,
+                AccountHash::from(&proposer),
+            ) {
                 Ok(contract) => contract,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
@@ -2181,7 +2198,7 @@ where
 
         let virtual_system_contract_by_account = tracking_copy
             .borrow_mut()
-            .get_contract_by_account_hash(correlation_id, system_account_addr)?;
+            .get_contract_by_account_hash(correlation_id, protocol_version, system_account_addr)?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2248,9 +2265,11 @@ where
 
         let system_account_addr = PublicKey::System.to_account_hash();
 
+        let protocol_version = step_request.protocol_version;
+
         let virtual_system_contract_by_account = tracking_copy
             .borrow_mut()
-            .get_contract_by_account_hash(correlation_id, system_account_addr)?;
+            .get_contract_by_account_hash(correlation_id, protocol_version, system_account_addr)?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();

@@ -43,6 +43,7 @@ use casper_types::{
     EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
     SecretKey, SystemConfig, WasmConfig, U256, U512,
 };
+use gh_1470_regression_call::METHOD_CALL_DO_NOTHING;
 
 use crate::{lmdb_fixture, test::system_contracts::auction::bids::engine_state::ExecConfig};
 
@@ -55,6 +56,7 @@ const CONTRACT_WITHDRAW_BID: &str = "withdraw_bid.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 const CONTRACT_REDELEGATE: &str = "redelegate.wasm";
+const DO_NOTHING_WASM: &str = "do_nothing.wasm";
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE + 1000;
 
@@ -3562,6 +3564,16 @@ fn should_continue_auction_state_from_release_1_4_x() {
     assert!(unbond_list[1].new_validator().is_none());
     assert!(unbond_list[2].new_validator().is_none());
 
+    let accounts = vec![*BID_ACCOUNT_1_ADDR, *BID_ACCOUNT_2_ADDR, *DELEGATOR_1_ADDR];
+
+    for legacy_account in accounts {
+        let do_nothing_request =
+            ExecuteRequestBuilder::standard(legacy_account, DO_NOTHING_WASM, runtime_args! {})
+                .build();
+
+        builder.exec(do_nothing_request).expect_success().commit();
+    }
+
     let delegator_1_undelegate_purse = builder
         .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have account")
@@ -3755,6 +3767,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     assert!(unbond_list[1].new_validator().is_none());
     assert!(unbond_list[2].new_validator().is_none());
 
+    let do_nothing_request =
+        ExecuteRequestBuilder::standard(*BID_ACCOUNT_1_ADDR, DO_NOTHING_WASM, runtime_args! {})
+            .build();
+
+    builder.exec(do_nothing_request).expect_success().commit();
+
     let delegator_1_undelegate_purse = builder
         .get_contract_by_account_hash(*BID_ACCOUNT_1_ADDR)
         .expect("should have account")
@@ -3773,6 +3791,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
         delegator_1_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
     );
 
+    let do_nothing_request =
+        ExecuteRequestBuilder::standard(*BID_ACCOUNT_2_ADDR, DO_NOTHING_WASM, runtime_args! {})
+            .build();
+
+    builder.exec(do_nothing_request).expect_success().commit();
+
     let delegator_2_undelegate_purse = builder
         .get_contract_by_account_hash(*BID_ACCOUNT_2_ADDR)
         .expect("should have account")
@@ -3790,6 +3814,12 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
         delegator_2_purse_balance_post_step,
         delegator_2_purse_balance_pre_step + U512::from(UNDELEGATE_AMOUNT_1)
     );
+
+    let do_nothing_request =
+        ExecuteRequestBuilder::standard(*DELEGATOR_1_ADDR, DO_NOTHING_WASM, runtime_args! {})
+            .build();
+
+    builder.exec(do_nothing_request).expect_success().commit();
 
     let delegator_3_undelegate_purse = builder
         .get_contract_by_account_hash(*DELEGATOR_1_ADDR)

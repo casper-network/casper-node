@@ -1,5 +1,6 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::Error;
 use casper_types::{contracts::AccountHash, RuntimeArgs};
@@ -12,7 +13,6 @@ const UNKNOWN_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 fn should_run_ee_532_get_uref_regression_test() {
     // This test runs a contract that's after every call extends the same key with
     // more data
-
     let exec_request = ExecuteRequestBuilder::standard(
         UNKNOWN_ADDR,
         CONTRACT_EE_532_REGRESSION,

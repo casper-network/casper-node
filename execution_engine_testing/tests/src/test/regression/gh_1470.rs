@@ -20,8 +20,8 @@ use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemConfig, URef,
-    WasmConfig, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemConfig,
+    URef, WasmConfig, U512,
 };
 
 use crate::lmdb_fixture;
@@ -774,10 +774,6 @@ fn should_add_bid_after_major_bump() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
-
     let add_bid_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
@@ -791,6 +787,10 @@ fn should_add_bid_after_major_bump() {
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
+
+    let _default_account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
 }
 
 #[ignore]
@@ -823,10 +823,6 @@ fn should_add_bid_after_minor_bump() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
-
     let add_bid_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_ADD_BID,
@@ -840,6 +836,10 @@ fn should_add_bid_after_minor_bump() {
     .build();
 
     builder.exec(add_bid_request).expect_success().commit();
+
+    let _default_account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
 }
 
 #[ignore]
@@ -869,10 +869,6 @@ fn should_wasm_transfer_after_major_bump() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
-
     let wasm_transfer = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -885,6 +881,10 @@ fn should_wasm_transfer_after_major_bump() {
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();
+
+    let _default_account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
 }
 
 #[ignore]
@@ -917,10 +917,6 @@ fn should_wasm_transfer_after_minor_bump() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
         .expect_upgrade_success();
 
-    let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have default account");
-
     let wasm_transfer = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
@@ -933,6 +929,10 @@ fn should_wasm_transfer_after_minor_bump() {
     .build();
 
     builder.exec(wasm_transfer).expect_success().commit();
+
+    let _default_account = builder
+        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
 }
 
 #[ignore]

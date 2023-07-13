@@ -290,7 +290,7 @@ impl TryFrom<StoredValue> for AddressableEntity {
         match stored_value {
             StoredValue::AddressableEntity(contract) => Ok(contract),
             _ => Err(TypeMismatch::new(
-                "Contract".to_string(),
+                "AddressableEntity".to_string(),
                 stored_value.type_name(),
             )),
         }

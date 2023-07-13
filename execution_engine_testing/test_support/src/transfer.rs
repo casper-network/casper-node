@@ -85,24 +85,9 @@ pub fn create_test_purses(
     builder.exec(exec_request).expect_success().commit();
 
     // Return creates purses for given account by filtering named keys
-    let query_result = builder
-        .query(None, Key::Account(source), &[])
-        .expect("should query target");
-
-    let account = query_result
-        .as_cl_value()
-        .unwrap_or_else(|| panic!("result should be account but received {:?}", query_result));
-
-    let contract_hash: ContractHash =
-        CLValue::into_t(account.clone()).expect("must convert to contract hash");
-
-    let query_result = builder
-        .query(None, contract_hash.into(), &[])
-        .expect("should query target");
-
-    let contract = query_result
-        .as_contract()
-        .unwrap_or_else(|| panic!("result should be contract but received {:?}", query_result));
+    let contract = builder
+        .get_contract_by_account_hash(source)
+        .expect("must have contract under this account hash");
 
     (0..total_purses)
         .map(|index| {

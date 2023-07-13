@@ -5,12 +5,17 @@ use casper_storage::global_state::{
     storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
+use crate::ACCOUNT_WASM_ADDR;
+use casper_types::contracts::{
+    ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
+};
 use casper_types::{
-    contracts::AccountHash, AddressableEntity, CLValue, ContractHash, ContractPackage,
-    ContractPackageHash, ContractWasm, ContractWasmHash, Key, Motes, StoredValue,
-    StoredValueTypeMismatch, URef,
+    contracts::AccountHash, AccessRights, AddressableEntity, CLValue, ContractHash,
+    ContractPackage, ContractPackageHash, ContractWasm, ContractWasmHash, EntryPoints, Key, Motes,
+    Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef,
 };
 
+use crate::core::execution::AddressGenerator;
 use crate::core::{
     engine_state::{ChecksumRegistry, SystemContractRegistry},
     execution,
@@ -33,6 +38,7 @@ pub trait TrackingCopyExt<R> {
     fn get_contract_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
@@ -47,6 +53,7 @@ pub trait TrackingCopyExt<R> {
     fn read_contract_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
@@ -133,10 +140,11 @@ where
                     .into_hash()
                     .map(|addr| ContractHash::new(addr))
                     .expect("must convert to contract hash");
+
                 Ok(contract_hash)
             }
             Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("Account".to_string(), other.type_name()),
+                StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
             )),
             None => Err(execution::Error::KeyNotFound(account_key)),
         }
@@ -145,6 +153,7 @@ where
     fn get_contract_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error> {
         let account_key = Key::Account(account_hash);
@@ -154,10 +163,62 @@ where
                 let contract_key = CLValue::into_t::<Key>(contract_key_as_cl_value)?;
                 contract_key
             }
+            Some(StoredValue::Account(account)) => {
+                let mut generator =
+                    AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
+
+                let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
+                let contract_hash = ContractHash::new(generator.new_hash_address());
+                let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
+
+                let entry_points = EntryPoints::new();
+
+                let entity = AddressableEntity::new(
+                    contract_package_hash,
+                    contract_wasm_hash,
+                    account.named_keys().clone(),
+                    entry_points,
+                    protocol_version,
+                    account.main_purse(),
+                    account.associated_keys().clone(),
+                    account.action_thresholds().clone(),
+                );
+
+                let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
+
+                let contract_package = {
+                    let mut contract_package = ContractPackage::new(
+                        access_key,
+                        ContractVersions::default(),
+                        DisabledVersions::default(),
+                        Groups::default(),
+                        ContractPackageStatus::Locked,
+                        ContractPackageKind::Account(account_hash),
+                    );
+                    contract_package
+                        .insert_contract_version(protocol_version.value().major, contract_hash);
+                    contract_package
+                };
+
+                let contract_key: Key = contract_hash.into();
+
+                self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
+                self.write(contract_package_hash.into(), contract_package.into());
+
+                let contract_by_account = match CLValue::from_t(contract_key) {
+                    Ok(cl_value) => cl_value,
+                    Err(error) => return Err(execution::Error::CLValue(error)),
+                };
+
+                self.write(account_key, StoredValue::CLValue(contract_by_account));
+
+                return Ok(entity);
+            }
+
             Some(other) => {
                 return Err(execution::Error::TypeMismatch(
-                    StoredValueTypeMismatch::new("Key".to_string(), other.type_name()),
-                ))
+                    StoredValueTypeMismatch::new("KeyFoo1".to_string(), other.type_name()),
+                ));
             }
             None => return Err(execution::Error::KeyNotFound(account_key)),
         };
@@ -194,9 +255,10 @@ where
     fn read_contract_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error> {
-        self.get_contract_by_account_hash(correlation_id, account_hash)
+        self.get_contract_by_account_hash(correlation_id, protocol_version, account_hash)
     }
 
     fn get_purse_balance_key(
@@ -288,10 +350,20 @@ where
         contract_hash: ContractHash,
     ) -> Result<AddressableEntity, Self::Error> {
         let key = contract_hash.into();
+
         match self.read(correlation_id, &key).map_err(Into::into)? {
-            Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
+            Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
+            Some(StoredValue::Contract(contract)) => {
+                let contract_key: Key = contract_hash.into();
+                let entity: AddressableEntity = contract.into();
+                self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
+                Ok(entity)
+            }
             Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
+                StoredValueTypeMismatch::new(
+                    "AddressableEntity or Contract".to_string(),
+                    other.type_name(),
+                ),
             )),
             None => Err(execution::Error::KeyNotFound(key)),
         }

@@ -51,6 +51,7 @@ use casper_storage::{
         },
     },
 };
+use casper_types::contracts::Contract;
 use casper_types::{
     bytesrepr::{self, FromBytes},
     contracts::AccountHash,
@@ -751,6 +752,9 @@ where
         let maybe_exec_results = self
             .engine_state
             .run_execute(CorrelationId::new(), exec_request);
+
+        println!("{:?}", maybe_exec_results);
+
         assert!(maybe_exec_results.is_ok());
         // Parse deploy results
         let execution_results = maybe_exec_results.as_ref().unwrap();
@@ -1155,6 +1159,18 @@ where
             .expect("should have contract value");
 
         if let StoredValue::AddressableEntity(contract) = contract_value {
+            Some(contract)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+        let contract_value: StoredValue = self
+            .query(None, contract_hash.into(), &[])
+            .expect("should have contract value");
+
+        if let StoredValue::Contract(contract) = contract_value {
             Some(contract)
         } else {
             None

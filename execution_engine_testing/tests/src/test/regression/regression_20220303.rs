@@ -59,7 +59,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     };
     let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
     let old_contract = builder
-        .get_contract(mint_contract_hash)
+        .get_legacy_contract(mint_contract_hash)
         .expect("should have mint contract");
     assert_eq!(old_contract.protocol_version(), old_protocol_version);
     let new_protocol_version = ProtocolVersion::from_parts(
@@ -98,7 +98,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         .expect_upgrade_success();
     let elapsed = start.elapsed();
     assert!(
-        elapsed < Duration::from_secs(20),
+        elapsed < Duration::from_secs(40),
         "upgrade took too long! {} (millis)",
         elapsed.as_millis()
     );

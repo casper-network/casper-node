@@ -3,7 +3,7 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
     contracts::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
-    CLValueError, Key, PublicKey, RuntimeArgs, StoredValue, URef, U512,
+    CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::core::{
@@ -218,6 +218,7 @@ impl TransferRuntimeArgsBuilder {
     fn resolve_transfer_target_mode<R>(
         &mut self,
         correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
     where
@@ -261,10 +262,11 @@ impl TransferRuntimeArgsBuilder {
 
         self.to = Some(account_hash);
 
-        match tracking_copy
-            .borrow_mut()
-            .get_contract_by_account_hash(correlation_id, account_hash)
-        {
+        match tracking_copy.borrow_mut().get_contract_by_account_hash(
+            correlation_id,
+            protocol_version,
+            account_hash,
+        ) {
             Ok(contract) => Ok(TransferTargetMode::PurseExists(
                 contract.main_purse().with_access_rights(AccessRights::ADD),
             )),
@@ -314,6 +316,7 @@ impl TransferRuntimeArgsBuilder {
     pub(crate) fn transfer_target_mode<R>(
         &mut self,
         correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
     where
@@ -324,7 +327,7 @@ impl TransferRuntimeArgsBuilder {
         if mode != TransferTargetMode::Unknown {
             return Ok(mode);
         }
-        match self.resolve_transfer_target_mode(correlation_id, tracking_copy) {
+        match self.resolve_transfer_target_mode(correlation_id, protocol_version, tracking_copy) {
             Ok(mode) => {
                 self.transfer_target_mode = mode;
                 Ok(mode)
@@ -338,6 +341,7 @@ impl TransferRuntimeArgsBuilder {
         mut self,
         from: &AddressableEntity,
         correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
     where
@@ -346,13 +350,16 @@ impl TransferRuntimeArgsBuilder {
     {
         let to = self.to;
 
-        let target_uref =
-            match self.resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))? {
-                TransferTargetMode::PurseExists(uref) => uref,
-                _ => {
-                    return Err(Error::reverter(ApiError::Transfer));
-                }
-            };
+        let target_uref = match self.resolve_transfer_target_mode(
+            correlation_id,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+        )? {
+            TransferTargetMode::PurseExists(uref) => uref,
+            _ => {
+                return Err(Error::reverter(ApiError::Transfer));
+            }
+        };
 
         let source_uref =
             self.resolve_source_uref(from, correlation_id, Rc::clone(&tracking_copy))?;

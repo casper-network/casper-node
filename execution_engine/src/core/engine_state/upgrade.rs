@@ -3,15 +3,23 @@ use std::{cell::RefCell, fmt, rc::Rc};
 
 use thiserror::Error;
 
+use crate::ACCOUNT_WASM_ADDR;
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
-use casper_types::contracts::ContractPackageKind;
-use casper_types::{
-    bytesrepr::{self},
-    contracts::{ActionThresholds, AssociatedKeys},
-    system::SystemContractType,
-    AddressableEntity, ContractHash, Digest, Key, ProtocolVersion, StoredValue, URef,
+use casper_types::contracts::{
+    ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, NamedKeys,
+    Weight,
 };
 
+use casper_types::{
+    bytesrepr::{self},
+    contracts::{ActionThresholds, AssociatedKeys, Groups},
+    system::SystemContractType,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasm, ContractWasmHash, Digest, EntryPoints, Key, Phase, ProtocolVersion, PublicKey,
+    StoredValue, URef, U512,
+};
+
+use crate::core::execution::AddressGenerator;
 use crate::core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy};
 
 /// Represents a successfully executed upgrade.
@@ -57,6 +65,8 @@ pub enum ProtocolUpgradeError {
     /// Found unexpected variant of a stored value.
     #[error("Unexpected stored value variant")]
     UnexpectedStoredValueVariant,
+    #[error("{0}")]
+    CLValue(String),
 }
 
 impl From<bytesrepr::Error> for ProtocolUpgradeError {
@@ -139,17 +149,18 @@ where
         let mut contract =
             self.retrieve_system_contract(correlation_id, contract_hash, system_contract_type)?;
 
-        let is_major_bump = self
+        let _is_major_bump = self
             .old_protocol_version
             .check_next_version(&self.new_protocol_version)
             .is_major_version();
 
-        let entry_points_unchanged = *contract.entry_points() == entry_points;
-        if entry_points_unchanged && !is_major_bump {
-            // We don't need to do anything if entry points are unchanged, or there's no major
-            // version bump.
-            return Ok(());
-        }
+        let _entry_points_unchanged = *contract.entry_points() == entry_points;
+        // if entry_points_unchanged && !is_major_bump {
+        //     // We don't need to do anything if entry points are unchanged, or there's no major
+        //     // version bump.
+        //
+        //     return Ok(());
+        // }
 
         let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
@@ -241,5 +252,91 @@ where
                 ));
             }
         }
+    }
+
+    pub(crate) fn migrate_system_account(
+        &self,
+        pre_state_hash: Digest,
+    ) -> Result<(), ProtocolUpgradeError> {
+        let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
+
+        let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
+        let contract_hash = ContractHash::new(address_generator.new_hash_address());
+        let contract_package_hash = ContractPackageHash::new(address_generator.new_hash_address());
+
+        let contract_wasm = ContractWasm::new(vec![]);
+
+        let account_hash = PublicKey::System.to_account_hash();
+        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+
+        let main_purse = {
+            let purse_addr = address_generator.new_hash_address();
+            let balance_cl_value = CLValue::from_t(U512::zero())
+                .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
+
+            self.tracking_copy.borrow_mut().write(
+                Key::Balance(purse_addr),
+                StoredValue::CLValue(balance_cl_value),
+            );
+
+            let purse_cl_value = CLValue::unit();
+            let purse_uref = URef::new(purse_addr, AccessRights::READ_ADD_WRITE);
+
+            self.tracking_copy
+                .borrow_mut()
+                .write(Key::URef(purse_uref), StoredValue::CLValue(purse_cl_value));
+            purse_uref
+        };
+
+        let contract = AddressableEntity::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            NamedKeys::default(),
+            EntryPoints::new(),
+            self.new_protocol_version,
+            main_purse,
+            associated_keys,
+            ActionThresholds::default(),
+        );
+
+        let access_key = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
+
+        let contract_package = {
+            let mut contract_package = ContractPackage::new(
+                access_key,
+                ContractVersions::default(),
+                DisabledVersions::default(),
+                Groups::default(),
+                ContractPackageStatus::default(),
+                ContractPackageKind::Account(account_hash),
+            );
+            contract_package
+                .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
+            contract_package
+        };
+
+        self.tracking_copy.borrow_mut().write(
+            contract_wasm_hash.into(),
+            StoredValue::ContractWasm(contract_wasm),
+        );
+        self.tracking_copy.borrow_mut().write(
+            contract_hash.into(),
+            StoredValue::AddressableEntity(contract),
+        );
+        self.tracking_copy.borrow_mut().write(
+            contract_package_hash.into(),
+            StoredValue::ContractPackage(contract_package),
+        );
+
+        let contract_key: Key = contract_hash.into();
+        let contract_by_account = CLValue::from_t(contract_key)
+            .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
+
+        self.tracking_copy.borrow_mut().write(
+            Key::Account(account_hash),
+            StoredValue::CLValue(contract_by_account),
+        );
+
+        Ok(())
     }
 }
