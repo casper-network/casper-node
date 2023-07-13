@@ -1,4 +1,19 @@
-//! A juliet-based fizzbuzz server.
+//! A juliet-based fizzbuzz server and client.
+//!
+//! To run this example, in one terminal, launch the server:
+//!
+//! ```
+//! cargo run --example fizzbuzz --features tracing -- server
+//! ```
+//!
+//! Then, in a second terminal launch the client:
+//!
+//! ```
+//! cargo run --example fizzbuzz --features tracing
+//! ```
+//!
+//! You should [Fizz buzz](https://en.wikipedia.org/wiki/Fizz_buzz) solutions being calculated on
+//! the server side and sent back.
 
 use std::{fmt::Write, net::SocketAddr, time::Duration};
 
@@ -71,7 +86,7 @@ async fn main() {
         let (reader, writer) = remote_server.into_split();
         let (client, mut server) = rpc_builder.build(reader, writer);
 
-        // We are not using the server functionality, but it still as to run.
+        // We are not using the server functionality, but still need to run it for IO reasons.
         tokio::spawn(async move {
             if let Err(err) = server.next_request().await {
                 error!(%err, "server read error");
@@ -102,6 +117,7 @@ async fn main() {
     }
 }
 
+/// Handles a incoming client connection.
 async fn handle_client<const N: usize>(
     addr: SocketAddr,
     mut client: TcpStream,
@@ -133,6 +149,7 @@ async fn handle_client<const N: usize>(
     drop(client);
 }
 
+/// Handles a single request made by a client (on the server).
 async fn handle_request(incoming_request: IncomingRequest) {
     let processing_time = rand::thread_rng().gen_range(5..20) * Duration::from_millis(100);
     tokio::time::sleep(processing_time).await;

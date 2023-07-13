@@ -6,7 +6,18 @@
 //!
 //! ## Usage
 //!
-//! TBW
+//! An instance of [`JulietProtocol<N>`] must be created using [`JulietProtocol<N>::builder`], the
+//! resulting builder can be used to fine-tune the configuration of the given protocol. The
+//! parameter `N` denotes the number of valid channels, which must be set at compile time. See the
+//! types documentation for more details.
+//!
+//! ## Efficiency
+//!
+//! In general, all bulky data used in the protocol is as zero-copy as possible, for example large
+//! messages going out in multiple frames will still share the one original payload buffer passed in
+//! at construction. The "exception" to this is the re-assembly of multi-frame messages, which
+//! causes fragments to be copied once to form a continguous byte sequence for the payload to avoid
+//! memory-exhaustion attacks based on the semtantics of the underlying [`bytes::BytesMut`].
 
 mod multiframe;
 mod outgoing_message;
@@ -41,12 +52,26 @@ const UNKNOWN_ID: Id = Id::new(0);
 /// A parser/state machine that processes an incoming stream and is able to construct messages to
 /// send out.
 ///
-/// This type does not handle IO, rather it expects a growing [`BytesMut`] buffer to be passed in,
-/// containing incoming data. `N` denotes the number of valid channels, which should be fixed and
-/// agreed upon by both peers prior to initialization.
+/// `N` denotes the number of valid channels, which should be fixed and agreed upon by both peers
+/// prior to initialization.
 ///
-/// Various methods for creating produce [`OutgoingMessage`] values, these should be converted into
-/// frames (via [`OutgoingMessage::frames()`]) and the resulting frames sent to the peer.
+/// ## Input
+///
+/// This type does not handle IO, rather it expects a growing [`BytesMut`] buffer to be passed in,
+/// containing incoming data, using the [`JulietProtocol::process_incoming`] method.
+///
+/// ## Output
+///
+/// Multiple methods create [`OutgoingMessage`] values:
+///
+/// * [`JulietProtocol::create_request`]
+/// * [`JulietProtocol::create_response`]
+/// * [`JulietProtocol::cancel_request`]
+/// * [`JulietProtocol::cancel_response`]
+/// * [`JulietProtocol::custom_error`]
+///
+/// Their return types are usually converted into frames via [`OutgoingMessage::frames()`] and need
+/// to be sent to the peer.
 #[derive(Debug)]
 pub struct JulietProtocol<const N: usize> {
     /// Bi-directional channels.
@@ -62,8 +87,8 @@ pub struct JulietProtocol<const N: usize> {
 /// # Note
 ///
 /// Typically a single instance of the [`ProtocolBuilder`] can be kept around in an application
-/// handling multiple connections, as its `build()` method can be reused for every new connection
-/// instance.
+/// handling multiple connections, as its [`ProtocolBuilder::build()`] method can be reused for
+/// every new connection instance.
 #[derive(Debug)]
 pub struct ProtocolBuilder<const N: usize> {
     /// Configuration for every channel.
@@ -271,12 +296,15 @@ pub enum CompletedRead {
 ///
 /// A correct implementation of a client should never encounter this, thus simply unwrapping every
 /// instance of this as part of a `Result<_, LocalProtocolViolation>` is usually a valid choice.
+///
+/// Higher level layers like [`rpc`] should make it impossible to encounter
+/// [`LocalProtocolViolation`]s.
 #[derive(Copy, Clone, Debug, Error)]
 pub enum LocalProtocolViolation {
     /// A request was not sent because doing so would exceed the request limit on channel.
     ///
     /// Wait for addtional requests to be cancelled or answered. Calling
-    /// [`JulietProtocol::allowed_to_send_request()`] before hand is recommended.
+    /// [`JulietProtocol::allowed_to_send_request()`] beforehand is recommended.
     #[error("sending would exceed request limit")]
     WouldExceedRequestLimit,
     /// The channel given does not exist.
@@ -285,11 +313,14 @@ pub enum LocalProtocolViolation {
     #[error("invalid channel")]
     InvalidChannel(ChannelId),
     /// The given payload exceeds the configured limit.
+    ///
+    /// See [`ChannelConfiguration::max_request_payload_size`] and
+    /// [`ChannelConfiguration::max_response_payload_size`] for details.
     #[error("payload exceeds configured limit")]
     PayloadExceedsLimit,
     /// The given error payload exceeds a single frame.
     ///
-    /// Error payloads may not span multiple frames. Short the error payload or increase frame size.
+    /// Error payloads may not span multiple frames, shorten the payload or increase frame size.
     #[error("error payload would be multi-frame")]
     ErrorPayloadIsMultiFrame,
 }
@@ -321,8 +352,6 @@ macro_rules! log_frame {
 
 impl<const N: usize> JulietProtocol<N> {
     /// Creates a new juliet protocol builder instance.
-    ///
-    /// All channels will initially be set to upload limits using `default_max_payload`.
     ///
     /// # Panics
     ///
@@ -556,8 +585,8 @@ impl<const N: usize> JulietProtocol<N> {
     ///
     /// * [`Outcome::Success`] indicates `process_incoming` should be called again as early as
     ///   possible, since additional messages may already be contained in `buffer`.
-    /// * [`Outcome::Incomplete(n)`] tells the caller to not call `process_incoming` again before at
-    ///   least `n` additional bytes have been added to bufer.
+    /// * [`Outcome::Incomplete`] tells the caller to not call `process_incoming` again before at
+    ///   least `n` additional bytes have been added to buffer.
     /// * [`Outcome::Fatal`] indicates that the remote peer violated the protocol, the returned
     ///   [`Header`] should be attempted to be sent to the peer before the connection is being
     ///   closed.
@@ -567,6 +596,10 @@ impl<const N: usize> JulietProtocol<N> {
     ///
     /// Any successful frame read will cause `buffer` to be advanced by the length of the frame,
     /// thus eventually freeing the data if not held elsewhere.
+    ///
+    /// **Important**: This functions `Err` value is an [`OutgoingMessage`] to be sent to the peer.
+    /// It must be the final message sent and should be sent as soon as possible, with the
+    /// connection being close afterwards.
     pub fn process_incoming(
         &mut self,
         buffer: &mut BytesMut,

@@ -143,13 +143,14 @@ pub struct FrameIter {
 impl FrameIter {
     /// Returns the next frame to send.
     ///
-    /// Will return `Some(self)` is there are additional frames to send, `None` otherwise.
+    /// Will return the next frame, and `Some(self)` is there are additional frames to send to
+    /// complete the message, `None` otherwise.
     ///
     /// # Note
     ///
     /// While different [`OutgoingMessage`]s can have their send order mixed or interspersed, a
-    /// caller MUST NOT send [`OutgoingFrame`]s in any order but the one produced by this method.
-    /// In other words, reorder messages, but not frames within a message.
+    /// caller MUST NOT send [`OutgoingFrame`]s of a single messagw in any order but the one
+    /// produced by this method. In other words, reorder messages, but not frames within a message.
     pub fn next_owned(mut self, max_frame_size: u32) -> (OutgoingFrame, Option<Self>) {
         if let Some(ref payload) = self.msg.payload {
             let mut payload_remaining = payload.len() - self.bytes_processed;
@@ -194,8 +195,7 @@ impl FrameIter {
 
 /// A single frame to be sent.
 ///
-/// An [`OutgoingFrame`] implements [`bytes::Buf`], which will yield the bytes necessary to send it
-/// across the wire to a peer.
+/// Implements [`bytes::Buf`], which will yield the bytes to send it across the wire to a peer.
 #[derive(Debug)]
 #[repr(transparent)]
 #[must_use]

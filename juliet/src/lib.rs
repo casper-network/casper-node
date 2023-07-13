@@ -1,10 +1,24 @@
-//! A `juliet` protocol implementation.
-//!
-//! This crate implements the juliet multiplexing protocol as laid out in the [juliet
-//! RFC](https://github.com/marc-casperlabs/juliet-rfc/blob/master/juliet.md). It aims to be a
-//! secure, simple, easy to verify/review implementation that is still reasonably performant.
+#![doc = include_str!("../README.md")]
 
-mod header;
+//!
+//!
+//! ## General usage
+//!
+//! This crate is split into three layers, whose usage depends on an applications specific usecase.
+//! At the very core sits the [`protocol`] module, which is a side-effect free implementation of the
+//! protocol. The caller is responsible for all IO flowing in and out, but it instructed by the
+//! state machine what to do next.
+//!
+//! If there is no need to roll custom IO, the [`io`] layer provides a complete `tokio`-based
+//! solution that operates on [`tokio::io::AsyncRead`] and [`tokio::io::AsyncWrite`]. It handles
+//! multiplexing input, output and scheduling, as well as buffering messages using a wait and a
+//! ready queue.
+//!
+//! Most users of the library will likely use the highest level layer, [`rpc`] instead. It sits on
+//! top the raw [`io`] layer and wraps all the functionality in safe Rust types, making misuse of
+//! the underlying protocol hard, if not impossible.
+
+pub mod header;
 pub mod io;
 pub mod protocol;
 pub mod rpc;

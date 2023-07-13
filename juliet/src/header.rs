@@ -1,4 +1,7 @@
 //! `juliet` header parsing and serialization.
+//!
+//! This module is typically only used by the protocol implementation (see [`crate::protocol`]), but
+//! may be of interested to those writing low level tooling.
 use std::fmt::{Debug, Display};
 
 use bytemuck::{Pod, Zeroable};

@@ -1,7 +1,7 @@
 //! Variable length integer encoding.
 //!
 //! This module implements the variable length encoding of 32 bit integers, as described in the
-//! juliet RFC.
+//! juliet RFC, which is 1-5 bytes in length for any `u32`.
 
 use std::{
     fmt::Debug,
@@ -56,7 +56,7 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
 /// An encoded varint32.
 ///
 /// Internally these are stored as six byte arrays to make passing around convenient. Since the
-/// maximum length a 32 bit varint can posses is 5 bytes, the 6th bytes is used to record the
+/// maximum length a 32 bit varint can posses is 5 bytes, the 6th byte is used to record the
 /// length.
 #[repr(transparent)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -82,7 +82,7 @@ impl Varint32 {
     /// The maximum encoded length of a [`Varint32`].
     pub const MAX_LEN: usize = 5;
 
-    /// Encode a 32-bit integer to variable length.
+    /// Encodes a 32-bit integer to variable length.
     pub const fn encode(mut value: u32) -> Self {
         let mut output = [0u8; 6];
         let mut count = 0;
