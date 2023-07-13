@@ -89,7 +89,7 @@ struct Preamble {
 impl Display for Preamble {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.header, f)?;
-        if self.payload_length.is_sentinel() {
+        if !self.payload_length.is_sentinel() {
             write!(f, " [l={}]", self.payload_length.decode())?;
         }
         Ok(())
@@ -203,12 +203,18 @@ pub struct OutgoingFrame(Chain<Cursor<Preamble>, Bytes>);
 
 impl Display for OutgoingFrame {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "<{} {}>",
-            self.0.first_ref().get_ref(),
-            crate::util::tracing_support::PayloadFormat(self.0.last_ref())
-        )
+        write!(f, "<{}", self.0.first_ref().get_ref(),)?;
+
+        let payload = self.0.last_ref();
+
+        if !payload.as_ref().is_empty() {
+            Display::fmt(
+                &crate::util::tracing_support::PayloadFormat(self.0.last_ref()),
+                f,
+            )?;
+        }
+
+        f.write_str(">")
     }
 }
 
