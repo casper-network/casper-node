@@ -164,7 +164,7 @@ impl reactor::Reactor for Reactor {
             ProtocolVersion::from_parts(1, 0, 0),
             EraId::default(),
             "test",
-            MAX_TTL,
+            MAX_TTL.into(),
             RECENT_ERA_COUNT,
             Some(registry),
             false,

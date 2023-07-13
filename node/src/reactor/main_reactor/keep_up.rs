@@ -6,7 +6,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::{
@@ -22,7 +22,7 @@ use crate::{
     },
     reactor::main_reactor::{MainEvent, MainReactor},
     types::{
-        ActivationPoint, BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier,
+        ActivationPoint, BlockHash, GlobalStatesMetadata, MaxTtl, SyncLeap, SyncLeapIdentifier,
     },
     NodeRng,
 };
@@ -609,11 +609,11 @@ impl MainReactor {
                     return Ok(Some(SyncBackInstruction::GenesisSynced));
                 }
 
-                // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 12
+                // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 18
                 // hours we require sync back to see a contiguous / unbroken
-                // range of at least 12 hours worth of blocks. note however
-                // that we measure from the start of the active era
-                // (for consensus reasons), so this can be up to TTL + era length in practice
+                // range of at least 18 hours worth of blocks. note however
+                // that we measure from the start of the active era (for consensus reasons),
+                // so this can be up to TTL + era length in practice
                 if !self.sync_to_genesis {
                     if let Some(highest_switch_block_header) = self
                         .storage
@@ -621,10 +621,10 @@ impl MainReactor {
                         .map_err(|err| err.to_string())?
                         .last()
                     {
-                        if synced_to_ttl(
-                            highest_switch_block_header,
+                        let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
+                        if max_ttl.synced_to_ttl(
+                            highest_switch_block_header.timestamp(),
                             &highest_orphaned_block_header,
-                            self.chainspec.deploy_config.max_ttl,
                         )? {
                             return Ok(Some(SyncBackInstruction::TtlSynced));
                         }
@@ -682,128 +682,5 @@ impl MainReactor {
                 Err("KeepUp: storage is missing historical highest block sequence".to_string())
             }
         }
-    }
-}
-
-pub(crate) fn synced_to_ttl(
-    latest_switch_block_header: &BlockHeader,
-    highest_orphaned_block_header: &BlockHeader,
-    max_ttl: TimeDiff,
-) -> Result<bool, String> {
-    Ok(highest_orphaned_block_header.height() == 0
-        || is_timestamp_at_ttl(
-            latest_switch_block_header.timestamp(),
-            highest_orphaned_block_header.timestamp(),
-            max_ttl,
-        ))
-}
-
-fn is_timestamp_at_ttl(
-    latest_switch_block_timestamp: Timestamp,
-    lowest_block_timestamp: Timestamp,
-    max_ttl: TimeDiff,
-) -> bool {
-    lowest_block_timestamp < latest_switch_block_timestamp.saturating_sub(max_ttl)
-}
-
-#[cfg(test)]
-mod tests {
-    use std::str::FromStr;
-
-    use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff, Timestamp};
-
-    use crate::{
-        reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
-        types::Block,
-    };
-
-    const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
-    const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
-
-    #[test]
-    fn should_be_at_ttl() {
-        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
-        let lowest_block_timestamp = Timestamp::from_str("2010-06-10 00:00:00.000").unwrap();
-        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
-        assert!(is_timestamp_at_ttl(
-            latest_switch_block_timestamp,
-            lowest_block_timestamp,
-            max_ttl
-        ));
-    }
-
-    #[test]
-    fn should_not_be_at_ttl() {
-        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
-        let lowest_block_timestamp = Timestamp::from_str("2010-06-14 00:00:00.000").unwrap();
-        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
-        assert!(!is_timestamp_at_ttl(
-            latest_switch_block_timestamp,
-            lowest_block_timestamp,
-            max_ttl
-        ));
-    }
-
-    #[test]
-    fn should_detect_ttl_at_the_boundary() {
-        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
-        let lowest_block_timestamp = Timestamp::from_str("2010-06-12 23:59:59.999").unwrap();
-        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
-        assert!(is_timestamp_at_ttl(
-            latest_switch_block_timestamp,
-            lowest_block_timestamp,
-            max_ttl
-        ));
-
-        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
-        let lowest_block_timestamp = Timestamp::from_str("2010-06-13 00:00:00.000").unwrap();
-        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
-        assert!(!is_timestamp_at_ttl(
-            latest_switch_block_timestamp,
-            lowest_block_timestamp,
-            max_ttl
-        ));
-
-        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
-        let lowest_block_timestamp = Timestamp::from_str("2010-06-13 00:00:00.001").unwrap();
-        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
-        assert!(!is_timestamp_at_ttl(
-            latest_switch_block_timestamp,
-            lowest_block_timestamp,
-            max_ttl
-        ));
-    }
-
-    #[test]
-    fn should_detect_ttl_at_genesis() {
-        let mut rng = TestRng::new();
-
-        let latest_switch_block = Block::random_with_specifics(
-            &mut rng,
-            100.into(),
-            1000,
-            ProtocolVersion::default(),
-            true,
-            None,
-        );
-
-        let latest_orphaned_block = Block::random_with_specifics(
-            &mut rng,
-            0.into(),
-            0,
-            ProtocolVersion::default(),
-            true,
-            None,
-        );
-
-        assert_eq!(latest_orphaned_block.height(), 0);
-        assert_eq!(
-            synced_to_ttl(
-                latest_switch_block.header(),
-                latest_orphaned_block.header(),
-                MAX_TTL
-            ),
-            Ok(true)
-        );
     }
 }

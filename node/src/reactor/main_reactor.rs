@@ -1026,7 +1026,7 @@ impl reactor::Reactor for MainReactor {
             protocol_version,
             chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
-            chainspec.deploy_config.max_ttl,
+            chainspec.deploy_config.max_ttl.into(),
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,

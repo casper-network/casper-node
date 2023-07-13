@@ -71,7 +71,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, Timestamp, Transfer, Transform,
 };
 
 use crate::{
@@ -95,7 +95,7 @@ use crate::{
         BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
         BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
         DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
-        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
+        FinalizedBlock, LegacyDeploy, MaxTtl, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -215,7 +215,7 @@ pub struct Storage {
     #[data_size(skip)]
     metrics: Option<Metrics>,
     /// The maximum TTL of a deploy.
-    max_ttl: TimeDiff,
+    max_ttl: MaxTtl,
 }
 
 /// A storage component event.
@@ -360,7 +360,7 @@ impl Storage {
         protocol_version: ProtocolVersion,
         activation_era: EraId,
         network_name: &str,
-        max_ttl: TimeDiff,
+        max_ttl: MaxTtl,
         recent_era_count: u64,
         registry: Option<&Registry>,
         force_resync: bool,
@@ -1356,7 +1356,11 @@ impl Storage {
         let timestamp = match self.switch_block_era_id_index.keys().last() {
             Some(era_id) => self
                 .get_switch_block_header_by_era_id(&mut txn, *era_id)?
-                .map(|switch_block| switch_block.timestamp().saturating_sub(self.max_ttl))
+                .map(|switch_block| {
+                    switch_block
+                        .timestamp()
+                        .saturating_sub(self.max_ttl.value())
+                })
                 .unwrap_or_else(Timestamp::now),
             None => Timestamp::now(),
         };
