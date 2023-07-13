@@ -22,20 +22,20 @@ function main() {
     nctl-start node=10
     # 1. Wait for the genesis era to complete
     do_await_genesis_era_to_complete
-    # 2. Allow the chain to progress
-    do_await_era_change 1
-    # 3. Verify all nodes are in sync
+    # 2. Verify all nodes are in sync
     parallel_check_network_sync 1 10
-    # 4. Stop half of the validators
+    # 3. Stop half of the validators
     log_step "Stopping nodes 6-10"
     nctl-stop node=6
     nctl-stop node=7
     nctl-stop node=8
     nctl-stop node=9
     nctl-stop node=10
+    # 4. Assert that the chain actually stalled
+    assert_chain_stalled "30"
     # 5. Wait for a period longer than the dead air interval
     sleep_and_display_reactor_state '260.0'
-    # 6. Start 2 previously stopped validator node.
+    # 6. Start 2 previously stopped validator nodes.
     #    Now the network should have 7/10 active and start progressing.
     log_step "Starting nodes 6, 7"
     nctl-start node=6
