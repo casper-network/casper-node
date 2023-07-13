@@ -46,7 +46,7 @@ impl MultiframeReceiver {
     ///
     /// If a message payload matching the given header has been succesfully completed, both header
     /// and payload are consumed from the `buffer`, the payload being returned. If a starting or
-    /// intermediate segment was processed without completing the message, both are still consume,
+    /// intermediate segment was processed without completing the message, both are still consumed,
     /// but `None` is returned instead. This method will never consume more than one frame.
     ///
     /// On any error, [`Outcome::Err`] with a suitable message to return to the sender is returned.

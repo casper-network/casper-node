@@ -649,7 +649,7 @@ impl<const N: usize> JulietProtocol<N> {
                         return err_msg(header, ErrorKind::RequestLimitExceeded);
                     }
 
-                    if channel.incoming_requests.insert(header.id()) {
+                    if !channel.incoming_requests.insert(header.id()) {
                         return err_msg(header, ErrorKind::DuplicateRequest);
                     }
                     channel.increment_cancellation_allowance();
@@ -678,21 +678,8 @@ impl<const N: usize> JulietProtocol<N> {
                     }
                 }
                 Kind::RequestPl => {
-                    // First, we need to "gate" the incoming request; it only gets to bypass the request limit if it is already in progress:
+                    // Make a note whether or not we are continueing an existing request.
                     let is_new_request = channel.current_multiframe_receive.is_new_transfer(header);
-
-                    if is_new_request {
-                        // If we're in the ready state, requests must be eagerly rejected if
-                        // exceeding the limit.
-                        if channel.is_at_max_incoming_requests() {
-                            return err_msg(header, ErrorKind::RequestLimitExceeded);
-                        }
-
-                        // We also check for duplicate requests early to avoid reading them.
-                        if channel.incoming_requests.contains(&header.id()) {
-                            return err_msg(header, ErrorKind::DuplicateRequest);
-                        }
-                    };
 
                     let multiframe_outcome: Option<BytesMut> =
                         try_outcome!(channel.current_multiframe_receive.accept(
@@ -704,8 +691,15 @@ impl<const N: usize> JulietProtocol<N> {
                         ));
 
                     // If we made it to this point, we have consumed the frame. Record it.
+
                     if is_new_request {
-                        if channel.incoming_requests.insert(header.id()) {
+                        // Requests must be eagerly (first frame) rejected if exceeding the limit.
+                        if channel.is_at_max_incoming_requests() {
+                            return err_msg(header, ErrorKind::RequestLimitExceeded);
+                        }
+
+                        // We also check for duplicate requests early to avoid reading them.
+                        if !channel.incoming_requests.insert(header.id()) {
                             return err_msg(header, ErrorKind::DuplicateRequest);
                         }
                         channel.increment_cancellation_allowance();
