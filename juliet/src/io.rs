@@ -6,7 +6,23 @@
 //! layer to send messages across over multiple channels, without having to worry about frame
 //! multiplexing or request limits.
 //!
-//! See [`IoCore`] for more information about how to use this module.
+//! ## Usage
+//!
+//! Most, if not all functionality is provided by the [`IoCore<N, R, W>`] type, which constructed
+//! using an [`IoCoreBuilder`] (see [`IoCoreBuilder::new`]). Similarly to [`JulietProtocol<N>`] the
+//! `N` denotes the number of predefined channels.
+//!
+//! ## Incoming data
+//!
+//! Once instantiated, the [`IoCore`] **must** have its [`IoCore::next_event`] function called
+//! continuously, see its documentation for details. Doing so will also yield all incoming events
+//! and data.
+//!
+//! ## Outgoing data
+//!
+//! The [`RequestHandle`] provided by [`IoCoreBuilder::build`] is used to send requests to the peer.
+//! It should also be kept around even if no requests are sent, as dropping it is used to signal the
+//! [`IoCore`] to close the connection.
 
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -96,7 +112,10 @@ impl QueuedItem {
     }
 }
 
-/// [`IoCore`] error.
+/// [`IoCore`] event processing error.
+///
+/// A [`CoreError`] always indicates that the underlying [`IoCore`] has encountered a fatal error
+/// and no further communication should take part.
 #[derive(Debug, Error)]
 pub enum CoreError {
     /// Failed to read from underlying reader.
@@ -105,7 +124,7 @@ pub enum CoreError {
     /// Failed to write using underlying writer.
     #[error("write failed")]
     WriteFailed(#[source] io::Error),
-    /// Remote peer disconnecting due to error.
+    /// Remote peer will/has disconnect(ed), but sent us an error message before.
     #[error("remote peer sent error [channel {}/id {}]: {} (payload: {} bytes)",
         header.channel(),
         header.id(),
@@ -189,6 +208,8 @@ struct IoShared<const N: usize> {
 }
 
 /// Events produced by the IO layer.
+///
+/// Every event must be handled, see event details on how to do so.
 #[derive(Debug)]
 #[must_use]
 pub enum IoEvent {
@@ -196,10 +217,10 @@ pub enum IoEvent {
     ///
     /// Eventually a received request must be handled by one of the following:
     ///
-    /// * A response sent (through [`IoHandle::enqueue_response`]).
-    /// * A response cancellation sent (through [`IoHandle::enqueue_response_cancellation`]).
+    /// * A response sent (through [`Handle::enqueue_response`]).
+    /// * A response cancellation sent (through [`Handle::enqueue_response_cancellation`]).
     /// * The connection being closed, either regularly or due to an error, on either side.
-    /// * The reception of an [`IoEvent::RequestCancellation`] with the same ID and channel.
+    /// * The reception of an [`IoEvent::RequestCancelled`] with the same ID and channel.
     NewRequest {
         /// Channel the new request arrived on.
         channel: ChannelId,
@@ -269,7 +290,10 @@ impl<const N: usize> IoCoreBuilder<N> {
         self
     }
 
-    /// Builds a new [`IoCore`] with a single request handle.
+    /// Builds a new [`IoCore`] with a [`RequestHandle`].
+    ///
+    /// See [`IoCore::next_event`] for details on how to handle the core. The [`RequestHandle`] can
+    /// be used to send requests.
     pub fn build<R, W>(&self, reader: R, writer: W) -> (IoCore<N, R, W>, RequestHandle<N>) {
         let (sender, receiver) = mpsc::unbounded_channel();
 
@@ -313,10 +337,10 @@ where
     ///
     /// This is the central loop of the IO layer. It polls all underlying transports and reads/write
     /// if data is available, until enough processing has been done to produce an [`IoEvent`]. Thus
-    /// any application using the IO layer should loop over calling this function, or call
-    /// `[IoCore::into_stream]` to process it using the standard futures stream interface.
+    /// any application using the IO layer should loop over calling this function.
     ///
-    /// Polling of this function should continue until `Err(_)` or `Ok(None)` is returned.
+    /// Polling of this function must continue only until `Err(_)` or `Ok(None)` is returned,
+    /// indicating that the connection should be closed or has been closed.
     pub async fn next_event(&mut self) -> Result<Option<IoEvent>, CoreError> {
         loop {
             self.process_dirty_channels()?;
@@ -709,6 +733,13 @@ fn item_should_wait<const N: usize>(
 ///
 /// The handle is roughly three pointers in size and can be cloned at will. Dropping the last handle
 /// will cause the [`IoCore`] to shutdown and close the connection.
+///
+/// ## Sending requests
+///
+/// To send a request, a holder of this handle must first reserve a slot in the memory buffer of the
+/// [`IoCore`] using either [`RequestHandle::try_reserve_request`] or
+/// [`RequestHandle::reserve_request`], then [`RequestHandle::downgrade`] this request handle to a
+/// regular [`Handle`] and [`Handle::enqueue_request`] with the given [`RequestTicket`].
 #[derive(Clone, Debug)]
 pub struct RequestHandle<const N: usize> {
     /// Shared portion of the [`IoCore`], required for backpressuring onto clients.
@@ -722,6 +753,18 @@ pub struct RequestHandle<const N: usize> {
     next_io_id: Arc<AtomicU128>,
 }
 
+/// Simple [`IoCore`] handle.
+///
+/// Functions similarly to [`RequestHandle`], but has a no capability of creating new requests, as
+/// it lacks access to the internal [`IoId`] generator.
+///
+/// Like [`RequestHandle`], the existance of this handle will keep [`IoCore`] alive; dropping the
+/// last one will shut it down.
+///
+/// ## Usage
+///
+/// To send any sort of message, response, cancellation or error, use one of the `enqueue_*`
+/// methods. The [`io`] layer does some, but not complete bookkeeping, if a complete solution is required, use the [`rpc`](crate::rpc) layer instead.
 #[derive(Clone, Debug)]
 #[repr(transparent)]
 pub struct Handle {
@@ -743,15 +786,28 @@ pub enum EnqueueError {
     LocalProtocolViolation(#[from] LocalProtocolViolation),
 }
 
+/// A reserved slot in the memory buffer of [`IoCore`], on a specific channel.
+///
+/// Dropping the ticket will free up the slot again.
 #[derive(Debug)]
 pub struct RequestTicket {
+    /// Channel the slot is reserved in.
     channel: ChannelId,
+    /// The semaphore permit that makes it work.
     permit: OwnedSemaphorePermit,
+    /// Pre-allocated [`IoId`].
     io_id: IoId,
 }
 
+/// A failure to reserve a slot in the queue.
 pub enum ReservationError {
+    /// No buffer space available.
+    ///
+    /// The caller is free to retry later.
     NoBufferSpaceAvailable,
+    /// Connection closed.
+    ///
+    /// The [`IoCore`] has shutdown or is shutting down, it is no longer possible to reserve slots.
     Closed,
 }
 
@@ -792,6 +848,7 @@ impl<const N: usize> RequestHandle<N> {
             .ok()
     }
 
+    /// Downgrades a [`RequestHandle`] to a [`Handle`].
     #[inline(always)]
     pub fn downgrade(self) -> Handle {
         Handle {
@@ -805,6 +862,8 @@ impl Handle {
     ///
     /// Returns an [`IoId`] that can be used to refer to the request if successful. Returns the
     /// payload as an error if the underlying IO layer has been closed.
+    ///
+    /// See [`RequestHandle`] for details on how to obtain a [`RequestTicket`].
     #[inline]
     pub fn enqueue_request(
         &mut self,
