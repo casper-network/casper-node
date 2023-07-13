@@ -30,7 +30,8 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisError, ChainspecRegistry, DeployItem, EngineConfig, EngineState,
-        GenesisSuccess, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        GenesisSuccess, GetEraValidatorsError, SystemContractRegistry, UpgradeConfig,
+        UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -39,7 +40,9 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
+use casper_types::{
+    bytesrepr::Bytes, system::auction::EraValidators, EraId, ProtocolVersion, Timestamp,
+};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -653,6 +656,28 @@ impl ContractRuntime {
             activation_point,
             prune_batch_size,
         })
+    }
+
+    pub(crate) fn get_era_validators(
+        &mut self,
+        request: EraValidatorsRequest,
+    ) -> Result<EraValidators, GetEraValidatorsError> {
+        self.try_init_system_contract_registry_cache();
+
+        let system_contract_registry = self.system_contract_registry.clone();
+        // Increment the counter to track the amount of times GetEraValidators was
+        // requested.
+        let correlation_id = CorrelationId::new();
+        let start = Instant::now();
+        let era_validators = self.engine_state.get_era_validators(
+            correlation_id,
+            system_contract_registry,
+            request.into(),
+        );
+        self.metrics
+            .get_era_validators
+            .observe(start.elapsed().as_secs_f64());
+        era_validators
     }
 
     /// Commits a genesis request.

@@ -1735,17 +1735,6 @@ impl Storage {
             .transpose()
     }
 
-    /// Get the switch block for a specified era number in a read-only LMDB database transaction.
-    pub(crate) fn transactional_get_switch_block_header_by_era_id(
-        &self,
-        era_id: EraId,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        let mut txn = self.env.begin_ro_txn()?;
-        let ret = self.get_switch_block_header_by_era_id(&mut txn, era_id);
-        txn.commit()?;
-        ret
-    }
-
     /// Retrieves single switch block header by era ID by looking it up in the index and returning
     /// it.
     fn get_switch_block_header_by_era_id<Tx: Transaction>(

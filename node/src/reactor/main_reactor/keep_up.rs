@@ -1,3 +1,4 @@
+use casper_hashing::Digest;
 use either::Either;
 use std::{
     fmt::{Display, Formatter},
@@ -6,7 +7,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{EraId, ProtocolVersion, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -40,6 +41,8 @@ pub(super) enum KeepUpInstruction {
 enum SyncBackInstruction {
     Sync {
         parent_hash: BlockHash,
+        state_root_hash: Digest,
+        protocol_version: ProtocolVersion,
         era_id: EraId,
     },
     Syncing,
@@ -299,6 +302,8 @@ impl MainReactor {
                 }
                 SyncBackInstruction::Sync {
                     parent_hash,
+                    state_root_hash,
+                    protocol_version,
                     era_id,
                 } => {
                     if era_id.is_genesis() && !self.validator_matrix.has_era(&era_id) {
@@ -308,34 +313,24 @@ impl MainReactor {
                         // was just restarted. We might try to read the switch block of era 0 from
                         // our local storage and populate the validator matrix.
                         debug!("KeepUp: SyncBackInstruction: trying to saturate the validators for {era_id} from storage");
-                        match self
-                            .storage
-                            .transactional_get_switch_block_header_by_era_id(era_id)
-                        {
-                            Ok(maybe_switch_block) => {
-                                if let Some(switch_block) = maybe_switch_block {
-                                    if let Some(evw) = switch_block.next_era_validator_weights() {
-                                        self.validator_matrix.register_era_validator_weights(
-                                            EraValidatorWeights::new(
-                                                era_id,
-                                                evw.clone(),
-                                                self.validator_matrix.fault_tolerance_threshold(),
-                                            ),
-                                        );
-                                    } else {
-                                        warn!("KeepUp: SyncBackInstruction: switch block doesn't have next era validator weights");
-                                    };
-                                } else {
-                                    debug!(
-                                        "KeepUp: SyncBackInstruction: no switch block for {era_id}"
+
+                        let request = EraValidatorsRequest::new(state_root_hash, protocol_version);
+                        match self.contract_runtime.get_era_validators(request) {
+                            Ok(era_validators) => {
+                                if let Some(evw) = era_validators.get(&era_id.successor()) {
+                                    self.validator_matrix.register_era_validator_weights(
+                                        EraValidatorWeights::new(
+                                            era_id,
+                                            evw.clone(),
+                                            self.validator_matrix.fault_tolerance_threshold(),
+                                        ),
                                     );
+                                } else {
+                                    error!("KeepUp: no era validators in global state");
                                 }
                             }
                             Err(err) => {
-                                return Some(KeepUpInstruction::Fatal(format!(
-                                    "KeepUp: SyncBackInstruction: can't read switch block for {era_id}: {}",
-                                    err
-                                )))
+                                warn!(%err, %era_id, "KeepUp: unable to get era validators from contract runtime");
                             }
                         };
                     };
@@ -684,6 +679,8 @@ impl MainReactor {
                         );
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: parent_block_header.block_hash(),
+                            state_root_hash: *parent_block_header.state_root_hash(),
+                            protocol_version: parent_block_header.protocol_version(),
                             era_id: parent_block_header.era_id(),
                         }))
                     }
@@ -703,6 +700,8 @@ impl MainReactor {
                         };
                         Ok(Some(SyncBackInstruction::Sync {
                             parent_hash: *parent_hash,
+                            state_root_hash: *highest_orphaned_block_header.state_root_hash(),
+                            protocol_version: highest_orphaned_block_header.protocol_version(),
                             era_id,
                         }))
                     }
