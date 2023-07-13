@@ -72,6 +72,8 @@ impl MultiframeReceiver {
             "maximum frame size must be enough to hold header and varint"
         );
 
+        // TODO: Use tracing to log frames here.
+
         match self {
             MultiframeReceiver::Ready => {
                 // We have a new segment, which has a variable size.

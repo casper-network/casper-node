@@ -597,6 +597,11 @@ impl<const N: usize> JulietProtocol<N> {
                         buffer.advance(*preamble_end);
                         let payload = buffer.split_to(payload_length);
 
+                        #[cfg(feature = "tracing")]
+                        {
+                            use tracing::trace;
+                            trace!(%header, "received error");
+                        }
                         return Success(CompletedRead::ErrorReceived {
                             header,
                             data: Some(payload.freeze()),
@@ -629,6 +634,11 @@ impl<const N: usize> JulietProtocol<N> {
                     // incoming set. All we need to do now is to remove it from the buffer.
                     buffer.advance(Header::SIZE);
 
+                    #[cfg(feature = "tracing")]
+                    {
+                        use tracing::trace;
+                        trace!(%header, "received request");
+                    }
                     return Success(CompletedRead::NewRequest {
                         channel: header.channel(),
                         id: header.id(),
@@ -639,6 +649,11 @@ impl<const N: usize> JulietProtocol<N> {
                     if !channel.outgoing_requests.remove(&header.id()) {
                         return err_msg(header, ErrorKind::FictitiousRequest);
                     } else {
+                        #[cfg(feature = "tracing")]
+                        {
+                            use tracing::trace;
+                            trace!(%header, "received response");
+                        }
                         return Success(CompletedRead::ReceivedResponse {
                             channel: header.channel(),
                             id: header.id(),
@@ -683,10 +698,12 @@ impl<const N: usize> JulietProtocol<N> {
                     match multiframe_outcome {
                         Some(payload) => {
                             // Message is complete.
+                            let payload = payload.freeze();
+
                             return Success(CompletedRead::NewRequest {
                                 channel: header.channel(),
                                 id: header.id(),
-                                payload: Some(payload.freeze()),
+                                payload: Some(payload),
                             });
                         }
                         None => {
@@ -725,10 +742,12 @@ impl<const N: usize> JulietProtocol<N> {
                     match multiframe_outcome {
                         Some(payload) => {
                             // Message is complete.
+                            let payload = payload.freeze();
+
                             return Success(CompletedRead::ReceivedResponse {
                                 channel: header.channel(),
                                 id: header.id(),
-                                payload: Some(payload.freeze()),
+                                payload: Some(payload),
                             });
                         }
                         None => {
@@ -749,6 +768,12 @@ impl<const N: usize> JulietProtocol<N> {
                     // TODO: What to do with partially received multi-frame request?
                     // TODO: Actually remove from incoming set.
 
+                    #[cfg(feature = "tracing")]
+                    {
+                        use tracing::trace;
+                        trace!(%header, "received request cancellation");
+                    }
+
                     return Success(CompletedRead::RequestCancellation {
                         channel: header.channel(),
                         id: header.id(),
@@ -756,6 +781,12 @@ impl<const N: usize> JulietProtocol<N> {
                 }
                 Kind::CancelResp => {
                     if channel.outgoing_requests.remove(&header.id()) {
+                        #[cfg(feature = "tracing")]
+                        {
+                            use tracing::trace;
+                            trace!(%header, "received response cancellation");
+                        }
+
                         return Success(CompletedRead::ResponseCancellation {
                             channel: header.channel(),
                             id: header.id(),

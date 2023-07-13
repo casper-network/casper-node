@@ -11,6 +11,7 @@ use juliet::{
 };
 use rand::Rng;
 use tokio::net::{TcpListener, TcpStream};
+use tracing::{debug, error, info, warn};
 
 const SERVER_ADDR: &str = "127.0.0.1:12345";
 
@@ -18,6 +19,11 @@ const SERVER_ADDR: &str = "127.0.0.1:12345";
 async fn main() {
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::TRACE)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive("juliet=trace".parse().unwrap())
+                .add_directive("fizzbuzz=trace".parse().unwrap()),
+        )
         .init();
 
     // Create a new protocol instance with two channels, allowing three requests in flight each.
@@ -44,15 +50,15 @@ async fn main() {
         let listener = TcpListener::bind(SERVER_ADDR)
             .await
             .expect("failed to listen");
-        println!("listening on {}", SERVER_ADDR);
+        info!("listening on {}", SERVER_ADDR);
         loop {
             match listener.accept().await {
                 Ok((client, addr)) => {
-                    println!("new connection from {}", addr);
+                    info!("new connection from {}", addr);
                     tokio::spawn(handle_client(addr, client, rpc_builder));
                 }
                 Err(io_err) => {
-                    println!("acceptance failure: {:?}", io_err);
+                    warn!("acceptance failure: {:?}", io_err);
                 }
             }
         }
@@ -60,17 +66,16 @@ async fn main() {
         let remote_server = TcpStream::connect(SERVER_ADDR)
             .await
             .expect("failed to connect to server");
-        println!("connected to server {}", SERVER_ADDR);
+        info!("connected to server {}", SERVER_ADDR);
 
         let (reader, writer) = remote_server.into_split();
         let (client, mut server) = rpc_builder.build(reader, writer);
 
         // We are not using the server functionality, but it still as to run.
         tokio::spawn(async move {
-            server
-                .next_request()
-                .await
-                .expect("server closed connection");
+            if let Err(err) = server.next_request().await {
+                error!(%err, "server read error");
+            }
         });
 
         for num in 0..u32::MAX {
@@ -80,16 +85,16 @@ async fn main() {
                 .queue_for_sending()
                 .await;
 
-            println!("sent request {}", num);
+            debug!("sent request {}", num);
             match request_guard.wait_for_response().await {
                 Ok(response) => {
                     let decoded =
                         String::from_utf8(response.expect("should have payload").to_vec())
                             .expect("did not expect invalid UTF8");
-                    println!("{} -> {}", num, decoded);
+                    info!("{} -> {}", num, decoded);
                 }
                 Err(err) => {
-                    println!("server error: {}", err);
+                    error!("server error: {}", err);
                     break;
                 }
             }
@@ -112,12 +117,12 @@ async fn handle_client<const N: usize>(
                     tokio::spawn(handle_request(incoming_request));
                 } else {
                     // Client exited.
-                    println!("client {} disconnected", addr);
+                    info!("client {} disconnected", addr);
                     break;
                 }
             }
             Err(err) => {
-                println!("client {} error: {}", addr, err);
+                warn!("client {} error: {}", addr, err);
                 break;
             }
         }

@@ -365,7 +365,6 @@ where
                 }
             }
 
-
             if self.current_frame.is_none() && !self.ready_queue.is_empty() {
                 self.ready_next_frame()?;
             }
@@ -375,7 +374,6 @@ where
 
                 write_result = write_all_buf_if_some(&mut self.writer, self.current_frame.as_mut())
                 , if self.current_frame.is_some() => {
-                    println!("write complete");
 
                     write_result.map_err(CoreError::WriteFailed)?;
 

@@ -1,5 +1,5 @@
 //! `juliet` header parsing and serialization.
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use bytemuck::{Pod, Zeroable};
 use thiserror::Error;
@@ -35,6 +35,13 @@ impl Debug for Header {
                 self.id()
             )
         }
+    }
+}
+
+impl Display for Header {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
     }
 }
 

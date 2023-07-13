@@ -22,7 +22,7 @@ proptest-attr-macro = "1.0.0"
 proptest-derive = "0.3.0"
 rand = "0.8.5"
 tracing = "0.1.37"
-tracing-subscriber = "0.3.17"
+tracing-subscriber = { version = "0.3.17", features = [ "env-filter" ] }
 
 [[example]]
 name = "fizzbuzz"

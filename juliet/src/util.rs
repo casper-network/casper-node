@@ -56,7 +56,7 @@ pub mod tracing_support {
                 f.write_str("...")?;
             }
 
-            write!(f, " ({} bytes)", raw.len());
+            write!(f, " ({} bytes)", raw.len())?;
 
             Ok(())
         }
