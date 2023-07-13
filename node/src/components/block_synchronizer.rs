@@ -865,7 +865,7 @@ impl BlockSynchronizer {
                     }
                 }
                 Some(versioned_block) => {
-                    let block: Block = (*versioned_block).into();
+                    let block: Block = (*versioned_block).into(); // TODO[RC]: We might have fetched V1 here
                     if let Err(error) = builder.register_block(&block, maybe_peer_id) {
                         error!(%error, "BlockSynchronizer: failed to apply block");
                     }
