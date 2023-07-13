@@ -1,7 +1,23 @@
 //! RPC layer.
 //!
-//! The outermost layer of the `juliet` stack, combines the underlying IO and protocol primites into
-//! a convenient, type safe RPC system.
+//! The outermost layer of the `juliet` stack, combines the underlying [`io`] and [`protocol`]
+//! layers into a convenient RPC system.
+//!
+//! The term RPC is used somewhat inaccurately here, as the crate does _not_ deal with the actual
+//! method calls or serializing arguments, but only provides the underlying request/response system.
+//!
+//! ## Usage
+//!
+//! The RPC system is configured by setting up an [`RpcBuilder<N>`], which in turn requires an
+//! [`IoCoreBuilder<N>`] and [`ProtocolBuilder<N>`](crate::protocol::ProtocolBuilder) (see the
+//! [`io`](crate::io) and [`protocol`](crate::protocol) module documentation for details), with `N`
+//! denoting the number of preconfigured channels.
+//!
+//! Once a connection has been established, [`RpcBuilder::build`] is used to construct a
+//! [`JulietRpcClient`] and [`JulietRpcServer`] pair, the former being used use to make remote
+//! procedure calls, while latter is used to answer them. Note that
+//! [`JulietRpcServer::next_request`] must continuously be called regardless of whether requests are
+//! handled locally, since the function is also responsible for performing the underlying IO.
 
 use std::{
     collections::HashMap,
@@ -70,12 +86,19 @@ impl<const N: usize> RpcBuilder<N> {
 
 /// Juliet RPC client.
 ///
-/// The client is used to create new RPC calls.
+/// The client is used to create new RPC calls through [`JulietRpcClient::create_request`].
+#[derive(Debug)]
 pub struct JulietRpcClient<const N: usize> {
     new_request_sender: UnboundedSender<NewRequest>,
     request_handle: RequestHandle<N>,
 }
 
+/// Builder for an outgoing RPC request.
+///
+/// Once configured, it can be sent using either
+/// [`queue_for_sending`](JulietRpcRequestBuilder::queue_for_sending) or
+/// [`try_queue_for_sending`](JulietRpcRequestBuilder::try_queue_for_sending), returning a
+/// [`RequestGuard`], which can be used to await the results of the request.
 pub struct JulietRpcRequestBuilder<'a, const N: usize> {
     client: &'a JulietRpcClient<N>,
     channel: ChannelId,
@@ -85,7 +108,13 @@ pub struct JulietRpcRequestBuilder<'a, const N: usize> {
 
 /// Juliet RPC Server.
 ///
-/// The server's sole purpose is to handle incoming RPC calls.
+/// The server's purpose is to produce incoming RPC calls and run the underlying IO layer. For this
+/// reason it is important to repeatedly call [`next_request`](Self::next_request), see the method
+/// documentation for details.
+///
+/// ## Shutdown
+///
+/// The server will automatically be shutdown if the last [`JulietRpcClient`] is dropped.
 pub struct JulietRpcServer<const N: usize, R, W> {
     core: IoCore<N, R, W>,
     handle: Handle,
@@ -139,9 +168,11 @@ impl<const N: usize> JulietRpcClient<N> {
     }
 }
 
+/// An error produced by the RPC error.
 #[derive(Debug, Error)]
 
 pub enum RpcServerError {
+    /// An [`IoCore`] error.
     #[error(transparent)]
     CoreError(#[from] CoreError),
 }
@@ -151,6 +182,19 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
+    /// Produce the next request from the peer.
+    ///
+    /// Runs the underlying IO until another [`NewRequest`] has been produced by the remote peer. On
+    /// success, this function should be called again immediately.
+    ///
+    /// On a regular shutdown (`None` returned) or an error ([`RpcServerError`] returned), a caller
+    /// must stop calling [`next_request`](Self::next_request) and shoudl drop the entire
+    /// [`JulietRpcServer`].
+    ///
+    /// **Important**: Even if the local peer is not intending to handle any requests, this function
+    /// must still be called, since it drives the underlying IO system. It is also highly recommend
+    /// to offload the actual handling of requests to a separate task and return to calling
+    /// `next_request` as soon as possible.
     pub async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
         loop {
             tokio::select! {
@@ -244,12 +288,18 @@ impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
 
 impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     /// Sets the payload for the request.
+    ///
+    /// By default, no payload is included.
     pub fn with_payload(mut self, payload: Bytes) -> Self {
         self.payload = Some(payload);
         self
     }
 
     /// Sets the timeout for the request.
+    ///
+    /// By default, there is an infinite timeout.
+    ///
+    /// **TODO**: Currently the timeout feature is not implemented.
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
@@ -257,7 +307,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
 
     /// Schedules a new request on an outgoing channel.
     ///
-    /// Blocks until space to store it is available.
+    /// If there is no buffer space available for the request, blocks until there is.
     pub async fn queue_for_sending(self) -> RequestGuard {
         let ticket = match self
             .client
@@ -276,6 +326,9 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     }
 
     /// Schedules a new request on an outgoing channel if space is available.
+    ///
+    /// If no space is available, returns the [`JulietRpcRequestBuilder`] as an `Err` value, so it
+    /// can be retried later.
     pub fn try_queue_for_sending(self) -> Result<RequestGuard, Self> {
         let ticket = match self.client.request_handle.try_reserve_request(self.channel) {
             Ok(ticket) => ticket,
@@ -310,35 +363,58 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
 }
 
 /// An RPC request error.
+///
+/// Describes the reason a request did not yield a response.
 #[derive(Clone, Debug, Error)]
 pub enum RequestError {
     /// Remote closed, could not send.
+    ///
+    /// The request was never sent out, since the underlying [`IoCore`] was already shut down when
+    /// it was made.
     #[error("remote closed connection before request could be sent")]
     RemoteClosed(Option<Bytes>),
     /// Sent, but never received a reply.
+    ///
+    /// Request was sent, but we never received anything back before the [`IoCore`] was shut down.
     #[error("never received reply before remote closed connection")]
     Shutdown,
     /// Local timeout.
+    ///
+    /// The request was cancelled on our end due to a timeout.
     #[error("request timed out ")]
     TimedOut,
-    /// Remote said "no".
+    /// Remove responsed with cancellation.
+    ///
+    /// Instead of sending a response, the remote sent a cancellation.
     #[error("remote cancelled our request")]
     RemoteCancelled,
     /// Cancelled locally.
+    ///
+    /// Request was cancelled on our end.
     #[error("request cancelled locally")]
     Cancelled,
     /// API misuse
+    ///
+    /// Either the API was misued, or a bug in this crate appeared.
     #[error("API misused or other internal error")]
     Error(LocalProtocolViolation),
 }
 
+/// Handle to an in-flight outgoing request.
+///
+/// The existance of a [`RequestGuard`] indicates that a request has been made or is on-going. It
+/// can also be used to attempt to [`cancel`](RequestGuard::cancel) the request, or retrieve its
+/// values using [`wait_for_response`](RequestGuard::wait_for_response) or
+/// [`try_wait_for_response`](RequestGuard::try_wait_for_response).
 #[derive(Debug)]
 #[must_use = "dropping the request guard will immediately cancel the request"]
 pub struct RequestGuard {
+    /// Shared reference to outcome data.
     inner: Arc<RequestGuardInner>,
 }
 
 impl RequestGuard {
+    /// Creates a new request guard with no shared data that is already resolved to an error.
     fn new_error(error: RequestError) -> Self {
         let outcome = OnceLock::new();
         outcome
@@ -352,9 +428,10 @@ impl RequestGuard {
         }
     }
 
-    /// Cancels the request, causing it to not be sent if it is still in the queue.
+    /// Cancels the request.
     ///
-    /// No response will be available for the request, any call to `wait_for_finish` will result in an error.
+    /// May cause the request to not be sent if it is still in the queue, or a cancellation to be
+    /// sent if it already left the local machine.
     pub fn cancel(mut self) {
         self.do_cancel();
 
@@ -362,18 +439,27 @@ impl RequestGuard {
     }
 
     fn do_cancel(&mut self) {
+        // TODO: Implement eager cancellation locally, potentially removing this request from the
+        //       outbound queue.
         // TODO: Implement actual sending of the cancellation.
     }
 
     /// Forgets the request was made.
     ///
-    /// Any response will be accepted, but discarded.
+    /// Similar [`cancel`](Self::cancel), except that it will not cause an actual cancellation, so
+    /// the peer will likely perform all the work. The response will be discarded.
     pub fn forget(self) {
-        // TODO: Implement eager cancellation locally, potentially removing this request from the
-        //       outbound queue.
+        // Just do nothing.
     }
 
-    /// Waits for the response to come back.
+    /// Waits for a response to come back.
+    ///
+    /// Blocks until a response, cancellation or error has been received for this particular
+    /// request.
+    ///
+    /// If a response has been received, the optional [`Bytes`] of the payload will be returned.
+    ///
+    /// On an error, including a cancellation by the remote, returns a [`RequestError`].
     pub async fn wait_for_response(self) -> Result<Option<Bytes>, RequestError> {
         // Wait for notification.
         if let Some(ref ready) = self.inner.ready {
@@ -384,6 +470,9 @@ impl RequestGuard {
     }
 
     /// Waits for the response, non-blockingly.
+    ///
+    /// Like [`wait_for_response`](Self::wait_for_response), except that instead of waiting, it will
+    /// return `Err(self)` if the peer was not ready yet.
     pub fn try_wait_for_response(self) -> Result<Result<Option<Bytes>, RequestError>, Self> {
         if self.inner.outcome.get().is_some() {
             Ok(self.take_inner())
@@ -413,8 +502,12 @@ impl Drop for RequestGuard {
 /// An incoming request from a peer.
 ///
 /// Every request should be answered using either the [`IncomingRequest::cancel()`] or
-/// [`IncomingRequest::respond()`] methods. If dropped, [`IncomingRequest::cancel()`] is called
-/// automatically.
+/// [`IncomingRequest::respond()`] methods.
+///
+/// ## Automatic cleanup
+///
+/// If dropped, [`IncomingRequest::cancel()`] is called automatically, which will cause a
+/// cancellation to be sent.
 #[derive(Debug)]
 pub struct IncomingRequest {
     /// Channel the request was sent on.
@@ -443,6 +536,9 @@ impl IncomingRequest {
     }
 
     /// Enqueue a response to be sent out.
+    ///
+    /// The response will contain the specified `payload`, sent on a best effort basis. Responses
+    /// will never be rejected on a basis of memory.
     #[inline]
     pub fn respond(mut self, payload: Option<Bytes>) {
         if let Some(handle) = self.handle.take() {
