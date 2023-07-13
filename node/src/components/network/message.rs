@@ -414,24 +414,30 @@ pub(crate) trait FromIncoming<P> {
 /// The default implementation sets all weights to zero.
 #[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
 pub struct EstimatorWeights {
-    /// Weight to attach to consensus traffic.
     pub consensus: u32,
-    /// Weight to attach to gossiper traffic.
-    pub gossip: u32,
-    /// Weight to attach to finality signatures traffic.
-    pub finality_signatures: u32,
-    /// Weight to attach to deploy requests.
+    pub block_gossip: u32,
+    pub deploy_gossip: u32,
+    pub finality_signature_gossip: u32,
+    pub address_gossip: u32,
+    pub finality_signature_broadcasts: u32,
     pub deploy_requests: u32,
-    /// Weight to attach to deploy responses.
     pub deploy_responses: u32,
-    /// Weight to attach to block requests.
+    pub legacy_deploy_requests: u32,
+    pub legacy_deploy_responses: u32,
     pub block_requests: u32,
-    /// Weight to attach to block responses.
     pub block_responses: u32,
-    /// Weight to attach to trie requests.
+    pub block_header_requests: u32,
+    pub block_header_responses: u32,
     pub trie_requests: u32,
-    /// Weight to attach to trie responses.
     pub trie_responses: u32,
+    pub finality_signature_requests: u32,
+    pub finality_signature_responses: u32,
+    pub sync_leap_requests: u32,
+    pub sync_leap_responses: u32,
+    pub approvals_hashes_requests: u32,
+    pub approvals_hashes_responses: u32,
+    pub execution_results_requests: u32,
+    pub execution_results_responses: u32,
 }
 
 mod specimen_support {

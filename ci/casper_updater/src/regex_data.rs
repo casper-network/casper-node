@@ -64,6 +64,43 @@ pub mod types {
     });
 }
 
+pub mod storage {
+    use super::*;
+
+    pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
+        vec![
+            DependentFile::new(
+                "execution_engine/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "execution_engine_testing/test_support/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "node/Cargo.toml",
+                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                replacement,
+            ),
+            DependentFile::new(
+                "storage/Cargo.toml",
+                MANIFEST_VERSION_REGEX.clone(),
+                replacement,
+            ),
+            DependentFile::new(
+                "storage/src/lib.rs",
+                Regex::new(
+                    r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-storage)/(?:[^"]+)"#,
+                )
+                .unwrap(),
+                replacement_with_slash,
+            ),
+        ]
+    });
+}
+
 pub mod execution_engine {
     use super::*;
 

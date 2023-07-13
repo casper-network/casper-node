@@ -1,6 +1,6 @@
 [package]
 name = "casper-node"
-version = "1.5.0-rc.1" # when updating, also update 'html_root_url' in lib.rs
+version = "1.5.1" # when updating, also update 'html_root_url' in lib.rs
 authors = ["Marc Brinkmann <marc@casperlabs.io>", "Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "The Casper blockchain node"
@@ -10,6 +10,7 @@ homepage = "https://casperlabs.io"
 repository = "https://github.com/CasperLabs/casper-node/tree/master/node"
 license = "Apache-2.0"
 default-run = "casper-node"
+exclude = ["proptest-regressions"]
 
 [dependencies]
 ansi_term = "0.12.1"
@@ -51,7 +52,7 @@ num-rational = { version = "0.4.0", features = ["serde"] }
 num-traits = "0.2.10"
 num_cpus = "1"
 once_cell = "1"
-openssl = "0.10.32"
+openssl = "0.10.55"
 pin-project = "1.0.6"
 prometheus = "0.12.0"
 quanta = "0.7.2"
@@ -92,7 +93,7 @@ warp = { version = "0.3.0", features = ["compression"] }
 wheelbuf = "0.2.0"
 
 [build-dependencies]
-vergen = { version = "7", default-features = false, features = ["git"] }
+vergen = { version = "8.2.1", default-features = false, features = ["git", "gitoxide"] }
 
 [dev-dependencies]
 assert-json-diff = "2.0.1"
