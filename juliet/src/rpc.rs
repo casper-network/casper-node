@@ -276,20 +276,20 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     }
 
     /// Schedules a new request on an outgoing channel if space is available.
-    pub fn try_queue_for_sending(self) -> Option<RequestGuard> {
+    pub fn try_queue_for_sending(self) -> Result<RequestGuard, Self> {
         let ticket = match self.client.request_handle.try_reserve_request(self.channel) {
             Ok(ticket) => ticket,
             Err(ReservationError::Closed) => {
-                return Some(RequestGuard::new_error(RequestError::RemoteClosed(
+                return Ok(RequestGuard::new_error(RequestError::RemoteClosed(
                     self.payload,
                 )));
             }
             Err(ReservationError::NoBufferSpaceAvailable) => {
-                return None;
+                return Err(self);
             }
         };
 
-        Some(self.do_enqueue_request(ticket))
+        Ok(self.do_enqueue_request(ticket))
     }
 
     #[inline(always)]
