@@ -294,6 +294,31 @@ pub enum LocalProtocolViolation {
     ErrorPayloadIsMultiFrame,
 }
 
+macro_rules! log_frame {
+    ($header:expr) => {
+        #[cfg(feature = "tracing")]
+        {
+            use tracing::trace;
+            trace!(header=%$header, "received");
+        }
+        #[cfg(not(feature = "tracing"))]
+        {
+            // tracing feature disabled, not logging frame
+        }
+    };
+    ($header:expr, $payload:expr) => {
+        #[cfg(feature = "tracing")]
+        {
+            use tracing::trace;
+            trace!(header=%$header, payload=%crate::util::tracing_support::PayloadFormat(&$payload), "received");
+        }
+        #[cfg(not(feature = "tracing"))]
+        {
+            // tracing feature disabled, not logging frame
+        }
+    };
+}
+
 impl<const N: usize> JulietProtocol<N> {
     /// Creates a new juliet protocol builder instance.
     ///
@@ -558,6 +583,8 @@ impl<const N: usize> JulietProtocol<N> {
                 Some(header) => header,
                 None => {
                     // The header was invalid, return an error.
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!(?header_raw, "received invalid header");
                     return Fatal(OutgoingMessage::new(
                         Header::new_error(ErrorKind::InvalidHeader, UNKNOWN_CHANNEL, UNKNOWN_ID),
                         None,
@@ -595,19 +622,16 @@ impl<const N: usize> JulietProtocol<N> {
                         }
 
                         buffer.advance(*preamble_end);
-                        let payload = buffer.split_to(payload_length);
+                        let payload = buffer.split_to(payload_length).freeze();
 
-                        #[cfg(feature = "tracing")]
-                        {
-                            use tracing::trace;
-                            trace!(%header, "received error");
-                        }
+                        log_frame!(header, payload);
                         return Success(CompletedRead::ErrorReceived {
                             header,
-                            data: Some(payload.freeze()),
+                            data: Some(payload),
                         });
                     }
                     _ => {
+                        log_frame!(header);
                         return Success(CompletedRead::ErrorReceived { header, data: None });
                     }
                 }
@@ -634,11 +658,7 @@ impl<const N: usize> JulietProtocol<N> {
                     // incoming set. All we need to do now is to remove it from the buffer.
                     buffer.advance(Header::SIZE);
 
-                    #[cfg(feature = "tracing")]
-                    {
-                        use tracing::trace;
-                        trace!(%header, "received request");
-                    }
+                    log_frame!(header);
                     return Success(CompletedRead::NewRequest {
                         channel: header.channel(),
                         id: header.id(),
@@ -649,11 +669,7 @@ impl<const N: usize> JulietProtocol<N> {
                     if !channel.outgoing_requests.remove(&header.id()) {
                         return err_msg(header, ErrorKind::FictitiousRequest);
                     } else {
-                        #[cfg(feature = "tracing")]
-                        {
-                            use tracing::trace;
-                            trace!(%header, "received response");
-                        }
+                        log_frame!(header);
                         return Success(CompletedRead::ReceivedResponse {
                             channel: header.channel(),
                             id: header.id(),
@@ -781,12 +797,7 @@ impl<const N: usize> JulietProtocol<N> {
                 }
                 Kind::CancelResp => {
                     if channel.outgoing_requests.remove(&header.id()) {
-                        #[cfg(feature = "tracing")]
-                        {
-                            use tracing::trace;
-                            trace!(%header, "received response cancellation");
-                        }
-
+                        log_frame!(header);
                         return Success(CompletedRead::ResponseCancellation {
                             channel: header.channel(),
                             id: header.id(),
@@ -806,6 +817,7 @@ impl<const N: usize> JulietProtocol<N> {
 /// received header with an appropriate error.
 #[inline(always)]
 fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
+    log_frame!(header);
     Fatal(OutgoingMessage::new(header.with_err(kind), None))
 }
 
