@@ -89,7 +89,7 @@ impl Varint32 {
 
         while value > 0 {
             output[count] = value as u8 & VARINT_MASK;
-            value = value >> 7;
+            value >>= 7;
             if value > 0 {
                 output[count] |= !VARINT_MASK;
                 count += 1;
@@ -102,6 +102,7 @@ impl Varint32 {
 
     /// Returns the number of bytes in the encoded varint.
     #[inline(always)]
+    #[allow(clippy::len_without_is_empty)]
     pub const fn len(self) -> usize {
         self.0[5] as usize
     }
@@ -182,7 +183,7 @@ mod tests {
         while l > 1 {
             l -= 1;
 
-            let partial = &input.as_ref()[0..l];
+            let partial = &input[0..l];
             assert!(matches!(decode_varint32(partial), Outcome::Incomplete(n) if n.get() == 1));
         }
     }

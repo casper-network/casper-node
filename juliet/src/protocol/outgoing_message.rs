@@ -239,7 +239,7 @@ impl OutgoingFrame {
     #[inline(always)]
     fn new_with_payload(preamble: Preamble, payload: Bytes) -> Self {
         debug_assert!(
-            !preamble.payload_length.is_sentinel() || (payload.len() == 0),
+            !preamble.payload_length.is_sentinel() || payload.is_empty(),
             "frames without a payload must not contain a preamble with a payload length"
         );
 

@@ -325,24 +325,18 @@ where
                 // Simplify reasoning about this code.
                 self.next_parse_at = 0;
 
-                loop {
-                    match self.juliet.process_incoming(&mut self.buffer) {
-                        Outcome::Incomplete(n) => {
-                            // Simply reset how many bytes we need until the next parse.
-                            self.next_parse_at = self.buffer.remaining() + n.get() as usize;
-                            break;
-                        }
-                        Outcome::Fatal(err_msg) => {
-                            // The remote messed up, begin shutting down due to an error.
-                            self.inject_error(err_msg);
-
-                            // Stop processing incoming data.
-                            break;
-                        }
-                        Outcome::Success(successful_read) => {
-                            // Check if we have produced an event.
-                            return self.handle_completed_read(successful_read).map(Some);
-                        }
+                match self.juliet.process_incoming(&mut self.buffer) {
+                    Outcome::Incomplete(n) => {
+                        // Simply reset how many bytes we need until the next parse.
+                        self.next_parse_at = self.buffer.remaining() + n.get() as usize;
+                    }
+                    Outcome::Fatal(err_msg) => {
+                        // The remote messed up, begin shutting down due to an error.
+                        self.inject_error(err_msg);
+                    }
+                    Outcome::Success(successful_read) => {
+                        // Check if we have produced an event.
+                        return self.handle_completed_read(successful_read).map(Some);
                     }
                 }
             }

@@ -42,7 +42,7 @@ async fn main() {
     // Create the final RPC builder - we will use this on every connection.
     let rpc_builder = Box::leak(Box::new(RpcBuilder::new(io_builder)));
 
-    let mut args = std::env::args().into_iter();
+    let mut args = std::env::args();
     args.next().expect("did not expect missing argv0");
     let is_server = args.next().map(|a| a == "server").unwrap_or_default();
 

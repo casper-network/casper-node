@@ -569,7 +569,7 @@ impl<const N: usize> JulietProtocol<N> {
     /// thus eventually freeing the data if not held elsewhere.
     pub fn process_incoming(
         &mut self,
-        mut buffer: &mut BytesMut,
+        buffer: &mut BytesMut,
     ) -> Outcome<CompletedRead, OutgoingMessage> {
         // First, attempt to complete a frame.
         loop {
@@ -608,9 +608,9 @@ impl<const N: usize> JulietProtocol<N> {
 
                         // Create indices into buffer.
                         let preamble_end =
-                            Index::new(&buffer, Header::SIZE + parsed_length.offset.get() as usize);
+                            Index::new(buffer, Header::SIZE + parsed_length.offset.get() as usize);
                         let payload_length = parsed_length.value as usize;
-                        let frame_end = Index::new(&buffer, *preamble_end + payload_length);
+                        let frame_end = Index::new(buffer, *preamble_end + payload_length);
 
                         // No multi-frame messages allowed!
                         if *frame_end > self.max_frame_size as usize {
@@ -684,7 +684,7 @@ impl<const N: usize> JulietProtocol<N> {
                     let multiframe_outcome: Option<BytesMut> =
                         try_outcome!(channel.current_multiframe_receive.accept(
                             header,
-                            &mut buffer,
+                            buffer,
                             self.max_frame_size,
                             channel.config.max_request_payload_size,
                             ErrorKind::RequestTooLarge
@@ -705,21 +705,18 @@ impl<const N: usize> JulietProtocol<N> {
                         channel.increment_cancellation_allowance();
                     }
 
-                    match multiframe_outcome {
-                        Some(payload) => {
-                            // Message is complete.
-                            let payload = payload.freeze();
+                    if let Some(payload) = multiframe_outcome {
+                        // Message is complete.
+                        let payload = payload.freeze();
 
-                            return Success(CompletedRead::NewRequest {
-                                channel: header.channel(),
-                                id: header.id(),
-                                payload: Some(payload),
-                            });
-                        }
-                        None => {
-                            // We need more frames to complete the payload. Do nothing and attempt
-                            // to read the next frame.
-                        }
+                        return Success(CompletedRead::NewRequest {
+                            channel: header.channel(),
+                            id: header.id(),
+                            payload: Some(payload),
+                        });
+                    } else {
+                        // We need more frames to complete the payload. Do nothing and attempt
+                        // to read the next frame.
                     }
                 }
                 Kind::ResponsePl => {
@@ -727,43 +724,36 @@ impl<const N: usize> JulietProtocol<N> {
                         channel.current_multiframe_receive.is_new_transfer(header);
 
                     // Ensure it is not a bogus response.
-                    if is_new_response {
-                        if !channel.outgoing_requests.contains(&header.id()) {
-                            return err_msg(header, ErrorKind::FictitiousRequest);
-                        }
+                    if is_new_response && !channel.outgoing_requests.contains(&header.id()) {
+                        return err_msg(header, ErrorKind::FictitiousRequest);
                     }
 
                     let multiframe_outcome: Option<BytesMut> =
                         try_outcome!(channel.current_multiframe_receive.accept(
                             header,
-                            &mut buffer,
+                            buffer,
                             self.max_frame_size,
                             channel.config.max_response_payload_size,
                             ErrorKind::ResponseTooLarge
                         ));
 
                     // If we made it to this point, we have consumed the frame.
-                    if is_new_response {
-                        if !channel.outgoing_requests.remove(&header.id()) {
-                            return err_msg(header, ErrorKind::FictitiousRequest);
-                        }
+                    if is_new_response && !channel.outgoing_requests.remove(&header.id()) {
+                        return err_msg(header, ErrorKind::FictitiousRequest);
                     }
 
-                    match multiframe_outcome {
-                        Some(payload) => {
-                            // Message is complete.
-                            let payload = payload.freeze();
+                    if let Some(payload) = multiframe_outcome {
+                        // Message is complete.
+                        let payload = payload.freeze();
 
-                            return Success(CompletedRead::ReceivedResponse {
-                                channel: header.channel(),
-                                id: header.id(),
-                                payload: Some(payload),
-                            });
-                        }
-                        None => {
-                            // We need more frames to complete the payload. Do nothing and attempt
-                            // to read the next frame.
-                        }
+                        return Success(CompletedRead::ReceivedResponse {
+                            channel: header.channel(),
+                            id: header.id(),
+                            payload: Some(payload),
+                        });
+                    } else {
+                        // We need more frames to complete the payload. Do nothing and attempt
+                        // to read the next frame.
                     }
                 }
                 Kind::CancelReq => {

@@ -217,10 +217,7 @@ impl Header {
     #[inline]
     pub fn is_request(self) -> bool {
         if !self.is_error() {
-            match self.kind() {
-                Kind::Request | Kind::RequestPl => true,
-                _ => false,
-            }
+            matches!(self.kind(), Kind::Request | Kind::RequestPl)
         } else {
             false
         }
@@ -351,13 +348,13 @@ mod tests {
 
         // Verify the `kind` and `err_kind` methods don't panic.
         if header.is_error() {
-            drop(header.error_kind());
+            header.error_kind();
         } else {
-            drop(header.kind());
+            header.kind();
         }
 
         // Verify `is_request` does not panic.
-        drop(header.is_request());
+        header.is_request();
 
         // Ensure `is_request` returns the correct value.
         if !header.is_error() {
@@ -371,23 +368,20 @@ mod tests {
 
     #[proptest]
     fn fuzz_header(raw: [u8; Header::SIZE]) {
-        match Header::parse(raw) {
-            Some(header) => {
-                let rebuilt = if header.is_error() {
-                    Header::new_error(header.error_kind(), header.channel(), header.id())
-                } else {
-                    Header::new(header.kind(), header.channel(), header.id())
-                };
+        if let Some(header) = Header::parse(raw) {
+            let rebuilt = if header.is_error() {
+                Header::new_error(header.error_kind(), header.channel(), header.id())
+            } else {
+                Header::new(header.kind(), header.channel(), header.id())
+            };
 
-                // Ensure reserved bits are zeroed upon reading.
-                let reencoded: [u8; Header::SIZE] = rebuilt.into();
-                assert_eq!(rebuilt, header);
-                assert_eq!(reencoded, <[u8; Header::SIZE]>::from(header));
-            }
-            None => {
-                // All good, simply failed to parse.
-            }
+            // Ensure reserved bits are zeroed upon reading.
+            let reencoded: [u8; Header::SIZE] = rebuilt.into();
+            assert_eq!(rebuilt, header);
+            assert_eq!(reencoded, <[u8; Header::SIZE]>::from(header));
         }
+
+        // Otherwise all good, simply failed to parse.
     }
 
     #[test]

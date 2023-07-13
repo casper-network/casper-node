@@ -92,11 +92,11 @@ impl MultiframeReceiver {
 
                         // We have a valid varint32.
                         let preamble_size = Header::SIZE as u32 + payload_size.offset.get() as u32;
-                        let max_data_in_frame = (max_frame_size - preamble_size) as u32;
+                        let max_data_in_frame = max_frame_size - preamble_size;
 
                         // Determine how many additional bytes are needed for frame completion.
                         let frame_end = Index::new(
-                            &buffer,
+                            buffer,
                             preamble_size as usize
                                 + (max_data_in_frame as usize).min(payload_size.value as usize),
                         );
@@ -161,7 +161,7 @@ impl MultiframeReceiver {
                     Success(None)
                 } else {
                     // End segment
-                    let frame_end = Index::new(&buffer, bytes_remaining + Header::SIZE);
+                    let frame_end = Index::new(buffer, bytes_remaining + Header::SIZE);
 
                     // If we don't have the entire frame read yet, return.
                     if *frame_end > buffer.remaining() {

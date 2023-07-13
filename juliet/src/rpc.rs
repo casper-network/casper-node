@@ -131,7 +131,7 @@ impl<const N: usize> JulietRpcClient<N> {
     /// The returned builder can be used to create a single request on the given channel.
     pub fn create_request(&self, channel: ChannelId) -> JulietRpcRequestBuilder<N> {
         JulietRpcRequestBuilder {
-            client: &self,
+            client: self,
             channel,
             payload: None,
             timeout: None,
