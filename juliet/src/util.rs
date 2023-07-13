@@ -33,3 +33,44 @@ impl<'a> Index<'a> {
         }
     }
 }
+
+#[cfg(feature = "tracing")]
+pub mod tracing_support {
+    //! Display helper for formatting messages in `tracing` log messages.
+    use std::fmt::{self, Display, Formatter};
+
+    use bytes::Bytes;
+
+    /// Pretty prints a single payload.
+    pub struct PayloadFormat<'a>(pub &'a Bytes);
+
+    impl<'a> Display for PayloadFormat<'a> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            let raw = self.0.as_ref();
+
+            for &byte in &raw[0..raw.len().min(16)] {
+                write!(f, "{:02x} ", byte)?;
+            }
+
+            if raw.len() > 16 {
+                f.write_str("...")?;
+            }
+
+            write!(f, " ({} bytes)", raw.len());
+
+            Ok(())
+        }
+    }
+
+    /// Pretty prints an optional payload.
+    pub struct OptPayloadFormat<'a>(pub Option<&'a Bytes>);
+
+    impl<'a> Display for OptPayloadFormat<'a> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            match self.0 {
+                None => f.write_str("(no payload)"),
+                Some(inner) => PayloadFormat(inner).fmt(f),
+            }
+        }
+    }
+}

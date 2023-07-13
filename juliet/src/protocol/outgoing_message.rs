@@ -4,7 +4,10 @@
 //! juliet networking protocol, this module contains the necessary output types like
 //! [`OutgoingMessage`].
 
-use std::io::Cursor;
+use std::{
+    fmt::{self, Debug, Display, Formatter},
+    io::Cursor,
+};
 
 use bytemuck::{Pod, Zeroable};
 use bytes::{buf::Chain, Buf, Bytes};
@@ -81,6 +84,16 @@ struct Preamble {
     header: Header,
     /// The payload length. If [`Varint32::SENTINEL`], it will always be omitted from output.
     payload_length: Varint32,
+}
+
+impl Display for Preamble {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.header.fmt(f)?;
+        if self.payload_length.is_sentinel() {
+            write!(f, " [l={}]", self.payload_length.decode())?;
+        }
+        Ok(())
+    }
 }
 
 impl Preamble {
@@ -187,6 +200,17 @@ impl FrameIter {
 #[repr(transparent)]
 #[must_use]
 pub struct OutgoingFrame(Chain<Cursor<Preamble>, Bytes>);
+
+impl Display for OutgoingFrame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "<{} {}>",
+            self.0.first_ref().get_ref(),
+            crate::util::tracing_support::PayloadFormat(self.0.last_ref())
+        )
+    }
+}
 
 impl OutgoingFrame {
     /// Creates a new [`OutgoingFrame`] with no payload.

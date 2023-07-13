@@ -375,11 +375,19 @@ where
 
                 write_result = write_all_buf_if_some(&mut self.writer, self.current_frame.as_mut())
                 , if self.current_frame.is_some() => {
+                    println!("write complete");
 
                     write_result.map_err(CoreError::WriteFailed)?;
 
                     // If we just finished sending an error, it's time to exit.
                     let frame_sent = self.current_frame.take().unwrap();
+
+                    #[cfg(feature = "tracing")]
+                    {
+                        use tracing::trace;
+                        trace!(frame=%frame_sent, "sent");
+                    }
+
                     if frame_sent.header().is_error() {
                         // We finished sending an error frame, time to exit.
                         return Err(CoreError::RemoteProtocolViolation(frame_sent));

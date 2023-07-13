@@ -16,6 +16,10 @@ const SERVER_ADDR: &str = "127.0.0.1:12345";
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::TRACE)
+        .init();
+
     // Create a new protocol instance with two channels, allowing three requests in flight each.
     let protocol_builder = ProtocolBuilder::<2>::with_default_channel_config(
         ChannelConfiguration::default()
