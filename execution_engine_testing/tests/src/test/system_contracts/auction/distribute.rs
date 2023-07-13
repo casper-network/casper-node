@@ -2994,23 +2994,9 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     for _ in 0..5 {
-        //     builder.run_auction(timestamp_millis, Vec::new());
         builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
-
-    // let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-    //     *SYSTEM_ADDR,
-    //     builder.get_auction_contract_hash(),
-    //     METHOD_DISTRIBUTE,
-    //     runtime_args! {
-    //         ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-    //         ARG_VALIDATOR => VALIDATOR_1.clone()
-    //     },
-    // )
-    // .build();
-
-    // builder.exec(distribute_request).commit().expect_success();
 
     builder
         .distribute(
@@ -3083,24 +3069,9 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let initial_supply = builder.total_supply(None);
 
     for _ in 0..5 {
-        // builder.run_auction(timestamp_millis, Vec::new());
         builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
-
-    // let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-    //     *SYSTEM_ADDR,
-    //     builder.get_auction_contract_hash(),
-    //     METHOD_DISTRIBUTE,
-    //     runtime_args! {
-    //         ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-    //         ARG_VALIDATOR => VALIDATOR_1.clone()
-    //     },
-    // )
-    // .with_protocol_version(new_protocol_version)
-    // .build();
-
-    // builder.exec(distribute_request).commit().expect_success();
 
     builder
         .distribute(

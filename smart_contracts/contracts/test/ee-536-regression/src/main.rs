@@ -27,7 +27,7 @@ pub extern "C" fn call() {
 
     match account::remove_associated_key(key_2) {
         Err(RemoveKeyFailure::ThresholdViolation) => {
-            // Shouldn't be able to remove key because key threshold == 11 and
+            // Shouldn't be able to remove key because key weight == 11 and
             // removing would violate the constraint
         }
         Err(_) => runtime::revert(ApiError::User(300)),

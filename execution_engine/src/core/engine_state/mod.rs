@@ -850,7 +850,11 @@ where
                 Ok(())
             }
             Some(StoredValue::CLValue(_)) => Ok(()),
-            Some(_) | None => return Err(Error::InvalidKeyVariant),
+            // This means the Account does not exist, which we consider to be
+            // an authorization error. As used by the node, this type of deploy
+            // will have already been filtered out, but for other EE use cases
+            // and testing it is reachable.
+            Some(_) | None => return Err(Error::Authorization),
         }
     }
 
@@ -1489,12 +1493,14 @@ where
         let authorization_keys = deploy_item.authorization_keys;
         let account_hash = deploy_item.address;
 
-        self.migrate_account(
+        if let Err(error) = self.migrate_account(
             correlation_id,
             account_hash,
             protocol_version,
             Rc::clone(&tracking_copy),
-        )?;
+        ) {
+            return Ok(ExecutionResult::precondition_failure(error));
+        }
 
         // Get account from tracking copy
         // validation_spec_3: account validity
