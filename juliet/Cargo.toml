@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2021"
 authors = [ "Marc Brinkmann <marc@casperlabs.io>" ]
 # Ensures we do not pull in all the features of dev dependencies when building.
-resolver = "2"
+# Note: Would have to be moved to workspace root.
+# resolver = "2"
 
 [dependencies]
 array-init = "2.1.0"
