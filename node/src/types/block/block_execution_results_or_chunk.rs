@@ -7,7 +7,7 @@ use tracing::{debug, error};
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    execution::VersionedExecutionResult,
+    execution::ExecutionResult,
     BlockHash, ChunkWithProof, ChunkWithProofVerificationError, Digest,
 };
 #[cfg(test)]
@@ -33,7 +33,7 @@ pub struct BlockExecutionResultsOrChunk {
     /// Block to which this value or chunk refers to.
     pub(super) block_hash: BlockHash,
     /// Complete execution results for the block or a chunk of the complete data.
-    pub(super) value: ValueOrChunk<Vec<VersionedExecutionResult>>,
+    pub(super) value: ValueOrChunk<Vec<ExecutionResult>>,
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     pub(super) is_valid: OnceCell<Result<bool, bytesrepr::Error>>,
@@ -43,7 +43,7 @@ impl BlockExecutionResultsOrChunk {
     pub(crate) fn new(
         block_hash: BlockHash,
         chunk_index: u64,
-        execution_results: Vec<VersionedExecutionResult>,
+        execution_results: Vec<ExecutionResult>,
     ) -> Option<Self> {
         fn make_value_or_chunk<T: Chunkable>(
             data: T,
@@ -62,10 +62,7 @@ impl BlockExecutionResultsOrChunk {
             }
         }
 
-        let is_v1 = matches!(
-            execution_results.first(),
-            Some(VersionedExecutionResult::V1(_))
-        );
+        let is_v1 = matches!(execution_results.first(), Some(ExecutionResult::V1(_)));
 
         // If it's not V1, just construct the `ValueOrChunk` from `Vec<VersionedExecutionResult>`.
         if !is_v1 {
@@ -82,7 +79,7 @@ impl BlockExecutionResultsOrChunk {
         // `Vec<VersionedExecutionResult>` as the `ValueOrChunk::Value`.
         let mut v1_results = Vec::with_capacity(execution_results.len());
         for result in &execution_results {
-            if let VersionedExecutionResult::V1(v1_result) = result {
+            if let ExecutionResult::V1(v1_result) = result {
                 v1_results.push(v1_result);
             } else {
                 error!(
@@ -128,12 +125,12 @@ impl BlockExecutionResultsOrChunk {
                 // If results is not empty and all are V1, convert and verify.
                 let is_v1 = matches!(
                     block_execution_results.first(),
-                    Some(VersionedExecutionResult::V1(_))
+                    Some(ExecutionResult::V1(_))
                 );
                 let actual = if is_v1 {
                     let mut v1_results = Vec::with_capacity(block_execution_results.len());
                     for result in block_execution_results {
-                        if let VersionedExecutionResult::V1(v1_result) = result {
+                        if let ExecutionResult::V1(v1_result) = result {
                             v1_results.push(v1_result);
                         } else {
                             debug!(
@@ -156,7 +153,7 @@ impl BlockExecutionResultsOrChunk {
     }
 
     /// Consumes `self` and returns inner `ValueOrChunk` field.
-    pub fn into_value(self) -> ValueOrChunk<Vec<VersionedExecutionResult>> {
+    pub fn into_value(self) -> ValueOrChunk<Vec<ExecutionResult>> {
         self.value
     }
 
@@ -169,13 +166,11 @@ impl BlockExecutionResultsOrChunk {
     pub(crate) fn new_mock_value(block_hash: BlockHash) -> Self {
         Self {
             block_hash,
-            value: ValueOrChunk::Value(vec![VersionedExecutionResult::V2(
-                ExecutionResultV2::Success {
-                    effects: ExecutionJournal::new(),
-                    transfers: vec![],
-                    cost: U512::from(123),
-                },
-            )]),
+            value: ValueOrChunk::Value(vec![ExecutionResult::V2(ExecutionResultV2::Success {
+                effects: ExecutionJournal::new(),
+                transfers: vec![],
+                cost: U512::from(123),
+            })]),
             is_valid: OnceCell::with_value(Ok(true)),
         }
     }
@@ -183,7 +178,7 @@ impl BlockExecutionResultsOrChunk {
     #[cfg(test)]
     pub(crate) fn new_from_value(
         block_hash: BlockHash,
-        value: ValueOrChunk<Vec<VersionedExecutionResult>>,
+        value: ValueOrChunk<Vec<ExecutionResult>>,
     ) -> Self {
         Self {
             block_hash,
@@ -289,14 +284,14 @@ mod tests {
     fn should_validate_v1_unchunked_checksum() {
         let rng = &mut TestRng::new();
         let execution_results = vec![
-            VersionedExecutionResult::V1(rng.gen()),
-            VersionedExecutionResult::V1(rng.gen()),
+            ExecutionResult::V1(rng.gen()),
+            ExecutionResult::V1(rng.gen()),
         ];
         let checksum = compute_execution_results_v1_checksum(
             execution_results
                 .iter()
                 .map(|exec_result| match exec_result {
-                    VersionedExecutionResult::V1(exec_result) => exec_result,
+                    ExecutionResult::V1(exec_result) => exec_result,
                     _ => unreachable!(),
                 })
                 .collect(),
@@ -318,12 +313,12 @@ mod tests {
         let v1_result: ExecutionResultV1 = rng.gen();
         // Ensure we fill with enough copies to cause three chunks.
         let count = (2 * ChunkWithProof::CHUNK_SIZE_BYTES / v1_result.serialized_length()) + 1;
-        let execution_results = vec![VersionedExecutionResult::V1(v1_result); count];
+        let execution_results = vec![ExecutionResult::V1(v1_result); count];
         let checksum = compute_execution_results_v1_checksum(
             execution_results
                 .iter()
                 .map(|exec_result| match exec_result {
-                    VersionedExecutionResult::V1(exec_result) => exec_result,
+                    ExecutionResult::V1(exec_result) => exec_result,
                     _ => unreachable!(),
                 })
                 .collect(),
@@ -361,8 +356,8 @@ mod tests {
     fn should_validate_versioned_unchunked_checksum() {
         let rng = &mut TestRng::new();
         let execution_results = vec![
-            VersionedExecutionResult::from(ExecutionResultV2::random(rng)),
-            VersionedExecutionResult::from(ExecutionResultV2::random(rng)),
+            ExecutionResult::from(ExecutionResultV2::random(rng)),
+            ExecutionResult::from(ExecutionResultV2::random(rng)),
         ];
         let checksum = ExecutionResultsChecksum::Checkable(
             compute_execution_results_checksum(execution_results.iter()).unwrap(),
@@ -384,7 +379,7 @@ mod tests {
         let v2_result = ExecutionResultV2::random(rng);
         // Ensure we fill with enough copies to cause three chunks.
         let count = (2 * ChunkWithProof::CHUNK_SIZE_BYTES / v2_result.serialized_length()) + 1;
-        let execution_results = vec![VersionedExecutionResult::V2(v2_result); count];
+        let execution_results = vec![ExecutionResult::V2(v2_result); count];
         let checksum = ExecutionResultsChecksum::Checkable(
             compute_execution_results_checksum(execution_results.iter()).unwrap(),
         );

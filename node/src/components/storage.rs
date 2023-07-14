@@ -72,8 +72,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     execution::{
-        execution_result_v1, ExecutionResultV1, ExecutionResultV2, TransformKind,
-        VersionedExecutionResult,
+        execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
     ApprovalsHash, Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
     Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature, ProtocolVersion,
@@ -1296,7 +1295,7 @@ impl Storage {
         &mut self,
         block: &Block,
         approvals_hashes: &ApprovalsHashes,
-        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
@@ -1499,7 +1498,7 @@ impl Storage {
         txn: &mut RwTransaction,
         block_hash: &BlockHash,
         block_height: u64,
-        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         insert_to_deploy_index(
             &mut self.deploy_hash_index,
@@ -1510,7 +1509,7 @@ impl Storage {
         let mut transfers: Vec<Transfer> = vec![];
         for (deploy_hash, execution_result) in execution_results.into_iter() {
             match &execution_result {
-                VersionedExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
+                ExecutionResult::V1(ExecutionResultV1::Success { effect, .. }) => {
                     for transform_entry in &effect.transforms {
                         if let execution_result_v1::Transform::WriteTransfer(transfer) =
                             &transform_entry.transform
@@ -1519,7 +1518,7 @@ impl Storage {
                         }
                     }
                 }
-                VersionedExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
+                ExecutionResult::V2(ExecutionResultV2::Success { effects, .. }) => {
                     for transform in effects.transforms() {
                         if let TransformKind::Write(StoredValue::Transfer(transfer)) =
                             transform.kind()
@@ -1528,15 +1527,15 @@ impl Storage {
                         }
                     }
                 }
-                VersionedExecutionResult::V1(ExecutionResultV1::Failure { .. })
-                | VersionedExecutionResult::V2(ExecutionResultV2::Failure { .. }) => {
+                ExecutionResult::V1(ExecutionResultV1::Failure { .. })
+                | ExecutionResult::V2(ExecutionResultV2::Failure { .. }) => {
                     // No-op: we only record transfers from successful executions.
                 }
             }
 
             // Write the execution result to the appropriate DB.
             let was_written = match execution_result {
-                VersionedExecutionResult::V1(v1_result) => {
+                ExecutionResult::V1(v1_result) => {
                     let v1_results = DeployMetadataV1 {
                         execution_results: iter::once((*block_hash, v1_result)).collect(),
                     };
@@ -2221,7 +2220,7 @@ impl Storage {
         &self,
         txn: &mut Tx,
         deploy_hash: &DeployHash,
-    ) -> Result<Option<VersionedExecutionResult>, FatalStorageError> {
+    ) -> Result<Option<ExecutionResult>, FatalStorageError> {
         if let Some(exec_result) = txn.get_value(self.execution_results_db, deploy_hash)? {
             return Ok(Some(exec_result));
         };
@@ -2245,7 +2244,7 @@ impl Storage {
         // Safe to unwrap due to length check immediately above.
         let v1_result = v1_results.execution_results.into_iter().next().unwrap().1;
 
-        Ok(Some(VersionedExecutionResult::V1(v1_result)))
+        Ok(Some(ExecutionResult::V1(v1_result)))
     }
 
     /// Retrieves transfers associated with block.
@@ -2527,7 +2526,7 @@ impl Storage {
         &self,
         txn: &mut Tx,
         block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(DeployHash, VersionedExecutionResult)>>, FatalStorageError> {
+    ) -> Result<Option<Vec<(DeployHash, ExecutionResult)>>, FatalStorageError> {
         let block_header = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => return Ok(None),
@@ -2568,8 +2567,7 @@ impl Storage {
     fn read_execution_results(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<Vec<(DeployHash, DeployHeader, VersionedExecutionResult)>>, FatalStorageError>
-    {
+    ) -> Result<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>, FatalStorageError> {
         let mut txn = self.env.begin_rw_txn()?;
         let execution_results = match self.get_execution_results(&mut txn, block_hash)? {
             Some(execution_results) => execution_results,
@@ -2849,7 +2847,7 @@ impl Storage {
     pub(crate) fn read_execution_result(
         &self,
         deploy_hash: &DeployHash,
-    ) -> Option<VersionedExecutionResult> {
+    ) -> Option<ExecutionResult> {
         let mut txn = self
             .env
             .begin_ro_txn()

@@ -17,7 +17,7 @@ const V2_TAG: u8 = 1;
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub enum VersionedExecutionResult {
+pub enum ExecutionResult {
     /// Version 1 of execution result type.
     #[serde(rename = "Version1")]
     V1(ExecutionResultV1),
@@ -26,20 +26,20 @@ pub enum VersionedExecutionResult {
     V2(ExecutionResultV2),
 }
 
-impl From<ExecutionResultV2> for VersionedExecutionResult {
+impl From<ExecutionResultV2> for ExecutionResult {
     fn from(value: ExecutionResultV2) -> Self {
-        VersionedExecutionResult::V2(value)
+        ExecutionResult::V2(value)
     }
 }
 
-impl ToBytes for VersionedExecutionResult {
+impl ToBytes for ExecutionResult {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            VersionedExecutionResult::V1(result) => {
+            ExecutionResult::V1(result) => {
                 V1_TAG.write_bytes(writer)?;
                 result.write_bytes(writer)
             }
-            VersionedExecutionResult::V2(result) => {
+            ExecutionResult::V2(result) => {
                 V2_TAG.write_bytes(writer)?;
                 result.write_bytes(writer)
             }
@@ -55,23 +55,23 @@ impl ToBytes for VersionedExecutionResult {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                VersionedExecutionResult::V1(result) => result.serialized_length(),
-                VersionedExecutionResult::V2(result) => result.serialized_length(),
+                ExecutionResult::V1(result) => result.serialized_length(),
+                ExecutionResult::V2(result) => result.serialized_length(),
             }
     }
 }
 
-impl FromBytes for VersionedExecutionResult {
+impl FromBytes for ExecutionResult {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             V1_TAG => {
                 let (result, remainder) = ExecutionResultV1::from_bytes(remainder)?;
-                Ok((VersionedExecutionResult::V1(result), remainder))
+                Ok((ExecutionResult::V1(result), remainder))
             }
             V2_TAG => {
                 let (result, remainder) = ExecutionResultV2::from_bytes(remainder)?;
-                Ok((VersionedExecutionResult::V2(result), remainder))
+                Ok((ExecutionResult::V2(result), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -88,21 +88,21 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let execution_result = VersionedExecutionResult::V1(rng.gen());
+        let execution_result = ExecutionResult::V1(rng.gen());
         bytesrepr::test_serialization_roundtrip(&execution_result);
-        let execution_result = VersionedExecutionResult::from(ExecutionResultV2::random(rng));
+        let execution_result = ExecutionResult::from(ExecutionResultV2::random(rng));
         bytesrepr::test_serialization_roundtrip(&execution_result);
     }
 
     #[test]
     fn bincode_roundtrip() {
         let rng = &mut TestRng::new();
-        let execution_result = VersionedExecutionResult::V1(rng.gen());
+        let execution_result = ExecutionResult::V1(rng.gen());
         let serialized = bincode::serialize(&execution_result).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(execution_result, deserialized);
 
-        let execution_result = VersionedExecutionResult::from(ExecutionResultV2::random(rng));
+        let execution_result = ExecutionResult::from(ExecutionResultV2::random(rng));
         let serialized = bincode::serialize(&execution_result).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(execution_result, deserialized);
@@ -111,12 +111,12 @@ mod tests {
     #[test]
     fn json_roundtrip() {
         let rng = &mut TestRng::new();
-        let execution_result = VersionedExecutionResult::V1(rng.gen());
+        let execution_result = ExecutionResult::V1(rng.gen());
         let serialized = serde_json::to_string(&execution_result).unwrap();
         let deserialized = serde_json::from_str(&serialized).unwrap();
         assert_eq!(execution_result, deserialized);
 
-        let execution_result = VersionedExecutionResult::from(ExecutionResultV2::random(rng));
+        let execution_result = ExecutionResult::from(ExecutionResultV2::random(rng));
         let serialized = serde_json::to_string(&execution_result).unwrap();
         let deserialized = serde_json::from_str(&serialized).unwrap();
         assert_eq!(execution_result, deserialized);

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
-    execution::{ExecutionResultV2, VersionedExecutionResult},
+    execution::{ExecutionResult, ExecutionResultV2},
     generate_ed25519_keypair,
     system::auction::UnbondingPurse,
     testing::TestRng,
@@ -460,7 +460,7 @@ fn put_execution_results(
     storage: &mut Storage,
     block_hash: BlockHash,
     block_height: u64,
-    execution_results: HashMap<DeployHash, VersionedExecutionResult>,
+    execution_results: HashMap<DeployHash, ExecutionResult>,
 ) {
     harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
@@ -885,7 +885,7 @@ fn store_random_execution_results() {
             put_deploy(harness, storage, Arc::new(deploy.clone()));
 
             let execution_result =
-                VersionedExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+                ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
             let execution_info = DeployExecutionInfo {
                 block_hash: *block_hash,
                 block_height,
@@ -943,13 +943,13 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut exec_result_1 = HashMap::new();
     exec_result_1.insert(
         deploy_hash,
-        VersionedExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
+        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
     );
 
     let mut exec_result_2 = HashMap::new();
     exec_result_2.insert(
         deploy_hash,
-        VersionedExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
+        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
     );
 
     put_execution_results(
@@ -982,7 +982,7 @@ fn store_identical_execution_results() {
     let mut exec_result = HashMap::new();
     exec_result.insert(
         deploy_hash,
-        VersionedExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
+        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
     );
 
     put_execution_results(
@@ -1051,8 +1051,7 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
         iter::once(*deploy.hash()),
     );
     let block_height = block.height();
-    let execution_result =
-        VersionedExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+    let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
     put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
     put_complete_block(&mut harness, &mut storage, Arc::new(block.clone()));
     let mut execution_results = HashMap::new();
@@ -1159,8 +1158,7 @@ fn should_hard_reset() {
         .enumerate()
     {
         let deploy = random_deploys.get(index).expect("should have deploys");
-        let execution_result =
-            VersionedExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+        let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
         put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.hash(), execution_result);

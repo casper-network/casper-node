@@ -8,8 +8,8 @@ use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    execution::VersionedExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash,
-    DeployId, Digest, FinalitySignature, ProtocolVersion, PublicKey,
+    execution::ExecutionResult, Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployId,
+    Digest, FinalitySignature, ProtocolVersion, PublicKey,
 };
 
 use crate::{
@@ -248,7 +248,7 @@ pub(super) enum Acceptance {
 }
 
 pub(super) struct RegisterExecResultsOutcome {
-    pub(super) exec_results: Option<HashMap<DeployHash, VersionedExecutionResult>>,
+    pub(super) exec_results: Option<HashMap<DeployHash, ExecutionResult>>,
     pub(super) acceptance: Option<Acceptance>,
 }
 

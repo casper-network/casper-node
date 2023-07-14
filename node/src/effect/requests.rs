@@ -25,7 +25,7 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     bytesrepr::Bytes,
-    execution::{ExecutionResultV2, VersionedExecutionResult},
+    execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Deploy, DeployHash,
     DeployHeader, DeployId, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId,
@@ -283,7 +283,7 @@ pub(crate) enum StorageRequest {
         block: Arc<Block>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
         responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
@@ -393,13 +393,13 @@ pub(crate) enum StorageRequest {
         block_hash: Box<BlockHash>,
         block_height: u64,
         /// Mapping of deploys to execution results of the block.
-        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
         responder: Responder<()>,
     },
     GetExecutionResults {
         block_hash: BlockHash,
-        responder: Responder<Option<Vec<(DeployHash, DeployHeader, VersionedExecutionResult)>>>,
+        responder: Responder<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>>,
     },
     GetBlockExecutionResultsOrChunk {
         /// Request ID.

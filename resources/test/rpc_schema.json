@@ -178,7 +178,7 @@
                 "execution_result": {
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/VersionedExecutionResult"
+                      "$ref": "#/components/schemas/ExecutionResult"
                     },
                     {
                       "type": "null"
@@ -2350,7 +2350,7 @@
             "description": "Hex-encoded cryptographic hash of a block.",
             "type": "string"
           },
-          "VersionedExecutionResult": {
+          "ExecutionResult": {
             "description": "The versioned result of executing a single deploy.",
             "oneOf": [
               {

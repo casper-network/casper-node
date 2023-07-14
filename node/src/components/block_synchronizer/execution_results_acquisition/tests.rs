@@ -13,9 +13,9 @@ fn execution_results_chunks_apply_correctly() {
     let block = Block::random(rng);
 
     // Create chunkable execution results
-    let exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
+        .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
     assert!(test_chunks.len() >= 3);
@@ -165,9 +165,9 @@ fn cant_apply_chunk_from_different_exec_results_or_invalid_checksum() {
     let block = Block::random(rng);
 
     // Create valid execution results
-    let valid_exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let valid_exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
+        .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let valid_test_chunks = chunks_with_proof_from_data(&valid_exec_results.to_bytes().unwrap());
     assert!(valid_test_chunks.len() >= 3);
@@ -267,7 +267,7 @@ impl ExecutionResultsAcquisition {
     fn new_complete(
         block_hash: BlockHash,
         checksum: ExecutionResultsChecksum,
-        results: HashMap<DeployHash, VersionedExecutionResult>,
+        results: HashMap<DeployHash, ExecutionResult>,
     ) -> Self {
         let acq = Self::Complete {
             block_hash,
@@ -330,9 +330,7 @@ fn acquisition_pending_state_has_correct_transitions() {
 
     // Acquisition can transition from `Pending` to `Complete` if a value and deploy hashes are
     // applied
-    let execution_results = vec![VersionedExecutionResult::from(ExecutionResultV2::random(
-        rng,
-    ))];
+    let execution_results = vec![ExecutionResult::from(ExecutionResultV2::random(rng))];
     let exec_result = BlockExecutionResultsOrChunk::new_from_value(
         *block.hash(),
         ValueOrChunk::new(execution_results, 0).unwrap(),
@@ -355,9 +353,9 @@ fn acquisition_pending_state_has_correct_transitions() {
     );
 
     // Acquisition can transition from `Pending` to `Acquiring` if a single chunk is applied
-    let exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
+        .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
     assert!(test_chunks.len() >= 3);
@@ -386,9 +384,9 @@ fn acquisition_acquiring_state_has_correct_transitions() {
     let block = Block::random(rng);
 
     // Generate valid execution results that are chunkable
-    let exec_results: Vec<VersionedExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
+    let exec_results: Vec<ExecutionResult> = (0..NUM_TEST_EXECUTION_RESULTS)
         .into_iter()
-        .map(|_| VersionedExecutionResult::from(ExecutionResultV2::random(rng)))
+        .map(|_| ExecutionResult::from(ExecutionResultV2::random(rng)))
         .collect();
     let test_chunks = chunks_with_proof_from_data(&exec_results.to_bytes().unwrap());
     assert!(test_chunks.len() >= 3);
@@ -465,9 +463,7 @@ fn acquisition_acquiring_state_gets_overridden_by_value() {
     // Since we don't have a checksum for the execution results, we can't really determine which
     // data is the better one. We expect to overwrite the execution results chunks that
     // we previously acquired with this complete result.
-    let execution_results = vec![VersionedExecutionResult::from(ExecutionResultV2::random(
-        rng,
-    ))];
+    let execution_results = vec![ExecutionResult::from(ExecutionResultV2::random(rng))];
     let exec_result = BlockExecutionResultsOrChunk::new_from_value(
         *block.hash(),
         ValueOrChunk::new(execution_results, 0).unwrap(),

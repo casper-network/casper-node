@@ -35,7 +35,7 @@ use warp::{
 #[cfg(test)]
 use casper_types::{execution::ExecutionResultV2, testing::TestRng, Block};
 use casper_types::{
-    execution::{ExecutionJournal, VersionedExecutionResult},
+    execution::{ExecutionJournal, ExecutionResult},
     BlockHash, Deploy, DeployHash, EraId, FinalitySignature, JsonBlock, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
@@ -97,7 +97,7 @@ pub enum SseData {
         dependencies: Vec<DeployHash>,
         block_hash: Box<BlockHash>,
         #[data_size(skip)]
-        execution_result: Box<VersionedExecutionResult>,
+        execution_result: Box<ExecutionResult>,
     },
     /// The given deploy has expired.
     DeployExpired { deploy_hash: DeployHash },
@@ -173,9 +173,7 @@ impl SseData {
             ttl: deploy.header().ttl(),
             dependencies: deploy.header().dependencies().clone(),
             block_hash: Box::new(BlockHash::random(rng)),
-            execution_result: Box::new(VersionedExecutionResult::from(ExecutionResultV2::random(
-                rng,
-            ))),
+            execution_result: Box::new(ExecutionResult::from(ExecutionResultV2::random(rng))),
         }
     }
 

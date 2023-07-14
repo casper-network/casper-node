@@ -108,7 +108,7 @@
               "$ref": "#/definitions/BlockHash"
             },
             "execution_result": {
-              "$ref": "#/definitions/VersionedExecutionResult"
+              "$ref": "#/definitions/ExecutionResult"
             }
           }
         }
@@ -1187,7 +1187,7 @@
       },
       "additionalProperties": false
     },
-    "VersionedExecutionResult": {
+    "ExecutionResult": {
       "description": "The versioned result of executing a single deploy.",
       "oneOf": [
         {

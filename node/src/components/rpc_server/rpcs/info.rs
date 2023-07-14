@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use casper_types::{
-    execution::{ExecutionResultV2, VersionedExecutionResult},
+    execution::{ExecutionResult, ExecutionResultV2},
     ChainspecRawBytes, Deploy, DeployHash, EraId, JsonBlock, ProtocolVersion, PublicKey,
 };
 
@@ -34,9 +34,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     execution_info: Some(DeployExecutionInfo {
         block_hash: JsonBlock::doc_example().hash,
         block_height: JsonBlock::doc_example().header.height,
-        execution_result: Some(VersionedExecutionResult::from(
-            ExecutionResultV2::example().clone(),
-        )),
+        execution_result: Some(ExecutionResult::from(ExecutionResultV2::example().clone())),
     }),
 });
 static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {

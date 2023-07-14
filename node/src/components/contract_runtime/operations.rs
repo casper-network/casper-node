@@ -17,9 +17,7 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-    execution::{
-        ExecutionJournal, ExecutionResultV2, Transform, TransformKind, VersionedExecutionResult,
-    },
+    execution::{ExecutionJournal, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     Block, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport, Key, ProtocolVersion,
     PublicKey, U512,
 };
@@ -361,7 +359,7 @@ fn commit_execution_results<S>(
     state_root_hash: Digest,
     deploy_hash: DeployHash,
     execution_results: ExecutionResults,
-) -> Result<(Digest, VersionedExecutionResult), BlockExecutionError>
+) -> Result<(Digest, ExecutionResult), BlockExecutionError>
 where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
@@ -393,7 +391,7 @@ where
     };
     let new_state_root = commit_transforms(engine_state, metrics, state_root_hash, effects)?;
     let versioned_execution_result =
-        VersionedExecutionResult::from(ExecutionResultV2::from(ee_execution_result));
+        ExecutionResult::from(ExecutionResultV2::from(ee_execution_result));
     Ok((new_state_root, versioned_execution_result))
 }
 
@@ -531,7 +529,7 @@ where
 /// serialized results are not greater than `ChunkWithProof::CHUNK_SIZE_BYTES`), or otherwise will
 /// be a Merkle root hash of the chunks derived from the serialized results.
 pub(crate) fn compute_execution_results_checksum<'a>(
-    execution_results_iter: impl Iterator<Item = &'a VersionedExecutionResult> + Clone,
+    execution_results_iter: impl Iterator<Item = &'a ExecutionResult> + Clone,
 ) -> Result<Digest, BlockExecutionError> {
     // Serialize the execution results as if they were `Vec<VersionedExecutionResult>`.
     let serialized_length = U32_SERIALIZED_LENGTH

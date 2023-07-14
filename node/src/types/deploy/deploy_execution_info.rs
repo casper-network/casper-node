@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{execution::VersionedExecutionResult, BlockHash};
+use casper_types::{execution::ExecutionResult, BlockHash};
 
 /// The block hash and height in which a given deploy was executed, along with the execution result
 /// if known.
@@ -10,5 +10,5 @@ use casper_types::{execution::VersionedExecutionResult, BlockHash};
 pub struct DeployExecutionInfo {
     pub(crate) block_hash: BlockHash,
     pub(crate) block_height: u64,
-    pub(crate) execution_result: Option<VersionedExecutionResult>,
+    pub(crate) execution_result: Option<ExecutionResult>,
 }

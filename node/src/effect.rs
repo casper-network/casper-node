@@ -161,7 +161,7 @@ use announcements::{
     MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, UnexecutedBlockAnnouncement,
     UpgradeWatcherAnnouncement,
 };
-use casper_types::execution::VersionedExecutionResult;
+use casper_types::execution::ExecutionResult;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
@@ -1090,7 +1090,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block: Arc<Block>,
         approvals_hashes: Box<ApprovalsHashes>,
-        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> bool
     where
         REv: From<StorageRequest>,
@@ -1216,7 +1216,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_execution_results_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<Vec<(DeployHash, DeployHeader, VersionedExecutionResult)>>
+    ) -> Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>
     where
         REv: From<StorageRequest>,
     {
@@ -1539,7 +1539,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         block_hash: BlockHash,
         block_height: u64,
-        execution_results: HashMap<DeployHash, VersionedExecutionResult>,
+        execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
     {
