@@ -49,7 +49,7 @@ impl Display for Header {
 }
 
 /// Error kind, from the kind byte.
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Copy, Clone, Debug, Error, Eq, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum ErrorKind {
@@ -382,6 +382,12 @@ mod tests {
             let reencoded: [u8; Header::SIZE] = rebuilt.into();
             assert_eq!(rebuilt, header);
             assert_eq!(reencoded, <[u8; Header::SIZE]>::from(header));
+
+            // Ensure display/debug don't panic.
+            assert_eq!(format!("{}", header), format!("{:?}", header));
+
+            // Check bytewise it is the same.
+            assert_eq!(&reencoded[..], header.as_ref());
         }
 
         // Otherwise all good, simply failed to parse.
@@ -399,10 +405,29 @@ mod tests {
     }
 
     #[test]
+    fn header_parsing_fails_if_kind_out_of_range() {
+        let invalid_err_header = [0b1000_1111, 00, 00, 00];
+        assert_eq!(Header::parse(invalid_err_header), None);
+
+        let invalid_ok_header = [0b0000_0111, 00, 00, 00];
+        assert_eq!(Header::parse(invalid_ok_header), None);
+    }
+
+    #[test]
     fn ensure_zeroed_header_works() {
         assert_eq!(
             Header::zeroed(),
             Header::new(Kind::Request, ChannelId(0), Id(0))
         )
+    }
+
+    #[proptest]
+    fn err_header_construction(header: Header, error_kind: ErrorKind) {
+        let combined = header.with_err(error_kind);
+
+        assert_eq!(header.channel(), combined.channel());
+        assert_eq!(header.id(), combined.id());
+        assert!(combined.is_error());
+        assert_eq!(combined.error_kind(), error_kind);
     }
 }
