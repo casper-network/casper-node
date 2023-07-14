@@ -20,7 +20,7 @@ use casper_types::{
     runtime_args,
     system::auction,
     ChainspecRegistry, Digest, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
-    PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    PublicKey, SecretKey, StoredValue, U512,
 };
 
 use crate::{

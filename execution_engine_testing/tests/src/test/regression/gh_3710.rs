@@ -13,7 +13,7 @@ use casper_storage::global_state::state::{CommitProvider, StateProvider};
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
-    Digest, EraId, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs, U512,
+    Digest, EraId, Key, KeyTag, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::lmdb_fixture;

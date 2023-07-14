@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{runtime_args, Key, RuntimeArgs, URef};
+use casper_types::{runtime_args, Key, URef};
 
 const EE_441_RNG_STATE: &str = "ee_441_rng_state.wasm";
 

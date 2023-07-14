@@ -15,7 +15,7 @@ use casper_execution_engine::engine_state::{
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,
     HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion, PublicKey,
-    RuntimeArgs, SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
+    SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_WASM_MAX_MEMORY, U512,
 };
 

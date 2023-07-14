@@ -25,7 +25,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         standard_payment,
     },
-    ApiError, GenesisAccount, GenesisValidator, Key, Motes, RuntimeArgs, StoredValue, U512,
+    ApiError, GenesisAccount, GenesisValidator, Key, Motes, StoredValue, U512,
 };
 
 use crate::lmdb_fixture;

@@ -11,7 +11,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

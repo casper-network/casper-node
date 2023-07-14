@@ -17,7 +17,7 @@ use casper_types::{
         DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_VALIDATOR,
     },
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

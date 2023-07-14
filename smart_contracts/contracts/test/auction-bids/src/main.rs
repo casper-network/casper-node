@@ -13,7 +13,7 @@ use casper_types::{
         ARG_DELEGATOR, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_VALIDATOR, METHOD_DELEGATE,
         METHOD_DISTRIBUTE, METHOD_RUN_AUCTION, METHOD_UNDELEGATE,
     },
-    ApiError, PublicKey, RuntimeArgs, U512,
+    ApiError, PublicKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";

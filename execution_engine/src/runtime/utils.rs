@@ -1181,8 +1181,7 @@ mod tests {
     };
 
     use casper_types::{
-        gens::*, runtime_args, AccessRights, CLType, CLValue, Key, PublicKey, RuntimeArgs,
-        SecretKey, URef,
+        gens::*, runtime_args, AccessRights, CLType, CLValue, Key, PublicKey, SecretKey, URef,
     };
 
     use super::*;

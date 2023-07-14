@@ -9,7 +9,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate},
-    ApiError, GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";

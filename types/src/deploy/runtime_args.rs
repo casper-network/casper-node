@@ -241,7 +241,7 @@ impl FromBytes for RuntimeArgs {
 ///
 /// # Example usage
 /// ```
-/// use casper_types::{RuntimeArgs, runtime_args};
+/// use casper_types::runtime_args;
 /// let _named_args = runtime_args! {
 ///   "foo" => 42,
 ///   "bar" => "Hello, world!"
@@ -249,11 +249,11 @@ impl FromBytes for RuntimeArgs {
 /// ```
 #[macro_export]
 macro_rules! runtime_args {
-    () => (RuntimeArgs::new());
+    () => ($crate::RuntimeArgs::new());
     ( $($key:expr => $value:expr,)+ ) => (runtime_args!($($key => $value),+));
     ( $($key:expr => $value:expr),* ) => {
         {
-            let mut named_args = RuntimeArgs::new();
+            let mut named_args = $crate::RuntimeArgs::new();
             $(
                 named_args.insert($key, $value).unwrap();
             )*

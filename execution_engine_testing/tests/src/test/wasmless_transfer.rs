@@ -21,8 +21,8 @@ use casper_types::{
     runtime_args,
     system::{handle_payment, mint},
     AccessRights, ApiError, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StandardPaymentCosts, SystemConfig, URef,
-    WasmConfig, DEFAULT_WASMLESS_TRANSFER_COST, U512,
+    ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef, WasmConfig,
+    DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

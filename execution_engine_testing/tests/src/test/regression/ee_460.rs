@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_storage::global_state::shared::transform::Transform;
-use casper_types::{runtime_args, RuntimeArgs, U512};
+use casper_types::{runtime_args, U512};
 
 const CONTRACT_EE_460_REGRESSION: &str = "ee_460_regression.wasm";
 

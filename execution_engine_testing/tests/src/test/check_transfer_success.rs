@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::engine_state::run_genesis_request::RunGenesisRequest;
-use casper_types::{runtime_args, GenesisAccount, Key, Motes, RuntimeArgs, U512};
+use casper_types::{runtime_args, GenesisAccount, Key, Motes, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_DESTINATION: &str = "destination";

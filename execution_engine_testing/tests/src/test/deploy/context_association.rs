@@ -6,7 +6,6 @@ use casper_engine_test_support::{
 use casper_types::{
     runtime_args,
     system::{AUCTION, HANDLE_PAYMENT, MINT},
-    RuntimeArgs,
 };
 
 const SYSTEM_CONTRACT_HASHES_WASM: &str = "system_contract_hashes.wasm";

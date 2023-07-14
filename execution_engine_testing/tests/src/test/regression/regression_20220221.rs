@@ -13,7 +13,7 @@ use casper_types::{
         auction::{self, DelegationRate, INITIAL_ERA_ID},
         mint,
     },
-    EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, ProtocolVersion, PublicKey, SecretKey, U256, U512,
 };
 
 const VALIDATOR_STAKE: u64 = 1_000_000_000;

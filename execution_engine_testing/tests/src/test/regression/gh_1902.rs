@@ -14,7 +14,7 @@ use casper_types::{
         auction::{self, DelegationRate},
         mint, standard_payment,
     },
-    Gas, PublicKey, RuntimeArgs, SecretKey, U512,
+    Gas, PublicKey, SecretKey, U512,
 };
 
 const BOND_AMOUNT: u64 = 42;

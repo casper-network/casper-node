@@ -8,9 +8,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_storage::global_state::shared::transform::Transform;
-use casper_types::{
-    runtime_args, system::standard_payment, ContractHash, Key, RuntimeArgs, URef, U512,
-};
+use casper_types::{runtime_args, system::standard_payment, ContractHash, Key, URef, U512};
 
 #[ignore]
 #[test]

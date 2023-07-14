@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::{AccountHash, Weight},
-    runtime_args, RuntimeArgs, U512,
+    runtime_args, U512,
 };
 
 const CONTRACT_ADD_UPDATE_ASSOCIATED_KEY: &str = "add_update_associated_key.wasm";
