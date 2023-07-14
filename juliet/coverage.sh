@@ -6,6 +6,6 @@
 
 set -e
 
-cargo tarpaulin -r . --exclude-files '../**' --exclude-files 'examples' --out lcov
+cargo tarpaulin --engine Llvm -r . --exclude-files '../**' --exclude-files 'examples' --out lcov
 mkdir -p coverage
 genhtml -o coverage lcov.info
