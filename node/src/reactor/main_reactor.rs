@@ -27,8 +27,6 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
 
-#[cfg(test)]
-use crate::testing::network::NetworkedReactor;
 use crate::{
     components::{
         block_accumulator::{self, BlockAccumulator},
@@ -57,10 +55,10 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::ChainspecRawBytesRequest,
+        requests::{AcceptDeployRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
@@ -72,11 +70,16 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        Block, BlockHash, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, MetaBlock,
+        MetaBlockState, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
+};
+#[cfg(test)]
+use crate::{
+    components::{ComponentState, InitializedComponent},
+    testing::network::NetworkedReactor,
 };
 pub use config::Config;
 pub(crate) use error::Error;
@@ -180,12 +183,14 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
+    shutdown_for_upgrade_timeout: TimeDiff,
+    switched_to_shutdown_for_upgrade: Timestamp,
+    upgrade_timeout: TimeDiff,
     sync_to_genesis: bool,
     signature_gossip_tracker: SignatureGossipTracker,
 }
@@ -267,7 +272,7 @@ impl reactor::Reactor for MainReactor {
                     // era by enqueuing all finalized blocks starting from the
                     // first one in that era, blocks which should have already
                     // been executed and marked complete in storage.
-                    error!(
+                    warn!(
                         block_height,
                         "Finalized block enqueued for execution, but a complete \
                         block header with the same height is not present in storage."
@@ -306,17 +311,6 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
-                deploy,
-                responder,
-            }) => {
-                let event = deploy_acceptor::Event::Accept {
-                    deploy,
-                    source: Source::Client,
-                    maybe_responder: responder,
-                };
-                self.dispatch_event(effect_builder, rng, MainEvent::DeployAcceptor(event))
-            }
             MainEvent::RestServer(event) => reactor::wrap_effects(
                 MainEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -685,6 +679,27 @@ impl reactor::Reactor for MainReactor {
                 self.deploy_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
+            MainEvent::AcceptDeployRequest(AcceptDeployRequest {
+                deploy,
+                speculative_exec_at_block,
+                responder,
+            }) => {
+                let source = if let Some(block) = speculative_exec_at_block {
+                    Source::SpeculativeExec(block)
+                } else {
+                    Source::Client
+                };
+                let event = deploy_acceptor::Event::Accept {
+                    deploy,
+                    source,
+                    maybe_responder: Some(responder),
+                };
+                reactor::wrap_effects(
+                    MainEvent::DeployAcceptor,
+                    self.deploy_acceptor
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
             MainEvent::DeployAcceptorAnnouncement(
                 DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
             ) => {
@@ -721,6 +736,12 @@ impl reactor::Reactor for MainReactor {
                                 event_stream_server::Event::DeployAccepted(deploy),
                             ),
                         ));
+                    }
+                    Source::SpeculativeExec(_) => {
+                        error!(
+                            ?deploy,
+                            "deploy acceptor should not announce speculative exec deploys"
+                        );
                     }
                 }
 
@@ -761,7 +782,7 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     deploy_acceptor::Event::Accept {
-                        deploy: item,
+                        deploy: Arc::new(*item),
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },
@@ -860,7 +881,7 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
-            MainEvent::BlockCompleteConfirmationRequest(req) => reactor::wrap_effects(
+            MainEvent::MarkBlockCompletedRequest(req) => reactor::wrap_effects(
                 MainEvent::Storage,
                 self.storage.handle_event(effect_builder, rng, req.into()),
             ),
@@ -1010,12 +1031,20 @@ impl reactor::Reactor for MainReactor {
             &storage_config,
             hard_reset_to_start_of_era,
             protocol_version,
+            chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
             chainspec.deploy_config.max_ttl,
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
         )?;
+
+        let max_delegators_per_validator =
+            if chainspec.core_config.max_delegators_per_validator == 0 {
+                None
+            } else {
+                Some(chainspec.core_config.max_delegators_per_validator)
+            };
 
         let contract_runtime = ContractRuntime::new(
             protocol_version,
@@ -1026,8 +1055,11 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.max_associated_keys,
             chainspec.core_config.max_runtime_call_stack_height,
             chainspec.core_config.minimum_delegation_amount,
+            chainspec.protocol_config.activation_point,
+            chainspec.core_config.prune_batch_size,
             chainspec.core_config.strict_argument_checking,
             chainspec.core_config.vesting_schedule_period.millis(),
+            max_delegators_per_validator,
             registry,
         )?;
 
@@ -1163,9 +1195,11 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            switch_block: None,
             sync_to_genesis: config.node.sync_to_genesis,
             signature_gossip_tracker: SignatureGossipTracker::new(),
+            shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
+            switched_to_shutdown_for_upgrade: Timestamp::from(0),
+            upgrade_timeout: config.node.upgrade_timeout,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -1178,6 +1212,16 @@ impl reactor::Reactor for MainReactor {
         self.memory_metrics.estimate(self);
         self.event_queue_metrics
             .record_event_queue_counts(&event_queue_handle)
+    }
+
+    #[cfg(test)]
+    fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
+        match name {
+            "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
+                &self.rest_server,
+            )),
+            _ => None,
+        }
     }
 }
 
@@ -1384,38 +1428,23 @@ impl MainReactor {
             return effects;
         }
 
-        // Set the current switch block only after the block is marked complete.
         // We *always* want to initialize the contract runtime with the highest complete block.
         // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
         // the immediate switch block is stored and *also* marked complete.
         // This will allow the contract runtime to initialize properly (see
         // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
         // `KeepUp`.
-        if state.is_marked_complete() {
-            debug!(
-                "MetaBlock: marked complete: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            if block.header().is_switch_block() {
-                match self.switch_block.as_ref().map(|header| header.height()) {
-                    Some(current_height) => {
-                        if block.height() > current_height {
-                            self.switch_block = Some(block.header().clone());
-                        }
-                    }
-                    None => {
-                        self.switch_block = Some(block.header().clone());
-                    }
-                }
-            } else {
-                self.switch_block = None;
-            }
-        } else {
+        if !state.is_marked_complete() {
             error!(
                 block = %*block,
                 ?state,
                 "should be a complete block after passing to accumulator"
+            );
+        } else {
+            debug!(
+                "MetaBlock: block is marked complete: {} {}",
+                block.height(),
+                block.hash(),
             );
         }
 

@@ -3,6 +3,7 @@
 # Script used to group everything needed for nctl upgrade remotes.
 
 set -e
+shopt -s expand_aliases
 
 trap clean_up EXIT
 

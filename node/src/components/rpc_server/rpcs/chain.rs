@@ -5,13 +5,14 @@
 
 mod era_summary;
 
-use std::{num::ParseIntError, str};
+use std::{clone::Clone, num::ParseIntError, str};
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use casper_execution_engine::core::engine_state::{self, QueryResult};
 use casper_hashing::Digest;
 use casper_types::{Key, ProtocolVersion, Transfer};
 
@@ -22,7 +23,7 @@ use super::{
 use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
-    rpcs::common,
+    rpcs::{common, state},
     types::{Block, BlockHash, BlockWithMetadata, JsonBlock},
 };
 pub use era_summary::EraSummary;
@@ -60,6 +61,13 @@ static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoPara
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
+});
+static GET_ERA_SUMMARY_PARAMS: Lazy<GetEraSummaryParams> = Lazy::new(|| GetEraSummaryParams {
+    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+});
+static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSummaryResult {
+    api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
+    era_summary: ERA_SUMMARY.clone(),
 });
 
 /// Identifier for possible ways to retrieve a block.
@@ -382,7 +390,6 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         // This RPC request is restricted by the block availability index.
         let only_from_available_block_range = true;
 
-        // TODO: decide if/how to handle era id
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
         let block = common::get_block(
             maybe_block_id,
@@ -398,23 +405,66 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
             });
         }
 
-        let state_root_hash = block.state_root_hash().to_owned();
-        let era_id = block.header().era_id();
-        let base_key = Key::EraInfo(era_id);
-        let path = Vec::new();
-
-        let (stored_value, merkle_proof) =
-            common::run_query_and_encode(effect_builder, state_root_hash, base_key, path).await?;
-
+        let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,
-            era_summary: Some(EraSummary {
-                block_hash: *block.hash(),
-                era_id,
-                stored_value,
-                state_root_hash,
-                merkle_proof,
-            }),
+            era_summary: Some(era_summary),
+        };
+        Ok(result)
+    }
+}
+
+/// Params for "chain_get_era_summary" RPC response.
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraSummaryParams {
+    /// The block identifier.
+    pub block_identifier: BlockIdentifier,
+}
+
+impl DocExample for GetEraSummaryParams {
+    fn doc_example() -> &'static Self {
+        &GET_ERA_SUMMARY_PARAMS
+    }
+}
+
+/// Result for "chain_get_era_summary" RPC response.
+#[derive(PartialEq, Eq, Serialize, Deserialize, Debug, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GetEraSummaryResult {
+    /// The RPC API version.
+    #[schemars(with = "String")]
+    pub api_version: ProtocolVersion,
+    /// The era summary.
+    pub era_summary: EraSummary,
+}
+
+impl DocExample for GetEraSummaryResult {
+    fn doc_example() -> &'static Self {
+        &GET_ERA_SUMMARY_RESULT
+    }
+}
+
+/// "chain_get_era_summary" RPC
+pub struct GetEraSummary {}
+
+#[async_trait]
+impl RpcWithOptionalParams for GetEraSummary {
+    const METHOD: &'static str = "chain_get_era_summary";
+    type OptionalRequestParams = GetEraSummaryParams;
+    type ResponseResult = GetEraSummaryResult;
+
+    async fn do_handle_request<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        api_version: ProtocolVersion,
+        maybe_params: Option<Self::OptionalRequestParams>,
+    ) -> Result<Self::ResponseResult, Error> {
+        let maybe_block_id = maybe_params.map(|params| params.block_identifier);
+        let block = common::get_block(maybe_block_id, true, effect_builder).await?;
+        let era_summary = get_era_summary(effect_builder, &block).await?;
+        let result = Self::ResponseResult {
+            api_version,
+            era_summary,
         };
         Ok(result)
     }
@@ -425,20 +475,29 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
 ) -> Result<BlockWithMetadata, Error> {
-    // Get the block from storage or the latest from the linear chain.
-    let maybe_result = effect_builder
-        .make_request(
-            |responder| RpcRequest::GetBlock {
-                maybe_id,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
+    let maybe_result = match maybe_id {
+        Some(BlockIdentifier::Hash(hash)) => {
+            effect_builder
+                .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
+                .await
+        }
+        Some(BlockIdentifier::Height(height)) => {
+            effect_builder
+                .get_block_at_height_with_metadata_from_storage(
+                    height,
+                    only_from_available_block_range,
+                )
+                .await
+        }
+        None => {
+            effect_builder
+                .get_highest_block_with_metadata_from_storage(only_from_available_block_range)
+                .await
+        }
+    };
 
     if let Some(block_with_metadata) = maybe_result {
-        return Ok(*block_with_metadata);
+        return Ok(block_with_metadata);
     }
 
     // TODO: Potential optimization: We might want to make the `GetBlock` actually return the
@@ -472,4 +531,63 @@ pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
     };
 
     Err(error)
+}
+
+/// Returns the `EraSummary` for the era specified in the block.
+///
+/// Prior to Casper Mainnet version 1.4.15, era summaries were stored under `Key::EraInfo(era_id)`.
+/// At this version and later, they are stored under `Key::EraSummary`.
+///
+/// As this change in behaviour is not related to a consistent protocol version across all Casper
+/// networks, we simply try to find the `EraSummary` under the new key variant, and fall back to
+/// to the old variant if the former executes correctly but fails to find the value.
+async fn get_era_summary<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    block: &Block,
+) -> Result<EraSummary, Error> {
+    async fn handle_query_result<REv: ReactorEventT>(
+        effect_builder: EffectBuilder<REv>,
+        block: &Block,
+        result: Result<QueryResult, engine_state::Error>,
+    ) -> Result<EraSummary, Error> {
+        let (value, proofs) =
+            state::handle_query_result(effect_builder, *block.state_root_hash(), result).await?;
+        let (stored_value, merkle_proof) = common::encode_query_success(value, proofs)?;
+        Ok(EraSummary {
+            block_hash: *block.hash(),
+            era_id: block.header().era_id(),
+            stored_value,
+            state_root_hash: *block.state_root_hash(),
+            merkle_proof,
+        })
+    }
+
+    let era_summary_query_result = effect_builder
+        .make_request(
+            |responder| RpcRequest::QueryGlobalState {
+                state_root_hash: *block.state_root_hash(),
+                base_key: Key::EraSummary,
+                path: vec![],
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await;
+    if !matches!(era_summary_query_result, Ok(QueryResult::ValueNotFound(_))) {
+        // The query succeeded or failed in a way not requiring trying under `Key::EraInfo`.
+        return handle_query_result(effect_builder, block, era_summary_query_result).await;
+    }
+
+    let era_info_query_result = effect_builder
+        .make_request(
+            |responder| RpcRequest::QueryGlobalState {
+                state_root_hash: *block.state_root_hash(),
+                base_key: Key::EraInfo(block.header().era_id()),
+                path: vec![],
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await;
+    handle_query_result(effect_builder, block, era_info_query_result).await
 }

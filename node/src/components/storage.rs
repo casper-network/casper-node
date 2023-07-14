@@ -49,7 +49,6 @@ use std::{
     io::ErrorKind,
     mem,
     path::{Path, PathBuf},
-    rc::Rc,
     sync::Arc,
 };
 
@@ -83,8 +82,7 @@ use crate::{
         announcements::FatalAnnouncement,
         incoming::{NetRequest, NetRequestIncoming},
         requests::{
-            BlockCompleteConfirmationRequest, MakeBlockExecutableRequest, NetworkRequest,
-            StorageRequest,
+            MakeBlockExecutableRequest, MarkBlockCompletedRequest, NetworkRequest, StorageRequest,
         },
         EffectBuilder, EffectExt, Effects,
     },
@@ -164,7 +162,7 @@ pub struct Storage {
     root: PathBuf,
     /// Environment holding LMDB databases.
     #[data_size(skip)]
-    env: Rc<Environment>,
+    env: Arc<Environment>,
     /// The block header database.
     #[data_size(skip)]
     block_header_db: Database,
@@ -200,6 +198,10 @@ pub struct Storage {
     deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
+    /// The activation point era of the current protocol version.
+    activation_era: EraId,
+    /// The height of the final switch block of the previous protocol version.
+    key_block_height_for_activation_point: Option<u64>,
     /// Whether or not memory deduplication is enabled.
     enable_mem_deduplication: bool,
     /// An in-memory pool of already loaded serialized items.
@@ -224,9 +226,9 @@ pub(crate) enum Event {
     StorageRequest(Box<StorageRequest>),
     /// Incoming net request.
     NetRequestIncoming(Box<NetRequestIncoming>),
-    /// Block completion announcement.
+    /// Mark block completed request.
     #[from]
-    MarkBlockCompletedRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     /// Make block executable request.
     #[from]
     MakeBlockExecutableRequest(Box<MakeBlockExecutableRequest>),
@@ -269,6 +271,28 @@ pub(crate) enum HighestOrphanedBlockResult {
     MissingFromBlockHeightIndex(u64),
     Orphan(BlockHeader),
     MissingHeader(BlockHash),
+}
+
+impl Display for HighestOrphanedBlockResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            HighestOrphanedBlockResult::MissingHighestSequence => {
+                write!(f, "missing highest sequence")
+            }
+            HighestOrphanedBlockResult::MissingFromBlockHeightIndex(height) => {
+                write!(f, "height not found in block height index: {}", height)
+            }
+            HighestOrphanedBlockResult::Orphan(block_header) => write!(
+                f,
+                "orphan, height={}, hash={}",
+                block_header.height(),
+                block_header.block_hash()
+            ),
+            HighestOrphanedBlockResult::MissingHeader(block_hash) => {
+                write!(f, "missing header for block hash: {}", block_hash)
+            }
+        }
+    }
 }
 
 impl<REv> Component<REv> for Storage
@@ -333,6 +357,7 @@ impl Storage {
         cfg: &WithDir<Config>,
         hard_reset_to_start_of_era: Option<EraId>,
         protocol_version: ProtocolVersion,
+        activation_era: EraId,
         network_name: &str,
         max_ttl: TimeDiff,
         recent_era_count: u64,
@@ -470,7 +495,7 @@ impl Storage {
 
         let mut component = Self {
             root,
-            env: Rc::new(env),
+            env: Arc::new(env),
             block_header_db,
             block_body_db,
             block_metadata_db,
@@ -484,6 +509,8 @@ impl Storage {
             switch_block_era_id_index,
             deploy_hash_index,
             completed_blocks: Default::default(),
+            activation_era,
+            key_block_height_for_activation_point: None,
             enable_mem_deduplication: config.enable_mem_deduplication,
             serialized_item_pool: ObjectPool::new(config.mem_pool_prune_interval),
             recent_era_count,
@@ -769,7 +796,7 @@ impl Storage {
                 approvals_hashes,
                 responder,
             } => {
-                let env = Rc::clone(&self.env);
+                let env = Arc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
                 let result = self.write_approvals_hashes(&mut txn, &approvals_hashes)?;
                 txn.commit()?;
@@ -897,7 +924,7 @@ impl Storage {
                 execution_results,
                 responder,
             } => {
-                let env = Rc::clone(&self.env);
+                let env = Arc::clone(&self.env);
                 let mut txn = env.begin_rw_txn()?;
                 self.write_execution_results(&mut txn, &block_hash, execution_results)?;
                 txn.commit()?;
@@ -1025,21 +1052,23 @@ impl Storage {
                     }))
                     .ignore()
             }
-            StorageRequest::GetHighestBlockWithMetadata { responder } => {
+            StorageRequest::GetHighestBlockWithMetadata {
+                only_from_available_block_range,
+                responder,
+            } => {
                 let mut txn = self.env.begin_ro_txn()?;
-
-                let highest_block: Block = {
-                    if let Some(block) = self
-                        .block_height_index
-                        .keys()
-                        .last()
-                        .and_then(|&height| self.get_block_by_height(&mut txn, height).transpose())
-                        .transpose()?
-                    {
-                        block
-                    } else {
-                        return Ok(responder.respond(None).ignore());
-                    }
+                let maybe_height = if only_from_available_block_range {
+                    self.highest_complete_block_height()
+                } else {
+                    self.block_height_index.keys().last().copied()
+                };
+                let height = match maybe_height {
+                    Some(height) => height,
+                    None => return Ok(responder.respond(None).ignore()),
+                };
+                let highest_block = match self.get_block_by_height(&mut txn, height)? {
+                    Some(block) => block,
+                    None => return Ok(responder.respond(None).ignore()),
                 };
                 let hash = highest_block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
@@ -1155,16 +1184,32 @@ impl Storage {
             } => responder
                 .respond(self.put_executed_block(&block, &approvals_hashes, execution_results)?)
                 .ignore(),
+            StorageRequest::GetKeyBlockHeightForActivationPoint { responder } => {
+                // If we haven't already cached the height, try to retrieve the key block header.
+                if self.key_block_height_for_activation_point.is_none() {
+                    let mut txn = self.env.begin_ro_txn()?;
+                    let key_block_era = self.activation_era.predecessor().unwrap_or_default();
+                    let key_block_header =
+                        match self.get_switch_block_header_by_era_id(&mut txn, key_block_era)? {
+                            Some(block_header) => block_header,
+                            None => return Ok(responder.respond(None).ignore()),
+                        };
+                    self.key_block_height_for_activation_point = Some(key_block_header.height());
+                }
+                responder
+                    .respond(self.key_block_height_for_activation_point)
+                    .ignore()
+            }
         })
     }
 
     /// Handles a [`BlockCompletedAnnouncement`].
     fn handle_mark_block_completed_request(
         &mut self,
-        BlockCompleteConfirmationRequest {
+        MarkBlockCompletedRequest {
             block_height,
             responder,
-        }: BlockCompleteConfirmationRequest,
+        }: MarkBlockCompletedRequest,
     ) -> Result<Effects<Event>, FatalStorageError> {
         let is_new = self.mark_block_complete(block_height)?;
         Ok(responder.respond(is_new).ignore())
@@ -1220,7 +1265,7 @@ impl Storage {
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
         if !wrote {
@@ -1383,7 +1428,7 @@ impl Storage {
     pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {
@@ -1401,7 +1446,7 @@ impl Storage {
     pub fn write_complete_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
         // Validate the block prior to inserting it into the database
         block.verify()?;
-        let env = Rc::clone(&self.env);
+        let env = Arc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
         let wrote = self.write_validated_block(&mut txn, block)?;
         if wrote {

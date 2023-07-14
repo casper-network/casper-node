@@ -1,12 +1,10 @@
 use std::iter;
 
-use datasize::DataSize;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::components::consensus::{
-    highway_core::{endorsement::SignedEndorsement, highway::SignedWireUnit, state::Params},
+    highway_core::{highway::SignedWireUnit, state::Params},
     traits::Context,
     utils::{ValidatorIndex, Validators},
 };
@@ -36,34 +34,53 @@ pub(crate) enum EvidenceError {
     Signature,
 }
 
-/// Evidence that a validator is faulty.
-#[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum Evidence<C>
-where
-    C: Context,
-{
-    /// The validator produced two units with the same sequence number.
-    Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
-    /// The validator endorsed two conflicting units.
-    Endorsements {
-        /// The endorsement for `unit1`.
-        endorsement1: SignedEndorsement<C>,
-        /// The unit with the lower (or equal) sequence number.
-        unit1: SignedWireUnit<C>,
-        /// The endorsement for `unit2`, by the same creator as endorsement1.
-        endorsement2: SignedEndorsement<C>,
-        /// The unit with the higher (or equal) sequence number, on a conflicting fork of the same
-        /// creator as `unit1`.
-        unit2: SignedWireUnit<C>,
-        /// The predecessors of `unit2`, back to the same sequence number as `unit1`, in reverse
-        /// chronological order.
-        swimlane2: Vec<SignedWireUnit<C>>,
-    },
+#[allow(clippy::integer_arithmetic)]
+pub mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
+
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use crate::components::consensus::{
+        highway_core::{endorsement::SignedEndorsement, highway::SignedWireUnit},
+        traits::Context,
+    };
+
+    /// Evidence that a validator is faulty.
+    #[derive(
+        Clone, DataSize, Debug, Eq, PartialEq, Serialize, Deserialize, Hash, EnumDiscriminants,
+    )]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum Evidence<C>
+    where
+        C: Context,
+    {
+        /// The validator produced two units with the same sequence number.
+        Equivocation(SignedWireUnit<C>, SignedWireUnit<C>),
+        /// The validator endorsed two conflicting units.
+        Endorsements {
+            /// The endorsement for `unit1`.
+            endorsement1: SignedEndorsement<C>,
+            /// The unit with the lower (or equal) sequence number.
+            unit1: SignedWireUnit<C>,
+            /// The endorsement for `unit2`, by the same creator as endorsement1.
+            endorsement2: SignedEndorsement<C>,
+            /// The unit with the higher (or equal) sequence number, on a conflicting fork of the
+            /// same creator as `unit1`.
+            unit2: SignedWireUnit<C>,
+            /// The predecessors of `unit2`, back to the same sequence number as `unit1`, in
+            /// reverse chronological order.
+            swimlane2: Vec<SignedWireUnit<C>>,
+        },
+    }
 }
+pub(crate) use relaxed::{Evidence, EvidenceDiscriminants};
 
 impl<C: Context> Evidence<C> {
     /// Returns the ID of the faulty validator.
@@ -158,5 +175,50 @@ impl<C: Context> Evidence<C> {
             return Err(EvidenceError::Signature);
         }
         Ok(())
+    }
+}
+
+mod specimen_support {
+
+    use crate::{
+        components::consensus::ClContext,
+        utils::specimen::{
+            estimator_max_rounds_per_era, largest_variant, vec_of_largest_specimen, Cache,
+            LargestSpecimen, SizeEstimator,
+        },
+    };
+
+    use super::{Evidence, EvidenceDiscriminants};
+
+    impl LargestSpecimen for Evidence<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, EvidenceDiscriminants, _, _>(estimator, |variant| match variant
+            {
+                EvidenceDiscriminants::Equivocation => Evidence::Equivocation(
+                    LargestSpecimen::largest_specimen(estimator, cache),
+                    LargestSpecimen::largest_specimen(estimator, cache),
+                ),
+                EvidenceDiscriminants::Endorsements => {
+                    if estimator.parameter_bool("endorsements_enabled") {
+                        Evidence::Endorsements {
+                            endorsement1: LargestSpecimen::largest_specimen(estimator, cache),
+                            unit1: LargestSpecimen::largest_specimen(estimator, cache),
+                            endorsement2: LargestSpecimen::largest_specimen(estimator, cache),
+                            unit2: LargestSpecimen::largest_specimen(estimator, cache),
+                            swimlane2: vec_of_largest_specimen(
+                                estimator,
+                                estimator_max_rounds_per_era(estimator),
+                                cache,
+                            ),
+                        }
+                    } else {
+                        Evidence::Equivocation(
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                        )
+                    }
+                }
+            })
+        }
     }
 }

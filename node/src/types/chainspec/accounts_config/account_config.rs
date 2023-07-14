@@ -17,9 +17,12 @@ use super::ValidatorConfig;
 /// Configuration of an individial account in accounts.toml
 #[derive(PartialEq, Ord, PartialOrd, Eq, Serialize, Deserialize, DataSize, Debug, Clone)]
 pub struct AccountConfig {
-    pub(super) public_key: PublicKey,
-    balance: Motes,
-    validator: Option<ValidatorConfig>,
+    /// Public Key.
+    pub public_key: PublicKey,
+    /// Balance.
+    pub balance: Motes,
+    /// Validator config.
+    pub validator: Option<ValidatorConfig>,
 }
 
 impl AccountConfig {

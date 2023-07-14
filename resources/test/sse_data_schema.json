@@ -1217,7 +1217,8 @@
         "Read",
         "Write",
         "Add",
-        "NoOp"
+        "NoOp",
+        "Delete"
       ]
     },
     "TransformEntry": {
@@ -1252,7 +1253,8 @@
             "Identity",
             "WriteContractWasm",
             "WriteContract",
-            "WriteContractPackage"
+            "WriteContractPackage",
+            "Delete"
           ]
         },
         {

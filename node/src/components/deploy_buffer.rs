@@ -36,8 +36,8 @@ use crate::{
     types::{
         appendable_block::{AddError, AppendableBlock},
         chainspec::DeployConfig,
-        Approval, Block, BlockHeader, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals,
-        DeployId, FinalizedBlock,
+        Approval, Block, Deploy, DeployFootprint, DeployHash, DeployHashWithApprovals, DeployId,
+        FinalizedBlock,
     },
     utils::DisplayIter,
     NodeRng,
@@ -72,13 +72,6 @@ pub(crate) struct DeployBuffer {
     hold: BTreeMap<Timestamp, HashSet<DeployHash>>,
     // deploy_hashes that should not be proposed, ever
     dead: HashSet<DeployHash>,
-    // block_height and block_time of blocks added to the local chain needed to ensure we have seen
-    // sufficient blocks to allow consensus to proceed safely without risking duplicating deploys.
-    //
-    // if we have gaps in block_height, we do NOT have full TTL awareness.
-    // if we have no block_height gaps but our earliest block_time is less than now - ttl,
-    // we do NOT have full TTL awareness.
-    chain_index: BTreeMap<u64, Timestamp>,
     // deploy buffer metrics
     #[data_size(skip)]
     metrics: Metrics,
@@ -98,7 +91,6 @@ impl DeployBuffer {
             buffer: HashMap::new(),
             hold: BTreeMap::new(),
             dead: HashSet::new(),
-            chain_index: BTreeMap::new(),
             metrics: Metrics::new(registry)?,
         })
     }
@@ -152,63 +144,6 @@ impl DeployBuffer {
             );
         }
         None
-    }
-
-    /// Returns `true` if we have enough information to participate in consensus in the era after
-    /// the `switch block`.
-    ///
-    /// To validate and propose blocks we need to be able to avoid and detect deploy replays.
-    /// Each block in the new era E will have a timestamp greater or equal to E's start time T,
-    /// which is the switch block's timestamp. A deploy D in a block B cannot have timed out as of
-    /// B's timestamp, so it cannot be older than T - ttl, where ttl is the maximum deploy
-    /// time-to-live. So if D were also in an earlier block C, then C's timestamp would be at
-    /// least T - ttl. Thus to prevent replays, we need all blocks with a timestamp between
-    /// T - ttl and T.
-    ///
-    /// Note that we don't need to already have any blocks from E itself, since the consensus
-    /// protocol will announce all proposed and finalized blocks in E anyway.
-    pub(crate) fn have_full_ttl_of_deploys(&self, switch_block: &BlockHeader) -> bool {
-        let from_height = switch_block.height();
-        let earliest_needed = switch_block
-            .timestamp()
-            .saturating_sub(self.deploy_config.max_ttl);
-        debug!(
-            ?self.chain_index, %earliest_needed,
-            "DeployBuffer: chain_index check from_height: {}", from_height
-        );
-        let mut current = match self.chain_index.get(&from_height) {
-            None => {
-                debug!("DeployBuffer: not in chain_index: {}", from_height);
-                return false;
-            }
-            Some(timestamp) => (from_height, timestamp),
-        };
-
-        // genesis special case
-        if from_height == 0 && self.chain_index.contains_key(&from_height) {
-            return true;
-        }
-
-        // note the .rev() at the end (we go backwards)
-        // I only mention it as it seems to keep tripping people up. Not YOU of course, but people.
-        for (height, timestamp) in self.chain_index.range(..from_height).rev() {
-            // gap detection; any gaps in the chain index means we do not have full ttl awareness
-            // for instance, for block_height 6 in set [0,1,2,4,5,6] block 3 is missing
-            // therefore, we can't possibly have ttl
-            let contiguous_next = height.saturating_add(1);
-            if contiguous_next != current.0 {
-                debug!("DeployBuffer: missing block at height: {}", contiguous_next);
-                return false;
-            }
-
-            // if we've reached genesis via an unbroken sequence, we're good
-            // if we've seen a full ttl period of blocks, we're good
-            if *height == 0 || *timestamp < earliest_needed {
-                return true;
-            }
-            current = (*height, timestamp);
-        }
-        false
     }
 
     /// Manages cache ejection.
@@ -338,11 +273,9 @@ impl DeployBuffer {
 
     fn register_deploys<'a>(
         &mut self,
-        block_height: u64,
         timestamp: Timestamp,
         deploy_hashes: impl Iterator<Item = &'a DeployHash>,
     ) {
-        self.chain_index.insert(block_height, timestamp);
         let expiry_timestamp = timestamp.saturating_add(self.deploy_config.max_ttl);
 
         for deploy_hash in deploy_hashes {
@@ -364,7 +297,7 @@ impl DeployBuffer {
         let block_height = block.header().height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
-        self.register_deploys(block_height, timestamp, block.deploy_and_transfer_hashes());
+        self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
     }
 
     /// Update buffer and holds considering new finalized block.
@@ -372,11 +305,7 @@ impl DeployBuffer {
         let block_height = finalized_block.height();
         let timestamp = finalized_block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block_finalized({}) timestamp finalized", block_height);
-        self.register_deploys(
-            block_height,
-            timestamp,
-            finalized_block.deploy_and_transfer_hashes(),
-        );
+        self.register_deploys(timestamp, finalized_block.deploy_and_transfer_hashes());
     }
 
     /// Returns eligible deploys that are buffered and not held or dead.
@@ -425,6 +354,13 @@ impl DeployBuffer {
                             error!(
                                 ?deploy_hash,
                                 "DeployBuffer: duplicated deploy in deploy buffer"
+                            );
+                            self.dead.insert(deploy_hash);
+                        }
+                        AddError::Expired => {
+                            info!(
+                                ?deploy_hash,
+                                "DeployBuffer: expired deploy in deploy buffer"
                             );
                             self.dead.insert(deploy_hash);
                         }

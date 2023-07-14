@@ -2,6 +2,9 @@
 #![allow(clippy::field_reassign_with_default)]
 #![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
 
+#[cfg(test)]
+pub(crate) mod test_block_builder;
+
 mod approvals_hashes;
 mod meta_block;
 
@@ -822,6 +825,89 @@ pub struct BlockHeader {
     #[serde(skip)]
     #[data_size(with = ds::once_cell)]
     block_hash: OnceCell<BlockHash>,
+}
+
+mod specimen_support {
+    use crate::utils::specimen::{
+        btree_map_distinct_from_prop, Cache, LargestSpecimen, SizeEstimator,
+    };
+
+    use super::{
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHeader,
+        BlockHeaderWithMetadata, BlockSignatures, EraEnd,
+    };
+    use once_cell::sync::OnceCell;
+
+    impl LargestSpecimen for BlockHeader {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            BlockHeader {
+                parent_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                state_root_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                body_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                random_bit: LargestSpecimen::largest_specimen(estimator, cache),
+                accumulated_seed: LargestSpecimen::largest_specimen(estimator, cache),
+                era_end: LargestSpecimen::largest_specimen(estimator, cache),
+                timestamp: LargestSpecimen::largest_specimen(estimator, cache),
+                era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                height: LargestSpecimen::largest_specimen(estimator, cache),
+                protocol_version: LargestSpecimen::largest_specimen(estimator, cache),
+                block_hash: OnceCell::with_value(LargestSpecimen::largest_specimen(
+                    estimator, cache,
+                )),
+            }
+        }
+    }
+
+    impl LargestSpecimen for EraEnd {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            EraEnd {
+                era_report: LargestSpecimen::largest_specimen(estimator, cache),
+                next_era_validator_weights: btree_map_distinct_from_prop(
+                    estimator,
+                    "validator_count",
+                    cache,
+                ),
+            }
+        }
+    }
+
+    impl LargestSpecimen for BlockExecutionResultsOrChunkId {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            BlockExecutionResultsOrChunkId {
+                chunk_index: u64::MAX,
+                block_hash: LargestSpecimen::largest_specimen(estimator, cache),
+            }
+        }
+    }
+
+    impl LargestSpecimen for BlockHeaderWithMetadata {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            BlockHeaderWithMetadata {
+                block_header: LargestSpecimen::largest_specimen(estimator, cache),
+                block_signatures: LargestSpecimen::largest_specimen(estimator, cache),
+            }
+        }
+    }
+
+    impl LargestSpecimen for BlockSignatures {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            BlockSignatures {
+                block_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                proofs: btree_map_distinct_from_prop(estimator, "validator_count", cache),
+            }
+        }
+    }
+
+    impl LargestSpecimen for BlockExecutionResultsOrChunk {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            BlockExecutionResultsOrChunk {
+                block_hash: LargestSpecimen::largest_specimen(estimator, cache),
+                value: LargestSpecimen::largest_specimen(estimator, cache),
+                is_valid: OnceCell::with_value(Ok(true)),
+            }
+        }
+    }
 }
 
 impl BlockHeader {
@@ -1788,6 +1874,19 @@ impl BlockExecutionResultsOrChunk {
     pub fn block_hash(&self) -> &BlockHash {
         &self.block_hash
     }
+
+    #[cfg(test)]
+    pub(crate) fn new_mock_value(block_hash: BlockHash) -> Self {
+        Self {
+            block_hash,
+            value: ValueOrChunk::Value(vec![casper_types::ExecutionResult::Success {
+                effect: Default::default(),
+                transfers: vec![],
+                cost: U512::from(123),
+            }]),
+            is_valid: OnceCell::with_value(Ok(true)),
+        }
+    }
 }
 
 impl PartialEq for BlockExecutionResultsOrChunk {
@@ -1838,9 +1937,13 @@ impl FetchItem for BlockExecutionResultsOrChunk {
 
 impl Display for BlockExecutionResultsOrChunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let size = match &self.value {
+            ValueOrChunk::Value(exec_results) => exec_results.serialized_length(),
+            ValueOrChunk::ChunkWithProof(chunk) => chunk.serialized_length(),
+        };
         write!(
             f,
-            "block execution results (or chunk) for block {}",
+            "block execution results or chunk ({size} bytes) for block {}",
             self.block_hash.inner()
         )
     }
@@ -2216,7 +2319,54 @@ pub(crate) mod json_compatibility {
 /// A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should
 /// wait until the signers' combined weight exceeds their fault tolerance threshold before accepting
 /// the block as finalized.
+#[cfg_attr(doc, aquamarine::aquamarine)]
+/// ```mermaid
+/// flowchart TD
+///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
+///     style End fill:#66ccff,stroke:#333,stroke-width:4px
+///     style A fill:#ffcc66,stroke:#333,stroke-width:4px
+///     style B fill:#ffcc66,stroke:#333,stroke-width:4px
+///     style Q fill:#ADD8E6,stroke:#333,stroke-width:4px
+///     style S fill:#ADD8E6,stroke:#333,stroke-width:4px
+///     title[FinalitySignature lifecycle]
+///     title---Start
+///     style title fill:#FFF,stroke:#FFF
+///     linkStyle 0 stroke-width:0;
+///     Start --> A["Validators"]
+///     Start --> B["Non-validators"]
+///     A --> C["Validator creates FS"]
+///     A --> D["Received</br>broadcasted FS"]
+///     A --> E["Received</br>gossiped FS"]
+///     D --> I
+///     E --> I
+///     H --> End
+///     C --> G["Put FS to storage"]
+///     G --> H["Broadcast FS to Validators"]
+///     G --> I["Register FS</br>in BlockAccumulator"]
+///     I --> J{"Has sufficient</br>finality</br>and block?"}
+///     J --> |Yes| K["Put all FS</br>to storage"]
+///     J --> |No| L["Keep waiting</br>for more</br>signatures"]
+///     B --> F["Keeping up with</br>the network"]
+///     F --> M["Received</br>gossiped FS"]
+///     M --> N["Register FS</br>in BlockAccumulator"]
+///     N --> O{"Has sufficient</br>finality</br>and block?"}
+///     O --> |No| L
+///     O --> |Yes| P["Put all FS</br>to storage"]
+///     P --> Q["Initiate <b>forward</b></br>sync process</br><i>(click)</i>"]
+///     Q --> R["If forward or historical sync</br>process fetched and</br>stored additional FS</br>register them in</br>BlockAccumulator"]
+///     B --> S["Initiate <b>historical</b></br>sync process</br><i>(click)</i>"]
+///     S --> R
+///     click Q "../components/block_synchronizer/block_acquisition/enum.BlockAcquisitionState.html"
+///     click S "../components/block_synchronizer/block_acquisition/enum.BlockAcquisitionState.html"
+///     R --> End
+///     K --> End
+/// ```
 #[derive(Debug, Clone, Serialize, Deserialize, DataSize, Eq, JsonSchema)]
+#[schemars(
+    description = "A validator's signature of a block, to confirm it is finalized. Clients and joining nodes should \
+    wait until the signers' combined weight exceeds their fault tolerance threshold before accepting the block as \
+    finalized."
+)]
 pub struct FinalitySignature {
     /// Hash of a block this signature is for.
     pub block_hash: BlockHash,

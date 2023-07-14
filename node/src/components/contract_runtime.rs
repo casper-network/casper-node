@@ -4,6 +4,8 @@ mod config;
 mod error;
 mod metrics;
 mod operations;
+#[cfg(test)]
+mod tests;
 mod types;
 
 use std::{
@@ -27,8 +29,8 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        self, genesis::GenesisError, ChainspecRegistry, DeployItem, EngineConfig, EngineState,
+        GenesisSuccess, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -53,8 +55,8 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
-        FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
+        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError,
+        Deploy, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -205,6 +207,8 @@ pub(crate) struct ContractRuntime {
     exec_queue: ExecQueue,
     /// Cached instance of a [`SystemContractRegistry`].
     system_contract_registry: Option<SystemContractRegistry>,
+    activation_point: ActivationPoint,
+    prune_batch_size: u64,
 }
 
 impl Debug for ContractRuntime {
@@ -460,6 +464,7 @@ impl ContractRuntime {
             ContractRuntimeRequest::EnqueueBlockForExecution {
                 finalized_block,
                 deploys,
+                key_block_height_for_activation_point,
                 meta_block_state,
             } => {
                 let mut effects = Effects::new();
@@ -489,6 +494,8 @@ impl ContractRuntime {
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
+                        let activation_point = self.activation_point;
+                        let prune_batch_size = self.prune_batch_size;
                         effects.extend(
                             Self::execute_finalized_block_or_requeue(
                                 engine_state,
@@ -500,6 +507,9 @@ impl ContractRuntime {
                                 protocol_version,
                                 finalized_block,
                                 deploys,
+                                activation_point,
+                                key_block_height_for_activation_point,
+                                prune_batch_size,
                                 meta_block_state,
                             )
                             .ignore(),
@@ -566,7 +576,11 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 async move {
                     let result = run_intensive_task(move || {
-                        execute_only(engine_state.as_ref(), execution_prestate, (*deploy).into())
+                        execute_only(
+                            engine_state.as_ref(),
+                            execution_prestate,
+                            DeployItem::from((*deploy).clone()),
+                        )
                     })
                     .await;
                     responder.respond(result).await
@@ -588,8 +602,11 @@ impl ContractRuntime {
         max_associated_keys: u32,
         max_runtime_call_stack_height: u32,
         minimum_delegation_amount: u64,
+        activation_point: ActivationPoint,
+        prune_batch_size: u64,
         strict_argument_checking: bool,
         vesting_schedule_period_millis: u64,
+        max_delegators_per_validator: Option<u32>,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -621,6 +638,7 @@ impl ContractRuntime {
             minimum_delegation_amount,
             strict_argument_checking,
             vesting_schedule_period_millis,
+            max_delegators_per_validator,
             wasm_config,
             system_config,
         );
@@ -637,6 +655,8 @@ impl ContractRuntime {
             protocol_version,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
+            activation_point,
+            prune_batch_size,
         })
     }
 
@@ -696,6 +716,7 @@ impl ContractRuntime {
     }
 
     pub(crate) fn set_initial_state(&mut self, sequential_block_state: ExecutionPreState) {
+        let next_block_height = sequential_block_state.next_block_height;
         let mut execution_pre_state = self.execution_pre_state.lock().unwrap();
         *execution_pre_state = sequential_block_state;
 
@@ -710,6 +731,7 @@ impl ContractRuntime {
                 .exec_queue_size
                 .set(exec_queue.len().try_into().unwrap_or(i64::MIN));
         }
+        debug!(next_block_height, "ContractRuntime: set initial state");
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -723,6 +745,9 @@ impl ContractRuntime {
         protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
+        activation_point: ActivationPoint,
+        key_block_height_for_activation_point: u64,
+        prune_batch_size: u64,
         mut meta_block_state: MetaBlockState,
     ) where
         REv: From<ContractRuntimeRequest>
@@ -748,21 +773,41 @@ impl ContractRuntime {
                 current_pre_state,
                 finalized_block,
                 deploys,
+                activation_point.era_id(),
+                key_block_height_for_activation_point,
+                prune_batch_size,
             )
         })
         .await
         {
             Ok(block_and_execution_results) => block_and_execution_results,
-            Err(error) => return fatal!(effect_builder, "{}", error).await,
+            Err(error) => {
+                error!(%error, "failed to execute block");
+                return fatal!(effect_builder, "{}", error).await;
+            }
         };
 
         let new_execution_pre_state = ExecutionPreState::from_block_header(block.header());
-        debug!(
-            next_block_height = new_execution_pre_state.next_block_height,
-            "ContractRuntime: updating new_execution_pre_state",
-        );
-        *shared_pre_state.lock().unwrap() = new_execution_pre_state.clone();
-        debug!("ContractRuntime: updated new_execution_pre_state");
+        {
+            // The `shared_pre_state` could have been set to a block we just fully synced after
+            // doing a sync leap (via a call to `set_initial_state`).  We should not allow a block
+            // which completed execution just after this to set the `shared_pre_state` back to an
+            // earlier block height.
+            let mut shared_pre_state = shared_pre_state.lock().unwrap();
+            if shared_pre_state.next_block_height < new_execution_pre_state.next_block_height {
+                debug!(
+                    next_block_height = new_execution_pre_state.next_block_height,
+                    "ContractRuntime: updating shared pre-state",
+                );
+                *shared_pre_state = new_execution_pre_state.clone();
+            } else {
+                debug!(
+                    current_next_block_height = shared_pre_state.next_block_height,
+                    attempted_next_block_height = new_execution_pre_state.next_block_height,
+                    "ContractRuntime: not updating shared pre-state to older state"
+                );
+            }
+        }
 
         let current_era_id = block.header().era_id();
 
@@ -925,7 +970,7 @@ impl ContractRuntime {
 }
 
 #[cfg(test)]
-mod tests {
+mod trie_chunking_tests {
     use casper_execution_engine::{
         shared::{
             additive_map::AdditiveMap, newtypes::CorrelationId, system_config::SystemConfig,
@@ -935,7 +980,7 @@ mod tests {
     };
     use casper_hashing::{ChunkWithProof, Digest};
     use casper_types::{
-        account::AccountHash, bytesrepr, CLValue, Key, ProtocolVersion, StoredValue,
+        account::AccountHash, bytesrepr, CLValue, EraId, Key, ProtocolVersion, StoredValue,
     };
     use prometheus::Registry;
     use tempfile::tempdir;
@@ -943,7 +988,7 @@ mod tests {
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
-        types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+        types::{ActivationPoint, ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
 
     use super::ContractRuntimeError;
@@ -1006,8 +1051,11 @@ mod tests {
             10,
             10,
             10,
+            ActivationPoint::EraId(EraId::from(2)),
+            5,
             true,
             1,
+            None,
             &Registry::default(),
         )
         .unwrap();

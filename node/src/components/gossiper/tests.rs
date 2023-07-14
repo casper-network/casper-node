@@ -18,7 +18,7 @@ use thiserror::Error;
 use tokio::time;
 use tracing::debug;
 
-use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff};
+use casper_types::{testing::TestRng, EraId, ProtocolVersion, TimeDiff};
 
 use super::*;
 use crate::{
@@ -31,14 +31,14 @@ use crate::{
     effect::{
         announcements::{
             ControlAnnouncement, DeployAcceptorAnnouncement, FatalAnnouncement,
-            GossiperAnnouncement, RpcServerAnnouncement,
+            GossiperAnnouncement,
         },
         incoming::{
             ConsensusDemand, ConsensusMessageIncoming, FinalitySignatureIncoming,
             NetRequestIncoming, NetResponseIncoming, TrieDemand, TrieRequestIncoming,
             TrieResponseIncoming,
         },
-        Responder,
+        requests::AcceptDeployRequest,
     },
     protocol::Message as NodeMessage,
     reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
@@ -73,7 +73,7 @@ enum Event {
     #[from]
     StorageRequest(StorageRequest),
     #[from]
-    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
+    AcceptDeployRequest(AcceptDeployRequest),
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
@@ -163,6 +163,7 @@ impl reactor::Reactor for Reactor {
             &storage_withdir,
             None,
             ProtocolVersion::from_parts(1, 0, 0),
+            EraId::default(),
             "test",
             MAX_TTL,
             RECENT_ERA_COUNT,
@@ -261,14 +262,16 @@ impl reactor::Reactor for Reactor {
                 self.storage
                     .handle_event(effect_builder, rng, request.into()),
             ),
-            Event::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
+            Event::AcceptDeployRequest(AcceptDeployRequest {
                 deploy,
+                speculative_exec_at_block,
                 responder,
             }) => {
+                assert!(speculative_exec_at_block.is_none());
                 let event = deploy_acceptor::Event::Accept {
                     deploy,
                     source: Source::Client,
-                    maybe_responder: responder,
+                    maybe_responder: Some(responder),
                 };
                 self.dispatch_event(effect_builder, rng, Event::DeployAcceptor(event))
             }
@@ -296,7 +299,7 @@ impl reactor::Reactor for Reactor {
                     effect_builder,
                     rng,
                     deploy_acceptor::Event::Accept {
-                        deploy: item,
+                        deploy: Arc::new(*item),
                         source: Source::Peer(sender),
                         maybe_responder: None,
                     },
@@ -323,14 +326,9 @@ impl NetworkedReactor for Reactor {
 }
 
 fn announce_deploy_received(
-    deploy: Box<Deploy>,
-    responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
+    deploy: Arc<Deploy>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
-    |effect_builder: EffectBuilder<Event>| {
-        effect_builder
-            .announce_deploy_received(deploy, responder)
-            .ignore()
-    }
+    |effect_builder: EffectBuilder<Event>| effect_builder.try_accept_deploy(deploy, None).ignore()
 }
 
 async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize) {
@@ -345,7 +343,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
 
     // Create `deploy_count` random deploys.
     let (all_deploy_hashes, mut deploys): (BTreeSet<_>, Vec<_>) = iter::repeat_with(|| {
-        let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+        let deploy = Arc::new(Deploy::random_valid_native_transfer(rng));
         (*deploy.hash(), deploy)
     })
     .take(deploy_count)
@@ -355,7 +353,7 @@ async fn run_gossip(rng: &mut TestRng, network_size: usize, deploy_count: usize)
     for deploy in deploys.drain(..) {
         let index: usize = rng.gen_range(0..network_size);
         network
-            .process_injected_effect_on(&node_ids[index], announce_deploy_received(deploy, None))
+            .process_injected_effect_on(&node_ids[index], announce_deploy_received(deploy))
             .await;
     }
 
@@ -403,13 +401,13 @@ async fn should_get_from_alternate_source() {
     let node_ids = network.add_nodes(&mut rng, NETWORK_SIZE).await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
+    let deploy = Arc::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.hash();
 
     // Give the deploy to nodes 0 and 1 to be gossiped.
     for node_id in node_ids.iter().take(2) {
         network
-            .process_injected_effect_on(node_id, announce_deploy_received(deploy.clone(), None))
+            .process_injected_effect_on(node_id, announce_deploy_received(Arc::clone(&deploy)))
             .await;
     }
 
@@ -482,12 +480,12 @@ async fn should_timeout_gossip_response() {
         .await;
 
     // Create random deploy.
-    let deploy = Box::new(Deploy::random_valid_native_transfer(&mut rng));
+    let deploy = Arc::new(Deploy::random_valid_native_transfer(&mut rng));
     let deploy_id = *deploy.hash();
 
     // Give the deploy to node 0 to be gossiped.
     network
-        .process_injected_effect_on(&node_ids[0], announce_deploy_received(deploy.clone(), None))
+        .process_injected_effect_on(&node_ids[0], announce_deploy_received(Arc::clone(&deploy)))
         .await;
 
     // Run node 0 until it has sent the gossip requests.
@@ -560,11 +558,11 @@ async fn should_timeout_new_item_from_peer() {
     // component triggers the `ItemReceived` event.
     reactor_0.fake_deploy_acceptor.set_active(false);
 
-    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+    let deploy = Arc::new(Deploy::random_valid_native_transfer(rng));
 
     // Give the deploy to node 1 to gossip to node 0.
     network
-        .process_injected_effect_on(&node_1, announce_deploy_received(deploy.clone(), None))
+        .process_injected_effect_on(&node_1, announce_deploy_received(Arc::clone(&deploy)))
         .await;
 
     // Run the network until node 1 has sent the gossip request and node 0 has handled it to the
@@ -617,12 +615,12 @@ async fn should_not_gossip_old_stored_item_again() {
     let node_ids = network.add_nodes(rng, NETWORK_SIZE).await;
     let node_0 = node_ids[0];
 
-    let deploy = Box::new(Deploy::random_valid_native_transfer(rng));
+    let deploy = Arc::new(Deploy::random_valid_native_transfer(rng));
 
     // Store the deploy on node 0.
     let store_deploy = |effect_builder: EffectBuilder<Event>| {
         effect_builder
-            .put_deploy_to_storage(deploy.clone())
+            .put_deploy_to_storage(Arc::clone(&deploy))
             .ignore()
     };
     network

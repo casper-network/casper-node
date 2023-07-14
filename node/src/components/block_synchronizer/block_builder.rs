@@ -1,3 +1,7 @@
+mod latch;
+#[cfg(test)]
+mod tests;
+
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter},
@@ -8,10 +12,10 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey, TimeDiff, Timestamp};
+use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
 
 use super::{
-    block_acquisition::{Acceptance, BlockAcquisitionState},
+    block_acquisition::{Acceptance, BlockAcquisitionState, RegisterExecResultsOutcome},
     block_acquisition_action::BlockAcquisitionAction,
     execution_results_acquisition::{self, ExecutionResultsChecksum},
     peer_list::{PeerList, PeersStatus},
@@ -19,10 +23,11 @@ use super::{
     BlockAcquisitionError,
 };
 use crate::{
+    components::block_synchronizer::block_builder::latch::Latch,
     types::{
         chainspec::LegacyRequiredFinality, ApprovalsHashes, Block, BlockExecutionResultsOrChunk,
-        BlockHash, BlockHeader, BlockSignatures, DeployHash, DeployId, EraValidatorWeights,
-        FinalitySignature, NodeId, ValidatorMatrix,
+        BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, EraValidatorWeights,
+        FinalitySignature, FinalizedBlock, NodeId, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -72,14 +77,14 @@ pub(super) struct BlockBuilder {
     // imputed
     block_hash: BlockHash,
     should_fetch_execution_state: bool,
-    requires_strict_finality: bool,
+    strict_finality_protocol_version: ProtocolVersion,
     peer_list: PeerList,
 
     // progress tracking
     sync_start: Instant,
     execution_progress: ExecutionProgress,
     last_progress: Timestamp,
-    in_flight_latch: Option<Timestamp>,
+    latch: Latch,
 
     // acquired state
     acquisition_state: BlockAcquisitionState,
@@ -103,9 +108,10 @@ impl BlockBuilder {
     pub(super) fn new(
         block_hash: BlockHash,
         should_fetch_execution_state: bool,
-        requires_strict_finality: bool,
-        max_simultaneous_peers: u32,
+        max_simultaneous_peers: u8,
         peer_refresh_interval: TimeDiff,
+        legacy_required_finality: LegacyRequiredFinality,
+        strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
         BlockBuilder {
             block_hash,
@@ -113,31 +119,36 @@ impl BlockBuilder {
             validator_weights: None,
             acquisition_state: BlockAcquisitionState::Initialized(
                 block_hash,
-                SignatureAcquisition::new(vec![]),
+                SignatureAcquisition::new(vec![], legacy_required_finality),
             ),
             peer_list: PeerList::new(max_simultaneous_peers, peer_refresh_interval),
             should_fetch_execution_state,
-            requires_strict_finality,
+            strict_finality_protocol_version,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
-            in_flight_latch: None,
+            latch: Latch::default(),
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new_from_sync_leap(
         block_header: &BlockHeader,
         maybe_sigs: Option<&BlockSignatures>,
         validator_weights: EraValidatorWeights,
         peers: Vec<NodeId>,
         should_fetch_execution_state: bool,
-        max_simultaneous_peers: u32,
+        max_simultaneous_peers: u8,
         peer_refresh_interval: TimeDiff,
+        legacy_required_finality: LegacyRequiredFinality,
+        strict_finality_protocol_version: ProtocolVersion,
     ) -> Self {
         let block_hash = block_header.block_hash();
         let era_id = Some(block_header.era_id());
-        let mut signature_acquisition =
-            SignatureAcquisition::new(validator_weights.validator_public_keys().cloned().collect());
+        let mut signature_acquisition = SignatureAcquisition::new(
+            validator_weights.validator_public_keys().cloned().collect(),
+            legacy_required_finality,
+        );
         if let Some(signatures) = maybe_sigs {
             for finality_signature in signatures.finality_signatures() {
                 let _ =
@@ -151,10 +162,6 @@ impl BlockBuilder {
         let mut peer_list = PeerList::new(max_simultaneous_peers, peer_refresh_interval);
         peers.iter().for_each(|p| peer_list.register_peer(*p));
 
-        // we always require strict finality when synchronizing a block
-        // via a sync leap response
-        let requires_strict_finality = true;
-
         BlockBuilder {
             block_hash,
             era_id,
@@ -162,11 +169,11 @@ impl BlockBuilder {
             acquisition_state,
             peer_list,
             should_fetch_execution_state,
-            requires_strict_finality,
+            strict_finality_protocol_version,
             sync_start: Instant::now(),
             execution_progress: ExecutionProgress::Idle,
             last_progress: Timestamp::now(),
-            in_flight_latch: None,
+            latch: Latch::default(),
         }
     }
 
@@ -179,6 +186,11 @@ impl BlockBuilder {
 
     pub(crate) fn block_acquisition_state(&self) -> &BlockAcquisitionState {
         &self.acquisition_state
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_block_acquisition_state(&mut self, state: BlockAcquisitionState) {
+        self.acquisition_state = state
     }
 
     pub(super) fn block_hash(&self) -> BlockHash {
@@ -214,25 +226,27 @@ impl BlockBuilder {
         self.last_progress
     }
 
-    pub(super) fn in_flight_latch(&mut self) -> Option<Timestamp> {
-        if let Some(timestamp) = self.in_flight_latch {
-            // we put a latch on ourselves the first time we signal we need something specific
-            // if asked again before we get what we need, and latch_reset_interval has not passed,
-            // we signal we need nothing to avoid spamming redundant asks
-            //
-            // if latch_reset_interval has passed, we reset the latch and ask again.
-
-            // !todo move reset interval to config
-            let latch_reset_interval = TimeDiff::from_seconds(5);
-            if Timestamp::now().saturating_diff(timestamp) > latch_reset_interval {
-                self.in_flight_latch = None;
-            }
-        }
-        self.in_flight_latch
+    #[cfg(test)]
+    pub fn latched(&self) -> bool {
+        self.latch.count() > 0
     }
 
-    pub(super) fn set_in_flight_latch(&mut self) {
-        self.in_flight_latch = Some(Timestamp::now());
+    pub(super) fn check_latch(&mut self, interval: TimeDiff) -> bool {
+        self.latch.check_latch(interval, Timestamp::now())
+    }
+
+    /// Increments the latch counter by 1.
+    pub(super) fn latch(&mut self) {
+        self.latch.increment(1);
+    }
+
+    pub(super) fn latch_by(&mut self, count: usize) {
+        self.latch.increment(count as u8);
+    }
+
+    /// Decrements the latch counter.
+    pub(super) fn latch_decrement(&mut self) {
+        self.latch.decrement(1);
     }
 
     pub(super) fn is_failed(&self) -> bool {
@@ -240,10 +254,23 @@ impl BlockBuilder {
     }
 
     pub(super) fn is_finished(&self) -> bool {
-        matches!(
-            self.acquisition_state,
-            BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
-        )
+        match self.acquisition_state {
+            BlockAcquisitionState::Initialized(_, _)
+            | BlockAcquisitionState::HaveBlockHeader(_, _)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(_, _)
+            | BlockAcquisitionState::HaveBlock(_, _, _)
+            | BlockAcquisitionState::HaveGlobalState(_, _, _, _)
+            | BlockAcquisitionState::HaveAllExecutionResults(_, _, _, _)
+            | BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
+            | BlockAcquisitionState::HaveAllDeploys(_, _)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(_, _)
+            | BlockAcquisitionState::HaveFinalizedBlock(_, _, _, _)
+            | BlockAcquisitionState::Failed(_, _) => {
+                //TODO: does failed also mean finished?
+                false
+            }
+            BlockAcquisitionState::Complete(_) => true,
+        }
     }
 
     pub(super) fn is_executing(&self) -> bool {
@@ -254,55 +281,73 @@ impl BlockBuilder {
         matches!(self.execution_progress, ExecutionProgress::Idle)
     }
 
-    pub(super) fn register_block_execution_not_enqueued(&mut self) {
-        warn!("failed to enqueue block for execution");
-        // reset latch and try again
-        self.touch();
+    pub(super) fn register_block_execution_enqueued(&mut self) {
+        if self.should_fetch_execution_state {
+            let block_hash = self.block_hash();
+            error!(%block_hash, "invalid attempt to enqueue historical block for execution");
+            self.abort();
+            return;
+        }
+
+        if let Err(error) = self.acquisition_state.register_block_execution_enqueued() {
+            error!(%error, "register block execution enqueued failed");
+            self.abort()
+        } else {
+            self.touch();
+        }
+
+        match self.execution_progress.start() {
+            None => {
+                let block_hash = self.block_hash();
+                warn!(%block_hash, "invalid attempt to start block execution");
+            }
+            Some(executing_progress) => {
+                self.touch();
+                self.execution_progress = executing_progress;
+            }
+        }
     }
 
-    pub(super) fn register_block_execution_enqueued(&mut self) {
+    pub(super) fn register_made_finalized_block(
+        &mut self,
+        block: FinalizedBlock,
+        deploys: Vec<Deploy>,
+    ) {
+        if let Err(error) = self.acquisition_state.register_made_finalized_block(
+            self.should_fetch_execution_state,
+            block,
+            deploys,
+        ) {
+            error!(%error, "register finalized block failed");
+            self.abort()
+        } else {
+            self.touch();
+        }
+    }
+
+    pub(super) fn register_block_executed(&mut self) {
         if let Err(error) = self
             .acquisition_state
-            .register_block_execution_enqueued(self.should_fetch_execution_state)
+            .register_block_executed(self.should_fetch_execution_state)
         {
-            error!(%error, "register block execution enqueued failed");
+            error!(%error, "register block executed failed");
             self.abort()
         } else {
             if self.should_fetch_execution_state {
                 let block_hash = self.block_hash();
-                error!(%block_hash, "invalid attempt to start block execution on historical block");
+                error!(%block_hash, "invalid attempt to finish block execution on historical block");
                 self.abort();
-                return;
             }
 
-            match self.execution_progress.start() {
+            match self.execution_progress.finish() {
                 None => {
                     let block_hash = self.block_hash();
-                    warn!(%block_hash, "invalid attempt to start block execution");
+                    warn!(%block_hash, "invalid attempt to finish block execution");
                 }
                 Some(executing_progress) => {
                     self.touch();
                     self.execution_progress = executing_progress;
                 }
-            }
-        }
-    }
-
-    pub(super) fn register_block_executed(&mut self) {
-        if self.should_fetch_execution_state {
-            let block_hash = self.block_hash();
-            error!(%block_hash, "invalid attempt to finish block execution on historical block");
-            self.abort();
-        }
-
-        match self.execution_progress.finish() {
-            None => {
-                let block_hash = self.block_hash();
-                warn!(%block_hash, "invalid attempt to finish block execution");
-            }
-            Some(executing_progress) => {
-                self.touch();
-                self.execution_progress = executing_progress;
             }
         }
     }
@@ -323,16 +368,16 @@ impl BlockBuilder {
         self.peer_list.dishonest_peers()
     }
 
-    pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn disqualify_peer(&mut self, peer: NodeId) {
         debug!(?peer, "disqualify_peer");
         self.peer_list.disqualify_peer(peer);
     }
 
-    pub(super) fn promote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn promote_peer(&mut self, peer: NodeId) {
         self.peer_list.promote_peer(peer);
     }
 
-    pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
+    pub(super) fn demote_peer(&mut self, peer: NodeId) {
         self.peer_list.demote_peer(peer);
     }
 
@@ -343,8 +388,7 @@ impl BlockBuilder {
     pub(super) fn block_acquisition_action(
         &mut self,
         rng: &mut NodeRng,
-        max_simultaneous_peers: usize,
-        legacy_required_finality: LegacyRequiredFinality,
+        max_simultaneous_peers: u8,
     ) -> BlockAcquisitionAction {
         match self.peer_list.need_peers() {
             PeersStatus::Sufficient => {
@@ -388,7 +432,6 @@ impl BlockBuilder {
             validator_weights,
             rng,
             self.should_fetch_execution_state,
-            legacy_required_finality,
             max_simultaneous_peers,
         ) {
             Ok(ret) => ret,
@@ -419,7 +462,11 @@ impl BlockBuilder {
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let era_id = block_header.era_id();
-        let acceptance = self.acquisition_state.register_block_header(block_header);
+        let acceptance = self.acquisition_state.register_block_header(
+            block_header,
+            self.strict_finality_protocol_version,
+            self.should_fetch_execution_state,
+        );
         self.handle_acceptance(maybe_peer, acceptance)?;
         self.era_id = Some(era_id);
         Ok(())
@@ -450,6 +497,25 @@ impl BlockBuilder {
     pub(super) fn register_finality_signature_pending(&mut self, validator: PublicKey) {
         self.acquisition_state
             .register_finality_signature_pending(validator);
+    }
+
+    pub(super) fn switch_to_have_strict_finality(
+        &mut self,
+        block_hash: BlockHash,
+    ) -> Result<(), Error> {
+        match self
+            .acquisition_state
+            .switch_to_have_strict_finality(block_hash, self.should_fetch_execution_state)
+        {
+            Ok(()) => {
+                self.touch();
+                Ok(())
+            }
+            Err(error) => {
+                self.abort();
+                Err(Error::BlockAcquisition(error))
+            }
+        }
     }
 
     pub(super) fn register_finality_signature(
@@ -506,11 +572,16 @@ impl BlockBuilder {
             block_execution_results_or_chunk,
             self.should_fetch_execution_state,
         ) {
-            Ok(maybe) => {
-                debug!("register_fetched_execution_results: Ok(maybe)");
-                self.touch();
-                self.promote_peer(maybe_peer);
-                Ok(maybe)
+            Ok(RegisterExecResultsOutcome {
+                exec_results,
+                acceptance,
+            }) => {
+                debug!(
+                    ?acceptance,
+                    "register_fetched_execution_results: Ok(RegisterExecResultsOutcome)"
+                );
+                self.handle_acceptance(maybe_peer, Ok(acceptance))?;
+                Ok(exec_results)
             }
             Err(BlockAcquisitionError::ExecutionResults(error)) => {
                 match error {
@@ -522,8 +593,14 @@ impl BlockBuilder {
                     // programmer error
                     execution_results_acquisition::Error::BlockHashMismatch { .. }
                     | execution_results_acquisition::Error::InvalidAttemptToApplyChecksum { .. }
-                    | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. } => {
-                        debug!("register_fetched_execution_results: BlockHashMismatch | InvalidAttemptToApplyChecksum | AttemptToApplyDataWhenMissingChecksum");
+                    | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. }
+                    | execution_results_acquisition::Error::InvalidOutcomeFromApplyingChunk { .. }
+                    => {
+                        debug!(
+                            "register_fetched_execution_results: BlockHashMismatch | \
+                            InvalidAttemptToApplyChecksum | AttemptToApplyDataWhenMissingChecksum \
+                            | InvalidOutcomeFromApplyingChunk"
+                        );
                     },
                     // malicious peer if checksum is available.
                     execution_results_acquisition::Error::ChunkCountMismatch { .. } => {
@@ -538,7 +615,9 @@ impl BlockBuilder {
                         };
                         debug!(is_checkable, "register_fetched_execution_results: ChunkCountMismatch");
                         if is_checkable {
-                            self.disqualify_peer(maybe_peer);
+                            if let Some(peer) = maybe_peer {
+                                self.disqualify_peer(peer);
+                            }
                         }
                     }
                     // malicious peer
@@ -547,12 +626,13 @@ impl BlockBuilder {
                     | execution_results_acquisition::Error::FailedToDeserialize { .. }
                     | execution_results_acquisition::Error::ExecutionResultToDeployHashLengthDiscrepancy { .. } => {
                         debug!("register_fetched_execution_results: InvalidChunkCount | ChecksumMismatch | FailedToDeserialize | ExecutionResultToDeployHashLengthDiscrepancy");
-                        self.disqualify_peer(maybe_peer);
+                        if let Some(peer) = maybe_peer {
+                            self.disqualify_peer(peer);
+                        }
                     }
                     // checksum unavailable, so unknown if this peer is malicious
                     execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {
                         debug!("register_fetched_execution_results: ChunksWithDifferentChecksum");
-
                     }
                 }
                 Err(Error::BlockAcquisition(
@@ -592,11 +672,17 @@ impl BlockBuilder {
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
-        peers.into_iter().for_each(|peer| {
-            if !(self.is_finished() || self.is_failed()) {
-                self.peer_list.register_peer(peer)
-            }
-        });
+        if peers.is_empty() {
+            // We asked for peers but none were provided. Exit early without
+            // clearing the latch so that we don't ask again needlessly.
+            trace!("BlockSynchronizer: no peers available");
+            return;
+        }
+        if !(self.is_finished() || self.is_failed()) {
+            peers
+                .into_iter()
+                .for_each(|peer| self.peer_list.register_peer(peer));
+        }
         self.touch();
     }
 
@@ -608,11 +694,15 @@ impl BlockBuilder {
         match acceptance {
             Ok(Some(Acceptance::NeededIt)) => {
                 self.touch();
-                self.promote_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.promote_peer(peer);
+                }
             }
             Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
             Err(error) => {
-                self.disqualify_peer(maybe_peer);
+                if let Some(peer) = maybe_peer {
+                    self.disqualify_peer(peer);
+                }
                 return Err(Error::BlockAcquisition(error));
             }
         }
@@ -625,7 +715,7 @@ impl BlockBuilder {
 
     fn touch(&mut self) {
         self.last_progress = Timestamp::now();
-        self.in_flight_latch = None;
+        self.latch.unlatch();
     }
 
     pub(crate) fn peer_list(&self) -> &PeerList {

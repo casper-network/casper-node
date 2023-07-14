@@ -186,6 +186,7 @@ fn initialize_isolated_storage_costs() -> InMemoryWasmTestBuilder {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         *STORAGE_COSTS_ONLY,
         SystemConfig::default(),
     );

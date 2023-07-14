@@ -30,7 +30,7 @@ use derive_more::From;
 use serde::{Deserialize, Serialize};
 use tracing::{info, trace};
 
-use casper_types::{EraId, PublicKey, Timestamp};
+use casper_types::{EraId, Timestamp};
 
 use crate::{
     components::Component,
@@ -59,58 +59,46 @@ use traits::Context;
 pub(crate) use cl_context::ClContext;
 pub(crate) use config::{ChainspecConsensusExt, Config};
 pub(crate) use consensus_protocol::{BlockContext, EraReport, ProposedBlock};
-pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor};
+pub(crate) use era_supervisor::{debug::EraDump, EraSupervisor, SerializedMessage};
 #[cfg(test)]
 pub(crate) use highway_core::highway::Vertex as HighwayVertex;
 pub(crate) use leader_sequence::LeaderSequence;
+pub(crate) use protocols::highway::max_rounds_per_era;
+#[cfg(test)]
 pub(crate) use protocols::highway::HighwayMessage;
 pub(crate) use validator_change::ValidatorChange;
 
 const COMPONENT_NAME: &str = "consensus";
 
-/// A message to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub(crate) enum EraMessage<C>
-where
-    C: Context,
-{
-    Zug(Box<protocols::zug::Message<C>>),
-    Highway(Box<HighwayMessage<C>>),
-}
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
 
-impl<C: Context> EraMessage<C> {
-    /// Returns the message for the Zug protocol, or an error if it is for a different protocol.
-    fn try_into_zug(self) -> Result<protocols::zug::Message<C>, Self> {
-        match self {
-            EraMessage::Zug(msg) => Ok(*msg),
-            other => Err(other),
-        }
-    }
+    use casper_types::{EraId, PublicKey};
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
 
-    /// Returns the message for the Highway protocol, or an error if it is for a different
-    /// protocol.
-    pub(crate) fn try_into_highway(self) -> Result<HighwayMessage<C>, Self> {
-        match self {
-            EraMessage::Highway(msg) => Ok(*msg),
-            other => Err(other),
-        }
+    use super::era_supervisor::SerializedMessage;
+
+    #[derive(DataSize, Clone, Serialize, Deserialize, EnumDiscriminants)]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum ConsensusMessage {
+        /// A protocol message, to be handled by the instance in the specified era.
+        Protocol {
+            era_id: EraId,
+            payload: SerializedMessage,
+        },
+        /// A request for evidence against the specified validator, from any era that is still
+        /// bonded in `era_id`.
+        EvidenceRequest { era_id: EraId, pub_key: PublicKey },
     }
 }
-
-impl<C: Context> From<protocols::zug::Message<C>> for EraMessage<C> {
-    fn from(msg: protocols::zug::Message<C>) -> EraMessage<C> {
-        EraMessage::Zug(Box::new(msg))
-    }
-}
-
-impl<C: Context> From<HighwayMessage<C>> for EraMessage<C> {
-    fn from(msg: HighwayMessage<C>) -> EraMessage<C> {
-        EraMessage::Highway(Box::new(msg))
-    }
-}
+pub(crate) use relaxed::{ConsensusMessage, ConsensusMessageDiscriminants};
 
 /// A request to be handled by the consensus protocol instance in a particular era.
-#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, From)]
+#[derive(DataSize, Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, From)]
 pub(crate) enum EraRequest<C>
 where
     C: Context,
@@ -118,42 +106,21 @@ where
     Zug(protocols::zug::SyncRequest<C>),
 }
 
-impl<C: Context> EraRequest<C> {
-    /// Returns the request for the Zug protocol, or an error if it is for a different protocol.
-    fn try_into_zug(self) -> Result<protocols::zug::SyncRequest<C>, Self> {
-        match self {
-            EraRequest::Zug(msg) => Ok(msg),
-        }
-    }
-}
-
-#[derive(DataSize, Clone, Serialize, Deserialize)]
-pub(crate) enum ConsensusMessage {
-    /// A protocol message, to be handled by the instance in the specified era.
-    Protocol {
-        era_id: EraId,
-        payload: EraMessage<ClContext>,
-    },
-    /// A request for evidence against the specified validator, from any era that is still bonded
-    /// in `era_id`.
-    EvidenceRequest { era_id: EraId, pub_key: PublicKey },
-}
-
 /// A protocol request message, to be handled by the instance in the specified era.
 #[derive(DataSize, Clone, Serialize, Deserialize)]
 pub(crate) struct ConsensusRequestMessage {
     era_id: EraId,
-    payload: EraRequest<ClContext>,
+    payload: SerializedMessage,
 }
 
 /// An ID to distinguish different timers. What they are used for is specific to each consensus
 /// protocol implementation.
-#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct TimerId(pub u8);
 
 /// An ID to distinguish queued actions. What they are used for is specific to each consensus
 /// protocol implementation.
-#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(DataSize, Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct ActionId(pub u8);
 
 #[derive(DataSize, Debug, From)]
@@ -229,7 +196,12 @@ impl Display for ConsensusMessage {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             ConsensusMessage::Protocol { era_id, payload } => {
-                write!(f, "protocol message {:?} in {}", payload, era_id)
+                write!(
+                    f,
+                    "protocol message ({} bytes) in {}",
+                    payload.as_raw().len(),
+                    era_id
+                )
             }
             ConsensusMessage::EvidenceRequest { era_id, pub_key } => write!(
                 f,
@@ -366,6 +338,72 @@ impl<REv> ReactorEventT for REv where
         + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
 {
+}
+
+mod specimen_support {
+    use crate::utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator};
+
+    use super::{
+        protocols::{highway, zug},
+        ClContext, ConsensusMessage, ConsensusMessageDiscriminants, ConsensusRequestMessage,
+        EraRequest, SerializedMessage,
+    };
+
+    impl LargestSpecimen for ConsensusMessage {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, ConsensusMessageDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    ConsensusMessageDiscriminants::Protocol => {
+                        let zug_payload = SerializedMessage::from_message(
+                            &zug::Message::<ClContext>::largest_specimen(estimator, cache),
+                        );
+                        let highway_payload = SerializedMessage::from_message(
+                            &highway::HighwayMessage::<ClContext>::largest_specimen(
+                                estimator, cache,
+                            ),
+                        );
+
+                        let payload = if zug_payload.as_raw().len() > highway_payload.as_raw().len()
+                        {
+                            zug_payload
+                        } else {
+                            highway_payload
+                        };
+
+                        ConsensusMessage::Protocol {
+                            era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                            payload,
+                        }
+                    }
+                    ConsensusMessageDiscriminants::EvidenceRequest => {
+                        ConsensusMessage::EvidenceRequest {
+                            era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                            pub_key: LargestSpecimen::largest_specimen(estimator, cache),
+                        }
+                    }
+                }
+            })
+        }
+    }
+
+    impl LargestSpecimen for ConsensusRequestMessage {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            let zug_sync_request = SerializedMessage::from_message(
+                &zug::SyncRequest::<ClContext>::largest_specimen(estimator, cache),
+            );
+
+            ConsensusRequestMessage {
+                era_id: LargestSpecimen::largest_specimen(estimator, cache),
+                payload: zug_sync_request,
+            }
+        }
+    }
+
+    impl LargestSpecimen for EraRequest<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            EraRequest::Zug(LargestSpecimen::largest_specimen(estimator, cache))
+        }
+    }
 }
 
 impl<REv> Component<REv> for EraSupervisor

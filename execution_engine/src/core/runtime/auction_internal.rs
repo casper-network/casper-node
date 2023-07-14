@@ -98,16 +98,19 @@ where
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
     ) -> Result<(), Error> {
-        self.context
-            .metered_write_gs_unsafe(
-                Key::Unbond(account_hash),
-                StoredValue::Unbonding(unbonding_purses),
-            )
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+        let unbond_key = Key::Unbond(account_hash);
+        if unbonding_purses.is_empty() {
+            self.context.delete_gs_unsafe(unbond_key);
+            Ok(())
+        } else {
+            self.context
+                .metered_write_gs_unsafe(unbond_key, StoredValue::Unbonding(unbonding_purses))
+                .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+        }
     }
 
-    fn record_era_info(&mut self, era_id: EraId, era_info: EraInfo) -> Result<(), Error> {
-        Runtime::record_era_info(self, era_id, era_info)
+    fn record_era_info(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error> {
+        Runtime::record_era_summary(self, era_summary)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::RecordEraInfo))
     }
 }

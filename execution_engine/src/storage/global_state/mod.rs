@@ -32,6 +32,8 @@ use crate::{
     },
 };
 
+use super::trie_store::operations::{delete, DeleteResult};
+
 /// A trait expressing the reading of state. This trait is used to abstract the underlying store.
 pub trait StateReader<K, V> {
     /// An error which occurs when reading state
@@ -120,6 +122,14 @@ pub trait StateProvider {
         correlation_id: CorrelationId,
         trie_raw: &[u8],
     ) -> Result<Vec<Digest>, Self::Error>;
+
+    /// Delete key from the global state.
+    fn delete_keys(
+        &self,
+        correlation_id: CorrelationId,
+        root: Digest,
+        keys_to_delete: &[Key],
+    ) -> Result<DeleteResult, Self::Error>;
 }
 
 /// Write multiple key/stored value pairs to the store in a single rw transaction.
@@ -128,7 +138,7 @@ pub fn put_stored_values<'a, R, S, E>(
     store: &S,
     correlation_id: CorrelationId,
     prestate_hash: Digest,
-    stored_values: HashMap<Key, StoredValue>,
+    stored_values: HashMap<Key, Option<StoredValue>>,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
@@ -142,17 +152,43 @@ where
     if maybe_root.is_none() {
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
-    for (key, value) in stored_values.iter() {
-        let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, key, value)?;
-        match write_result {
-            WriteResult::Written(root_hash) => {
-                state_root = root_hash;
+    for (key, maybe_value) in stored_values.iter() {
+        match maybe_value {
+            Some(value) => {
+                let write_result = write::<_, _, _, _, E>(
+                    correlation_id,
+                    &mut txn,
+                    store,
+                    &state_root,
+                    key,
+                    value,
+                )?;
+                match write_result {
+                    WriteResult::Written(root_hash) => {
+                        state_root = root_hash;
+                    }
+                    WriteResult::AlreadyExists => (),
+                    WriteResult::RootNotFound => {
+                        error!(?state_root, ?key, ?value, "Error writing new value");
+                        return Err(CommitError::WriteRootNotFound(state_root).into());
+                    }
+                }
             }
-            WriteResult::AlreadyExists => (),
-            WriteResult::RootNotFound => {
-                error!(?state_root, ?key, ?value, "Error writing new value");
-                return Err(CommitError::WriteRootNotFound(state_root).into());
+            None => {
+                let delete_result =
+                    delete::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, key)?;
+                match delete_result {
+                    DeleteResult::Deleted(root_hash) => {
+                        state_root = root_hash;
+                    }
+                    DeleteResult::DoesNotExist => {
+                        return Err(CommitError::KeyNotFound(*key).into());
+                    }
+                    DeleteResult::RootNotFound => {
+                        error!(?state_root, ?key, "Error deleting value");
+                        return Err(CommitError::WriteRootNotFound(state_root).into());
+                    }
+                }
             }
         }
     }
@@ -188,7 +224,7 @@ where
         let read_result = read::<_, _, _, _, E>(correlation_id, &txn, store, &state_root, &key)?;
 
         let value = match (read_result, transform) {
-            (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
+            (ReadResult::NotFound, Transform::Write(new_value)) => Some(new_value),
             (ReadResult::NotFound, transform) => {
                 error!(
                     ?state_root,
@@ -221,17 +257,40 @@ where
             }
         };
 
-        let write_result =
-            write::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key, &value)?;
+        match value {
+            Some(value) => {
+                let write_result = write::<_, _, _, _, E>(
+                    correlation_id,
+                    &mut txn,
+                    store,
+                    &state_root,
+                    &key,
+                    &value,
+                )?;
 
-        match write_result {
-            WriteResult::Written(root_hash) => {
-                state_root = root_hash;
+                match write_result {
+                    WriteResult::Written(root_hash) => {
+                        state_root = root_hash;
+                    }
+                    WriteResult::AlreadyExists => (),
+                    WriteResult::RootNotFound => {
+                        error!(?state_root, ?key, ?value, "Error writing new value");
+                        return Err(CommitError::WriteRootNotFound(state_root).into());
+                    }
+                }
             }
-            WriteResult::AlreadyExists => (),
-            WriteResult::RootNotFound => {
-                error!(?state_root, ?key, ?value, "Error writing new value");
-                return Err(CommitError::WriteRootNotFound(state_root).into());
+            None => {
+                match delete::<_, _, _, _, E>(correlation_id, &mut txn, store, &state_root, &key)? {
+                    DeleteResult::Deleted(root_hash) => {
+                        state_root = root_hash;
+                    }
+                    DeleteResult::DoesNotExist => {
+                        return Err(CommitError::KeyNotFound(key).into());
+                    }
+                    DeleteResult::RootNotFound => {
+                        return Err(CommitError::RootNotFound(state_root).into());
+                    }
+                }
             }
         }
     }

@@ -4,11 +4,13 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Debug,
     mem,
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
-use casper_types::testing::TestRng;
 use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
@@ -16,8 +18,11 @@ use tokio::time;
 use tracing::{debug, error_span, field, Span};
 use tracing_futures::Instrument;
 
+use casper_types::testing::TestRng;
+
 use super::ConditionCheckReactor;
 use crate::{
+    components::ComponentState,
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner, TryCrankOutcome},
     tls::KeyFingerprint,
@@ -201,40 +206,8 @@ where
         self.nodes
             .get_mut(node_id)
             .unwrap()
-            .reactor_mut()
-            .set_condition_checker(Box::new(condition));
-
-        time::timeout(within, self.crank_and_check_indefinitely(node_id, rng))
+            .crank_until(rng, condition, within)
             .await
-            .unwrap()
-    }
-
-    async fn crank_and_check_indefinitely(&mut self, node_id: &NodeId, rng: &mut TestRng) {
-        loop {
-            match self.crank(node_id, rng).await {
-                TryCrankOutcome::NoEventsToProcess => {
-                    Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
-                    time::sleep(POLL_INTERVAL).await;
-                    continue;
-                }
-                TryCrankOutcome::ProcessedAnEvent => {}
-                TryCrankOutcome::ShouldExit(exit_code) => {
-                    panic!("should not exit: {:?}", exit_code)
-                }
-                TryCrankOutcome::Exited => unreachable!(),
-            }
-
-            if self
-                .nodes
-                .get(node_id)
-                .unwrap()
-                .reactor()
-                .condition_result()
-            {
-                debug!("{} met condition", node_id);
-                return;
-            }
-        }
     }
 
     /// Crank all runners once, returning the number of events processed.
@@ -412,6 +385,64 @@ where
         time::timeout(within, self.settle_on_exit_indefinitely(rng, expected))
             .await
             .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
+    }
+
+    /// Keeps cranking the network until every reactor's specified component is in the given state.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any reactor returns `None` on its [`Reactor::get_component_state()`] call.
+    pub(crate) async fn settle_on_component_state(
+        &mut self,
+        rng: &mut TestRng,
+        name: &str,
+        state: &ComponentState,
+        timeout: Duration,
+    ) {
+        self.settle_on(
+            rng,
+            |net| {
+                net.values()
+                    .all(|runner| match runner.reactor().get_component_state(name) {
+                        Some(actual_state) => actual_state == state,
+                        None => panic!("unknown or unsupported component: {}", name),
+                    })
+            },
+            timeout,
+        )
+        .await;
+    }
+
+    /// Starts a background process that will crank all nodes until stopped.
+    ///
+    /// Returns a future that will, once polled, stop all cranking and return the network and the
+    /// the random number generator. Note that the stop command will be sent as soon as the returned
+    /// future is polled (awaited), but no sooner.
+    pub(crate) fn crank_until_stopped(
+        mut self,
+        mut rng: TestRng,
+    ) -> impl futures::Future<Output = (Self, TestRng)>
+    where
+        R: Send + 'static,
+    {
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = tokio::spawn({
+            let stop = stop.clone();
+            async move {
+                while !stop.load(Ordering::Relaxed) {
+                    if self.crank_all(&mut rng).await == 0 {
+                        time::sleep(POLL_INTERVAL).await;
+                    };
+                }
+                (self, rng)
+            }
+        });
+
+        async move {
+            // Trigger the background process stop.
+            stop.store(true, Ordering::Relaxed);
+            handle.await.expect("failed to join background crank")
+        }
     }
 
     async fn settle_on_exit_indefinitely(&mut self, rng: &mut TestRng, expected: ExitCode) {

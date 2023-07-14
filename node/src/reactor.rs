@@ -47,6 +47,8 @@ use std::{
 
 use datasize::DataSize;
 use erased_serde::Serialize as ErasedSerialize;
+#[cfg(test)]
+use fake_instant::FakeClock;
 use futures::{future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
 use prometheus::{self, Histogram, IntCounter, IntGauge, Registry};
@@ -55,9 +57,19 @@ use serde::Serialize;
 use signal_hook::consts::signal::{SIGINT, SIGQUIT, SIGTERM};
 use stats_alloc::{Stats, INSTRUMENTED_SYSTEM};
 use tokio::time::{Duration, Instant};
-use tracing::{debug, debug_span, error, info, instrument, trace, warn, Span};
+use tracing::{debug_span, error, info, instrument, trace, warn, Span};
 use tracing_futures::Instrument;
 
+#[cfg(test)]
+use crate::components::ComponentState;
+#[cfg(test)]
+use casper_types::testing::TestRng;
+
+#[cfg(target_os = "linux")]
+use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
+
+#[cfg(test)]
+use crate::testing::{network::NetworkedReactor, ConditionCheckReactor};
 use crate::{
     components::{
         block_accumulator, deploy_acceptor,
@@ -77,7 +89,6 @@ use crate::{
     utils::{
         self,
         registered_metric::{RegisteredMetric, RegistryExt},
-        rlimit::{Limit, OpenFiles, ResourceLimit},
         Fuse, SharedFuse, WeightedRoundRobin,
     },
     NodeRng, TERMINATION_REQUESTED,
@@ -88,6 +99,8 @@ pub(crate) use queue_kind::QueueKind;
 /// var `CL_EVENT_MAX_MICROSECS=<MICROSECONDS>`.
 const DEFAULT_DISPATCH_EVENT_THRESHOLD: Duration = Duration::from_secs(1);
 const DISPATCH_EVENT_THRESHOLD_ENV_VAR: &str = "CL_EVENT_MAX_MICROSECS";
+#[cfg(test)]
+const POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
     env::var(DISPATCH_EVENT_THRESHOLD_ENV_VAR)
@@ -103,9 +116,11 @@ static DISPATCH_EVENT_THRESHOLD: Lazy<Duration> = Lazy::new(|| {
         .unwrap_or_else(|_| DEFAULT_DISPATCH_EVENT_THRESHOLD)
 });
 
+#[cfg(target_os = "linux")]
 /// The desired limit for open files.
 const TARGET_OPEN_FILES_LIMIT: Limit = 64_000;
 
+#[cfg(target_os = "linux")]
 /// Adjusts the maximum number of open file handles upwards towards the hard limit.
 fn adjust_open_files_limit() {
     // Ensure we have reasonable ulimits.
@@ -131,16 +146,22 @@ fn adjust_open_files_limit() {
                 if let Err(err) = new_limit.set() {
                     warn!(%err, current=current_limit.current(), target=best_possible, "did not succeed in raising open files limit")
                 } else {
-                    debug!(?new_limit, "successfully increased open files limit");
+                    tracing::debug!(?new_limit, "successfully increased open files limit");
                 }
             } else {
-                debug!(
+                tracing::debug!(
                     ?current_limit,
                     "not changing open files limit, already sufficient"
                 );
             }
         }
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+/// File handle limit adjustment shim.
+fn adjust_open_files_limit() {
+    info!("not on linux, not adjusting open files limit");
 }
 
 /// Event scheduler
@@ -281,6 +302,15 @@ pub(crate) trait Reactor: Sized {
 
     /// Instructs the reactor to update performance metrics, if any.
     fn update_metrics(&mut self, _event_queue_handle: EventQueueHandle<Self::Event>) {}
+
+    /// Returns the state of a named components.
+    ///
+    /// May return `None` if the component cannot be found, or if the reactor does not support
+    /// querying component states.
+    #[cfg(test)]
+    fn get_component_state(&self, _name: &str) -> Option<&ComponentState> {
+        None
+    }
 }
 
 /// A reactor event type.
@@ -813,9 +843,61 @@ where
         self.is_shutting_down.set();
         self.scheduler.seal();
         for (ancestor, event) in self.scheduler.drain_queues().await {
-            debug!(?ancestor, %event, "drained event");
+            tracing::debug!(?ancestor, %event, "drained event");
         }
         self.reactor
+    }
+}
+
+#[cfg(test)]
+impl<R> Runner<ConditionCheckReactor<R>>
+where
+    R: Reactor + NetworkedReactor,
+    R::Event: Serialize,
+    R::Error: From<prometheus::Error>,
+{
+    /// Cranks the runner until `condition` is true or until `within` has elapsed.
+    ///
+    /// Returns `true` if `condition` has been met within the specified timeout.
+    ///
+    /// Panics if cranking causes the node to return an exit code.
+    pub(crate) async fn crank_until<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
+    where
+        F: Fn(&R::Event) -> bool + Send + 'static,
+    {
+        self.reactor.set_condition_checker(Box::new(condition));
+
+        tokio::time::timeout(within, self.crank_and_check_indefinitely(rng))
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Runner::crank_until() timed out after {}s on node {}",
+                    within.as_secs_f64(),
+                    self.reactor.inner().node_id()
+                )
+            })
+    }
+
+    async fn crank_and_check_indefinitely(&mut self, rng: &mut TestRng) {
+        loop {
+            match self.try_crank(rng).await {
+                TryCrankOutcome::NoEventsToProcess => {
+                    FakeClock::advance_time(POLL_INTERVAL.as_millis() as u64);
+                    tokio::time::sleep(POLL_INTERVAL).await;
+                    continue;
+                }
+                TryCrankOutcome::ProcessedAnEvent => {}
+                TryCrankOutcome::ShouldExit(exit_code) => {
+                    panic!("should not exit: {:?}", exit_code)
+                }
+                TryCrankOutcome::Exited => unreachable!(),
+            }
+
+            if self.reactor.condition_result() {
+                info!("{} met condition", self.reactor.inner().node_id());
+                return;
+            }
+        }
     }
 }
 

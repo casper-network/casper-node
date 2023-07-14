@@ -80,6 +80,9 @@ impl MainReactor {
         &self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> UpgradeShutdownInstruction {
+        if self.switched_to_shutdown_for_upgrade.elapsed() > self.shutdown_for_upgrade_timeout {
+            return self.schedule_shutdown_for_upgrade(effect_builder);
+        }
         let recent_switch_block_headers = match self.storage.read_highest_switch_block_headers(1) {
             Ok(headers) => headers,
             Err(error) => {
@@ -114,17 +117,24 @@ impl MainReactor {
             .signature_gossip_tracker
             .finished_gossiping_enough(validator_weights);
         if finished_gossiping_enough {
-            // Allow a delay to acquire more finality signatures
-            let effects = effect_builder
-                .set_timeout(DELAY_BEFORE_SHUTDOWN)
-                .event(|_| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade));
-            // should not need to crank the control logic again as the reactor will shutdown
-            UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
+            self.schedule_shutdown_for_upgrade(effect_builder)
         } else {
             UpgradeShutdownInstruction::CheckLater(
                 "waiting for completion of gossiping signatures".to_string(),
                 DELAY_BEFORE_SHUTDOWN,
             )
         }
+    }
+
+    fn schedule_shutdown_for_upgrade(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> UpgradeShutdownInstruction {
+        // Allow a delay to acquire more finality signatures
+        let effects = effect_builder
+            .set_timeout(DELAY_BEFORE_SHUTDOWN)
+            .event(|_| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade));
+        // should not need to crank the control logic again as the reactor will shutdown
+        UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
     }
 }

@@ -1,31 +1,33 @@
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
 use serde::Serialize;
 
-use super::Source;
-use crate::{
-    components::deploy_acceptor::Error,
-    effect::{announcements::RpcServerAnnouncement, Responder},
-    types::{BlockHeader, Deploy},
-};
-
-use casper_hashing::Digest;
 use casper_types::{
     account::{Account, AccountHash},
     Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Timestamp, U512,
 };
 
+use super::Source;
+use crate::{
+    components::deploy_acceptor::Error,
+    effect::Responder,
+    types::{BlockHeader, Deploy},
+};
+
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(crate) deploy: Box<Deploy>,
+    pub(crate) deploy: Arc<Deploy>,
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
 }
 
 impl EventMetadata {
     pub(crate) fn new(
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Self {
@@ -42,7 +44,7 @@ impl EventMetadata {
 pub(crate) enum Event {
     /// The initiating event to accept a new `Deploy`.
     Accept {
-        deploy: Box<Deploy>,
+        deploy: Arc<Deploy>,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
@@ -68,14 +70,14 @@ pub(crate) enum Event {
     /// The result of querying global state for the `Account` associated with the `Deploy`.
     GetAccountResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         maybe_account: Option<Account>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying the balance of the `Account` associated with the `Deploy`.
     GetBalanceResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         maybe_balance_value: Option<U512>,
         account_hash: AccountHash,
         verification_start_timestamp: Timestamp,
@@ -83,7 +85,7 @@ pub(crate) enum Event {
     /// The result of querying global state for a `Contract` to verify the executable logic.
     GetContractResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_hash: ContractHash,
         maybe_contract: Option<Box<Contract>>,
@@ -92,25 +94,13 @@ pub(crate) enum Event {
     /// The result of querying global state for a `ContractPackage` to verify the executable logic.
     GetContractPackageResult {
         event_metadata: Box<EventMetadata>,
-        prestate_hash: Digest,
+        block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
         maybe_contract_package: Option<Box<ContractPackage>>,
         verification_start_timestamp: Timestamp,
     },
-}
-
-impl From<RpcServerAnnouncement> for Event {
-    fn from(announcement: RpcServerAnnouncement) -> Self {
-        match announcement {
-            RpcServerAnnouncement::DeployReceived { deploy, responder } => Event::Accept {
-                deploy,
-                source: Source::Client,
-                maybe_responder: responder,
-            },
-        }
-    }
 }
 
 impl Display for Event {
@@ -160,46 +150,46 @@ impl Display for Event {
             Event::GetBlockHeaderResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "received highest block from storage to validate deploy with hash: {}.",
+                    "received highest block from storage to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }
             Event::GetAccountResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "verifying account to validate deploy with hash {}.",
+                    "verifying account to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }
             Event::GetBalanceResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "verifying account balance to validate deploy with hash {}.",
+                    "verifying account balance to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }
             Event::GetContractResult {
                 event_metadata,
-                prestate_hash,
+                block_header,
                 ..
             } => {
                 write!(
                     formatter,
-                    "verifying contract to validate deploy with hash {} with state hash: {}.",
+                    "verifying contract to validate deploy with hash {} with state hash {}",
                     event_metadata.deploy.hash(),
-                    prestate_hash
+                    block_header.state_root_hash()
                 )
             }
             Event::GetContractPackageResult {
                 event_metadata,
-                prestate_hash,
+                block_header,
                 ..
             } => {
                 write!(
                     formatter,
-                    "verifying contract package to validate deploy with hash {} with state hash: {}.",
+                    "verifying contract package to validate deploy with hash {} with state hash {}",
                     event_metadata.deploy.hash(),
-                    prestate_hash
+                    block_header.state_root_hash()
                 )
             }
         }

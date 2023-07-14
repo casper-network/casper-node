@@ -1,7 +1,7 @@
 //! Core types for a Merkle Trie
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fmt::{self, Debug, Display, Formatter},
     iter::Flatten,
     mem::MaybeUninit,
@@ -9,6 +9,8 @@ use std::{
 };
 
 use datasize::DataSize;
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
 use serde::{
     de::{self, MapAccess, Visitor},
     ser::SerializeMap,
@@ -387,6 +389,24 @@ impl FromBytes for TrieRaw {
     }
 }
 
+/// Represents all possible serialization tags for a [`Trie`] enum.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+#[repr(u8)]
+pub(crate) enum TrieTag {
+    /// Represents a tag for a [`Trie::Leaf`] variant.
+    Leaf = 0,
+    /// Represents a tag for a [`Trie::Node`] variant.
+    Node = 1,
+    /// Represents a tag for a [`Trie::Extension`] variant.
+    Extension = 2,
+}
+
+impl From<TrieTag> for u8 {
+    fn from(value: TrieTag) -> Self {
+        TrieTag::to_u8(&value).unwrap() // SAFETY: TrieTag is represented as u8.
+    }
+}
+
 /// Represents a Merkle Trie.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trie<K, V> {
@@ -422,15 +442,11 @@ where
 }
 
 impl<K, V> Trie<K, V> {
-    pub(crate) const LEAF_TAG: u8 = 0;
-    const NODE_TAG: u8 = 1;
-    const EXTENSION_TAG: u8 = 2;
-
-    fn tag(&self) -> u8 {
+    fn tag(&self) -> TrieTag {
         match self {
-            Trie::Leaf { .. } => Self::LEAF_TAG,
-            Trie::Node { .. } => Self::NODE_TAG,
-            Trie::Extension { .. } => Self::EXTENSION_TAG,
+            Trie::Leaf { .. } => TrieTag::Leaf,
+            Trie::Node { .. } => TrieTag::Node,
+            Trie::Extension { .. } => TrieTag::Extension,
         }
     }
 
@@ -481,7 +497,7 @@ impl<K, V> Trie<K, V> {
     }
 
     /// Returns an iterator over descendants of the trie.
-    pub fn iter_descendants(&self) -> DescendantsIterator {
+    pub fn iter_children(&self) -> DescendantsIterator {
         match self {
             Trie::<K, V>::Leaf { .. } => DescendantsIterator::ZeroOrOne(None),
             Trie::Node { pointer_block } => DescendantsIterator::PointerBlock {
@@ -489,6 +505,116 @@ impl<K, V> Trie<K, V> {
             },
             Trie::Extension { pointer, .. } => {
                 DescendantsIterator::ZeroOrOne(Some(pointer.into_hash()))
+            }
+        }
+    }
+}
+
+/// Bytes representation of a `Trie` that is a `Trie::Leaf` variant.
+/// The bytes for this trie leaf also include the `Trie::Tag`.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TrieLeafBytes(Bytes);
+
+impl TrieLeafBytes {
+    pub(crate) fn bytes(&self) -> &Bytes {
+        &self.0
+    }
+
+    pub(crate) fn try_deserialize_leaf_key<K: FromBytes>(
+        &self,
+    ) -> Result<(K, &[u8]), bytesrepr::Error> {
+        let (tag_byte, rem) = u8::from_bytes(&self.0)?;
+        let tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
+        assert_eq!(
+            tag,
+            TrieTag::Leaf,
+            "Unexpected layout for trie leaf bytes. Expected `TrieTag::Leaf` but got {:?}",
+            tag
+        );
+        K::from_bytes(rem)
+    }
+}
+
+impl From<&[u8]> for TrieLeafBytes {
+    fn from(value: &[u8]) -> Self {
+        Self(value.into())
+    }
+}
+
+impl From<Vec<u8>> for TrieLeafBytes {
+    fn from(value: Vec<u8>) -> Self {
+        Self(value.into())
+    }
+}
+
+/// Like `Trie` but does not deserialize the leaf when constructed.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum LazilyDeserializedTrie {
+    /// Serialized trie leaf bytes
+    Leaf(TrieLeafBytes),
+    /// Trie node.
+    Node { pointer_block: Box<PointerBlock> },
+    /// Trie extension node.
+    Extension { affix: Bytes, pointer: Pointer },
+}
+
+impl LazilyDeserializedTrie {
+    pub(crate) fn iter_children(&self) -> DescendantsIterator {
+        match self {
+            LazilyDeserializedTrie::Leaf(_) => {
+                // Leaf bytes does not have any children
+                DescendantsIterator::ZeroOrOne(None)
+            }
+            LazilyDeserializedTrie::Node { pointer_block } => DescendantsIterator::PointerBlock {
+                iter: pointer_block.0.iter().flatten(),
+            },
+            LazilyDeserializedTrie::Extension { pointer, .. } => {
+                DescendantsIterator::ZeroOrOne(Some(pointer.into_hash()))
+            }
+        }
+    }
+}
+
+impl FromBytes for LazilyDeserializedTrie {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (tag_byte, rem) = u8::from_bytes(bytes)?;
+        let tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
+        match tag {
+            TrieTag::Leaf => Ok((LazilyDeserializedTrie::Leaf(bytes.into()), &[])),
+            TrieTag::Node => {
+                let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
+                Ok((
+                    LazilyDeserializedTrie::Node {
+                        pointer_block: Box::new(pointer_block),
+                    },
+                    rem,
+                ))
+            }
+            TrieTag::Extension => {
+                let (affix, rem) = FromBytes::from_bytes(rem)?;
+                let (pointer, rem) = Pointer::from_bytes(rem)?;
+                Ok((LazilyDeserializedTrie::Extension { affix, pointer }, rem))
+            }
+        }
+    }
+}
+
+impl<K, V> TryFrom<Trie<K, V>> for LazilyDeserializedTrie
+where
+    K: ToBytes,
+    V: ToBytes,
+{
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: Trie<K, V>) -> Result<Self, Self::Error> {
+        match value {
+            Trie::Leaf { .. } => {
+                let serialized_bytes = ToBytes::to_bytes(&value)?;
+                Ok(LazilyDeserializedTrie::Leaf(serialized_bytes.into()))
+            }
+            Trie::Node { pointer_block } => Ok(LazilyDeserializedTrie::Node { pointer_block }),
+            Trie::Extension { affix, pointer } => {
+                Ok(LazilyDeserializedTrie::Extension { affix, pointer })
             }
         }
     }
@@ -541,7 +667,9 @@ where
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(self.tag());
+        // NOTE: When changing this make sure all partial deserializers that are referencing
+        // `LazyTrieLeaf` are also updated.
+        writer.push(u8::from(self.tag()));
         match self {
             Trie::Leaf { key, value } => {
                 key.write_bytes(writer)?;
@@ -559,14 +687,15 @@ where
 
 impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, rem) = u8::from_bytes(bytes)?;
+        let (tag_byte, rem) = u8::from_bytes(bytes)?;
+        let tag = TrieTag::from_u8(tag_byte).ok_or(bytesrepr::Error::Formatting)?;
         match tag {
-            Self::LEAF_TAG => {
+            TrieTag::Leaf => {
                 let (key, rem) = K::from_bytes(rem)?;
                 let (value, rem) = V::from_bytes(rem)?;
                 Ok((Trie::Leaf { key, value }, rem))
             }
-            Self::NODE_TAG => {
+            TrieTag::Node => {
                 let (pointer_block, rem) = PointerBlock::from_bytes(rem)?;
                 Ok((
                     Trie::Node {
@@ -575,12 +704,29 @@ impl<K: FromBytes, V: FromBytes> FromBytes for Trie<K, V> {
                     rem,
                 ))
             }
-            Self::EXTENSION_TAG => {
+            TrieTag::Extension => {
                 let (affix, rem) = FromBytes::from_bytes(rem)?;
                 let (pointer, rem) = Pointer::from_bytes(rem)?;
                 Ok((Trie::Extension { affix, pointer }, rem))
             }
-            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+impl<K: FromBytes, V: FromBytes> TryFrom<LazilyDeserializedTrie> for Trie<K, V> {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: LazilyDeserializedTrie) -> Result<Self, Self::Error> {
+        match value {
+            LazilyDeserializedTrie::Leaf(leaf_bytes) => {
+                let (key, value_bytes) = leaf_bytes.try_deserialize_leaf_key()?;
+                let value = bytesrepr::deserialize_from_slice(value_bytes)?;
+                Ok(Self::Leaf { key, value })
+            }
+            LazilyDeserializedTrie::Node { pointer_block } => Ok(Self::Node { pointer_block }),
+            LazilyDeserializedTrie::Extension { affix, pointer } => {
+                Ok(Self::Extension { affix, pointer })
+            }
         }
     }
 }

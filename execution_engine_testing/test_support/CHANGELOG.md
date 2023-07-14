@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## [Unreleased]
+## 5.0.0
 
 ### Added
 * Add `WasmTestBuilder::get_execution_journals` method for returning execution journals for all test runs.
@@ -23,8 +23,26 @@ All notable changes to this project will be documented in this file.  The format
 * `WasmTestBuilder::get_transforms` is deprecated in favor of `WasmTestBuilder::get_execution_journals`.
 * `deploy_hash` field is now defaulted to a random value rather than zeros in `DeployItemBuilder`.
 
-### Deprecated
-* Deprecate the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
+
+
+## 4.0.0
+
+### Changed
+* Update dependencies (in particular `casper-types` to v2.0.0 due to additional `Key` variant, requiring a major version bump here).
+
+
+
+## 3.1.1
+
+### Changed
+* Update chainspec values used in `PRODUCTION_RUN_GENESIS_REQUEST` to match those of Mainnet protocol version 1.4.15.
+
+
+
+## 3.1.0
+
+### Added
+* Add support for `commit_prune` of `casper-execution-engine`.
 
 
 
@@ -48,7 +66,9 @@ All notable changes to this project will be documented in this file.  The format
 * Add some auction and transfer test support functions for reuse among benchmarks and unit tests.
 
 ### Deprecated
-* Deprecated the `DEFAULT_GENESIS_REQUEST` in favor of `PRODUCTION_GENESIS_REQUEST`.
+* Deprecated the `DEFAULT_RUN_GENESIS_REQUEST` in favor of `PRODUCTION_RUN_GENESIS_REQUEST`.
+
+
 
 ## 2.1.0
 

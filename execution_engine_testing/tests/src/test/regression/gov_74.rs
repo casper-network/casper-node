@@ -17,19 +17,14 @@ use casper_execution_engine::{
     },
     shared::{
         wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
-        wasm_prep::DEFAULT_MAX_PARAMETER_COUNT,
+        wasm_prep::{self, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
     },
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
 
 use crate::wasm_utils;
 
-// Previously this value was derived from `wasmi::DEFAULT_CALL_STACK_LIMIT` as we haven't a check
-// for argument count declared in wasm functions. We have very restrictive stack height which also
-// means the maximum allowed function count still fails at runtime inside the stack limiter.
-//
-// Max parameter count - 1 will exercise the height limiter while passing the preprocessing stage.
-const ARITY_INTERPRETER_LIMIT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize - 1;
+const ARITY_INTERPRETER_LIMIT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const I32_WAT_TYPE: &str = "i64";
 const NEW_WASM_STACK_HEIGHT: u32 = 16;
@@ -51,7 +46,7 @@ fn initialize_builder() -> InMemoryWasmTestBuilder {
 
 #[ignore]
 #[test]
-fn should_verify_interpreter_stack_limit() {
+fn should_pass_max_parameter_count() {
     let mut builder = initialize_builder();
 
     // This runs out of the interpreter stack limit
@@ -64,16 +59,32 @@ fn should_verify_interpreter_stack_limit() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec).expect_failure().commit();
 
+    builder.exec(exec).expect_success().commit();
+
+    let module_bytes = wasm_utils::make_n_arg_call_bytes(ARITY_INTERPRETER_LIMIT + 1, I32_WAT_TYPE)
+        .expect("should make wasm bytes");
+
+    let exec = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec).expect_failure().commit();
     let error = builder.get_error().expect("should have error");
 
-    // For default stack height of 64 * 1024 with a function that takes 16384 i32 arguments it will
-    // fail with following message: Function #0 reading/validation error: At instruction
-    // GetGlobal(0)(@16386): Stack: exceeded stack limit 16384 But due to the default being
-    // small it fails with Unreachable from within the stack height limiter.
     assert!(
-        matches!(&error, Error::Exec(ExecError::Interpreter(s)) if s.contains("Unreachable")),
+        matches!(
+            error,
+            Error::WasmPreprocessing(wasm_prep::PreprocessingError::WasmValidation(
+                WasmValidationError::TooManyParameters {
+                    max: 256,
+                    actual: 257
+                }
+            ))
+        ),
         "{:?}",
         error
     );
@@ -111,6 +122,7 @@ fn should_observe_stack_height_limit() {
             DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             DEFAULT_STRICT_ARGUMENT_CHECKING,
             DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+            None,
             WasmConfig::new(
                 DEFAULT_WASM_MAX_MEMORY,
                 NEW_WASM_STACK_HEIGHT,

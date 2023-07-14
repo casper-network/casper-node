@@ -12,10 +12,12 @@ use casper_hashing::Digest;
 use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
 
 use crate::{
-    components::consensus::{traits::Context, ActionId, EraMessage, EraRequest, TimerId},
+    components::consensus::{traits::Context, ActionId, TimerId},
     types::NodeId,
     NodeRng,
 };
+
+use super::era_supervisor::SerializedMessage;
 
 /// Information about the context in which a new block is created.
 #[derive(Clone, DataSize, Eq, PartialEq, Debug, Ord, PartialOrd, Hash)]
@@ -159,7 +161,7 @@ impl<VID> EraReport<VID> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct TerminalBlockData<C: Context> {
     /// The rewards for participating in consensus.
     pub(crate) rewards: BTreeMap<C::ValidatorId, u64>,
@@ -170,7 +172,7 @@ pub(crate) struct TerminalBlockData<C: Context> {
 /// A finalized block. All nodes are guaranteed to see the same sequence of blocks, and to agree
 /// about all the information contained in this type, as long as the total weight of faulty
 /// validators remains below the threshold.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct FinalizedBlock<C: Context> {
     /// The finalized value.
     pub(crate) value: C::ConsensusValue,
@@ -191,10 +193,10 @@ pub(crate) type ProtocolOutcomes<C> = Vec<ProtocolOutcome<C>>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ProtocolOutcome<C: Context> {
-    CreatedGossipMessage(EraMessage<C>),
-    CreatedTargetedMessage(EraMessage<C>, NodeId),
-    CreatedMessageToRandomPeer(EraMessage<C>),
-    CreatedRequestToRandomPeer(EraRequest<C>),
+    CreatedGossipMessage(SerializedMessage),
+    CreatedTargetedMessage(SerializedMessage, NodeId),
+    CreatedMessageToRandomPeer(SerializedMessage),
+    CreatedRequestToRandomPeer(SerializedMessage),
     ScheduleTimer(Timestamp, TimerId),
     QueueAction(ActionId),
     /// Request deploys for a new block, providing the necessary context.
@@ -243,7 +245,7 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraMessage<C>,
+        msg: SerializedMessage,
         now: Timestamp,
     ) -> ProtocolOutcomes<C>;
 
@@ -252,9 +254,9 @@ pub(crate) trait ConsensusProtocol<C: Context>: Send {
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraRequest<C>,
+        msg: SerializedMessage,
         now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>);
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>);
 
     /// Current instance of consensus protocol is latest era.
     fn handle_is_current(&self, now: Timestamp) -> ProtocolOutcomes<C>;

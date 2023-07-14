@@ -8,7 +8,6 @@ mod fake_deploy_acceptor;
 pub(crate) mod filter_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
-mod test_rng;
 
 use std::{
     any::type_name,

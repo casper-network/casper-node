@@ -9,10 +9,10 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::{
-    core::engine_state::{BalanceResult, GetBidsResult, QueryResult},
+    core::engine_state::{self, BalanceResult, GetBidsResult, QueryResult},
     storage::trie::merkle_proof::TrieMerkleProof,
 };
 use casper_hashing::Digest;
@@ -1088,6 +1088,16 @@ pub(super) async fn run_query<REv: ReactorEventT>(
         )
         .await;
 
+    handle_query_result(effect_builder, state_root_hash, query_result).await
+}
+
+/// Converts the result of running a global state query into a type suitable for including in a
+/// JSON-RPC response.
+pub(super) async fn handle_query_result<REv: ReactorEventT>(
+    effect_builder: EffectBuilder<REv>,
+    state_root_hash: Digest,
+    query_result: Result<QueryResult, engine_state::Error>,
+) -> Result<QuerySuccess, Error> {
     match query_result {
         Ok(QueryResult::Success { value, proofs }) => Ok((*value, proofs)),
         Ok(QueryResult::RootNotFound) => {
@@ -1101,7 +1111,7 @@ pub(super) async fn run_query<REv: ReactorEventT>(
             Err(error)
         }
         Ok(query_result) => {
-            info!(?query_result, "query failed");
+            debug!(?query_result, "query failed");
             Err(Error::new(
                 ErrorCode::QueryFailed,
                 format!("{:?}", query_result),

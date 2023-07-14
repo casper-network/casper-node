@@ -17,18 +17,22 @@ function _upgrade_node() {
     local PROTOCOL_VERSION=${1}
     local ACTIVATE_ERA=${2}
     local NODE_ID=${3}
+    local CONFIG_PATH=${4}
+    local PATH_TO_NET=$(get_path_to_net)
+    local PATH_TO_CONFIG_FILE
+    local SPECULATIVE_EXEC_ADDR
+    local PATH_TO_CHAINSPEC_FILE=${5:-"$PATH_TO_NET/chainspec/chainspec.toml"}
 
-    local PATH_TO_NET
     local PATH_TO_NODE
-
-
-    PATH_TO_NET=$(get_path_to_net)
+    local CHAIN_NAME
 
     # Set chainspec file.
-    PATH_TO_CHAINSPEC_FILE="$PATH_TO_NET"/chainspec/chainspec.toml
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
     PATH_TO_UPGRADED_CHAINSPEC_FILE="$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/chainspec.toml
     cp "$PATH_TO_CHAINSPEC_FILE" "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
+
+    # Really make sure the chain name stays the same :)
+    CHAIN_NAME=$(get_chain_name)
 
     # Write chainspec contents.
     local SCRIPT=(
@@ -36,6 +40,7 @@ function _upgrade_node() {
         "cfg=toml.load('$PATH_TO_CHAINSPEC_FILE');"
         "cfg['protocol']['version']='$PROTOCOL_VERSION'.replace('_', '.');"
         "cfg['protocol']['activation_point']=$ACTIVATE_ERA;"
+        "cfg['network']['name']='$CHAIN_NAME';"
         "toml.dump(cfg, open('$PATH_TO_UPGRADED_CHAINSPEC_FILE', 'w'));"
     )
     python3 -c "${SCRIPT[*]}"
@@ -55,7 +60,41 @@ function _upgrade_node() {
     cp "$PATH_TO_UPGRADED_CHAINSPEC_FILE" "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
 
     # Copy config file.
-    cp $(get_path_to_node_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
+    if [ -z "$CONFIG_PATH" ]; then
+        cp $(get_path_to_node_config_file "$NODE_ID") "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/
+    else
+        # Set paths to node's config.
+        PATH_TO_CONFIG_FILE="$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/config.toml
+
+        cp "$CONFIG_PATH" "$PATH_TO_CONFIG_FILE"
+
+        SPECULATIVE_EXEC_ADDR=$(grep 'speculative_exec_server' $PATH_TO_CONFIG_FILE || true)
+
+        local SCRIPT=(
+            "import toml;"
+            "cfg=toml.load('$PATH_TO_NODE/config/$PROTOCOL_VERSION/config.toml');"
+            "cfg['consensus']['secret_key_path']='../../keys/secret_key.pem';"
+            "cfg['logging']['format']='$NCTL_NODE_LOG_FORMAT';"
+            "cfg['network']['bind_address']='$(get_network_bind_address "$NODE_ID")';"
+            "cfg['network']['known_addresses']=[$(get_network_known_addresses "$NODE_ID")];"
+            "cfg['storage']['path']='../../storage';"
+            "cfg['rest_server']['address']='0.0.0.0:$(get_node_port_rest "$NODE_ID")';"
+            "cfg['rpc_server']['address']='0.0.0.0:$(get_node_port_rpc "$NODE_ID")';"
+            "cfg['event_stream_server']['address']='0.0.0.0:$(get_node_port_sse "$NODE_ID")';"
+        )
+
+        if [ ! -z "$SPECULATIVE_EXEC_ADDR" ]; then
+            SCRIPT+=(
+                "cfg['speculative_exec_server']['address']='0.0.0.0:$(get_node_port_speculative_exec "$NODE_ID")';"
+            )
+        fi
+
+        SCRIPT+=(
+            "toml.dump(cfg, open('$PATH_TO_CONFIG_FILE', 'w'));"
+        )
+
+        python3 -c "${SCRIPT[*]}"
+    fi
 
     # Clean up.
     rm "$PATH_TO_UPGRADED_CHAINSPEC_FILE"
@@ -98,6 +137,7 @@ function _generate_global_state_update() {
     local STATE_HASH=${2}
     local STATE_SOURCE=${3:-1}
     local NODE_COUNT=${4:-5}
+    #NOTE ${5} used for params, update accordingly if needed
 
     local PATH_TO_NET=$(get_path_to_net)
 
@@ -112,8 +152,7 @@ function _generate_global_state_update() {
     # First, we supply the path to the directory of the node whose global state we'll use
     # and the trusted hash then we Add the parameters that define the new validators.
     # We're using the reserve validators, from NODE_COUNT+1 to NODE_COUNT*2.
-    local PARAMS
-    PARAMS="generic -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} $(_validators_state_update_config $NODE_COUNT)"
+    local PARAMS=${5:-"generic -d ${STATE_SOURCE_PATH}/storage/$(get_chain_name) -s ${STATE_HASH} $(_validators_state_update_config $NODE_COUNT)"}
 
     mkdir -p "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"
 
@@ -141,8 +180,11 @@ function _emergency_upgrade_node() {
     local STATE_HASH=${4}
     local STATE_SOURCE=${5:-1}
     local NODE_COUNT=${6:-5}
+    local CONFIG_PATH=${7:-""}
+    local CHAINSPEC_PATH=${8:-""}
+    local GENERATE_GS_UPDATE=${9:-"true"}
 
-    _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID"
+    _upgrade_node "$PROTOCOL_VERSION" "$ACTIVATE_ERA" "$NODE_ID" "$CONFIG_PATH" "$CHAINSPEC_PATH"
 
     local PATH_TO_NODE=$(get_path_to_node $NODE_ID)
 
@@ -157,7 +199,9 @@ function _emergency_upgrade_node() {
 
     local PATH_TO_NET=$(get_path_to_net)
 
-    _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$NODE_COUNT"
+    if [ "$GENERATE_GS_UPDATE" == 'true' ]; then
+        _generate_global_state_update "$PROTOCOL_VERSION" "$STATE_HASH" "$STATE_SOURCE" "$NODE_COUNT"
+    fi
 
     cp "$PATH_TO_NET"/chainspec/"$PROTOCOL_VERSION"/global_state.toml \
         "$PATH_TO_NODE"/config/"$PROTOCOL_VERSION"/global_state.toml

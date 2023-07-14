@@ -5,7 +5,7 @@ use crate::{
     types::{Block, FinalizedBlock},
     utils,
 };
-use casper_types::{testing::TestRng, EraId, ProtocolVersion, TimeDiff};
+use casper_types::{testing::TestRng, EraId, TimeDiff};
 use prometheus::Registry;
 use rand::Rng;
 
@@ -305,99 +305,6 @@ fn get_appendable_block(
         0,
         appendable_block.deploy_and_transfer_set().len(),
     );
-}
-
-#[test]
-fn have_full_ttl_worth_of_deploys() {
-    let mut rng = TestRng::new();
-    let deploy_config = DeployConfig::default();
-    let mut deploy_buffer =
-        DeployBuffer::new(deploy_config, Config::default(), &Registry::new()).unwrap();
-
-    // register some blocks that have deploys
-    for i in 2..10 {
-        let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-        let block = FinalizedBlock::random_with_specifics(
-            &mut rng,
-            EraId::from(0),
-            i,
-            false,
-            Timestamp::now(),
-            deploys.iter(),
-        );
-        deploy_buffer.register_block_finalized(&block);
-    }
-    assert_container_sizes(&deploy_buffer, 80, 80, 0);
-
-    // create a switch block
-    let switch_block = Block::random_with_specifics(
-        &mut rng,
-        EraId::from(0),
-        10,
-        ProtocolVersion::V1_0_0,
-        true,
-        None,
-    );
-    deploy_buffer.register_block(&switch_block);
-    // buffer should not have ttl worth of deploys since all blocks were created with recent
-    // timestamps
-    assert!(!deploy_buffer.have_full_ttl_of_deploys(switch_block.header()));
-
-    // add genesis block that is earlier than max ttl
-    let deploys = create_valid_deploys(
-        &mut rng,
-        10,
-        DeployType::Random,
-        Some(
-            switch_block
-                .timestamp()
-                .saturating_sub(deploy_config.max_ttl)
-                .saturating_sub(TimeDiff::from_seconds(20)),
-        ),
-        None,
-    );
-    let block = FinalizedBlock::random_with_specifics(
-        &mut rng,
-        EraId::from(0),
-        0,
-        false,
-        switch_block
-            .timestamp()
-            .saturating_sub(deploy_config.max_ttl)
-            .saturating_sub(TimeDiff::from_seconds(15)),
-        deploys.iter(),
-    );
-    deploy_buffer.register_block_finalized(&block);
-    // buffer should not have ttl worth of deploys since it is missing block at height 1
-    assert!(!deploy_buffer.have_full_ttl_of_deploys(switch_block.header()));
-
-    // add block at height 1 that is earlier than max ttl
-    let deploys = create_valid_deploys(
-        &mut rng,
-        10,
-        DeployType::Random,
-        Some(
-            switch_block
-                .timestamp()
-                .saturating_sub(deploy_config.max_ttl)
-                .saturating_sub(TimeDiff::from_seconds(10)),
-        ),
-        None,
-    );
-    let block = FinalizedBlock::random_with_specifics(
-        &mut rng,
-        EraId::from(0),
-        1,
-        false,
-        switch_block
-            .timestamp()
-            .saturating_sub(deploy_config.max_ttl)
-            .saturating_sub(TimeDiff::from_seconds(5)),
-        deploys.iter(),
-    );
-    deploy_buffer.register_block_finalized(&block);
-    // buffer should indicate it has full ttl worth of deploys
-    assert!(deploy_buffer.have_full_ttl_of_deploys(switch_block.header()));
 }
 
 #[test]

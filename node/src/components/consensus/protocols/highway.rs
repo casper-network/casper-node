@@ -15,7 +15,6 @@ use std::{
 use datasize::DataSize;
 use itertools::Itertools;
 use rand::RngCore;
-use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{system::auction::BLOCK_REWARD, TimeDiff, Timestamp, U512};
@@ -26,6 +25,7 @@ use crate::{
         consensus_protocol::{
             BlockContext, ConsensusProtocol, ProposedBlock, ProtocolOutcome, ProtocolOutcomes,
         },
+        era_supervisor::SerializedMessage,
         highway_core::{
             active_validator::Effect as AvEffect,
             finality_detector::{FinalityDetector, FttExceeded},
@@ -39,7 +39,7 @@ use crate::{
         protocols,
         traits::{ConsensusValueT, Context},
         utils::ValidatorIndex,
-        ActionId, EraMessage, EraRequest, TimerId,
+        ActionId, TimerId,
     },
     types::{Chainspec, NodeId},
     NodeRng,
@@ -147,11 +147,13 @@ impl<C: Context + 'static> HighwayProtocol<C> {
 
         // Allow about as many units as part of evidence for conflicting endorsements as we expect
         // a validator to create during an era. After that, they can endorse two conflicting forks
-        // without getting faulty.;
-        let min_rounds_per_era = chainspec.core_config.minimum_era_height.max(
-            (TimeDiff::from_millis(1) + chainspec.core_config.era_duration) / minimum_round_length,
+        // without getting faulty.
+        let max_rounds_per_era = max_rounds_per_era(
+            chainspec.core_config.minimum_era_height,
+            chainspec.core_config.era_duration,
+            minimum_round_length,
         );
-        let endorsement_evidence_limit = min_rounds_per_era
+        let endorsement_evidence_limit = max_rounds_per_era
             .saturating_mul(2)
             .min(MAX_ENDORSEMENT_EVIDENCE_LIMIT);
 
@@ -254,7 +256,9 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             outcomes.push(ProtocolOutcome::NewEvidence(v_id));
         }
         let msg = HighwayMessage::NewVertex(vv.into());
-        outcomes.push(ProtocolOutcome::CreatedGossipMessage(msg.into()));
+        outcomes.push(ProtocolOutcome::CreatedGossipMessage(
+            SerializedMessage::from_message(&msg),
+        ));
         outcomes.extend(self.detect_finality());
         outcomes
     }
@@ -437,11 +441,14 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         info!(?participation, "validator participation");
     }
 
-    /// Logs the vertex' serialized size.
+    /// Logs the vertex' (network) serialized size.
     fn log_unit_size(&self, vertex: &Vertex<C>, log_msg: &str) {
         if self.config.log_unit_sizes {
             if let Some(hash) = vertex.unit_hash() {
-                let size = HighwayMessage::NewVertex(vertex.clone()).serialize().len();
+                let size =
+                    SerializedMessage::from_message(&HighwayMessage::NewVertex(vertex.clone()))
+                        .into_raw()
+                        .len();
                 info!(size, %hash, "{}", log_msg);
             }
         }
@@ -564,7 +571,9 @@ impl<C: Context + 'static> HighwayProtocol<C> {
         let request: HighwayMessage<C> = HighwayMessage::LatestStateRequest(
             IndexPanorama::from_panorama(self.highway.state().panorama(), self.highway.state()),
         );
-        vec![ProtocolOutcome::CreatedMessageToRandomPeer(request.into())]
+        vec![ProtocolOutcome::CreatedMessageToRandomPeer(
+            SerializedMessage::from_message(&request),
+        )]
     }
 
     /// Creates a batch of dependency requests if the peer has more units by the validator `vidx`
@@ -647,29 +656,87 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[derive(DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq)]
-#[serde(bound(
-    serialize = "C::Hash: Serialize",
-    deserialize = "C::Hash: Deserialize<'de>",
-))]
-pub(crate) enum HighwayMessage<C>
-where
-    C: Context,
-{
-    NewVertex(Vertex<C>),
-    // A dependency request. u64 is a random UUID identifying the request.
-    RequestDependency(u64, Dependency<C>),
-    RequestDependencyByHeight {
-        uuid: u64,
-        vid: ValidatorIndex,
-        unit_seq_number: u64,
-    },
-    LatestStateRequest(IndexPanorama),
-}
+#[allow(clippy::integer_arithmetic)]
+mod relaxed {
+    // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
+    // module-wide `clippy::integer_arithmetic` lint.
 
-impl<C: Context> HighwayMessage<C> {
-    pub(crate) fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).expect("should serialize message")
+    use datasize::DataSize;
+    use serde::{Deserialize, Serialize};
+    use strum::EnumDiscriminants;
+
+    use crate::components::consensus::{
+        highway_core::{
+            highway::{Dependency, Vertex},
+            state::IndexPanorama,
+        },
+        traits::{ConsensusNetworkMessage, Context},
+        utils::ValidatorIndex,
+    };
+
+    #[derive(
+        DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, EnumDiscriminants, Hash,
+    )]
+    #[serde(bound(
+        serialize = "C::Hash: Serialize",
+        deserialize = "C::Hash: Deserialize<'de>",
+    ))]
+    #[strum_discriminants(derive(strum::EnumIter))]
+    pub(crate) enum HighwayMessage<C>
+    where
+        C: Context,
+    {
+        NewVertex(Vertex<C>),
+        // A dependency request. u64 is a random UUID identifying the request.
+        RequestDependency(u64, Dependency<C>),
+        RequestDependencyByHeight {
+            uuid: u64,
+            vid: ValidatorIndex,
+            unit_seq_number: u64,
+        },
+        LatestStateRequest(IndexPanorama),
+    }
+
+    impl<C: Context> ConsensusNetworkMessage for HighwayMessage<C> {}
+}
+pub(crate) use relaxed::{HighwayMessage, HighwayMessageDiscriminants};
+
+mod specimen_support {
+    use crate::{
+        components::consensus::ClContext,
+        utils::specimen::{largest_variant, Cache, LargestSpecimen, SizeEstimator},
+    };
+
+    use super::{HighwayMessage, HighwayMessageDiscriminants};
+
+    impl LargestSpecimen for HighwayMessage<ClContext> {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, HighwayMessageDiscriminants, _, _>(estimator, |variant| {
+                match variant {
+                    HighwayMessageDiscriminants::NewVertex => HighwayMessage::NewVertex(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                    HighwayMessageDiscriminants::RequestDependency => {
+                        HighwayMessage::RequestDependency(
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                            LargestSpecimen::largest_specimen(estimator, cache),
+                        )
+                    }
+                    HighwayMessageDiscriminants::RequestDependencyByHeight => {
+                        HighwayMessage::RequestDependencyByHeight {
+                            uuid: LargestSpecimen::largest_specimen(estimator, cache),
+                            vid: LargestSpecimen::largest_specimen(estimator, cache),
+                            unit_seq_number: LargestSpecimen::largest_specimen(estimator, cache),
+                        }
+                    }
+                    HighwayMessageDiscriminants::LatestStateRequest => {
+                        HighwayMessage::LatestStateRequest(LargestSpecimen::largest_specimen(
+                            estimator, cache,
+                        ))
+                    }
+                }
+            })
+        }
     }
 }
 
@@ -681,12 +748,12 @@ where
         &mut self,
         rng: &mut NodeRng,
         sender: NodeId,
-        msg: EraMessage<C>,
+        msg: SerializedMessage,
         now: Timestamp,
     ) -> ProtocolOutcomes<C> {
-        match msg.try_into_highway() {
-            Err(msg) => {
-                warn!(?msg, "received a message for the wrong consensus protocol");
+        match msg.deserialize_incoming() {
+            Err(err) => {
+                warn!(?err, "could not deserialize highway message");
                 vec![ProtocolOutcome::Disconnect(sender)]
             }
             Ok(HighwayMessage::NewVertex(v))
@@ -760,7 +827,7 @@ where
                         vec![ProtocolOutcome::SendEvidence(sender, vid)]
                     }
                     GetDepOutcome::Vertex(vv) => vec![ProtocolOutcome::CreatedTargetedMessage(
-                        HighwayMessage::NewVertex(vv.into()).into(),
+                        SerializedMessage::from_message(&HighwayMessage::NewVertex(vv.into())),
                         sender,
                     )],
                 }
@@ -791,7 +858,7 @@ where
                     }
                     GetDepOutcome::Vertex(vv) => {
                         vec![ProtocolOutcome::CreatedTargetedMessage(
-                            HighwayMessage::NewVertex(vv.into()).into(),
+                            SerializedMessage::from_message(&HighwayMessage::NewVertex(vv.into())),
                             sender,
                         )]
                     }
@@ -835,8 +902,12 @@ where
                     .zip(&their_index_panorama)
                     .map(create_message)
                     .flat_map(|msgs| {
-                        msgs.into_iter()
-                            .map(|msg| ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender))
+                        msgs.into_iter().map(|msg| {
+                            ProtocolOutcome::CreatedTargetedMessage(
+                                SerializedMessage::from_message(&msg),
+                                sender,
+                            )
+                        })
                     })
                     .collect()
             }
@@ -847,9 +918,9 @@ where
         &mut self,
         _rng: &mut NodeRng,
         sender: NodeId,
-        _msg: EraRequest<C>,
+        _msg: SerializedMessage,
         _now: Timestamp,
-    ) -> (ProtocolOutcomes<C>, Option<EraMessage<C>>) {
+    ) -> (ProtocolOutcomes<C>, Option<SerializedMessage>) {
         info!(?sender, "invalid incoming request");
         (vec![ProtocolOutcome::Disconnect(sender)], None)
     }
@@ -1012,7 +1083,10 @@ where
                     GetDepOutcome::None | GetDepOutcome::Evidence(_) => None,
                     GetDepOutcome::Vertex(vv) => {
                         let msg = HighwayMessage::NewVertex(vv.into());
-                        Some(ProtocolOutcome::CreatedTargetedMessage(msg.into(), sender))
+                        Some(ProtocolOutcome::CreatedTargetedMessage(
+                            SerializedMessage::from_message(&msg),
+                            sender,
+                        ))
                     }
                 },
             )
@@ -1045,4 +1119,19 @@ where
     fn next_round_length(&self) -> Option<TimeDiff> {
         self.highway.next_round_length()
     }
+}
+
+/// Maximum possible rounds in one era.
+///
+/// It is the maximum of:
+/// - The era duration divided by the minimum round length, that is the maximum number of blocks
+///   that can fit within the duration of one era,
+/// - The minimum era height, which is the minimum number of blocks for an era to be considered
+///   complete.
+pub fn max_rounds_per_era(
+    minimum_era_height: u64,
+    era_duration: TimeDiff,
+    minimum_round_length: TimeDiff,
+) -> u64 {
+    minimum_era_height.max((TimeDiff::from_millis(1) + era_duration) / minimum_round_length)
 }

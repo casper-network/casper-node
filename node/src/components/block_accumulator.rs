@@ -40,7 +40,7 @@ use crate::{
             BlockAccumulatorAnnouncement, FatalAnnouncement, MetaBlockAnnouncement,
             PeerBehaviorAnnouncement,
         },
-        requests::{BlockAccumulatorRequest, BlockCompleteConfirmationRequest, StorageRequest},
+        requests::{BlockAccumulatorRequest, MarkBlockCompletedRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
@@ -145,13 +145,14 @@ impl BlockAccumulator {
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
         let block_hash = sync_identifier.block_hash();
         let leap_instruction = self.leap_instruction(&sync_identifier);
+        debug!(?leap_instruction, "BlockAccumulator");
         if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
             self.register_local_tip(block_height, era_id);
         }
         if leap_instruction.should_leap() {
             return SyncInstruction::Leap { block_hash };
         }
-        match sync_identifier.block_hash_to_sync(self.next_synchable_block_hash(block_hash)) {
+        match sync_identifier.block_hash_to_sync(self.next_syncable_block_hash(block_hash)) {
             Some(block_hash_to_sync) => {
                 self.reset_last_progress();
                 SyncInstruction::BlockSync {
@@ -184,6 +185,7 @@ impl BlockAccumulator {
         if new_local_tip {
             self.purge();
             self.local_tip = Some(LocalTipIdentifier::new(height, era_id));
+            self.reset_last_progress();
             info!(local_tip=?self.local_tip, "new local tip detected");
         }
     }
@@ -266,7 +268,7 @@ impl BlockAccumulator {
     where
         REv: From<StorageRequest>
             + From<PeerBehaviorAnnouncement>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -370,7 +372,7 @@ impl BlockAccumulator {
     where
         REv: From<StorageRequest>
             + From<PeerBehaviorAnnouncement>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + From<FatalAnnouncement>
             + Send,
     {
@@ -383,7 +385,7 @@ impl BlockAccumulator {
             // When there is no acceptor for it, this function returns
             // early, ignoring the signature.
             None => {
-                warn!(%finality_signature, "no acceptor to receive finality_signature");
+                debug!(%finality_signature, "no acceptor to receive finality_signature");
                 return Effects::new();
             }
         };
@@ -482,7 +484,7 @@ impl BlockAccumulator {
     ) -> Effects<Event>
     where
         REv: From<BlockAccumulatorAnnouncement>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + From<MetaBlockAnnouncement>
             + Send,
     {
@@ -590,7 +592,7 @@ impl BlockAccumulator {
         }
     }
 
-    fn next_synchable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+    fn next_syncable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
         let block_acceptor = self.block_acceptors.get(child_hash)?;
         if block_acceptor.has_sufficient_finality() {
@@ -672,7 +674,7 @@ impl BlockAccumulator {
     where
         REv: From<PeerBehaviorAnnouncement>
             + From<StorageRequest>
-            + From<BlockCompleteConfirmationRequest>
+            + From<MarkBlockCompletedRequest>
             + Send,
         I: IntoIterator<Item = (NodeId, Error)>,
     {
@@ -758,7 +760,7 @@ pub(crate) trait ReactorEvent:
     From<StorageRequest>
     + From<PeerBehaviorAnnouncement>
     + From<BlockAccumulatorAnnouncement>
-    + From<BlockCompleteConfirmationRequest>
+    + From<MarkBlockCompletedRequest>
     + From<MetaBlockAnnouncement>
     + From<FatalAnnouncement>
     + Send
@@ -770,7 +772,7 @@ impl<REv> ReactorEvent for REv where
     REv: From<StorageRequest>
         + From<PeerBehaviorAnnouncement>
         + From<BlockAccumulatorAnnouncement>
-        + From<BlockCompleteConfirmationRequest>
+        + From<MarkBlockCompletedRequest>
         + From<MetaBlockAnnouncement>
         + From<FatalAnnouncement>
         + Send

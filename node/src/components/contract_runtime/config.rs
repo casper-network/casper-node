@@ -29,7 +29,7 @@ pub struct Config {
     pub max_query_depth: Option<u64>,
     /// Enable synchronizing to disk only after each block is written.
     ///
-    /// Defaults to `false`.
+    /// Defaults to `true`.
     pub enable_manual_sync: Option<bool>,
 }
 

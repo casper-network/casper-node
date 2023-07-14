@@ -19,7 +19,8 @@ use crate::{
         trie_store::{
             lmdb::{LmdbTrieStore, ScratchTrieStore},
             operations::{
-                keys_with_prefix, missing_children, put_trie, read, read_with_proof, ReadResult,
+                delete, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
+                DeleteResult, ReadResult,
             },
         },
     },
@@ -53,7 +54,7 @@ impl LmdbGlobalState {
         trie_store: Arc<LmdbTrieStore>,
     ) -> Result<Self, error::Error> {
         let root_hash: Digest = {
-            let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
+            let (root_hash, root) = compute_empty_root_hash()?;
             let mut txn = environment.create_read_write_txn()?;
             trie_store.put(&mut txn, &root_hash, &root)?;
             txn.commit()?;
@@ -91,7 +92,7 @@ impl LmdbGlobalState {
         &self,
         correlation_id: CorrelationId,
         prestate_hash: Digest,
-        stored_values: HashMap<Key, StoredValue>,
+        stored_values: HashMap<Key, Option<StoredValue>>,
     ) -> Result<Digest, error::Error> {
         let scratch_trie = self.get_scratch_store();
         let new_state_root = put_stored_values::<_, _, error::Error>(
@@ -126,6 +127,11 @@ impl LmdbGlobalState {
     pub fn empty_state_root_hash(&self) -> Digest {
         self.empty_root_hash
     }
+}
+
+fn compute_empty_root_hash() -> Result<(Digest, Trie<Key, StoredValue>), error::Error> {
+    let (root_hash, root) = create_hashed_empty_trie::<Key, StoredValue>()?;
+    Ok((root_hash, root))
 }
 
 impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
@@ -286,10 +292,45 @@ impl StateProvider for LmdbGlobalState {
         txn.commit()?;
         Ok(missing_hashes)
     }
+
+    /// Delete keys.
+    fn delete_keys(
+        &self,
+        correlation_id: CorrelationId,
+        mut state_root_hash: Digest,
+        keys: &[Key],
+    ) -> Result<DeleteResult, Self::Error> {
+        let scratch_trie_store = self.get_scratch_store();
+
+        let mut txn = scratch_trie_store.create_read_write_txn()?;
+
+        for key in keys {
+            let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
+                correlation_id,
+                &mut txn,
+                &scratch_trie_store,
+                &state_root_hash,
+                key,
+            );
+            match delete_result? {
+                DeleteResult::Deleted(root) => {
+                    state_root_hash = root;
+                }
+                other => return Ok(other),
+            }
+        }
+
+        txn.commit()?;
+
+        scratch_trie_store.write_root_to_db(state_root_hash)?;
+        Ok(DeleteResult::Deleted(state_root_hash))
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::BTreeSet, iter::FromIterator};
+
     use lmdb::DatabaseFlags;
     use tempfile::tempdir;
 
@@ -321,24 +362,32 @@ mod tests {
         ]
     }
 
+    const KEY_ACCOUNT_1: Key = Key::Account(AccountHash::new([1u8; 32]));
+    const KEY_ACCOUNT_2: Key = Key::Account(AccountHash::new([2u8; 32]));
+    const KEY_ACCOUNT_3: Key = Key::Account(AccountHash::new([3u8; 32]));
+
     fn create_test_pairs_updated() -> [TestPair; 3] {
         [
             TestPair {
-                key: Key::Account(AccountHash::new([1u8; 32])),
+                key: KEY_ACCOUNT_1,
                 value: StoredValue::CLValue(CLValue::from_t("one".to_string()).unwrap()),
             },
             TestPair {
-                key: Key::Account(AccountHash::new([2u8; 32])),
+                key: KEY_ACCOUNT_2,
                 value: StoredValue::CLValue(CLValue::from_t("two".to_string()).unwrap()),
             },
             TestPair {
-                key: Key::Account(AccountHash::new([3u8; 32])),
+                key: KEY_ACCOUNT_3,
                 value: StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()),
             },
         ]
     }
 
-    fn create_test_state(pairs_creator: fn() -> [TestPair; 2]) -> (LmdbGlobalState, Digest) {
+    fn create_test_state<T, F>(pairs_creator: F) -> (LmdbGlobalState, Digest)
+    where
+        T: AsRef<[TestPair]>,
+        F: FnOnce() -> T,
+    {
         let correlation_id = CorrelationId::new();
         let temp_dir = tempdir().unwrap();
         let environment = Arc::new(
@@ -358,7 +407,7 @@ mod tests {
         {
             let mut txn = ret.environment.create_read_write_txn().unwrap();
 
-            for TestPair { key, value } in &(pairs_creator)() {
+            for TestPair { key, value } in pairs_creator().as_ref() {
                 match write::<_, _, _, LmdbTrieStore, error::Error>(
                     correlation_id,
                     &mut txn,
@@ -425,6 +474,67 @@ mod tests {
                 updated_checkout.read(correlation_id, &key).unwrap()
             );
         }
+    }
+
+    #[test]
+    fn commit_updates_state_with_delete() {
+        let correlation_id = CorrelationId::new();
+        let test_pairs_updated = create_test_pairs_updated();
+
+        let (state, root_hash) = create_test_state(create_test_pairs_updated);
+
+        let effects: AdditiveMap<Key, Transform> = {
+            let mut tmp = AdditiveMap::new();
+
+            let head = test_pairs_updated[..test_pairs_updated.len() - 1].to_vec();
+            let tail = test_pairs_updated[test_pairs_updated.len() - 1..].to_vec();
+            assert_eq!(head.len() + tail.len(), test_pairs_updated.len());
+
+            for TestPair { key, value } in &head {
+                tmp.insert(*key, Transform::Write(value.to_owned()));
+            }
+            for TestPair { key, .. } in &tail {
+                tmp.insert(*key, Transform::Delete);
+            }
+
+            tmp
+        };
+
+        let updated_hash = state.commit(correlation_id, root_hash, effects).unwrap();
+
+        assert_ne!(
+            root_hash, updated_hash,
+            "Post state root hash is expected to be different than pre state root hash"
+        );
+
+        let updated_checkout = state.checkout(updated_hash).unwrap().unwrap();
+
+        let all_keys = updated_checkout
+            .keys_with_prefix(correlation_id, &[])
+            .unwrap();
+        assert_eq!(
+            BTreeSet::from_iter(all_keys),
+            BTreeSet::from_iter(vec![KEY_ACCOUNT_1, KEY_ACCOUNT_2,])
+        );
+
+        let account_1 = updated_checkout
+            .read(correlation_id, &KEY_ACCOUNT_1)
+            .unwrap();
+        assert_eq!(account_1, Some(test_pairs_updated[0].clone().value));
+
+        let account_2 = updated_checkout
+            .read(correlation_id, &KEY_ACCOUNT_2)
+            .unwrap();
+        assert_eq!(account_2, Some(test_pairs_updated[1].clone().value));
+
+        let account_3 = updated_checkout
+            .read(correlation_id, &KEY_ACCOUNT_3)
+            .unwrap();
+        assert_eq!(
+            account_3, None,
+            "Account {:?} should be deleted",
+            KEY_ACCOUNT_3
+        );
     }
 
     #[test]

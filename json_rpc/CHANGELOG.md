@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
-## [Unreleased]
+## 1.0.0
 
 ### Added
 * Add initial content.

@@ -6,7 +6,7 @@ use std::{
 use tracing::{debug, error, info, warn};
 
 use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{EraId, Timestamp};
+use casper_types::{EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -21,7 +21,9 @@ use crate::{
         requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{ActivationPoint, BlockHash, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
+    types::{
+        ActivationPoint, BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier,
+    },
     NodeRng,
 };
 
@@ -246,7 +248,7 @@ impl MainReactor {
                 debug!("KeepUp: BlockSync: {:?}", block_hash);
                 if self
                     .block_synchronizer
-                    .register_block_by_hash(block_hash, false, true)
+                    .register_block_by_hash(block_hash, false)
                 {
                     info!(%block_hash, "KeepUp: BlockSync: registered block by hash");
                     Some(KeepUpInstruction::Do(
@@ -279,9 +281,12 @@ impl MainReactor {
         match self.sync_back_instruction(&sync_back_progress) {
             Ok(Some(sync_back_instruction)) => match sync_back_instruction {
                 SyncBackInstruction::TtlSynced | SyncBackInstruction::GenesisSynced => {
-                    // we don't need to sync any historical blocks currently
+                    // we don't need to sync any historical blocks currently, so we clear both the
+                    // historical synchronizer and the sync back leap activity since they will not
+                    // be required anymore
                     debug!("KeepUp: synced to TTL or Genesis");
                     self.block_synchronizer.purge_historical();
+                    self.sync_leaper.purge();
                     None
                 }
                 SyncBackInstruction::Syncing => {
@@ -504,15 +509,14 @@ impl MainReactor {
         // era validator weights. if there are other processes which are holding on discovery
         // of relevant newly-seen era validator weights, they should naturally progress
         // themselves via notification on the event loop.
-        if let Err(msg) = self.update_highest_switch_block() {
-            return KeepUpInstruction::Fatal(msg);
-        }
         let block_hash = sync_leap.highest_block_hash();
         let block_height = sync_leap.highest_block_height();
         info!(%sync_leap, %block_height, %block_hash, "KeepUp: historical sync_back received");
 
-        let era_validator_weights =
-            sync_leap.era_validator_weights(self.validator_matrix.fault_tolerance_threshold());
+        let era_validator_weights = sync_leap.era_validator_weights(
+            self.validator_matrix.fault_tolerance_threshold(),
+            &self.chainspec.protocol_config,
+        );
         for evw in era_validator_weights {
             let era_id = evw.era_id();
             debug!(%era_id, "KeepUp: attempt to register historical validators for era");
@@ -541,7 +545,7 @@ impl MainReactor {
     ) -> KeepUpInstruction {
         if self
             .block_synchronizer
-            .register_block_by_hash(parent_hash, true, true)
+            .register_block_by_hash(parent_hash, true)
         {
             // sync the parent_hash block; we get a random sampling of peers to ask.
             // it is possible that we may get a random sampling that do not have the data
@@ -576,12 +580,19 @@ impl MainReactor {
         &mut self,
         block_synchronizer_progress: &BlockSynchronizerProgress,
     ) -> Result<Option<SyncBackInstruction>, String> {
-        if matches!(
-            block_synchronizer_progress,
-            BlockSynchronizerProgress::Syncing(_, _, _)
-        ) {
-            debug!("KeepUp: still syncing historical block");
-            return Ok(Some(SyncBackInstruction::Syncing));
+        match block_synchronizer_progress {
+            BlockSynchronizerProgress::Syncing(_, _, _) => {
+                debug!("KeepUp: still syncing historical block");
+                return Ok(Some(SyncBackInstruction::Syncing));
+            }
+            BlockSynchronizerProgress::Executing(block_hash, height, _) => {
+                warn!(
+                    %block_hash,
+                    %height,
+                    "Historical block synchronizer should not be waiting for the block to be executed"
+                );
+            }
+            BlockSynchronizerProgress::Idle | BlockSynchronizerProgress::Synced(_, _, _) => {}
         }
         // in this flow there is no significant difference between Idle & Synced, as unlike in
         // catchup and keepup flows there is no special activity necessary upon getting to Synced
@@ -589,19 +600,39 @@ impl MainReactor {
         // note: for a synced historical block we have header, body, global state, any execution
         // effects, any referenced deploys, & sufficient finality (by weight) of signatures.
         match self.storage.get_highest_orphaned_block_header() {
-            HighestOrphanedBlockResult::Orphan(block_header) => {
+            HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) => {
                 // set a latch on the validator matrix to prevent it from purging validator weights
                 // of interstitial eras which we have not yet historically sync'd
                 self.validator_matrix
-                    .register_retrograde_latch(Some(block_header.era_id()));
-                if block_header.is_genesis() {
+                    .register_retrograde_latch(Some(highest_orphaned_block_header.era_id()));
+                if highest_orphaned_block_header.is_genesis() {
                     return Ok(Some(SyncBackInstruction::GenesisSynced));
                 }
-                if self.sync_back_is_ttl() {
-                    return Ok(Some(SyncBackInstruction::TtlSynced));
+
+                // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 12
+                // hours we require sync back to see a contiguous / unbroken
+                // range of at least 12 hours worth of blocks. note however
+                // that we measure from the start of the active era
+                // (for consensus reasons), so this can be up to TTL + era length in practice
+                if !self.sync_to_genesis {
+                    if let Some(highest_switch_block_header) = self
+                        .storage
+                        .read_highest_switch_block_headers(1)
+                        .map_err(|err| err.to_string())?
+                        .last()
+                    {
+                        if synced_to_ttl(
+                            highest_switch_block_header,
+                            &highest_orphaned_block_header,
+                            self.chainspec.deploy_config.max_ttl,
+                        )? {
+                            return Ok(Some(SyncBackInstruction::TtlSynced));
+                        }
+                    }
                 }
-                let parent_hash = block_header.parent_hash();
-                debug!(?block_header, %parent_hash, "KeepUp: highest orphaned historical block");
+
+                let parent_hash = highest_orphaned_block_header.parent_hash();
+                debug!(?highest_orphaned_block_header, %parent_hash, "KeepUp: highest orphaned historical block");
                 match self.storage.read_block_header(parent_hash) {
                     Ok(Some(parent_block_header)) => {
                         // even if we don't have a complete block (all parts and dependencies)
@@ -619,7 +650,7 @@ impl MainReactor {
                     }
                     Ok(None) => {
                         debug!(%parent_hash, "KeepUp: did not find historical block header in storage");
-                        let era_id = match block_header.era_id().predecessor() {
+                        let era_id = match highest_orphaned_block_header.era_id().predecessor() {
                             None => EraId::from(0),
                             Some(predecessor) => {
                                 // we do not have the parent header and thus don't know what era
@@ -652,21 +683,127 @@ impl MainReactor {
             }
         }
     }
+}
 
-    fn sync_back_is_ttl(&self) -> bool {
-        if false == self.sync_to_genesis {
-            // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 12 hours
-            // we require sync back to see a contiguous / unbroken range of at least 12 hours
-            // worth of blocks. note however that we measure from the start of the active era
-            // (for consensus reasons), so this can be up to TTL + era length in practice
-            if let Some(block_header) = &self.switch_block {
-                let diff = self.chainspec.deploy_config.max_ttl;
-                let cutoff = block_header.timestamp().saturating_sub(diff);
-                let block_time = block_header.timestamp();
-                // this node is configured to only sync to ttl, and we may have reached ttl
-                return block_time < cutoff;
-            }
-        }
-        false
+pub(crate) fn synced_to_ttl(
+    latest_switch_block_header: &BlockHeader,
+    highest_orphaned_block_header: &BlockHeader,
+    max_ttl: TimeDiff,
+) -> Result<bool, String> {
+    Ok(highest_orphaned_block_header.height() == 0
+        || is_timestamp_at_ttl(
+            latest_switch_block_header.timestamp(),
+            highest_orphaned_block_header.timestamp(),
+            max_ttl,
+        ))
+}
+
+fn is_timestamp_at_ttl(
+    latest_switch_block_timestamp: Timestamp,
+    lowest_block_timestamp: Timestamp,
+    max_ttl: TimeDiff,
+) -> bool {
+    lowest_block_timestamp < latest_switch_block_timestamp.saturating_sub(max_ttl)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff, Timestamp};
+
+    use crate::{
+        reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
+        types::Block,
+    };
+
+    const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
+    const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
+
+    #[test]
+    fn should_be_at_ttl() {
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-10 00:00:00.000").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+    }
+
+    #[test]
+    fn should_not_be_at_ttl() {
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-14 00:00:00.000").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(!is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+    }
+
+    #[test]
+    fn should_detect_ttl_at_the_boundary() {
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-12 23:59:59.999").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-13 00:00:00.000").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(!is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+
+        let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
+        let lowest_block_timestamp = Timestamp::from_str("2010-06-13 00:00:00.001").unwrap();
+        let max_ttl = TimeDiff::from_seconds(TWO_DAYS_SECS);
+        assert!(!is_timestamp_at_ttl(
+            latest_switch_block_timestamp,
+            lowest_block_timestamp,
+            max_ttl
+        ));
+    }
+
+    #[test]
+    fn should_detect_ttl_at_genesis() {
+        let mut rng = TestRng::new();
+
+        let latest_switch_block = Block::random_with_specifics(
+            &mut rng,
+            100.into(),
+            1000,
+            ProtocolVersion::default(),
+            true,
+            None,
+        );
+
+        let latest_orphaned_block = Block::random_with_specifics(
+            &mut rng,
+            0.into(),
+            0,
+            ProtocolVersion::default(),
+            true,
+            None,
+        );
+
+        assert_eq!(latest_orphaned_block.height(), 0);
+        assert_eq!(
+            synced_to_ttl(
+                latest_switch_block.header(),
+                latest_orphaned_block.header(),
+                MAX_TTL
+            ),
+            Ok(true)
+        );
     }
 }

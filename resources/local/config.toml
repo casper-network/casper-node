@@ -21,6 +21,13 @@ control_logic_default_delay = '1sec'
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
 
+# A timeout for the ShutdownForUpgrade state, after which the node will upgrade even if not all
+# conditions are satisfied.
+shutdown_for_upgrade_timeout = '2min'
+
+# Maximum time a node will wait for an upgrade to commit.
+upgrade_timeout = '30sec'
+
 
 # =================================
 # Configuration options for logging
@@ -246,14 +253,29 @@ blocklist_retain_duration = '1min'
 # Any weight set to 0 means that the category of traffic is exempt from throttling.
 [network.estimator_weights]
 consensus = 0
-gossip = 0
-finality_signatures = 0
+block_gossip = 1
+deploy_gossip = 0
+finality_signature_gossip = 1
+address_gossip = 0
+finality_signature_broadcasts = 0
 deploy_requests = 1
-deploy_responses = 1
+deploy_responses = 0
+legacy_deploy_requests = 1
+legacy_deploy_responses = 0
 block_requests = 1
 block_responses = 0
+block_header_requests = 1
+block_header_responses = 0
 trie_requests = 1
 trie_responses = 0
+finality_signature_requests = 1
+finality_signature_responses = 0
+sync_leap_requests = 1
+sync_leap_responses = 0
+approvals_hashes_requests = 1
+approvals_hashes_responses = 0
+execution_results_requests = 1
+execution_results_responses = 0
 
 
 # ==================================================
@@ -286,7 +308,7 @@ max_body_bytes = 2_621_440
 [speculative_exec_server]
 
 # Flag which enables the speculative execution JSON-RPC HTTP server.
-enable_server = false
+enable_server = true
 
 # Listening address for speculative execution JSON-RPC HTTP server.  If the port
 # is set to 0, a random port will be used.
@@ -471,6 +493,13 @@ need_next_interval = '1sec'
 
 # Time interval for recurring disconnection of dishonest peers.
 disconnect_dishonest_peers_interval = '10sec'
+
+# Time interval for resetting the latch in block builders.
+latch_reset_interval = '5sec'
+
+# Time interval after which synchronization is considered stalled if no successful sync
+# activity happened.
+stall_limit = '120sec'
 
 
 # ==================================

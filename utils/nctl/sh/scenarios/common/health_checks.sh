@@ -41,12 +41,35 @@ function assert_error_count() {
     local COUNT
     local TOTAL
     local UNIQ_ERRORS
+    local IGNORE_PATTERN
+    local IGNORE_ALL
+    local ALLOWED_COUNT=0
 
     log_step "Looking for errors in logs..."
 
+    local ignore_pattern_re='([[:digit:]]+);ignore:(.*)'
+    local allowed_count_re='([[:digit:]]+)'
+
+    if [[ $ERRORS_ALLOWED =~ $ignore_pattern_re ]]; then
+        ALLOWED_COUNT=${BASH_REMATCH[1]}
+        IGNORE_PATTERN=${BASH_REMATCH[2]}
+    elif [[ $ERRORS_ALLOWED =~ $allowed_count_re ]]; then
+        ALLOWED_COUNT=$ERRORS_ALLOWED
+    elif [ "$ERRORS_ALLOWED" = "ignore" ]; then
+        IGNORE_ALL=1
+    else
+        log "Bad error ignore pattern specified"
+        exit 1
+    fi
+
     TOTAL='0'
     for i in $(seq 1 "$(get_count_of_nodes)"); do
-        COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w '"level":"ERROR"' | wc -l)
+        if [ -z ${IGNORE_PATTERN+x} ]; then
+            COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w '"level":"ERROR"' | wc -l)
+        else
+            COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w '"level":"ERROR"' | grep -v "$IGNORE_PATTERN" | wc -l)
+        fi
+
         TOTAL=$((TOTAL + COUNT))
         log "... node-$i: TOTAL ERROR COUNT = $COUNT"
 
@@ -62,17 +85,17 @@ function assert_error_count() {
 
     done
 
-    if [ "$ERRORS_ALLOWED" = "ignore" ]; then
+    if [ -n "$IGNORE_ALL" ]; then
         log "Error count ignored by test, skipping $TOTAL errors..."
         return 0
     fi
 
-    if [ "$ERRORS_ALLOWED" != "$TOTAL" ]; then
-        log "ERROR: ALLOWED: $ERRORS_ALLOWED != TOTAL: $TOTAL"
+    if [ "$ALLOWED_COUNT" != "$TOTAL" ]; then
+        log "ERROR: ALLOWED: $ALLOWED_COUNT != TOTAL: $TOTAL"
         exit 1
     fi
 
-    log "SUCCESS: ALLOWED: $ERRORS_ALLOWED = TOTAL: $TOTAL"
+    log "SUCCESS: ALLOWED: $ALLOWED_COUNT = TOTAL: $TOTAL"
 }
 
 ##########################################################

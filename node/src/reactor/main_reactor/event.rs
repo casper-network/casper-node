@@ -24,8 +24,7 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             FatalAnnouncement, FetchedNewBlockAnnouncement,
             FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, RpcServerAnnouncement, UnexecutedBlockAnnouncement,
-            UpgradeWatcherAnnouncement,
+            PeerBehaviorAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -34,12 +33,13 @@ use crate::{
             TrieResponseIncoming,
         },
         requests::{
-            BeginGossipRequest, BlockAccumulatorRequest, BlockCompleteConfirmationRequest,
+            AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest,
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
-            MakeBlockExecutableRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
-            ReactorStatusRequest, RestRequest, RpcRequest, SetNodeStopRequest, StorageRequest,
-            SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+            MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
+            NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, RestRequest, RpcRequest,
+            SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest, TrieAccumulatorRequest,
+            UpgradeWatcherRequest,
         },
     },
     protocol::Message,
@@ -76,8 +76,6 @@ pub(crate) enum MainEvent {
     UpgradeWatcherAnnouncement(#[serde(skip_serializing)] UpgradeWatcherAnnouncement),
     #[from]
     RpcServer(#[serde(skip_serializing)] rpc_server::Event),
-    #[from]
-    RpcServerAnnouncement(#[serde(skip_serializing)] RpcServerAnnouncement),
     #[from]
     RestServer(#[serde(skip_serializing)] rest_server::Event),
     #[from]
@@ -165,7 +163,7 @@ pub(crate) enum MainEvent {
     #[from]
     MakeBlockExecutableRequest(MakeBlockExecutableRequest),
     #[from]
-    BlockCompleteConfirmationRequest(BlockCompleteConfirmationRequest),
+    MarkBlockCompletedRequest(MarkBlockCompletedRequest),
     #[from]
     FinalitySignatureIncoming(FinalitySignatureIncoming),
     #[from]
@@ -186,6 +184,8 @@ pub(crate) enum MainEvent {
     ),
     #[from]
     DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
+    #[from]
+    AcceptDeployRequest(AcceptDeployRequest),
     #[from]
     DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
     #[from]
@@ -276,6 +276,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::UpgradeWatcher(_) => "UpgradeWatcher",
             MainEvent::Consensus(_) => "Consensus",
             MainEvent::DeployAcceptor(_) => "DeployAcceptor",
+            MainEvent::AcceptDeployRequest(_) => "AcceptDeployRequest",
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::DeployFetcher(_) => "DeployFetcher",
             MainEvent::DeployGossiper(_) => "DeployGossiper",
@@ -311,11 +312,10 @@ impl ReactorEvent for MainEvent {
             MainEvent::ChainspecRawBytesRequest(_) => "ChainspecRawBytesRequest",
             MainEvent::UpgradeWatcherRequest(_) => "UpgradeWatcherRequest",
             MainEvent::StorageRequest(_) => "StorageRequest",
-            MainEvent::BlockCompleteConfirmationRequest(_) => "MarkBlockCompletedRequest",
+            MainEvent::MarkBlockCompletedRequest(_) => "MarkBlockCompletedRequest",
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
-            MainEvent::RpcServerAnnouncement(_) => "RpcServerAnnouncement",
             MainEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
             MainEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
             MainEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
@@ -382,6 +382,7 @@ impl Display for MainEvent {
             MainEvent::UpgradeWatcher(event) => write!(f, "upgrade watcher: {}", event),
             MainEvent::Consensus(event) => write!(f, "consensus: {}", event),
             MainEvent::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            MainEvent::AcceptDeployRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
             MainEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
@@ -439,7 +440,7 @@ impl Display for MainEvent {
                 write!(f, "upgrade watcher request: {}", req)
             }
             MainEvent::StorageRequest(req) => write!(f, "storage request: {}", req),
-            MainEvent::BlockCompleteConfirmationRequest(req) => {
+            MainEvent::MarkBlockCompletedRequest(req) => {
                 write!(f, "mark block completed request: {}", req)
             }
             MainEvent::BlockHeaderFetcherRequest(request) => {
@@ -484,9 +485,6 @@ impl Display for MainEvent {
             MainEvent::FatalAnnouncement(fatal_ann) => write!(f, "fatal: {}", fatal_ann),
             MainEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)
-            }
-            MainEvent::RpcServerAnnouncement(ann) => {
-                write!(f, "api server announcement: {}", ann)
             }
             MainEvent::DeployAcceptorAnnouncement(ann) => {
                 write!(f, "deploy acceptor announcement: {}", ann)

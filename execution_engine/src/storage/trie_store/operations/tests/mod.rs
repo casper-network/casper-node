@@ -1,3 +1,4 @@
+pub(crate) mod bytesrepr_utils;
 mod delete;
 mod ee_699;
 mod keys;
@@ -34,6 +35,8 @@ use crate::{
         DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
     },
 };
+
+use self::bytesrepr_utils::PanickingFromBytes;
 
 const TEST_KEY_LENGTH: usize = 7;
 
@@ -81,6 +84,7 @@ impl FromBytes for TestValue {
         let (key, rem) = bytes.split_at(TEST_VAL_LENGTH);
         let mut ret = [0u8; TEST_VAL_LENGTH];
         ret.copy_from_slice(key);
+
         Ok((TestValue(ret), rem))
     }
 }
@@ -596,7 +600,9 @@ where
         if let Trie::Leaf { key, value } = leaf {
             let maybe_value: ReadResult<V> =
                 read::<_, _, _, _, E>(correlation_id, txn, store, root, key)?;
-            ret.push(ReadResult::Found(*value) == maybe_value)
+            if let ReadResult::Found(value_found) = maybe_value {
+                ret.push(*value == value_found);
+            }
         } else {
             panic!("leaves should only contain leaves")
         }
@@ -742,7 +748,7 @@ where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<K, V>,
+    S: TrieStore<K, PanickingFromBytes<V>>,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
@@ -751,12 +757,19 @@ where
         return Ok(results);
     }
     let mut root_hash = root_hash.to_owned();
-    let mut txn = environment.create_read_write_txn()?;
+    let mut txn: R::ReadWriteTransaction = environment.create_read_write_txn()?;
 
     for leaf in leaves.iter() {
         if let Trie::Leaf { key, value } = leaf {
-            let write_result =
-                write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)?;
+            let new_value = PanickingFromBytes::new(value.clone());
+            let write_result = write::<K, PanickingFromBytes<V>, _, _, E>(
+                correlation_id,
+                &mut txn,
+                store,
+                &root_hash,
+                key,
+                &new_value,
+            )?;
             match write_result {
                 WriteResult::Written(hash) => {
                     root_hash = hash;
@@ -823,10 +836,11 @@ where
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
-    let txn = environment.create_read_txn()?;
+    let txn: R::ReadTransaction = environment.create_read_txn()?;
     for (index, root_hash) in root_hashes.iter().enumerate() {
         for (key, value) in &pairs[..=index] {
             let result = read::<_, _, _, _, E>(correlation_id, &txn, store, root_hash, key)?;
+
             if ReadResult::Found(*value) != result {
                 return Ok(false);
             }
@@ -865,7 +879,7 @@ where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone + Eq,
     R: TransactionSource<'a, Handle = S::Handle>,
-    S: TrieStore<K, V>,
+    S: TrieStore<K, PanickingFromBytes<V>>,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
 {
@@ -877,7 +891,15 @@ where
     let mut txn = environment.create_read_write_txn()?;
 
     for (key, value) in pairs.iter() {
-        match write::<_, _, _, _, E>(correlation_id, &mut txn, store, &root_hash, key, value)? {
+        let new_val = PanickingFromBytes::new(value.clone());
+        match write::<K, PanickingFromBytes<V>, _, _, E>(
+            correlation_id,
+            &mut txn,
+            store,
+            &root_hash,
+            key,
+            &new_val,
+        )? {
             WriteResult::Written(hash) => {
                 root_hash = hash;
             }
@@ -890,10 +912,12 @@ where
     Ok(results)
 }
 
-fn writes_to_n_leaf_empty_trie_had_expected_results<'a, K, V, R, S, E>(
+fn writes_to_n_leaf_empty_trie_had_expected_results<'a, K, V, R, WR, S, WS, E>(
     correlation_id: CorrelationId,
     environment: &'a R,
+    writable_environment: &'a WR,
     store: &S,
+    writable_store: &WS,
     states: &[Digest],
     test_leaves: &[Trie<K, V>],
 ) -> Result<Vec<Digest>, E>
@@ -901,17 +925,20 @@ where
     K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy + Ord,
     V: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug + Copy,
     R: TransactionSource<'a, Handle = S::Handle>,
+    WR: TransactionSource<'a, Handle = WS::Handle>,
     S: TrieStore<K, V>,
+    WS: TrieStore<K, PanickingFromBytes<V>>,
     S::Error: From<R::Error>,
-    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
+    WS::Error: From<WR::Error>,
+    E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<WR::Error> + From<WS::Error>,
 {
     let mut states = states.to_vec();
 
     // Write set of leaves to the trie
     let hashes = write_leaves::<_, _, _, _, E>(
         correlation_id,
-        environment,
-        store,
+        writable_environment,
+        writable_store,
         states.last().unwrap(),
         test_leaves,
     )?

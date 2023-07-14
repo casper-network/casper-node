@@ -30,12 +30,12 @@ pub(super) enum PeersStatus {
 pub(super) struct PeerList {
     peer_list: BTreeMap<NodeId, PeerQuality>,
     keep_fresh: Timestamp,
-    max_simultaneous_peers: u32,
+    max_simultaneous_peers: u8,
     peer_refresh_interval: TimeDiff,
 }
 
 impl PeerList {
-    pub(super) fn new(max_simultaneous_peers: u32, peer_refresh_interval: TimeDiff) -> Self {
+    pub(super) fn new(max_simultaneous_peers: u8, peer_refresh_interval: TimeDiff) -> Self {
         PeerList {
             peer_list: BTreeMap::new(),
             keep_fresh: Timestamp::now(),
@@ -72,52 +72,46 @@ impl PeerList {
         self.peer_list.retain(|_, v| *v != PeerQuality::Dishonest);
     }
 
-    pub(super) fn disqualify_peer(&mut self, peer: Option<NodeId>) {
-        if let Some(peer_id) = peer {
-            self.peer_list.insert(peer_id, PeerQuality::Dishonest);
-        }
+    pub(super) fn disqualify_peer(&mut self, peer: NodeId) {
+        self.peer_list.insert(peer, PeerQuality::Dishonest);
     }
 
-    pub(super) fn promote_peer(&mut self, peer: Option<NodeId>) {
-        if let Some(peer_id) = peer {
-            debug!("BlockSynchronizer: promoting peer {:?}", peer_id);
-            // vacant should be unreachable
-            match self.peer_list.entry(peer_id) {
-                Entry::Vacant(_) => {
-                    self.peer_list.insert(peer_id, PeerQuality::Unknown);
-                }
-                Entry::Occupied(entry) => match entry.get() {
-                    PeerQuality::Dishonest => {
-                        // no change -- this is terminal
-                    }
-                    PeerQuality::Unreliable | PeerQuality::Unknown => {
-                        self.peer_list.insert(peer_id, PeerQuality::Reliable);
-                    }
-                    PeerQuality::Reliable => {
-                        // no change -- this is the best
-                    }
-                },
+    pub(super) fn promote_peer(&mut self, peer: NodeId) {
+        debug!("BlockSynchronizer: promoting peer {:?}", peer);
+        // vacant should be unreachable
+        match self.peer_list.entry(peer) {
+            Entry::Vacant(_) => {
+                self.peer_list.insert(peer, PeerQuality::Unknown);
             }
+            Entry::Occupied(entry) => match entry.get() {
+                PeerQuality::Dishonest => {
+                    // no change -- this is terminal
+                }
+                PeerQuality::Unreliable | PeerQuality::Unknown => {
+                    self.peer_list.insert(peer, PeerQuality::Reliable);
+                }
+                PeerQuality::Reliable => {
+                    // no change -- this is the best
+                }
+            },
         }
     }
 
-    pub(super) fn demote_peer(&mut self, peer: Option<NodeId>) {
-        if let Some(peer_id) = peer {
-            debug!("BlockSynchronizer: demoting peer {:?}", peer_id);
-            // vacant should be unreachable
-            match self.peer_list.entry(peer_id) {
-                Entry::Vacant(_) => {
+    pub(super) fn demote_peer(&mut self, peer: NodeId) {
+        debug!("BlockSynchronizer: demoting peer {:?}", peer);
+        // vacant should be unreachable
+        match self.peer_list.entry(peer) {
+            Entry::Vacant(_) => {
+                // no change
+            }
+            Entry::Occupied(entry) => match entry.get() {
+                PeerQuality::Dishonest | PeerQuality::Unreliable => {
                     // no change
                 }
-                Entry::Occupied(entry) => match entry.get() {
-                    PeerQuality::Dishonest | PeerQuality::Unreliable => {
-                        // no change
-                    }
-                    PeerQuality::Reliable | PeerQuality::Unknown => {
-                        self.peer_list.insert(peer_id, PeerQuality::Unreliable);
-                    }
-                },
-            }
+                PeerQuality::Reliable | PeerQuality::Unknown => {
+                    self.peer_list.insert(peer, PeerQuality::Unreliable);
+                }
+            },
         }
     }
 

@@ -27,6 +27,7 @@ use std::{fmt::Debug, time::Instant};
 
 use datasize::DataSize;
 use futures::{future::BoxFuture, join, FutureExt};
+use std::net::SocketAddr;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
@@ -93,6 +94,8 @@ pub(crate) struct InnerRestServer {
     /// When the message is sent, it signals the server loop to exit cleanly.
     #[data_size(skip)]
     shutdown_fuse: DropSwitch<ObservableFuse>,
+    /// The address the server is listening on.
+    local_addr: Option<SocketAddr>,
     /// The task handle which will only join once the server loop has exited.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
@@ -129,6 +132,23 @@ impl RestServer {
             node_startup_instant,
             inner_rest: None,
         }
+    }
+
+    /// Returns the binding address.
+    ///
+    /// Only used in testing. If you need to actually retrieve the bind address, add an appropriate
+    /// request or, as a last resort, make this function return `Option<SocketAddr>`.
+    ///
+    /// # Panics
+    ///
+    /// If the bind address is malformed, panics.
+    #[cfg(test)]
+    pub(crate) fn bind_address(&self) -> SocketAddr {
+        self.inner_rest
+            .as_ref()
+            .expect("no inner rest server")
+            .local_addr
+            .expect("missing bind addr")
     }
 }
 
@@ -168,6 +188,22 @@ where
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }
+                Event::BindComplete(local_addr) => {
+                    match self.inner_rest {
+                        Some(ref mut inner_rest) => {
+                            inner_rest.local_addr = Some(local_addr);
+                            info!(%local_addr, "REST server finishing binding");
+                            <Self as InitializedComponent<MainEvent>>::set_state(
+                                self,
+                                ComponentState::Initialized,
+                            );
+                        }
+                        None => {
+                            error!("should not have received `BindComplete` event when REST server is disabled")
+                        }
+                    }
+                    Effects::new()
+                }
                 Event::RestRequest(_) | Event::GetMetricsResult { .. } => {
                     warn!(
                         ?event,
@@ -184,6 +220,10 @@ where
                         name = <Self as Component<MainEvent>>::name(self),
                         "component already initialized"
                     );
+                    Effects::new()
+                }
+                Event::BindComplete(_) => {
+                    error!("REST component received BindComplete while initialized");
                     Effects::new()
                 }
                 Event::RestRequest(RestRequest::Status { responder }) => {
@@ -300,6 +340,7 @@ where
         let network_name = self.network_name.clone();
         self.inner_rest = Some(InnerRestServer {
             shutdown_fuse: DropSwitch::new(shutdown_fuse),
+            local_addr: None,
             server_join_handle,
             node_startup_instant,
             network_name,

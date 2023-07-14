@@ -287,6 +287,7 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
         DEFAULT_MINIMUM_DELEGATION_AMOUNT,
         DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+        None,
         *DOUBLED_WASM_MEMORY_LIMIT,
         SystemConfig::default(),
     );

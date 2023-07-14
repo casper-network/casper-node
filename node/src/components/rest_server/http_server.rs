@@ -9,7 +9,10 @@ use warp::Filter;
 use casper_types::ProtocolVersion;
 
 use super::{filters, ReactorEventT};
-use crate::{effect::EffectBuilder, utils::ObservableFuse};
+use crate::{
+    components::rest_server::Event, effect::EffectBuilder, reactor::QueueKind,
+    utils::ObservableFuse,
+};
 
 /// Run the REST HTTP server.
 pub(super) async fn run<REv: ReactorEventT>(
@@ -45,7 +48,13 @@ pub(super) async fn run<REv: ReactorEventT>(
         .service(make_svc);
 
     let server = builder.serve(rate_limited_service);
+
     info!(address = %server.local_addr(), "started REST server");
+
+    effect_builder
+        .into_inner()
+        .schedule(Event::BindComplete(server.local_addr()), QueueKind::Regular)
+        .await;
 
     // Shutdown the server gracefully.
     let _ = server

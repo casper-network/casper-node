@@ -1,4 +1,6 @@
-use std::collections::HashSet;
+use std::{borrow::Cow, collections::HashSet};
+
+use num_traits::FromPrimitive;
 
 use casper_hashing::Digest;
 use casper_types::bytesrepr::{self, FromBytes, ToBytes};
@@ -9,7 +11,7 @@ use crate::{
         error,
         error::in_memory,
         transaction_source::{Readable, Transaction, TransactionSource},
-        trie::{Pointer, Trie},
+        trie::{Pointer, Trie, TrieTag},
         trie_store::{
             operations::{
                 self,
@@ -61,7 +63,11 @@ where
         };
 
         // Optimization: Don't deserialize leaves as they have no descendants.
-        if let Some(&Trie::<K, V>::LEAF_TAG) = retrieved_trie_bytes.first() {
+        if let Some(TrieTag::Leaf) = retrieved_trie_bytes
+            .first()
+            .copied()
+            .and_then(TrieTag::from_u8)
+        {
             continue;
         }
 
@@ -143,7 +149,11 @@ where
             let trie_bytes_to_insert = source_store
                 .get_raw(&source_txn, &trie_key)?
                 .expect("should have trie");
-            target_store.put_raw(&mut target_txn, &trie_key, trie_bytes_to_insert.as_ref())?;
+            target_store.put_raw(
+                &mut target_txn,
+                &trie_key,
+                Cow::from(&*trie_bytes_to_insert),
+            )?;
 
             // Now that we've added in `trie_to_insert`, queue up its children
             let new_keys = missing_trie_keys::<_, _, _, _, E>(

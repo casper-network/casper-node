@@ -11,6 +11,7 @@ use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
 use muxink::backpressured::Ticket;
 use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
 
 use crate::{
     components::{
@@ -31,7 +32,8 @@ use crate::{
 };
 
 /// Reactor message.
-#[derive(Clone, From, Serialize, Deserialize)]
+#[derive(Clone, From, Serialize, Deserialize, EnumDiscriminants)]
+#[strum_discriminants(derive(strum::EnumIter))]
 pub(crate) enum Message {
     /// Consensus component message.
     #[from]
@@ -115,31 +117,33 @@ impl Payload for Message {
         match self {
             Message::Consensus(_) => weights.consensus,
             Message::ConsensusRequest(_) => weights.consensus,
-            Message::BlockGossiper(_) => weights.gossip,
-            Message::DeployGossiper(_) => weights.gossip,
-            Message::FinalitySignatureGossiper(_) => weights.gossip,
-            Message::AddressGossiper(_) => weights.gossip,
+            Message::BlockGossiper(_) => weights.block_gossip,
+            Message::DeployGossiper(_) => weights.deploy_gossip,
+            Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
+            Message::AddressGossiper(_) => weights.address_gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_requests,
+                Tag::Deploy => weights.deploy_requests,
+                Tag::LegacyDeploy => weights.legacy_deploy_requests,
                 Tag::Block => weights.block_requests,
-                Tag::BlockHeader => weights.block_requests,
+                Tag::BlockHeader => weights.block_header_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::SyncLeap => weights.block_requests,
-                Tag::ApprovalsHashes => weights.block_requests,
-                Tag::BlockExecutionResults => weights.block_requests,
+                Tag::FinalitySignature => weights.finality_signature_requests,
+                Tag::SyncLeap => weights.sync_leap_requests,
+                Tag::ApprovalsHashes => weights.approvals_hashes_requests,
+                Tag::BlockExecutionResults => weights.execution_results_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_responses,
+                Tag::Deploy => weights.deploy_responses,
+                Tag::LegacyDeploy => weights.legacy_deploy_responses,
                 Tag::Block => weights.block_responses,
-                Tag::BlockHeader => weights.block_responses,
+                Tag::BlockHeader => weights.block_header_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::SyncLeap => weights.block_responses,
-                Tag::ApprovalsHashes => weights.block_responses,
-                Tag::BlockExecutionResults => weights.block_responses,
+                Tag::FinalitySignature => weights.finality_signature_responses,
+                Tag::SyncLeap => weights.sync_leap_responses,
+                Tag::ApprovalsHashes => weights.approvals_hashes_responses,
+                Tag::BlockExecutionResults => weights.execution_results_responses,
             },
-            Message::FinalitySignature(_) => weights.finality_signatures,
+            Message::FinalitySignature(_) => weights.finality_signature_broadcasts,
         }
     }
 
@@ -227,7 +231,7 @@ impl Debug for Message {
             Message::GetRequest { tag, serialized_id } => f
                 .debug_struct("GetRequest")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_id))
+                .field("serialized_id", &HexFmt(serialized_id))
                 .finish(),
             Message::GetResponse {
                 tag,
@@ -235,11 +239,57 @@ impl Debug for Message {
             } => f
                 .debug_struct("GetResponse")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_item))
+                .field(
+                    "serialized_item",
+                    &format!("{} bytes", serialized_item.len()),
+                )
                 .finish(),
             Message::FinalitySignature(fs) => {
                 f.debug_tuple("FinalitySignature").field(&fs).finish()
             }
+        }
+    }
+}
+mod specimen_support {
+    use crate::utils::specimen::{
+        largest_get_request, largest_get_response, largest_variant, Cache, LargestSpecimen,
+        SizeEstimator,
+    };
+
+    use super::{Message, MessageDiscriminants};
+
+    impl LargestSpecimen for Message {
+        fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+            largest_variant::<Self, MessageDiscriminants, _, _>(
+                estimator,
+                |variant| match variant {
+                    MessageDiscriminants::Consensus => {
+                        Message::Consensus(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::ConsensusRequest => Message::ConsensusRequest(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                    MessageDiscriminants::BlockGossiper => {
+                        Message::BlockGossiper(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::DeployGossiper => {
+                        Message::DeployGossiper(LargestSpecimen::largest_specimen(estimator, cache))
+                    }
+                    MessageDiscriminants::FinalitySignatureGossiper => {
+                        Message::FinalitySignatureGossiper(LargestSpecimen::largest_specimen(
+                            estimator, cache,
+                        ))
+                    }
+                    MessageDiscriminants::AddressGossiper => Message::AddressGossiper(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                    MessageDiscriminants::GetRequest => largest_get_request(estimator, cache),
+                    MessageDiscriminants::GetResponse => largest_get_response(estimator, cache),
+                    MessageDiscriminants::FinalitySignature => Message::FinalitySignature(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
+                },
+            )
         }
     }
 }
