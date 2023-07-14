@@ -22,7 +22,8 @@ use crate::{
     },
     reactor::main_reactor::{MainEvent, MainReactor},
     types::{
-        ActivationPoint, BlockHash, GlobalStatesMetadata, MaxTtl, SyncLeap, SyncLeapIdentifier,
+        ActivationPoint, BlockHash, BlockHeader, GlobalStatesMetadata, MaxTtl, SyncLeap,
+        SyncLeapIdentifier,
     },
     NodeRng,
 };
@@ -38,8 +39,8 @@ pub(super) enum KeepUpInstruction {
 
 enum SyncBackInstruction {
     Sync {
-        parent_hash: BlockHash,
-        era_id: EraId,
+        sync_hash: BlockHash,
+        sync_era: EraId,
     },
     Syncing,
     TtlSynced,
@@ -49,11 +50,8 @@ enum SyncBackInstruction {
 impl Display for SyncBackInstruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            SyncBackInstruction::Sync {
-                parent_hash: block_hash,
-                ..
-            } => {
-                write!(f, "attempt to sync {}", block_hash)
+            SyncBackInstruction::Sync { sync_hash, .. } => {
+                write!(f, "attempt to sync {}", sync_hash)
             }
             SyncBackInstruction::Syncing => write!(f, "syncing"),
             SyncBackInstruction::TtlSynced => write!(f, "ttl reached"),
@@ -297,14 +295,14 @@ impl MainReactor {
                     ))
                 }
                 SyncBackInstruction::Sync {
-                    parent_hash,
-                    era_id,
+                    sync_hash,
+                    sync_era,
                 } => {
-                    debug!(%parent_hash, ?era_id, validator_matrix_eras=?self.validator_matrix.eras(), "KeepUp: historical sync back instruction");
-                    if self.validator_matrix.has_era(&era_id) {
-                        Some(self.sync_back_register(effect_builder, rng, parent_hash))
+                    debug!(%sync_hash, ?sync_era, validator_matrix_eras=?self.validator_matrix.eras(), "KeepUp: historical sync back instruction");
+                    if self.validator_matrix.has_era(&sync_era) {
+                        Some(self.sync_back_register(effect_builder, rng, sync_hash))
                     } else {
-                        Some(self.sync_back_leap(effect_builder, rng, parent_hash))
+                        Some(self.sync_back_leap(effect_builder, rng, sync_hash))
                     }
                 }
             },
@@ -601,74 +599,19 @@ impl MainReactor {
         // effects, any referenced deploys, & sufficient finality (by weight) of signatures.
         match self.storage.get_highest_orphaned_block_header() {
             HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) => {
-                // set a latch on the validator matrix to prevent it from purging validator weights
-                // of interstitial eras which we have not yet historically sync'd
+                if let Some(synched) = self.synched(&highest_orphaned_block_header)? {
+                    return Ok(Some(synched));
+                }
+                let (sync_hash, sync_era) =
+                    self.sync_hash_and_era(&highest_orphaned_block_header)?;
+                debug!(?sync_era, %sync_hash, "KeepUp: historical sync target era and block hash");
+
                 self.validator_matrix
-                    .register_retrograde_latch(Some(highest_orphaned_block_header.era_id()));
-                if highest_orphaned_block_header.is_genesis() {
-                    return Ok(Some(SyncBackInstruction::GenesisSynced));
-                }
-
-                // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 18
-                // hours we require sync back to see a contiguous / unbroken
-                // range of at least 18 hours worth of blocks. note however
-                // that we measure from the start of the active era (for consensus reasons),
-                // so this can be up to TTL + era length in practice
-                if !self.sync_to_genesis {
-                    if let Some(highest_switch_block_header) = self
-                        .storage
-                        .read_highest_switch_block_headers(1)
-                        .map_err(|err| err.to_string())?
-                        .last()
-                    {
-                        let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
-                        if max_ttl.synced_to_ttl(
-                            highest_switch_block_header.timestamp(),
-                            &highest_orphaned_block_header,
-                        )? {
-                            return Ok(Some(SyncBackInstruction::TtlSynced));
-                        }
-                    }
-                }
-
-                let parent_hash = highest_orphaned_block_header.parent_hash();
-                debug!(?highest_orphaned_block_header, %parent_hash, "KeepUp: highest orphaned historical block");
-                match self.storage.read_block_header(parent_hash) {
-                    Ok(Some(parent_block_header)) => {
-                        // even if we don't have a complete block (all parts and dependencies)
-                        // we may have the parent's block header; if we do we also
-                        // know its era which allows us to know if we have the validator
-                        // set for that era or not
-                        debug!(
-                            ?parent_block_header,
-                            "KeepUp: found parent block header for historical block in storage"
-                        );
-                        Ok(Some(SyncBackInstruction::Sync {
-                            parent_hash: parent_block_header.block_hash(),
-                            era_id: parent_block_header.era_id(),
-                        }))
-                    }
-                    Ok(None) => {
-                        debug!(%parent_hash, "KeepUp: did not find historical block header in storage");
-                        let era_id = match highest_orphaned_block_header.era_id().predecessor() {
-                            None => EraId::from(0),
-                            Some(predecessor) => {
-                                // we do not have the parent header and thus don't know what era
-                                // the parent block is in (it could be the same era or the previous
-                                // era). we assume the worst case and ask for the earlier era's
-                                // proof; subtracting 1 here is safe
-                                // since the case where era id is 0 is
-                                // handled above
-                                predecessor
-                            }
-                        };
-                        Ok(Some(SyncBackInstruction::Sync {
-                            parent_hash: *parent_hash,
-                            era_id,
-                        }))
-                    }
-                    Err(err) => Err(err.to_string()),
-                }
+                    .register_retrograde_latch(Some(sync_era));
+                Ok(Some(SyncBackInstruction::Sync {
+                    sync_hash,
+                    sync_era,
+                }))
             }
             HighestOrphanedBlockResult::MissingFromBlockHeightIndex(block_height) => Err(format!(
                 "KeepUp: storage is missing historical block height index entry {}",
@@ -681,6 +624,112 @@ impl MainReactor {
             HighestOrphanedBlockResult::MissingHighestSequence => {
                 Err("KeepUp: storage is missing historical highest block sequence".to_string())
             }
+        }
+    }
+
+    fn synched(
+        &self,
+        highest_orphaned_block_header: &BlockHeader,
+    ) -> Result<Option<SyncBackInstruction>, String> {
+        if highest_orphaned_block_header.is_genesis() {
+            return Ok(Some(SyncBackInstruction::GenesisSynced));
+        }
+
+        if self.sync_to_genesis {
+            return Ok(None);
+        }
+
+        // if sync to genesis is false, we require sync to ttl; i.e. if the TTL is 18
+        // hours we require sync back to see a contiguous / unbroken
+        // range of at least 18 hours worth of blocks. note however
+        // that we measure from the start of the active era (for consensus reasons),
+        // so this can be up to TTL + era length in practice
+
+        if let Some(highest_switch_block_header) = self
+            .storage
+            .read_highest_switch_block_headers(1)
+            .map_err(|err| err.to_string())?
+            .last()
+        {
+            let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
+            if max_ttl.synced_to_ttl(
+                highest_switch_block_header.timestamp(),
+                highest_orphaned_block_header,
+            )? {
+                return Ok(Some(SyncBackInstruction::TtlSynced));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn sync_hash_and_era(
+        &self,
+        highest_orphaned_block_header: &BlockHeader,
+    ) -> Result<(BlockHash, EraId), String> {
+        let parent_hash = highest_orphaned_block_header.parent_hash();
+        debug!(?highest_orphaned_block_header, %parent_hash, "KeepUp: highest orphaned historical block");
+
+        // if we are in genesis era but do not have validators loaded for genesis era,
+        // attempt to skip to switch block of era 1 and leap from there; other validators
+        // must cite era 0 to prove trusted ancestors for era 1, which will resolve the issue
+        // when received by this node.
+        if highest_orphaned_block_header.era_id().is_genesis()
+            && !self
+                .validator_matrix
+                .has_era(&highest_orphaned_block_header.era_id())
+        {
+            match self
+                .storage
+                .read_switch_block_by_era_id(highest_orphaned_block_header.era_id().successor())
+            {
+                Ok(Some(switch)) => {
+                    debug!(
+                        ?highest_orphaned_block_header,
+                        "KeepUp: historical sync in genesis era attempting correction for unmatrixed genesis validators"
+                    );
+                    return Ok((switch.header().block_hash(), switch.header().era_id()));
+                }
+                Ok(None) => return Err(
+                    "In genesis era with no genesis validators and missing next era switch block"
+                        .to_string(),
+                ),
+                Err(err) => return Err(err.to_string()),
+            }
+        }
+
+        match self.storage.read_block_header(parent_hash) {
+            Ok(Some(parent_block_header)) => {
+                // even if we don't have a complete block (all parts and dependencies)
+                // we may have the parent's block header; if we do we also
+                // know its era which allows us to know if we have the validator
+                // set for that era or not
+                debug!(
+                    ?parent_block_header,
+                    "KeepUp: historical sync found parent block header in storage"
+                );
+                Ok((
+                    parent_block_header.block_hash(),
+                    parent_block_header.era_id(),
+                ))
+            }
+            Ok(None) => {
+                debug!(%parent_hash, "KeepUp: historical sync did not find block header in storage");
+                let era_id = match highest_orphaned_block_header.era_id().predecessor() {
+                    None => EraId::from(0),
+                    Some(predecessor) => {
+                        // we do not have the parent header and thus don't know what era
+                        // the parent block is in (it could be the same era or the previous
+                        // era). we assume the worst case and ask for the earlier era's
+                        // proof; subtracting 1 here is safe
+                        // since the case where era id is 0 is
+                        // handled above
+                        predecessor
+                    }
+                };
+                Ok((*parent_hash, era_id))
+            }
+            Err(err) => Err(err.to_string()),
         }
     }
 }
