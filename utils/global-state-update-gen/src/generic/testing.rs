@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use rand::Rng;
 
+use casper_types::contracts::{Account, ActionThresholds, AssociatedKeys, NamedKeys, Weight};
 use casper_types::{
     contracts::AccountHash,
     system::auction::{
@@ -10,7 +11,8 @@ use casper_types::{
         WithdrawPurses,
     },
     testing::TestRng,
-    AccessRights, CLValue, EraId, Key, PublicKey, StoredValue, URef, URefAddr, U512,
+    AccessRights, AddressableEntity, CLValue, ContractPackageHash, ContractWasmHash, EntryPoints,
+    EraId, Key, ProtocolVersion, PublicKey, StoredValue, URef, URefAddr, U512,
 };
 
 use super::{
@@ -25,13 +27,14 @@ const TOTAL_SUPPLY_KEY: URef = URef::new([1; 32], AccessRights::READ_ADD_WRITE);
 const SEIGNIORAGE_RECIPIENTS_KEY: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
 
 struct MockStateReader {
-    accounts: BTreeMap<AccountHash, Account>,
+    accounts: BTreeMap<AccountHash, AddressableEntity>,
     purses: BTreeMap<URefAddr, U512>,
     total_supply: U512,
     seigniorage_recipients: SeigniorageRecipientsSnapshot,
     bids: Bids,
     withdraws: WithdrawPurses,
     unbonds: UnbondingPurses,
+    protocol_version: ProtocolVersion,
 }
 
 impl MockStateReader {
@@ -44,6 +47,7 @@ impl MockStateReader {
             bids: Bids::new(),
             withdraws: WithdrawPurses::new(),
             unbonds: UnbondingPurses::new(),
+            protocol_version: ProtocolVersion::V1_0_0,
         }
     }
 
@@ -54,11 +58,21 @@ impl MockStateReader {
         rng: &mut R,
     ) -> Self {
         let main_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
-        let account = Account::create(account_hash, Default::default(), main_purse);
+        let entity = AddressableEntity::new(
+            ContractPackageHash::new(rng.gen()),
+            ContractWasmHash::new(rng.gen()),
+            NamedKeys::default(),
+            EntryPoints::new(),
+            self.protocol_version,
+            main_purse,
+            AssociatedKeys::new(account_hash, Weight::new(1)),
+            ActionThresholds::default(),
+        );
+
         self.purses.insert(main_purse.addr(), balance);
         // If `insert` returns `Some()`, it means we used the same account hash twice, which is
         // a programmer error and the function will panic.
-        assert!(self.accounts.insert(account_hash, account).is_none());
+        assert!(self.accounts.insert(account_hash, entity).is_none());
         self.total_supply += balance;
         self
     }
@@ -252,7 +266,7 @@ impl StateReader for MockStateReader {
         Key::URef(SEIGNIORAGE_RECIPIENTS_KEY)
     }
 
-    fn get_account(&mut self, account_hash: AccountHash) -> Option<Account> {
+    fn get_account(&mut self, account_hash: AccountHash) -> Option<AddressableEntity> {
         self.accounts.get(&account_hash).cloned()
     }
 
@@ -266,6 +280,10 @@ impl StateReader for MockStateReader {
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
         self.unbonds.clone()
+    }
+
+    fn get_protocol_version(&mut self) -> ProtocolVersion {
+        self.protocol_version
     }
 }
 

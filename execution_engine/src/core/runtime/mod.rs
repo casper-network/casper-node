@@ -2300,14 +2300,12 @@ where
             Some(StoredValue::CLValue(account)) => {
                 // Attenuate the target main purse
                 let contract_key = CLValue::into_t::<Key>(account)?;
-                let contract_hash = if let Some(contract_hash) = contract_key
-                    .into_hash()
-                    .map(|hash_addr| ContractHash::new(hash_addr))
-                {
-                    contract_hash
-                } else {
-                    return Err(Error::InvalidKey(contract_key));
-                };
+                let contract_hash =
+                    if let Some(contract_hash) = contract_key.into_hash().map(ContractHash::new) {
+                        contract_hash
+                    } else {
+                        return Err(Error::InvalidKey(contract_key));
+                    };
                 let target_uref = if let Some(StoredValue::AddressableEntity(contract)) =
                     self.context.read_gs(&contract_hash.into())?
                 {
@@ -3046,8 +3044,8 @@ where
                 self.context.metered_write_gs(contract_key, updated_entity)
             }
             Some(StoredValue::AddressableEntity(_)) => Ok(()),
-            Some(_) => return Err(Error::UnexpectedStoredValueVariant),
-            None => return Err(Error::InvalidContract(contract_hash)),
+            Some(_) => Err(Error::UnexpectedStoredValueVariant),
+            None => Err(Error::InvalidContract(contract_hash)),
         }
     }
 }

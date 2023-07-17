@@ -994,7 +994,7 @@ mod trie_chunking_tests {
         },
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
+        bytesrepr, contracts::AccountHash, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
         Key, ProtocolVersion, StoredValue, SystemConfig, WasmConfig,
     };
 

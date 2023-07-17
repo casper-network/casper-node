@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{rpcs::docs::DocExample, types::json_compatibility::vectorize};
 use casper_types::{
-    account::{Account as ExecutionEngineAccount, AccountHash},
+    contracts::{Account as ExecutionEngineAccount, AccountHash},
     NamedKey, PublicKey, SecretKey, URef,
 };
 

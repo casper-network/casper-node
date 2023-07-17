@@ -21,10 +21,12 @@ use tokio::time;
 
 use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_types::contracts::NamedKeys;
 use casper_types::{
-    account::{Account, ActionThresholds, AssociatedKeys, Weight},
+    contracts::{Account, ActionThresholds, AssociatedKeys, Weight},
     testing::TestRng,
-    CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
+    CLValue, Chainspec, ChainspecRawBytes, ContractWasmHash, Deploy, EntryPoints, EraId, NamedKey,
+    StoredValue, URef, U512,
 };
 
 use super::*;
@@ -387,26 +389,45 @@ impl TestScenario {
     }
 }
 
-fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Account {
+fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> AddressableEntity {
     match test_scenario {
         TestScenario::FromPeerAccountWithInvalidAssociatedKeys
-        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => {
-            Account::create(AccountHash::default(), BTreeMap::new(), URef::default())
-        }
+        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => AddressableEntity::new(
+            ContractPackageHash::default(),
+            ContractWasmHash::default(),
+            NamedKeys::default(),
+            EntryPoints::new(),
+            ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
+        ),
         TestScenario::FromPeerAccountWithInsufficientWeight
         | TestScenario::FromClientAccountWithInsufficientWeight => {
             let invalid_action_threshold =
                 ActionThresholds::new(Weight::new(100u8), Weight::new(100u8))
                     .expect("should create action threshold");
-            Account::new(
-                account_hash,
-                BTreeMap::new(),
+            AddressableEntity::new(
+                ContractPackageHash::default(),
+                ContractWasmHash::default(),
+                NamedKeys::default(),
+                EntryPoints::new(),
+                ProtocolVersion::V1_0_0,
                 URef::default(),
                 AssociatedKeys::new(account_hash, Weight::new(1)),
                 invalid_action_threshold,
             )
         }
-        _ => Account::create(account_hash, BTreeMap::new(), URef::default()),
+        _ => AddressableEntity::new(
+            ContractPackageHash::default(),
+            ContractWasmHash::default(),
+            NamedKeys::default(),
+            EntryPoints::new(),
+            ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::new(account_hash, Weight::new(1)),
+            ActionThresholds::default(),
+        ),
     }
 }
 
@@ -505,7 +526,7 @@ impl reactor::Reactor for Reactor {
                         if query_request.path().is_empty() {
                             let account = create_account(account_hash, self.test_scenario);
                             QueryResult::Success {
-                                value: Box::new(StoredValue::Account(account)),
+                                value: Box::new(StoredValue::AddressableEntity(account)),
                                 proofs: vec![],
                             }
                         } else {

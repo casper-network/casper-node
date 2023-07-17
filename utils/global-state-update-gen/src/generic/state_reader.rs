@@ -1,11 +1,12 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
+use casper_types::contracts::Account;
 use casper_types::{
     contracts::AccountHash,
     system::{
         auction::{Bids, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::TOTAL_SUPPLY_KEY,
     },
-    Key, StoredValue,
+    AddressableEntity, Key, ProtocolVersion, StoredValue,
 };
 
 pub trait StateReader {
@@ -15,13 +16,15 @@ pub trait StateReader {
 
     fn get_seigniorage_recipients_key(&mut self) -> Key;
 
-    fn get_account(&mut self, account_hash: AccountHash) -> Option<Account>;
+    fn get_account(&mut self, account_hash: AccountHash) -> Option<AddressableEntity>;
 
     fn get_bids(&mut self) -> Bids;
 
     fn get_withdraws(&mut self) -> WithdrawPurses;
 
     fn get_unbonds(&mut self) -> UnbondingPurses;
+
+    fn get_protocol_version(&mut self) -> ProtocolVersion;
 }
 
 impl<'a, T> StateReader for &'a mut T
@@ -40,7 +43,7 @@ where
         T::get_seigniorage_recipients_key(self)
     }
 
-    fn get_account(&mut self, account_hash: AccountHash) -> Option<Account> {
+    fn get_account(&mut self, account_hash: AccountHash) -> Option<AddressableEntity> {
         T::get_account(self, account_hash)
     }
 
@@ -54,6 +57,10 @@ where
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
         T::get_unbonds(self)
+    }
+
+    fn get_protocol_version(&mut self) -> ProtocolVersion {
+        T::get_protocol_version(self)
     }
 }
 
@@ -80,7 +87,7 @@ impl StateReader for LmdbWasmTestBuilder {
             .named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY]
     }
 
-    fn get_account(&mut self, account_hash: AccountHash) -> Option<Account> {
+    fn get_account(&mut self, account_hash: AccountHash) -> Option<AddressableEntity> {
         LmdbWasmTestBuilder::get_contract_by_account_hash(self, account_hash)
     }
 
@@ -94,5 +101,13 @@ impl StateReader for LmdbWasmTestBuilder {
 
     fn get_unbonds(&mut self) -> UnbondingPurses {
         LmdbWasmTestBuilder::get_unbonds(self)
+    }
+
+    fn get_protocol_version(&mut self) -> ProtocolVersion {
+        let mint_contract_hash = self.get_system_mint_hash();
+
+        self.get_contract(mint_contract_hash)
+            .expect("must have mint contract")
+            .protocol_version()
     }
 }

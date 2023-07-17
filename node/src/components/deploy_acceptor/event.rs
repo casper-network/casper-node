@@ -6,9 +6,9 @@ use std::{
 use serde::Serialize;
 
 use casper_types::{
-    account::{Account, AccountHash},
+    contracts::{Account, AccountHash},
     AddressableEntity, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Deploy,
-    Timestamp, U512,
+    StoredValue, Timestamp, U512,
 };
 
 use super::Source;
@@ -68,7 +68,15 @@ pub(crate) enum Event {
     GetAccountResult {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
-        maybe_account: Option<Account>,
+        account_hash: AccountHash,
+        maybe_account: Option<StoredValue>,
+        verification_start_timestamp: Timestamp,
+    },
+    GetEntityResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        account_hash: AccountHash,
+        maybe_entity: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying the balance of the `Account` associated with the `Deploy`.
@@ -155,6 +163,13 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying account to validate deploy with hash {}",
+                    event_metadata.deploy.hash()
+                )
+            }
+            Event::GetEntityResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying addressable entity to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }

@@ -123,9 +123,10 @@ use casper_execution_engine::{
     shared::execution_journal::ExecutionJournal,
 };
 use casper_types::{
-    account::Account, bytesrepr::Bytes, system::auction::EraValidators, AddressableEntity,
-    ChainspecRawBytes, ContractPackage, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId,
-    ExecutionEffect, ExecutionResult, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512,
+    bytesrepr::Bytes, contracts::Account, system::auction::EraValidators, AddressableEntity,
+    CLValue, ChainspecRawBytes, ContractPackage, Deploy, DeployHash, DeployHeader, DeployId,
+    Digest, EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, StoredValue, TimeDiff,
+    Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -1898,13 +1899,13 @@ impl<REv> EffectBuilder<REv> {
         self,
         state_root_hash: Digest,
         account_key: Key,
-    ) -> Option<Account>
+    ) -> Option<StoredValue>
     where
         REv: From<ContractRuntimeRequest>,
     {
         let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
+            Ok(QueryResult::Success { value, .. }) => Some(*value.clone()),
             Ok(_) | Err(_) => None,
         }
     }
@@ -1944,7 +1945,7 @@ impl<REv> EffectBuilder<REv> {
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
                 // TODO: Extending `StoredValue` with an `into_contract` would reduce cloning here.
-                value.as_contract().map(|c| Box::new(c.clone()))
+                value.as_addressable_entity().map(|c| Box::new(c.clone()))
             }
             Ok(_) | Err(_) => None,
         }

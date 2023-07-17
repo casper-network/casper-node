@@ -821,7 +821,7 @@ impl ToBytes for ContractPackageKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ContractPackageKind::Wasm | ContractPackageKind::Legacy => 0 as usize,
+                ContractPackageKind::Wasm | ContractPackageKind::Legacy => 0,
                 ContractPackageKind::System(system_contract_type) => {
                     system_contract_type.serialized_length()
                 }
@@ -1070,10 +1070,7 @@ impl ContractPackage {
 
     /// Returns whether the contract package is of the legacy format.
     pub fn is_legacy(&self) -> bool {
-        match self.contract_package_kind {
-            ContractPackageKind::Legacy => true,
-            _ => false,
-        }
+        matches!(self.contract_package_kind, ContractPackageKind::Legacy)
     }
 
     /// Update the contract package kind.
@@ -1384,7 +1381,7 @@ pub struct Account {
 }
 
 impl Account {
-    /// `Account` constructor.
+    /// Creates a new account.
     pub fn new(
         account_hash: AccountHash,
         named_keys: NamedKeys,
@@ -1401,19 +1398,61 @@ impl Account {
         }
     }
 
+    /// An Account constructor with presets for associated_keys and action_thresholds.
+    ///
+    /// An account created with this method is valid and can be used as the target of a transaction.
+    /// It will be created with an [`AssociatedKeys`] with a [`Weight`] of 1, and a default
+    /// [`ActionThresholds`].
+    pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
+        let associated_keys = AssociatedKeys::new(account, Weight::new(1));
+        let action_thresholds: ActionThresholds = Default::default();
+        Account::new(
+            account,
+            named_keys,
+            main_purse,
+            associated_keys,
+            action_thresholds,
+        )
+    }
+
+    /// Extracts the access rights from the named keys and main purse of the account.
+    pub fn extract_access_rights(&self) -> ContextAccessRights {
+        let urefs_iter = self
+            .named_keys
+            .values()
+            .filter_map(|key| key.as_uref().copied())
+            .chain(iter::once(self.main_purse));
+        ContextAccessRights::new(Key::from(self.account_hash), urefs_iter)
+    }
+
+    /// Appends named keys to an account's named_keys field.
+    pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
+        self.named_keys.append(keys);
+    }
+
+    /// Returns named keys.
+    pub fn named_keys(&self) -> &NamedKeys {
+        &self.named_keys
+    }
+
+    /// Returns a mutable reference to named keys.
+    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
+        &mut self.named_keys
+    }
+
     /// Returns account hash.
     pub fn account_hash(&self) -> AccountHash {
         self.account_hash
     }
 
-    /// Returns a reference to `named_keys`
-    pub fn named_keys(&self) -> &NamedKeys {
-        &self.named_keys
-    }
-
     /// Returns main purse.
     pub fn main_purse(&self) -> URef {
         self.main_purse
+    }
+
+    /// Returns an [`AccessRights::ADD`]-only version of the main purse's [`URef`].
+    pub fn main_purse_add_only(&self) -> URef {
+        URef::new(self.main_purse.addr(), AccessRights::ADD)
     }
 
     /// Returns associated keys.
@@ -1424,6 +1463,133 @@ impl Account {
     /// Returns action thresholds.
     pub fn action_thresholds(&self) -> &ActionThresholds {
         &self.action_thresholds
+    }
+
+    /// Adds an associated key to an account.
+    pub fn add_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), AddKeyFailure> {
+        self.associated_keys.add_key(account_hash, weight)
+    }
+
+    /// Checks if removing given key would properly satisfy thresholds.
+    fn can_remove_key(&self, account_hash: AccountHash) -> bool {
+        let total_weight_without = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Returns true if the total weight calculated without given public key would be greater or
+        // equal to all of the thresholds.
+        total_weight_without >= *self.action_thresholds().deployment()
+            && total_weight_without >= *self.action_thresholds().key_management()
+    }
+
+    /// Checks if adding a weight to a sum of all weights excluding the given key would make the
+    /// resulting value to fall below any of the thresholds on account.
+    fn can_update_key(&self, account_hash: AccountHash, weight: Weight) -> bool {
+        // Calculates total weight of all keys excluding the given key
+        let total_weight = self
+            .associated_keys
+            .total_keys_weight_excluding(account_hash);
+
+        // Safely calculate new weight by adding the updated weight
+        let new_weight = total_weight.value().saturating_add(weight.value());
+
+        // Returns true if the new weight would be greater or equal to all of
+        // the thresholds.
+        new_weight >= self.action_thresholds().deployment().value()
+            && new_weight >= self.action_thresholds().key_management().value()
+    }
+
+    /// Removes an associated key from an account.
+    ///
+    /// Verifies that removing the key will not cause the remaining weight to fall below any action
+    /// thresholds.
+    pub fn remove_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<(), RemoveKeyFailure> {
+        if self.associated_keys.contains_key(&account_hash) {
+            // Check if removing this weight would fall below thresholds
+            if !self.can_remove_key(account_hash) {
+                return Err(RemoveKeyFailure::ThresholdViolation);
+            }
+        }
+        self.associated_keys.remove_key(&account_hash)
+    }
+
+    /// Updates an associated key.
+    ///
+    /// Returns an error if the update would result in a violation of the key management thresholds.
+    pub fn update_associated_key(
+        &mut self,
+        account_hash: AccountHash,
+        weight: Weight,
+    ) -> Result<(), UpdateKeyFailure> {
+        if let Some(current_weight) = self.associated_keys.get(&account_hash) {
+            if weight < *current_weight {
+                // New weight is smaller than current weight
+                if !self.can_update_key(account_hash, weight) {
+                    return Err(UpdateKeyFailure::ThresholdViolation);
+                }
+            }
+        }
+        self.associated_keys.update_key(account_hash, weight)
+    }
+
+    /// Sets new action threshold for a given action type for the account.
+    ///
+    /// Returns an error if the new action threshold weight is greater than the total weight of the
+    /// account's associated keys.
+    pub fn set_action_threshold(
+        &mut self,
+        action_type: ActionType,
+        weight: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        // Verify if new threshold weight exceeds total weight of all associated
+        // keys.
+        self.can_set_threshold(weight)?;
+        // Set new weight for given action
+        self.action_thresholds.set_threshold(action_type, weight)
+    }
+
+    /// Verifies if user can set action threshold.
+    pub fn can_set_threshold(&self, new_threshold: Weight) -> Result<(), SetThresholdFailure> {
+        let total_weight = self.associated_keys.total_keys_weight();
+        if new_threshold > total_weight {
+            return Err(SetThresholdFailure::InsufficientTotalWeight);
+        }
+        Ok(())
+    }
+
+    /// Checks whether all authorization keys are associated with this account.
+    pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        !authorization_keys.is_empty()
+            && authorization_keys
+                .iter()
+                .all(|e| self.associated_keys.contains_key(e))
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to deploy threshold.
+    pub fn can_deploy_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().deployment()
+    }
+
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to key management threshold.
+    pub fn can_manage_keys_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().key_management()
     }
 }
 
@@ -1588,6 +1754,7 @@ impl From<AddressableEntity>
 
 impl AddressableEntity {
     /// `Contract` constructor.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         contract_package_hash: ContractPackageHash,
         contract_wasm_hash: ContractWasmHash,

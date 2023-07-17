@@ -65,6 +65,7 @@ pub enum ProtocolUpgradeError {
     /// Found unexpected variant of a stored value.
     #[error("Unexpected stored value variant")]
     UnexpectedStoredValueVariant,
+    /// Failed to convert into a CLValue.
     #[error("{0}")]
     CLValue(String),
 }
@@ -239,18 +240,14 @@ where
                     system_contract_type.to_string(),
                 )
             })? {
-            None => {
-                return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                    system_contract_type.to_string(),
-                ));
-            }
+            None => Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                system_contract_type.to_string(),
+            )),
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
             Some(StoredValue::Contract(contract)) => Ok(contract.into()),
-            Some(_) => {
-                return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                    system_contract_type.to_string(),
-                ));
-            }
+            Some(_) => Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                system_contract_type.to_string(),
+            )),
         }
     }
 

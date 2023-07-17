@@ -14,12 +14,12 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{
-    account::{Account, AccountHash},
+    contracts::{Account, AccountHash},
     system::auction::ARG_AMOUNT,
-    AddressableEntity, Chainspec, ContractHash, ContractIdentifier, ContractPackage,
+    AddressableEntity, CLValue, Chainspec, ContractHash, ContractIdentifier, ContractPackage,
     ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy,
     DeployConfig, DeployConfigurationFailure, Digest, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, Key, ProtocolVersion, Timestamp, U512,
+    ExecutableDeployItemIdentifier, Key, ProtocolVersion, StoredValue, Timestamp, U512,
 };
 
 use crate::{
@@ -75,6 +75,8 @@ pub(crate) enum Error {
         /// The timestamp when the node validated the expiry timestamp.
         current_node_timestamp: Timestamp,
     },
+    #[error("{0}")]
+    CLValue(String),
 }
 
 impl Error {
@@ -277,6 +279,7 @@ impl DeployAcceptor {
                         source.clone(),
                         maybe_responder,
                     )),
+                    account_hash,
                     maybe_account,
                     block_header,
                     verification_start_timestamp,
@@ -324,6 +327,7 @@ impl DeployAcceptor {
                 .get_account_from_global_state(*block_header.state_root_hash(), account_key)
                 .event(move |maybe_account| Event::GetAccountResult {
                     event_metadata,
+                    account_hash,
                     maybe_account,
                     block_header,
                     verification_start_timestamp,
@@ -343,28 +347,38 @@ impl DeployAcceptor {
         effect_builder: EffectBuilder<REv>,
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
-        maybe_account: Option<Account>,
+        account_hash: AccountHash,
+        maybe_account: Option<StoredValue>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         match maybe_account {
-            None => {
-                let account_hash = event_metadata.deploy.header().account().to_account_hash();
-                let error = Error::parameter_failure(
-                    &block_header,
-                    DeployParameterFailure::NonexistentAccount { account_hash },
-                );
-                debug!(
-                    ?account_hash,
-                    "nonexistent account associated with the deploy"
-                );
-                self.handle_invalid_deploy_result(
-                    effect_builder,
-                    event_metadata,
-                    error,
-                    verification_start_timestamp,
-                )
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_key: Key = match CLValue::into_t(cl_value) {
+                    Ok(contract_key) => contract_key,
+                    Err(error) => {
+                        return self.handle_invalid_deploy_result(
+                            effect_builder,
+                            event_metadata,
+                            Error::CLValue(error.to_string()),
+                            verification_start_timestamp,
+                        )
+                    }
+                };
+                effect_builder
+                    .get_contract_for_validation(
+                        *block_header.state_root_hash(),
+                        contract_key,
+                        vec![],
+                    )
+                    .event(move |maybe_entity| Event::GetEntityResult {
+                        event_metadata,
+                        account_hash,
+                        maybe_entity,
+                        block_header,
+                        verification_start_timestamp,
+                    })
             }
-            Some(account) => {
+            Some(StoredValue::Account(account)) => {
                 let authorization_keys = event_metadata
                     .deploy
                     .approvals()
@@ -403,7 +417,97 @@ impl DeployAcceptor {
                         event_metadata,
                         block_header,
                         maybe_balance_value,
-                        account_hash: account.account_hash(),
+                        account_hash,
+                        verification_start_timestamp,
+                    })
+            }
+            Some(_) | None => {
+                let account_hash = event_metadata.deploy.header().account().to_account_hash();
+                let error = Error::parameter_failure(
+                    &block_header,
+                    DeployParameterFailure::NonexistentAccount { account_hash },
+                );
+                debug!(
+                    ?account_hash,
+                    "nonexistent account associated with the deploy"
+                );
+                self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    error,
+                    verification_start_timestamp,
+                )
+            }
+        }
+    }
+
+    fn handle_get_entity_result<REv: ReactorEventT>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        account_hash: AccountHash,
+        maybe_entity: Option<Box<AddressableEntity>>,
+        verification_start_timestamp: Timestamp,
+    ) -> Effects<Event> {
+        match maybe_entity {
+            None => {
+                let account_hash = event_metadata.deploy.header().account().to_account_hash();
+                let error = Error::parameter_failure(
+                    &block_header,
+                    DeployParameterFailure::NonexistentAccount { account_hash },
+                );
+                debug!(
+                    ?account_hash,
+                    "nonexistent account associated with the deploy"
+                );
+                self.handle_invalid_deploy_result(
+                    effect_builder,
+                    event_metadata,
+                    error,
+                    verification_start_timestamp,
+                )
+            }
+            Some(entity) => {
+                let authorization_keys = event_metadata
+                    .deploy
+                    .approvals()
+                    .iter()
+                    .map(|approval| approval.signer().to_account_hash())
+                    .collect();
+                if !entity.can_authorize(&authorization_keys) {
+                    let error = Error::parameter_failure(
+                        &block_header,
+                        DeployParameterFailure::InvalidAssociatedKeys,
+                    );
+                    debug!(?authorization_keys, "account authorization invalid");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        error,
+                        verification_start_timestamp,
+                    );
+                }
+                if !entity.can_deploy_with(&authorization_keys) {
+                    let error = Error::parameter_failure(
+                        &block_header,
+                        DeployParameterFailure::InsufficientDeploySignatureWeight,
+                    );
+                    debug!(?authorization_keys, "insufficient deploy signature weight");
+                    return self.handle_invalid_deploy_result(
+                        effect_builder,
+                        event_metadata,
+                        error,
+                        verification_start_timestamp,
+                    );
+                }
+                effect_builder
+                    .check_purse_balance(*block_header.state_root_hash(), entity.main_purse())
+                    .event(move |maybe_balance_value| Event::GetBalanceResult {
+                        event_metadata,
+                        block_header,
+                        maybe_balance_value,
+                        account_hash,
                         verification_start_timestamp,
                     })
             }
@@ -1025,13 +1129,29 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
             Event::GetAccountResult {
                 event_metadata,
                 block_header,
+                account_hash,
                 maybe_account,
                 verification_start_timestamp,
             } => self.handle_get_account_result(
                 effect_builder,
                 event_metadata,
                 block_header,
+                account_hash,
                 maybe_account,
+                verification_start_timestamp,
+            ),
+            Event::GetEntityResult {
+                event_metadata,
+                block_header,
+                account_hash,
+                maybe_entity,
+                verification_start_timestamp,
+            } => self.handle_get_entity_result(
+                effect_builder,
+                event_metadata,
+                block_header,
+                account_hash,
+                maybe_entity,
                 verification_start_timestamp,
             ),
             Event::GetBalanceResult {

@@ -854,7 +854,7 @@ where
             // an authorization error. As used by the node, this type of deploy
             // will have already been filtered out, but for other EE use cases
             // and testing it is reachable.
-            Some(_) | None => return Err(Error::Authorization),
+            Some(_) | None => Err(Error::Authorization),
         }
     }
 

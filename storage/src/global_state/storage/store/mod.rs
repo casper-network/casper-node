@@ -2,7 +2,7 @@ mod store_ext;
 #[cfg(test)]
 pub(crate) mod tests;
 
-use std::{borrow::Cow, fmt::Debug};
+use std::borrow::Cow;
 
 use casper_types::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 
@@ -26,7 +26,7 @@ pub trait Store<K, V> {
     fn get<T>(&self, txn: &T, key: &K) -> Result<Option<V>, Self::Error>
     where
         T: Readable<Handle = Self::Handle>,
-        K: AsRef<[u8]> + Debug,
+        K: AsRef<[u8]>,
         V: FromBytes,
         Self::Error: From<T::Error>,
     {

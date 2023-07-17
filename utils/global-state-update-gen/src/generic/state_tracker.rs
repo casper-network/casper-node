@@ -6,10 +6,15 @@ use std::{
 
 use rand::Rng;
 
+use casper_types::contracts::{
+    Account, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
+    ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+};
 use casper_types::{
     contracts::AccountHash,
     system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackage, ContractPackageHash,
+    ContractWasmHash, EntryPoints, Key, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -20,11 +25,12 @@ pub struct StateTracker<T> {
     entries_to_write: BTreeMap<Key, StoredValue>,
     total_supply: U512,
     total_supply_key: Key,
-    accounts_cache: BTreeMap<AccountHash, Account>,
+    accounts_cache: BTreeMap<AccountHash, AddressableEntity>,
     unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
     bids_cache: Option<Bids>,
     seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshot)>,
+    protocol_version: ProtocolVersion,
 }
 
 impl<T: StateReader> StateTracker<T> {
@@ -40,6 +46,8 @@ impl<T: StateReader> StateTracker<T> {
             .cloned()
             .expect("should be cl value");
 
+        let protocol_version = reader.get_protocol_version();
+
         Self {
             reader,
             entries_to_write: Default::default(),
@@ -50,6 +58,7 @@ impl<T: StateReader> StateTracker<T> {
             purses_cache: BTreeMap::new(),
             bids_cache: None,
             seigniorage_recipients: None,
+            protocol_version,
         }
     }
 
@@ -131,23 +140,72 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Creates a new account for the given public key and seeds it with the given amount of
     /// tokens.
-    pub fn create_account(&mut self, account_hash: AccountHash, amount: U512) -> Account {
+    pub fn create_addressable_entity_for_account(
+        &mut self,
+        account_hash: AccountHash,
+        amount: U512,
+    ) -> AddressableEntity {
         let main_purse = self.create_purse(amount);
 
-        let account = Account::create(account_hash, Default::default(), main_purse);
+        let mut rng = rand::thread_rng();
 
-        self.accounts_cache.insert(account_hash, account.clone());
+        let contract_hash = ContractHash::new(rng.gen());
+        let contract_package_hash = ContractPackageHash::new(rng.gen());
+        let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
+
+        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+
+        let addressable_entity = AddressableEntity::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            NamedKeys::default(),
+            EntryPoints::new(),
+            self.protocol_version,
+            main_purse,
+            associated_keys,
+            ActionThresholds::default(),
+        );
+
+        let mut contract_package = ContractPackage::new(
+            URef::new(rng.gen(), AccessRights::READ_ADD_WRITE),
+            ContractVersions::default(),
+            DisabledVersions::default(),
+            Groups::default(),
+            ContractPackageStatus::Locked,
+            ContractPackageKind::Account(account_hash),
+        );
+
+        contract_package
+            .insert_contract_version(self.protocol_version.value().major, contract_hash);
+        self.write_entry(
+            contract_package_hash.into(),
+            StoredValue::ContractPackage(contract_package.clone()),
+        );
+
+        self.write_entry(
+            contract_hash.into(),
+            StoredValue::AddressableEntity(addressable_entity.clone()),
+        );
+
+        let addressable_entity_by_account_hash = {
+            let contract_key: Key = contract_hash.into();
+            let cl_value = CLValue::from_t(contract_key).expect("must convert to cl_value");
+            cl_value
+        };
+
+        self.accounts_cache
+            .insert(account_hash, addressable_entity.clone());
 
         self.write_entry(
             Key::Account(account_hash),
-            StoredValue::Account(account.clone()),
+            StoredValue::CLValue(addressable_entity_by_account_hash),
         );
 
-        account
+        addressable_entity
     }
 
     /// Gets the account for the given public key.
-    pub fn get_account(&mut self, account_hash: &AccountHash) -> Option<Account> {
+    pub fn get_account(&mut self, account_hash: &AccountHash) -> Option<AddressableEntity> {
         match self.accounts_cache.entry(*account_hash) {
             Entry::Vacant(vac) => self
                 .reader
@@ -168,7 +226,7 @@ impl<T: StateReader> StateTracker<T> {
         let to_account = if let Some(account) = self.get_account(&transfer.to) {
             account
         } else {
-            self.create_account(transfer.to, U512::zero())
+            self.create_addressable_entity_for_account(transfer.to, U512::zero())
         };
 
         let from_balance = self.get_purse_balance(from_account.main_purse());

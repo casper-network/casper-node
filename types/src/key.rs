@@ -576,6 +576,14 @@ impl Key {
         }
         false
     }
+
+    /// Returns true if the key is of type [`Key::Account`].
+    pub fn is_account_key(&self) -> bool {
+        if let Key::Account(_) = self {
+            return true;
+        }
+        false
+    }
 }
 
 impl Display for Key {

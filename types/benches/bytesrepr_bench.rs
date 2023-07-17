@@ -9,7 +9,7 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
         AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
-        NamedKeys, Weight,
+        NamedKeys,
     },
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackage,

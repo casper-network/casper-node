@@ -430,17 +430,12 @@ pub mod gens {
 mod tests {
     use num::{Bounded, Num};
 
-    use casper_types::{
-        bytesrepr::Bytes,
-        contracts::{AccountHash, ActionThresholds, AssociatedKeys},
-        AccessRights, ContractWasm, Key, URef, U128, U256, U512,
-    };
+    use casper_types::{bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256, U512};
 
     use super::*;
     use std::collections::BTreeMap;
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];
-    const ZERO_PUBLIC_KEY: AccountHash = AccountHash::new(ZERO_ARRAY);
     const TEST_STR: &str = "a";
     const TEST_BOOL: bool = true;
 

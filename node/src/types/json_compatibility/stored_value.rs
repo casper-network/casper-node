@@ -16,7 +16,7 @@ use casper_types::{
     CLValue, DeployInfo, StoredValue as ExecutionEngineStoredValue, Transfer,
 };
 
-use super::{Account, Contract, ContractPackage};
+use super::{Account, AddressableEntity, Contract, ContractPackage};
 
 /// Representation of a value stored in global state.
 ///
@@ -47,6 +47,8 @@ pub enum StoredValue {
     Withdraw(Vec<WithdrawPurse>),
     /// A collection of unbonding purses
     Unbonding(Vec<UnbondingPurse>),
+    /// An AddressableEntity.
+    AddressableEntity(AddressableEntity),
 }
 
 impl TryFrom<ExecutionEngineStoredValue> for StoredValue {
@@ -59,8 +61,11 @@ impl TryFrom<ExecutionEngineStoredValue> for StoredValue {
             ExecutionEngineStoredValue::ContractWasm(contract_wasm) => {
                 StoredValue::ContractWasm(base16::encode_lower(&contract_wasm.to_bytes()?))
             }
-            ExecutionEngineStoredValue::AddressableEntity(contract) => {
+            ExecutionEngineStoredValue::Contract(contract) => {
                 StoredValue::Contract((&contract).into())
+            }
+            ExecutionEngineStoredValue::AddressableEntity(entity) => {
+                StoredValue::AddressableEntity((&entity).into())
             }
             ExecutionEngineStoredValue::ContractPackage(contract_package) => {
                 StoredValue::ContractPackage((&contract_package).into())

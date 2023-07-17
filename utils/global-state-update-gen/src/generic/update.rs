@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 #[cfg(test)]
 use casper_types::{
-    account::{Account, AccountHash},
+    contracts::{Account, AccountHash},
     system::auction::Bid,
     CLValue, PublicKey, URef, U512,
 };

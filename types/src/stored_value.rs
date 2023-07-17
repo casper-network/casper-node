@@ -86,10 +86,10 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`AddressableEntity`] if this is a `Contract` variant.
-    pub fn as_contract(&self) -> Option<&AddressableEntity> {
+    /// Returns a wrapped [`AddressableEntity`] if this is a `AddressableEntity` variant.
+    pub fn as_addressable_entity(&self) -> Option<&AddressableEntity> {
         match self {
-            StoredValue::AddressableEntity(contract) => Some(contract),
+            StoredValue::AddressableEntity(entity) => Some(entity),
             _ => None,
         }
     }

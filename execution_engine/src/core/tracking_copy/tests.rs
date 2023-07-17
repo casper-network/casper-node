@@ -443,7 +443,7 @@ proptest! {
         let mut contract_named_keys = NamedKeys::new();
         contract_named_keys.insert(state_name.clone(), k);
         let contract =
-            StoredValue::Contract(AddressableEntity::new(
+            StoredValue::AddressableEntity(AddressableEntity::new(
             [2; 32].into(),
             [3; 32].into(),
             contract_named_keys,
@@ -600,8 +600,8 @@ fn validate_query_proof_should_work() {
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
     let account_contract_hash = ContractHash::new([30; 32]);
     let account_contract_key: Key = account_contract_hash.into();
-    let cl_value = CLValue::from_t(account_contract_hash).unwrap();
-    let account_value = StoredValue::Account(cl_value);
+    let cl_value = CLValue::from_t(account_contract_key).unwrap();
+    let account_value = StoredValue::CLValue(cl_value);
     let account_key = Key::Account(account_hash);
 
     let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
@@ -645,9 +645,9 @@ fn validate_query_proof_should_work() {
         tmp
     };
 
-    let main_contract_hash = ContractHash::new([31; 32]);
+    let main_contract_hash = ContractHash::new([81; 32]);
     let main_contract_key: Key = main_contract_hash.into();
-    let cl_value_2 = CLValue::from_t(main_contract_hash).unwrap();
+    let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
 
     let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([21; 32]),
@@ -660,7 +660,7 @@ fn validate_query_proof_should_work() {
         ActionThresholds::default(),
     ));
 
-    let main_account_value = StoredValue::Account(cl_value_2);
+    let main_account_value = StoredValue::CLValue(cl_value_2);
     let main_account_key = Key::Account(account_hash);
 
     // random value for proof injection attack
@@ -671,11 +671,11 @@ fn validate_query_proof_should_work() {
     // persist them
     let correlation_id = CorrelationId::new();
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
-        (account_key, account_value.to_owned()),
-        (account_contract_key, account_contract.to_owned()),
         (contract_key, contract_value.to_owned()),
-        (main_account_key, main_account_value.to_owned()),
+        (account_contract_key, account_contract.to_owned()),
+        (account_key, account_value.to_owned()),
         (main_contract_key, main_contract.to_owned()),
+        (main_account_key, main_account_value.to_owned()),
         (uref_key, uref_value),
     ]);
 
@@ -692,27 +692,36 @@ fn validate_query_proof_should_work() {
         .query(
             correlation_id,
             &EngineConfig::default(),
-            main_account_key,
+            main_contract_key,
             path,
         )
         .expect("should query");
 
-    let proofs = if let TrackingCopyQueryResult::Success { proofs, .. } = result {
-        proofs
+    let (proofs, value) = if let TrackingCopyQueryResult::Success { proofs, value } = result {
+        (proofs, value)
     } else {
         panic!("query was not successful: {:?}", result)
     };
 
-    // Happy path
-    crate::core::validate_query_proof(&root_hash, &proofs, &main_account_key, path, &account_value)
-        .expect("should validate");
+    println!("The Stored value: {:?}", value);
 
+    // Happy path
+    crate::core::validate_query_proof(
+        &root_hash,
+        &proofs,
+        &main_contract_key,
+        path,
+        &account_value,
+    )
+    .expect("should validate");
+
+    //TODO! Is this assumption still valid given account indirection.
     // Path should be the same length as the proofs less one (so it should be of length 2)
     assert_eq!(
         crate::core::validate_query_proof(
             &root_hash,
             &proofs,
-            &main_account_key,
+            &main_contract_key,
             &[],
             &account_value
         ),
@@ -724,7 +733,7 @@ fn validate_query_proof_should_work() {
         crate::core::validate_query_proof(
             &root_hash,
             &proofs,
-            &main_account_key,
+            &main_contract_key,
             path,
             &main_account_value
         ),
@@ -742,7 +751,7 @@ fn validate_query_proof_should_work() {
         crate::core::validate_query_proof(
             &Digest::hash([]),
             &proofs,
-            &main_account_key,
+            &main_contract_key,
             path,
             &account_value
         ),
@@ -754,7 +763,7 @@ fn validate_query_proof_should_work() {
         crate::core::validate_query_proof(
             &root_hash,
             &proofs,
-            &main_account_key,
+            &main_contract_key,
             &[
                 "a non-existent path key 1".to_string(),
                 "a non-existent path key 2".to_string()
@@ -774,18 +783,20 @@ fn validate_query_proof_should_work() {
         panic!("query was not successful: {:?}", misfit_result)
     };
 
+    println!("Validating the injected proof");
+
     // Proof has been subject to an injection
     assert_eq!(
         crate::core::validate_query_proof(
             &root_hash,
             &[
-                proofs[0].to_owned(),
+                proofs[1].to_owned(),
                 misfit_proof.to_owned(),
                 proofs[2].to_owned()
             ],
-            &main_account_key,
+            &main_contract_key,
             path,
-            &account_value
+            &account_contract
         ),
         Err(ValidationError::UnexpectedKey)
     );
@@ -822,6 +833,7 @@ fn validate_query_proof_should_work() {
         state::lmdb::make_temporary_global_state([
             (account_key, account_value.to_owned()),
             (contract_key, contract_value),
+            (main_contract_key, main_contract),
             (main_account_key, main_account_value),
         ]);
 
@@ -836,7 +848,7 @@ fn validate_query_proof_should_work() {
         .query(
             correlation_id,
             &EngineConfig::default(),
-            main_account_key,
+            main_contract_key,
             path,
         )
         .expect("should query");
@@ -852,7 +864,7 @@ fn validate_query_proof_should_work() {
         crate::core::validate_query_proof(
             &root_hash,
             &[proofs[0].to_owned(), misfit_proof, proofs[2].to_owned()],
-            &main_account_key,
+            &main_contract_key,
             path,
             &account_value
         ),
@@ -866,14 +878,14 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
     let account_1_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
     let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
-    let account_1_value = StoredValue::Account(account_cl_value);
+    let account_1_value = StoredValue::CLValue(account_cl_value);
     let account_1_key = Key::Account(account_1_hash);
 
     // account 2
     let account_2_hash = AccountHash::new([2; 32]);
     let fake_purse = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
     let fake_account_cl_value = CLValue::from_t(ContractHash::new([21; 32])).unwrap();
-    let account_2_value = StoredValue::Account(fake_account_cl_value);
+    let account_2_value = StoredValue::CLValue(fake_account_cl_value);
     let account_2_key = Key::Account(account_2_hash);
 
     // random value
@@ -912,7 +924,7 @@ fn get_keys_should_return_keys_in_the_uref_keyspace() {
     let account_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
     let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
-    let account_value = StoredValue::Account(account_cl_value);
+    let account_value = StoredValue::CLValue(account_cl_value);
     let account_key = Key::Account(account_hash);
 
     // random value 1
@@ -1016,7 +1028,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
     let account_hash = AccountHash::new([1; 32]);
     let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
     let account_value = CLValue::from_t(ContractHash::new([10; 32])).unwrap();
-    let account_value = StoredValue::Account(account_value);
+    let account_value = StoredValue::CLValue(account_value);
     let account_key = Key::Account(account_hash);
     tracking_copy.write(account_key, account_value);
 

@@ -3,6 +3,7 @@ use std::{
     iter::FromIterator,
 };
 
+use casper_types::contracts::Account;
 use casper_types::{
     contracts::{
         AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
@@ -291,18 +292,18 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
-        // let account = Account::new(
-        //     account_hash,
-        //     account_named_keys,
-        //     URef::new([17; 32], AccessRights::WRITE),
-        //     associated_keys,
-        //     ActionThresholds::new(Weight::new(1), Weight::new(1)).unwrap(),
-        // );
-        //
-        // stored_value.insert(
-        //     "Account".to_string(),
-        //     ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
-        // );
+        let account = Account::new(
+            account_hash,
+            account_named_keys,
+            URef::new([17; 32], AccessRights::WRITE),
+            associated_keys,
+            ActionThresholds::new(Weight::new(1), Weight::new(1)).unwrap(),
+        );
+
+        stored_value.insert(
+            "Account".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
+        );
 
         let contract_wasm = ContractWasm::new(DO_NOTHING_BYTES.to_vec());
 
@@ -350,7 +351,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ActionThresholds::default(),
         );
         stored_value.insert(
-            "Contract".to_string(),
+            "AddressableEntity".to_string(),
             ABITestCase::from_inputs(vec![StoredValue::AddressableEntity(contract).into()])?,
         );
 

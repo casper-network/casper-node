@@ -702,7 +702,7 @@ where
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
             .expect("must get mint stored value")
-            .as_contract()
+            .as_addressable_entity()
             .expect("must convert to mint contract")
             .clone();
 

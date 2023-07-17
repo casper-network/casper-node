@@ -19,7 +19,6 @@ use crate::{
     shared::execution_journal::ExecutionJournal,
 };
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
-use casper_types::contracts::Contract;
 use casper_types::{
     bytesrepr::ToBytes,
     contracts::{
@@ -354,7 +353,7 @@ where
 
     /// Returns the caller of the contract.
     pub fn get_caller(&self) -> AccountHash {
-        self.account_hash.clone()
+        *self.account_hash
     }
 
     /// Returns the block time.

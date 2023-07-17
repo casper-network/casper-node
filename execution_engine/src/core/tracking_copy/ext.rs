@@ -138,7 +138,7 @@ where
                 let contract_hash = CLValue::into_t::<Key>(cl_value)?;
                 let contract_hash = contract_hash
                     .into_hash()
-                    .map(|addr| ContractHash::new(addr))
+                    .map(ContractHash::new)
                     .expect("must convert to contract hash");
 
                 Ok(contract_hash)
@@ -160,8 +160,7 @@ where
 
         let contract_key = match self.get(correlation_id, &account_key).map_err(Into::into)? {
             Some(StoredValue::CLValue(contract_key_as_cl_value)) => {
-                let contract_key = CLValue::into_t::<Key>(contract_key_as_cl_value)?;
-                contract_key
+                CLValue::into_t::<Key>(contract_key_as_cl_value)?
             }
             Some(StoredValue::Account(account)) => {
                 let mut generator =
@@ -217,7 +216,7 @@ where
 
             Some(other) => {
                 return Err(execution::Error::TypeMismatch(
-                    StoredValueTypeMismatch::new("KeyFoo1".to_string(), other.type_name()),
+                    StoredValueTypeMismatch::new("Key".to_string(), other.type_name()),
                 ));
             }
             None => return Err(execution::Error::KeyNotFound(account_key)),

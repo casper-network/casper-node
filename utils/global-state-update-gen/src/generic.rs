@@ -84,7 +84,7 @@ fn update_account_balances<T: StateReader>(
         if let Some(account) = state.get_account(&account_hash) {
             state.set_purse_balance(account.main_purse(), target_balance);
         } else {
-            state.create_account(account_hash, target_balance);
+            state.create_addressable_entity_for_account(account_hash, target_balance);
         }
     }
 }
