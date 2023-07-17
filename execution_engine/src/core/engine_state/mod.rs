@@ -331,7 +331,7 @@ where
                 .map_err(|error| Error::Bytesrepr(error.to_string()))?;
 
         // We write the checksums of the chainspec settings to global state
-        // allowing verification of the reported chainspec data via the RPC.
+        // allowing verification of the chainspec data reported via the RPC.
         tracking_copy.borrow_mut().write(
             Key::ChainspecRegistry,
             StoredValue::CLValue(cl_value_chainspec_registry),
