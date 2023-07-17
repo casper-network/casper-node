@@ -33,14 +33,14 @@ use warp::{
 };
 
 #[cfg(test)]
-use casper_types::{testing::TestRng, Block};
+use casper_types::testing::TestRng;
 use casper_types::{
     BlockHash, Deploy, DeployHash, EraId, ExecutionEffect, ExecutionResult, FinalitySignature,
     JsonBlock, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
 #[cfg(test)]
-use crate::testing;
+use crate::{testing, types::TestBlockBuilder};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -147,7 +147,7 @@ impl SseData {
 
     /// Returns a random `SseData::BlockAdded`.
     pub(super) fn random_block_added(rng: &mut TestRng) -> Self {
-        let block = Block::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
             block: Box::new(JsonBlock::new(block, None)),

@@ -3,11 +3,12 @@ use std::time::Duration;
 use futures::channel::oneshot;
 use rand::Rng;
 
-use casper_types::{bytesrepr::Bytes, testing::TestRng, Block};
+use casper_types::{bytesrepr::Bytes, testing::TestRng};
 
 use super::*;
 use crate::{
     reactor::{EventQueueHandle, QueueKind, Scheduler},
+    types::TestBlockBuilder,
     utils,
 };
 
@@ -87,7 +88,7 @@ fn random_sync_global_state_request(
     rng: &mut TestRng,
     responder: Responder<Result<Response, Error>>,
 ) -> (SyncGlobalStateRequest, TrieRaw) {
-    let block = Block::random(rng);
+    let block = TestBlockBuilder::new().build(rng);
     let trie = random_test_trie(rng);
 
     // Create a request
