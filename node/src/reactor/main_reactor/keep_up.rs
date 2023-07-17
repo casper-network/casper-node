@@ -232,7 +232,7 @@ impl MainReactor {
         sync_instruction: SyncInstruction,
     ) -> Option<KeepUpInstruction> {
         match sync_instruction {
-            SyncInstruction::Leap { .. } => {
+            SyncInstruction::Leap { .. } | SyncInstruction::LeapIntervalElapsed { .. } => {
                 // the block accumulator is unsure what our block position is relative to the
                 // network and wants to check peers for their notion of current tip.
                 // to do this, we switch back to CatchUp which will engage the necessary
