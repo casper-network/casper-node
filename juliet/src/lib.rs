@@ -157,7 +157,7 @@ impl<T, E> Outcome<T, E> {
 
 /// `try!` for [`Outcome`].
 ///
-/// Will pass [`Outcome::Incomplete`] and [`Outcome::Err`] upwards, or unwrap the value found in
+/// Will pass [`Outcome::Incomplete`] and [`Outcome::Fatal`] upwards, or unwrap the value found in
 /// [`Outcome::Success`].
 #[macro_export]
 macro_rules! try_outcome {

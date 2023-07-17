@@ -1,7 +1,7 @@
 //! RPC layer.
 //!
-//! The outermost layer of the `juliet` stack, combines the underlying [`io`] and [`protocol`]
-//! layers into a convenient RPC system.
+//! The outermost layer of the `juliet` stack, combines the underlying [`io`](crate::io) and
+//! [`protocol`](crate::protocol) layers into a convenient RPC system.
 //!
 //! The term RPC is used somewhat inaccurately here, as the crate does _not_ deal with the actual
 //! method calls or serializing arguments, but only provides the underlying request/response system.
@@ -122,9 +122,13 @@ pub struct JulietRpcServer<const N: usize, R, W> {
     new_requests_receiver: UnboundedReceiver<NewRequest>,
 }
 
+/// Internal structure representing a new outgoing request.
 struct NewRequest {
+    /// The already reserved ticket.
     ticket: RequestTicket,
+    /// Request guard to store results.
     guard: Arc<RequestGuardInner>,
+    /// Payload of the request.
     payload: Option<Bytes>,
 }
 
@@ -184,8 +188,8 @@ where
 {
     /// Produce the next request from the peer.
     ///
-    /// Runs the underlying IO until another [`NewRequest`] has been produced by the remote peer. On
-    /// success, this function should be called again immediately.
+    /// Runs the underlying IO until another [`IncomingRequest`] has been produced by the remote
+    /// peer. On success, this function should be called again immediately.
     ///
     /// On a regular shutdown (`None` returned) or an error ([`RpcServerError`] returned), a caller
     /// must stop calling [`next_request`](Self::next_request) and shoudl drop the entire

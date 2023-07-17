@@ -1,7 +1,7 @@
 //! `juliet` IO layer
 //!
 //! The IO layer combines a lower-level transport like a TCP Stream with the
-//! [`JulietProtocol`](crate::juliet::JulietProtocol) protocol implementation and some memory
+//! [`JulietProtocol`](crate::protocol::JulietProtocol) protocol implementation and some memory
 //! buffers to provide a working high-level transport for juliet messages. It allows users of this
 //! layer to send messages across over multiple channels, without having to worry about frame
 //! multiplexing or request limits.

@@ -297,7 +297,7 @@ pub enum CompletedRead {
 /// A correct implementation of a client should never encounter this, thus simply unwrapping every
 /// instance of this as part of a `Result<_, LocalProtocolViolation>` is usually a valid choice.
 ///
-/// Higher level layers like [`rpc`] should make it impossible to encounter
+/// Higher level layers like [`rpc`](crate::rpc) should make it impossible to encounter
 /// [`LocalProtocolViolation`]s.
 #[derive(Copy, Clone, Debug, Error)]
 pub enum LocalProtocolViolation {
@@ -314,8 +314,8 @@ pub enum LocalProtocolViolation {
     InvalidChannel(ChannelId),
     /// The given payload exceeds the configured limit.
     ///
-    /// See [`ChannelConfiguration::max_request_payload_size`] and
-    /// [`ChannelConfiguration::max_response_payload_size`] for details.
+    /// See [`ChannelConfiguration::with_max_request_payload_size()`] and
+    /// [`ChannelConfiguration::with_max_response_payload_size()`] for details.
     #[error("payload exceeds configured limit")]
     PayloadExceedsLimit,
     /// The given error payload exceeds a single frame.
