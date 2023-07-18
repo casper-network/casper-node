@@ -460,7 +460,9 @@ proptest! {
         account_named_keys.insert(contract_name.clone(), contract_key);
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
-        let account_value = CLValue::from_t(ContractHash::new([10;32])).unwrap();
+        let contract_hash = ContractHash::new([10;32]);
+        let new_contract_key: Key = contract_hash.into();
+        let account_value = CLValue::from_t(new_contract_key).unwrap();
         let account_key = Key::Account(address);
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
@@ -472,9 +474,9 @@ proptest! {
         ]);
         let view = gs.checkout(root_hash).unwrap().unwrap();
         let tc = TrackingCopy::new(view);
-        let path = vec!(contract_name, state_name);
+        let path = vec!(state_name);
 
-        let results =  tc.query(correlation_id, &EngineConfig::default(), account_key, &path);
+        let results =  tc.query(correlation_id, &EngineConfig::default(), contract_key, &path);
         if let Ok(TrackingCopyQueryResult::Success { value, .. }) = results {
             assert_eq!(v, value);
         } else {

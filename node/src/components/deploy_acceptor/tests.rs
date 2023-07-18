@@ -389,45 +389,26 @@ impl TestScenario {
     }
 }
 
-fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> AddressableEntity {
+fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Account {
     match test_scenario {
         TestScenario::FromPeerAccountWithInvalidAssociatedKeys
-        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => AddressableEntity::new(
-            ContractPackageHash::default(),
-            ContractWasmHash::default(),
-            NamedKeys::default(),
-            EntryPoints::new(),
-            ProtocolVersion::V1_0_0,
-            URef::default(),
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-        ),
+        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => {
+            Account::create(AccountHash::default(), BTreeMap::new(), URef::default())
+        }
         TestScenario::FromPeerAccountWithInsufficientWeight
         | TestScenario::FromClientAccountWithInsufficientWeight => {
             let invalid_action_threshold =
                 ActionThresholds::new(Weight::new(100u8), Weight::new(100u8))
                     .expect("should create action threshold");
-            AddressableEntity::new(
-                ContractPackageHash::default(),
-                ContractWasmHash::default(),
-                NamedKeys::default(),
-                EntryPoints::new(),
-                ProtocolVersion::V1_0_0,
+            Account::new(
+                account_hash,
+                BTreeMap::new(),
                 URef::default(),
                 AssociatedKeys::new(account_hash, Weight::new(1)),
                 invalid_action_threshold,
             )
         }
-        _ => AddressableEntity::new(
-            ContractPackageHash::default(),
-            ContractWasmHash::default(),
-            NamedKeys::default(),
-            EntryPoints::new(),
-            ProtocolVersion::V1_0_0,
-            URef::default(),
-            AssociatedKeys::new(account_hash, Weight::new(1)),
-            ActionThresholds::default(),
-        ),
+        _ => Account::create(account_hash, BTreeMap::new(), URef::default()),
     }
 }
 
@@ -526,7 +507,7 @@ impl reactor::Reactor for Reactor {
                         if query_request.path().is_empty() {
                             let account = create_account(account_hash, self.test_scenario);
                             QueryResult::Success {
-                                value: Box::new(StoredValue::AddressableEntity(account)),
+                                value: Box::new(StoredValue::Account(account)),
                                 proofs: vec![],
                             }
                         } else {
