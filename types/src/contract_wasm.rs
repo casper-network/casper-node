@@ -16,7 +16,7 @@ use crate::{
     checksummed_hex, contracts, uref, CLType, CLTyped, HashAddr,
 };
 
-const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
+const BYTE_CODE_MAX_DISPLAY_LEN: usize = 16;
 const KEY_HASH_LENGTH: usize = 32;
 const WASM_STRING_PREFIX: &str = "contract-wasm-";
 
@@ -227,33 +227,33 @@ impl JsonSchema for ContractWasmHash {
 /// A container for contract's WASM bytes.
 #[derive(PartialEq, Eq, Clone, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractWasm {
+pub struct ByteCode {
     bytes: Bytes,
 }
 
-impl Debug for ContractWasm {
+impl Debug for ByteCode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.bytes.len() > CONTRACT_WASM_MAX_DISPLAY_LEN {
+        if self.bytes.len() > BYTE_CODE_MAX_DISPLAY_LEN {
             write!(
                 f,
-                "ContractWasm(0x{}...)",
-                base16::encode_lower(&self.bytes[..CONTRACT_WASM_MAX_DISPLAY_LEN])
+                "ByteCode(0x{}...)",
+                base16::encode_lower(&self.bytes[..BYTE_CODE_MAX_DISPLAY_LEN])
             )
         } else {
-            write!(f, "ContractWasm(0x{})", base16::encode_lower(&self.bytes))
+            write!(f, "ByteCode(0x{})", base16::encode_lower(&self.bytes))
         }
     }
 }
 
-impl ContractWasm {
+impl ByteCode {
     /// Creates new WASM object from bytes.
     pub fn new(bytes: Vec<u8>) -> Self {
-        ContractWasm {
+        ByteCode {
             bytes: bytes.into(),
         }
     }
 
-    /// Consumes instance of [`ContractWasm`] and returns its bytes.
+    /// Consumes instance of [`ByteCode`] and returns its bytes.
     pub fn take_bytes(self) -> Vec<u8> {
         self.bytes.into()
     }
@@ -264,7 +264,7 @@ impl ContractWasm {
     }
 }
 
-impl ToBytes for ContractWasm {
+impl ToBytes for ByteCode {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.bytes.to_bytes()
     }
@@ -279,10 +279,10 @@ impl ToBytes for ContractWasm {
     }
 }
 
-impl FromBytes for ContractWasm {
+impl FromBytes for ByteCode {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (bytes, rem1) = FromBytes::from_bytes(bytes)?;
-        Ok((ContractWasm { bytes }, rem1))
+        Ok((ByteCode { bytes }, rem1))
     }
 }
 
@@ -293,7 +293,7 @@ mod tests {
     fn test_debug_repr_of_short_wasm() {
         const SIZE: usize = 8;
         let wasm_bytes = vec![0; SIZE];
-        let contract_wasm = ContractWasm::new(wasm_bytes);
+        let contract_wasm = ByteCode::new(wasm_bytes);
         // String output is less than the bytes itself
         assert_eq!(
             format!("{:?}", contract_wasm),
@@ -305,7 +305,7 @@ mod tests {
     fn test_debug_repr_of_long_wasm() {
         const SIZE: usize = 65;
         let wasm_bytes = vec![0; SIZE];
-        let contract_wasm = ContractWasm::new(wasm_bytes);
+        let contract_wasm = ByteCode::new(wasm_bytes);
         // String output is less than the bytes itself
         assert_eq!(
             format!("{:?}", contract_wasm),

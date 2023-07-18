@@ -27,10 +27,9 @@ use casper_types::{
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, CLValue, Chainspec, ChainspecRegistry, ContractHash,
-    ContractPackage, ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints,
-    EraId, GenesisAccount, Key, Motes, Phase, ProtocolVersion, PublicKey, StoredValue,
-    SystemConfig, URef, WasmConfig, U512,
+    AccessRights, AddressableEntity, ByteCode, CLValue, Chainspec, ChainspecRegistry, ContractHash,
+    ContractPackageHash, ContractWasmHash, Digest, EntryPoints, EraId, GenesisAccount, Key, Motes,
+    Package, Phase, ProtocolVersion, PublicKey, StoredValue, SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::core::{
@@ -909,7 +908,7 @@ where
         let contract_package_hash =
             ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
-        let contract_wasm = ContractWasm::new(vec![]);
+        let contract_wasm = ByteCode::new(vec![]);
         let main_purse = self.create_purse(starting_balance)?;
         let associated_keys = contract_package_kind.associated_keys();
         let maybe_account_hash = contract_package_kind.maybe_account_hash();
@@ -946,7 +945,7 @@ where
 
         // Genesis contracts can be versioned contracts.
         let contract_package = {
-            let mut contract_package = ContractPackage::new(
+            let mut contract_package = Package::new(
                 access_key,
                 ContractVersions::default(),
                 DisabledVersions::default(),

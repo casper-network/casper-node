@@ -25,9 +25,9 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     contracts::{
         self, AccountHash, ActionThresholds, ActionType, AddressableEntity, AssociatedKeys,
-        ContractPackage, ContractPackageKind, ContractPackageStatus, ContractVersion,
-        ContractVersions, DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group,
-        Groups, NamedKeys, Weight, DEFAULT_ENTRY_POINT_NAME,
+        ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions,
+        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
+        Package, Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     system::{
         self,
@@ -35,10 +35,10 @@ use casper_types::{
         handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
-    EntryPointType, Gas, GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter,
-    Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    AccessRights, ApiError, ByteCode, CLTyped, CLValue, ContextAccessRights, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, EntryPointType, Gas,
+    GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter, Phase, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
@@ -71,13 +71,11 @@ enum CallContractIdentifier {
 
 /// Represents the runtime properties of a WASM execution.
 pub struct Runtime<'a, R> {
-    config: EngineConfig,
+    context: RuntimeContext<'a, R>,
     memory: Option<MemoryRef>,
     module: Option<Module>,
     host_buffer: Option<CLValue>,
-    context: RuntimeContext<'a, R>,
     stack: Option<RuntimeStack>,
-    host_function_flag: HostFunctionFlag,
 }
 
 impl<'a, R> Runtime<'a, R>
@@ -86,15 +84,13 @@ where
     R::Error: Into<Error>,
 {
     /// Creates a new runtime instance.
-    pub(crate) fn new(config: EngineConfig, context: RuntimeContext<'a, R>) -> Self {
+    pub(crate) fn new(context: RuntimeContext<'a, R>) -> Self {
         Runtime {
-            config,
+            context,
             memory: None,
             module: None,
             host_buffer: None,
-            context,
             stack: None,
-            host_function_flag: HostFunctionFlag::default(),
         }
     }
 
@@ -179,13 +175,6 @@ where
     where
         T: Into<Gas>,
     {
-        if self.host_function_flag.is_in_host_function_scope()
-            || self.is_system_immediate_caller()?
-        {
-            // This avoids charging the user in situation when the runtime is in the middle of
-            // handling a host function call or a system contract calls other system contract.
-            return Ok(());
-        }
         self.context.charge_system_contract_call(amount)
     }
 
@@ -778,12 +767,14 @@ where
 
         let mut runtime = self.new_with_stack(runtime_context, stack);
 
-        let system_config = self.config.system_config();
+        let system_config = self.context.engine_config.system_config();
         let auction_costs = system_config.auction_costs();
 
         let result = match entry_point_name {
             auction::METHOD_GET_ERA_VALIDATORS => (|| {
-                runtime.charge_system_contract_call(auction_costs.get_era_validators)?;
+                runtime
+                    .context
+                    .charge_gas(auction_costs.get_era_validators.into())?;
 
                 let result = runtime.get_era_validators().map_err(Self::reverter)?;
 
@@ -901,7 +892,7 @@ where
 
             // Type: `fn slash(validator_account_hashes: &[AccountHash]) -> Result<(), Error>`
             auction::METHOD_SLASH => (|| {
-                runtime.charge_system_contract_call(auction_costs.slash)?;
+                runtime.context.charge_gas(auction_costs.slash.into())?;
 
                 let validator_public_keys =
                     Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR_PUBLIC_KEYS)?;
@@ -913,7 +904,9 @@ where
 
             // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
             auction::METHOD_DISTRIBUTE => (|| {
-                runtime.charge_system_contract_call(auction_costs.distribute)?;
+                runtime
+                    .context
+                    .charge_gas(auction_costs.distribute.into())?;
                 let proposer = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
                 runtime.distribute(proposer).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
@@ -921,7 +914,9 @@ where
 
             // Type: `fn read_era_id() -> Result<EraId, Error>`
             auction::METHOD_READ_ERA_ID => (|| {
-                runtime.charge_system_contract_call(auction_costs.read_era_id)?;
+                runtime
+                    .context
+                    .charge_gas(auction_costs.read_era_id.into())?;
 
                 let result = runtime.read_era_id().map_err(Self::reverter)?;
                 CLValue::from_t(result).map_err(Self::reverter)
@@ -989,7 +984,7 @@ where
         self.stack = Some(stack);
         self.context.set_args(utils::attenuate_uref_in_args(
             self.context.args().clone(),
-            self.context.contract().main_purse().addr(),
+            self.context.entity().main_purse().addr(),
             AccessRights::WRITE,
         )?);
 
@@ -1066,7 +1061,7 @@ where
             }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
-                Ok(self.context.base_key())
+                Ok(self.context.entity_address())
             }
             (EntryPointType::Session, EntryPointType::Contract)
             | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
@@ -1100,7 +1095,7 @@ where
                 let contract_key = contract_hash.into();
                 let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
                 let contract_package_key = Key::from(contract.contract_package_hash());
-                let contract_package: ContractPackage =
+                let contract_package: Package =
                     self.context.read_gs_typed(&contract_package_key)?;
 
                 // System contract hashes are disabled at upgrade point
@@ -1120,7 +1115,7 @@ where
                 version,
             } => {
                 let contract_package_key = Key::from(contract_package_hash);
-                let contract_package: ContractPackage =
+                let contract_package: Package =
                     self.context.read_gs_typed(&contract_package_key)?;
 
                 let contract_version_key = match version {
@@ -1204,8 +1199,8 @@ where
 
         let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
             EntryPointType::Session => (
-                self.context.contract().named_keys().clone(),
-                self.context.contract().extract_access_rights(contract_hash),
+                self.context.entity().named_keys().clone(),
+                self.context.entity().extract_access_rights(contract_hash),
             ),
             EntryPointType::Contract => (
                 contract.named_keys().clone(),
@@ -1215,6 +1210,10 @@ where
 
         let stack = {
             let mut stack = self.try_get_stack()?.clone();
+
+            let account_hash = contract_package
+                .get_contract_package_kind()
+                .maybe_account_hash();
 
             let call_stack_element = match entry_point.entry_point_type() {
                 EntryPointType::Session => CallStackElement::stored_session(
@@ -1252,7 +1251,7 @@ where
             // a non-system account to avoid possible phishing attack scenarios.
             utils::attenuate_uref_in_args(
                 args,
-                self.context.contract().main_purse().addr(),
+                self.context.entity().main_purse().addr(),
                 AccessRights::WRITE,
             )?
         } else {
@@ -1310,7 +1309,7 @@ where
         let module: Module = {
             let wasm_key = contract.contract_wasm_key();
 
-            let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
+            let contract_wasm: ByteCode = match self.context.read_gs(&wasm_key)? {
                 Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
                 None => return Err(Error::KeyNotFound(context_key)),
@@ -1522,9 +1521,9 @@ where
         &mut self,
         is_locked: ContractPackageStatus,
         contract_package_kind: ContractPackageKind,
-    ) -> Result<(ContractPackage, URef), Error> {
+    ) -> Result<(Package, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
-        let contract_package = ContractPackage::new(
+        let contract_package = Package::new(
             access_key,
             ContractVersions::default(),
             DisabledVersions::default(),
@@ -1557,7 +1556,7 @@ where
         mut existing_urefs: BTreeSet<URef>,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let mut contract_package: ContractPackage = self
+        let mut contract_package: Package = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
@@ -1636,7 +1635,7 @@ where
         self.context
             .validate_key(&Key::from(contract_package_hash))?;
 
-        let mut contract_package: ContractPackage = self
+        let mut contract_package: Package = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
@@ -1654,7 +1653,7 @@ where
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
-            ContractWasm::new(module_bytes)
+            ByteCode::new(module_bytes)
         };
 
         let contract_hash = self.context.new_hash_address()?;
@@ -1757,7 +1756,7 @@ where
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
 
-        let mut contract_package: ContractPackage = self
+        let mut contract_package: Package = self
             .context
             .get_validated_contract_package(contract_package_hash)?;
 
@@ -1818,7 +1817,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.base_key() != Key::from(self.context.get_system_contract(MINT)?) {
+        if self.context.entity_address() != Key::from(self.context.get_system_contract(MINT)?) {
             return Err(Error::InvalidContext);
         }
 
@@ -1844,7 +1843,7 @@ where
 
     /// Records given auction info at a given era id
     fn record_era_summary(&mut self, era_info: EraInfo) -> Result<(), Error> {
-        if self.context.base_key() != Key::from(self.context.get_system_contract(AUCTION)?) {
+        if self.context.entity_address() != Key::from(self.context.get_system_contract(AUCTION)?) {
             return Err(Error::InvalidContext);
         }
 
@@ -2204,7 +2203,7 @@ where
 
                 let access_key = self.context.new_unit_uref()?;
                 let contract_package = {
-                    let mut contract_package = ContractPackage::new(
+                    let mut contract_package = Package::new(
                         access_key,
                         ContractVersions::default(),
                         DisabledVersions::default(),
@@ -2604,7 +2603,7 @@ where
     /// Enforce group access restrictions (if any) on attempts to call an `EntryPoint`.
     fn validate_group_membership(
         &self,
-        package: &ContractPackage,
+        package: &Package,
         access: &EntryPointAccess,
     ) -> Result<(), Error> {
         runtime_context::validate_group_membership(package, access, |uref| {
@@ -2618,8 +2617,7 @@ where
         package_key: ContractPackageHash,
         label: Group,
     ) -> Result<Result<(), ApiError>, Error> {
-        let mut package: ContractPackage =
-            self.context.get_validated_contract_package(package_key)?;
+        let mut package: Package = self.context.get_validated_contract_package(package_key)?;
 
         let group_to_remove = Group::new(label);
         let groups = package.groups_mut();
@@ -3010,7 +3008,7 @@ where
             Some(StoredValue::Contract(contract)) => {
                 let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
-                let mut legacy_contract_package: ContractPackage =
+                let mut legacy_contract_package: Package =
                     self.context.read_gs_typed(&contract_package_key)?;
                 // Update the contract package from Legacy to Wasm
                 legacy_contract_package.update_package_kind(ContractPackageKind::Wasm);

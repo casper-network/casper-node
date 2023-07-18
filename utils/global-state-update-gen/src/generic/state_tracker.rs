@@ -13,8 +13,8 @@ use casper_types::contracts::{
 use casper_types::{
     contracts::AccountHash,
     system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasmHash, EntryPoints, Key, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
+    EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -166,7 +166,7 @@ impl<T: StateReader> StateTracker<T> {
             ActionThresholds::default(),
         );
 
-        let mut contract_package = ContractPackage::new(
+        let mut contract_package = Package::new(
             URef::new(rng.gen(), AccessRights::READ_ADD_WRITE),
             ContractVersions::default(),
             DisabledVersions::default(),

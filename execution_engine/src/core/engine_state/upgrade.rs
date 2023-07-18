@@ -14,8 +14,8 @@ use casper_types::{
     bytesrepr::{self},
     contracts::{ActionThresholds, AssociatedKeys, Groups},
     system::SystemContractType,
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackage, ContractPackageHash,
-    ContractWasm, ContractWasmHash, Digest, EntryPoints, Key, Phase, ProtocolVersion, PublicKey,
+    AccessRights, AddressableEntity, ByteCode, CLValue, ContractHash, ContractPackageHash,
+    ContractWasmHash, Digest, EntryPoints, Key, Package, Phase, ProtocolVersion, PublicKey,
     StoredValue, URef, U512,
 };
 
@@ -150,19 +150,6 @@ where
         let mut contract =
             self.retrieve_system_contract(correlation_id, contract_hash, system_contract_type)?;
 
-        let _is_major_bump = self
-            .old_protocol_version
-            .check_next_version(&self.new_protocol_version)
-            .is_major_version();
-
-        let _entry_points_unchanged = *contract.entry_points() == entry_points;
-        // if entry_points_unchanged && !is_major_bump {
-        //     // We don't need to do anything if entry points are unchanged, or there's no major
-        //     // version bump.
-        //
-        //     return Ok(());
-        // }
-
         let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
         let mut contract_package = if let StoredValue::ContractPackage(contract_package) = self
@@ -261,7 +248,7 @@ where
         let contract_hash = ContractHash::new(address_generator.new_hash_address());
         let contract_package_hash = ContractPackageHash::new(address_generator.new_hash_address());
 
-        let contract_wasm = ContractWasm::new(vec![]);
+        let contract_wasm = ByteCode::new(vec![]);
 
         let account_hash = PublicKey::System.to_account_hash();
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
@@ -299,7 +286,7 @@ where
         let access_key = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
 
         let contract_package = {
-            let mut contract_package = ContractPackage::new(
+            let mut contract_package = Package::new(
                 access_key,
                 ContractVersions::default(),
                 DisabledVersions::default(),

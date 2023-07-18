@@ -12,11 +12,11 @@ use casper_types::{
         NamedKeys,
     },
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Group, Key, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
-    U128, U256, U512, UREF_ADDR_LENGTH,
+    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
+    ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Group, Key, Package, Parameter, ProtocolVersion, PublicKey,
+    SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256,
+    U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -581,7 +581,7 @@ fn sample_contract_package(
     contract_versions_len: u8,
     disabled_versions_len: u8,
     groups_len: u8,
-) -> ContractPackage {
+) -> Package {
     let access_key = URef::default();
     let versions = sample_map(
         contract_version_key_fn,
@@ -591,7 +591,7 @@ fn sample_contract_package(
     let disabled_versions = sample_set(contract_version_key_fn, disabled_versions_len);
     let groups = sample_map(sample_group, |_| sample_set(sample_uref, 3), groups_len);
 
-    ContractPackage::new(
+    Package::new(
         access_key,
         versions,
         disabled_versions,
@@ -603,13 +603,13 @@ fn sample_contract_package(
 
 fn serialize_contract_package(b: &mut Bencher) {
     let contract = sample_contract_package(5, 1, 5);
-    b.iter(|| ContractPackage::to_bytes(black_box(&contract)));
+    b.iter(|| Package::to_bytes(black_box(&contract)));
 }
 
 fn deserialize_contract_package(b: &mut Bencher) {
     let contract_package = sample_contract_package(5, 1, 5);
-    let contract_bytes = ContractPackage::to_bytes(&contract_package).unwrap();
-    b.iter(|| ContractPackage::from_bytes(black_box(&contract_bytes)).unwrap());
+    let contract_bytes = Package::to_bytes(&contract_package).unwrap();
+    b.iter(|| Package::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
 fn u32_to_pk(i: u32) -> PublicKey {

@@ -13,6 +13,7 @@ use casper_storage::global_state::{
     shared::{transform::Transform, CorrelationId},
     storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
+use casper_types::contracts::ActionThresholds;
 use casper_types::{
     bytesrepr::ToBytes,
     contracts::{
@@ -20,7 +21,7 @@ use casper_types::{
         SetThresholdFailure, Weight, ACCOUNT_HASH_LENGTH,
     },
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, BlockTime, CLValue, ContextAccessRights, Contract, ContractHash,
+    AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
     Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH,
     U256, U512,
@@ -41,11 +42,16 @@ const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default);
 
 fn new_tracking_copy(
-    init_key: Key,
-    init_account: Contract,
+    init_account_key: Key,
+    init_entity_key: Key,
+    init_entity: AddressableEntity,
 ) -> (TrackingCopy<LmdbGlobalStateView>, TempDir) {
-    let (global_state, state_root_hash, tempdir) =
-        state::make_temporary_global_state([(init_key, init_account.into())]);
+    let entity_key_cl_value = CLValue::from_t(init_entity_key).expect("must convert to cl value");
+
+    let (global_state, state_root_hash, tempdir) = state::make_temporary_global_state([
+        (init_entity_key, StoredValue::AddressableEntity(init_entity)),
+        (init_account_key, StoredValue::CLValue(entity_key_cl_value)),
+    ]);
 
     let reader = global_state
         .checkout(state_root_hash)
@@ -55,14 +61,14 @@ fn new_tracking_copy(
     (TrackingCopy::new(reader), tempdir)
 }
 
-fn new_account_with_purse(
+fn new_addressable_entity_with_purse(
     account_hash: AccountHash,
     contract_hash: ContractHash,
     purse: [u8; 32],
     named_keys: NamedKeys,
-) -> (Key, Contract) {
+) -> (Key, Key, AddressableEntity) {
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
-    let account = Contract::new(
+    let entity = AddressableEntity::new(
         ContractPackageHash::default(),
         ContractWasmHash::default(),
         named_keys,
@@ -72,17 +78,18 @@ fn new_account_with_purse(
         associated_keys,
         Default::default(),
     );
-    let key = Key::Account(account_hash);
+    let account_key = Key::Account(account_hash);
+    let contract_key = contract_hash.into();
 
-    (key, account)
+    (account_key, contract_key, entity)
 }
 
-fn new_account(
+fn new_addressable_entity(
     account_hash: AccountHash,
     contract_hash: ContractHash,
     named_keys: NamedKeys,
-) -> (Key, Contract) {
-    new_account_with_purse(account_hash, contract_hash, [0; 32], named_keys)
+) -> (Key, Key, AddressableEntity) {
+    new_addressable_entity_with_purse(account_hash, contract_hash, [0; 32], named_keys)
 }
 
 // create random account key.
@@ -112,13 +119,17 @@ fn random_hash<G: RngCore>(entropy_source: &mut G) -> Key {
 }
 
 fn new_runtime_context<'a>(
-    account: &'a Account,
+    addressable_entity: &'a AddressableEntity,
+    account_hash: &'a AccountHash,
+    contract_hash: &'a ContractHash,
     base_key: Key,
     named_keys: &'a mut NamedKeys,
     access_rights: ContextAccessRights,
     address_generator: AddressGenerator,
 ) -> (RuntimeContext<'a, LmdbGlobalStateView>, TempDir) {
-    let (tracking_copy, tempdir) = new_tracking_copy(base_key, account.clone());
+    let addressable_entity_key: Key = (*contract_hash).into();
+    let (tracking_copy, tempdir) =
+        new_tracking_copy(base_key, addressable_entity_key, addressable_entity.clone());
 
     let runtime_context = RuntimeContext::new(
         Rc::new(RefCell::new(tracking_copy)),
@@ -126,8 +137,10 @@ fn new_runtime_context<'a>(
         named_keys,
         access_rights,
         RuntimeArgs::new(),
-        BTreeSet::from_iter(vec![account.account_hash()]),
-        account,
+        BTreeSet::from_iter(vec![*account_hash]),
+        addressable_entity,
+        account_hash,
+        contract_hash,
         base_key,
         BlockTime::new(0),
         DeployHash::from_raw([1u8; 32]),
@@ -174,18 +187,27 @@ where
     let secret_key = SecretKey::ed25519_from_bytes([222; SecretKey::ED25519_LENGTH])
         .expect("should create secret key");
     let public_key = PublicKey::from(&secret_key);
+    let account_hash = public_key.to_account_hash();
+    let contract_hash = ContractHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
-    let (base_key, account) = new_account(public_key.to_account_hash(), named_keys.clone());
+    let (base_key, _contract_key, addressable_entity) = new_addressable_entity(
+        public_key.to_account_hash(),
+        contract_hash,
+        named_keys.clone(),
+    );
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let access_rights = account.extract_access_rights();
+    let access_rights = addressable_entity.extract_access_rights(contract_hash);
     let (runtime_context, _tempdir) = new_runtime_context(
-        &account,
+        &addressable_entity,
+        &account_hash,
+        &contract_hash,
         base_key,
         &mut named_keys,
         access_rights,
         address_generator,
     );
+
     functor(runtime_context)
 }
 
@@ -237,14 +259,16 @@ fn account_key_readable_valid() {
     // Account key is readable if it is a "base" key - current context of the
     // execution.
     let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
-        let base_key = rc.base_key();
+        let base_key = rc.entity_address();
+        let contract_key: Key = (*rc.entity_address).into();
+        let cl_value = CLValue::from_t(contract_key).expect("should convert");
 
         let result = rc
             .read_gs(&base_key)
             .expect("Account key is readable.")
             .expect("Account is found in GS.");
 
-        assert_eq!(result, StoredValue::Account(rc.contract().clone()));
+        assert_eq!(result, StoredValue::CLValue(cl_value));
         Ok(())
     });
 
@@ -264,34 +288,23 @@ fn account_key_readable_invalid() {
 }
 
 #[test]
-fn account_key_addable_valid() {
-    // Account key is addable if it is a "base" key - current context of the
-    // execution.
+fn account_key_addable_returns_type_mismatch() {
+    // Account key is not addable anymore as we do not store an account underneath they key
+    // but instead there is a CLValue which acts as an indirection to the corresponding entity.
     let mut rng = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let uref_as_key = create_uref_as_key(&mut rng, AccessRights::READ);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
     let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
-        let base_key = rc.base_key();
+        let base_key = rc.entity_address();
         let uref_name = "NewURef".to_owned();
         let named_key =
             StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_as_key)).unwrap());
 
         rc.metered_add_gs(base_key, named_key)
-            .expect("Adding should work.");
-
-        let named_key_transform =
-            Transform::AddKeys(iter::once((uref_name, uref_as_key)).collect());
-
-        assert_eq!(
-            *rc.effect().transforms.get(&base_key).unwrap(),
-            named_key_transform
-        );
-
-        Ok(())
     });
 
-    assert!(query_result.is_ok());
+    assert!(query_result.is_err());
 }
 
 #[test]
@@ -343,19 +356,21 @@ fn contract_key_not_writeable() {
 fn contract_key_addable_valid() {
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
-    let (account_key, account) = new_account(account_hash, NamedKeys::new());
+    let entity_hash = ContractHash::new([1u8; 32]);
+    let (account_key, entity_key, entity) =
+        new_addressable_entity(account_hash, entity_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
 
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let contract = StoredValue::Contract(Contract::default());
+    let contract = StoredValue::AddressableEntity(AddressableEntity::default());
     let mut access_rights = contract
-        .as_contract()
+        .as_addressable_entity()
         .unwrap()
         .extract_access_rights(ContractHash::default());
 
-    let (tracking_copy, _tempdir) = new_tracking_copy(account_key, account.clone());
+    let (tracking_copy, _tempdir) = new_tracking_copy(account_key, entity_key, entity.clone());
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
     tracking_copy.borrow_mut().write(contract_key, contract);
 
@@ -388,7 +403,9 @@ fn contract_key_addable_valid() {
         access_rights,
         RuntimeArgs::new(),
         authorization_keys,
-        &account,
+        &entity,
+        &account_hash,
+        &entity_hash,
         contract_key,
         BlockTime::new(0),
         DeployHash::from_raw(DEPLOY_HASH),
@@ -407,12 +424,15 @@ fn contract_key_addable_valid() {
         .metered_add_gs(contract_key, named_uref_tuple)
         .expect("Adding should work.");
 
-    let updated_contract = StoredValue::Contract(Contract::new(
+    let updated_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [0u8; 32].into(),
         [0u8; 32].into(),
         iter::once((uref_name, uref_as_key)).collect(),
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
+        URef::default(),
+        AssociatedKeys::default(),
+        ActionThresholds::default(),
     ));
 
     assert_eq!(
@@ -429,19 +449,21 @@ fn contract_key_addable_valid() {
 #[test]
 fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
-    let (account_key, account) = new_account(account_hash, NamedKeys::new());
+    let contract_hash = ContractHash::new([1u8; 32]);
+    let (account_key, entity_key, entity) =
+        new_addressable_entity(account_hash, contract_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
 
     let other_contract_key = random_contract_key(&mut rng);
-    let contract = StoredValue::Contract(Contract::default());
+    let contract = StoredValue::AddressableEntity(AddressableEntity::default());
     let mut access_rights = contract
-        .as_contract()
+        .as_addressable_entity()
         .unwrap()
         .extract_access_rights(ContractHash::default());
-    let (tracking_copy, _tempdir) = new_tracking_copy(account_key, account.clone());
+    let (tracking_copy, _tempdir) = new_tracking_copy(account_key, entity_key, entity.clone());
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
 
     tracking_copy.borrow_mut().write(contract_key, contract);
@@ -462,7 +484,9 @@ fn contract_key_addable_invalid() {
         access_rights,
         RuntimeArgs::new(),
         authorization_keys,
-        &account,
+        &entity,
+        &account_hash,
+        &contract_hash,
         other_contract_key,
         BlockTime::new(0),
         DeployHash::from_raw(DEPLOY_HASH),
@@ -627,12 +651,13 @@ fn manage_associated_keys() {
             .expect("Unable to add key");
 
         let effect = runtime_context.effect();
-        let transform = effect.transforms.get(&runtime_context.base_key()).unwrap();
-        let account = match transform {
-            Transform::Write(StoredValue::Account(account)) => account,
+        let addressable_entity_key: Key = (*runtime_context.entity_address).into();
+        let transform = effect.transforms.get(&addressable_entity_key).unwrap();
+        let entity = match transform {
+            Transform::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
-        account
+        entity
             .associated_keys()
             .get(&account_hash)
             .expect("Account hash wasn't added to associated keys");
@@ -643,9 +668,10 @@ fn manage_associated_keys() {
             .expect("Unable to update key");
 
         let effect = runtime_context.effect();
-        let transform = effect.transforms.get(&runtime_context.base_key()).unwrap();
+        let addressable_entity_key: Key = (*runtime_context.entity_address).into();
+        let transform = effect.transforms.get(&addressable_entity_key).unwrap();
         let account = match transform {
-            Transform::Write(StoredValue::Account(account)) => account,
+            Transform::Write(StoredValue::AddressableEntity(account)) => account,
             _ => panic!("Invalid transform operation found"),
         };
         let value = account
@@ -662,9 +688,10 @@ fn manage_associated_keys() {
 
         // Verify
         let effect = runtime_context.effect();
-        let transform = effect.transforms.get(&runtime_context.base_key()).unwrap();
+        let addressable_entity_key: Key = (*runtime_context.entity_address).into();
+        let transform = effect.transforms.get(&addressable_entity_key).unwrap();
         let account = match transform {
-            Transform::Write(StoredValue::Account(account)) => account,
+            Transform::Write(StoredValue::AddressableEntity(account)) => account,
             _ => panic!("Invalid transform operation found"),
         };
 
@@ -699,18 +726,19 @@ fn action_thresholds_management() {
             .expect("Unable to set action threshold Deployment");
 
         let effect = runtime_context.effect();
-        let transform = effect.transforms.get(&runtime_context.base_key()).unwrap();
-        let mutated_account = match transform {
-            Transform::Write(StoredValue::Account(account)) => account,
+        let addressable_entity_key: Key = (*runtime_context.entity_address).into();
+        let transform = effect.transforms.get(&addressable_entity_key).unwrap();
+        let mutated_entity = match transform {
+            Transform::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
 
         assert_eq!(
-            mutated_account.action_thresholds().deployment(),
+            mutated_entity.action_thresholds().deployment(),
             &Weight::new(252)
         );
         assert_eq!(
-            mutated_account.action_thresholds().key_management(),
+            mutated_entity.action_thresholds().key_management(),
             &Weight::new(253)
         );
 
@@ -731,7 +759,7 @@ fn should_verify_ownership_before_adding_key() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.base_key = Key::Hash([1; 32]);
+        runtime_context.entity_address = Key::Hash([1; 32]);
 
         let err = runtime_context
             .add_associated_key(AccountHash::new([84; 32]), Weight::new(123))
@@ -755,7 +783,7 @@ fn should_verify_ownership_before_removing_a_key() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.base_key = Key::Hash([1; 32]);
+        runtime_context.entity_address = Key::Hash([1; 32]);
 
         let err = runtime_context
             .remove_associated_key(AccountHash::new([84; 32]))
@@ -779,7 +807,7 @@ fn should_verify_ownership_before_setting_action_threshold() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.base_key = Key::Hash([1; 32]);
+        runtime_context.entity_address = Key::Hash([1; 32]);
 
         let err = runtime_context
             .set_action_threshold(ActionType::Deployment, Weight::new(123))
@@ -831,13 +859,18 @@ fn remove_uref_works() {
     let mut address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let uref_name = "Foo".to_owned();
     let uref_key = create_uref_as_key(&mut address_generator, AccessRights::READ);
+    let account_hash = AccountHash::new([0u8; 32]);
+    let contract_hash = ContractHash::new([1u8; 32]);
     let mut named_keys: NamedKeys = iter::once((uref_name.clone(), uref_key)).collect();
-    let (base_key, account) = new_account(AccountHash::new([0u8; 32]), named_keys.clone());
+    let (base_key, entity_key, addressable_entity) =
+        new_addressable_entity(account_hash, contract_hash, named_keys.clone());
 
-    let access_rights = account.extract_access_rights();
+    let access_rights = addressable_entity.extract_access_rights(contract_hash);
 
     let (mut runtime_context, _tempdir) = new_runtime_context(
-        &account,
+        &addressable_entity,
+        &account_hash,
+        &contract_hash,
         base_key,
         &mut named_keys,
         access_rights,
@@ -851,18 +884,21 @@ fn remove_uref_works() {
     assert!(runtime_context.validate_key(&uref_key).is_ok());
     assert!(!runtime_context.named_keys_contains_key(&uref_name));
     let effects = runtime_context.effect();
-    let transform = effects.transforms.get(&base_key).unwrap();
-    let account = match transform {
-        Transform::Write(StoredValue::Account(account)) => account,
+    let addressable_entity_key: Key = (*runtime_context.entity_address).into();
+    let transform = effects.transforms.get(&addressable_entity_key).unwrap();
+    let entity = match transform {
+        Transform::Write(StoredValue::AddressableEntity(entity)) => entity,
         _ => panic!("Invalid transform operation found"),
     };
-    assert!(!account.named_keys().contains_key(&uref_name));
+    assert!(!entity.named_keys().contains_key(&uref_name));
     // The next time the account is used, the access right is gone for the removed
     // named key.
-    let next_session_access_rights = account.extract_access_rights();
+    let next_session_access_rights = entity.extract_access_rights(contract_hash);
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let (runtime_context, _tempdir) = new_runtime_context(
-        account,
+        entity,
+        &account_hash,
+        &contract_hash,
         base_key,
         &mut named_keys,
         next_session_access_rights,
@@ -875,17 +911,20 @@ fn remove_uref_works() {
 fn an_accounts_access_rights_should_include_main_purse() {
     let test_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
     // All other access rights except for main purse are extracted from named keys.
+    let account_hash = AccountHash::new([0u8; 32]);
+    let contract_hash = ContractHash::new([1u8; 32]);
     let named_keys = NamedKeys::new();
-    let (_base_key, account) = new_account_with_purse(
-        AccountHash::new([0u8; 32]),
+    let (_base_key, _, entity) = new_addressable_entity_with_purse(
+        account_hash,
+        contract_hash,
         test_main_purse.addr(),
         named_keys,
     );
     assert!(
-        account.named_keys().is_empty(),
+        entity.named_keys().is_empty(),
         "Named keys does not contain main purse"
     );
-    let access_rights = account.extract_access_rights();
+    let access_rights = entity.extract_access_rights(contract_hash);
     assert!(
         access_rights.has_access_rights_to_uref(&test_main_purse),
         "Main purse should be included in access rights"
@@ -901,18 +940,23 @@ fn validate_valid_purse_of_an_account() {
     named_keys.insert("entry".to_string(), Key::from(test_main_purse));
 
     let deploy_hash = [1u8; 32];
-    let (base_key, account) = new_account_with_purse(
-        AccountHash::new([0u8; 32]),
+    let account_hash = AccountHash::new([0u8; 32]);
+    let contract_hash = ContractHash::new([1u8; 32]);
+    let (base_key, _, entity) = new_addressable_entity_with_purse(
+        account_hash,
+        contract_hash,
         test_main_purse.addr(),
         named_keys.clone(),
     );
 
-    let mut access_rights = account.extract_access_rights();
+    let mut access_rights = entity.extract_access_rights(contract_hash);
     access_rights.extend(&[test_main_purse]);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let (runtime_context, _tempdir) = new_runtime_context(
-        &account,
+        &entity,
+        &account_hash,
+        &contract_hash,
         base_key,
         &mut named_keys,
         access_rights,
@@ -1010,7 +1054,7 @@ fn should_meter_for_gas_storage_add() {
 #[test]
 fn associated_keys_add_full() {
     let final_add_result = build_runtime_context_and_execute(Default::default(), |mut rc| {
-        let associated_keys_before = rc.contract().associated_keys().len();
+        let associated_keys_before = rc.entity().associated_keys().len();
 
         for count in 0..(rc.engine_config.max_associated_keys() as usize - associated_keys_before) {
             let account_hash = {

@@ -19,6 +19,7 @@ use crate::{
     shared::execution_journal::ExecutionJournal,
 };
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
+use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     bytesrepr::ToBytes,
     contracts::{
@@ -27,14 +28,15 @@ use casper_types::{
     },
     system::auction::EraInfo,
     AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
-    ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
-    Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
-    Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Gas,
+    GrantedAccess, Key, KeyTag, Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_HASH_LENGTH, U512,
 };
 
 pub(crate) mod dictionary;
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -50,7 +52,7 @@ pub const RANDOM_BYTES_COUNT: usize = 32;
 /// Otherwise, if `access` object is a `Public` variant, then the entry point is considered callable
 /// and an unit value is returned.
 pub fn validate_group_membership(
-    contract_package: &ContractPackage,
+    contract_package: &Package,
     access: &EntryPointAccess,
     validator: impl Fn(&URef) -> bool,
 ) -> Result<(), Error> {
@@ -78,32 +80,35 @@ pub fn validate_group_membership(
 
 /// Holds information specific to the deployed contract.
 pub struct RuntimeContext<'a, R> {
-    tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     // Enables look up of specific uref based on human-readable name
     named_keys: &'a mut NamedKeys,
+    // Original account/contract for read only tasks taken before execution
+    entity: &'a AddressableEntity,
+    // Key pointing to the entity we are currently running
+    entity_address: Key,
+    authorization_keys: BTreeSet<AccountHash>,
     // Used to check uref is known before use (prevents forging urefs)
     access_rights: ContextAccessRights,
-    // Original account/contract for read only tasks taken before execution
-    contract: &'a AddressableEntity,
-    contract_hash: &'a ContractHash,
-    account_hash: &'a AccountHash,
-    args: RuntimeArgs,
-    authorization_keys: BTreeSet<AccountHash>,
-    // Key pointing to the entity we are currently running
-    //(could point at an account or contract in the global state)
-    base_key: Key,
-    blocktime: BlockTime,
-    deploy_hash: DeployHash,
-    gas_limit: Gas,
-    gas_counter: Gas,
+    package_kind: ContractPackageKind,
+
     address_generator: Rc<RefCell<AddressGenerator>>,
+    tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+    engine_config: EngineConfig,
+
+    blocktime: BlockTime,
     protocol_version: ProtocolVersion,
     correlation_id: CorrelationId,
+    deploy_hash: DeployHash,
     phase: Phase,
-    engine_config: EngineConfig,
-    entry_point_type: EntryPointType,
-    transfers: Vec<TransferAddr>,
+    args: RuntimeArgs,
+
+    gas_limit: Gas,
+    gas_counter: Gas,
     remaining_spending_limit: U512,
+
+    transfers: Vec<TransferAddr>,
+    //TODO: Will be removed along with stored session in later PR.
+    entry_point_type: EntryPointType,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -144,12 +149,12 @@ where
             named_keys,
             access_rights,
             args: runtime_args,
-            contract,
-            contract_hash,
+            entity: contract,
+            entity_address: contract_hash,
             authorization_keys,
             blocktime,
             deploy_hash,
-            base_key,
+            entity_address: base_key,
             gas_limit,
             gas_counter,
             address_generator,
@@ -176,9 +181,9 @@ where
         // debug_assert!(base_key != self.base_key);
         let tracking_copy = self.state();
         let authorization_keys = self.authorization_keys.clone();
-        let contract = self.contract;
+        let contract = self.entity;
         let account_hash = self.account_hash;
-        let contract_hash = self.contract_hash;
+        let contract_hash = self.entity_address;
         let blocktime = self.blocktime;
         let deploy_hash = self.deploy_hash;
         let gas_limit = self.gas_limit;
@@ -197,13 +202,13 @@ where
             named_keys,
             access_rights,
             args: runtime_args,
-            contract,
-            contract_hash,
+            entity: contract,
+            entity_address: contract_hash,
             account_hash,
             authorization_keys,
             blocktime,
             deploy_hash,
-            base_key,
+            entity_address: base_key,
             gas_limit,
             gas_counter,
             address_generator,
@@ -251,6 +256,7 @@ where
         if contract.remove_named_key(name).is_none() {
             return Ok(());
         }
+
         self.metered_write_gs_unsafe(key, contract)?;
         Ok(())
     }
@@ -260,19 +266,18 @@ where
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
-        match self.base_key() {
+        match self.entity_address() {
             account_hash @ Key::Account(_) => {
-                let (contract, contract_hash): (AddressableEntity, Key) = {
-                    let contract_hash = self
+                let (contract, contract_key): (AddressableEntity, Key) = {
+                    let contract_key = self
                         .read_gs_typed::<CLValue>(&account_hash)?
-                        .into_t::<ContractHash>()?;
+                        .into_t::<Key>()?;
 
-                    let mut contract: AddressableEntity = self.read_gs_typed(&account_hash)?;
-                    contract.named_keys_mut().remove(name);
-                    (contract, contract_hash.into())
+                    let mut contract: AddressableEntity = self.read_gs_typed(&contract_key)?;
+                    (contract, contract_key)
                 };
                 self.named_keys.remove(name);
-                self.remove_key_from_contract(contract_hash, contract, name)
+                self.remove_key_from_contract(contract_key, contract, name)
             }
             contract_uref @ Key::URef(_) => {
                 let contract: AddressableEntity = {
@@ -377,18 +382,8 @@ where
     }
 
     /// Returns contract of the caller.
-    pub fn contract(&self) -> &'a AddressableEntity {
-        self.contract
-    }
-
-    /// Returns the contract hash based on the context.
-    pub fn contract_hash(&self) -> &'a ContractHash {
-        self.contract_hash
-    }
-
-    /// Returns the account hash of the caller
-    pub fn account_hash(&self) -> &'a AccountHash {
-        self.account_hash
+    pub fn entity(&self) -> &'a AddressableEntity {
+        self.entity
     }
 
     /// Returns arguments.
@@ -429,8 +424,8 @@ where
     ///
     /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
     /// type.
-    pub fn base_key(&self) -> Key {
-        self.base_key
+    pub fn entity_address(&self) -> Key {
+        self.entity_address
     }
 
     /// Returns the protocol version.
@@ -486,7 +481,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(self.base_key(), named_key_value)?;
+        self.metered_add_gs_unsafe(self.entity_address(), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
     }
@@ -495,7 +490,7 @@ where
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
     #[cfg(test)]
-    pub(crate) fn _read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
+    pub(crate) fn read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
         match self
             .tracking_copy
             .borrow_mut()
@@ -508,7 +503,7 @@ where
     }
 
     #[cfg(test)]
-    pub(crate) fn _write_purse_uref(
+    pub(crate) fn write_purse_uref(
         &mut self,
         purse_uref: URef,
         cl_value: CLValue,
@@ -577,31 +572,6 @@ where
             .get_keys(self.correlation_id, key_tag)
             .map_err(Into::into)
     }
-
-    // /// Read an account from the global state.
-    // pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
-    //     if let Key::Account(_) = key {
-    //         self.validate_key(key)?;
-    //         self.tracking_copy
-    //             .borrow_mut()
-    //             .read(self.correlation_id, key)
-    //             .map_err(Into::into)
-    //     } else {
-    //         panic!("Do not use this function for reading from non-account keys")
-    //     }
-    // }
-    //
-    // /// Write an account to the global state.
-    // pub fn write_account(&mut self, key: Key, account: Account) -> Result<(), Error> {
-    //     if let Key::Account(_) = key {
-    //         self.validate_key(&key)?;
-    //         let account_value = self.account_to_validated_value(account)?;
-    //         self.metered_write_gs_unsafe(key, account_value)?;
-    //         Ok(())
-    //     } else {
-    //         panic!("Do not use this function for writing non-account keys")
-    //     }
-    // }
 
     /// Write a transfer instance to the global state.
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
@@ -795,8 +765,7 @@ where
     /// Tests whether reading from the `key` is valid.
     pub fn is_readable(&self, key: &Key) -> bool {
         match key {
-            // Key::Account(_) => &self.base_key() == key,
-            Key::Account(_) => true,
+            Key::Account(_) => &self.entity_address() == key,
             Key::Hash(_) => true,
             Key::URef(uref) => uref.is_readable(),
             Key::Transfer(_) => true,
@@ -817,7 +786,7 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) | Key::Hash(_) => &self.base_key() == key, // ???
+            Key::Account(_) | Key::Hash(_) => &self.entity_address() == key, // ???
             Key::URef(uref) => uref.is_addable(),
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
@@ -859,11 +828,11 @@ where
     /// Returns [`Error::GasLimit`] if gas limit exceeded and `()` if not.
     /// Intuition about the return value sense is to answer the question 'are we
     /// allowed to continue?'
-    pub(crate) fn charge_gas(&mut self, amount: Gas) -> Result<(), Error> {
+    pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), Error> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
         // gas charge overflow protection
-        match prev.checked_add(amount) {
+        match prev.checked_add(gas.cost(self.package_kind.is_system())) {
             None => {
                 self.set_gas_counter(gas_limit);
                 Err(Error::GasLimit)
@@ -888,7 +857,7 @@ where
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if let Some(base_key) = self.base_key().into_hash() {
+        if let Some(base_key) = self.entity_address().into_hash() {
             let contract_hash = ContractHash::new(base_key);
             if self.is_system_contract(&contract_hash)? {
                 // Don't charge storage used while executing a system contract.
@@ -908,12 +877,6 @@ where
     where
         T: Into<Gas>,
     {
-        if *self.account_hash() == PublicKey::System.to_account_hash() {
-            // Don't try to charge a system account for calling a system contract's entry point.
-            // This will make sure that (for example) calling a mint's transfer from within auction
-            // wouldn't try to incur cost to system account.
-            return Ok(());
-        }
         let amount: Gas = call_cost.into();
         self.charge_gas(amount)
     }
@@ -1008,19 +971,16 @@ where
             return Err(AddKeyFailure::PermissionDenied.into());
         }
 
-        if !self
-            .contract()
-            .can_manage_keys_with(&self.authorization_keys)
-        {
+        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
             // Exit early if authorization keys weight doesn't exceed required
             // key management threshold
             return Err(AddKeyFailure::PermissionDenied.into());
         }
 
         // Converts an account's public key into a URef
-        // let key = Key::Account(self.contract().account_hash());
-
         let key: Key = Key::Hash(self.contract_hash().value());
+
+        println!("Attempting read under value of {:?}", key);
 
         // Take a contract out of the global state
         let contract = {
@@ -1054,10 +1014,7 @@ where
             return Err(RemoveKeyFailure::PermissionDenied.into());
         }
 
-        if !self
-            .contract()
-            .can_manage_keys_with(&self.authorization_keys)
-        {
+        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
             // Exit early if authorization keys weight doesn't exceed required
             // key management threshold
             return Err(RemoveKeyFailure::PermissionDenied.into());
@@ -1079,6 +1036,8 @@ where
 
         self.metered_write_gs_unsafe(key, account_value)?;
 
+        println!("Wrote new value to GS");
+
         Ok(())
     }
 
@@ -1094,10 +1053,7 @@ where
             return Err(UpdateKeyFailure::PermissionDenied.into());
         }
 
-        if !self
-            .contract()
-            .can_manage_keys_with(&self.authorization_keys)
-        {
+        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
             // Exit early if authorization keys weight doesn't exceed required
             // key management threshold
             return Err(UpdateKeyFailure::PermissionDenied.into());
@@ -1134,10 +1090,7 @@ where
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        if !self
-            .contract()
-            .can_manage_keys_with(&self.authorization_keys)
-        {
+        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
             // Exit early if authorization keys weight doesn't exceed required
             // key management threshold
             return Err(SetThresholdFailure::PermissionDeniedError.into());
@@ -1162,13 +1115,6 @@ where
         Ok(())
     }
 
-    // /// Creates validated instance of `StoredValue` from `account`.
-    // fn account_to_validated_value(&self, account: Account) -> Result<StoredValue, Error> {
-    //     let value = StoredValue::Account(account);
-    //     self.validate_value(&value)?;
-    //     Ok(value)
-    // }
-
     fn contract_to_validated_value(
         &self,
         contract: AddressableEntity,
@@ -1180,16 +1126,12 @@ where
 
     /// Checks if the account context is valid.
     fn is_valid_context(&self) -> bool {
-        self.base_key() == Key::Hash(self.contract_hash().value())
+        self.entity_address() == Key::Hash(*self.entity_address.value())
     }
 
     /// Gets main purse id
     pub fn get_main_purse(&mut self) -> Result<URef, Error> {
-        if !self.is_valid_context() {
-            return Err(Error::InvalidContext);
-        }
-
-        let main_purse = self.contract().main_purse();
+        let main_purse = self.entity().main_purse();
         Ok(main_purse)
     }
 
@@ -1202,10 +1144,10 @@ where
     pub(crate) fn get_validated_contract_package(
         &mut self,
         package_hash: ContractPackageHash,
-    ) -> Result<ContractPackage, Error> {
+    ) -> Result<Package, Error> {
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
-        let contract_package: ContractPackage = self.read_gs_typed(&Key::from(package_hash))?;
+        let contract_package: Package = self.read_gs_typed(&Key::from(package_hash))?;
         self.validate_uref(&contract_package.access_key())?;
         Ok(contract_package)
     }

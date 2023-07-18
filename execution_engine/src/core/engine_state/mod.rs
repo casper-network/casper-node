@@ -66,9 +66,9 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash,
-    ContractPackage, ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest,
-    EntryPoints, EraId, ExecutableDeployItem, Gas, Key, KeyTag, Motes, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
+    ExecutableDeployItem, Gas, Key, KeyTag, Motes, Package, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 pub use self::{
@@ -815,7 +815,7 @@ where
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
                 let contract_package = {
-                    let mut contract_package = ContractPackage::new(
+                    let mut contract_package = Package::new(
                         access_key,
                         ContractVersions::default(),
                         DisabledVersions::default(),
@@ -1100,7 +1100,7 @@ where
                             let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
                             let contract_package = {
-                                let mut contract_package = ContractPackage::new(
+                                let mut contract_package = Package::new(
                                     access_key,
                                     ContractVersions::default(),
                                     DisabledVersions::default(),
@@ -1578,14 +1578,6 @@ where
 
         // Finalization is executed by system account (currently genesis account)
         // payment_code_spec_5: system executes finalization
-        // let system_account = Account::new(
-        //     PublicKey::System.to_account_hash(),
-        //     Default::default(),
-        //     URef::new(Default::default(), AccessRights::READ_ADD_WRITE),
-        //     Default::default(),
-        //     Default::default(),
-        // );
-
         let system_contract_by_account = tracking_copy.borrow_mut().read_contract_by_account_hash(
             correlation_id,
             protocol_version,

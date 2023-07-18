@@ -22,7 +22,7 @@ use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
     contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    ApiError, CLType, ContractPackage, ContractPackageHash, Group, Key, Parameter, URef,
+    ApiError, CLType, ContractPackageHash, Group, Key, Package, Parameter, URef,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -95,9 +95,7 @@ fn read_host_buffer_into(dest: &mut [u8]) -> Result<usize, ApiError> {
     Ok(unsafe { bytes_written.assume_init() })
 }
 
-fn read_contract_package(
-    package_hash: ContractPackageHash,
-) -> Result<Option<ContractPackage>, ApiError> {
+fn read_contract_package(package_hash: ContractPackageHash) -> Result<Option<Package>, ApiError> {
     let key = Key::from(package_hash);
     let (key_ptr, key_size, _bytes) = {
         let bytes = key.into_bytes().unwrap_or_revert();
@@ -143,7 +141,7 @@ pub extern "C" fn remove_group_urefs() {
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
     let ordinals: Vec<u64> = runtime::get_named_arg(UREF_INDICES_ARG);
 
-    let contract_package: ContractPackage = read_contract_package(package_hash)
+    let contract_package: Package = read_contract_package(package_hash)
         .unwrap_or_revert()
         .unwrap_or_revert();
 

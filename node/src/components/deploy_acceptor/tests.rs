@@ -526,7 +526,7 @@ impl reactor::Reactor for Reactor {
                                     | ContractPackageScenario::MissingContractVersion => {
                                         QueryResult::Success {
                                             value: Box::new(StoredValue::ContractPackage(
-                                                ContractPackage::default(),
+                                                Package::default(),
                                             )),
                                             proofs: vec![],
                                         }
@@ -587,7 +587,7 @@ impl reactor::Reactor for Reactor {
                                 | ContractPackageScenario::MissingContractVersion => {
                                     QueryResult::Success {
                                         value: Box::new(StoredValue::ContractPackage(
-                                            ContractPackage::default(),
+                                            Package::default(),
                                         )),
                                         proofs: vec![],
                                     }

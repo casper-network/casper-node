@@ -23,10 +23,9 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractPackage,
-    ContractVersionKey, ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    EraId, Group, Key, NamedArg, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef,
-    U128, U256, U512,
+    AccessRights, AddressableEntity, ByteCode, CLType, CLValue, ContractHash, ContractVersionKey,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
+    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::contracts::{Account, Contract};
@@ -406,8 +405,8 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         )
 }
 
-pub fn contract_wasm_arb() -> impl Strategy<Value = ContractWasm> {
-    collection::vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
+pub fn contract_wasm_arb() -> impl Strategy<Value = ByteCode> {
+    collection::vec(any::<u8>(), 1..1000).prop_map(ByteCode::new)
 }
 
 pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
@@ -431,7 +430,7 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
     collection::btree_map(group_arb(), collection::btree_set(uref_arb(), 1..10), 0..5)
 }
 
-pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
+pub fn contract_package_arb() -> impl Strategy<Value = Package> {
     (
         uref_arb(),
         contract_versions_arb(),
@@ -439,7 +438,7 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
         groups_arb(),
     )
         .prop_map(|(access_key, versions, disabled_versions, groups)| {
-            ContractPackage::new(
+            Package::new(
                 access_key,
                 versions,
                 disabled_versions,

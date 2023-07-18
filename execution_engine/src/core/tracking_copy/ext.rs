@@ -10,9 +10,9 @@ use casper_types::contracts::{
     ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
 };
 use casper_types::{
-    contracts::AccountHash, AccessRights, AddressableEntity, CLValue, ContractHash,
-    ContractPackage, ContractPackageHash, ContractWasm, ContractWasmHash, EntryPoints, Key, Motes,
-    Phase, ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef,
+    contracts::AccountHash, AccessRights, AddressableEntity, ByteCode, CLValue, ContractHash,
+    ContractPackageHash, ContractWasmHash, EntryPoints, Key, Motes, Package, Phase,
+    ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef,
 };
 
 use crate::core::execution::AddressGenerator;
@@ -91,7 +91,7 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         correlation_id: CorrelationId,
         contract_wasm_hash: ContractWasmHash,
-    ) -> Result<ContractWasm, Self::Error>;
+    ) -> Result<ByteCode, Self::Error>;
 
     /// Gets a contract header by Key.
     fn get_contract(
@@ -105,7 +105,7 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         correlation_id: CorrelationId,
         contract_package_hash: ContractPackageHash,
-    ) -> Result<ContractPackage, Self::Error>;
+    ) -> Result<Package, Self::Error>;
 
     /// Gets the system contract registry.
     fn get_system_contracts(
@@ -186,7 +186,7 @@ where
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
                 let contract_package = {
-                    let mut contract_package = ContractPackage::new(
+                    let mut contract_package = Package::new(
                         access_key,
                         ContractVersions::default(),
                         DisabledVersions::default(),
@@ -331,7 +331,7 @@ where
         &mut self,
         correlation_id: CorrelationId,
         contract_wasm_hash: ContractWasmHash,
-    ) -> Result<ContractWasm, Self::Error> {
+    ) -> Result<ByteCode, Self::Error> {
         let key = contract_wasm_hash.into();
         match self.get(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::ContractWasm(contract_wasm)) => Ok(contract_wasm),
@@ -372,7 +372,7 @@ where
         &mut self,
         correlation_id: CorrelationId,
         contract_package_hash: ContractPackageHash,
-    ) -> Result<ContractPackage, Self::Error> {
+    ) -> Result<Package, Self::Error> {
         let key = contract_package_hash.into();
         match self.read(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package),

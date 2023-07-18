@@ -123,9 +123,9 @@ use casper_execution_engine::{
     shared::execution_journal::ExecutionJournal,
 };
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, AddressableEntity, ChainspecRawBytes,
-    ContractPackage, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionEffect,
-    ExecutionResult, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transfer, URef, U512,
+    bytesrepr::Bytes, system::auction::EraValidators, AddressableEntity, ChainspecRawBytes, Deploy,
+    DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult, Key,
+    Package, PublicKey, StoredValue, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -1956,7 +1956,7 @@ impl<REv> EffectBuilder<REv> {
         state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<Box<ContractPackage>>
+    ) -> Option<Box<Package>>
     where
         REv: From<ContractRuntimeRequest>,
     {

@@ -100,12 +100,11 @@ pub use chainspec::{
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
-pub use contract_wasm::{ContractWasm, ContractWasmHash};
+pub use contract_wasm::{ByteCode, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::{
-    AddressableEntity, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
-    Parameter,
+    AddressableEntity, ContractHash, ContractPackageHash, ContractVersion, ContractVersionKey,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Package, Parameter,
 };
 pub use crypto::*;
 pub use deploy::{

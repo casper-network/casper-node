@@ -15,9 +15,9 @@ use serde_bytes::ByteBuf;
 use crate::contracts::{Account, Contract};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::ContractPackage,
+    contracts::Package,
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
-    AddressableEntity, CLValue, ContractWasm, DeployInfo, Transfer,
+    AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
 
@@ -47,12 +47,12 @@ pub enum StoredValue {
     CLValue(CLValue),
     /// Variant that stores [`Account`].
     Account(Account),
-    /// Variant that stores [`ContractWasm`].
-    ContractWasm(ContractWasm),
-    /// Variant that stores [`ContractWasm`].
+    /// Variant that stores [`ByteCode`].
+    ContractWasm(ByteCode),
+    /// Variant that stores [`ByteCode`].
     Contract(Contract),
-    /// Variant that stores [`ContractPackage`].
-    ContractPackage(ContractPackage),
+    /// Variant that stores [`Package`].
+    ContractPackage(Package),
     /// Variant that stores [`Transfer`].
     Transfer(Transfer),
     /// Variant that stores [`DeployInfo`].
@@ -94,16 +94,16 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`ContractWasm`] if this is a `ContractWasm` variant.
-    pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
+    /// Returns a wrapped [`ByteCode`] if this is a `ContractWasm` variant.
+    pub fn as_contract_wasm(&self) -> Option<&ByteCode> {
         match self {
             StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
             _ => None,
         }
     }
 
-    /// Returns a wrapped [`ContractPackage`] if this is a `ContractPackage` variant.
-    pub fn as_contract_package(&self) -> Option<&ContractPackage> {
+    /// Returns a wrapped [`Package`] if this is a `ContractPackage` variant.
+    pub fn as_contract_package(&self) -> Option<&Package> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
             _ => None,
@@ -199,8 +199,8 @@ impl From<Account> for StoredValue {
     }
 }
 
-impl From<ContractWasm> for StoredValue {
-    fn from(value: ContractWasm) -> StoredValue {
+impl From<ByteCode> for StoredValue {
+    fn from(value: ByteCode) -> StoredValue {
         StoredValue::ContractWasm(value)
     }
 }
@@ -216,8 +216,8 @@ impl From<AddressableEntity> for StoredValue {
         StoredValue::AddressableEntity(value)
     }
 }
-impl From<ContractPackage> for StoredValue {
-    fn from(value: ContractPackage) -> StoredValue {
+impl From<Package> for StoredValue {
+    fn from(value: Package) -> StoredValue {
         StoredValue::ContractPackage(value)
     }
 }
@@ -255,7 +255,7 @@ impl TryFrom<StoredValue> for Account {
     }
 }
 
-impl TryFrom<StoredValue> for ContractWasm {
+impl TryFrom<StoredValue> for ByteCode {
     type Error = TypeMismatch;
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
@@ -269,7 +269,7 @@ impl TryFrom<StoredValue> for ContractWasm {
     }
 }
 
-impl TryFrom<StoredValue> for ContractPackage {
+impl TryFrom<StoredValue> for Package {
     type Error = TypeMismatch;
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
@@ -412,12 +412,12 @@ impl FromBytes for StoredValue {
             tag if tag == Tag::Account as u8 => Account::from_bytes(remainder)
                 .map(|(account, remainder)| (StoredValue::Account(account), remainder)),
             tag if tag == Tag::ContractWasm as u8 => {
-                ContractWasm::from_bytes(remainder).map(|(contract_wasm, remainder)| {
+                ByteCode::from_bytes(remainder).map(|(contract_wasm, remainder)| {
                     (StoredValue::ContractWasm(contract_wasm), remainder)
                 })
             }
             tag if tag == Tag::ContractPackage as u8 => {
-                ContractPackage::from_bytes(remainder).map(|(contract_package, remainder)| {
+                Package::from_bytes(remainder).map(|(contract_package, remainder)| {
                     (StoredValue::ContractPackage(contract_package), remainder)
                 })
             }

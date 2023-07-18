@@ -10,11 +10,11 @@ use casper_types::{
         ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
     },
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
-    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
-    DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedKey, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer,
-    TransferAddr, Transform, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, ByteCode, CLType, CLTyped, CLValue, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedKey, Package, Parameter,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, Transform, URef,
+    U128, U256, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -305,7 +305,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
         );
 
-        let contract_wasm = ContractWasm::new(DO_NOTHING_BYTES.to_vec());
+        let contract_wasm = ByteCode::new(DO_NOTHING_BYTES.to_vec());
 
         stored_value.insert(
             "ContractWasm".to_string(),
@@ -372,7 +372,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             BTreeSet::from_iter(vec![URef::new([55; 32], AccessRights::READ)]),
         );
 
-        let contract_package = ContractPackage::new(
+        let contract_package = Package::new(
             URef::new([39; 32], AccessRights::READ),
             active_versions,
             disabled_versions,

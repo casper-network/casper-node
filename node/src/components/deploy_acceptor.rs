@@ -15,10 +15,10 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{
     contracts::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, CLValue, Chainspec,
-    ContractHash, ContractIdentifier, ContractPackage, ContractPackageHash,
-    ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy, DeployConfig,
-    DeployConfigurationFailure, Digest, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key,
-    ProtocolVersion, StoredValue, Timestamp, U512,
+    ContractHash, ContractIdentifier, ContractPackageHash, ContractPackageIdentifier,
+    ContractVersion, ContractVersionKey, Deploy, DeployConfig, DeployConfigurationFailure, Digest,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package, ProtocolVersion,
+    StoredValue, Timestamp, U512,
 };
 
 use crate::{
@@ -868,7 +868,7 @@ impl DeployAcceptor {
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<Box<ContractPackage>>,
+        maybe_contract_package: Option<Box<Package>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
         match maybe_contract_package {

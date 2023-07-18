@@ -512,7 +512,7 @@ impl JsonSchema for ContractHash {
     }
 }
 
-/// A newtype wrapping a `HashAddr` which references a [`ContractPackage`] in the global state.
+/// A newtype wrapping a `HashAddr` which references a [`Package`] in the global state.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ContractPackageHash(HashAddr);
@@ -852,7 +852,7 @@ impl FromBytes for ContractPackageKind {
 /// Contract definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractPackage {
+pub struct Package {
     /// Key used to add or disable versions
     access_key: URef,
     /// All versions (enabled & disabled)
@@ -870,13 +870,13 @@ pub struct ContractPackage {
     contract_package_kind: ContractPackageKind,
 }
 
-impl CLTyped for ContractPackage {
+impl CLTyped for Package {
     fn cl_type() -> CLType {
         CLType::Any
     }
 }
 
-impl ContractPackage {
+impl Package {
     /// Create new `ContractPackage` (with no versions) from given access key.
     pub fn new(
         access_key: URef,
@@ -886,7 +886,7 @@ impl ContractPackage {
         lock_status: ContractPackageStatus,
         contract_package_kind: ContractPackageKind,
     ) -> Self {
-        ContractPackage {
+        Package {
             access_key,
             versions,
             disabled_versions,
@@ -1079,7 +1079,7 @@ impl ContractPackage {
     }
 }
 
-impl ToBytes for ContractPackage {
+impl ToBytes for Package {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         self.access_key().write_bytes(&mut result)?;
@@ -1111,7 +1111,7 @@ impl ToBytes for ContractPackage {
     }
 }
 
-impl FromBytes for ContractPackage {
+impl FromBytes for Package {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (access_key, bytes) = URef::from_bytes(bytes)?;
         let (versions, bytes) = ContractVersions::from_bytes(bytes)?;
@@ -1120,7 +1120,7 @@ impl FromBytes for ContractPackage {
         let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
         let (contract_package_kind, bytes) =
             ContractPackageKind::from_bytes(bytes).unwrap_or_default();
-        let result = ContractPackage {
+        let result = Package {
             access_key,
             versions,
             disabled_versions,
@@ -2490,8 +2490,8 @@ mod tests {
     use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
     use alloc::borrow::ToOwned;
 
-    fn make_contract_package() -> ContractPackage {
-        let mut contract_package = ContractPackage::new(
+    fn make_contract_package() -> Package {
+        let mut contract_package = Package::new(
             URef::new([0; 32], AccessRights::NONE),
             ContractVersions::default(),
             DisabledVersions::default(),
@@ -2554,7 +2554,7 @@ mod tests {
     #[test]
     fn next_contract_version() {
         let major = 1;
-        let mut contract_package = ContractPackage::new(
+        let mut contract_package = Package::new(
             URef::new([0; 32], AccessRights::NONE),
             ContractVersions::default(),
             DisabledVersions::default(),
@@ -2580,8 +2580,7 @@ mod tests {
     fn roundtrip_serialization() {
         let contract_package = make_contract_package();
         let bytes = contract_package.to_bytes().expect("should serialize");
-        let (decoded_package, rem) =
-            ContractPackage::from_bytes(&bytes).expect("should deserialize");
+        let (decoded_package, rem) = Package::from_bytes(&bytes).expect("should deserialize");
         assert_eq!(contract_package, decoded_package);
         assert_eq!(rem.len(), 0);
     }
