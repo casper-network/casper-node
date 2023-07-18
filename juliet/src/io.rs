@@ -131,7 +131,13 @@ pub enum CoreError {
         header.error_kind(),
         data.as_ref().map(|b| b.len()).unwrap_or(0))
     ]
-    RemoteReportedError { header: Header, data: Option<Bytes> },
+    RemoteReportedError {
+        /// Header of the reported error.
+        header: Header,
+        /// The error payload, if the error kind was
+        /// [`ErrorKind::Other`](crate::header::ErrorKind::Other).
+        data: Option<Bytes>,
+    },
     /// The remote peer violated the protocol and has been sent an error.
     #[error("error sent to peer")]
     RemoteProtocolViolation(OutgoingFrame),
