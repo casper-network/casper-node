@@ -4,10 +4,10 @@
 //!
 //! ## General usage
 //!
-//! This crate is split into three layers, whose usage depends on an applications specific usecase.
-//! At the very core sits the [`protocol`] module, which is a side-effect free implementation of the
-//! protocol. The caller is responsible for all IO flowing in and out, but it instructed by the
-//! state machine what to do next.
+//! This crate is split into three layers, whose usage depends on an application's specific use
+//! case. At the very core sits the [`protocol`] module, which is a side-effect-free implementation
+//! of the protocol. The caller is responsible for all IO flowing in and out, but it is instructed
+//! by the state machine what to do next.
 //!
 //! If there is no need to roll custom IO, the [`io`] layer provides a complete `tokio`-based
 //! solution that operates on [`tokio::io::AsyncRead`] and [`tokio::io::AsyncWrite`]. It handles
@@ -192,13 +192,13 @@ impl Default for ChannelConfiguration {
 }
 
 impl ChannelConfiguration {
-    /// Creates a configuration the given request limit (the default is 1).
+    /// Creates a configuration with the given request limit (default is 1).
     pub fn with_request_limit(mut self, request_limit: u16) -> ChannelConfiguration {
         self.request_limit = request_limit;
         self
     }
 
-    /// Creates a configuration the given maximum size for request payloads (the default is 0).
+    /// Creates a configuration with the given maximum size for request payloads (default is 0).
     pub fn with_max_request_payload_size(
         mut self,
         max_request_payload_size: u32,
@@ -207,7 +207,7 @@ impl ChannelConfiguration {
         self
     }
 
-    /// Creates a configuration the given maximum size for response payloads (the default is 0).
+    /// Creates a configuration with the given maximum size for response payloads (default is 0).
     pub fn with_max_response_payload_size(
         mut self,
         max_response_payload_size: u32,

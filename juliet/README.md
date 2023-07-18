@@ -1,6 +1,6 @@
-# `juliet` protocol implementation
+# Juliet protocol implementation
 
-This crate implements the juliet multiplexing protocol as laid out in the [Juliet RFC](https://github.com/marc-casperlabs/juliet-rfc/blob/master/juliet.md). It aims to be a secure, simple, easy to verify/review implementation that is still reasonably performant.
+This crate implements the Juliet multiplexing protocol as laid out in the [Juliet RFC](https://github.com/marc-casperlabs/juliet-rfc/blob/master/juliet.md). It aims to be a secure, simple, easy to verify/review implementation that is still reasonably performant.
 
 ## Benefits
 
@@ -14,7 +14,7 @@ This crate implements the juliet multiplexing protocol as laid out in the [Julie
 
 This crate's implementation includes benefits such as
 
-* a side-effect free implementation of the Juliet protocol,
+* a side-effect-free implementation of the Juliet protocol,
 * an `async` IO layer integrated with the [`bytes`](https://docs.rs/bytes) crate to use it, and
 * a type-safe RPC layer built on top.
 

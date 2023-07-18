@@ -12,8 +12,8 @@
 //! cargo run --example fizzbuzz --features tracing
 //! ```
 //!
-//! You should [Fizz buzz](https://en.wikipedia.org/wiki/Fizz_buzz) solutions being calculated on
-//! the server side and sent back.
+//! You should see [Fizz buzz](https://en.wikipedia.org/wiki/Fizz_buzz) solutions being calculated
+//! on the server side and sent back.
 
 use std::{fmt::Write, net::SocketAddr, time::Duration};
 
