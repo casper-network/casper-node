@@ -43,7 +43,6 @@ use casper_types::{
     EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
     SecretKey, SystemConfig, WasmConfig, U256, U512,
 };
-use gh_1470_regression_call::METHOD_CALL_DO_NOTHING;
 
 use crate::{lmdb_fixture, test::system_contracts::auction::bids::engine_state::ExecConfig};
 

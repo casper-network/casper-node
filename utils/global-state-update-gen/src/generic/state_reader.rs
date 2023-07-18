@@ -1,5 +1,4 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
-use casper_types::contracts::Account;
 use casper_types::{
     contracts::AccountHash,
     system::{

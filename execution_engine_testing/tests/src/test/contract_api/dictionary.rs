@@ -92,10 +92,10 @@ fn query_dictionary_item(
                 let contract_hash: ContractHash = CLValue::into_t::<Key>(cl_value)
                     .expect("must convert to contract hash")
                     .into_hash()
-                    .map(|hash_add| ContractHash::new(hash_add))
+                    .map(ContractHash::new)
                     .expect("must convert to contract hash");
                 return query_dictionary_item(
-                    &builder,
+                    builder,
                     contract_hash.into(),
                     dictionary_name,
                     dictionary_item_key,

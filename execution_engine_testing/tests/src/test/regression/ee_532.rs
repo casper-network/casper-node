@@ -1,6 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::Error;
 use casper_types::{contracts::AccountHash, RuntimeArgs};

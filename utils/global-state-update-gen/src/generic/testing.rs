@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use rand::Rng;
 
-use casper_types::contracts::{Account, ActionThresholds, AssociatedKeys, NamedKeys, Weight};
+use casper_types::contracts::{ActionThresholds, AssociatedKeys, NamedKeys, Weight};
 use casper_types::{
     contracts::AccountHash,
     system::auction::{

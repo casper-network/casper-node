@@ -7,8 +7,8 @@ use std::{
 use rand::Rng;
 
 use casper_types::contracts::{
-    Account, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
-    ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+    ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus, ContractVersions,
+    DisabledVersions, Groups, NamedKeys, Weight,
 };
 use casper_types::{
     contracts::AccountHash,
@@ -189,8 +189,7 @@ impl<T: StateReader> StateTracker<T> {
 
         let addressable_entity_by_account_hash = {
             let contract_key: Key = contract_hash.into();
-            let cl_value = CLValue::from_t(contract_key).expect("must convert to cl_value");
-            cl_value
+            CLValue::from_t(contract_key).expect("must convert to cl_value")
         };
 
         self.accounts_cache

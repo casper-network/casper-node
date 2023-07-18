@@ -20,8 +20,8 @@ use casper_types::{
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
-    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemConfig,
-    URef, WasmConfig, U512,
+    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, SystemConfig, URef,
+    WasmConfig, U512,
 };
 
 use crate::lmdb_fixture;

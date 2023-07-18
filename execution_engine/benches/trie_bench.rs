@@ -3,7 +3,7 @@ use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 use casper_storage::global_state::storage::trie::{Pointer, PointerBlock, Trie};
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    CLValue, Digest, Key, StoredValue,
+    Digest, Key, StoredValue,
 };
 
 // fn serialize_trie_leaf(b: &mut Bencher) {

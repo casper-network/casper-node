@@ -207,8 +207,7 @@ fn tracking_copy_add_named_key() {
         associated_keys,
         Default::default(),
     );
-    let contract_hash =
-        CLValue::from_t(ContractHash::new([4u8; 32])).expect("must convert to CLValue");
+
     let db = CountingDb::new_init(StoredValue::AddressableEntity(contract));
     let mut tc = TrackingCopy::new(db);
     let k = Key::Hash([0u8; 32]);
@@ -434,7 +433,7 @@ proptest! {
         v in stored_value_arb(), // value in contract state
         state_name in "\\PC*", // human-readable name for state
         contract_name in "\\PC*", // human-readable name for contract
-        pk in account_hash_arb(), // account hash
+        _pk in account_hash_arb(), // account hash
         address in account_hash_arb(), // address for account hash
         hash in u8_slice_32(), // hash for contract key
     ) {
@@ -457,9 +456,9 @@ proptest! {
 
         // create account which knows about contract
         let mut account_named_keys = NamedKeys::new();
-        account_named_keys.insert(contract_name.clone(), contract_key);
-        let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
-        let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
+        account_named_keys.insert(contract_name, contract_key);
+
+
         let contract_hash = ContractHash::new([10;32]);
         let new_contract_key: Key = contract_hash.into();
         let account_value = CLValue::from_t(new_contract_key).unwrap();
@@ -878,14 +877,14 @@ fn validate_query_proof_should_work() {
 fn get_keys_should_return_keys_in_the_account_keyspace() {
     // account 1
     let account_1_hash = AccountHash::new([1; 32]);
-    let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
+
     let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
     let account_1_value = StoredValue::CLValue(account_cl_value);
     let account_1_key = Key::Account(account_1_hash);
 
     // account 2
     let account_2_hash = AccountHash::new([2; 32]);
-    let fake_purse = URef::new([43; 32], AccessRights::READ_ADD_WRITE);
+
     let fake_account_cl_value = CLValue::from_t(ContractHash::new([21; 32])).unwrap();
     let account_2_value = StoredValue::CLValue(fake_account_cl_value);
     let account_2_key = Key::Account(account_2_hash);
@@ -924,7 +923,7 @@ fn get_keys_should_return_keys_in_the_account_keyspace() {
 fn get_keys_should_return_keys_in_the_uref_keyspace() {
     // account
     let account_hash = AccountHash::new([1; 32]);
-    let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
+
     let account_cl_value = CLValue::from_t(ContractHash::new([20; 32])).unwrap();
     let account_value = StoredValue::CLValue(account_cl_value);
     let account_key = Key::Account(account_hash);
@@ -1028,7 +1027,7 @@ fn get_keys_should_handle_reads_from_empty_trie() {
 
     // persist account
     let account_hash = AccountHash::new([1; 32]);
-    let fake_purse = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
+
     let account_value = CLValue::from_t(ContractHash::new([10; 32])).unwrap();
     let account_value = StoredValue::CLValue(account_value);
     let account_key = Key::Account(account_hash);

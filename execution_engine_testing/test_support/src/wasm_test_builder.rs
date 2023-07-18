@@ -148,7 +148,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             transforms: self.transforms.clone(),
-            genesis_account: self.genesis_account.clone(),
+            genesis_account: self.genesis_account,
             genesis_transforms: self.genesis_transforms.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
@@ -576,11 +576,10 @@ where
                 Ok(StoredValue::CLValue(cl_value)) => {
                     let contract_key =
                         CLValue::into_t::<Key>(cl_value).expect("must convert to contract key");
-                    let contract_hash = contract_key
+                    contract_key
                         .into_hash()
-                        .map(|hash_addr| ContractHash::new(hash_addr))
-                        .expect("must convert to contract hash");
-                    contract_hash
+                        .map(ContractHash::new)
+                        .expect("must convert to contract hash")
                 }
                 Ok(_) => panic!("Failed to get system contract by account hash"),
                 Err(err) => panic!("{}", err),
@@ -1165,6 +1164,7 @@ where
         }
     }
 
+    /// Retrieve a Contract from global state.
     pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])

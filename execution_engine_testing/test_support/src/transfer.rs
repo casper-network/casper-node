@@ -1,7 +1,5 @@
 use casper_execution_engine::core::engine_state::ExecuteRequest;
-use casper_types::{
-    contracts::AccountHash, runtime_args, CLValue, ContractHash, Key, RuntimeArgs, URef, U512,
-};
+use casper_types::{contracts::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 use crate::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,

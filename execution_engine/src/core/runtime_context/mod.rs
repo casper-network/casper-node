@@ -495,7 +495,7 @@ where
     ///
     /// Currently address of a purse [`URef`] is also a hash in the [`Key::Hash`] space.
     #[cfg(test)]
-    pub(crate) fn read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
+    pub(crate) fn _read_purse_uref(&mut self, purse_uref: &URef) -> Result<Option<CLValue>, Error> {
         match self
             .tracking_copy
             .borrow_mut()
@@ -508,7 +508,7 @@ where
     }
 
     #[cfg(test)]
-    pub(crate) fn write_purse_uref(
+    pub(crate) fn _write_purse_uref(
         &mut self,
         purse_uref: URef,
         cl_value: CLValue,
