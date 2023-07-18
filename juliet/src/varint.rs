@@ -83,6 +83,7 @@ impl Varint32 {
     pub const MAX_LEN: usize = 5;
 
     /// Encodes a 32-bit integer to variable length.
+    #[inline]
     pub const fn encode(mut value: u32) -> Self {
         let mut output = [0u8; 6];
         let mut count = 0;
@@ -101,14 +102,14 @@ impl Varint32 {
     }
 
     /// Returns the number of bytes in the encoded varint.
-    #[inline(always)]
+    #[inline]
     #[allow(clippy::len_without_is_empty)]
     pub const fn len(self) -> usize {
         self.0[5] as usize
     }
 
     /// Returns whether or not the given value is the sentinel value.
-    #[inline(always)]
+    #[inline]
     pub const fn is_sentinel(self) -> bool {
         self.len() == 0
     }
@@ -207,6 +208,8 @@ mod tests {
         assert_eq!(encoded.len(), encoded.as_ref().len());
         assert!(!encoded.is_sentinel());
         check_decode(value, encoded.as_ref());
+
+        assert_eq!(encoded.decode(), value);
     }
 
     #[test]
@@ -248,5 +251,16 @@ mod tests {
     fn sentinel_has_length_zero() {
         assert_eq!(Varint32::SENTINEL.len(), 0);
         assert!(Varint32::SENTINEL.is_sentinel());
+    }
+
+    #[test]
+    fn working_sentinel_formatting_and_decoding() {
+        assert_eq!(format!("{:?}", Varint32::SENTINEL), "Varint32::SENTINEL");
+        assert_eq!(Varint32::SENTINEL.decode(), 0);
+    }
+
+    #[proptest]
+    fn working_debug_impl(value: u32) {
+        format!("{:?}", Varint32::encode(value));
     }
 }
