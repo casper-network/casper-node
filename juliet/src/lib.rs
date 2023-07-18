@@ -1,3 +1,10 @@
+#![doc(html_root_url = "https://docs.rs/juliet/0.1.0")]
+#![doc(
+    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
+    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
+    test(attr(deny(warnings)))
+)]
+#![warn(missing_docs, trivial_casts, trivial_numeric_casts)]
 #![doc = include_str!("../README.md")]
 
 //!
