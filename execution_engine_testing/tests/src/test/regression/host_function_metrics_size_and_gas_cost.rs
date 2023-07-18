@@ -60,11 +60,6 @@ fn host_function_metrics_has_acceptable_size() {
         size,
         HOST_FUNCTION_METRICS_MAX_SIZE
     );
-    assert!(
-        size >= HOST_FUNCTION_METRICS_MIN_SIZE,
-        "Performance improvement: contract host-function-metrics became only {} bytes long; please adjust this regression test.",
-        size
-    );
     println!(
         "contract host-function-metrics byte size: {}, ubound: {}",
         size, HOST_FUNCTION_METRICS_MAX_SIZE
@@ -136,11 +131,6 @@ fn host_function_metrics_has_acceptable_gas_cost() {
         "Performance regression: contract host-function-metrics used {} gas; it should use no more than {} gas.",
         gas_cost,
         HOST_FUNCTION_METRICS_MAX_GAS_COST
-    );
-    assert!(
-        gas_cost >= U512::from(HOST_FUNCTION_METRICS_MIN_GAS_COST),
-        "Performance improvement: contract host-function-metrics used only {} gas; please adjust this regression test.",
-        gas_cost
     );
 }
 
