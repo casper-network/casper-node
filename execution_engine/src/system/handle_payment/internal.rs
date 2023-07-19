@@ -49,6 +49,7 @@ pub fn finalize_payment<P: MintProvider + RuntimeProvider>(
     target: URef,
 ) -> Result<(), Error> {
     let caller = provider.get_caller();
+
     if caller != PublicKey::System.to_account_hash() {
         return Err(Error::SystemFunctionCalledByUserAccount);
     }

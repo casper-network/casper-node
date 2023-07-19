@@ -76,6 +76,7 @@ pub struct Runtime<'a, R> {
     module: Option<Module>,
     host_buffer: Option<CLValue>,
     stack: Option<RuntimeStack>,
+    host_function_flag: HostFunctionFlag,
 }
 
 impl<'a, R> Runtime<'a, R>
@@ -91,6 +92,7 @@ where
             module: None,
             host_buffer: None,
             stack: None,
+            host_function_flag: HostFunctionFlag::default(),
         }
     }
 
@@ -104,11 +106,10 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            context,
             memory: Some(memory),
             module: Some(module),
             host_buffer: None,
-            context,
             stack: Some(stack),
             host_function_flag: self.host_function_flag.clone(),
         }
@@ -122,11 +123,10 @@ where
     ) -> Self {
         Self::check_preconditions(&stack);
         Runtime {
-            config: self.config,
+            context,
             memory: None,
             module: None,
             host_buffer: None,
-            context,
             stack: Some(stack),
             host_function_flag: self.host_function_flag.clone(),
         }
@@ -175,6 +175,11 @@ where
     where
         T: Into<Gas>,
     {
+        if self.is_system_immediate_caller()? || self.host_function_flag.is_in_host_function_scope()
+        {
+            return Ok(());
+        }
+
         self.context.charge_system_contract_call(amount)
     }
 
@@ -539,8 +544,11 @@ where
 
         let mut mint_runtime = self.new_with_stack(runtime_context, stack);
 
-        let system_config = self.config.system_config();
+        let engine_config = self.context.engine_config();
+        let system_config = engine_config.system_config();
         let mint_costs = system_config.mint_costs();
+
+        println!("In call host mint with runtime created");
 
         let result = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
@@ -564,6 +572,8 @@ where
             // Type: `fn create() -> URef`
             mint::METHOD_CREATE => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.create)?;
+
+                println!("Was able to charge for create");
 
                 let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
                 CLValue::from_t(uref).map_err(Self::reverter)
@@ -590,6 +600,7 @@ where
                 let id: Option<u64> = Self::get_named_argument(runtime_args, mint::ARG_ID)?;
                 let result: Result<(), mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
+
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`
@@ -614,6 +625,13 @@ where
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
+
+        if result.is_err() {
+            println!(
+                "Mint error {:?} for entrypoint {}",
+                result, entry_point_name
+            );
+        }
 
         // Charge just for the amount that particular entry point cost - using gas cost from the
         // isolated runtime might have a recursive costs whenever system contract calls other system
@@ -668,7 +686,8 @@ where
 
         let mut runtime = self.new_with_stack(runtime_context, stack);
 
-        let system_config = self.config.system_config();
+        let engine_config = self.context.engine_config();
+        let system_config = engine_config.system_config();
         let handle_payment_costs = system_config.handle_payment_costs();
 
         let result = match entry_point_name {
@@ -705,10 +724,15 @@ where
                 runtime
                     .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
+                println!("Finalized");
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
+
+        let package_kind = self.context.get_package_kind();
+
+        println!("{:?}", package_kind);
 
         self.gas(match runtime.gas_counter().checked_sub(gas_counter) {
             None => gas_counter,
@@ -716,6 +740,7 @@ where
         })?;
 
         let ret = result?;
+
         let urefs = utils::extract_urefs(&ret)?;
         self.context.access_rights_extend(&urefs);
         {
@@ -767,7 +792,8 @@ where
 
         let mut runtime = self.new_with_stack(runtime_context, stack);
 
-        let system_config = self.context.engine_config.system_config();
+        let engine_config = self.context.engine_config();
+        let system_config = engine_config.system_config();
         let auction_costs = system_config.auction_costs();
 
         let result = match entry_point_name {
@@ -782,6 +808,7 @@ where
             })(),
 
             auction::METHOD_ADD_BID => (|| {
+                println!("In add bid {:?}", runtime.context.get_package_kind());
                 runtime.charge_system_contract_call(auction_costs.add_bid)?;
 
                 let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
@@ -815,8 +842,10 @@ where
                 let validator = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
                 let amount = Self::get_named_argument(runtime_args, auction::ARG_AMOUNT)?;
 
-                let max_delegators_per_validator = self.config.max_delegators_per_validator();
-                let minimum_delegation_amount = self.config.minimum_delegation_amount();
+                let max_delegators_per_validator =
+                    self.context.engine_config().max_delegators_per_validator();
+                let minimum_delegation_amount =
+                    self.context.engine_config().minimum_delegation_amount();
 
                 let result = runtime
                     .delegate(
@@ -854,7 +883,8 @@ where
                 let new_validator =
                     Self::get_named_argument(runtime_args, auction::ARG_NEW_VALIDATOR)?;
 
-                let minimum_delegation_amount = self.config.minimum_delegation_amount();
+                let minimum_delegation_amount =
+                    self.context.engine_config().minimum_delegation_amount();
 
                 let result = runtime
                     .redelegate(
@@ -877,7 +907,8 @@ where
                 let evicted_validators =
                     Self::get_named_argument(runtime_args, auction::ARG_EVICTED_VALIDATORS)?;
 
-                let max_delegators_per_validator = self.config.max_delegators_per_validator();
+                let max_delegators_per_validator =
+                    self.context.engine_config().max_delegators_per_validator();
 
                 runtime
                     .run_auction(
@@ -954,6 +985,8 @@ where
             *transfers = runtime.context.transfers().to_owned();
         }
 
+        println!("The auction result {:?}", ret);
+
         Ok(ret)
     }
 
@@ -975,7 +1008,8 @@ where
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         let protocol_version = self.context.protocol_version();
-        let wasm_config = self.config.wasm_config();
+        let engine_config = self.context.engine_config();
+        let wasm_config = engine_config.wasm_config();
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
             utils::instance_and_memory(module.clone(), protocol_version, wasm_config)?;
@@ -1061,7 +1095,7 @@ where
             }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
-                Ok(self.context.entity_address())
+                Ok(self.context.get_entity_address())
             }
             (EntryPointType::Session, EntryPointType::Contract)
             | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
@@ -1156,7 +1190,7 @@ where
         // if not public, restricted to user group access
         self.validate_group_membership(&contract_package, entry_point.access())?;
 
-        if self.config.strict_argument_checking() {
+        if self.context.engine_config().strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
                 .args()
                 .iter()
@@ -1211,16 +1245,19 @@ where
         let stack = {
             let mut stack = self.try_get_stack()?.clone();
 
-            let account_hash = contract_package
-                .get_contract_package_kind()
-                .maybe_account_hash();
-
             let call_stack_element = match entry_point.entry_point_type() {
-                EntryPointType::Session => CallStackElement::stored_session(
-                    *self.context.account_hash(),
-                    contract.contract_package_hash(),
-                    contract_hash,
-                ),
+                EntryPointType::Session => {
+                    let account_hash = match self.context.maybe_account_hash() {
+                        Some(account_hash) => account_hash,
+                        None => return Err(Error::InvalidContext),
+                    };
+
+                    CallStackElement::stored_session(
+                        account_hash,
+                        contract.contract_package_hash(),
+                        contract_hash,
+                    )
+                }
                 EntryPointType::Contract => CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
@@ -1329,7 +1366,7 @@ where
         let (instance, memory) = utils::instance_and_memory(
             module.clone(),
             protocol_version,
-            self.config.wasm_config(),
+            self.context.engine_config().wasm_config(),
         )?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
 
@@ -1817,7 +1854,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.entity_address() != Key::from(self.context.get_system_contract(MINT)?) {
+        if self.context.get_entity_address() != Key::from(self.context.get_system_contract(MINT)?) {
             return Err(Error::InvalidContext);
         }
 
@@ -1828,7 +1865,10 @@ where
         let transfer_addr = self.context.new_transfer_addr()?;
         let transfer = {
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
-            let from: AccountHash = *self.context.account_hash();
+            let from: AccountHash = match self.context.maybe_account_hash() {
+                Some(account_hash) => account_hash,
+                None => return Err(Error::InvalidContext),
+            };
             let fee: U512 = U512::zero(); // TODO
             Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
         };
@@ -1843,7 +1883,9 @@ where
 
     /// Records given auction info at a given era id
     fn record_era_summary(&mut self, era_info: EraInfo) -> Result<(), Error> {
-        if self.context.entity_address() != Key::from(self.context.get_system_contract(AUCTION)?) {
+        if self.context.get_entity_address()
+            != Key::from(self.context.get_system_contract(AUCTION)?)
+        {
             return Err(Error::InvalidContext);
         }
 
@@ -2286,7 +2328,6 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
-
         let target_key = Key::Account(target);
         // Look up the account at the given public key's address
         match self.context.read_gs(&target_key)? {

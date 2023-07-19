@@ -903,8 +903,13 @@ where
         } else {
             ContractWasmHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
-        let contract_hash =
-            ContractHash::new(self.address_generator.borrow_mut().new_hash_address());
+        let contract_hash = if contract_package_kind.is_system_account() {
+            let entity_hash_addr = PublicKey::System.to_account_hash().value();
+            ContractHash::new(entity_hash_addr)
+        } else {
+            ContractHash::new(self.address_generator.borrow_mut().new_hash_address())
+        };
+
         let contract_package_hash =
             ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 

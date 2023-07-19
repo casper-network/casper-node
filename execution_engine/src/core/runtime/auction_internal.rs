@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use casper_storage::global_state::storage::state::StateReader;
+use casper_types::contracts::Account;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     contracts::AccountHash,
@@ -138,7 +139,9 @@ where
     }
 
     fn vesting_schedule_period_millis(&self) -> u64 {
-        self.config.vesting_schedule_period_millis()
+        self.context
+            .engine_config()
+            .vesting_schedule_period_millis()
     }
 }
 

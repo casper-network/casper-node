@@ -794,6 +794,42 @@ impl ContractPackageKind {
             Self::Wasm | Self::System(_) | Self::Legacy => AssociatedKeys::default(),
         }
     }
+
+    pub fn is_system(&self) -> bool {
+        match self {
+            ContractPackageKind::System(_) => true,
+            ContractPackageKind::Account(account_hash) => {
+                *account_hash == PublicKey::System.to_account_hash()
+            }
+            _ => false,
+        }
+    }
+
+    pub fn is_system_mint(&self) -> bool {
+        match self {
+            Self::System(SystemContractType::Mint) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_system_auction(&self) -> bool {
+        match self {
+            Self::System(SystemContractType::Auction) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_system_account(&self) -> bool {
+        match self {
+            Self::Account(account_hash) => {
+                if *account_hash == PublicKey::System.to_account_hash() {
+                    return true;
+                }
+                false
+            }
+            _ => false,
+        }
+    }
 }
 
 impl ToBytes for ContractPackageKind {

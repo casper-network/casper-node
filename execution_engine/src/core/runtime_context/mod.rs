@@ -90,6 +90,7 @@ pub struct RuntimeContext<'a, R> {
     // Used to check uref is known before use (prevents forging urefs)
     access_rights: ContextAccessRights,
     package_kind: ContractPackageKind,
+    account_hash: AccountHash,
 
     address_generator: Rc<RefCell<AddressGenerator>>,
     tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -121,27 +122,27 @@ where
     /// Where we already have a runtime context, consider using `new_from_self()`.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-        entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
-        access_rights: ContextAccessRights,
-        runtime_args: RuntimeArgs,
+        entity: &'a AddressableEntity,
+        entity_address: Key,
         authorization_keys: BTreeSet<AccountHash>,
-        contract: &'a AddressableEntity,
-        account_hash: &'a AccountHash,
-        contract_hash: &'a ContractHash,
-        base_key: Key,
-        blocktime: BlockTime,
-        deploy_hash: DeployHash,
-        gas_limit: Gas,
-        gas_counter: Gas,
+        access_rights: ContextAccessRights,
+        package_kind: ContractPackageKind,
+        account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        engine_config: EngineConfig,
+        blocktime: BlockTime,
         protocol_version: ProtocolVersion,
         correlation_id: CorrelationId,
+        deploy_hash: DeployHash,
         phase: Phase,
-        engine_config: EngineConfig,
+        runtime_args: RuntimeArgs,
+        gas_limit: Gas,
+        gas_counter: Gas,
         transfers: Vec<TransferAddr>,
         remaining_spending_limit: U512,
+        entry_point_type: EntryPointType,
     ) -> Self {
         RuntimeContext {
             tracking_copy,
@@ -149,12 +150,12 @@ where
             named_keys,
             access_rights,
             args: runtime_args,
-            entity: contract,
-            entity_address: contract_hash,
+            entity,
+            entity_address,
             authorization_keys,
+            account_hash,
             blocktime,
             deploy_hash,
-            entity_address: base_key,
             gas_limit,
             gas_counter,
             address_generator,
@@ -164,7 +165,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
-            account_hash,
+            package_kind,
         }
     }
 
@@ -172,29 +173,33 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new_from_self(
         &self,
-        base_key: Key,
+        entity_address: Key,
         entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
     ) -> Self {
         // debug_assert!(base_key != self.base_key);
-        let tracking_copy = self.state();
+        let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
-        let contract = self.entity;
+        let package_kind = self.package_kind.clone();
         let account_hash = self.account_hash;
-        let contract_hash = self.entity_address;
-        let blocktime = self.blocktime;
-        let deploy_hash = self.deploy_hash;
-        let gas_limit = self.gas_limit;
-        let gas_counter = self.gas_counter;
+
         let address_generator = self.address_generator.clone();
+        let tracking_copy = self.state();
+        let engine_config = self.engine_config;
+
+        let blocktime = self.blocktime;
         let protocol_version = self.protocol_version;
         let correlation_id = self.correlation_id;
+        let deploy_hash = self.deploy_hash;
         let phase = self.phase;
-        let engine_config = self.engine_config;
-        let transfers = self.transfers.clone();
+
+        let gas_limit = self.gas_limit;
+        let gas_counter = self.gas_counter;
         let remaining_spending_limit = self.remaining_spending_limit();
+
+        let transfers = self.transfers.clone();
 
         RuntimeContext {
             tracking_copy,
@@ -202,13 +207,12 @@ where
             named_keys,
             access_rights,
             args: runtime_args,
-            entity: contract,
-            entity_address: contract_hash,
-            account_hash,
+            entity,
+            entity_address,
             authorization_keys,
+            account_hash,
             blocktime,
             deploy_hash,
-            entity_address: base_key,
             gas_limit,
             gas_counter,
             address_generator,
@@ -218,6 +222,7 @@ where
             engine_config,
             transfers,
             remaining_spending_limit,
+            package_kind,
         }
     }
 
@@ -246,6 +251,27 @@ where
         self.named_keys.contains_key(name)
     }
 
+    /// Returns an instance of the engine config.
+    pub fn engine_config(&self) -> EngineConfig {
+        self.engine_config
+    }
+
+    /// Returns the associated account hash with the current runtime context if present.
+    pub fn maybe_account_hash(&self) -> Option<AccountHash> {
+        self.package_kind.maybe_account_hash()
+    }
+
+    pub fn get_package_kind(&self) -> ContractPackageKind {
+        self.package_kind.clone()
+    }
+
+    pub fn is_system_account(&self) -> bool {
+        if let Some(account_hash) = self.package_kind.maybe_account_hash() {
+            return account_hash == PublicKey::System.to_account_hash();
+        }
+        false
+    }
+
     /// Helper function to avoid duplication in `remove_uref`.
     fn remove_key_from_contract(
         &mut self,
@@ -266,7 +292,7 @@ where
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
-        match self.entity_address() {
+        match self.get_entity_address() {
             account_hash @ Key::Account(_) => {
                 let (contract, contract_key): (AddressableEntity, Key) = {
                     let contract_key = self
@@ -356,11 +382,6 @@ where
         }
     }
 
-    /// Returns the caller of the contract.
-    pub fn get_caller(&self) -> AccountHash {
-        *self.account_hash
-    }
-
     /// Returns the block time.
     pub fn get_blocktime(&self) -> BlockTime {
         self.blocktime
@@ -424,8 +445,12 @@ where
     ///
     /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
     /// type.
-    pub fn entity_address(&self) -> Key {
+    pub fn get_entity_address(&self) -> Key {
         self.entity_address
+    }
+
+    pub fn get_caller(&self) -> AccountHash {
+        self.account_hash
     }
 
     /// Returns the protocol version.
@@ -481,7 +506,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(self.entity_address(), named_key_value)?;
+        self.metered_add_gs_unsafe(self.get_entity_address(), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
     }
@@ -765,7 +790,7 @@ where
     /// Tests whether reading from the `key` is valid.
     pub fn is_readable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) => &self.entity_address() == key,
+            Key::Account(_) => true,
             Key::Hash(_) => true,
             Key::URef(uref) => uref.is_readable(),
             Key::Transfer(_) => true,
@@ -786,7 +811,8 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) | Key::Hash(_) => &self.entity_address() == key, // ???
+            Key::Account(_) => false,
+            Key::Hash(_) => &self.get_entity_address() == key, // ???
             Key::URef(uref) => uref.is_addable(),
             Key::Transfer(_) => false,
             Key::DeployInfo(_) => false,
@@ -831,11 +857,12 @@ where
     pub(crate) fn charge_gas(&mut self, gas: Gas) -> Result<(), Error> {
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
+        let is_system = self.package_kind.is_system();
         // gas charge overflow protection
-        match prev.checked_add(gas.cost(self.package_kind.is_system())) {
+        match prev.checked_add(gas.cost(is_system)) {
             None => {
                 self.set_gas_counter(gas_limit);
-                Err(Error::GasLimit)
+                Err(Error::DictionaryItemKeyExceedsLength)
             }
             Some(val) if val > gas_limit => {
                 self.set_gas_counter(gas_limit);
@@ -857,7 +884,7 @@ where
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if let Some(base_key) = self.entity_address().into_hash() {
+        if let Some(base_key) = self.get_entity_address().into_hash() {
             let contract_hash = ContractHash::new(base_key);
             if self.is_system_contract(&contract_hash)? {
                 // Don't charge storage used while executing a system contract.
@@ -978,9 +1005,7 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key: Key = Key::Hash(self.contract_hash().value());
-
-        println!("Attempting read under value of {:?}", key);
+        let key: Key = self.get_entity_address();
 
         // Take a contract out of the global state
         let contract = {
@@ -1022,7 +1047,7 @@ where
 
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
-        let key: Key = Key::Hash(self.contract_hash().value());
+        let key: Key = self.get_entity_address();
 
         // Take an account out of the global state
         let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
@@ -1035,8 +1060,6 @@ where
         let account_value = self.contract_to_validated_value(contract)?;
 
         self.metered_write_gs_unsafe(key, account_value)?;
-
-        println!("Wrote new value to GS");
 
         Ok(())
     }
@@ -1061,7 +1084,7 @@ where
 
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
-        let key: Key = Key::Hash(self.contract_hash().value());
+        let key: Key = self.get_entity_address();
 
         // Take an account out of the global state
         let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
@@ -1096,9 +1119,7 @@ where
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        // Converts an account's public key into a URef
-        // let key = Key::Account(self.contract().account_hash());
-        let key: Key = Key::Hash(self.contract_hash().value());
+        let key: Key = self.get_entity_address();
 
         // Take an account out of the global state
         let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
@@ -1126,7 +1147,7 @@ where
 
     /// Checks if the account context is valid.
     fn is_valid_context(&self) -> bool {
-        self.entity_address() == Key::Hash(*self.entity_address.value())
+        self.get_entity_address() == self.entity_address
     }
 
     /// Gets main purse id
@@ -1134,6 +1155,10 @@ where
         let main_purse = self.entity().main_purse();
         Ok(main_purse)
     }
+
+    // pub fn get_entity_address(&self) -> Key {
+    //     self.entity_address
+    // }
 
     /// Gets entry point type.
     pub fn entry_point_type(&self) -> EntryPointType {

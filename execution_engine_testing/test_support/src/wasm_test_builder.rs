@@ -752,8 +752,6 @@ where
             .engine_state
             .run_execute(CorrelationId::new(), exec_request);
 
-        println!("{:?}", maybe_exec_results);
-
         assert!(maybe_exec_results.is_ok());
         // Parse deploy results
         let execution_results = maybe_exec_results.as_ref().unwrap();

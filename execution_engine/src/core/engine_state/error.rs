@@ -2,7 +2,9 @@
 use datasize::DataSize;
 use thiserror::Error;
 
-use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
+use casper_types::{
+    bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, ProtocolVersion,
+};
 
 use crate::{
     core::{
@@ -107,6 +109,9 @@ pub enum Error {
     /// Failed to retrieve contract record by a given account hash.
     #[error("Failed to retrieve contract by account hash {0}")]
     MissingContractByAccountHash(AccountHash),
+    /// Failed to retreive the entity's package
+    #[error("Failed to retreieve the entity package as {0}")]
+    MissingEntityPackage(ContractPackageHash),
 }
 
 impl Error {

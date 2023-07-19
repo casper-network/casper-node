@@ -259,7 +259,7 @@ fn account_key_readable_valid() {
     // Account key is readable if it is a "base" key - current context of the
     // execution.
     let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
-        let base_key = rc.entity_address();
+        let base_key = rc.get_entity_address();
         let contract_key: Key = (*rc.entity_address).into();
         let cl_value = CLValue::from_t(contract_key).expect("should convert");
 
@@ -296,7 +296,7 @@ fn account_key_addable_returns_type_mismatch() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
     let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
-        let base_key = rc.entity_address();
+        let base_key = rc.get_entity_address();
         let uref_name = "NewURef".to_owned();
         let named_key =
             StoredValue::CLValue(CLValue::from_t((uref_name.clone(), uref_as_key)).unwrap());
