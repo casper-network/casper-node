@@ -20,4 +20,4 @@ This crate's implementation includes benefits such as
 
 ## Examples
 
-For a quick usage example, see `examples/fizzbuzz.rz`.
+For a quick usage example, see `examples/fizzbuzz.rs`.
