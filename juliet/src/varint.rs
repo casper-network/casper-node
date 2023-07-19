@@ -116,9 +116,15 @@ impl Varint32 {
 
     /// Decodes the contained `Varint32`.
     ///
-    /// Should only be used in debug assertions. The sentinel values is decoded as 0.
-    #[cfg(debug_assertions)]
+    /// Should only be used in debug assertions, as `Varint32`s not meant to encoded/decoded cheaply
+    /// throughout their lifecycle. The sentinel value is decoded as 0.
     pub(crate) fn decode(self) -> u32 {
+        // Note: It is not possible to decorate this function with `#[cfg(debug_assertions)]`, since
+        //       `debug_assert!` will not remove the assertion from the code, but put it behind an
+        //       `if false { .. }` instead. Furthermore we also don't panic at runtime, as adding
+        //       a panic that only occurs in `--release` builds is arguably worse than this function
+        //       being called.
+
         if self.is_sentinel() {
             return 0;
         }
