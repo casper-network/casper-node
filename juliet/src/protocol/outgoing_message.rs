@@ -268,3 +268,131 @@ impl Buf for OutgoingFrame {
         self.0.advance(cnt)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::{Buf, Bytes};
+
+    use crate::{
+        header::{Header, Kind},
+        ChannelId, Id,
+    };
+
+    use super::{FrameIter, OutgoingMessage};
+
+    /// Maximum frame size used across tests.
+    const MAX_FRAME_SIZE: u32 = 16;
+
+    /// A reusable sample payload.
+    const PAYLOAD: &[u8] = &[
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+        48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70,
+        71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93,
+        94, 95, 96, 97, 98, 99,
+    ];
+
+    /// Collects all frames from a single frame iter.
+    fn collect_frames(mut iter: FrameIter) -> Vec<Vec<u8>> {
+        let mut frames = Vec::new();
+        loop {
+            let (mut frame, more) = iter.next_owned(MAX_FRAME_SIZE);
+            let expanded = frame.copy_to_bytes(frame.remaining());
+            frames.push(expanded.into());
+            if let Some(more) = more {
+                iter = more;
+            } else {
+                break frames;
+            }
+        }
+    }
+
+    /// Constructs a message with the given length, turns it into frames and compares if the
+    /// resulting frames are equal to the expected frame sequence.
+    #[track_caller]
+    fn check_payload(length: Option<usize>, expected: &[&[u8]]) {
+        let payload = length.map(|l| Bytes::from(&PAYLOAD[..l]));
+
+        let msg = OutgoingMessage::new(
+            Header::new(Kind::RequestPl, ChannelId(0xAB), Id(0xEFCD)),
+            payload,
+        );
+
+        // A zero-byte payload is still expected to produce a single byte for the 0-length.
+        let frames = collect_frames(msg.frames());
+
+        // We could compare without creating a new vec, but this gives nicer error messages.
+        let comparable: Vec<_> = frames.iter().map(|v| v.as_slice()).collect();
+        assert_eq!(&comparable, expected);
+    }
+
+    #[test]
+    fn message_is_fragmentized_correctly() {
+        check_payload(None, &[&[0x02, 0xAB, 0xCD, 0xEF]]);
+        check_payload(Some(0), &[&[0x02, 0xAB, 0xCD, 0xEF, 0]]);
+        check_payload(Some(1), &[&[0x02, 0xAB, 0xCD, 0xEF, 1, 0]]);
+        check_payload(Some(5), &[&[0x02, 0xAB, 0xCD, 0xEF, 5, 0, 1, 2, 3, 4]]);
+        check_payload(
+            Some(11),
+            &[&[0x02, 0xAB, 0xCD, 0xEF, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]],
+        );
+        check_payload(
+            Some(12),
+            &[
+                &[0x02, 0xAB, 0xCD, 0xEF, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                &[0x02, 0xAB, 0xCD, 0xEF, 11],
+            ],
+        );
+        check_payload(
+            Some(13),
+            &[
+                &[0x02, 0xAB, 0xCD, 0xEF, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                &[0x02, 0xAB, 0xCD, 0xEF, 11, 12],
+            ],
+        );
+        check_payload(
+            Some(23),
+            &[
+                &[0x02, 0xAB, 0xCD, 0xEF, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                &[
+                    0x02, 0xAB, 0xCD, 0xEF, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                ],
+            ],
+        );
+        check_payload(
+            Some(24),
+            &[
+                &[0x02, 0xAB, 0xCD, 0xEF, 24, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                &[
+                    0x02, 0xAB, 0xCD, 0xEF, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                ],
+                &[0x02, 0xAB, 0xCD, 0xEF, 23],
+            ],
+        );
+        check_payload(
+            Some(35),
+            &[
+                &[0x02, 0xAB, 0xCD, 0xEF, 35, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                &[
+                    0x02, 0xAB, 0xCD, 0xEF, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                ],
+                &[
+                    0x02, 0xAB, 0xCD, 0xEF, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
+                ],
+            ],
+        );
+        check_payload(
+            Some(36),
+            &[
+                &[0x02, 0xAB, 0xCD, 0xEF, 36, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+                &[
+                    0x02, 0xAB, 0xCD, 0xEF, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+                ],
+                &[
+                    0x02, 0xAB, 0xCD, 0xEF, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34,
+                ],
+                &[0x02, 0xAB, 0xCD, 0xEF, 35],
+            ],
+        );
+    }
+}
