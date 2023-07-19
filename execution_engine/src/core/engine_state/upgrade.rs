@@ -82,7 +82,6 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
-    old_protocol_version: ProtocolVersion,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -93,12 +92,10 @@ where
     /// Creates new system upgrader instance.
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
-        old_protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
-            old_protocol_version,
             tracking_copy,
         }
     }

@@ -795,6 +795,7 @@ impl ContractPackageKind {
         }
     }
 
+    /// Returns if the current package is either a system contract or the system entity.
     pub fn is_system(&self) -> bool {
         match self {
             ContractPackageKind::System(_) => true,
@@ -805,20 +806,17 @@ impl ContractPackageKind {
         }
     }
 
+    /// Returns if the current package is the system mint.
     pub fn is_system_mint(&self) -> bool {
-        match self {
-            Self::System(SystemContractType::Mint) => true,
-            _ => false,
-        }
+        matches!(self, Self::System(SystemContractType::Mint))
     }
 
+    /// Returns if the current package is the system auction.
     pub fn is_system_auction(&self) -> bool {
-        match self {
-            Self::System(SystemContractType::Auction) => true,
-            _ => false,
-        }
+        matches!(self, Self::System(SystemContractType::Auction))
     }
 
+    /// Returns if the current package is associated with the system addressable entity.
     pub fn is_system_account(&self) -> bool {
         match self {
             Self::Account(account_hash) => {

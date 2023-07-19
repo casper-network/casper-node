@@ -261,10 +261,12 @@ where
         self.package_kind.maybe_account_hash()
     }
 
+    /// Returns the package kind associated with the current context.
     pub fn get_package_kind(&self) -> ContractPackageKind {
         self.package_kind.clone()
     }
 
+    /// Returns whether the current context is of the system addressable entity.
     pub fn is_system_account(&self) -> bool {
         if let Some(account_hash) = self.package_kind.maybe_account_hash() {
             return account_hash == PublicKey::System.to_account_hash();
@@ -299,7 +301,7 @@ where
                         .read_gs_typed::<CLValue>(&account_hash)?
                         .into_t::<Key>()?;
 
-                    let mut contract: AddressableEntity = self.read_gs_typed(&contract_key)?;
+                    let contract: AddressableEntity = self.read_gs_typed(&contract_key)?;
                     (contract, contract_key)
                 };
                 self.named_keys.remove(name);
@@ -449,6 +451,7 @@ where
         self.entity_address
     }
 
+    /// Returns the initiater of the call chain.
     pub fn get_caller(&self) -> AccountHash {
         self.account_hash
     }
@@ -509,6 +512,11 @@ where
         self.metered_add_gs_unsafe(self.get_entity_address(), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn get_entity(&self) -> AddressableEntity {
+        self.entity.clone()
     }
 
     /// Reads the balance of a purse [`URef`].

@@ -790,4 +790,5 @@ extern "C" {
     /// * `out_ptr` - pointer to the location where argument bytes will be copied from the host side
     /// * `out_size` - size of output pointer
     pub fn casper_random_bytes(out_ptr: *mut u8, out_size: usize) -> i32;
+
 }

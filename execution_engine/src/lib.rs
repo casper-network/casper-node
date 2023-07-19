@@ -19,8 +19,5 @@ pub mod core;
 pub mod shared;
 mod system;
 
-use casper_types::{Key, PublicKey};
-use once_cell::sync::Lazy;
-
 /// A special contract wasm hash for contracts representing Accounts.
 pub const ACCOUNT_WASM_ADDR: [u8; 32] = [0u8; 32];

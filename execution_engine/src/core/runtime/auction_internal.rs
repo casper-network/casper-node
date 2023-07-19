@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use casper_storage::global_state::storage::state::StateReader;
-use casper_types::contracts::Account;
+
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     contracts::AccountHash,

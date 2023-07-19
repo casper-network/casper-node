@@ -381,11 +381,8 @@ where
 
         // Cycle through the system contracts and update
         // their metadata if there is a change in entry points.
-        let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
-            new_protocol_version,
-            current_protocol_version,
-            tracking_copy.clone(),
-        );
+        let system_upgrader: SystemUpgrader<S> =
+            SystemUpgrader::new(new_protocol_version, tracking_copy.clone());
 
         system_upgrader.migrate_system_account(pre_state_hash)?;
 
@@ -878,6 +875,7 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
+    /// Return the package kind.
     pub fn get_entity_package_kind(
         &self,
         correlation_id: CorrelationId,
@@ -1370,7 +1368,7 @@ where
                 DirectSystemContractCall::Transfer,
                 runtime_args,
                 &entity,
-                package_kind.clone(),
+                package_kind,
                 authorization_keys.clone(),
                 account_hash,
                 blocktime,
@@ -1894,7 +1892,7 @@ where
                 session_args,
                 entity_hash,
                 &entity,
-                package_kind.clone(),
+                package_kind,
                 &mut session_named_keys,
                 session_access_rights,
                 authorization_keys.clone(),

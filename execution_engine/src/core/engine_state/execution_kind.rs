@@ -60,7 +60,7 @@ impl ExecutionKind {
         R::Error: Into<ExecError>,
     {
         let contract_hash: ContractHash;
-        let mut contract_package: Package;
+        let contract_package: Package;
 
         let is_payment_phase = phase == Phase::Payment;
 
