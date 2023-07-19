@@ -155,13 +155,12 @@ impl FrameIter {
         if let Some(ref payload) = self.msg.payload {
             let mut payload_remaining = payload.len() - self.bytes_processed;
 
-            debug_assert!(payload_remaining > 0);
-
             let length_prefix = if self.bytes_processed == 0 {
                 Varint32::encode(payload_remaining as u32)
             } else {
                 Varint32::SENTINEL
             };
+
             let preamble = if self.bytes_processed == 0 {
                 Preamble::new(self.msg.header, length_prefix)
             } else {
@@ -238,17 +237,6 @@ impl OutgoingFrame {
     /// payload exceeds `u32::MAX` in size.
     #[inline(always)]
     fn new_with_payload(preamble: Preamble, payload: Bytes) -> Self {
-        debug_assert!(
-            !preamble.payload_length.is_sentinel() || payload.is_empty(),
-            "frames without a payload must not contain a preamble with a payload length"
-        );
-
-        debug_assert!(
-            preamble.payload_length.is_sentinel()
-                || preamble.payload_length.decode() as usize == payload.len(),
-            "frames with a payload must have a matching decoded payload length"
-        );
-
         debug_assert!(
             payload.len() <= u32::MAX as usize,
             "payload exceeds maximum allowed payload"
