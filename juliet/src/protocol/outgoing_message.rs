@@ -10,7 +10,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use bytes::{buf::Chain, Buf, Bytes};
+use bytes::{buf::Chain, Buf, BufMut, Bytes};
 
 use crate::{header::Header, varint::Varint32};
 
@@ -25,7 +25,7 @@ use super::payload_is_multi_frame;
 /// interspersed with other messages at will. In general, the [`OutgoingMessage::frames()`] iterator
 /// should be used, even for single-frame messages.
 #[must_use]
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct OutgoingMessage {
     /// The common header for all outgoing messages.
     header: Header,
@@ -190,6 +190,27 @@ impl FrameIter {
             )
         }
     }
+
+    /// Writes out all frames as they should be sent out onto the wire into the given buffer.
+    ///
+    /// This does not leave any way to intersperse other frames and is only recommend in context
+    /// like testing.
+    #[cfg(test)]
+    #[inline]
+    pub fn put_into<T: BufMut>(self, buffer: &mut T, max_frame_size: u32) {
+        let mut current = self;
+        loop {
+            let (frame, mut more) = current.next_owned(max_frame_size);
+
+            buffer.put(frame);
+
+            current = if let Some(more) = more.take() {
+                more
+            } else {
+                return;
+            }
+        }
+    }
 }
 
 /// A single frame to be sent.
@@ -272,7 +293,9 @@ impl Buf for OutgoingFrame {
 
 #[cfg(test)]
 mod tests {
-    use bytes::{Buf, Bytes};
+    use std::ops::Deref;
+
+    use bytes::{Buf, Bytes, BytesMut};
 
     use crate::{
         header::{Header, Kind},
@@ -327,11 +350,22 @@ mod tests {
         assert_eq!(expected.len() > 1, msg.is_multi_frame(MAX_FRAME_SIZE));
 
         // A zero-byte payload is still expected to produce a single byte for the 0-length.
-        let frames = collect_frames(msg.frames());
+        let frames = collect_frames(msg.clone().frames());
 
         // We could compare without creating a new vec, but this gives nicer error messages.
         let comparable: Vec<_> = frames.iter().map(|v| v.as_slice()).collect();
         assert_eq!(&comparable, expected);
+
+        // Ensure that the written out version is the same as expected.
+        let mut written_out = BytesMut::new();
+        msg.frames().put_into(&mut written_out, MAX_FRAME_SIZE);
+        let expected_bytestring: Vec<u8> = expected
+            .into_iter()
+            .map(Deref::deref)
+            .flatten()
+            .copied()
+            .collect();
+        assert_eq!(written_out, expected_bytestring);
     }
 
     #[test]
