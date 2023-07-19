@@ -50,10 +50,10 @@ impl<'a> Display for PayloadFormat<'a> {
         }
 
         if raw.len() > 16 {
-            f.write_str("...")?;
+            f.write_str("... ")?;
         }
 
-        write!(f, " ({} bytes)", raw.len())?;
+        write!(f, "({} bytes)", raw.len())?;
 
         Ok(())
     }

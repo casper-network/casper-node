@@ -5,7 +5,7 @@
 //! [`OutgoingMessage`].
 
 use std::{
-    fmt::{self, Debug, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter, Write},
     io::Cursor,
 };
 
@@ -207,6 +207,7 @@ impl Display for OutgoingFrame {
         let payload = self.0.last_ref();
 
         if !payload.as_ref().is_empty() {
+            f.write_char(' ')?;
             Display::fmt(&crate::util::PayloadFormat(self.0.last_ref()), f)?;
         }
 
@@ -275,10 +276,11 @@ mod tests {
 
     use crate::{
         header::{Header, Kind},
+        varint::Varint32,
         ChannelId, Id,
     };
 
-    use super::{FrameIter, OutgoingMessage};
+    use super::{FrameIter, OutgoingMessage, Preamble};
 
     /// Maximum frame size used across tests.
     const MAX_FRAME_SIZE: u32 = 16;
@@ -311,12 +313,18 @@ mod tests {
     /// resulting frames are equal to the expected frame sequence.
     #[track_caller]
     fn check_payload(length: Option<usize>, expected: &[&[u8]]) {
+        assert!(
+            !expected.is_empty(),
+            "impossible to have message with no frames"
+        );
+
         let payload = length.map(|l| Bytes::from(&PAYLOAD[..l]));
 
-        let msg = OutgoingMessage::new(
-            Header::new(Kind::RequestPl, ChannelId(0xAB), Id(0xEFCD)),
-            payload,
-        );
+        let header = Header::new(Kind::RequestPl, ChannelId(0xAB), Id(0xEFCD));
+        let msg = OutgoingMessage::new(header, payload);
+
+        assert_eq!(msg.header(), header);
+        assert_eq!(expected.len() > 1, msg.is_multi_frame(MAX_FRAME_SIZE));
 
         // A zero-byte payload is still expected to produce a single byte for the 0-length.
         let frames = collect_frames(msg.frames());
@@ -394,5 +402,30 @@ mod tests {
                 &[0x02, 0xAB, 0xCD, 0xEF, 35],
             ],
         );
+    }
+
+    #[test]
+    fn display_works() {
+        let header = Header::new(Kind::RequestPl, ChannelId(1), Id(2));
+        let preamble = Preamble::new(header, Varint32::encode(678));
+
+        assert_eq!(preamble.to_string(), "[RequestPl chan: 1 id: 2] [l=678]");
+
+        let preamble_no_payload = Preamble::new(header, Varint32::SENTINEL);
+
+        assert_eq!(preamble_no_payload.to_string(), "[RequestPl chan: 1 id: 2]");
+
+        let msg = OutgoingMessage::new(header, Some(Bytes::from(&b"asdf"[..])));
+        let (frame, _) = msg.frames().next_owned(4096);
+
+        assert_eq!(
+            frame.to_string(),
+            "<[RequestPl chan: 1 id: 2] [l=4] 61 73 64 66 (4 bytes)>"
+        );
+
+        let msg_no_payload = OutgoingMessage::new(header, None);
+        let (frame, _) = msg_no_payload.frames().next_owned(4096);
+
+        assert_eq!(frame.to_string(), "<[RequestPl chan: 1 id: 2]>");
     }
 }
