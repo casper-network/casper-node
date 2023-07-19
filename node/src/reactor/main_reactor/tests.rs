@@ -246,7 +246,12 @@ fn has_completed_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
     }
 }
 
-fn lowest_available_block_height_on_node(height: u64, node_id: NodeId) -> impl Fn(&Nodes) -> bool {
+/// Given a block height and a node id, returns a predicate to check if the lowest available block
+/// for the specified node is at or below the specified height.
+fn node_has_lowest_available_block_at_or_below_height(
+    height: u64,
+    node_id: NodeId,
+) -> impl Fn(&Nodes) -> bool {
     move |nodes: &Nodes| {
         nodes.get(&node_id).map_or(true, |runner| {
             let storage = runner.main_reactor().storage();
@@ -457,7 +462,7 @@ async fn historical_sync_with_era_height_1() {
     // Wait for joiner node to sync back to the block from era 1
     net.settle_on(
         &mut rng,
-        lowest_available_block_height_on_node(1, joiner_id),
+        node_has_lowest_available_block_at_or_below_height(1, joiner_id),
         Duration::from_secs(1000),
     )
     .await;
@@ -478,7 +483,7 @@ async fn historical_sync_with_era_height_1() {
     // Continue syncing and check if the joiner node reaches era 0
     net.settle_on(
         &mut rng,
-        lowest_available_block_height_on_node(0, joiner_id),
+        node_has_lowest_available_block_at_or_below_height(0, joiner_id),
         Duration::from_secs(1000),
     )
     .await;
