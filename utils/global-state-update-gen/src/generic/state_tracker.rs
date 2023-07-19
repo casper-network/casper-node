@@ -6,12 +6,11 @@ use std::{
 
 use rand::Rng;
 
-use casper_types::contracts::{
-    ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus, ContractVersions,
-    DisabledVersions, Groups, NamedKeys, Weight,
-};
 use casper_types::{
-    contracts::AccountHash,
+    contracts::{
+        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
+        ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+    },
     system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
     EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,

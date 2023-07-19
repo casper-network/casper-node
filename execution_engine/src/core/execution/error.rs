@@ -3,10 +3,11 @@ use parity_wasm::elements;
 use thiserror::Error;
 
 use casper_storage::global_state::{shared::transform, storage};
-use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     bytesrepr,
-    contracts::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
+    contracts::{
+        AddKeyFailure, ContractPackageKind, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
+    },
     system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };

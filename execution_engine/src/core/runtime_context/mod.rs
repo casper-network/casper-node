@@ -19,12 +19,11 @@ use crate::{
     shared::execution_journal::ExecutionJournal,
 };
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
-use casper_types::contracts::ContractPackageKind;
 use casper_types::{
     bytesrepr::ToBytes,
     contracts::{
-        AccountHash, ActionType, AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight,
+        AccountHash, ActionType, AddKeyFailure, ContractPackageKind, NamedKeys, RemoveKeyFailure,
+        SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     system::auction::EraInfo,
     AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,

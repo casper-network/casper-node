@@ -6,19 +6,20 @@ use casper_storage::global_state::{
 };
 
 use crate::ACCOUNT_WASM_ADDR;
-use casper_types::contracts::{
-    ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-};
 use casper_types::{
-    contracts::AccountHash, AccessRights, AddressableEntity, ByteCode, CLValue, ContractHash,
-    ContractPackageHash, ContractWasmHash, EntryPoints, Key, Motes, Package, Phase,
-    ProtocolVersion, StoredValue, StoredValueTypeMismatch, URef,
+    contracts::{
+        AccountHash, ContractPackageKind, ContractPackageStatus, ContractVersions,
+        DisabledVersions, Groups,
+    },
+    AccessRights, AddressableEntity, ByteCode, CLValue, ContractHash, ContractPackageHash,
+    ContractWasmHash, EntryPoints, Key, Motes, Package, Phase, ProtocolVersion, StoredValue,
+    StoredValueTypeMismatch, URef,
 };
 
-use crate::core::execution::AddressGenerator;
 use crate::core::{
     engine_state::{ChecksumRegistry, SystemContractRegistry},
     execution,
+    execution::AddressGenerator,
     tracking_copy::TrackingCopy,
 };
 

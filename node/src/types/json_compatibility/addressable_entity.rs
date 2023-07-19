@@ -6,10 +6,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::types::json_compatibility::vectorize;
-use casper_types::contracts::AccountHash;
 use casper_types::{
-    contracts::AddressableEntity as DomainEntity, ContractPackageHash, ContractWasmHash,
-    EntryPoint, NamedKey, ProtocolVersion, URef,
+    contracts::{AccountHash, AddressableEntity as DomainEntity},
+    ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, ProtocolVersion, URef,
 };
 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize, DataSize, JsonSchema)]

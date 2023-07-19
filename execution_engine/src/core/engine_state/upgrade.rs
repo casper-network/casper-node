@@ -19,8 +19,10 @@ use casper_types::{
     StoredValue, URef, U512,
 };
 
-use crate::core::execution::AddressGenerator;
-use crate::core::{engine_state::execution_effect::ExecutionEffect, tracking_copy::TrackingCopy};
+use crate::core::{
+    engine_state::execution_effect::ExecutionEffect, execution::AddressGenerator,
+    tracking_copy::TrackingCopy,
+};
 
 /// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]

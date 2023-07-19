@@ -13,12 +13,12 @@ use casper_storage::global_state::{
     shared::{transform::Transform, CorrelationId},
     storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
-use casper_types::contracts::{ActionThresholds, ContractPackageKind};
 use casper_types::{
     bytesrepr::ToBytes,
     contracts::{
-        AccountHash, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, Weight, ACCOUNT_HASH_LENGTH,
+        AccountHash, ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys,
+        ContractPackageKind, NamedKeys, RemoveKeyFailure, SetThresholdFailure, Weight,
+        ACCOUNT_HASH_LENGTH,
     },
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,

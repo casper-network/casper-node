@@ -51,10 +51,9 @@ use casper_storage::{
         },
     },
 };
-use casper_types::contracts::Contract;
 use casper_types::{
     bytesrepr::{self, FromBytes},
-    contracts::AccountHash,
+    contracts::{AccountHash, Contract},
     runtime_args,
     system::{
         auction::{

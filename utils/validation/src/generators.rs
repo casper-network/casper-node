@@ -3,11 +3,10 @@ use std::{
     iter::FromIterator,
 };
 
-use casper_types::contracts::Account;
 use casper_types::{
     contracts::{
-        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
-        ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+        Account, AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind,
+        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
     },
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
     AccessRights, AddressableEntity, ByteCode, CLType, CLTyped, CLValue, ContractHash,

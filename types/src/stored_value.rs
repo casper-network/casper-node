@@ -12,10 +12,9 @@ use datasize::DataSize;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
-use crate::contracts::{Account, Contract};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::Package,
+    contracts::{Account, Contract, Package},
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
     AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,
 };

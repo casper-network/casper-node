@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::json_compatibility::vectorize;
 use casper_types::{
-    contracts::Contract as DomainContract, contracts::ContractPackageStatus, ContractHash,
-    ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, Package as DomainContractPackage,
-    ProtocolVersion, URef,
+    contracts::{Contract as DomainContract, ContractPackageStatus},
+    ContractHash, ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey,
+    Package as DomainContractPackage, ProtocolVersion, URef,
 };
 
 #[derive(

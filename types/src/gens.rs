@@ -28,11 +28,10 @@ use crate::{
     Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
-use crate::contracts::{Account, Contract};
 use crate::{
     contracts::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
-        ContractPackageKind,
+        Account, Contract, ContractPackageKind,
     },
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
 };
