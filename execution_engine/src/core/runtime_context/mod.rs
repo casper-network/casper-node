@@ -893,12 +893,15 @@ where
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if let Some(base_key) = self.get_entity_address().into_hash() {
-            let contract_hash = ContractHash::new(base_key);
-            if self.is_system_contract(&contract_hash)? {
-                // Don't charge storage used while executing a system contract.
-                return Ok(());
-            }
+        // if let Some(base_key) = self.get_entity_address().into_hash() {
+        //     let contract_hash = ContractHash::new(base_key);
+        //     if self.is_system_contract(&contract_hash)? {
+        //         // Don't charge storage used while executing a system contract.
+        //         return Ok(());
+        //     }
+        // }
+        if self.package_kind.is_system() {
+            return Ok(());
         }
 
         let storage_costs = self.engine_config.wasm_config().storage_costs();

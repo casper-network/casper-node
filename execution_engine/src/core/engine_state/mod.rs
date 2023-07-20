@@ -744,18 +744,17 @@ where
         authorization_keys: &BTreeSet<AccountHash>,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(AddressableEntity, ContractHash), Error> {
-        let contract_record = match tracking_copy.borrow_mut().get_contract_by_account_hash(
-            correlation_id,
-            protocol_version,
-            account_hash,
-        ) {
-            Ok(contract) => contract,
-            Err(_) => return Err(error::Error::MissingContractByAccountHash(account_hash)),
+        let entity_record = match tracking_copy
+            .borrow_mut()
+            .get_addressable_entity_by_account_hash(correlation_id, protocol_version, account_hash)
+        {
+            Ok(entity) => entity,
+            Err(_) => return Err(Error::MissingContractByAccountHash(account_hash)),
         };
 
-        let contract_hash: ContractHash = match tracking_copy
+        let entity_hash: ContractHash = match tracking_copy
             .borrow_mut()
-            .get_account(correlation_id, account_hash)
+            .get_entity_hash_by_account_hash(correlation_id, account_hash)
         {
             Ok(contract_hash) => contract_hash,
             Err(error) => {
@@ -764,16 +763,16 @@ where
         };
 
         // Authorize using provided authorization keys
-        if !contract_record.can_authorize(authorization_keys) {
-            return Err(error::Error::Authorization);
+        if !entity_record.can_authorize(authorization_keys) {
+            return Err(Error::Authorization);
         }
 
         // Check total key weight against deploy threshold
-        if !contract_record.can_deploy_with(authorization_keys) {
+        if !entity_record.can_deploy_with(authorization_keys) {
             return Err(execution::Error::DeploymentAuthorizationFailure.into());
         }
 
-        Ok((contract_record, contract_hash))
+        Ok((entity_record, entity_hash))
     }
 
     fn migrate_account(
@@ -932,12 +931,14 @@ where
         let authorization_keys = deploy_item.authorization_keys;
 
         // Migrate the legacy account structure if necessary.
-        self.migrate_account(
+        if let Err(e) = self.migrate_account(
             correlation_id,
             account_hash,
             protocol_version,
             Rc::clone(&tracking_copy),
-        )?;
+        ) {
+            return Ok(ExecutionResult::precondition_failure(e));
+        }
 
         let (entity, _contract_hash) = match self.get_authorized_addressable_entity(
             correlation_id,
@@ -961,11 +962,10 @@ where
 
         let proposer_addr = proposer.to_account_hash();
 
-        let proposer_contract = match tracking_copy.borrow_mut().get_contract_by_account_hash(
-            correlation_id,
-            protocol_version,
-            proposer_addr,
-        ) {
+        let proposer_contract = match tracking_copy
+            .borrow_mut()
+            .get_addressable_entity_by_account_hash(correlation_id, protocol_version, proposer_addr)
+        {
             Ok(contract) => contract,
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
         };
@@ -1417,11 +1417,13 @@ where
             };
 
             let system_addressable_entity = {
-                tracking_copy.borrow_mut().get_contract_by_account_hash(
-                    correlation_id,
-                    protocol_version,
-                    PublicKey::System.to_account_hash(),
-                )?
+                tracking_copy
+                    .borrow_mut()
+                    .get_addressable_entity_by_account_hash(
+                        correlation_id,
+                        protocol_version,
+                        PublicKey::System.to_account_hash(),
+                    )?
             };
 
             let tc = tracking_copy.borrow();
@@ -1716,11 +1718,13 @@ where
 
         // the proposer of the block this deploy is in receives the gas from this deploy execution
         let proposer_purse = {
-            let proposer_contract = match tracking_copy.borrow_mut().get_contract_by_account_hash(
-                correlation_id,
-                protocol_version,
-                AccountHash::from(&proposer),
-            ) {
+            let proposer_contract = match tracking_copy
+                .borrow_mut()
+                .get_addressable_entity_by_account_hash(
+                    correlation_id,
+                    protocol_version,
+                    AccountHash::from(&proposer),
+                ) {
                 Ok(contract) => contract,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
@@ -2241,7 +2245,11 @@ where
 
         let virtual_system_contract_by_account = tracking_copy
             .borrow_mut()
-            .get_contract_by_account_hash(correlation_id, protocol_version, system_account_addr)?;
+            .get_addressable_entity_by_account_hash(
+                correlation_id,
+                protocol_version,
+                system_account_addr,
+            )?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2313,11 +2321,13 @@ where
 
         let protocol_version = step_request.protocol_version;
 
-        let system_addressable_entity = tracking_copy.borrow_mut().get_contract_by_account_hash(
-            correlation_id,
-            protocol_version,
-            system_account_addr,
-        )?;
+        let system_addressable_entity = tracking_copy
+            .borrow_mut()
+            .get_addressable_entity_by_account_hash(
+                correlation_id,
+                protocol_version,
+                system_account_addr,
+            )?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2449,7 +2459,7 @@ where
 
         let contract_hash = match tracking_copy
             .borrow_mut()
-            .get_account(correlation_id, account_addr)
+            .get_entity_hash_by_account_hash(correlation_id, account_addr)
         {
             Ok(account) => account,
             Err(error) => return Err(error.into()),

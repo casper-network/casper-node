@@ -251,7 +251,6 @@ impl Store<Digest, Trie<Key, StoredValue>> for ScratchTrieStore {
         Trie<Key, StoredValue>: bytesrepr::FromBytes,
         Self::Error: From<T::Error>,
     {
-        println!("Scratch");
         match self.get_raw(txn, key)? {
             None => Ok(None),
             Some(value_bytes) => {

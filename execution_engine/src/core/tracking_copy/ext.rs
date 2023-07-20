@@ -29,14 +29,14 @@ pub trait TrackingCopyExt<R> {
     type Error;
 
     /// Gets the contract hash for the account at a given account address.
-    fn get_account(
+    fn get_entity_hash_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
     ) -> Result<ContractHash, Self::Error>;
 
     /// Gets the contract for a given account by its account address
-    fn get_contract_by_account_hash(
+    fn get_addressable_entity_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
@@ -128,7 +128,7 @@ where
 {
     type Error = execution::Error;
 
-    fn get_account(
+    fn get_entity_hash_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
@@ -151,7 +151,7 @@ where
         }
     }
 
-    fn get_contract_by_account_hash(
+    fn get_addressable_entity_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
@@ -258,7 +258,7 @@ where
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error> {
-        self.get_contract_by_account_hash(correlation_id, protocol_version, account_hash)
+        self.get_addressable_entity_by_account_hash(correlation_id, protocol_version, account_hash)
     }
 
     fn get_purse_balance_key(
