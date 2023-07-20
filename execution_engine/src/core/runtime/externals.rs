@@ -4,10 +4,12 @@ use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
 use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
+    account::AccountHash,
+    addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
-    contracts::{AccountHash, ContractPackageKind, ContractPackageStatus, EntryPoints, NamedKeys},
     crypto,
+    package::{ContractPackageKind, ContractPackageStatus},
     system::auction::EraInfo,
     ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
     HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,

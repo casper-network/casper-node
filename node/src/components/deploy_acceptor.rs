@@ -14,7 +14,7 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::core::engine_state::MAX_PAYMENT;
 use casper_types::{
-    contracts::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, CLValue, Chainspec,
+    account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, CLValue, Chainspec,
     ContractHash, ContractIdentifier, ContractPackageHash, ContractPackageIdentifier,
     ContractVersion, ContractVersionKey, Deploy, DeployConfig, DeployConfigurationFailure, Digest,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package, ProtocolVersion,

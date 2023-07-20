@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::types::json_compatibility::vectorize;
 use casper_types::{
-    contracts::{AccountHash, AddressableEntity as DomainEntity},
+    account::AccountHash, addressable_entity::AddressableEntity as DomainEntity,
     ContractPackageHash, ContractWasmHash, EntryPoint, NamedKey, ProtocolVersion, URef,
 };
 

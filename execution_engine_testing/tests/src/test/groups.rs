@@ -7,8 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
-    contracts::{AccountHash, CONTRACT_INITIAL_VERSION},
-    runtime_args, Key, RuntimeArgs, U512,
+    account::AccountHash, package::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
 
 use crate::wasm_utils;

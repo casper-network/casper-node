@@ -26,11 +26,13 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity,
+    addressable_entity::ContractHash,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
-    contracts,
-    contracts::{AccountHash, ContractHash, ContractPackageHash, ACCOUNT_HASH_LENGTH},
+    package::ContractPackageHash,
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
     UREF_ADDR_LENGTH,
@@ -153,7 +155,7 @@ pub enum Key {
 #[non_exhaustive]
 pub enum FromStrError {
     /// Account parse error.
-    Account(contracts::FromStrError),
+    Account(addressable_entity::FromStrError),
     /// Hash parse error.
     Hash(String),
     /// URef parse error.
@@ -186,8 +188,8 @@ pub enum FromStrError {
     UnknownPrefix,
 }
 
-impl From<contracts::FromStrError> for FromStrError {
-    fn from(error: contracts::FromStrError) -> Self {
+impl From<addressable_entity::FromStrError> for FromStrError {
+    fn from(error: addressable_entity::FromStrError) -> Self {
         FromStrError::Account(error)
     }
 }
@@ -355,7 +357,7 @@ impl Key {
     pub fn from_formatted_str(input: &str) -> Result<Key, FromStrError> {
         match AccountHash::from_formatted_str(input) {
             Ok(account_hash) => return Ok(Key::Account(account_hash)),
-            Err(contracts::FromStrError::InvalidPrefix) => {}
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(error.into()),
         }
 
@@ -1058,8 +1060,8 @@ mod tests {
 
     use super::*;
     use crate::{
+        account::ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
         bytesrepr::{Error, FromBytes},
-        contracts::ACCOUNT_HASH_FORMATTED_STRING_PREFIX,
         transfer::TRANSFER_ADDR_FORMATTED_STRING_PREFIX,
         uref::UREF_FORMATTED_STRING_PREFIX,
         AccessRights, URef,

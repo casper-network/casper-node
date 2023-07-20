@@ -9,7 +9,7 @@ use casper_execution_engine::core::{
     execution::Error,
 };
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
+    account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
     ContractHash, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};

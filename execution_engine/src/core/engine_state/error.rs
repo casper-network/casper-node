@@ -16,7 +16,7 @@ use crate::{
 };
 
 use casper_storage::global_state::storage::{self, lmdb, state::CommitError};
-use casper_types::contracts::AccountHash;
+use casper_types::account::AccountHash;
 
 /// Engine state errors.
 #[derive(Clone, Error, Debug)]

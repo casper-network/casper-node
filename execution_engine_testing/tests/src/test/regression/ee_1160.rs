@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE;
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, Gas, Motes, RuntimeArgs,
+    account::AccountHash, runtime_args, system::mint, Gas, Motes, RuntimeArgs,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 

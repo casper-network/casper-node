@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::{contracts::AccountHash, PublicKey, U512};
+use casper_types::{account::AccountHash, PublicKey, U512};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {

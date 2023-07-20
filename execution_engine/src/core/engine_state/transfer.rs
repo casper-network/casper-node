@@ -2,7 +2,7 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
-    contracts::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
+    account::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
     CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 

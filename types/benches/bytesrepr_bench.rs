@@ -6,11 +6,10 @@ use std::{
 };
 
 use casper_types::{
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contracts::{
-        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
-        NamedKeys,
-    },
+    package::{ContractPackageKind, ContractPackageStatus},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
     AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
@@ -528,7 +527,7 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
         tmp
     };
 
-    casper_types::contracts::AddressableEntity::new(
+    casper_types::addressable_entity::AddressableEntity::new(
         ContractPackageHash::default(),
         ContractWasmHash::default(),
         named_keys,

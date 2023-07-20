@@ -12,7 +12,7 @@ use casper_contract::{
 };
 
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::auction, ApiError, ContractHash, PublicKey,
+    account::AccountHash, runtime_args, system::auction, ApiError, ContractHash, PublicKey,
     RuntimeArgs, U512,
 };
 

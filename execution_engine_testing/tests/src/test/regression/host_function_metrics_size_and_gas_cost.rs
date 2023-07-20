@@ -9,8 +9,8 @@ use casper_execution_engine::core::{
     execution,
 };
 use casper_types::{
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
     bytesrepr::Bytes,
-    contracts::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,
     system::standard_payment,
     ApiError, RuntimeArgs, U512,

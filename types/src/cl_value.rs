@@ -242,7 +242,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        contracts::{AccountHash, ACCOUNT_HASH_LENGTH},
+        account::{AccountHash, ACCOUNT_HASH_LENGTH},
         key::KEY_HASH_LENGTH,
         AccessRights, DeployHash, Digest, Key, PublicKey, TransferAddr, URef, TRANSFER_ADDR_LENGTH,
         U128, U256, U512, UREF_ADDR_LENGTH,

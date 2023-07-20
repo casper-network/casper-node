@@ -9,7 +9,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
-    contracts::{self, CONTRACT_INITIAL_VERSION, MAX_GROUPS},
+    addressable_entity::{self, MAX_GROUPS},
+    package::CONTRACT_INITIAL_VERSION,
     runtime_args, Group, RuntimeArgs,
 };
 
@@ -491,5 +492,8 @@ fn should_limit_max_urefs_while_extending() {
     let exec_response = response.last().expect("should have response");
     let error = exec_response.as_error().expect("should have error");
     let error = assert_matches!(error, Error::Exec(execution::Error::Revert(e)) => e);
-    assert_eq!(error, &contracts::Error::MaxTotalURefsExceeded.into());
+    assert_eq!(
+        error,
+        &addressable_entity::Error::MaxTotalURefsExceeded.into()
+    );
 }

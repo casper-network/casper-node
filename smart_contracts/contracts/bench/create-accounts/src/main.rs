@@ -9,7 +9,7 @@ use casper_contract::{
     contract_api::{runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{contracts::AccountHash, ApiError, U512};
+use casper_types::{account::AccountHash, ApiError, U512};
 
 const ARG_ACCOUNTS: &str = "accounts";
 const ARG_AMOUNT: &str = "amount";

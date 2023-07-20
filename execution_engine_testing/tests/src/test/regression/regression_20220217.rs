@@ -4,7 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::{engine_state, execution};
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, AccessRights, RuntimeArgs, URef, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, RuntimeArgs, URef, U512,
 };
 
 const TRANSFER_TO_NAMED_PURSE_CONTRACT: &str = "transfer_to_named_purse.wasm";

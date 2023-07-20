@@ -6,7 +6,7 @@ use std::{
 use serde::Serialize;
 
 use casper_types::{
-    contracts::AccountHash, AddressableEntity, ContractHash, ContractPackageHash, ContractVersion,
+    account::AccountHash, AddressableEntity, ContractHash, ContractPackageHash, ContractVersion,
     Deploy, Package, StoredValue, Timestamp, U512,
 };
 

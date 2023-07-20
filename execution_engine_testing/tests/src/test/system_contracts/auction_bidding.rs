@@ -10,7 +10,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
 
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     runtime_args,
     system::{
         auction::{

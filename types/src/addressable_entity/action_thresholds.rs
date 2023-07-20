@@ -7,8 +7,8 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    addressable_entity::{ActionType, SetThresholdFailure, Weight, WEIGHT_SERIALIZED_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    contracts::{ActionType, SetThresholdFailure, Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
 /// Thresholds that have to be met when executing an action of a certain type.

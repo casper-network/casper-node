@@ -2,8 +2,10 @@ use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
+    account::AccountHash,
+    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
-    contracts::{AccountHash, ContractPackageKind, NamedKeys},
+    package::ContractPackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
     AddressableEntity, BlockTime, CLTyped, ContextAccessRights, ContractHash, DeployHash,
     EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,

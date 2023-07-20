@@ -16,7 +16,7 @@ use casper_execution_engine::core::engine_state::{
     EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
-    contracts::{AccountHash, ACCOUNT_HASH_LENGTH},
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,
     system::{
         auction::{

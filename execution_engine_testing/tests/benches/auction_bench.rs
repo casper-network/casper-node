@@ -20,7 +20,7 @@ use casper_execution_engine::core::engine_state::{
     EngineConfig, ExecConfig, ExecuteRequest,
 };
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     runtime_args,
     system::auction::{self},
     GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,

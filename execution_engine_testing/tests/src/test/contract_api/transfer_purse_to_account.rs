@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     runtime_args,
     system::{
         auction::ARG_AMOUNT,

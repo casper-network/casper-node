@@ -1,6 +1,6 @@
 use casper_engine_test_support::LmdbWasmTestBuilder;
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     system::{
         auction::{Bids, UnbondingPurses, WithdrawPurses, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY},
         mint::TOTAL_SUPPLY_KEY,

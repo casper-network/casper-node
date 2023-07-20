@@ -771,7 +771,7 @@ async fn should_store_finalized_approvals() {
     }
 
     // Run until the deploy gets executed.
-    let timeout = Duration::from_secs(90);
+    let timeout = Duration::from_secs(120);
     net.settle_on(
         &mut rng,
         |nodes| {

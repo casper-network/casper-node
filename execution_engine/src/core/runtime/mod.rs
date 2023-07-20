@@ -22,12 +22,15 @@ use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
+    account::AccountHash,
+    addressable_entity::{
+        self, ActionThresholds, ActionType, AddressableEntity, AssociatedKeys, EntryPoint,
+        EntryPointAccess, EntryPoints, NamedKeys, Weight, DEFAULT_ENTRY_POINT_NAME,
+    },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contracts::{
-        self, AccountHash, ActionThresholds, ActionType, AddressableEntity, AssociatedKeys,
+    package::{
         ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions,
-        DisabledVersions, EntryPoint, EntryPointAccess, EntryPoints, Group, Groups, NamedKeys,
-        Package, Weight, DEFAULT_ENTRY_POINT_NAME,
+        DisabledVersions, Group, Groups, Package,
     },
     system::{
         self,
@@ -35,10 +38,10 @@ use casper_types::{
         handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, CLTyped, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, EntryPointType, Gas,
-    GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter, Phase, PublicKey,
-    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
+    ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
+    EntryPointType, Gas, GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter,
+    Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
@@ -547,8 +550,6 @@ where
         let system_config = engine_config.system_config();
         let mint_costs = system_config.mint_costs();
 
-        println!("In call host mint with runtime created");
-
         let result = match entry_point_name {
             // Type: `fn mint(amount: U512) -> Result<URef, Error>`
             mint::METHOD_MINT => (|| {
@@ -571,8 +572,6 @@ where
             // Type: `fn create() -> URef`
             mint::METHOD_CREATE => (|| {
                 mint_runtime.charge_system_contract_call(mint_costs.create)?;
-
-                println!("Was able to charge for create");
 
                 let uref = mint_runtime.mint(U512::zero()).map_err(Self::reverter)?;
                 CLValue::from_t(uref).map_err(Self::reverter)
@@ -624,13 +623,6 @@ where
 
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
-
-        if result.is_err() {
-            println!(
-                "Mint error {:?} for entrypoint {}",
-                result, entry_point_name
-            );
-        }
 
         // Charge just for the amount that particular entry point cost - using gas cost from the
         // isolated runtime might have a recursive costs whenever system contract calls other system
@@ -983,8 +975,6 @@ where
             let transfers = self.context.transfers_mut();
             *transfers = runtime.context.transfers().to_owned();
         }
-
-        println!("The auction result {:?}", ret);
 
         Ok(ret)
     }
@@ -1345,7 +1335,7 @@ where
         let module: Module = {
             let wasm_key = contract.contract_wasm_key();
 
-            let contract_wasm: ByteCode = match self.context.read_gs(&wasm_key)? {
+            let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
                 Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
                 None => return Err(Error::KeyNotFound(context_key)),
@@ -1601,20 +1591,20 @@ where
 
         // Ensure group does not already exist
         if groups.get(&new_group).is_some() {
-            return Ok(Err(contracts::Error::GroupAlreadyExists.into()));
+            return Ok(Err(addressable_entity::Error::GroupAlreadyExists.into()));
         }
 
         // Ensure there are not too many groups
-        if groups.len() >= (contracts::MAX_GROUPS as usize) {
-            return Ok(Err(contracts::Error::MaxGroupsExceeded.into()));
+        if groups.len() >= (addressable_entity::MAX_GROUPS as usize) {
+            return Ok(Err(addressable_entity::Error::MaxGroupsExceeded.into()));
         }
 
         // Ensure there are not too many urefs
         let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum::<usize>()
             + (num_new_urefs as usize)
             + existing_urefs.len();
-        if total_urefs > contracts::MAX_TOTAL_UREFS {
-            let err = contracts::Error::MaxTotalURefsExceeded;
+        if total_urefs > addressable_entity::MAX_TOTAL_UREFS {
+            let err = addressable_entity::Error::MaxTotalURefsExceeded;
             return Ok(Err(ApiError::ContractHeader(err as u8)));
         }
 
@@ -1689,7 +1679,7 @@ where
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
-            ByteCode::new(module_bytes)
+            ContractWasm::new(module_bytes)
         };
 
         let contract_hash = self.context.new_hash_address()?;
@@ -2664,7 +2654,7 @@ where
 
         // Ensure group exists in groups
         if groups.get(&group_to_remove).is_none() {
-            return Ok(Err(contracts::Error::GroupDoesNotExist.into()));
+            return Ok(Err(addressable_entity::Error::GroupDoesNotExist.into()));
         }
 
         // Remove group if it is not referenced by at least one entry_point in active versions.
@@ -2682,7 +2672,7 @@ where
                     }
                     EntryPointAccess::Groups(groups) => {
                         if groups.contains(&group_to_remove) {
-                            return Ok(Err(contracts::Error::GroupInUse.into()));
+                            return Ok(Err(addressable_entity::Error::GroupInUse.into()));
                         }
                     }
                 }
@@ -2690,7 +2680,7 @@ where
         }
 
         if !package.remove_group(&group_to_remove) {
-            return Ok(Err(contracts::Error::GroupInUse.into()));
+            return Ok(Err(addressable_entity::Error::GroupInUse.into()));
         }
 
         // Write updated package to the global state
@@ -2719,24 +2709,24 @@ where
         // Ensure there are not too many urefs
         let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum();
 
-        if total_urefs + 1 > contracts::MAX_TOTAL_UREFS {
-            return Ok(Err(contracts::Error::MaxTotalURefsExceeded.into()));
+        if total_urefs + 1 > addressable_entity::MAX_TOTAL_UREFS {
+            return Ok(Err(addressable_entity::Error::MaxTotalURefsExceeded.into()));
         }
 
         // Ensure given group exists and does not exceed limits
         let group = match groups.get_mut(&group_label) {
-            Some(group) if group.len() + 1 > contracts::MAX_GROUPS as usize => {
+            Some(group) if group.len() + 1 > addressable_entity::MAX_GROUPS as usize => {
                 // Ensures there are not too many groups to fit in amount of new urefs
-                return Ok(Err(contracts::Error::MaxTotalURefsExceeded.into()));
+                return Ok(Err(addressable_entity::Error::MaxTotalURefsExceeded.into()));
             }
             Some(group) => group,
-            None => return Ok(Err(contracts::Error::GroupDoesNotExist.into())),
+            None => return Ok(Err(addressable_entity::Error::GroupDoesNotExist.into())),
         };
 
         // Proceed with creating new URefs
         let new_uref = self.context.new_unit_uref()?;
         if !group.insert(new_uref) {
-            return Ok(Err(contracts::Error::URefAlreadyExists.into()));
+            return Ok(Err(addressable_entity::Error::URefAlreadyExists.into()));
         }
 
         // check we can write to the host buffer
@@ -2790,7 +2780,7 @@ where
 
         let group = match groups.get_mut(&group_label) {
             Some(group) => group,
-            None => return Ok(Err(contracts::Error::GroupDoesNotExist.into())),
+            None => return Ok(Err(addressable_entity::Error::GroupDoesNotExist.into())),
         };
 
         if urefs.is_empty() {
@@ -2799,7 +2789,7 @@ where
 
         for uref in urefs {
             if !group.remove(&uref) {
-                return Ok(Err(contracts::Error::UnableToRemoveURef.into()));
+                return Ok(Err(addressable_entity::Error::UnableToRemoveURef.into()));
             }
         }
         // Write updated package to the global state

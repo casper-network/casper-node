@@ -5,16 +5,15 @@ use thiserror::Error;
 
 use crate::ACCOUNT_WASM_ADDR;
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
-use casper_types::contracts::{
-    ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, NamedKeys,
-    Weight,
-};
 
 use casper_types::{
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     bytesrepr::{self},
-    contracts::{ActionThresholds, AssociatedKeys, Groups},
+    package::{
+        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
+    },
     system::SystemContractType,
-    AccessRights, AddressableEntity, ByteCode, CLValue, ContractHash, ContractPackageHash,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
     ContractWasmHash, Digest, EntryPoints, Key, Package, Phase, ProtocolVersion, PublicKey,
     StoredValue, URef, U512,
 };
@@ -247,7 +246,7 @@ where
         let contract_hash = ContractHash::new(address_generator.new_hash_address());
         let contract_package_hash = ContractPackageHash::new(address_generator.new_hash_address());
 
-        let contract_wasm = ByteCode::new(vec![]);
+        let contract_wasm = ContractWasm::new(vec![]);
 
         let account_hash = PublicKey::System.to_account_hash();
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));

@@ -7,11 +7,11 @@ use casper_storage::global_state::{
 
 use crate::ACCOUNT_WASM_ADDR;
 use casper_types::{
-    contracts::{
-        AccountHash, ContractPackageKind, ContractPackageStatus, ContractVersions,
-        DisabledVersions, Groups,
+    account::AccountHash,
+    package::{
+        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
-    AccessRights, AddressableEntity, ByteCode, CLValue, ContractHash, ContractPackageHash,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
     ContractWasmHash, EntryPoints, Key, Motes, Package, Phase, ProtocolVersion, StoredValue,
     StoredValueTypeMismatch, URef,
 };
@@ -92,7 +92,7 @@ pub trait TrackingCopyExt<R> {
         &mut self,
         correlation_id: CorrelationId,
         contract_wasm_hash: ContractWasmHash,
-    ) -> Result<ByteCode, Self::Error>;
+    ) -> Result<ContractWasm, Self::Error>;
 
     /// Gets a contract header by Key.
     fn get_contract(
@@ -332,7 +332,7 @@ where
         &mut self,
         correlation_id: CorrelationId,
         contract_wasm_hash: ContractWasmHash,
-    ) -> Result<ByteCode, Self::Error> {
+    ) -> Result<ContractWasm, Self::Error> {
         let key = contract_wasm_hash.into();
         match self.get(correlation_id, &key).map_err(Into::into)? {
             Some(StoredValue::ContractWasm(contract_wasm)) => Ok(contract_wasm),

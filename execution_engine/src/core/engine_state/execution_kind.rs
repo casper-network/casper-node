@@ -6,8 +6,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
-    bytesrepr::Bytes, contracts::NamedKeys, ContractHash, ContractPackageHash, ContractVersionKey,
-    ExecutableDeployItem, Key, Package, Phase, ProtocolVersion, StoredValue,
+    addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractPackageHash,
+    ContractVersionKey, ExecutableDeployItem, Key, Package, Phase, ProtocolVersion, StoredValue,
 };
 
 use crate::core::{

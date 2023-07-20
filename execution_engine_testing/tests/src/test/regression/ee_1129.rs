@@ -14,7 +14,8 @@ use casper_execution_engine::{
     shared::wasm_prep::PreprocessingError,
 };
 use casper_types::{
-    contracts::{AccountHash, DEFAULT_ENTRY_POINT_NAME},
+    account::AccountHash,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
     Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, U512,

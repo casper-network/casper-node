@@ -13,7 +13,7 @@ use casper_execution_engine::core::{
 };
 use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
+    account::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
     RuntimeArgs, U512,
 };
 

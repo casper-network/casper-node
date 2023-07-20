@@ -1,6 +1,6 @@
 use casper_storage::global_state::storage::state::StateReader;
 use casper_types::{
-    contracts::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, StoredValue,
+    account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase, StoredValue,
     TransferredTo, URef, U512,
 };
 

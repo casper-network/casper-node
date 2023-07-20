@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate},
     ApiError, GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,

@@ -16,7 +16,7 @@ use casper_execution_engine::core::{
     execution,
 };
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
     AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,

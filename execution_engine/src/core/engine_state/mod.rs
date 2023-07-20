@@ -49,10 +49,11 @@ use casper_storage::{
 };
 
 use casper_types::{
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     bytesrepr::ToBytes,
-    contracts::{
-        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
-        ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+    package::{
+        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
     system::{
         auction::{

@@ -11,9 +11,8 @@ use casper_storage::global_state::{
     },
 };
 use casper_types::{
-    contracts::{
-        AccountHash, ActionThresholds, AssociatedKeys, NamedKeys, Weight, ACCOUNT_HASH_LENGTH,
-    },
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     gens::*,
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, Digest,
     EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,

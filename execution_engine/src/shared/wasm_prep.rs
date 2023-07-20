@@ -658,7 +658,7 @@ impl Rules for RuledOpcodeCosts {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
+    use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
     use parity_wasm::{
         builder,
         elements::{CodeSection, Instructions},

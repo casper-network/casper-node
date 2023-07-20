@@ -10,8 +10,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    contracts::AccountHash,
     DeployHash, TransferAddr, URef, U512,
 };
 
@@ -114,7 +114,7 @@ pub(crate) mod gens {
     };
 
     use crate::{
-        contracts::AccountHash,
+        account::AccountHash,
         gens::{u512_arb, uref_arb},
         DeployHash, DeployInfo, TransferAddr,
     };

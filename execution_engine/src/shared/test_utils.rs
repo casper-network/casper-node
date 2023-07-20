@@ -1,6 +1,6 @@
 //! Some functions to use in tests.
 
-use casper_types::{contracts::AccountHash, CLValue, ContractHash, Key, StoredValue};
+use casper_types::{account::AccountHash, CLValue, ContractHash, Key, StoredValue};
 
 /// Returns an account value paired with its key
 pub fn mocked_account(account_hash: AccountHash) -> Vec<(Key, StoredValue)> {

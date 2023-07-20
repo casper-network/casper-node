@@ -1,5 +1,5 @@
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     system::{mint::Error, CallStackElement},
     Key, Phase, URef, U512,
 };

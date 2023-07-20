@@ -7,7 +7,7 @@ use casper_execution_engine::core::{
     execution,
 };
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
     ApiError, Gas, Motes, RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512,

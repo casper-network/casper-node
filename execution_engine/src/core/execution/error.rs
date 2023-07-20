@@ -4,10 +4,9 @@ use thiserror::Error;
 
 use casper_storage::global_state::{shared::transform, storage};
 use casper_types::{
+    addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
-    contracts::{
-        AddKeyFailure, ContractPackageKind, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
-    },
+    package::ContractPackageKind,
     system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };

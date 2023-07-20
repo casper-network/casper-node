@@ -11,8 +11,8 @@ use datasize::DataSize;
 use num::traits::{AsPrimitive, WrappingAdd};
 
 use casper_types::{
+    addressable_entity::NamedKeys,
     bytesrepr::{self, FromBytes, ToBytes},
-    contracts::NamedKeys,
     CLType, CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
@@ -430,7 +430,7 @@ pub mod gens {
 mod tests {
     use num::{Bounded, Num};
 
-    use casper_types::{bytesrepr::Bytes, AccessRights, ByteCode, Key, URef, U128, U256, U512};
+    use casper_types::{bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256, U512};
 
     use super::*;
     use std::collections::BTreeMap;
@@ -558,7 +558,7 @@ mod tests {
             };
         }
 
-        let contract = StoredValue::ContractWasm(ByteCode::new(vec![]));
+        let contract = StoredValue::ContractWasm(ContractWasm::new(vec![]));
         assert_yields_type_mismatch_error(contract);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);

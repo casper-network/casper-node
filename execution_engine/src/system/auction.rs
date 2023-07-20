@@ -7,7 +7,7 @@ use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     system::auction::{
         Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
         ValidatorWeights, DELEGATION_RATE_DENOMINATOR,

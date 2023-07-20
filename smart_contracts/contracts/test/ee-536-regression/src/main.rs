@@ -6,8 +6,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::{
-        AccountHash, ActionType, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+    account::AccountHash,
+    addressable_entity::{
+        ActionType, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     ApiError,
 };

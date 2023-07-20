@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
+    package::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args, CLValue, ContractPackageHash, RuntimeArgs, StoredValue,
 };
 

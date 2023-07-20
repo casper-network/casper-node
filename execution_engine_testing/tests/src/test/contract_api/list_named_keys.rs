@@ -3,8 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::{AccountHash, NamedKeys},
-    runtime_args, Key, RuntimeArgs,
+    account::AccountHash, addressable_entity::NamedKeys, runtime_args, Key, RuntimeArgs,
 };
 
 const CONTRACT_LIST_NAMED_KEYS: &str = "list_named_keys.wasm";

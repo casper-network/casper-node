@@ -26,7 +26,7 @@ pub(crate) mod gens {
     pub use super::era_info::gens::*;
 }
 
-use crate::{contracts::AccountHash, EraId, PublicKey, U512};
+use crate::{account::AccountHash, EraId, PublicKey, U512};
 
 /// Representation of delegation rate of tokens. Range from 0..=100.
 pub type DelegationRate = u8;

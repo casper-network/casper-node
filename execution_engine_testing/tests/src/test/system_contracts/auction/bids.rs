@@ -29,8 +29,8 @@ use casper_execution_engine::core::{
 };
 use casper_types::{
     self,
+    account::AccountHash,
     api_error::ApiError,
-    contracts::AccountHash,
     runtime_args,
     system::{
         self,

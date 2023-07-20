@@ -13,7 +13,7 @@ use casper_execution_engine::core::engine_state::{
     EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,
+    account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,
     HostFunctionCost, HostFunctionCosts, Key, MintCosts, Motes, ProtocolVersion, PublicKey,
     RuntimeArgs, SecretKey, SystemConfig, UpgradeConfig, WasmConfig, DEFAULT_MAX_STACK_HEIGHT,
     DEFAULT_WASM_MAX_MEMORY, U512,

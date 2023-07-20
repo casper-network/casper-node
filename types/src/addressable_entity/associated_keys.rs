@@ -12,8 +12,9 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    account::AccountHash,
+    addressable_entity::{AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
     bytesrepr::{self, Error, FromBytes, ToBytes},
-    contracts::{AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
 };
 
 /// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
@@ -183,8 +184,9 @@ mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 
     use crate::{
+        account::{AccountHash, ACCOUNT_HASH_LENGTH},
+        addressable_entity::{AddKeyFailure, Weight},
         bytesrepr,
-        contracts::{AccountHash, AddKeyFailure, Weight, ACCOUNT_HASH_LENGTH},
     };
 
     use super::*;

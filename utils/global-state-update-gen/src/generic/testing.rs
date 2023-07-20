@@ -3,7 +3,8 @@ use std::collections::BTreeMap;
 use rand::Rng;
 
 use casper_types::{
-    contracts::{AccountHash, ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     system::auction::{
         Bid, Bids, Delegator, SeigniorageRecipient, SeigniorageRecipients,
         SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, WithdrawPurse,

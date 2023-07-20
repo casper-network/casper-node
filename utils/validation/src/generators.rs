@@ -4,13 +4,14 @@ use std::{
 };
 
 use casper_types::{
-    contracts::{
-        Account, AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind,
-        ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+    account::{Account, AccountHash},
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    package::{
+        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
-    AccessRights, AddressableEntity, ByteCode, CLType, CLTyped, CLValue, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
+    AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
+    ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedKey, Package, Parameter,
     ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, Transform, URef,
     U128, U256, U512,
@@ -304,7 +305,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
         );
 
-        let contract_wasm = ByteCode::new(DO_NOTHING_BYTES.to_vec());
+        let contract_wasm = ContractWasm::new(DO_NOTHING_BYTES.to_vec());
 
         stored_value.insert(
             "ContractWasm".to_string(),

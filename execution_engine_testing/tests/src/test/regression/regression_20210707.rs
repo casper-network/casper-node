@@ -7,7 +7,7 @@ use casper_execution_engine::core::{
     execution::Error as ExecError,
 };
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
     ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;

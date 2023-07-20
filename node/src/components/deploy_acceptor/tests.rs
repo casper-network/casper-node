@@ -22,7 +22,8 @@ use tokio::time;
 use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
 use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    contracts::{Account, ActionThresholds, AssociatedKeys, Weight},
+    account::Account,
+    addressable_entity::{ActionThresholds, AssociatedKeys, Weight},
     testing::TestRng,
     CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
 };

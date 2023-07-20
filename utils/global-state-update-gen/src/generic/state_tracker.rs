@@ -7,9 +7,10 @@ use std::{
 use rand::Rng;
 
 use casper_types::{
-    contracts::{
-        AccountHash, ActionThresholds, AssociatedKeys, ContractPackageKind, ContractPackageStatus,
-        ContractVersions, DisabledVersions, Groups, NamedKeys, Weight,
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    package::{
+        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
     system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,

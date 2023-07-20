@@ -19,10 +19,9 @@ use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
+    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex,
-    contracts::AccountHash,
-    CLType, CLTyped, DeployHash, URef, U512,
+    checksummed_hex, CLType, CLTyped, DeployHash, URef, U512,
 };
 
 /// The length of a transfer address.

@@ -2,7 +2,7 @@
 #![no_main]
 
 use casper_contract::contract_api::runtime;
-use casper_types::contracts::AccountHash;
+use casper_types::account::AccountHash;
 
 const ARG_ACCOUNT: &str = "account";
 

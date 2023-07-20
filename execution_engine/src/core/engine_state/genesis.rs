@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateProvider};
 use casper_types::{
-    contracts::{
-        AccountHash, ActionThresholds, ContractPackageKind, ContractPackageStatus,
-        ContractVersions, DisabledVersions, Groups, NamedKeys,
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, NamedKeys},
+    package::{
+        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
     system::{
         auction::{
@@ -27,9 +28,10 @@ use casper_types::{
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, ByteCode, CLValue, Chainspec, ChainspecRegistry, ContractHash,
-    ContractPackageHash, ContractWasmHash, Digest, EntryPoints, EraId, GenesisAccount, Key, Motes,
-    Package, Phase, ProtocolVersion, PublicKey, StoredValue, SystemConfig, URef, WasmConfig, U512,
+    AccessRights, AddressableEntity, CLValue, Chainspec, ChainspecRegistry, ContractHash,
+    ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
+    GenesisAccount, Key, Motes, Package, Phase, ProtocolVersion, PublicKey, StoredValue,
+    SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::core::{
@@ -913,7 +915,7 @@ where
         let contract_package_hash =
             ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
-        let contract_wasm = ByteCode::new(vec![]);
+        let contract_wasm = ContractWasm::new(vec![]);
         let main_purse = self.create_purse(starting_balance)?;
         let associated_keys = contract_package_kind.associated_keys();
         let maybe_account_hash = contract_package_kind.maybe_account_hash();

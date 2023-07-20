@@ -1,7 +1,7 @@
 use alloc::boxed::Box;
 
 use crate::{
-    contracts::Parameters,
+    addressable_entity::Parameters,
     system::mint::{
         ARG_AMOUNT, ARG_ID, ARG_PURSE, ARG_SOURCE, ARG_TARGET, ARG_TO, METHOD_BALANCE,
         METHOD_CREATE, METHOD_MINT, METHOD_MINT_INTO_EXISTING_PURSE, METHOD_READ_BASE_ROUND_REWARD,

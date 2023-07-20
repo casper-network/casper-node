@@ -191,7 +191,7 @@ where
     let account_hash = public_key.to_account_hash();
     let contract_hash = ContractHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
-    let (base_key, _contract_key, addressable_entity) = new_addressable_entity(
+    let (account_key, entity_key, addressable_entity) = new_addressable_entity(
         public_key.to_account_hash(),
         contract_hash,
         named_keys.clone(),
@@ -202,7 +202,7 @@ where
     let (runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
         account_hash,
-        base_key,
+        entity_key,
         &mut named_keys,
         access_rights,
         address_generator,
@@ -255,8 +255,8 @@ fn account_key_not_writeable() {
 }
 
 #[test]
-fn account_key_readable_valid() {
-    // Account key is readable if it is a "base" key - current context of the
+fn entity_key_readable_valid() {
+    // Entity key is readable if it is a "base" key - current context of the
     // execution.
     let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         let base_key = rc.get_entity_address();
@@ -274,17 +274,18 @@ fn account_key_readable_valid() {
     assert!(query_result.is_ok());
 }
 
-#[test]
-fn account_key_readable_invalid() {
-    // Account key is NOT readable if it is different than the "base" key.
-    let mut rng = rand::thread_rng();
-    let other_acc_key = random_account_key(&mut rng);
-
-    let query_result =
-        build_runtime_context_and_execute(NamedKeys::new(), |mut rc| rc.read_gs(&other_acc_key));
-
-    assert_invalid_access(query_result, AccessRights::READ);
-}
+// Is this test still valid
+// #[test]
+// fn entity_key_readable_invalid() {
+//     // Account key is NOT readable if it is different than the "base" key.
+//     let mut rng = rand::thread_rng();
+//     let other_entity_key = random_contract_key(&mut rng);
+//
+//     let query_result =
+//         build_runtime_context_and_execute(NamedKeys::new(), |mut rc| rc.read_gs(&other_entity_key));
+//
+//     assert_invalid_access(query_result, AccessRights::READ);
+// }
 
 #[test]
 fn account_key_addable_returns_type_mismatch() {

@@ -6,7 +6,7 @@ mod auction_state;
 mod contracts;
 mod stored_value;
 
-use casper_types::{contracts::NamedKeys, NamedKey};
+use casper_types::{addressable_entity::NamedKeys, NamedKey};
 
 pub use account::Account;
 pub use addressable_entity::AddressableEntity;

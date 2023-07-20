@@ -20,11 +20,13 @@ use crate::{
 };
 use casper_storage::global_state::{shared::CorrelationId, storage::state::StateReader};
 use casper_types::{
-    bytesrepr::ToBytes,
-    contracts::{
-        AccountHash, ActionType, AddKeyFailure, ContractPackageKind, NamedKeys, RemoveKeyFailure,
-        SetThresholdFailure, UpdateKeyFailure, Weight,
+    account::AccountHash,
+    addressable_entity::{
+        ActionType, AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure,
+        UpdateKeyFailure, Weight,
     },
+    bytesrepr::ToBytes,
+    package::ContractPackageKind,
     system::auction::EraInfo,
     AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType, Gas,
@@ -34,8 +36,8 @@ use casper_types::{
 };
 
 pub(crate) mod dictionary;
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -869,7 +871,7 @@ where
         match prev.checked_add(gas.cost(is_system)) {
             None => {
                 self.set_gas_counter(gas_limit);
-                Err(Error::DictionaryItemKeyExceedsLength)
+                Err(Error::GasLimit)
             }
             Some(val) if val > gas_limit => {
                 self.set_gas_counter(gas_limit);

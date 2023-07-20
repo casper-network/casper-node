@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, RuntimeArgs,
+    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, RuntimeArgs,
     SecretKey, U512,
 };
 

@@ -6,7 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::{Error as CoreError, MAX_PAYMENT};
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST, U512,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST,
+    U512,
 };
 use parity_wasm::{
     builder,

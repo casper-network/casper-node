@@ -1,4 +1,4 @@
-use casper_types::{contracts::AccountHash, system::mint::Error, URef, U512};
+use casper_types::{account::AccountHash, system::mint::Error, URef, U512};
 
 /// Provides functionality of a system module.
 pub trait SystemProvider {

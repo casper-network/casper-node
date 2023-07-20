@@ -35,8 +35,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "json-schema")]
 use crate::KEY_HASH_LENGTH;
 use crate::{
+    account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::AccountHash,
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
     CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };

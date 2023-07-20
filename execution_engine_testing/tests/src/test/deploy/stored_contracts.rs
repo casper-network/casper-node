@@ -8,7 +8,8 @@ use casper_execution_engine::core::{
     execution,
 };
 use casper_types::{
-    contracts::{AccountHash, ContractVersion, CONTRACT_INITIAL_VERSION},
+    account::AccountHash,
+    package::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
     AddressableEntity, ApiError, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,

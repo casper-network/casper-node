@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::core::engine_state::{DeployItem, MAX_PAYMENT_AMOUNT};
 use casper_types::{
-    contracts::AccountHash,
+    account::AccountHash,
     runtime_args,
     system::mint::{ARG_AMOUNT, ARG_ID, ARG_TARGET},
     PublicKey, RuntimeArgs, SecretKey, U512,

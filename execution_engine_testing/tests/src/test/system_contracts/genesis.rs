@@ -11,8 +11,8 @@ use casper_execution_engine::core::engine_state::{
     genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
-    contracts::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator,
-    Motes, ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
+    account::AccountHash, system::auction::DelegationRate, GenesisAccount, GenesisValidator, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, U512,
 };
 
 const GENESIS_CONFIG_HASH: [u8; 32] = [127; 32];

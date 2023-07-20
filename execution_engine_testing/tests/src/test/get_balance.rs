@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{core, core::ValidationError};
 use casper_types::{
-    contracts::AccountHash, runtime_args, AccessRights, Digest, Key, PublicKey, RuntimeArgs,
+    account::AccountHash, runtime_args, AccessRights, Digest, Key, PublicKey, RuntimeArgs,
     SecretKey, URef, U512,
 };
 

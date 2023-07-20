@@ -1,7 +1,7 @@
 mod faucet;
 pub mod faucet_test_helpers;
 
-use casper_types::contracts::AccountHash;
+use casper_types::account::AccountHash;
 
 // Test constants.
 pub const FAUCET_INSTALLER_SESSION: &str = "faucet_stored.wasm";

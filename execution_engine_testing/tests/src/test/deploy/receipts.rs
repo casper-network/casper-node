@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
     ContractHash, DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };

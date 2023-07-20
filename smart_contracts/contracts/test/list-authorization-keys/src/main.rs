@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::collections::BTreeSet;
 
 use casper_contract::contract_api::runtime;
-use casper_types::{contracts::AccountHash, ApiError};
+use casper_types::{account::AccountHash, ApiError};
 
 const ARG_EXPECTED_AUTHORIZATION_KEYS: &str = "expected_authorization_keys";
 

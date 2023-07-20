@@ -13,27 +13,30 @@ use proptest::{
 };
 
 use crate::{
-    contracts::{
-        AccountHash, ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys,
-        Parameters, Weight,
-    },
+    account::AccountHash,
+    addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
+    package::{
+        ContractPackageStatus, ContractVersionKey, ContractVersions, DisabledVersions, Groups,
+    },
     system::auction::{
         gens::era_info_arb, Bid, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, ByteCode, CLType, CLValue, ContractHash, ContractVersionKey,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
-    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
+    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
-    contracts::{
+    account::Account,
+    addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
-        Account, Contract, ContractPackageKind,
     },
+    contracts::Contract,
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
+    package::ContractPackageKind,
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
@@ -404,8 +407,8 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         )
 }
 
-pub fn contract_wasm_arb() -> impl Strategy<Value = ByteCode> {
-    collection::vec(any::<u8>(), 1..1000).prop_map(ByteCode::new)
+pub fn contract_wasm_arb() -> impl Strategy<Value = ContractWasm> {
+    collection::vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
 }
 
 pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {

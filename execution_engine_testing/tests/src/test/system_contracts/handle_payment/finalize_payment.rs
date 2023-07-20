@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
 };
 use casper_types::{
-    contracts::AccountHash, runtime_args, system::handle_payment, Key, RuntimeArgs, URef, U512,
+    account::AccountHash, runtime_args, system::handle_payment, Key, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_FINALIZE_PAYMENT: &str = "finalize_payment.wasm";

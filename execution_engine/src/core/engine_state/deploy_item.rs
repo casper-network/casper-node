@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use casper_types::{contracts::AccountHash, Deploy, DeployHash, ExecutableDeployItem};
+use casper_types::{account::AccountHash, Deploy, DeployHash, ExecutableDeployItem};
 
 type GasPrice = u64;
 

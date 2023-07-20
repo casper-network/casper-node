@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
+    package::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
 };
 
 const ARG_TARGET: &str = "target_contract";
