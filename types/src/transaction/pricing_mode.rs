@@ -16,7 +16,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 use crate::testing::TestRng;
 
 const GAS_PRICE_MULTIPLIER_TAG: u8 = 0;
-const NOOP_TAG: u8 = 1;
+const FIXED_TAG: u8 = 1;
 const RESERVED_TAG: u8 = 2;
 
 /// The pricing mode of a [`Transaction`].
@@ -34,8 +34,8 @@ pub enum PricingMode {
     ///
     /// This is the same behaviour as for the `Deploy::gas_price`.
     GasPriceMultiplier(u64),
-    /// Irrelevant.
-    Noop,
+    /// First-in-first-out handling of `Transaction`s, i.e. pricing mode is irrelevant to ordering.
+    Fixed,
     /// The payment for this `Transaction` was previously reserved.
     Reserved,
 }
@@ -46,7 +46,7 @@ impl PricingMode {
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..3) {
             0 => PricingMode::GasPriceMultiplier(rng.gen()),
-            1 => PricingMode::Noop,
+            1 => PricingMode::Fixed,
             2 => PricingMode::Reserved,
             _ => unreachable!(),
         }
@@ -59,7 +59,7 @@ impl Display for PricingMode {
             PricingMode::GasPriceMultiplier(multiplier) => {
                 write!(formatter, "gas price multiplier {}", multiplier)
             }
-            PricingMode::Noop => write!(formatter, "pricing mode noop"),
+            PricingMode::Fixed => write!(formatter, "fixed pricing"),
             PricingMode::Reserved => write!(formatter, "reserved"),
         }
     }
@@ -72,7 +72,7 @@ impl ToBytes for PricingMode {
                 GAS_PRICE_MULTIPLIER_TAG.write_bytes(writer)?;
                 multiplier.write_bytes(writer)
             }
-            PricingMode::Noop => NOOP_TAG.write_bytes(writer),
+            PricingMode::Fixed => FIXED_TAG.write_bytes(writer),
             PricingMode::Reserved => RESERVED_TAG.write_bytes(writer),
         }
     }
@@ -87,7 +87,7 @@ impl ToBytes for PricingMode {
         U8_SERIALIZED_LENGTH
             + match self {
                 PricingMode::GasPriceMultiplier(multiplier) => multiplier.serialized_length(),
-                PricingMode::Noop | PricingMode::Reserved => 0,
+                PricingMode::Fixed | PricingMode::Reserved => 0,
             }
     }
 }
@@ -100,7 +100,7 @@ impl FromBytes for PricingMode {
                 let (multiplier, remainder) = u64::from_bytes(remainder)?;
                 Ok((PricingMode::GasPriceMultiplier(multiplier), remainder))
             }
-            NOOP_TAG => Ok((PricingMode::Noop, remainder)),
+            FIXED_TAG => Ok((PricingMode::Fixed, remainder)),
             RESERVED_TAG => Ok((PricingMode::Reserved, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }

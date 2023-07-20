@@ -72,7 +72,8 @@ static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
     )
 });
 
-/// A signed smart contract.
+/// A unit of work sent by a client to the network, which when executed can cause global state to
+/// be altered.
 ///
 /// To construct a new `Transaction`, use a [`TransactionBuilder`].
 #[derive(Clone, Eq, Debug)]
@@ -85,7 +86,10 @@ static TRANSACTION: Lazy<Transaction> = Lazy::new(|| {
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "A signed smart contract.")
+    schemars(
+        description = "A unit of work sent by a client to the network, which when executed can \
+        cause global state to be altered."
+    )
 )]
 pub struct Transaction {
     hash: TransactionHash,
