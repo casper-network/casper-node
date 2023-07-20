@@ -3,31 +3,18 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use alloc::vec::Vec;
-use core::{
-    array::TryFromSliceError,
-    convert::TryFrom,
-    fmt::{self, Debug, Display, Formatter},
-    iter,
-};
+use core::fmt::Debug;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "json-schema")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
-use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+use serde::Serialize;
 
-use crate::addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys};
-use crate::package::ContractPackageHash;
 use crate::{
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
-    checksummed_hex,
+    addressable_entity::NamedKeys,
+    bytesrepr::{self, FromBytes, ToBytes},
     contract_wasm::ContractWasmHash,
-    crypto::{self, PublicKey},
-    system::SystemContractType,
-    uref,
-    uref::URef,
-    AccessRights, CLType, CLTyped, ContextAccessRights, EntryPoint, EntryPoints, HashAddr, Key,
-    ProtocolVersion, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    package::ContractPackageHash,
+    EntryPoint, EntryPoints, ProtocolVersion,
 };
 
 /// Methods and type signatures supported by a contract.

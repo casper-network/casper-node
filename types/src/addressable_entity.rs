@@ -38,18 +38,16 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-use crate::contracts::Contract;
 use crate::{
     account::AccountHash,
-    bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
-    crypto::{self, PublicKey},
-    system::SystemContractType,
+    contracts::Contract,
     uref,
     uref::URef,
     AccessRights, CLType, CLTyped, ContextAccessRights, ContractPackageHash, Group, HashAddr, Key,
-    ProtocolVersion, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -67,9 +65,6 @@ pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
 
 const CONTRACT_STRING_PREFIX: &str = "contract-";
-const PACKAGE_STRING_PREFIX: &str = "contract-package-";
-// We need to support the legacy prefix of "contract-package-wasm".
-const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -1338,12 +1333,7 @@ impl FromBytes for Parameter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-        Package,
-    };
-    use crate::{AccessRights, ContractVersionKey, URef, UREF_ADDR_LENGTH};
-    use alloc::borrow::ToOwned;
+    use crate::{AccessRights, URef, UREF_ADDR_LENGTH};
 
     #[test]
     fn contract_hash_from_slice() {

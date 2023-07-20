@@ -1,3 +1,4 @@
+//! Module containing the Package and associated types for addressable entities.
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
@@ -5,10 +6,8 @@ use alloc::{
     vec::Vec,
 };
 use core::{
-    array::TryFromSliceError,
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
-    iter,
 };
 
 #[cfg(feature = "datasize")]
@@ -17,20 +16,15 @@ use datasize::DataSize;
 use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::account::AccountHash;
-use crate::addressable_entity::{
-    AssociatedKeys, Error, FromStrError, TryFromSliceForContractHashError, Weight,
-};
 use crate::{
+    account::AccountHash,
+    addressable_entity::{AssociatedKeys, Error, FromStrError, Weight},
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,
-    contract_wasm::ContractWasmHash,
     crypto::{self, PublicKey},
     system::SystemContractType,
-    uref,
     uref::URef,
-    AccessRights, CLType, CLTyped, ContextAccessRights, ContractHash, HashAddr, Key,
-    ProtocolVersion, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    CLType, CLTyped, ContractHash, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -47,7 +41,6 @@ pub const PACKAGE_KIND_ACCOUNT_TAG: u8 = 2;
 /// The tag for Contract Packages associated with legacy packages.
 pub const PACKAGE_KIND_LEGACY_TAG: u8 = 3;
 
-const CONTRACT_STRING_PREFIX: &str = "contract-";
 const PACKAGE_STRING_PREFIX: &str = "contract-package-";
 // We need to support the legacy prefix of "contract-package-wasm".
 const PACKAGE_STRING_LEGACY_EXTRA_PREFIX: &str = "wasm";
@@ -853,14 +846,14 @@ impl FromBytes for Package {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::addressable_entity::NamedKeys;
-    use crate::package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-        Package,
-    };
     use crate::{
+        addressable_entity::NamedKeys,
+        package::{
+            ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
+            Package,
+        },
         AccessRights, ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Parameter,
-        URef, UREF_ADDR_LENGTH,
+        ProtocolVersion, URef,
     };
     use alloc::borrow::ToOwned;
 

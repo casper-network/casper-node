@@ -359,7 +359,8 @@ pub enum ApiError {
     /// }
     /// ```
     AuctionError(u8),
-    /// Contract header errors. See [casper_types::contracts::Error](crate::addressable_entity::Error).
+    /// Contract header errors. See
+    /// [casper_types::contracts::Error](crate::addressable_entity::Error).
     ///
     /// ```
     /// # use casper_types::ApiError;

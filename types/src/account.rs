@@ -356,8 +356,8 @@ pub mod gens {
 //     #[test]
 //     fn account_hash_from_slice() {
 //         let bytes: Vec<u8> = (0..32).collect();
-//         let account_hash = AccountHash::try_from(&bytes[..]).expect("should create account hash");
-//         assert_eq!(&bytes, &account_hash.as_bytes());
+//         let account_hash = AccountHash::try_from(&bytes[..]).expect("should create account
+// hash");         assert_eq!(&bytes, &account_hash.as_bytes());
 //     }
 //
 //     #[test]
