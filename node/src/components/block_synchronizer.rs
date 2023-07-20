@@ -478,8 +478,10 @@ impl BlockSynchronizer {
                             .then(move |maybe_execution_results| async move {
                                 match maybe_execution_results {
                                     Some(execution_results) => {
+                                        // TODO[RC] .into(), becasue we want to avoid polluting
+                                        // `MetaBlock` with `VersionedBlock`, but maybe we'd have to
                                         let meta_block = MetaBlock::new(
-                                            Arc::new(*block),
+                                            Arc::new((*block).into()),
                                             execution_results,
                                             MetaBlockState::new_after_historical_sync(),
                                         );
@@ -863,7 +865,7 @@ impl BlockSynchronizer {
                     }
                 }
                 Some(versioned_block) => {
-                    let block: Block = (*versioned_block).into();
+                    let block: Block = (*versioned_block).into(); // TODO[RC]: We might have fetched V1 here
                     if let Err(error) = builder.register_block(&block, maybe_peer_id) {
                         error!(%error, "BlockSynchronizer: failed to apply block");
                     }

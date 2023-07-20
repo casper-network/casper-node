@@ -14,6 +14,7 @@ use tracing::{debug, error, trace, warn};
 use casper_types::{
     Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, Digest, EraId,
     FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    VersionedBlock,
 };
 
 use super::{
@@ -198,7 +199,7 @@ impl BlockBuilder {
         self.block_hash
     }
 
-    pub(super) fn maybe_block(&self) -> Option<Box<Block>> {
+    pub(super) fn maybe_block(&self) -> Option<Box<VersionedBlock>> {
         self.acquisition_state.maybe_block()
     }
 

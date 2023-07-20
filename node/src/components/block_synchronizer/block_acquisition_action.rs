@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 use tracing::{debug, warn};
 
 use casper_types::{
-    Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey,
+    BlockHash, BlockHeader, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey, VersionedBlock,
 };
 
 use crate::{
@@ -81,11 +81,17 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn approvals_hashes(block: &Block, peer_list: &PeerList, rng: &mut NodeRng) -> Self {
+    pub(super) fn approvals_hashes(
+        block: &VersionedBlock,
+        peer_list: &PeerList,
+        rng: &mut NodeRng,
+    ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
+        // TODO[RC] .into(), becasue we want to avoid polluting `NeedNext` with `VersionedBlock`,
+        // but maybe we'd have to
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next: NeedNext::ApprovalsHashes(*block.hash(), Box::new(block.clone())),
+            need_next: NeedNext::ApprovalsHashes(*block.hash(), Box::new(block.into())),
         }
     }
 
@@ -224,7 +230,7 @@ impl BlockAcquisitionAction {
     }
 
     pub(super) fn maybe_execution_results(
-        block: &Block,
+        block: &VersionedBlock,
         peer_list: &PeerList,
         rng: &mut NodeRng,
         exec_results: &mut ExecutionResultsAcquisition,

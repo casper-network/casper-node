@@ -80,7 +80,7 @@ pub use access_rights::{
 pub use api_error::ApiError;
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSignaturesMergeError, BlockValidationError, EraEnd, EraReport, FinalitySignature,
+    BlockSignaturesMergeError, BlockV1, BlockValidationError, EraEnd, EraReport, FinalitySignature,
     FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError, VersionedBlock,
     VersionedBlockBody,
 };

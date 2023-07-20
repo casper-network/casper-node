@@ -30,6 +30,7 @@ pub use block_hash::BlockHash;
 pub use block_hash_and_height::BlockHashAndHeight;
 pub use block_header::BlockHeader;
 pub use block_signatures::{BlockSignatures, BlockSignaturesMergeError};
+pub use block_v1::BlockV1;
 pub use era_end::EraEnd;
 pub use era_report::EraReport;
 pub use finality_signature::FinalitySignature;

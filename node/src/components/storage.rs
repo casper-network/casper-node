@@ -32,17 +32,19 @@
 
 pub(crate) mod disjoint_sequences;
 mod error;
+mod indices;
 mod lmdb_ext;
 mod metrics;
 mod object_pool;
 #[cfg(test)]
 mod tests;
+mod write_block;
 
 #[cfg(test)]
 use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
-    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
@@ -57,8 +59,8 @@ use datasize::DataSize;
 use derive_more::From;
 use itertools::Itertools;
 use lmdb::{
-    Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RwTransaction, Transaction,
-    WriteFlags,
+    Cursor, Database, DatabaseFlags, Environment, EnvironmentFlags, RoTransaction, RwTransaction,
+    Transaction, WriteFlags,
 };
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
@@ -446,7 +448,7 @@ impl Storage {
             let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let maybe_block_body = get_versioned_body_for_block_header_no_migration(
+            let maybe_block_body = get_versioned_body_for_block_header(
                 &mut body_txn,
                 block_header.body_hash(),
                 &BlockBodyDatabases {
@@ -475,14 +477,14 @@ impl Storage {
                 }
             }
 
-            insert_to_block_header_indices(
+            Self::insert_to_block_header_indices(
                 &mut block_height_index,
                 &mut switch_block_era_id_index,
                 &block_header,
             )?;
 
             if let Some(block_body) = maybe_block_body? {
-                insert_versioned_block_body_to_deploy_index(
+                Self::insert_versioned_block_body_to_deploy_index(
                     &mut deploy_hash_index,
                     block_header.block_hash(),
                     &block_body,
@@ -998,7 +1000,7 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                let mut txn = self.env.begin_rw_txn()?;
+                let mut txn = self.env.begin_ro_txn()?;
 
                 let block: Block =
                     if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
@@ -1062,7 +1064,7 @@ impl Storage {
                     return Ok(responder.respond(None).ignore());
                 }
 
-                let mut txn = self.env.begin_rw_txn()?;
+                let mut txn = self.env.begin_ro_txn()?;
 
                 let block: Block = {
                     if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
@@ -1088,7 +1090,7 @@ impl Storage {
                 only_from_available_block_range,
                 responder,
             } => {
-                let mut txn = self.env.begin_rw_txn()?;
+                let mut txn = self.env.begin_ro_txn()?;
                 let maybe_height = if only_from_available_block_range {
                     self.highest_complete_block_height()
                 } else {
@@ -1292,29 +1294,9 @@ impl Storage {
         Ok(outcome)
     }
 
-    fn put_executed_block(
-        &mut self,
-        block: &Block,
-        approvals_hashes: &ApprovalsHashes,
-        execution_results: HashMap<DeployHash, ExecutionResult>,
-    ) -> Result<bool, FatalStorageError> {
-        let env = Rc::clone(&self.env);
-        let mut txn = env.begin_rw_txn()?;
-        let wrote = self.write_validated_block(&mut txn, block)?;
-        if !wrote {
-            return Err(FatalStorageError::FailedToOverwriteBlock);
-        }
-
-        let _ = self.write_approvals_hashes(&mut txn, approvals_hashes)?;
-        let _ = self.write_execution_results(&mut txn, block.hash(), execution_results)?;
-        txn.commit()?;
-
-        Ok(true)
-    }
-
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
-        self.get_single_block(&mut self.env.begin_rw_txn()?, block_hash)
+        self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
     /// Retrieves a versioned block by hash.
@@ -1322,7 +1304,7 @@ impl Storage {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<VersionedBlock>, FatalStorageError> {
-        self.get_single_versioned_block(&mut self.env.begin_rw_txn()?, block_hash)
+        self.get_single_versioned_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
     /// Returns `true` if the given block's header and body are stored.
@@ -1352,7 +1334,7 @@ impl Storage {
 
     /// Gets the highest block.
     pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
-        let mut txn = self.env.begin_rw_txn()?;
+        let mut txn = self.env.begin_ro_txn()?;
         self.get_highest_block(&mut txn)
     }
 
@@ -1376,7 +1358,7 @@ impl Storage {
     pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_rw_txn()
+            .begin_ro_txn()
             .expect("Could not start transaction for lmdb");
         let maybe_block = self.get_highest_complete_block(&mut txn)?;
         txn.commit().expect("Could not commit transaction");
@@ -1394,7 +1376,7 @@ impl Storage {
     ) -> Result<Vec<Block>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_rw_txn()
+            .begin_ro_txn()
             .expect("Could not start transaction for lmdb");
         let timestamp = match self.switch_block_era_id_index.keys().last() {
             Some(era_id) => self
@@ -1462,58 +1444,6 @@ impl Storage {
             deploys.len()
         );
         Ok(Some((finalized_block, deploys)))
-    }
-
-    /// Writes a block to storage, updating indices as necessary.
-    ///
-    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
-    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
-        // Validate the block prior to inserting it into the database
-        block.verify()?;
-        let env = Rc::clone(&self.env);
-        let mut txn = env.begin_rw_txn()?;
-        let wrote = self.write_validated_block(&mut txn, block)?;
-        if wrote {
-            txn.commit()?;
-        }
-        Ok(wrote)
-    }
-
-    /// TODO: Docs
-    pub fn write_versioned_block(
-        &mut self,
-        block: &VersionedBlock,
-    ) -> Result<bool, FatalStorageError> {
-        // Validate the block prior to inserting it into the database
-        block.verify()?;
-        let env = Rc::clone(&self.env);
-        let mut txn = env.begin_rw_txn()?;
-        let wrote = self.write_validated_versioned_block(&mut txn, block)?;
-        if wrote {
-            txn.commit()?;
-        }
-        Ok(wrote)
-    }
-
-    /// Writes a block to storage and marks it as complete, updating indices as necessary.
-    ///
-    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
-    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    /// This function guarantees that either both the block storing and the `completed_blocks` index
-    /// update were successful or that the entire operation was reverted.
-    pub fn write_complete_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
-        // Validate the block prior to inserting it into the database
-        block.verify()?;
-        let env = Rc::clone(&self.env);
-        let mut txn = env.begin_rw_txn()?;
-        let wrote = self.write_validated_block(&mut txn, block)?;
-        if wrote {
-            // Update the `completed_blocks` index only if the block was actually stored.
-            let _ = self.mark_block_complete(block.height())?;
-            txn.commit()?;
-        }
-        Ok(wrote)
     }
 
     fn write_execution_results(
@@ -1607,107 +1537,6 @@ impl Storage {
         Ok(())
     }
 
-    /// Writes a block which has already been verified to storage, updating indices as necessary.
-    ///
-    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
-    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    fn write_validated_block(
-        &mut self,
-        txn: &mut RwTransaction,
-        block: &Block,
-    ) -> Result<bool, FatalStorageError> {
-        {
-            let block_body_hash = block.body_hash();
-            let block_body = block.body();
-            if !put_single_block_body(
-                txn,
-                block_body_hash,
-                block_body,
-                self.block_body_dbs.current,
-            )? {
-                error!("could not insert body for: {}", block);
-                return Ok(false);
-            }
-        }
-
-        let overwrite = true;
-
-        if !txn.put_value(
-            self.block_header_db,
-            block.hash(),
-            block.header(),
-            overwrite,
-        )? {
-            error!("could not insert block header for block: {}", block);
-            return Ok(false);
-        }
-
-        {
-            insert_to_block_header_indices(
-                &mut self.block_height_index,
-                &mut self.switch_block_era_id_index,
-                block.header(),
-            )?;
-            insert_block_body_to_deploy_index(
-                &mut self.deploy_hash_index,
-                *block.hash(),
-                block.body(),
-                block.height(),
-            )?;
-        }
-        Ok(true)
-    }
-
-    // TODO[RC]: Dedup with the above, generic?
-    fn write_validated_versioned_block(
-        &mut self,
-        txn: &mut RwTransaction,
-        block: &VersionedBlock,
-    ) -> Result<bool, FatalStorageError> {
-        {
-            let block_body_hash = block.header().body_hash();
-            let block_body = block.body();
-            if !put_single_versioned_block_body(
-                txn,
-                block_body_hash,
-                &block_body,
-                self.block_body_dbs.current,
-            )? {
-                error!("could not insert body for: {}", block);
-                return Ok(false);
-            }
-        }
-
-        let overwrite = true;
-
-        if !txn.put_value(
-            self.block_header_db,
-            block.hash(),
-            block.header(),
-            overwrite,
-        )? {
-            error!("could not insert block header for block: {}", block);
-            return Ok(false);
-        }
-
-        {
-            insert_to_block_header_indices(
-                &mut self.block_height_index,
-                &mut self.switch_block_era_id_index,
-                block.header(),
-            )?;
-            let versioned_block_body = &block.body();
-            let block_body: BlockBody = versioned_block_body.into();
-            insert_block_body_to_deploy_index(
-                &mut self.deploy_hash_index,
-                *block.hash(),
-                &block_body,
-                block.header().height(),
-            )?;
-        }
-        Ok(true)
-    }
-
     /// Returns `count` highest switch block headers, sorted from lowest (oldest) to highest.
     pub(crate) fn read_highest_switch_block_headers(
         &self,
@@ -1777,7 +1606,7 @@ impl Storage {
 
     /// Retrieves single block by height by looking it up in the index and returning it.
     pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
-        self.get_block_by_height(&mut self.env.begin_rw_txn()?, height)
+        self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
     /// Retrieves a block by height, together with all stored block signatures.
@@ -1789,8 +1618,8 @@ impl Storage {
     ) -> Result<Option<SignedBlock>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_rw_txn()
-            .expect("could not create RW transaction");
+            .begin_ro_txn()
+            .expect("could not create transaction");
         let block = if let Some(block) = self.get_block_by_height(&mut txn, height)? {
             block
         } else {
@@ -1815,7 +1644,7 @@ impl Storage {
         &self,
         block_hash: BlockHash,
     ) -> Result<Option<(Block, Vec<Deploy>)>, FatalStorageError> {
-        let mut txn = self.env.begin_rw_txn()?;
+        let mut txn = self.env.begin_ro_txn()?;
         let block = match self.get_single_block(&mut txn, &block_hash)? {
             Some(block) => block,
             None => {
@@ -1839,7 +1668,7 @@ impl Storage {
     /// Retrieves single block by height by looking it up in the index and returning it.
     fn get_block_by_height(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RoTransaction,
         height: u64,
     ) -> Result<Option<Block>, FatalStorageError> {
         self.block_height_index
@@ -1899,7 +1728,7 @@ impl Storage {
     /// Retrieves the highest block from storage, if one exists. May return an LMDB error.
     fn get_highest_block(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RoTransaction,
     ) -> Result<Option<Block>, FatalStorageError> {
         self.block_height_index
             .keys()
@@ -1963,7 +1792,7 @@ impl Storage {
     /// Retrieves the highest complete block from storage, if one exists. May return an LMDB error.
     fn get_highest_complete_block(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RoTransaction,
     ) -> Result<Option<Block>, FatalStorageError> {
         let highest_complete_block_height = match self.highest_complete_block_height() {
             Some(height) => height,
@@ -1989,7 +1818,7 @@ impl Storage {
     /// exists), starting from the latest one and following the ancestry chain.
     fn get_blocks_while<F>(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RoTransaction,
         predicate: F,
     ) -> Result<Vec<Block>, FatalStorageError>
     where
@@ -2178,7 +2007,7 @@ impl Storage {
         txn.commit()?;
         // Update the indices if and only if we wrote to storage correctly.
         for block_header in &block_headers {
-            insert_to_block_header_indices(
+            Self::insert_to_block_header_indices(
                 &mut self.block_height_index,
                 &mut self.switch_block_era_id_index,
                 block_header,
@@ -2201,8 +2030,7 @@ impl Storage {
     /// Retrieves a single block from storage.
     fn get_single_block(
         &self,
-        txn: &mut RwTransaction, /* TODO[RC]: Check if we can turn RoTransaction to RwTransation
-                                  * on demand (i.e.: only if the migration is needed) */
+        txn: &mut RoTransaction,
         block_hash: &BlockHash,
     ) -> Result<Option<Block>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
@@ -2236,7 +2064,7 @@ impl Storage {
     /// Retrieves a single block from storage.
     fn get_single_versioned_block(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RoTransaction,
         block_hash: &BlockHash,
     ) -> Result<Option<VersionedBlock>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
@@ -2266,7 +2094,7 @@ impl Storage {
                 return Ok(None);
             }
         };
-        let block = VersionedBlock::new_from_header_and_versioned_body(block_header, &block_body)?;
+        let block = VersionedBlock::new_from_header_and_versioned_body(block_header, block_body)?;
         Ok(Some(block))
     }
 
@@ -2575,7 +2403,7 @@ impl Storage {
                     Some(block_hash) => {
                         let mut txn = self
                             .env
-                            .begin_rw_txn()
+                            .begin_ro_txn()
                             .expect("Could not start transaction for lmdb");
                         if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
                             HighestOrphanedBlockResult::Orphan(block.header().clone())
@@ -2590,7 +2418,7 @@ impl Storage {
 
     fn get_execution_results(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RoTransaction,
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(DeployHash, ExecutionResult)>>, FatalStorageError> {
         // There's no mapping between block_hash -> execution results.
@@ -2658,7 +2486,7 @@ impl Storage {
         &self,
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<(DeployHash, DeployHeader, ExecutionResult)>>, FatalStorageError> {
-        let mut txn = self.env.begin_rw_txn()?;
+        let mut txn = self.env.begin_ro_txn()?;
         let execution_results = match self.get_execution_results(&mut txn, block_hash)? {
             Some(execution_results) => execution_results,
             None => return Ok(None),
@@ -2685,7 +2513,7 @@ impl Storage {
         &self,
         request: &BlockExecutionResultsOrChunkId,
     ) -> Result<Option<BlockExecutionResultsOrChunk>, FatalStorageError> {
-        let mut txn = self.env.begin_rw_txn()?;
+        let mut txn = self.env.begin_ro_txn()?;
         let execution_results = match self.get_execution_results(&mut txn, request.block_hash())? {
             Some(execution_results) => execution_results
                 .into_iter()
@@ -2729,106 +2557,6 @@ where
     T: FetchItem,
 {
     bincode::deserialize(raw).map_err(GetRequestError::MalformedIncomingItemId)
-}
-
-/// Inserts the relevant entries to the two indices.
-///
-/// If a duplicate entry is encountered, neither index is updated and an error is returned.
-fn insert_to_block_header_indices(
-    block_height_index: &mut BTreeMap<u64, BlockHash>,
-    switch_block_era_id_index: &mut BTreeMap<EraId, BlockHash>,
-    block_header: &BlockHeader,
-) -> Result<(), FatalStorageError> {
-    let block_hash = block_header.block_hash();
-    if let Some(first) = block_height_index.get(&block_header.height()) {
-        if *first != block_hash {
-            return Err(FatalStorageError::DuplicateBlockIndex {
-                height: block_header.height(),
-                first: *first,
-                second: block_hash,
-            });
-        }
-    }
-
-    if block_header.is_switch_block() {
-        match switch_block_era_id_index.entry(block_header.era_id()) {
-            Entry::Vacant(entry) => {
-                let _ = entry.insert(block_hash);
-            }
-            Entry::Occupied(entry) => {
-                if *entry.get() != block_hash {
-                    return Err(FatalStorageError::DuplicateEraIdIndex {
-                        era_id: block_header.era_id(),
-                        first: *entry.get(),
-                        second: block_hash,
-                    });
-                }
-            }
-        }
-    }
-
-    let _ = block_height_index.insert(block_header.height(), block_hash);
-    Ok(())
-}
-
-/// Inserts the relevant entries to the index.
-///
-/// If a duplicate entry is encountered, index is not updated and an error is returned.
-fn insert_versioned_block_body_to_deploy_index(
-    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
-    block_hash: BlockHash,
-    block_body: &VersionedBlockBody,
-    block_height: u64,
-) -> Result<(), FatalStorageError> {
-    if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
-        deploy_hash_index
-            .get(hash)
-            .map_or(false, |old_block_hash_and_height| {
-                *old_block_hash_and_height.block_hash() != block_hash
-            })
-    }) {
-        return Err(FatalStorageError::DuplicateDeployIndex {
-            deploy_hash: *hash,
-            first: deploy_hash_index[hash],
-            second: BlockHashAndHeight::new(block_hash, block_height),
-        });
-    }
-
-    for hash in block_body.deploy_and_transfer_hashes() {
-        deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
-    }
-
-    Ok(())
-}
-
-/// Inserts the relevant entries to the index.
-///
-/// If a duplicate entry is encountered, index is not updated and an error is returned.
-fn insert_block_body_to_deploy_index(
-    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
-    block_hash: BlockHash,
-    block_body: &BlockBody,
-    block_height: u64,
-) -> Result<(), FatalStorageError> {
-    if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
-        deploy_hash_index
-            .get(hash)
-            .map_or(false, |old_block_hash_and_height| {
-                *old_block_hash_and_height.block_hash() != block_hash
-            })
-    }) {
-        return Err(FatalStorageError::DuplicateDeployIndex {
-            deploy_hash: *hash,
-            first: deploy_hash_index[hash],
-            second: BlockHashAndHeight::new(block_hash, block_height),
-        });
-    }
-
-    for hash in block_body.deploy_and_transfer_hashes() {
-        deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
-    }
-
-    Ok(())
 }
 
 fn should_move_storage_files_to_network_subdir(
@@ -3030,7 +2758,7 @@ impl Storage {
     /// Retrieves single switch block by era ID by looking it up in the index and returning it.
     fn get_switch_block_by_era_id(
         &self,
-        txn: &mut RwTransaction,
+        txn: &mut RoTransaction,
         era_id: EraId,
     ) -> Result<Option<Block>, FatalStorageError> {
         self.switch_block_era_id_index
@@ -3050,7 +2778,7 @@ impl Storage {
     ) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
             .env
-            .begin_rw_txn()
+            .begin_ro_txn()
             .expect("Could not start read only transaction for lmdb");
         let switch_block = self
             .get_switch_block_by_era_id(&mut txn, EraId::from(switch_block_era_num))
@@ -3135,97 +2863,37 @@ where
     Ok(())
 }
 
-fn migrate_to_versioned_block_body(
-    txn: &mut RwTransaction,
-    block_body_hash: &Digest,
-    block_body: &VersionedBlockBody,
-    block_body_dbs: &BlockBodyDatabases,
-) -> Result<(), LmdbExtError> {
-    put_single_versioned_block_body(txn, block_body_hash, block_body, block_body_dbs.current)?;
-    if let Err(err) = txn.del(block_body_dbs.legacy, block_body_hash, None) {
-        warn!(%block_body_hash, %err, "error deleting migrated block body from legacy db")
-    }
-
-    Ok(())
-}
-
-/// Retrieves the block body for the given block header.
-fn get_versioned_body_for_block_header_no_migration<Tx>(
-    txn: &mut Tx,
-    block_body_hash: &Digest,
-    block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<VersionedBlockBody>, LmdbExtError>
-where
-    Tx: Transaction,
-{
-    let maybe_block_body: Option<VersionedBlockBody> =
-        txn.get_value(block_body_dbs.current, block_body_hash)?;
-    if maybe_block_body.is_none() {
-        let maybe_legacy_block_body: Option<BlockBodyV1> =
-            txn.get_value(block_body_dbs.legacy, block_body_hash)?;
-        if let Some(block_body_v1) = maybe_legacy_block_body {
-            return Ok(Some(VersionedBlockBody::V1(block_body_v1)));
-        }
-    } else {
-        return Ok(maybe_block_body);
-    }
-
-    Ok(None)
-}
-
 /// Retrieves the block body for the given block header.
 fn get_body_for_block_header(
-    txn: &mut RwTransaction,
+    txn: &mut RoTransaction,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
 ) -> Result<Option<BlockBody>, LmdbExtError> {
-    let maybe_versioned_block_body: Option<VersionedBlockBody> =
-        txn.get_value(block_body_dbs.current, block_body_hash)?;
-    match maybe_versioned_block_body {
-        Some(VersionedBlockBody::V2(block_body_v2)) => Ok(Some(block_body_v2)),
-        Some(VersionedBlockBody::V1(_)) | None => Ok(None),
-    }
+    Ok(
+        get_versioned_body_for_block_header(txn, block_body_hash, block_body_dbs)?.and_then(
+            |body| match body {
+                VersionedBlockBody::V1(_) => None,
+                VersionedBlockBody::V2(inner) => Some(inner),
+            },
+        ),
+    )
 }
 
-/// Retrieves the versioned block body for the given block header, performing the migration to the
-/// new version of BlockBody if necessary.
+/// Retrieves the versioned block body for the given block header.
 fn get_versioned_body_for_block_header(
-    txn: &mut RwTransaction,
+    txn: &mut RoTransaction,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
 ) -> Result<Option<VersionedBlockBody>, LmdbExtError> {
-    let maybe_block_body =
-        get_versioned_body_for_block_header_no_migration(txn, block_body_hash, block_body_dbs)?;
-
-    if let Some(ref block_body) = maybe_block_body {
-        if matches!(block_body, VersionedBlockBody::V1(_)) {
-            migrate_to_versioned_block_body(txn, block_body_hash, block_body, block_body_dbs)?
-        }
-    }
-
-    Ok(maybe_block_body)
-}
-
-/// Writes a single block body in a separate transaction to storage.
-fn put_single_versioned_block_body(
-    txn: &mut RwTransaction,
-    block_body_hash: &Digest,
-    block_body: &VersionedBlockBody,
-    db: Database,
-) -> Result<bool, LmdbExtError> {
-    txn.put_value(db, block_body_hash, block_body, true)
-        .map_err(Into::into)
-}
-
-/// Writes a single block body in a separate transaction to storage.
-fn put_single_block_body(
-    txn: &mut RwTransaction,
-    block_body_hash: &Digest,
-    block_body: &BlockBody,
-    db: Database,
-) -> Result<bool, LmdbExtError> {
-    let versioned_block_body = VersionedBlockBody::V2(block_body.clone());
-    put_single_versioned_block_body(txn, block_body_hash, &versioned_block_body, db)
+    let maybe_block_body: Option<VersionedBlockBody> =
+        txn.get_value(block_body_dbs.current, block_body_hash)?;
+    Ok(if maybe_block_body.is_none() {
+        let maybe_legacy_block_body: Option<BlockBodyV1> =
+            txn.get_value(block_body_dbs.legacy, block_body_hash)?;
+        maybe_legacy_block_body.map(|block_body_v1| block_body_v1.into())
+    } else {
+        maybe_block_body
+    })
 }
 
 /// Purges stale entries from the block metadata database.

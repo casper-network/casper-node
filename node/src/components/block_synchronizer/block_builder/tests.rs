@@ -171,7 +171,7 @@ fn register_finalized_block() {
     // Set the builder's state to `HaveStrictFinalitySignatures`.
     let finalized_block = FinalizedBlock::from(block.clone());
     builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
-        Box::new(block.clone()),
+        Box::new(block.clone().into()),
         signature_acquisition.clone(),
     );
     let expected_deploys = vec![Deploy::random(&mut rng)];
@@ -181,7 +181,7 @@ fn register_finalized_block() {
     builder.register_made_finalized_block(finalized_block.clone(), expected_deploys.clone());
     match &builder.acquisition_state {
         BlockAcquisitionState::HaveFinalizedBlock(actual_block, _, actual_deploys, enqueued) => {
-            assert_eq!(*actual_block.hash(), *block.hash());
+            assert_eq!(actual_block.hash(), block.hash());
             assert_eq!(expected_deploys, *actual_deploys);
             assert!(!enqueued);
         }
@@ -195,7 +195,7 @@ fn register_finalized_block() {
     builder.should_fetch_execution_state = true;
     // Reset the state to `HaveStrictFinalitySignatures`.
     builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
-        Box::new(block),
+        Box::new(block.into()),
         signature_acquisition.clone(),
     );
     // Register the finalized block. This should fail on historical builders.
@@ -239,7 +239,7 @@ fn register_block_execution() {
 
     let finalized_block = Box::new(FinalizedBlock::from(block.clone()));
     builder.acquisition_state = BlockAcquisitionState::HaveFinalizedBlock(
-        Box::new(block),
+        Box::new(block.into()),
         finalized_block,
         vec![Deploy::random(&mut rng)],
         false,
@@ -314,8 +314,10 @@ fn register_block_executed() {
         Acceptance::NeededIt
     );
     // Set the builder state to `HaveStrictFinalitySignatures`.
-    builder.acquisition_state =
-        BlockAcquisitionState::HaveStrictFinalitySignatures(Box::new(block), signature_acquisition);
+    builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
+        Box::new(block.into()),
+        signature_acquisition,
+    );
     // Mark execution as started.
     builder.execution_progress = ExecutionProgress::Started;
 
@@ -381,7 +383,7 @@ fn register_block_marked_complete() {
 
     // Set the builder state to `HaveStrictFinalitySignatures`.
     builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
-        Box::new(block.clone()),
+        Box::new(block.clone().into()),
         signature_acquisition.clone(),
     );
     // Register the block as marked complete. Since there are no missing
@@ -401,7 +403,7 @@ fn register_block_marked_complete() {
     builder.should_fetch_execution_state = false;
     // Set the builder state to `HaveStrictFinalitySignatures`.
     builder.acquisition_state = BlockAcquisitionState::HaveStrictFinalitySignatures(
-        Box::new(block),
+        Box::new(block.into()),
         signature_acquisition.clone(),
     );
     // Register the block as marked complete. In the forward flow we should
