@@ -709,9 +709,12 @@ fn is_timestamp_at_ttl(
 mod tests {
     use std::str::FromStr;
 
-    use casper_types::{testing::TestRng, Block, ProtocolVersion, TimeDiff, Timestamp};
+    use casper_types::{testing::TestRng, TimeDiff, Timestamp};
 
-    use crate::reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl};
+    use crate::{
+        reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
+        types::TestBlockBuilder,
+    };
 
     const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
     const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
@@ -772,25 +775,19 @@ mod tests {
 
     #[test]
     fn should_detect_ttl_at_genesis() {
-        let mut rng = TestRng::new();
+        let rng = &mut TestRng::new();
 
-        let latest_switch_block = Block::random_with_specifics(
-            &mut rng,
-            100.into(),
-            1000,
-            ProtocolVersion::default(),
-            true,
-            None,
-        );
+        let latest_switch_block = TestBlockBuilder::new()
+            .era(100)
+            .height(1000)
+            .switch_block(true)
+            .build(rng);
 
-        let latest_orphaned_block = Block::random_with_specifics(
-            &mut rng,
-            0.into(),
-            0,
-            ProtocolVersion::default(),
-            true,
-            None,
-        );
+        let latest_orphaned_block = TestBlockBuilder::new()
+            .era(0)
+            .height(0)
+            .switch_block(true)
+            .build(rng);
 
         assert_eq!(latest_orphaned_block.height(), 0);
         assert_eq!(

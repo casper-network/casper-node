@@ -2,20 +2,20 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use prometheus::Registry;
 
-use casper_types::{testing::TestRng, Block, BlockHash, Chainspec};
+use casper_types::{testing::TestRng, BlockHash, Chainspec};
 
 use crate::{
     components::{
         fetcher::{self, FetchResult, FetchedData},
         sync_leaper::{LeapState, PeerState, RegisterLeapAttemptOutcome},
     },
-    types::{NodeId, SyncLeap, SyncLeapIdentifier},
+    types::{NodeId, SyncLeap, SyncLeapIdentifier, TestBlockBuilder},
 };
 
 use super::{Error, SyncLeaper};
 
 pub(crate) fn make_test_sync_leap(rng: &mut TestRng) -> SyncLeap {
-    let block = Block::random(rng);
+    let block = TestBlockBuilder::new().build(rng);
     SyncLeap {
         trusted_ancestor_only: false,
         trusted_block_header: block.header().clone(),

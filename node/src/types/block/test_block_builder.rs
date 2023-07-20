@@ -1,25 +1,25 @@
-use std::{collections::BTreeMap, iter};
+use std::iter;
 
 use rand::Rng;
 
 use casper_types::{
-    testing::TestRng, Block, BlockHash, Deploy, Digest, EraEnd, EraId, EraReport, ProtocolVersion,
-    PublicKey, Timestamp, U512,
+    system::auction::ValidatorWeights, testing::TestRng, Block, BlockHash, Deploy, Digest, EraEnd,
+    EraId, EraReport, ProtocolVersion, PublicKey, Timestamp, U512,
 };
 
 pub(crate) struct TestBlockBuilder {
     parent_hash: Option<BlockHash>,
     state_root_hash: Option<Digest>,
     timestamp: Option<Timestamp>,
-    era: Option<u64>,
+    era: Option<EraId>,
     height: Option<u64>,
     protocol_version: ProtocolVersion,
     deploys: Vec<Deploy>,
     is_switch: Option<bool>,
+    validator_weights: Option<ValidatorWeights>,
 }
 
 impl TestBlockBuilder {
-    #[allow(unused)]
     pub(crate) fn new() -> Self {
         Self {
             parent_hash: None,
@@ -30,10 +30,10 @@ impl TestBlockBuilder {
             protocol_version: ProtocolVersion::V1_0_0,
             deploys: Vec::new(),
             is_switch: None,
+            validator_weights: None,
         }
     }
 
-    #[allow(unused)]
     pub(crate) fn parent_hash(mut self, parent_hash: BlockHash) -> Self {
         self.parent_hash = Some(parent_hash);
         self
@@ -51,19 +51,25 @@ impl TestBlockBuilder {
         self
     }
 
-    #[allow(unused)]
-    pub(crate) fn era(mut self, era: u64) -> Self {
-        self.era = Some(era);
-        self
+    pub(crate) fn era(self, era: impl Into<EraId>) -> Self {
+        Self {
+            era: Some(era.into()),
+            ..self
+        }
     }
 
-    #[allow(unused)]
     pub(crate) fn height(mut self, height: u64) -> Self {
         self.height = Some(height);
         self
     }
 
-    #[allow(unused)]
+    pub(crate) fn protocol_version(self, protocol_version: ProtocolVersion) -> Self {
+        Self {
+            protocol_version,
+            ..self
+        }
+    }
+
     pub(crate) fn deploys<'a, I: IntoIterator<Item = &'a Deploy>>(
         mut self,
         deploys_iter: I,
@@ -72,7 +78,6 @@ impl TestBlockBuilder {
         self
     }
 
-    #[allow(unused)]
     pub(crate) fn random_deploys(mut self, count: usize, rng: &mut TestRng) -> Self {
         self.deploys = iter::repeat(())
             .take(count)
@@ -81,13 +86,18 @@ impl TestBlockBuilder {
         self
     }
 
-    #[allow(unused)]
     pub(crate) fn switch_block(mut self, is_switch: bool) -> Self {
         self.is_switch = Some(is_switch);
         self
     }
 
-    #[allow(unused)]
+    pub(crate) fn validator_weights(self, validator_weights: ValidatorWeights) -> Self {
+        Self {
+            validator_weights: Some(validator_weights),
+            ..self
+        }
+    }
+
     pub(crate) fn build(self, rng: &mut TestRng) -> Block {
         let parent_hash = if let Some(parent_hash) = self.parent_hash {
             parent_hash
@@ -111,11 +121,14 @@ impl TestBlockBuilder {
             rng.gen_bool(0.1)
         };
 
+        let validator_weights = self.validator_weights;
         let era_end = is_switch.then(|| {
-            let mut next_era_validator_weights = BTreeMap::new();
-            for i in 1_u64..6 {
-                let _ = next_era_validator_weights.insert(PublicKey::random(rng), U512::from(i));
-            }
+            let next_era_validator_weights = validator_weights.unwrap_or_else(|| {
+                (1..6)
+                    .map(|i| (PublicKey::random(rng), U512::from(i)))
+                    .take(6)
+                    .collect()
+            });
             EraEnd::new(EraReport::random(rng), next_era_validator_weights)
         });
 
@@ -125,11 +138,7 @@ impl TestBlockBuilder {
             Timestamp::now()
         };
 
-        let era_id = if let Some(era) = self.era {
-            EraId::new(era)
-        } else {
-            EraId::random(rng)
-        };
+        let era_id = self.era.unwrap_or(EraId::random(rng));
 
         let height = if let Some(height) = self.height {
             height
@@ -159,5 +168,9 @@ impl TestBlockBuilder {
             deploy_hashes,
             transfer_hashes,
         )
+    }
+
+    pub(crate) fn build_invalid(self, rng: &mut TestRng) -> Block {
+        self.build(rng).make_invalid(rng)
     }
 }

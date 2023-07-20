@@ -36,7 +36,7 @@ use crate::{
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange,
         DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, LegacyDeploy,
-        SyncLeapIdentifier,
+        SyncLeapIdentifier, TestBlockBuilder,
     },
     utils::{Loadable, WithDir},
 };
@@ -118,18 +118,14 @@ fn create_sync_leap_test_chain(
             *blocks.get((height - 1) as usize).unwrap().hash()
         };
 
-        let block = Block::random_with_specifics_and_parent_and_validator_weights(
-            &mut harness.rng,
-            era_id,
-            height,
-            chainspec.protocol_version(),
-            parent_hash,
-            if is_switch {
-                Some(trusted_validator_weights.clone())
-            } else {
-                None
-            },
-        );
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(height)
+            .protocol_version(chainspec.protocol_version())
+            .parent_hash(parent_hash)
+            .validator_weights(trusted_validator_weights.clone())
+            .switch_block(is_switch)
+            .build(&mut harness.rng);
 
         blocks.push(block);
     });
@@ -487,14 +483,14 @@ fn read_block_by_height_with_available_block_range() {
     let mut harness = ComponentHarness::default();
 
     // Create a random block, load and store it.
-    let block_33 = Arc::new(Block::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        33,
-        ProtocolVersion::from_parts(1, 5, 0),
-        true,
-        None,
-    ));
+    let block_33 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(33)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(true)
+            .build(&mut harness.rng),
+    );
 
     let mut storage = storage_fixture(&harness);
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -513,14 +509,14 @@ fn read_block_by_height_with_available_block_range() {
     );
 
     // Create a random block as a different height, load and store it.
-    let block_14 = Arc::new(Block::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        14,
-        ProtocolVersion::from_parts(1, 5, 0),
-        false,
-        None,
-    ));
+    let block_14 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(14)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
 
     let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
@@ -537,30 +533,31 @@ fn can_retrieve_block_by_height() {
     let mut harness = ComponentHarness::default();
 
     // Create some random blocks, load and store them.
-    let block_33 = Arc::new(Block::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        33,
-        ProtocolVersion::from_parts(1, 5, 0),
-        true,
-        None,
-    ));
-    let block_14 = Arc::new(Block::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        14,
-        ProtocolVersion::from_parts(1, 5, 0),
-        false,
-        None,
-    ));
-    let block_99 = Arc::new(Block::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(2),
-        99,
-        ProtocolVersion::from_parts(1, 5, 0),
-        true,
-        None,
-    ));
+    let block_33 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(33)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(true)
+            .build(&mut harness.rng),
+    );
+    let block_14 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(14)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
+
+    let block_99 = Arc::new(
+        TestBlockBuilder::new()
+            .era(2)
+            .height(99)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(true)
+            .build(&mut harness.rng),
+    );
 
     let mut storage = storage_fixture(&harness);
 
@@ -689,22 +686,20 @@ fn different_block_at_height_is_fatal() {
     let mut storage = storage_fixture(&harness);
 
     // Create two different blocks at the same height.
-    let block_44_a = Arc::new(Block::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        44,
-        ProtocolVersion::V1_0_0,
-        false,
-        None,
-    ));
-    let block_44_b = Arc::new(Block::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        44,
-        ProtocolVersion::V1_0_0,
-        false,
-        None,
-    ));
+    let block_44_a = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(44)
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
+    let block_44_b = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(44)
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
 
     let was_new = put_complete_block(&mut harness, &mut storage, block_44_a.clone());
     assert!(was_new);
@@ -1088,7 +1083,7 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = Block::random(&mut harness.rng);
+    let block = TestBlockBuilder::new().build(&mut harness.rng);
     let block_height = block.height();
 
     // Create some sample data.
@@ -1151,19 +1146,14 @@ fn should_hard_reset() {
     let blocks: Vec<Block> = (0..blocks_count)
         .map(|height| {
             let is_switch = height % blocks_per_era == blocks_per_era - 1;
-            Block::random_with_specifics(
-                &mut harness.rng,
-                EraId::from(height as u64 / 3),
-                height as u64,
-                ProtocolVersion::V1_0_0,
-                is_switch,
-                iter::once(
-                    *random_deploys
-                        .get(height)
-                        .expect("should_have_deploy")
-                        .hash(),
-                ),
-            )
+            TestBlockBuilder::new()
+                .era(height as u64 / 3)
+                .height(height as u64)
+                .switch_block(is_switch)
+                .deploys(iter::once(
+                    random_deploys.get(height).expect("should_have_deploy"),
+                ))
+                .build(&mut harness.rng)
         })
         .collect();
 
@@ -1386,8 +1376,7 @@ fn can_put_and_get_block() {
     let only_from_available_block_range = false;
 
     // Create a random block, store and load it.
-    let block = Block::random(&mut harness.rng);
-    let block = Arc::new(block);
+    let block = Arc::new(TestBlockBuilder::new().build(&mut harness.rng));
 
     let mut storage = storage_fixture(&harness);
 
@@ -1624,17 +1613,16 @@ fn should_restrict_returned_blocks() {
     let mut storage = storage_fixture(&harness);
 
     // Create the following disjoint sequences: 1-2 4-5
-    [1, 2, 4, 5].iter().for_each(|height| {
-        let block = Block::random_with_specifics(
-            &mut harness.rng,
-            EraId::from(1),
-            *height,
-            ProtocolVersion::from_parts(1, 5, 0),
-            false,
-            None,
-        );
+    IntoIterator::into_iter([1, 2, 4, 5]).for_each(|height| {
+        let block = TestBlockBuilder::new()
+            .era(1)
+            .height(height)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(false)
+            .build(&mut harness.rng);
+
         storage.write_block(&block).unwrap();
-        storage.completed_blocks.insert(*height);
+        storage.completed_blocks.insert(height);
     });
 
     // Without restriction, the node should attempt to return any requested block
@@ -1691,7 +1679,7 @@ fn should_get_block_header_by_height() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = Block::random(&mut harness.rng);
+    let block = TestBlockBuilder::new().build(&mut harness.rng);
     let expected_header = block.header().clone();
     let height = block.height();
 
@@ -1716,12 +1704,12 @@ fn check_force_resync_with_marker_file() {
     assert!(!force_resync_file_path.exists());
 
     // Add a couple of blocks into storage.
-    let first_block = Block::random(&mut harness.rng);
+    let first_block = TestBlockBuilder::new().build(&mut harness.rng);
     put_complete_block(&mut harness, &mut storage, Arc::new(first_block.clone()));
     let second_block = loop {
         // We need to make sure that the second random block has different height than the first
         // one.
-        let block = Block::random(&mut harness.rng);
+        let block = TestBlockBuilder::new().build(&mut harness.rng);
         if block.height() != first_block.height() {
             break block;
         }

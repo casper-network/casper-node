@@ -139,7 +139,17 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = Block::random_switch_block(rng);
+        let block = {
+            let mut block = Block::random(rng);
+
+            let next_era_weights = (0..6)
+                .map(|index| (PublicKey::random(rng), U512::from(index)))
+                .collect();
+            block.header.era_end = Some(EraEnd::new(EraReport::random(rng), next_era_weights));
+
+            block
+        };
+
         bytesrepr::test_serialization_roundtrip(block.era_end().unwrap());
     }
 }
