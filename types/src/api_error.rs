@@ -251,7 +251,7 @@ pub enum ApiError {
     /// ```
     MissingKey,
     /// Removing/updating the given associated [`AccountHash`](crate::account::AccountHash) would
-    /// cause the total [`Weight`](crate::account::Weight) of all remaining `AccountHash`s to
+    /// cause the total [`Weight`](addressable_entity::Weight) of all remaining `AccountHash`s to
     /// fall below one of the action thresholds for the given account.
     /// ```
     /// # use casper_types::ApiError;

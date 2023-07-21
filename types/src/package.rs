@@ -2,7 +2,7 @@
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
-    string::{String, ToString},
+    string::String,
     vec::Vec,
 };
 use core::{
@@ -473,10 +473,7 @@ impl ContractPackageKind {
 
     /// Returns if the current package is either a system contract or the system entity.
     pub fn is_system(&self) -> bool {
-        match self {
-            ContractPackageKind::System(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::System(_))
     }
 
     /// Returns if the current package is the system mint.

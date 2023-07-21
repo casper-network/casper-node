@@ -4,11 +4,9 @@ use std::collections::HashSet;
 
 #[cfg(test)]
 use casper_types::{
-    account::{Account, AccountHash},
-    system::auction::Bid,
-    CLValue, PublicKey, URef, U512,
+    account::AccountHash, system::auction::Bid, AddressableEntity, CLValue, PublicKey, URef, U512,
 };
-use casper_types::{AddressableEntity, Key, StoredValue};
+use casper_types::{Key, StoredValue};
 
 #[cfg(test)]
 use super::state_reader::StateReader;

@@ -362,17 +362,17 @@ fn contract_key_addable_valid() {
 
     let mut rng = rand::thread_rng();
     let contract_key = random_contract_key(&mut rng);
-    let contract = StoredValue::AddressableEntity(AddressableEntity::default());
-    let mut access_rights = contract
+    let entity_as_stored_value = StoredValue::AddressableEntity(AddressableEntity::default());
+    let mut access_rights = entity_as_stored_value
         .as_addressable_entity()
         .unwrap()
         .extract_access_rights(ContractHash::default());
 
-    let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity.clone());
+    let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity);
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
     tracking_copy
         .borrow_mut()
-        .write(contract_key, contract.clone());
+        .write(contract_key, entity_as_stored_value.clone());
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
@@ -398,7 +398,7 @@ fn contract_key_addable_valid() {
 
     let mut runtime_context = RuntimeContext::new(
         &mut named_keys,
-        &contract.as_addressable_entity().unwrap(),
+        entity_as_stored_value.as_addressable_entity().unwrap(),
         contract_key,
         authorization_keys,
         access_rights,

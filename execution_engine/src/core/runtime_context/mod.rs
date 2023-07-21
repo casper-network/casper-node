@@ -1156,7 +1156,7 @@ where
 
     fn get_entity_address_by_account_hash(&mut self) -> Result<Key, Error> {
         let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(self.account_hash))?;
-        CLValue::into_t::<Key>(cl_value).map_err(|cl_error| Error::CLValue(cl_error))
+        CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)
     }
 
     /// Checks if the account context is valid.
