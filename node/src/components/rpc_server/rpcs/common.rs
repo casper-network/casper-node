@@ -7,7 +7,7 @@ use tracing::{debug, warn};
 
 use casper_json_rpc::{ErrorCodeT, ReservedErrorCode};
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr::ToBytes, Block, Digest, Key};
+use casper_types::{bytesrepr::ToBytes, Digest, Key, VersionedBlock};
 
 use super::{
     chain::{self, BlockIdentifier},
@@ -129,7 +129,7 @@ pub(super) async fn get_block<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
     only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
-) -> Result<Block, Error> {
+) -> Result<VersionedBlock, Error> {
     chain::get_signed_block(maybe_id, only_from_available_block_range, effect_builder)
         .await
         .map(|signed_block| signed_block.block)

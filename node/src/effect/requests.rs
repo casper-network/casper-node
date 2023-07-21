@@ -323,7 +323,7 @@ pub(crate) enum StorageRequest {
     /// Retrieve highest complete block.
     GetHighestCompleteBlock {
         /// Responder.
-        responder: Responder<Option<Block>>,
+        responder: Responder<Option<VersionedBlock>>,
     },
     /// Retrieve highest complete block header.
     GetHighestCompleteBlockHeader {

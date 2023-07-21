@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 
 use casper_types::{
     Approval, Block, Deploy, DeployConfig, DeployFootprint, DeployHash, DeployId, DisplayIter,
-    Timestamp,
+    Timestamp, VersionedBlock,
 };
 
 use crate::{
@@ -300,6 +300,14 @@ impl DeployBuffer {
         self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
     }
 
+    /// When initializing the buffer, register past blocks in order to provide replay protection.
+    fn register_block_for_replay_protection_on_init(&mut self, block: &VersionedBlock) {
+        let block_height = block.height();
+        let timestamp = block.timestamp();
+        debug!(%timestamp, "DeployBuffer: register_block_for_replay_protection_on_init({}) timestamp finalized", block_height);
+        self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
+    }
+
     /// Update buffer and holds considering new finalized block.
     fn register_block_finalized(&mut self, finalized_block: &FinalizedBlock) {
         let block_height = finalized_block.height;
@@ -509,7 +517,7 @@ where
                 match event {
                     Event::Initialize(blocks) => {
                         for block in blocks {
-                            self.register_block(&block);
+                            self.register_block_for_replay_protection_on_init(&block);
                         }
                         <Self as InitializedComponent<MainEvent>>::set_state(
                             self,

@@ -3,8 +3,8 @@ use std::{collections::BTreeMap, iter};
 use rand::Rng;
 
 use casper_types::{
-    testing::TestRng, Block, BlockHash, Deploy, Digest, EraEnd, EraId, EraReport, ProtocolVersion,
-    PublicKey, Timestamp, U512,
+    testing::TestRng, Block, BlockHash, BlockV1, BlockV2, Deploy, DeployHash, Digest, EraEnd,
+    EraId, EraReport, ProtocolVersion, PublicKey, Timestamp, U512,
 };
 
 pub(crate) struct TestBlockBuilder {
@@ -16,6 +16,21 @@ pub(crate) struct TestBlockBuilder {
     protocol_version: ProtocolVersion,
     deploys: Vec<Deploy>,
     is_switch: Option<bool>,
+}
+
+struct BlockParameters {
+    parent_hash: BlockHash,
+    parent_seed: Digest,
+    state_root_hash: Digest,
+    random_bit: bool,
+    era_end: Option<EraEnd>,
+    timestamp: Timestamp,
+    era_id: EraId,
+    height: u64,
+    protocol_version: ProtocolVersion,
+    proposer: PublicKey,
+    deploy_hashes: Vec<DeployHash>,
+    transfer_hashes: Vec<DeployHash>,
 }
 
 impl TestBlockBuilder {
@@ -87,8 +102,7 @@ impl TestBlockBuilder {
         self
     }
 
-    #[allow(unused)]
-    pub(crate) fn build(self, rng: &mut TestRng) -> Block {
+    fn generate_block_params(&self, rng: &mut TestRng) -> BlockParameters {
         let parent_hash = if let Some(parent_hash) = self.parent_hash {
             parent_hash
         } else {
@@ -145,7 +159,111 @@ impl TestBlockBuilder {
 
         let transfer_hashes = vec![];
 
+        BlockParameters {
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            random_bit,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            protocol_version,
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+        }
+    }
+
+    pub(crate) fn build(self, rng: &mut TestRng) -> Block {
+        let BlockParameters {
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            random_bit,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            protocol_version,
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+        } = self.generate_block_params(rng);
+
         Block::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            random_bit,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            protocol_version,
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+        )
+    }
+}
+
+pub(crate) trait FromTestBlockBuilder {
+    fn build_for_test(builder: TestBlockBuilder, rng: &mut TestRng) -> Self;
+}
+
+impl FromTestBlockBuilder for BlockV1 {
+    fn build_for_test(builder: TestBlockBuilder, rng: &mut TestRng) -> Self {
+        let BlockParameters {
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            random_bit,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            protocol_version,
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+        } = builder.generate_block_params(rng);
+
+        Self::new(
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            random_bit,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            protocol_version,
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+        )
+    }
+}
+
+impl FromTestBlockBuilder for BlockV2 {
+    fn build_for_test(builder: TestBlockBuilder, rng: &mut TestRng) -> Self {
+        let BlockParameters {
+            parent_hash,
+            parent_seed,
+            state_root_hash,
+            random_bit,
+            era_end,
+            timestamp,
+            era_id,
+            height,
+            protocol_version,
+            proposer,
+            deploy_hashes,
+            transfer_hashes,
+        } = builder.generate_block_params(rng);
+
+        Self::new(
             parent_hash,
             parent_seed,
             state_root_hash,

@@ -1002,8 +1002,8 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let block: Block =
-                    if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
+                let block: VersionedBlock =
+                    if let Some(block) = self.get_single_versioned_block(&mut txn, &block_hash)? {
                         block
                     } else {
                         return Ok(responder.respond(None).ignore());
@@ -1066,22 +1066,24 @@ impl Storage {
 
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let block: Block = {
-                    if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
-                        block
+                let versioned_block: VersionedBlock = {
+                    if let Some(versioned_block) =
+                        self.get_block_by_height(&mut txn, block_height)?
+                    {
+                        versioned_block
                     } else {
                         return Ok(responder.respond(None).ignore());
                     }
                 };
 
-                let hash = block.hash();
+                let hash = versioned_block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, block.era_id()),
+                    None => BlockSignatures::new(*hash, versioned_block.era_id()),
                 };
                 responder
                     .respond(Some(SignedBlock {
-                        block,
+                        block: versioned_block,
                         block_signatures,
                     }))
                     .ignore()
@@ -1333,7 +1335,7 @@ impl Storage {
     }
 
     /// Gets the highest block.
-    pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
+    pub fn read_highest_block(&self) -> Result<Option<VersionedBlock>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         self.get_highest_block(&mut txn)
     }
@@ -1355,7 +1357,9 @@ impl Storage {
     }
 
     /// Retrieves the highest complete block from the storage, if one exists.
-    pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
+    pub(crate) fn read_highest_complete_block(
+        &self,
+    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -1373,7 +1377,7 @@ impl Storage {
     /// the highest contiguous segment starting at the highest switch block which it does hold.
     pub(crate) fn read_blocks_for_replay_protection(
         &self,
-    ) -> Result<Vec<Block>, FatalStorageError> {
+    ) -> Result<Vec<VersionedBlock>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -1605,7 +1609,10 @@ impl Storage {
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
-    pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
+    pub fn read_block_by_height(
+        &self,
+        height: u64,
+    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
@@ -1670,10 +1677,10 @@ impl Storage {
         &self,
         txn: &mut RoTransaction,
         height: u64,
-    ) -> Result<Option<Block>, FatalStorageError> {
+    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
         self.block_height_index
             .get(&height)
-            .and_then(|block_hash| self.get_single_block(txn, block_hash).transpose())
+            .and_then(|block_hash| self.get_single_versioned_block(txn, block_hash).transpose())
             .transpose()
     }
 
@@ -1729,7 +1736,7 @@ impl Storage {
     fn get_highest_block(
         &self,
         txn: &mut RoTransaction,
-    ) -> Result<Option<Block>, FatalStorageError> {
+    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
         self.block_height_index
             .keys()
             .last()
@@ -1793,7 +1800,7 @@ impl Storage {
     fn get_highest_complete_block(
         &self,
         txn: &mut RoTransaction,
-    ) -> Result<Option<Block>, FatalStorageError> {
+    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
         let highest_complete_block_height = match self.highest_complete_block_height() {
             Some(height) => height,
             None => {
@@ -1811,7 +1818,7 @@ impl Storage {
 
         // The `completed_blocks` contains blocks with sufficient finality signatures,
         // so we don't need to check the sufficiency again.
-        self.get_single_block(txn, highest_complete_block_hash)
+        self.get_single_versioned_block(txn, highest_complete_block_hash)
     }
 
     /// Returns a vector of blocks that satisfy the predicate, and one that doesn't (if one
@@ -1820,9 +1827,9 @@ impl Storage {
         &self,
         txn: &mut RoTransaction,
         predicate: F,
-    ) -> Result<Vec<Block>, FatalStorageError>
+    ) -> Result<Vec<VersionedBlock>, FatalStorageError>
     where
-        F: Fn(&Block) -> bool,
+        F: Fn(&VersionedBlock) -> bool,
     {
         let mut blocks = Vec::new();
         for sequence in self.completed_blocks.sequences().iter().rev() {

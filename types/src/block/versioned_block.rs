@@ -8,7 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    Block, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, VersionedBlockBody,
+    Block, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraId,
+    ProtocolVersion, Timestamp, VersionedBlockBody,
 };
 
 use super::{block_v1::BlockV1, block_v2::BlockV2};
@@ -64,6 +65,30 @@ impl VersionedBlock {
         }
     }
 
+    /// Returns the block's header, consuming `self`.
+    pub fn take_header(self) -> BlockHeader {
+        match self {
+            VersionedBlock::V1(v1) => v1.take_header(),
+            VersionedBlock::V2(v2) => v2.take_header(),
+        }
+    }
+
+    /// Returns the timestamp from when the block was proposed.
+    pub fn timestamp(&self) -> Timestamp {
+        match self {
+            VersionedBlock::V1(v1) => v1.header.timestamp(),
+            VersionedBlock::V2(v2) => v2.header.timestamp(),
+        }
+    }
+
+    /// Returns the protocol version of the network from when this block was created.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        match self {
+            VersionedBlock::V1(v1) => v1.header.protocol_version(),
+            VersionedBlock::V2(v2) => v2.header.protocol_version(),
+        }
+    }
+
     /// The hash of this block's header.
     pub fn hash(&self) -> &BlockHash {
         match self {
@@ -101,6 +126,22 @@ impl VersionedBlock {
         match self {
             VersionedBlock::V1(v1) => v1.body.deploy_hashes(),
             VersionedBlock::V2(v2) => v2.body.deploy_hashes(),
+        }
+    }
+
+    /// Returns the era ID in which this block was created.
+    pub fn era_id(&self) -> EraId {
+        match self {
+            VersionedBlock::V1(v1) => v1.era_id(),
+            VersionedBlock::V2(v2) => v2.era_id(),
+        }
+    }
+
+    /// Returns `true` if this block is the last one in the current era.
+    pub fn is_switch_block(&self) -> bool {
+        match self {
+            VersionedBlock::V1(v1) => v1.header.is_switch_block(),
+            VersionedBlock::V2(v2) => v2.header.is_switch_block(),
         }
     }
 
@@ -188,6 +229,18 @@ impl From<&Block> for VersionedBlock {
 impl From<Block> for VersionedBlock {
     fn from(block: Block) -> Self {
         VersionedBlock::V2(block)
+    }
+}
+
+impl From<&BlockV1> for VersionedBlock {
+    fn from(block: &BlockV1) -> Self {
+        VersionedBlock::V1(block.clone())
+    }
+}
+
+impl From<BlockV1> for VersionedBlock {
+    fn from(block: BlockV1) -> Self {
+        VersionedBlock::V1(block)
     }
 }
 

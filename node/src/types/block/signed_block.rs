@@ -2,12 +2,12 @@ use std::fmt::{self, Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Block, BlockSignatures};
+use casper_types::{BlockSignatures, VersionedBlock};
 
 /// A block and signatures for that block.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignedBlock {
-    pub(crate) block: Block,
+    pub(crate) block: VersionedBlock,
     pub(crate) block_signatures: BlockSignatures,
 }
 

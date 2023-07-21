@@ -23,7 +23,6 @@ use datasize::DataSize;
 #[cfg(any(feature = "std", test))]
 use serde::Serialize;
 
-use self::block_v2::BlockV2;
 use crate::{bytesrepr, Digest};
 pub use block_body::{BlockBody, BlockBodyV1, BlockBodyV2, VersionedBlockBody};
 pub use block_hash::BlockHash;
@@ -31,6 +30,7 @@ pub use block_hash_and_height::BlockHashAndHeight;
 pub use block_header::BlockHeader;
 pub use block_signatures::{BlockSignatures, BlockSignaturesMergeError};
 pub use block_v1::BlockV1;
+pub use block_v2::BlockV2;
 pub use era_end::EraEnd;
 pub use era_report::EraReport;
 pub use finality_signature::FinalitySignature;
