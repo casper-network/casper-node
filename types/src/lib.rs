@@ -104,7 +104,7 @@ pub use chainspec::{
     GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
     HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MintCosts,
     NetworkConfig, OpcodeCosts, ProtocolConfig, StandardPaymentCosts, StorageCosts, SystemConfig,
-    TransactionConfig, UpgradeConfig, ValidatorConfig, WasmConfig,
+    TransactionV1Config, UpgradeConfig, ValidatorConfig, WasmConfig,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -169,15 +169,15 @@ pub use tagged::Tagged;
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-pub use transaction::TestTransactionBuilder;
+pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    AuctionTransaction, DirectCall, NativeTransaction, PricingMode, Transaction,
-    TransactionApproval, TransactionApprovalsHash, TransactionConfigFailure,
-    TransactionDecodeFromJsonError, TransactionError, TransactionExcessiveSizeError,
-    TransactionHash, TransactionHeader, TransactionId, TransactionKind, UserlandTransaction,
+    AuctionTransactionV1, DirectCallV1, NativeTransactionV1, PricingModeV1, Transaction,
+    TransactionV1, TransactionV1Approval, TransactionV1ConfigFailure,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, UserlandTransactionV1,
 };
 #[cfg(any(feature = "std", test))]
-pub use transaction::{TransactionBuilder, TransactionBuilderError};
+pub use transaction::{TransactionV1Builder, TransactionV1BuilderError};
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
 };

@@ -17,7 +17,7 @@ use crate::{
     ContractHash, ContractPackageHash, ContractVersion,
 };
 #[cfg(doc)]
-use crate::{DirectCall, ExecutableDeployItem};
+use crate::{DirectCallV1, ExecutableDeployItem};
 
 const CONTRACT_PACKAGE_ID_HASH_TAG: u8 = 0;
 const CONTRACT_PACKAGE_ID_NAME_TAG: u8 = 1;
@@ -35,7 +35,7 @@ pub enum ExecutableDeployItemIdentifier {
     Transfer,
 }
 
-/// Identifier for the contract object within a [`DirectCall`] or an [`ExecutableDeployItem`].
+/// Identifier for the contract object within a [`DirectCallV1`] or an [`ExecutableDeployItem`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum ContractIdentifier {
     /// The contract object within the deploy item is identified by its hash.
@@ -44,7 +44,7 @@ pub enum ContractIdentifier {
     Name(String),
 }
 
-/// Identifier for the contract package object within a [`DirectCall`] or an
+/// Identifier for the contract package object within a [`DirectCallV1`] or an
 /// [`ExecutableDeployItem`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

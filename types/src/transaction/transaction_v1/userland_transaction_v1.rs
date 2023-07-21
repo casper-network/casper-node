@@ -9,9 +9,9 @@ use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::DirectCall;
+use super::DirectCallV1;
 #[cfg(doc)]
-use super::Transaction;
+use super::TransactionV1;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -25,18 +25,18 @@ const DIRECT_CALL_TAG: u8 = 2;
 const NOOP_TAG: u8 = 3;
 const CLOSED_TAG: u8 = 4;
 
-/// A [`Transaction`] with userland (i.e. not native) functionality.
+/// A [`TransactionV1`] with userland (i.e. not native) functionality.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "A Transaction with userland (i.e. not native) functionality.")
+    schemars(description = "A TransactionV1 with userland (i.e. not native) functionality.")
 )]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
-pub enum UserlandTransaction {
-    /// A general purpose `Transaction`.
+pub enum UserlandTransactionV1 {
+    /// A general purpose transaction.
     Standard {
         /// Raw Wasm module bytes with 'call' exported as an entrypoint.
         module_bytes: Bytes,
@@ -52,16 +52,16 @@ pub enum UserlandTransaction {
         /// Runtime arguments.
         args: RuntimeArgs,
     },
-    /// A `Transaction` targeting a stored contract.
-    DirectCall(DirectCall),
-    /// A `Transaction` which doesn't modify global state.
+    /// A transaction targeting a stored contract.
+    DirectCall(DirectCallV1),
+    /// A transaction which doesn't modify global state.
     Noop {
         /// Raw Wasm module bytes with 'call' exported as an entrypoint.
         module_bytes: Bytes,
         /// Runtime arguments.
         args: RuntimeArgs,
     },
-    /// A `Transaction` which doesn't call stored contracts.
+    /// A transaction which doesn't call stored contracts.
     Closed {
         /// Raw Wasm module bytes with 'call' exported as an entrypoint.
         module_bytes: Bytes,
@@ -70,56 +70,56 @@ pub enum UserlandTransaction {
     },
 }
 
-impl UserlandTransaction {
-    /// Returns a new `UserlandTransaction::Standard`.
+impl UserlandTransactionV1 {
+    /// Returns a new `UserlandTransactionV1::Standard`.
     pub fn new_standard(module_bytes: Bytes, args: RuntimeArgs) -> Self {
-        UserlandTransaction::Standard { module_bytes, args }
+        UserlandTransactionV1::Standard { module_bytes, args }
     }
 
-    /// Returns a new `UserlandTransaction::InstallerUpgrader` for installing.
+    /// Returns a new `UserlandTransactionV1::InstallerUpgrader` for installing.
     pub fn new_installer(module_bytes: Bytes, args: RuntimeArgs) -> Self {
-        UserlandTransaction::InstallerUpgrader {
+        UserlandTransactionV1::InstallerUpgrader {
             contract_package_id: None,
             module_bytes,
             args,
         }
     }
 
-    /// Returns a new `UserlandTransaction::InstallerUpgrader` for upgrading.
+    /// Returns a new `UserlandTransactionV1::InstallerUpgrader` for upgrading.
     pub fn new_upgrader(
         contract_package_id: ContractPackageIdentifier,
         module_bytes: Bytes,
         args: RuntimeArgs,
     ) -> Self {
-        UserlandTransaction::InstallerUpgrader {
+        UserlandTransactionV1::InstallerUpgrader {
             contract_package_id: Some(contract_package_id),
             module_bytes,
             args,
         }
     }
 
-    /// Returns a new `UserlandTransaction::Noop`.
+    /// Returns a new `UserlandTransactionV1::Noop`.
     pub fn new_noop(module_bytes: Bytes, args: RuntimeArgs) -> Self {
-        UserlandTransaction::Noop { module_bytes, args }
+        UserlandTransactionV1::Noop { module_bytes, args }
     }
 
-    /// Returns a new `UserlandTransaction::Closed`.
+    /// Returns a new `UserlandTransactionV1::Closed`.
     pub fn new_closed(module_bytes: Bytes, args: RuntimeArgs) -> Self {
-        UserlandTransaction::Closed { module_bytes, args }
+        UserlandTransactionV1::Closed { module_bytes, args }
     }
 
     /// Returns the runtime arguments.
     pub fn args(&self) -> &RuntimeArgs {
         match self {
-            UserlandTransaction::Standard { args, .. }
-            | UserlandTransaction::InstallerUpgrader { args, .. }
-            | UserlandTransaction::Noop { args, .. }
-            | UserlandTransaction::Closed { args, .. } => args,
-            UserlandTransaction::DirectCall(direct_call) => direct_call.args(),
+            UserlandTransactionV1::Standard { args, .. }
+            | UserlandTransactionV1::InstallerUpgrader { args, .. }
+            | UserlandTransactionV1::Noop { args, .. }
+            | UserlandTransactionV1::Closed { args, .. } => args,
+            UserlandTransactionV1::DirectCall(direct_call) => direct_call.args(),
         }
     }
 
-    /// Returns a random `UserlandTransaction`.
+    /// Returns a random `UserlandTransactionV1`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         fn random_bytes(rng: &mut TestRng) -> Bytes {
@@ -129,7 +129,7 @@ impl UserlandTransaction {
         }
 
         match rng.gen_range(0..5) {
-            0 => UserlandTransaction::Standard {
+            0 => UserlandTransactionV1::Standard {
                 module_bytes: random_bytes(rng),
                 args: RuntimeArgs::random(rng),
             },
@@ -137,18 +137,18 @@ impl UserlandTransaction {
                 let contract_package = rng
                     .gen::<bool>()
                     .then(|| ContractPackageIdentifier::random(rng));
-                UserlandTransaction::InstallerUpgrader {
+                UserlandTransactionV1::InstallerUpgrader {
                     contract_package_id: contract_package,
                     module_bytes: random_bytes(rng),
                     args: RuntimeArgs::random(rng),
                 }
             }
-            2 => UserlandTransaction::DirectCall(DirectCall::random(rng)),
-            3 => UserlandTransaction::Noop {
+            2 => UserlandTransactionV1::DirectCall(DirectCallV1::random(rng)),
+            3 => UserlandTransactionV1::Noop {
                 module_bytes: random_bytes(rng),
                 args: RuntimeArgs::random(rng),
             },
-            4 => UserlandTransaction::Closed {
+            4 => UserlandTransactionV1::Closed {
                 module_bytes: random_bytes(rng),
                 args: RuntimeArgs::random(rng),
             },
@@ -157,37 +157,37 @@ impl UserlandTransaction {
     }
 }
 
-impl From<DirectCall> for UserlandTransaction {
-    fn from(direct_call: DirectCall) -> Self {
-        UserlandTransaction::DirectCall(direct_call)
+impl From<DirectCallV1> for UserlandTransactionV1 {
+    fn from(direct_call: DirectCallV1) -> Self {
+        UserlandTransactionV1::DirectCall(direct_call)
     }
 }
 
-impl Display for UserlandTransaction {
+impl Display for UserlandTransactionV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            UserlandTransaction::Standard { .. } => write!(formatter, "userland standard"),
-            UserlandTransaction::InstallerUpgrader { .. } => {
+            UserlandTransactionV1::Standard { .. } => write!(formatter, "userland standard"),
+            UserlandTransactionV1::InstallerUpgrader { .. } => {
                 write!(formatter, "userland installer-upgrader")
             }
-            UserlandTransaction::DirectCall(direct_call) => {
+            UserlandTransactionV1::DirectCall(direct_call) => {
                 write!(formatter, "userland {}", direct_call)
             }
-            UserlandTransaction::Noop { .. } => write!(formatter, "userland noop"),
-            UserlandTransaction::Closed { .. } => write!(formatter, "userland closed"),
+            UserlandTransactionV1::Noop { .. } => write!(formatter, "userland noop"),
+            UserlandTransactionV1::Closed { .. } => write!(formatter, "userland closed"),
         }
     }
 }
 
-impl ToBytes for UserlandTransaction {
+impl ToBytes for UserlandTransactionV1 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            UserlandTransaction::Standard { module_bytes, args } => {
+            UserlandTransactionV1::Standard { module_bytes, args } => {
                 STANDARD_TAG.write_bytes(writer)?;
                 module_bytes.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
-            UserlandTransaction::InstallerUpgrader {
+            UserlandTransactionV1::InstallerUpgrader {
                 contract_package_id: contract_package,
                 module_bytes,
                 args,
@@ -197,16 +197,16 @@ impl ToBytes for UserlandTransaction {
                 module_bytes.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
-            UserlandTransaction::DirectCall(direct_call) => {
+            UserlandTransactionV1::DirectCall(direct_call) => {
                 DIRECT_CALL_TAG.write_bytes(writer)?;
                 direct_call.write_bytes(writer)
             }
-            UserlandTransaction::Noop { module_bytes, args } => {
+            UserlandTransactionV1::Noop { module_bytes, args } => {
                 NOOP_TAG.write_bytes(writer)?;
                 module_bytes.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
-            UserlandTransaction::Closed { module_bytes, args } => {
+            UserlandTransactionV1::Closed { module_bytes, args } => {
                 CLOSED_TAG.write_bytes(writer)?;
                 module_bytes.write_bytes(writer)?;
                 args.write_bytes(writer)
@@ -223,10 +223,10 @@ impl ToBytes for UserlandTransaction {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                UserlandTransaction::Standard { module_bytes, args } => {
+                UserlandTransactionV1::Standard { module_bytes, args } => {
                     module_bytes.serialized_length() + args.serialized_length()
                 }
-                UserlandTransaction::InstallerUpgrader {
+                UserlandTransactionV1::InstallerUpgrader {
                     contract_package_id: contract_package,
                     module_bytes,
                     args,
@@ -235,25 +235,25 @@ impl ToBytes for UserlandTransaction {
                         + module_bytes.serialized_length()
                         + args.serialized_length()
                 }
-                UserlandTransaction::DirectCall(direct_call) => direct_call.serialized_length(),
-                UserlandTransaction::Noop { module_bytes, args } => {
+                UserlandTransactionV1::DirectCall(direct_call) => direct_call.serialized_length(),
+                UserlandTransactionV1::Noop { module_bytes, args } => {
                     module_bytes.serialized_length() + args.serialized_length()
                 }
-                UserlandTransaction::Closed { module_bytes, args } => {
+                UserlandTransactionV1::Closed { module_bytes, args } => {
                     module_bytes.serialized_length() + args.serialized_length()
                 }
             }
     }
 }
 
-impl FromBytes for UserlandTransaction {
+impl FromBytes for UserlandTransactionV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             STANDARD_TAG => {
                 let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
-                let txn = UserlandTransaction::Standard { module_bytes, args };
+                let txn = UserlandTransactionV1::Standard { module_bytes, args };
                 Ok((txn, remainder))
             }
             INSTALLER_UPGRADER_TAG => {
@@ -261,7 +261,7 @@ impl FromBytes for UserlandTransaction {
                     Option::<ContractPackageIdentifier>::from_bytes(remainder)?;
                 let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
-                let txn = UserlandTransaction::InstallerUpgrader {
+                let txn = UserlandTransactionV1::InstallerUpgrader {
                     contract_package_id: contract_package,
                     module_bytes,
                     args,
@@ -269,20 +269,20 @@ impl FromBytes for UserlandTransaction {
                 Ok((txn, remainder))
             }
             DIRECT_CALL_TAG => {
-                let (direct_call, remainder) = DirectCall::from_bytes(remainder)?;
-                let txn = UserlandTransaction::DirectCall(direct_call);
+                let (direct_call, remainder) = DirectCallV1::from_bytes(remainder)?;
+                let txn = UserlandTransactionV1::DirectCall(direct_call);
                 Ok((txn, remainder))
             }
             NOOP_TAG => {
                 let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
-                let txn = UserlandTransaction::Noop { module_bytes, args };
+                let txn = UserlandTransactionV1::Noop { module_bytes, args };
                 Ok((txn, remainder))
             }
             CLOSED_TAG => {
                 let (module_bytes, remainder) = Bytes::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
-                let txn = UserlandTransaction::Closed { module_bytes, args };
+                let txn = UserlandTransactionV1::Closed { module_bytes, args };
                 Ok((txn, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
@@ -298,7 +298,7 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
-            bytesrepr::test_serialization_roundtrip(&UserlandTransaction::random(rng));
+            bytesrepr::test_serialization_roundtrip(&UserlandTransactionV1::random(rng));
         }
     }
 }
