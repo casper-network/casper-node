@@ -47,7 +47,7 @@ fn should_manage_associated_key() {
     let genesis_key = *DEFAULT_ACCOUNT_ADDR;
 
     let contract_1 = builder
-        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
     let gen_weight = contract_1
@@ -68,7 +68,7 @@ fn should_manage_associated_key() {
     builder.exec(exec_request_3).expect_success().commit();
 
     let contract_1 = builder
-        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
     let new_weight = contract_1.associated_keys().get(&genesis_key);

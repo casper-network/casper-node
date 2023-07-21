@@ -25,7 +25,7 @@ fn should_run_ee_1071_regression() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash = (*account

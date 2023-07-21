@@ -51,7 +51,7 @@ fn should_call_group_restricted_session() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract");
 
     let _package_hash = account
@@ -113,7 +113,7 @@ fn should_call_group_restricted_session_caller() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account
@@ -182,7 +182,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
     let package_hash = account
         .named_keys()
@@ -257,7 +257,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let package_hash = account
@@ -326,7 +326,7 @@ fn should_call_group_restricted_contract() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account
@@ -397,7 +397,7 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account
@@ -462,7 +462,7 @@ fn should_call_group_unrestricted_contract_caller() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account
@@ -527,7 +527,7 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let package_hash = account
@@ -591,7 +591,7 @@ fn should_call_group_restricted_contract_as_session() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account
@@ -655,7 +655,7 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let package_hash = account
@@ -720,7 +720,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account
@@ -806,7 +806,7 @@ fn should_not_call_uncallable_session_from_deploy() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let package_hash = account
@@ -901,7 +901,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account
@@ -981,7 +981,7 @@ fn should_call_group_restricted_stored_payment_code() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let package_hash = account

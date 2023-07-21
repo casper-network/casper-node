@@ -36,8 +36,8 @@ use casper_types::{
 };
 
 pub(crate) mod dictionary;
-// #[cfg(test)]
-// mod tests;
+#[cfg(test)]
+mod tests;
 
 /// Number of bytes returned from the `random_bytes` function.
 pub const RANDOM_BYTES_COUNT: usize = 32;
@@ -183,8 +183,8 @@ where
         // debug_assert!(base_key != self.base_key);
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
-        let package_kind = self.package_kind.clone();
         let account_hash = self.account_hash;
+        let package_kind = self.package_kind.clone();
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
@@ -255,11 +255,6 @@ where
     /// Returns an instance of the engine config.
     pub fn engine_config(&self) -> EngineConfig {
         self.engine_config
-    }
-
-    /// Returns the associated account hash with the current runtime context if present.
-    pub fn maybe_account_hash(&self) -> Option<AccountHash> {
-        self.package_kind.maybe_account_hash()
     }
 
     /// Returns the package kind associated with the current context.
@@ -893,15 +888,12 @@ where
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        // if let Some(base_key) = self.get_entity_address().into_hash() {
-        //     let contract_hash = ContractHash::new(base_key);
-        //     if self.is_system_contract(&contract_hash)? {
-        //         // Don't charge storage used while executing a system contract.
-        //         return Ok(());
-        //     }
-        // }
-        if self.package_kind.is_system() {
-            return Ok(());
+        if let Some(base_key) = self.get_entity_address().into_hash() {
+            let contract_hash = ContractHash::new(base_key);
+            if self.is_system_contract(&contract_hash)? {
+                // Don't charge storage used while executing a system contract.
+                return Ok(());
+            }
         }
 
         let storage_costs = self.engine_config.wasm_config().storage_costs();
@@ -1004,8 +996,10 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), Error> {
+        let entity_key = self.get_entity_address_by_account_hash()?;
+
         // Check permission to modify associated keys
-        if !self.is_valid_context() {
+        if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
             return Err(AddKeyFailure::PermissionDenied.into());
         }
@@ -1045,8 +1039,9 @@ where
 
     /// Remove associated key.
     pub(crate) fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), Error> {
+        let entity_key = self.get_entity_address_by_account_hash()?;
         // Check permission to modify associated keys
-        if !self.is_valid_context() {
+        if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
             return Err(RemoveKeyFailure::PermissionDenied.into());
         }
@@ -1082,8 +1077,9 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), Error> {
+        let entity_key = self.get_entity_address_by_account_hash()?;
         // Check permission to modify associated keys
-        if !self.is_valid_context() {
+        if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
             return Err(UpdateKeyFailure::PermissionDenied.into());
         }
@@ -1119,8 +1115,9 @@ where
         action_type: ActionType,
         threshold: Weight,
     ) -> Result<(), Error> {
+        let entity_key = self.get_entity_address_by_account_hash()?;
         // Check permission to modify associated keys
-        if !self.is_valid_context() {
+        if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
@@ -1157,9 +1154,14 @@ where
         Ok(value)
     }
 
+    fn get_entity_address_by_account_hash(&mut self) -> Result<Key, Error> {
+        let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(self.account_hash))?;
+        CLValue::into_t::<Key>(cl_value).map_err(|cl_error| Error::CLValue(cl_error))
+    }
+
     /// Checks if the account context is valid.
-    fn is_valid_context(&self) -> bool {
-        self.get_entity_address() == self.entity_address
+    fn is_valid_context(&self, entity_address: Key) -> bool {
+        self.get_entity_address() == entity_address
     }
 
     /// Gets main purse id
@@ -1168,17 +1170,13 @@ where
         Ok(main_purse)
     }
 
-    // pub fn get_entity_address(&self) -> Key {
-    //     self.entity_address
-    // }
-
     /// Gets entry point type.
     pub fn entry_point_type(&self) -> EntryPointType {
         self.entry_point_type
     }
 
     /// Gets given contract package with its access_key validated against current context.
-    pub(crate) fn get_validated_contract_package(
+    pub(crate) fn get_validated_package(
         &mut self,
         package_hash: ContractPackageHash,
     ) -> Result<Package, Error> {

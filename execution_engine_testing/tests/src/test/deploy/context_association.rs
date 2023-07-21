@@ -37,7 +37,7 @@ fn should_put_system_contract_hashes_to_account_context() {
         .commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("account should exist");
 
     let named_keys = account.named_keys();

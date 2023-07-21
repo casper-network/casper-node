@@ -14,12 +14,13 @@ use casper_storage::global_state::{
     storage::state::{self, lmdb::LmdbGlobalStateView, StateProvider},
 };
 use casper_types::{
-    bytesrepr::ToBytes,
-    contracts::{
-        AccountHash, ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys,
-        ContractPackageKind, NamedKeys, RemoveKeyFailure, SetThresholdFailure, Weight,
-        ACCOUNT_HASH_LENGTH,
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity::{
+        ActionThresholds, ActionType, AddKeyFailure, AssociatedKeys, NamedKeys, RemoveKeyFailure,
+        SetThresholdFailure, Weight,
     },
+    bytesrepr::ToBytes,
+    package::ContractPackageKind,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
@@ -129,8 +130,19 @@ fn new_runtime_context<'a>(
     access_rights: ContextAccessRights,
     address_generator: AddressGenerator,
 ) -> (RuntimeContext<'a, LmdbGlobalStateView>, TempDir) {
-    let (tracking_copy, tempdir) =
+    let (mut tracking_copy, tempdir) =
         new_tracking_copy(account_hash, entity_address, addressable_entity.clone());
+
+    let default_system_registry = {
+        let mut registry = SystemContractRegistry::new();
+        registry.insert(MINT.to_string(), ContractHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
+        registry.insert(AUCTION.to_string(), ContractHash::default());
+        StoredValue::CLValue(CLValue::from_t(registry).unwrap())
+    };
+
+    tracking_copy.write(Key::SystemContractRegistry, default_system_registry);
 
     let runtime_context = RuntimeContext::new(
         named_keys,
@@ -191,7 +203,7 @@ where
     let account_hash = public_key.to_account_hash();
     let contract_hash = ContractHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
-    let (account_key, entity_key, addressable_entity) = new_addressable_entity(
+    let (_, entity_key, addressable_entity) = new_addressable_entity(
         public_key.to_account_hash(),
         contract_hash,
         named_keys.clone(),
@@ -274,19 +286,6 @@ fn entity_key_readable_valid() {
     assert!(query_result.is_ok());
 }
 
-// Is this test still valid
-// #[test]
-// fn entity_key_readable_invalid() {
-//     // Account key is NOT readable if it is different than the "base" key.
-//     let mut rng = rand::thread_rng();
-//     let other_entity_key = random_contract_key(&mut rng);
-//
-//     let query_result =
-//         build_runtime_context_and_execute(NamedKeys::new(), |mut rc| rc.read_gs(&other_entity_key));
-//
-//     assert_invalid_access(query_result, AccessRights::READ);
-// }
-
 #[test]
 fn account_key_addable_returns_type_mismatch() {
     // Account key is not addable anymore as we do not store an account underneath they key
@@ -296,11 +295,11 @@ fn account_key_addable_returns_type_mismatch() {
     let mut named_keys = NamedKeys::new();
     named_keys.insert(String::new(), uref_as_key);
     let query_result = build_runtime_context_and_execute(named_keys, |mut rc| {
-        let base_key = rc.get_entity_address();
+        let account_key: Key = rc.account_hash.into();
         let uref_name = "NewURef".to_owned();
         let named_key = StoredValue::CLValue(CLValue::from_t((uref_name, uref_as_key)).unwrap());
 
-        rc.metered_add_gs(base_key, named_key)
+        rc.metered_add_gs(account_key, named_key)
     });
 
     assert!(query_result.is_err());
@@ -371,7 +370,9 @@ fn contract_key_addable_valid() {
 
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity.clone());
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
-    tracking_copy.borrow_mut().write(contract_key, contract);
+    tracking_copy
+        .borrow_mut()
+        .write(contract_key, contract.clone());
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
@@ -397,11 +398,11 @@ fn contract_key_addable_valid() {
 
     let mut runtime_context = RuntimeContext::new(
         &mut named_keys,
-        &entity,
-        entity_key,
+        &contract.as_addressable_entity().unwrap(),
+        contract_key,
         authorization_keys,
         access_rights,
-        ContractPackageKind::Account(account_hash),
+        ContractPackageKind::Wasm,
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),

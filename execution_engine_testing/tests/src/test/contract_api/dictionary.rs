@@ -53,7 +53,7 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
         .expect_success();
 
     let contract = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     assert!(contract
@@ -586,7 +586,7 @@ fn should_query_dictionary_items_with_test_builder() {
     builder.exec(exec_request).commit().expect_success();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let contract_hash = default_account
         .named_keys()

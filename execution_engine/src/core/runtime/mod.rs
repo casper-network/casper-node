@@ -715,15 +715,11 @@ where
                 runtime
                     .finalize_payment(amount_spent, account, target)
                     .map_err(Self::reverter)?;
-                println!("Finalized");
+
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
-
-        let package_kind = self.context.get_package_kind();
-
-        println!("{:?}", package_kind);
 
         self.gas(match runtime.gas_counter().checked_sub(gas_counter) {
             None => gas_counter,
@@ -765,7 +761,7 @@ where
         let gas_counter = self.gas_counter();
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
-        let base_key = Key::from(auction_hash);
+        let entity_address = Key::from(auction_hash);
         let auction_contract = self
             .context
             .state()
@@ -774,7 +770,7 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            base_key,
+            entity_address,
             EntryPointType::Contract,
             &mut named_keys,
             access_rights,
@@ -799,7 +795,6 @@ where
             })(),
 
             auction::METHOD_ADD_BID => (|| {
-                println!("In add bid {:?}", runtime.context.get_package_kind());
                 runtime.charge_system_contract_call(auction_costs.add_bid)?;
 
                 let account_hash = Self::get_named_argument(runtime_args, auction::ARG_PUBLIC_KEY)?;
@@ -1165,7 +1160,7 @@ where
             }
         };
 
-        if let ContractPackageKind::Account(_) = contract_package.get_contract_package_kind() {
+        if let ContractPackageKind::Account(_) = contract_package.get_package_kind() {
             return Err(Error::InvalidContext);
         }
 
@@ -1236,10 +1231,7 @@ where
 
             let call_stack_element = match entry_point.entry_point_type() {
                 EntryPointType::Session => {
-                    let account_hash = match self.context.maybe_account_hash() {
-                        Some(account_hash) => account_hash,
-                        None => return Err(Error::InvalidContext),
-                    };
+                    let account_hash = self.context().get_caller();
 
                     CallStackElement::stored_session(
                         account_hash,
@@ -1301,7 +1293,7 @@ where
         access_rights.extend(&extended_access_rights);
 
         if let ContractPackageKind::System(system_contract_type) =
-            contract_package.get_contract_package_kind()
+            contract_package.get_package_kind()
         {
             match system_contract_type {
                 SystemContractType::Mint => {
@@ -1582,9 +1574,8 @@ where
         mut existing_urefs: BTreeSet<URef>,
         output_size_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let mut contract_package: Package = self
-            .context
-            .get_validated_contract_package(contract_package_hash)?;
+        let mut contract_package: Package =
+            self.context.get_validated_package(contract_package_hash)?;
 
         let groups = contract_package.groups_mut();
         let new_group = Group::new(label);
@@ -1650,7 +1641,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn add_contract_version(
         &mut self,
-        contract_package_hash: ContractPackageHash,
+        package_hash: ContractPackageHash,
         entry_points: EntryPoints,
         mut named_keys: NamedKeys,
         output_ptr: u32,
@@ -1658,22 +1649,19 @@ where
         bytes_written_ptr: u32,
         version_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        self.context
-            .validate_key(&Key::from(contract_package_hash))?;
+        self.context.validate_key(&Key::from(package_hash))?;
 
-        let mut contract_package: Package = self
-            .context
-            .get_validated_contract_package(contract_package_hash)?;
+        let mut package: Package = self.context.get_validated_package(package_hash)?;
 
-        if contract_package.get_contract_package_kind() != ContractPackageKind::Wasm {
+        if package.get_package_kind() != ContractPackageKind::Wasm {
             return Err(Error::InvalidContext);
         }
 
-        let version = contract_package.current_contract_version();
+        let version = package.current_contract_version();
 
         // Return an error if the contract is locked and has some version associated with it.
-        if contract_package.is_locked() && version.is_some() {
-            return Err(Error::LockedContract(contract_package_hash));
+        if package.is_locked() && version.is_some() {
+            return Err(Error::LockedContract(package_hash));
         }
 
         let contract_wasm_hash = self.context.new_hash_address()?;
@@ -1682,13 +1670,13 @@ where
             ContractWasm::new(module_bytes)
         };
 
-        let contract_hash = self.context.new_hash_address()?;
+        let entity_hash = self.context.new_hash_address()?;
 
         let protocol_version = self.context.protocol_version();
         let major = protocol_version.value().major;
 
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys
-        if let Some(previous_contract_hash) = contract_package.current_contract_hash() {
+        if let Some(previous_contract_hash) = package.current_contract_hash() {
             let previous_contract: AddressableEntity =
                 self.context.read_gs_typed(&previous_contract_hash.into())?;
 
@@ -1696,28 +1684,28 @@ where
             named_keys.append(&mut previous_named_keys);
         }
 
-        let (main_purse, associated_keys, action_thresholds) =
-            match contract_package.current_contract_hash() {
-                Some(previous_contract_hash) => {
-                    let previous_contract: AddressableEntity =
-                        self.context.read_gs_typed(&previous_contract_hash.into())?;
-                    let mut previous_named_keys = previous_contract.named_keys().clone();
-                    named_keys.append(&mut previous_named_keys);
-                    (
-                        previous_contract.main_purse(),
-                        previous_contract.associated_keys().clone(),
-                        previous_contract.action_thresholds().clone(),
-                    )
-                }
-                None => (
-                    self.create_purse()?,
-                    AssociatedKeys::default(),
-                    ActionThresholds::default(),
-                ),
-            };
+        let (main_purse, associated_keys, action_thresholds) = match package.current_contract_hash()
+        {
+            Some(previous_contract_hash) => {
+                let previous_contract: AddressableEntity =
+                    self.context.read_gs_typed(&previous_contract_hash.into())?;
+                let mut previous_named_keys = previous_contract.named_keys().clone();
+                named_keys.append(&mut previous_named_keys);
+                (
+                    previous_contract.main_purse(),
+                    previous_contract.associated_keys().clone(),
+                    previous_contract.action_thresholds().clone(),
+                )
+            }
+            None => (
+                self.create_purse()?,
+                AssociatedKeys::default(),
+                ActionThresholds::default(),
+            ),
+        };
 
-        let contract = AddressableEntity::new(
-            contract_package_hash,
+        let entity = AddressableEntity::new(
+            package_hash,
             contract_wasm_hash.into(),
             named_keys,
             entry_points,
@@ -1727,19 +1715,18 @@ where
             action_thresholds,
         );
 
-        let insert_contract_result =
-            contract_package.insert_contract_version(major, contract_hash.into());
+        let insert_contract_result = package.insert_contract_version(major, entity_hash.into());
 
         self.context
             .metered_write_gs_unsafe(Key::Hash(contract_wasm_hash), contract_wasm)?;
         self.context
-            .metered_write_gs_unsafe(Key::Hash(contract_hash), contract)?;
+            .metered_write_gs_unsafe(Key::Hash(entity_hash), entity)?;
         self.context
-            .metered_write_gs_unsafe(contract_package_hash, contract_package)?;
+            .metered_write_gs_unsafe(package_hash, package)?;
 
         // return contract key to caller
         {
-            let key_bytes = match contract_hash.to_bytes() {
+            let key_bytes = match entity_hash.to_bytes() {
                 Ok(bytes) => bytes,
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -1782,9 +1769,8 @@ where
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
 
-        let mut contract_package: Package = self
-            .context
-            .get_validated_contract_package(contract_package_hash)?;
+        let mut contract_package: Package =
+            self.context.get_validated_package(contract_package_hash)?;
 
         // Return an error in trying to disable the (singular) version of a locked contract.
         if contract_package.is_locked() {
@@ -1854,10 +1840,7 @@ where
         let transfer_addr = self.context.new_transfer_addr()?;
         let transfer = {
             let deploy_hash: DeployHash = self.context.get_deploy_hash();
-            let from: AccountHash = match self.context.maybe_account_hash() {
-                Some(account_hash) => account_hash,
-                None => return Err(Error::InvalidContext),
-            };
+            let from: AccountHash = self.context.get_caller();
             let fee: U512 = U512::zero(); // TODO
             Transfer::new(deploy_hash, from, maybe_to, source, target, amount, fee, id)
         };
@@ -1872,6 +1855,10 @@ where
 
     /// Records given auction info at a given era id
     fn record_era_summary(&mut self, era_info: EraInfo) -> Result<(), Error> {
+        if self.context.get_caller() != PublicKey::System.to_account_hash() {
+            return Err(Error::InvalidContext);
+        }
+
         if self.context.get_entity_address()
             != Key::from(self.context.get_system_contract(AUCTION)?)
         {
@@ -2647,7 +2634,7 @@ where
         package_key: ContractPackageHash,
         label: Group,
     ) -> Result<Result<(), ApiError>, Error> {
-        let mut package: Package = self.context.get_validated_contract_package(package_key)?;
+        let mut package: Package = self.context.get_validated_package(package_key)?;
 
         let group_to_remove = Group::new(label);
         let groups = package.groups_mut();
@@ -2699,9 +2686,7 @@ where
     ) -> Result<Result<(), ApiError>, Error> {
         let contract_package_hash = self.t_from_mem(package_ptr, package_size)?;
         let label: String = self.t_from_mem(label_ptr, label_size)?;
-        let mut contract_package = self
-            .context
-            .get_validated_contract_package(contract_package_hash)?;
+        let mut contract_package = self.context.get_validated_package(contract_package_hash)?;
         let groups = contract_package.groups_mut();
 
         let group_label = Group::new(label);
@@ -2771,9 +2756,7 @@ where
         let label: String = self.t_from_mem(label_ptr, label_size)?;
         let urefs: BTreeSet<URef> = self.t_from_mem(urefs_ptr, urefs_size)?;
 
-        let mut contract_package = self
-            .context
-            .get_validated_contract_package(contract_package_hash)?;
+        let mut contract_package = self.context.get_validated_package(contract_package_hash)?;
 
         let groups = contract_package.groups_mut();
         let group_label = Group::new(label);
@@ -3049,7 +3032,7 @@ where
 
                 if legacy_contract_package.is_legacy() {
                     return Err(Error::InvalidContractPackageKind(
-                        legacy_contract_package.get_contract_package_kind(),
+                        legacy_contract_package.get_package_kind(),
                     ));
                 }
 

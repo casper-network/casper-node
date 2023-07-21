@@ -87,7 +87,7 @@ impl StateReader for LmdbWasmTestBuilder {
     }
 
     fn get_account(&mut self, account_hash: AccountHash) -> Option<AddressableEntity> {
-        LmdbWasmTestBuilder::get_contract_by_account_hash(self, account_hash)
+        LmdbWasmTestBuilder::get_entity_by_account_hash(self, account_hash)
     }
 
     fn get_bids(&mut self) -> Bids {

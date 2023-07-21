@@ -723,7 +723,7 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
     builder.exec(install_request).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let gh_2280_regression = account
         .named_keys()

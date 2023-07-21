@@ -80,7 +80,7 @@ fn create_purses(
 
     // Return creates purses for given account by filtering named key.
     let contract = builder
-        .get_contract_by_account_hash(source)
+        .get_entity_by_account_hash(source)
         .expect("must have contract");
 
     (0..total_purses)

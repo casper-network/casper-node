@@ -130,7 +130,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -334,7 +334,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -400,7 +400,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -466,7 +466,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let contract_hash_key = account
@@ -572,7 +572,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
     let contract_hash_key = account
@@ -789,7 +789,7 @@ fn should_add_bid_after_major_bump() {
     builder.exec(add_bid_request).expect_success().commit();
 
     let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 }
 
@@ -838,7 +838,7 @@ fn should_add_bid_after_minor_bump() {
     builder.exec(add_bid_request).expect_success().commit();
 
     let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 }
 
@@ -883,7 +883,7 @@ fn should_wasm_transfer_after_major_bump() {
     builder.exec(wasm_transfer).expect_success().commit();
 
     let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 }
 
@@ -931,7 +931,7 @@ fn should_wasm_transfer_after_minor_bump() {
     builder.exec(wasm_transfer).expect_success().commit();
 
     let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 }
 

@@ -40,7 +40,7 @@ fn should_insert_account_into_named_keys() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let contract_1 = builder
-        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
     assert!(
@@ -76,7 +76,7 @@ fn should_create_usable_purse() {
         .commit();
 
     let contract_1 = builder
-        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
     let purse = contract_1

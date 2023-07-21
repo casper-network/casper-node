@@ -82,11 +82,9 @@ fn should_not_charge_for_create_purse_in_first_time_bond() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .unwrap();
-    let account_1 = builder
-        .get_contract_by_account_hash(*ACCOUNT_1_ADDR)
-        .unwrap();
+    let account_1 = builder.get_entity_by_account_hash(*ACCOUNT_1_ADDR).unwrap();
 
     let bond_amount = U512::from(BOND_AMOUNT);
     // This amount should be enough to make first time add_bid call.

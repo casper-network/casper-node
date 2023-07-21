@@ -738,7 +738,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     }
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     assert!(account.associated_keys().len() > DEFAULT_MAX_ASSOCIATED_KEYS as usize);

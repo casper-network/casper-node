@@ -18,7 +18,7 @@ fn should_run_main_purse_contract_default_account() {
     let builder = builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract for default account");
 
     let exec_request = ExecuteRequestBuilder::standard(
@@ -50,7 +50,7 @@ fn should_run_main_purse_contract_account_1() {
         .commit();
 
     let account_1 = builder
-        .get_contract_by_account_hash(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should get account");
 
     let exec_request_2 = ExecuteRequestBuilder::standard(

@@ -107,7 +107,7 @@ fn should_transfer_funds_from_contract_to_new_account() {
 
     let contract_hash = get_account_contract_hash(&account);
 
-    assert!(builder.get_contract_by_account_hash(*BOB_ADDR).is_none());
+    assert!(builder.get_entity_by_account_hash(*BOB_ADDR).is_none());
 
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,

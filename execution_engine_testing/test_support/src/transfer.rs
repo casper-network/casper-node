@@ -84,7 +84,7 @@ pub fn create_test_purses(
 
     // Return creates purses for given account by filtering named keys
     let contract = builder
-        .get_contract_by_account_hash(source)
+        .get_entity_by_account_hash(source)
         .expect("must have contract under this account hash");
 
     (0..total_purses)

@@ -59,7 +59,7 @@ fn store_payment_to_account_context(
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     // check account named keys
@@ -114,7 +114,7 @@ fn should_exec_non_stored_code() {
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
 
@@ -152,7 +152,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract associated with default account");
     let stored_payment_contract_hash = default_account
         .named_keys()
@@ -534,7 +534,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     assert!(
@@ -615,7 +615,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract associated with default account");
     let stored_payment_contract_hash = default_account
         .named_keys()
@@ -702,7 +702,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract associated with default account");
     assert!(
         default_account
@@ -790,7 +790,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     builder.exec(exec_request_1).commit();
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     assert!(
         default_account
@@ -902,7 +902,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
 
     // query both stored contracts by their named keys
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     let test_payment_stored_hash = default_account
         .named_keys()
@@ -1000,7 +1000,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
 
     // query both stored contracts by their named keys
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     let test_payment_stored_hash = default_account
         .named_keys()

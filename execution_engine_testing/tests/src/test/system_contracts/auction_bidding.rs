@@ -63,7 +63,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     builder.exec(exec_request).expect_success().commit();
 
     let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let auction = builder.get_auction_contract_hash();
@@ -101,7 +101,7 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
     let unbond_amount = U512::from(GENESIS_ACCOUNT_STAKE) - 1;
 
     let unbonding_purse = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account")
         .main_purse();
     let exec_request_3 = ExecuteRequestBuilder::standard(
@@ -216,7 +216,7 @@ fn should_fail_bonding_with_insufficient_funds_directly() {
     builder.exec(exec_request).expect_success().commit();
 
     let new_validator_account = builder
-        .get_contract_by_account_hash(new_validator_hash)
+        .get_entity_by_account_hash(new_validator_hash)
         .expect("should work");
 
     let new_validator_balance = builder.get_purse_balance(new_validator_account.main_purse());
@@ -408,7 +408,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let unbonding_purse = default_account.main_purse();
@@ -426,7 +426,7 @@ fn should_run_successful_bond_and_unbond_with_release() {
     builder.exec(exec_request).expect_success().commit();
 
     let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
@@ -583,7 +583,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
 
     let default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let unbonding_purse = default_account.main_purse();
@@ -602,7 +602,7 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
     builder.exec(exec_request).expect_success().commit();
 
     let _default_account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     let exec_request_1 = ExecuteRequestBuilder::standard(

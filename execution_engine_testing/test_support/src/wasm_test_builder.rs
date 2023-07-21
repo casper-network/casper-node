@@ -1102,7 +1102,7 @@ where
     /// Gets the purse balance of a proposer.
     pub fn get_proposer_purse_balance(&self) -> U512 {
         let proposer_contract = self
-            .get_contract_by_account_hash(*DEFAULT_PROPOSER_ADDR)
+            .get_entity_by_account_hash(*DEFAULT_PROPOSER_ADDR)
             .expect("proposer account should exist");
         self.get_purse_balance(proposer_contract.main_purse())
     }
@@ -1125,7 +1125,7 @@ where
     }
 
     /// Queries for an `Account`.
-    pub fn get_contract_by_account_hash(
+    pub fn get_entity_by_account_hash(
         &self,
         account_hash: AccountHash,
     ) -> Option<AddressableEntity> {
@@ -1144,7 +1144,7 @@ where
 
     /// Queries for an `Account` and panics if it can't be found.
     pub fn get_expected_account(&self, account_hash: AccountHash) -> AddressableEntity {
-        self.get_contract_by_account_hash(account_hash)
+        self.get_entity_by_account_hash(account_hash)
             .expect("account to exist")
     }
 

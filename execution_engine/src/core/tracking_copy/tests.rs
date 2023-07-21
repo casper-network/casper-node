@@ -697,13 +697,11 @@ fn validate_query_proof_should_work() {
         )
         .expect("should query");
 
-    let (proofs, value) = if let TrackingCopyQueryResult::Success { proofs, value } = result {
-        (proofs, value)
+    let proofs = if let TrackingCopyQueryResult::Success { proofs, .. } = result {
+        proofs
     } else {
         panic!("query was not successful: {:?}", result)
     };
-
-    println!("The Stored value: {:?}", value);
 
     // Happy path
     crate::core::validate_query_proof(

@@ -26,7 +26,7 @@ fn regression_20220222_escalate() {
     builder.exec(transfer_request).commit().expect_success();
 
     let alice = builder
-        .get_contract_by_account_hash(ALICE_ADDR)
+        .get_entity_by_account_hash(ALICE_ADDR)
         .expect("should have account");
 
     let alice_main_purse = alice.main_purse();

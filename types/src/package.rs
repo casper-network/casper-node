@@ -475,9 +475,6 @@ impl ContractPackageKind {
     pub fn is_system(&self) -> bool {
         match self {
             ContractPackageKind::System(_) => true,
-            ContractPackageKind::Account(account_hash) => {
-                *account_hash == PublicKey::System.to_account_hash()
-            }
             _ => false,
         }
     }
@@ -774,7 +771,7 @@ impl Package {
     }
 
     /// Returns the kind of Contract Package.
-    pub fn get_contract_package_kind(&self) -> ContractPackageKind {
+    pub fn get_package_kind(&self) -> ContractPackageKind {
         self.contract_package_kind.clone()
     }
 

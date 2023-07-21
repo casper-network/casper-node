@@ -891,7 +891,7 @@ where
             Some(_) | None => return Err(Error::MissingEntityPackage(entity_package_address)),
         };
 
-        Ok(entity_package.get_contract_package_kind())
+        Ok(entity_package.get_package_kind())
     }
 
     /// Executes a native transfer.

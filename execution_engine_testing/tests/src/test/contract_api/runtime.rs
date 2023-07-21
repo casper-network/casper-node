@@ -23,7 +23,7 @@ const RANDOM_BYTES_PAYMENT_RESULT: &str = "random_bytes_payment_result";
 
 fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) -> [u8; COUNT] {
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let uref = account.named_keys().get(result).expect("should have value");

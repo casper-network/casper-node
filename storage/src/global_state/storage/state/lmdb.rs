@@ -357,7 +357,6 @@ pub fn make_temporary_global_state(
 
     for (key, stored_value) in initial_data {
         let normalized_key = key.normalize();
-        println!("writing {:?} for val {:?}", key, stored_value);
         let transform = Transform::Write(stored_value);
         m.insert(normalized_key, transform);
     }

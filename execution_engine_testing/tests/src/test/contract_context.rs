@@ -95,7 +95,7 @@ fn should_enforce_intended_execution_contexts() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let _package_hash = account
@@ -189,7 +189,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let _package_hash = account
@@ -225,7 +225,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let contract_hash = account
@@ -281,7 +281,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let _package_hash = account
@@ -317,7 +317,7 @@ fn should_not_call_session_from_contract() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let contract_package_hash = account

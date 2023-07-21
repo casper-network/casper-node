@@ -680,7 +680,6 @@ pub fn validate_query_proof(
     path: &[String],
     expected_value: &StoredValue,
 ) -> Result<(), ValidationError> {
-    println!("Proofs len: {:?}, path len {:?}", proofs.len(), path.len());
     if proofs.len() != path.len() + 1 {
         return Err(ValidationError::PathLengthDifferentThanProofLessOne);
     }
@@ -690,9 +689,6 @@ pub fn validate_query_proof(
 
     // length check above means we are safe to unwrap here
     let first_proof = proofs_iter.next().unwrap();
-
-    println!("{:?}", first_proof.key());
-    println!("{:?}", expected_first_key.normalize());
 
     if first_proof.key() != &expected_first_key.normalize() {
         return Err(ValidationError::UnexpectedKey);
@@ -705,13 +701,10 @@ pub fn validate_query_proof(
     let mut proof_value = first_proof.value();
 
     for proof in proofs_iter {
-        println!("In the loop");
-        println!("The proof value: {:?}", proof_value);
         let named_keys = match proof_value {
             // StoredValue::Account(account) => account.named_keys(),
             StoredValue::AddressableEntity(contract) => contract.named_keys(),
             StoredValue::CLValue(_) => {
-                println!("In the CLValue, continuing");
                 proof_value = proof.value();
                 continue;
             }
@@ -727,10 +720,6 @@ pub fn validate_query_proof(
             Some(key) => key,
             None => return Err(ValidationError::PathCold),
         };
-
-        println!("Checking proof key");
-        println!("proof key: {:?}", proof.key());
-        println!("normalized key: {:?}", key.normalize());
 
         if proof.key() != &key.normalize() {
             return Err(ValidationError::UnexpectedKey);

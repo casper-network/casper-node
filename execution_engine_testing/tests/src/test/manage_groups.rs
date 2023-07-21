@@ -56,7 +56,7 @@ fn should_create_and_remove_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let package_hash = account
@@ -159,7 +159,7 @@ fn should_create_and_extend_user_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
     let package_hash = account
@@ -267,7 +267,7 @@ fn should_create_and_remove_urefs_from_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     let package_hash = account
         .named_keys()
@@ -373,7 +373,7 @@ fn should_limit_max_urefs_while_extending() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
     let package_hash = account
         .named_keys()

@@ -69,7 +69,7 @@ fn should_charge_minimum_for_do_nothing_session() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .unwrap();
 
     let proposer_balance_before = builder.get_proposer_purse_balance();
@@ -127,7 +127,7 @@ fn should_execute_do_minimum_session() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .unwrap();
 
     let proposer_balance_before = builder.get_proposer_purse_balance();
@@ -184,7 +184,7 @@ fn should_charge_minimum_for_do_nothing_payment() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let account = builder
-        .get_contract_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .unwrap();
 
     let proposer_balance_before = builder.get_proposer_purse_balance();
