@@ -1,9 +1,9 @@
 use rand::Rng;
 
-use super::{PricingModeV1, TransactionV1, TransactionV1Kind};
+use super::{AccountAndSecretKey, PricingModeV1, TransactionV1, TransactionV1Kind};
 use crate::{
-    testing::TestRng, AccountAndSecretKey, PublicKey, SecretKey, TimeDiff, Timestamp,
-    TransactionV1Approval, TransactionV1Config, TransactionV1Hash,
+    testing::TestRng, PublicKey, SecretKey, TimeDiff, Timestamp, TransactionV1Approval,
+    TransactionV1Config, TransactionV1Hash,
 };
 
 /// A builder for constructing a random [`TransactionV1`] for use in tests.

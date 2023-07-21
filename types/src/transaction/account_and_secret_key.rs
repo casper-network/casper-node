@@ -2,7 +2,7 @@ use crate::{PublicKey, SecretKey};
 
 /// Used when constructing a deploy or transaction.
 #[derive(Debug)]
-pub(crate) enum AccountAndSecretKey<'a> {
+pub(super) enum AccountAndSecretKey<'a> {
     /// Provides both the account and the secret key (not necessarily for the same account) used to
     /// sign the deploy or transaction.
     Both {
@@ -11,9 +11,11 @@ pub(crate) enum AccountAndSecretKey<'a> {
         /// The secret key used to sign the deploy or transaction.
         secret_key: &'a SecretKey,
     },
-    /// The public key of the account.  The deploy or transaction will be created unsigned as no secret key is provided.
+    /// The public key of the account.  The deploy or transaction will be created unsigned as no
+    /// secret key is provided.
     Account(PublicKey),
-    /// The account will be derived from the provided secret key, and the deploy or transaction will be signed by the same secret key.
+    /// The account will be derived from the provided secret key, and the deploy or transaction
+    /// will be signed by the same secret key.
     SecretKey(&'a SecretKey),
 }
 

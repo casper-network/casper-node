@@ -38,7 +38,6 @@ mod cl_value;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
-mod deploy;
 mod deploy_info;
 mod digest;
 mod display_iter;
@@ -129,16 +128,6 @@ pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;
-#[cfg(any(feature = "std", test))]
-pub(crate) use deploy::AccountAndSecretKey;
-pub use deploy::{
-    runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployFootprint, DeployHash, DeployHeader, DeployId, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
-};
-#[cfg(any(feature = "std", test))]
-pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use deploy_info::DeployInfo;
 pub use digest::{
     ChunkWithProof, ChunkWithProofVerificationError, Digest, DigestError, IndexedMerkleProof,
@@ -160,24 +149,30 @@ pub use package::{
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
-#[doc(inline)]
-pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+#[doc(inline)]
+pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    AuctionTransactionV1, DirectCallV1, NativeTransactionV1, PricingModeV1, Transaction,
-    TransactionV1, TransactionV1Approval, TransactionV1ConfigFailure,
-    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
-    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, UserlandTransactionV1,
+    runtime_args, Approval, ApprovalsHash, AuctionTransactionV1, ContractIdentifier,
+    ContractPackageIdentifier, Deploy, DeployConfigurationFailure, DeployDecodeFromJsonError,
+    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
+    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1,
+    PricingModeV1, Transaction, TransactionHash, TransactionV1, TransactionV1Approval,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransactionV1Kind,
+    TransferTarget, UserlandTransactionV1,
 };
 #[cfg(any(feature = "std", test))]
-pub use transaction::{TransactionV1Builder, TransactionV1BuilderError};
+pub use transaction::{
+    DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
+};
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
 };

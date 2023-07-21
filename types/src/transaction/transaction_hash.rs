@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use super::TransactionV1;
-use super::TransactionV1Hash;
+use super::{DeployHash, TransactionV1Hash};
 use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 
 const DEPLOY_TAG: u8 = 0;
@@ -21,7 +21,16 @@ const V1_TAG: u8 = 1;
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub enum TransactionHash {
+    /// A deploy hash.
+    Deploy(DeployHash),
+    /// A version 1 transaction hash.
     V1(TransactionV1Hash),
+}
+
+impl From<DeployHash> for TransactionHash {
+    fn from(hash: DeployHash) -> Self {
+        Self::Deploy(hash)
+    }
 }
 
 impl From<TransactionV1Hash> for TransactionHash {
@@ -33,15 +42,8 @@ impl From<TransactionV1Hash> for TransactionHash {
 impl Display for TransactionHash {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
+            TransactionHash::Deploy(hash) => Display::fmt(hash, formatter),
             TransactionHash::V1(hash) => Display::fmt(hash, formatter),
-        }
-    }
-}
-
-impl AsRef<[u8]> for TransactionHash {
-    fn as_ref(&self) -> &[u8] {
-        match self {
-            TransactionHash::V1(hash) => hash.as_ref(),
         }
     }
 }
@@ -49,6 +51,10 @@ impl AsRef<[u8]> for TransactionHash {
 impl ToBytes for TransactionHash {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
+            TransactionHash::Deploy(hash) => {
+                DEPLOY_TAG.write_bytes(writer)?;
+                hash.write_bytes(writer)
+            }
             TransactionHash::V1(hash) => {
                 V1_TAG.write_bytes(writer)?;
                 hash.write_bytes(writer)
@@ -65,6 +71,7 @@ impl ToBytes for TransactionHash {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
+                TransactionHash::Deploy(hash) => hash.serialized_length(),
                 TransactionHash::V1(hash) => hash.serialized_length(),
             }
     }
@@ -74,6 +81,10 @@ impl FromBytes for TransactionHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
+            DEPLOY_TAG => {
+                let (hash, remainder) = DeployHash::from_bytes(remainder)?;
+                Ok((TransactionHash::Deploy(hash), remainder))
+            }
             V1_TAG => {
                 let (hash, remainder) = TransactionV1Hash::from_bytes(remainder)?;
                 Ok((TransactionHash::V1(hash), remainder))
@@ -91,6 +102,10 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
+
+        let hash = TransactionHash::from(DeployHash::random(rng));
+        bytesrepr::test_serialization_roundtrip(&hash);
+
         let hash = TransactionHash::from(TransactionV1Hash::random(rng));
         bytesrepr::test_serialization_roundtrip(&hash);
     }

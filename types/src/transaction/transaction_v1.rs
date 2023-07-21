@@ -33,14 +33,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
+#[cfg(any(feature = "std", test))]
+use super::AccountAndSecretKey;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
+#[cfg(any(feature = "std", test))]
+use crate::TransactionV1Config;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
-#[cfg(any(feature = "std", test))]
-use crate::{AccountAndSecretKey, TransactionV1Config};
 pub use auction_transaction_v1::AuctionTransactionV1;
 pub use direct_call_v1::DirectCallV1;
 pub use errors_v1::{
@@ -491,7 +493,7 @@ impl Display for TransactionV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "transaction[{}, {}, body: {}, approvals: {}]",
+            "transaction-v1[{}, {}, body: {}, approvals: {}]",
             self.hash,
             self.header,
             self.body,
