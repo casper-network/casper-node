@@ -36,7 +36,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     builder.exec(execution_request).expect_success().commit();
 
     let contract_hash: ContractHash = match builder
-        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .named_keys()["ordered-transforms-contract-hash"]
     {
         Key::Hash(addr) => addr.into(),
@@ -88,7 +88,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     assert_eq!(exec_result.len(), 1);
     let journal = exec_result[0].execution_journal();
 
-    let contract = builder.get_contract(contract_hash).unwrap();
+    let contract = builder.get_addressable_entity(contract_hash).unwrap();
     let urefs: Vec<URef> = (0..N_UREFS)
         .map(
             |i| match contract.named_keys().get(&format!("uref-{}", i)).unwrap() {

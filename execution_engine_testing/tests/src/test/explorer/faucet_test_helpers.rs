@@ -382,7 +382,7 @@ pub fn get_faucet_contract_hash(
     installer_account: AccountHash,
 ) -> ContractHash {
     builder
-        .get_expected_account(installer_account)
+        .get_expected_addressable_entity_by_account_hash(installer_account)
         .named_keys()
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
@@ -396,7 +396,7 @@ pub fn get_faucet_contract(
     installer_account: AccountHash,
 ) -> AddressableEntity {
     builder
-        .get_contract(get_faucet_contract_hash(builder, installer_account))
+        .get_addressable_entity(get_faucet_contract_hash(builder, installer_account))
         .expect("failed to find faucet contract")
 }
 

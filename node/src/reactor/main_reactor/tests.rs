@@ -661,12 +661,6 @@ async fn dont_upgrade_without_switch_block() {
     }
 }
 
-// enum BlockSlot {
-//     Actual(BlockHash, BlockHeight, BlockTime),
-//     Finalized(BlockHeight, BlockTime),
-//     Proposed(BlockHeight, Vec<(Proposer, BlockTime)>),
-// }
-
 #[tokio::test]
 async fn should_store_finalized_approvals() {
     testing::init_logging();

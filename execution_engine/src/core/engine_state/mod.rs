@@ -1623,11 +1623,13 @@ where
 
         // Finalization is executed by system account (currently genesis account)
         // payment_code_spec_5: system executes finalization
-        let system_addressable_entity = tracking_copy.borrow_mut().read_contract_by_account_hash(
-            correlation_id,
-            protocol_version,
-            PublicKey::System.to_account_hash(),
-        )?;
+        let system_addressable_entity = tracking_copy
+            .borrow_mut()
+            .read_addressable_entity_by_account_hash(
+                correlation_id,
+                protocol_version,
+                PublicKey::System.to_account_hash(),
+            )?;
 
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();

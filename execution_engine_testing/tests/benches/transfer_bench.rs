@@ -79,14 +79,14 @@ fn create_purses(
     builder.exec(exec_request).expect_success().commit();
 
     // Return creates purses for given account by filtering named key.
-    let contract = builder
+    let entity = builder
         .get_entity_by_account_hash(source)
         .expect("must have contract");
 
     (0..total_purses)
         .map(|index| {
             let purse_lookup_key = format!("purse:{}", index);
-            let purse_uref = contract
+            let purse_uref = entity
                 .named_keys()
                 .get(&purse_lookup_key)
                 .and_then(Key::as_uref)

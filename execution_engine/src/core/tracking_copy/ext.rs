@@ -5,7 +5,6 @@ use casper_storage::global_state::{
     storage::{state::StateReader, trie::merkle_proof::TrieMerkleProof},
 };
 
-use crate::ACCOUNT_WASM_ADDR;
 use casper_types::{
     account::AccountHash,
     package::{
@@ -16,11 +15,14 @@ use casper_types::{
     StoredValueTypeMismatch, URef,
 };
 
-use crate::core::{
-    engine_state::{ChecksumRegistry, SystemContractRegistry},
-    execution,
-    execution::AddressGenerator,
-    tracking_copy::TrackingCopy,
+use crate::{
+    core::{
+        engine_state::{ChecksumRegistry, SystemContractRegistry},
+        execution,
+        execution::AddressGenerator,
+        tracking_copy::TrackingCopy,
+    },
+    ACCOUNT_WASM_ADDR,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -35,7 +37,7 @@ pub trait TrackingCopyExt<R> {
         account_hash: AccountHash,
     ) -> Result<ContractHash, Self::Error>;
 
-    /// Gets the contract for a given account by its account address
+    /// Gets the entity for a given account by its account address
     fn get_addressable_entity_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
@@ -43,15 +45,15 @@ pub trait TrackingCopyExt<R> {
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
-    /// Reads the contract hash for the account at a given account address.
+    /// Reads the entity key for the account at a given account address.
     fn read_account(
         &mut self,
         correlation_id: CorrelationId,
         account_hash: AccountHash,
     ) -> Result<Key, Self::Error>;
 
-    /// Reads the contract for a given account by its account address
-    fn read_contract_by_account_hash(
+    /// Reads the entity for a given account by its account address
+    fn read_addressable_entity_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
@@ -94,7 +96,7 @@ pub trait TrackingCopyExt<R> {
         contract_wasm_hash: ContractWasmHash,
     ) -> Result<ContractWasm, Self::Error>;
 
-    /// Gets a contract header by Key.
+    /// Gets an addressable entity  by Key.
     fn get_contract(
         &mut self,
         correlation_id: CorrelationId,
@@ -252,7 +254,7 @@ where
         }
     }
 
-    fn read_contract_by_account_hash(
+    fn read_addressable_entity_by_account_hash(
         &mut self,
         correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,

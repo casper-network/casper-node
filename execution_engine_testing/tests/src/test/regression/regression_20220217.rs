@@ -78,7 +78,7 @@ fn regression_20220217_transfer_mint_by_package_hash_from_main_purse() {
     let mint_hash = builder.get_mint_contract_hash();
 
     let mint = builder
-        .get_contract(mint_hash)
+        .get_addressable_entity(mint_hash)
         .expect("should have mint contract");
     let mint_package_hash = mint.contract_package_hash();
 

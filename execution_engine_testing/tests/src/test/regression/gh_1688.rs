@@ -69,7 +69,7 @@ fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> Execu
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .unwrap();
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have contract");
 
     assert!(

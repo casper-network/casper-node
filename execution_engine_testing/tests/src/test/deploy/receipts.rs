@@ -442,7 +442,7 @@ fn should_record_wasm_transfers_with_subcall() {
         .expect("should have contract hash");
 
     let contract: AddressableEntity = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have stored contract");
 
     let contract_purse = contract.named_keys()[PURSE_NAME]

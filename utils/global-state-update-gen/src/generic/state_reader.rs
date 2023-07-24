@@ -72,7 +72,7 @@ impl StateReader for LmdbWasmTestBuilder {
         // Find the hash of the mint contract.
         let mint_contract_hash = self.get_system_mint_hash();
 
-        self.get_contract(mint_contract_hash)
+        self.get_addressable_entity(mint_contract_hash)
             .expect("mint should exist")
             .named_keys()[TOTAL_SUPPLY_KEY]
     }
@@ -81,7 +81,7 @@ impl StateReader for LmdbWasmTestBuilder {
         // Find the hash of the auction contract.
         let auction_contract_hash = self.get_system_auction_hash();
 
-        self.get_contract(auction_contract_hash)
+        self.get_addressable_entity(auction_contract_hash)
             .expect("auction should exist")
             .named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY]
     }
@@ -105,7 +105,7 @@ impl StateReader for LmdbWasmTestBuilder {
     fn get_protocol_version(&mut self) -> ProtocolVersion {
         let mint_contract_hash = self.get_system_mint_hash();
 
-        self.get_contract(mint_contract_hash)
+        self.get_addressable_entity(mint_contract_hash)
             .expect("must have mint contract")
             .protocol_version()
     }

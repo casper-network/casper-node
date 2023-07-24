@@ -155,7 +155,7 @@ fn should_modify_with_owned_access_rights() {
     .build();
 
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -322,7 +322,7 @@ fn should_write_with_write_access_rights() {
     builder.exec(call_request).commit();
 
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -347,7 +347,7 @@ fn should_not_write_with_forged_uref() {
     let (mut builder, contract_hash) = setup();
 
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let stored_dictionary_key = contract
@@ -392,7 +392,7 @@ fn should_not_write_with_forged_uref() {
 fn should_fail_put_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract
@@ -431,7 +431,7 @@ fn should_fail_put_with_invalid_dictionary_item_key() {
 fn should_fail_get_with_invalid_dictionary_item_key() {
     let (mut builder, contract_hash) = setup();
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     let _stored_dictionary_key = contract

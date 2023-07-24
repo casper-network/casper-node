@@ -1142,14 +1142,17 @@ where
         }
     }
 
-    /// Queries for an `Account` and panics if it can't be found.
-    pub fn get_expected_account(&self, account_hash: AccountHash) -> AddressableEntity {
+    /// Queries for an `AddressableEntity` and panics if it can't be found.
+    pub fn get_expected_addressable_entity_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> AddressableEntity {
         self.get_entity_by_account_hash(account_hash)
             .expect("account to exist")
     }
 
-    /// Queries for a contract by `ContractHash`.
-    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<AddressableEntity> {
+    /// Queries for an addressable entity by `ContractHash`.
+    pub fn get_addressable_entity(&self, contract_hash: ContractHash) -> Option<AddressableEntity> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
@@ -1393,7 +1396,7 @@ where
         T: FromBytes + CLTyped,
     {
         let contract = self
-            .get_contract(contract_hash)
+            .get_addressable_entity(contract_hash)
             .expect("should have contract");
         let key = contract
             .named_keys()

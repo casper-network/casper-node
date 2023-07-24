@@ -1013,26 +1013,25 @@ where
         // Converts an account's public key into a URef
         let key: Key = self.get_entity_address();
 
-        // Take a contract out of the global state
-        let contract = {
-            let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
+        // Take an addressable entity out of the global state
+        let entity = {
+            let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
-            if contract.associated_keys().len()
-                >= (self.engine_config.max_associated_keys() as usize)
+            if entity.associated_keys().len() >= (self.engine_config.max_associated_keys() as usize)
             {
                 return Err(Error::AddKeyFailure(AddKeyFailure::MaxKeysLimit));
             }
 
             // Exit early in case of error without updating global state
-            contract
+            entity
                 .add_associated_key(account_hash, weight)
                 .map_err(Error::from)?;
-            contract
+            entity
         };
 
-        let contract_value = self.contract_to_validated_value(contract)?;
+        let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
-        self.metered_write_gs_unsafe(key, contract_value)?;
+        self.metered_write_gs_unsafe(key, entity_value)?;
 
         Ok(())
     }
@@ -1057,14 +1056,14 @@ where
         let key: Key = self.get_entity_address();
 
         // Take an account out of the global state
-        let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        contract
+        entity
             .remove_associated_key(account_hash)
             .map_err(Error::from)?;
 
-        let account_value = self.contract_to_validated_value(contract)?;
+        let account_value = self.addressable_entity_to_validated_value(entity)?;
 
         self.metered_write_gs_unsafe(key, account_value)?;
 
@@ -1091,20 +1090,19 @@ where
         }
 
         // Converts an account's public key into a URef
-        // let key = Key::Account(self.contract().account_hash());
         let key: Key = self.get_entity_address();
 
         // Take an account out of the global state
-        let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
+        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        contract
+        entity
             .update_associated_key(account_hash, weight)
             .map_err(Error::from)?;
 
-        let contract_value = self.contract_to_validated_value(contract)?;
+        let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
-        self.metered_write_gs_unsafe(key, contract_value)?;
+        self.metered_write_gs_unsafe(key, entity_value)?;
 
         Ok(())
     }
@@ -1130,26 +1128,26 @@ where
 
         let key: Key = self.get_entity_address();
 
-        // Take an account out of the global state
-        let mut contract: AddressableEntity = self.read_gs_typed(&key)?;
+        // Take an addressable entity out of the global state
+        let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        contract
+        entity
             .set_action_threshold(action_type, threshold)
             .map_err(Error::from)?;
 
-        let contract_value = self.contract_to_validated_value(contract)?;
+        let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
-        self.metered_write_gs_unsafe(key, contract_value)?;
+        self.metered_write_gs_unsafe(key, entity_value)?;
 
         Ok(())
     }
 
-    fn contract_to_validated_value(
+    fn addressable_entity_to_validated_value(
         &self,
-        contract: AddressableEntity,
+        entity: AddressableEntity,
     ) -> Result<StoredValue, Error> {
-        let value = StoredValue::AddressableEntity(contract);
+        let value = StoredValue::AddressableEntity(entity);
         self.validate_value(&value)?;
         Ok(value)
     }

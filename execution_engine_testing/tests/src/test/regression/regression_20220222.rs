@@ -33,7 +33,7 @@ fn regression_20220222_escalate() {
 
     // Getting main purse URef to verify transfer
     let _source_purse = builder
-        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
     let session_args = runtime_args! {

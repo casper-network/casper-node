@@ -702,8 +702,9 @@ pub fn validate_query_proof(
 
     for proof in proofs_iter {
         let named_keys = match proof_value {
-            // StoredValue::Account(account) => account.named_keys(),
-            StoredValue::AddressableEntity(contract) => contract.named_keys(),
+            StoredValue::Account(account) => account.named_keys(),
+            StoredValue::Contract(contract) => contract.named_keys(),
+            StoredValue::AddressableEntity(entity) => entity.named_keys(),
             StoredValue::CLValue(_) => {
                 proof_value = proof.value();
                 continue;

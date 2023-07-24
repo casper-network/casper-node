@@ -400,7 +400,7 @@ fn should_support_extending_functionality() {
 
     // verify known uref actually exists prior to upgrade
     let contract = builder
-        .get_contract(stored_hash)
+        .get_addressable_entity(stored_hash)
         .expect("should have contract");
     assert!(
         contract.named_keys().contains_key(PURSE_1),
@@ -426,7 +426,7 @@ fn should_support_extending_functionality() {
 
     // verify uref still exists in named_keys after upgrade:
     let contract = builder
-        .get_contract(stored_hash)
+        .get_addressable_entity(stored_hash)
         .expect("should have contract");
 
     assert!(
@@ -470,7 +470,7 @@ fn should_support_extending_functionality() {
 
     // verify known urefs no longer include removed purse
     let contract = builder
-        .get_contract(stored_hash_2)
+        .get_addressable_entity(stored_hash_2)
         .expect("should have contract");
 
     assert!(
@@ -543,7 +543,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
         // verify known uref actually exists prior to upgrade
         let contract = builder
-            .get_contract(stored_hash.into())
+            .get_addressable_entity(stored_hash.into())
             .expect("should have contract");
         assert!(
             contract.named_keys().contains_key(purse_name),
@@ -570,7 +570,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
     // verify all urefs still exist in named_keys after upgrade
     let contract = builder
-        .get_contract(stored_hash.into())
+        .get_addressable_entity(stored_hash.into())
         .expect("should have contract");
 
     for index in 0..TOTAL_PURSES {

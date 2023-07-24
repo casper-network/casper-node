@@ -103,7 +103,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         elapsed.as_millis()
     );
     let new_contract = builder
-        .get_contract(mint_contract_hash)
+        .get_addressable_entity(mint_contract_hash)
         .expect("should have mint contract");
     assert_eq!(
         old_contract.contract_package_hash(),
