@@ -133,6 +133,28 @@ impl Varint32 {
             .expect("did not expect self-encoded varint32 to fail decoding")
             .value
     }
+
+    /// Returns the length of the given value encoded as a `Varint32`.
+    #[inline]
+    pub fn length_of(value: u32) -> usize {
+        if value < 128 {
+            return 1;
+        }
+
+        if value < 16384 {
+            return 2;
+        }
+
+        if value < 2097152 {
+            return 3;
+        }
+
+        if value < 268435456 {
+            return 4;
+        }
+
+        5
+    }
 }
 
 impl AsRef<[u8]> for Varint32 {
@@ -268,5 +290,14 @@ mod tests {
     #[proptest]
     fn working_debug_impl(value: u32) {
         format!("{:?}", Varint32::encode(value));
+    }
+
+    #[test]
+    #[ignore]
+    fn varint_length_cutover() {
+        for n in 0..u32::MAX {
+            let len = Varint32::encode(n).len();
+            assert_eq!(len, Varint32::length_of(n));
+        }
     }
 }
