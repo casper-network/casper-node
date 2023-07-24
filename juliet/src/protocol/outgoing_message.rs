@@ -10,7 +10,7 @@ use std::{
 };
 
 use bytemuck::{Pod, Zeroable};
-use bytes::{buf::Chain, Buf, BufMut, Bytes};
+use bytes::{buf::Chain, Buf, Bytes};
 
 use crate::{header::Header, varint::Varint32};
 
@@ -65,6 +65,63 @@ impl OutgoingMessage {
     #[inline(always)]
     pub fn header(&self) -> Header {
         self.header
+    }
+
+    /// Calculates the total number of bytes that are not header data that will be transmitted with
+    /// this message (the payload + its variable length encoded length prefix).
+    #[inline]
+    fn non_header_len(&self) -> usize {
+        match self.payload {
+            Some(ref pl) => Varint32::length_of(pl.remaining() as u32) + pl.remaining(),
+            None => 0,
+        }
+    }
+
+    /// Calculates the number of frames this message will produce.
+    #[inline]
+    fn num_frames(&self, max_frame_size: u32) -> usize {
+        let usable_size = max_frame_size as usize - Header::SIZE;
+
+        1.max((self.non_header_len() + usable_size - 1) / usable_size)
+    }
+
+    /// Calculates the total length in bytes of all frames produced by this message.
+    #[inline]
+    fn total_len(&self, max_frame_size: u32) -> usize {
+        self.num_frames(max_frame_size) * Header::SIZE + self.non_header_len()
+    }
+
+    /// Creates an byte-iterator over all frames in the message.
+    ///
+    /// The returned `ByteIter` will return all frames in sequence using the [`bytes::Buf`] trait,
+    /// with no regard for frame boundaries, thus it is only suitable to send all frames of the
+    /// message with no interleaved data.
+    #[inline]
+    pub fn iter_bytes(self, max_frame_size: u32) -> ByteIter {
+        debug_assert!(max_frame_size > 10);
+
+        let length_prefix = self
+            .payload
+            .as_ref()
+            .map(|pl| Varint32::encode(pl.len() as u32))
+            .unwrap_or(Varint32::SENTINEL);
+        ByteIter {
+            msg: self,
+            length_prefix,
+            consumed: 0,
+            max_frame_size,
+        }
+    }
+
+    /// Writes out all frames as they should be sent out on the wire into a [`Bytes`] struct.
+    ///
+    /// Consider using the `frames()` or `bytes()` methods instead to avoid additional copies. This
+    /// message is not zero-copy, but still consumes `self` to avoid a conversion of a potentially
+    /// unshared payload buffer.
+    #[inline]
+    pub fn to_bytes(self, max_frame_size: u32) -> Bytes {
+        let mut everything = self.iter_bytes(max_frame_size);
+        everything.copy_to_bytes(everything.remaining())
     }
 }
 
@@ -190,26 +247,89 @@ impl FrameIter {
             )
         }
     }
+}
 
-    /// Writes out all frames as they should be sent out onto the wire into the given buffer.
+/// Byte-wise message iterator.
+#[derive(Debug)]
+pub struct ByteIter {
+    /// The outgoing message.
+    msg: OutgoingMessage,
+    /// A written-out copy of the length prefixed.
     ///
-    /// This does not leave any way to intersperse other frames and is only recommend in context
-    /// like testing.
-    #[cfg(test)]
+    /// Handed out by reference.
+    length_prefix: Varint32,
+    /// Number of bytes already written/sent.
+    // Note: The `ByteIter` uses `usize`s, since its primary use is to allow using the `Buf`
+    //       interface, which can only deal with usize arguments anyway.
+    consumed: usize,
+    /// Maximum frame size at construction.
+    max_frame_size: u32,
+}
+
+impl ByteIter {
+    /// Returns the total number of bytes to be emitted by this [`ByteIter`].
+    #[inline(always)]
+    fn total(&self) -> usize {
+        self.msg.total_len(self.max_frame_size)
+    }
+}
+
+impl Buf for ByteIter {
+    #[inline(always)]
+    fn remaining(&self) -> usize {
+        self.total() - self.consumed
+    }
+
     #[inline]
-    pub fn put_into<T: BufMut>(self, buffer: &mut T, max_frame_size: u32) {
-        let mut current = self;
-        loop {
-            let (frame, mut more) = current.next_owned(max_frame_size);
-
-            buffer.put(frame);
-
-            current = if let Some(more) = more.take() {
-                more
-            } else {
-                return;
-            }
+    fn chunk(&self) -> &[u8] {
+        if self.remaining() == 0 {
+            return &[];
         }
+
+        // Determine where we are.
+        let frames_completed = self.consumed / self.max_frame_size as usize;
+        let frame_progress = self.consumed % self.max_frame_size as usize;
+        let in_first_frame = frames_completed == 0;
+
+        if frame_progress < Header::SIZE {
+            // Currently sending the header.
+            return &self.msg.header.as_ref()[frame_progress..];
+        }
+
+        debug_assert!(!self.length_prefix.is_sentinel());
+        if in_first_frame && frame_progress < (Header::SIZE + self.length_prefix.len()) {
+            // Currently sending the payload length prefix.
+            let varint_progress = frame_progress - Header::SIZE;
+            return &self.length_prefix.as_ref()[varint_progress..];
+        }
+
+        // Currently sending a payload chunk.
+        let space_in_frame = self.max_frame_size as usize - Header::SIZE;
+        let first_preamble = Header::SIZE + self.length_prefix.len();
+        let (frame_payload_start, frame_payload_progress, frame_payload_end) = if in_first_frame {
+            (
+                0,
+                frame_progress - first_preamble,
+                self.max_frame_size as usize - first_preamble,
+            )
+        } else {
+            let start = frames_completed * space_in_frame - self.length_prefix.len();
+            (start, frame_progress - Header::SIZE, start + space_in_frame)
+        };
+
+        let current_frame_chunk = self
+            .msg
+            .payload
+            .as_ref()
+            .map(|pl| &pl[frame_payload_start..frame_payload_end.min(pl.remaining())])
+            .unwrap_or_default();
+
+        &current_frame_chunk[frame_payload_progress..]
+    }
+
+    #[inline(always)]
+    fn advance(&mut self, cnt: usize) {
+        self.consumed = (self.consumed + cnt).min(self.total());
     }
 }
 
@@ -295,7 +415,7 @@ impl Buf for OutgoingFrame {
 mod tests {
     use std::ops::Deref;
 
-    use bytes::{Buf, Bytes, BytesMut};
+    use bytes::{Buf, Bytes};
 
     use crate::{
         header::{Header, Kind},
@@ -348,6 +468,17 @@ mod tests {
 
         assert_eq!(msg.header(), header);
         assert_eq!(expected.len() > 1, msg.is_multi_frame(MAX_FRAME_SIZE));
+        assert_eq!(expected.len(), msg.num_frames(MAX_FRAME_SIZE));
+
+        // Payload data check.
+        if let Some(length) = length {
+            assert_eq!(
+                length + Varint32::length_of(length as u32),
+                msg.non_header_len()
+            );
+        } else {
+            assert_eq!(msg.non_header_len(), 0);
+        }
 
         // A zero-byte payload is still expected to produce a single byte for the 0-length.
         let frames = collect_frames(msg.clone().frames());
@@ -357,15 +488,34 @@ mod tests {
         assert_eq!(&comparable, expected);
 
         // Ensure that the written out version is the same as expected.
-        let mut written_out = BytesMut::new();
-        msg.frames().put_into(&mut written_out, MAX_FRAME_SIZE);
         let expected_bytestring: Vec<u8> = expected
             .into_iter()
             .map(Deref::deref)
             .flatten()
             .copied()
             .collect();
+        assert_eq!(expected_bytestring.len(), msg.total_len(MAX_FRAME_SIZE));
+        let mut bytes_iter = msg.clone().iter_bytes(MAX_FRAME_SIZE);
+        let written_out = bytes_iter.copy_to_bytes(bytes_iter.remaining()).to_vec();
         assert_eq!(written_out, expected_bytestring);
+        let converted_to_bytes = msg.clone().to_bytes(MAX_FRAME_SIZE);
+        assert_eq!(converted_to_bytes, expected_bytestring);
+
+        // Finally, we do a trickle-test with various step sizes.
+        for step_size in 1..=(MAX_FRAME_SIZE as usize * 2) {
+            let mut buf: Vec<u8> = Vec::new();
+
+            let mut bytes_iter = msg.clone().iter_bytes(MAX_FRAME_SIZE);
+
+            while bytes_iter.remaining() > 0 {
+                let chunk = bytes_iter.chunk();
+                let next_step = chunk.len().min(step_size);
+                buf.extend(&chunk[..next_step]);
+                bytes_iter.advance(next_step);
+            }
+
+            assert_eq!(buf, expected_bytestring);
+        }
     }
 
     #[test]
@@ -436,6 +586,65 @@ mod tests {
                 &[0x02, 0xAB, 0xCD, 0xEF, 35],
             ],
         );
+    }
+
+    #[test]
+    fn bytes_iterator_smoke_test() {
+        let payload = &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..];
+
+        // Expected output:
+        // &[0x02, 0xAB, 0xCD, 0xEF, 12, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        // &[0x02, 0xAB, 0xCD, 0xEF, 11],
+
+        let msg = OutgoingMessage::new(
+            Header::new(Kind::RequestPl, ChannelId(0xAB), Id(0xEFCD)),
+            Some(Bytes::from(payload)),
+        );
+
+        let mut byte_iter = msg.iter_bytes(MAX_FRAME_SIZE);
+
+        // First header.
+        assert_eq!(byte_iter.remaining(), 21);
+        assert_eq!(byte_iter.chunk(), &[0x02, 0xAB, 0xCD, 0xEF]);
+        assert_eq!(byte_iter.chunk(), &[0x02, 0xAB, 0xCD, 0xEF]);
+        byte_iter.advance(2);
+        assert_eq!(byte_iter.remaining(), 19);
+        assert_eq!(byte_iter.chunk(), &[0xCD, 0xEF]);
+        byte_iter.advance(2);
+        assert_eq!(byte_iter.remaining(), 17);
+
+        // Varint encoding length.
+        assert_eq!(byte_iter.chunk(), &[12]);
+        byte_iter.advance(1);
+        assert_eq!(byte_iter.remaining(), 16);
+
+        // Payload of first frame (MAX_FRAME_SIZE - 5 = 11 bytes).
+        assert_eq!(byte_iter.chunk(), &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        byte_iter.advance(1);
+        assert_eq!(byte_iter.chunk(), &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        byte_iter.advance(5);
+        assert_eq!(byte_iter.chunk(), &[6, 7, 8, 9, 10]);
+        byte_iter.advance(5);
+
+        // Second frame.
+        assert_eq!(byte_iter.remaining(), 5);
+        assert_eq!(byte_iter.chunk(), &[0x02, 0xAB, 0xCD, 0xEF]);
+        byte_iter.advance(3);
+        assert_eq!(byte_iter.chunk(), &[0xEF]);
+        byte_iter.advance(1);
+        assert_eq!(byte_iter.remaining(), 1);
+        assert_eq!(byte_iter.chunk(), &[11]);
+        byte_iter.advance(1);
+        assert_eq!(byte_iter.remaining(), 0);
+        assert_eq!(byte_iter.chunk(), &[]);
+        assert_eq!(byte_iter.chunk(), &[]);
+        assert_eq!(byte_iter.chunk(), &[]);
+        assert_eq!(byte_iter.chunk(), &[]);
+        assert_eq!(byte_iter.chunk(), &[]);
+        assert_eq!(byte_iter.remaining(), 0);
+        assert_eq!(byte_iter.remaining(), 0);
+        assert_eq!(byte_iter.remaining(), 0);
+        assert_eq!(byte_iter.remaining(), 0);
     }
 
     #[test]
