@@ -106,6 +106,8 @@ refund_handling = { type = 'refund', refund_ratio = [0, 1] }
 #                 administrator accounts
 #   'burn': fees are burned
 fee_handling = { type = 'pay_to_proposer' }
+# List of public keys of administrator accounts. Setting this option makes only on private chains which require
+# administrator accounts for regulatory reasons.
 administrators = []
 
 [highway]

@@ -73,7 +73,7 @@ simultaneous_peer_requests = 5
 consensus_protocol = 'Highway'
 # The maximum amount of delegators per validator. if the value is 0, there is no maximum capacity.
 max_delegators_per_validator = 0
-# Allow auction entrypoints such as delegate, redelegate and add_bid to function properly.
+# Setting this to false makes sense only on private chains which don't need to auction new validator slots.
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
 allow_auction_bids = true
@@ -95,6 +95,8 @@ refund_handling = { type = 'refund', refund_ratio = [0, 1] }
 #                 administrator accounts
 #   'burn': fees are burned
 fee_handling = { type = 'pay_to_proposer' }
+# List of public keys of administrator accounts. Setting this option makes only on private chains which require
+# administrator accounts for regulatory reasons.
 administrators = []
 
 [highway]

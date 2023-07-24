@@ -55,7 +55,7 @@ max_runtime_call_stack_height = 12
 minimum_delegation_amount = 500_000_000_000
 # Maximum serialized size of values stored in global state.
 max_stored_value_size = 8_388_608
-# Allow auction entrypoints such as delegate, redelegate and add_bid to function properly.
+# Setting this to false makes sense only on private chains which don't need to auction new validator slots.
 #
 # Changing this option makes sense only for private chains which dont need auctioning new validator slots.
 allow_auction_bids = false
