@@ -180,8 +180,8 @@ where
                     entry_points,
                     protocol_version,
                     account.main_purse(),
-                    account.associated_keys().clone(),
-                    account.action_thresholds().clone(),
+                    account.associated_keys().clone().into(),
+                    account.action_thresholds().clone().into(),
                 );
 
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);

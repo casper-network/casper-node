@@ -140,7 +140,7 @@ pub mod gens {
 
     use super::ActionThresholds;
 
-    pub fn action_thresholds_arb() -> impl Strategy<Value = ActionThresholds> {
+    pub fn account_action_thresholds_arb() -> impl Strategy<Value = ActionThresholds> {
         Just(Default::default())
     }
 }

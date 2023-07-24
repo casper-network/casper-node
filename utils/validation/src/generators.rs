@@ -4,8 +4,11 @@ use std::{
 };
 
 use casper_types::{
-    account::{Account, AccountHash},
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    account::{
+        Account, AccountHash, ActionThresholds as AccountActionThresholds,
+        AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
+    },
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys},
     package::{
         ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
@@ -290,14 +293,14 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             named_keys
         };
 
-        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+        let associated_keys = AccountAssociatedKeys::new(account_hash, AccountWeight::new(1));
 
         let account = Account::new(
             account_hash,
             account_named_keys,
             URef::new([17; 32], AccessRights::WRITE),
             associated_keys,
-            ActionThresholds::new(Weight::new(1), Weight::new(1)).unwrap(),
+            AccountActionThresholds::new(AccountWeight::new(1), AccountWeight::new(1)).unwrap(),
         );
 
         stored_value.insert(
@@ -340,7 +343,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             entry_points
         };
 
-        let contract = AddressableEntity::new(
+        let entity = AddressableEntity::new(
             ContractPackageHash::new([100; 32]),
             ContractWasmHash::new([101; 32]),
             contract_named_keys,
@@ -352,7 +355,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
         stored_value.insert(
             "AddressableEntity".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::AddressableEntity(contract).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::AddressableEntity(entity).into()])?,
         );
 
         let mut active_versions = ContractVersions::new();

@@ -12,7 +12,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    account::AccountHash,
+    account::{AccountHash, AssociatedKeys as AccountAssociatedKeys},
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
     bytesrepr::{self, Error, FromBytes, ToBytes},
 };
@@ -156,6 +156,18 @@ impl FromBytes for AssociatedKeys {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (associated_keys, rem) = FromBytes::from_bytes(bytes)?;
         Ok((AssociatedKeys(associated_keys), rem))
+    }
+}
+
+impl From<AccountAssociatedKeys> for AssociatedKeys {
+    fn from(value: AccountAssociatedKeys) -> Self {
+        let mut associated_keys = AssociatedKeys::default();
+        for (account_hash, weight) in value.iter() {
+            associated_keys
+                .0
+                .insert(*account_hash, Weight::new(weight.value()));
+        }
+        associated_keys
     }
 }
 

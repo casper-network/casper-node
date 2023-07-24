@@ -934,7 +934,7 @@ where
             }
         };
 
-        let contract = AddressableEntity::new(
+        let entity = AddressableEntity::new(
             contract_package_hash,
             contract_wasm_hash,
             named_keys,
@@ -968,10 +968,9 @@ where
             contract_wasm_hash.into(),
             StoredValue::ContractWasm(contract_wasm),
         );
-        self.tracking_copy.borrow_mut().write(
-            contract_hash.into(),
-            StoredValue::AddressableEntity(contract),
-        );
+        self.tracking_copy
+            .borrow_mut()
+            .write(contract_hash.into(), StoredValue::AddressableEntity(entity));
         self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
             StoredValue::ContractPackage(contract_package),

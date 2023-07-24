@@ -13,6 +13,7 @@ use proptest::{
 };
 
 use crate::{
+    account,
     account::AccountHash,
     addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
@@ -30,7 +31,10 @@ use crate::{
 };
 
 use crate::{
-    account::Account,
+    account::{
+        action_thresholds::gens::account_action_thresholds_arb,
+        associated_keys::gens::account_associated_keys_arb, Account,
+    },
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
     },
@@ -123,6 +127,10 @@ pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
     any::<u8>().prop_map(Weight::new)
+}
+
+pub fn account_weight_arb() -> impl Strategy<Value = account::Weight> {
+    any::<u8>().prop_map(account::Weight::new)
 }
 
 pub fn sem_ver_arb() -> impl Strategy<Value = SemVer> {
@@ -328,8 +336,8 @@ pub fn account_arb() -> impl Strategy<Value = Account> {
         account_hash_arb(),
         named_keys_arb(20),
         uref_arb(),
-        associated_keys_arb(),
-        action_thresholds_arb(),
+        account_associated_keys_arb(),
+        account_action_thresholds_arb(),
     )
         .prop_map(
             |(account_hash, named_keys, main_purse, associated_keys, action_thresholds)| {

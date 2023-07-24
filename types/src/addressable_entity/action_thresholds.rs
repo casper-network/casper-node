@@ -7,6 +7,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    account::ActionThresholds as AccountActionThresholds,
     addressable_entity::{ActionType, SetThresholdFailure, Weight, WEIGHT_SERIALIZED_LENGTH},
     bytesrepr::{self, Error, FromBytes, ToBytes},
 };
@@ -100,6 +101,15 @@ impl Default for ActionThresholds {
         ActionThresholds {
             deployment: Weight::new(1),
             key_management: Weight::new(1),
+        }
+    }
+}
+
+impl From<AccountActionThresholds> for ActionThresholds {
+    fn from(value: AccountActionThresholds) -> Self {
+        Self {
+            deployment: Weight::new(value.deployment.value()),
+            key_management: Weight::new(value.key_management.value()),
         }
     }
 }

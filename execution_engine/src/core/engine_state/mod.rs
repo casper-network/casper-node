@@ -798,15 +798,17 @@ where
 
                 let entry_points = EntryPoints::new();
 
-                let contract = AddressableEntity::new(
+                let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
+
+                let entity = AddressableEntity::new(
                     contract_package_hash,
                     contract_wasm_hash,
                     account.named_keys().clone(),
                     entry_points,
                     protocol_version,
                     account.main_purse(),
-                    account.associated_keys().clone(),
-                    account.action_thresholds().clone(),
+                    associated_keys,
+                    account.action_thresholds().clone().into(),
                 );
 
                 let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
@@ -829,7 +831,7 @@ where
 
                 tracking_copy
                     .borrow_mut()
-                    .write(contract_key, contract.into());
+                    .write(contract_key, entity.into());
                 tracking_copy
                     .borrow_mut()
                     .write(contract_package_hash.into(), contract_package.into());
@@ -1113,7 +1115,7 @@ where
                             let named_keys = NamedKeys::default();
                             let entry_points = EntryPoints::new();
 
-                            let contract = AddressableEntity::new(
+                            let entity = AddressableEntity::new(
                                 contract_package_hash,
                                 contract_wasm_hash,
                                 named_keys,
@@ -1146,7 +1148,7 @@ where
 
                             tracking_copy
                                 .borrow_mut()
-                                .write(contract_key, contract.into());
+                                .write(contract_key, entity.into());
                             tracking_copy
                                 .borrow_mut()
                                 .write(contract_package_hash.into(), contract_package.into());

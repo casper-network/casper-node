@@ -645,7 +645,7 @@ impl From<AddressableEntity>
 }
 
 impl AddressableEntity {
-    /// `Contract` constructor.
+    /// `AddressableEntity` constructor.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         contract_package_hash: ContractPackageHash,
@@ -714,7 +714,7 @@ impl AddressableEntity {
         &self.action_thresholds
     }
 
-    /// Adds an associated key to an account.
+    /// Adds an associated key to an addressable entity.
     pub fn add_associated_key(
         &mut self,
         account_hash: AccountHash,
@@ -752,7 +752,7 @@ impl AddressableEntity {
             && new_weight >= self.action_thresholds().key_management().value()
     }
 
-    /// Removes an associated key from an account.
+    /// Removes an associated key from an addressable entity.
     ///
     /// Verifies that removing the key will not cause the remaining weight to fall below any action
     /// thresholds.
@@ -788,7 +788,7 @@ impl AddressableEntity {
         self.associated_keys.update_key(account_hash, weight)
     }
 
-    /// Sets new action threshold for a given action type for the account.
+    /// Sets new action threshold for a given action type for the addressable entity.
     ///
     /// Returns an error if the new action threshold weight is greater than the total weight of the
     /// account's associated keys.
@@ -813,7 +813,7 @@ impl AddressableEntity {
         Ok(())
     }
 
-    /// Checks whether all authorization keys are associated with this account.
+    /// Checks whether all authorization keys are associated with this addressable entity.
     pub fn can_authorize(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
         !authorization_keys.is_empty()
             && authorization_keys
@@ -846,7 +846,7 @@ impl AddressableEntity {
         self.entry_points.add_entry_point(entry_point);
     }
 
-    /// Hash for accessing contract bytes
+    /// Hash for accessing wasm bytes
     pub fn contract_wasm_key(&self) -> Key {
         self.contract_wasm_hash.into()
     }
@@ -886,12 +886,12 @@ impl AddressableEntity {
         self.protocol_version = protocol_version;
     }
 
-    /// Determines if `Contract` is compatible with a given `ProtocolVersion`.
+    /// Determines if `AddressableEntity` is compatible with a given `ProtocolVersion`.
     pub fn is_compatible_protocol_version(&self, protocol_version: ProtocolVersion) -> bool {
         self.protocol_version.value().major == protocol_version.value().major
     }
 
-    /// Extracts the access rights from the named keys of the contract.
+    /// Extracts the access rights from the named keys of the addressable entity.
     pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
