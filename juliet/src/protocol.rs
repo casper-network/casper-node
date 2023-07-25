@@ -842,7 +842,7 @@ impl<const N: usize> JulietProtocol<N> {
 /// Pure convenience function for the common use case of producing a response message from a
 /// received header with an appropriate error.
 #[inline(always)]
-const fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
+fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
     log_frame!(header);
     Fatal(OutgoingMessage::new(header.with_err(kind), None))
 }

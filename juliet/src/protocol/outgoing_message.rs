@@ -418,7 +418,7 @@ impl OutgoingFrame {
     ///
     /// Equivalent to `self.copy_to_bytes(self.remaining)`.
     #[inline]
-    pub fn to_bytes(mut self, max_frame_size: u32) -> Bytes {
+    pub fn to_bytes(mut self) -> Bytes {
         self.copy_to_bytes(self.remaining())
     }
 }
@@ -514,7 +514,9 @@ mod tests {
 
         // Addtional test: Ensure `frame_iter` yields the same result.
         let mut from_frame_iter: Vec<u8> = Vec::new();
-        for frame in msg.clone().frame_iter(MAX_FRAME_SIZE) {}
+        for frame in msg.clone().frame_iter(MAX_FRAME_SIZE) {
+            from_frame_iter.extend(frame.to_bytes());
+        }
 
         // We could compare without creating a new vec, but this gives nicer error messages.
         let comparable: Vec<_> = frames.iter().map(|v| v.as_slice()).collect();
@@ -528,6 +530,8 @@ mod tests {
             .copied()
             .collect();
         assert_eq!(expected_bytestring.len(), msg.total_len(MAX_FRAME_SIZE));
+        assert_eq!(from_frame_iter, expected_bytestring);
+
         let mut bytes_iter = msg.clone().iter_bytes(MAX_FRAME_SIZE);
         let written_out = bytes_iter.copy_to_bytes(bytes_iter.remaining()).to_vec();
         assert_eq!(written_out, expected_bytestring);
