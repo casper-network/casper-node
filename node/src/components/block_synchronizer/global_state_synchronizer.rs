@@ -6,15 +6,15 @@ use std::{
     fmt, mem,
 };
 
-use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use derive_more::From;
 use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::core::engine_state;
-use casper_types::{Digest, DisplayIter, Timestamp};
+use casper_execution_engine::engine_state;
+use casper_storage::global_state::trie::TrieRaw;
+use casper_types::{BlockHash, Digest, DisplayIter, Timestamp};
 
 use super::{TrieAccumulator, TrieAccumulatorError, TrieAccumulatorEvent, TrieAccumulatorResponse};
 use crate::{
@@ -27,7 +27,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     reactor,
-    types::{BlockHash, NodeId, TrieOrChunk},
+    types::{NodeId, TrieOrChunk},
     NodeRng,
 };
 

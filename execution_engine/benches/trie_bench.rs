@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Bencher, Criterion};
 
-use casper_storage::global_state::storage::trie::{Pointer, PointerBlock, Trie};
+use casper_storage::global_state::trie::{Pointer, PointerBlock, Trie};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},

@@ -11,12 +11,14 @@ use derive_more::From;
 use serde::Serialize;
 use tracing::{info, trace};
 
+use casper_types::Block;
+
 use crate::{
     effect::{
         announcements::ControlAnnouncement, requests::SetNodeStopRequest, EffectBuilder, EffectExt,
         Effects,
     },
-    types::{Block, NodeRng},
+    types::NodeRng,
 };
 
 use super::{diagnostics_port::StopAtSpec, Component};
@@ -98,7 +100,7 @@ where
 
                 let should_shutdown = match active_spec {
                     StopAtSpec::BlockHeight(trigger_height) => block.height() >= trigger_height,
-                    StopAtSpec::EraId(trigger_era_id) => block.header().era_id() >= trigger_era_id,
+                    StopAtSpec::EraId(trigger_era_id) => block.era_id() >= trigger_era_id,
                     StopAtSpec::Immediately => {
                         // Immediate stops are handled when the request is received.
                         false
@@ -109,15 +111,15 @@ where
                     }
                     StopAtSpec::EndOfCurrentEra => {
                         // We require that the block we just finished is a switch block.
-                        block.height() > prev_height && block.header().is_switch_block()
+                        block.height() > prev_height && block.is_switch_block()
                     }
                 };
 
                 if should_shutdown {
                     info!(
                         block_height = block.height(),
-                        block_era = block.header().era_id().value(),
-                        is_switch_block = block.header().is_switch_block(),
+                        block_era = block.era_id().value(),
+                        is_switch_block = block.is_switch_block(),
                         %active_spec,
                         "shutdown triggered due to fulfilled stop-at spec"
                     );
@@ -125,8 +127,8 @@ where
                 } else {
                     trace!(
                         block_height = block.height(),
-                        block_era = block.header().era_id().value(),
-                        is_switch_block = block.header().is_switch_block(),
+                        block_era = block.era_id().value(),
+                        is_switch_block = block.is_switch_block(),
                         %active_spec,
                         "not shutting down"
                     );

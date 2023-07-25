@@ -10,9 +10,9 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::Error as EngineStateError;
+use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
-use casper_types::{Deploy, ExecutionResult, ProtocolVersion};
+use casper_types::{BlockHash, Deploy, ExecutionResult, JsonBlock, ProtocolVersion};
 
 use super::{
     chain::BlockIdentifier,
@@ -20,19 +20,15 @@ use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcWithParams,
 };
-use crate::{
-    components::contract_runtime::SpeculativeExecutionState,
-    effect::EffectBuilder,
-    types::{Block, BlockHash},
-};
+use crate::{components::contract_runtime::SpeculativeExecutionState, effect::EffectBuilder};
 
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
-    block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
+    block_identifier: Some(BlockIdentifier::Hash(JsonBlock::doc_example().hash)),
     deploy: Deploy::doc_example().clone(),
 });
 static SPECULATIVE_EXEC_RESULT: Lazy<SpeculativeExecResult> = Lazy::new(|| SpeculativeExecResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    block_hash: *Block::doc_example().hash(),
+    block_hash: JsonBlock::doc_example().hash,
     execution_result: ExecutionResult::example().clone(),
 });
 

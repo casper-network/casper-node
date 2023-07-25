@@ -22,7 +22,9 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{ActivationPoint, EraId, TimeDiff, Timestamp};
+use casper_types::{
+    ActivationPoint, BlockHash, BlockSignatures, EraId, FinalitySignature, TimeDiff, Timestamp,
+};
 
 use crate::{
     components::{
@@ -44,10 +46,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{
-        BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState, NodeId,
-        ValidatorMatrix,
-    },
+    types::{MetaBlock, MetaBlockState, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -145,6 +144,7 @@ impl BlockAccumulator {
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
         let block_hash = sync_identifier.block_hash();
         let leap_instruction = self.leap_instruction(&sync_identifier);
+        debug!(?leap_instruction, "BlockAccumulator");
         if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
             self.register_local_tip(block_height, era_id);
         }
@@ -273,8 +273,8 @@ impl BlockAccumulator {
     {
         let block_hash = meta_block.block.hash();
         debug!(%block_hash, "registering block");
-        let era_id = meta_block.block.header().era_id();
-        let block_height = meta_block.block.header().height();
+        let era_id = meta_block.block.era_id();
+        let block_height = meta_block.block.height();
         if self
             .local_tip
             .as_ref()
@@ -375,11 +375,11 @@ impl BlockAccumulator {
             + From<FatalAnnouncement>
             + Send,
     {
-        let block_hash = finality_signature.block_hash;
-        let era_id = finality_signature.era_id;
-        self.upsert_acceptor(block_hash, Some(era_id), sender);
+        let block_hash = finality_signature.block_hash();
+        let era_id = finality_signature.era_id();
+        self.upsert_acceptor(*block_hash, Some(era_id), sender);
 
-        let acceptor = match self.block_acceptors.get_mut(&block_hash) {
+        let acceptor = match self.block_acceptors.get_mut(block_hash) {
             Some(acceptor) => acceptor,
             // When there is no acceptor for it, this function returns
             // early, ignoring the signature.
@@ -653,14 +653,16 @@ impl BlockAccumulator {
     }
 
     fn update_block_children(&mut self, meta_block: &MetaBlock) {
-        if let Some(parent_hash) = meta_block.block.parent() {
-            if self
-                .block_children
-                .insert(*parent_hash, *meta_block.block.hash())
-                .is_none()
-            {
-                self.metrics.known_child_blocks.inc();
-            }
+        if meta_block.block.is_genesis() {
+            return;
+        }
+        let parent_hash = meta_block.block.parent_hash();
+        if self
+            .block_children
+            .insert(*parent_hash, *meta_block.block.hash())
+            .is_none()
+        {
+            self.metrics.known_child_blocks.inc();
         }
     }
 
@@ -729,8 +731,8 @@ impl BlockAccumulator {
             ShouldStore::SingleSignature(signature) => {
                 debug!(%signature, "storing finality signature");
                 let mut block_signatures =
-                    BlockSignatures::new(signature.block_hash, signature.era_id);
-                block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
+                    BlockSignatures::new(*signature.block_hash(), signature.era_id());
+                block_signatures.insert_signature(signature.clone());
                 effect_builder
                     .put_finality_signature_to_storage(signature)
                     .event(move |_| Event::Stored {
@@ -816,8 +818,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 self.register_finality_signature(effect_builder, *finality_signature, Some(sender))
             }
             Event::ExecutedBlock { meta_block } => {
-                let height = meta_block.block.header().height();
-                let era_id = meta_block.block.header().era_id();
+                let height = meta_block.block.height();
+                let era_id = meta_block.block.era_id();
                 let effects = self.register_block(effect_builder, meta_block, None);
                 self.register_local_tip(height, era_id);
                 effects

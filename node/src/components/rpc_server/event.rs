@@ -5,14 +5,14 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult,
 };
-use casper_types::{system::auction::EraValidators, Deploy, DeployHash, Transfer};
+use casper_types::{system::auction::EraValidators, BlockHash, Deploy, DeployHash, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
-    types::{BlockHash, DeployMetadataExt, NodeId},
+    types::{DeployMetadataExt, NodeId},
 };
 
 #[derive(Debug, From)]

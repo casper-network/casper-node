@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_PROTOCOL_VERSION, DEFAULT_UNBONDING_DELAY, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::{engine_state::Error as EngineError, execution::Error};
+use casper_execution_engine::{engine_state::Error as EngineError, execution::Error};
 
 use casper_types::{
     account::AccountHash,

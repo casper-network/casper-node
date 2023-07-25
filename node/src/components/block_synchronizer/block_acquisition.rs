@@ -7,7 +7,10 @@ use datasize::DataSize;
 use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_types::{Deploy, DeployHash, DeployId, Digest, ProtocolVersion, PublicKey};
+use casper_types::{
+    Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployId, Digest, FinalitySignature,
+    ProtocolVersion, PublicKey,
+};
 
 use crate::{
     components::block_synchronizer::{
@@ -16,8 +19,8 @@ use crate::{
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader,
-        EraValidatorWeights, FinalitySignature, FinalizedBlock, SignatureWeight,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, EraValidatorWeights, FinalizedBlock,
+        SignatureWeight,
     },
     NodeRng,
 };
@@ -146,43 +149,40 @@ impl Display for BlockAcquisitionState {
             BlockAcquisitionState::HaveBlock(block, _, _) => write!(
                 f,
                 "have block body({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveGlobalState(block, _, _, _) => write!(
                 f,
                 "have global state({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveAllExecutionResults(block, _, _, _) => write!(
                 f,
                 "have execution results({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveApprovalsHashes(block, _, _) => write!(
                 f,
                 "have approvals hashes({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
-            BlockAcquisitionState::HaveAllDeploys(block, _) => write!(
-                f,
-                "have deploys({}) for: {}",
-                block.header().height(),
-                block.hash()
-            ),
+            BlockAcquisitionState::HaveAllDeploys(block, _) => {
+                write!(f, "have deploys({}) for: {}", block.height(), block.hash())
+            }
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, _) => write!(
                 f,
                 "have strict finality({}) for: {}",
-                block.header().height(),
+                block.height(),
                 block.hash()
             ),
             BlockAcquisitionState::HaveFinalizedBlock(block, finalized_block, _, _) => write!(
                 f,
                 "have finalized block({}) for: {}",
-                finalized_block.height(),
+                finalized_block.height,
                 *block.hash()
             ),
             BlockAcquisitionState::Complete(block) => {
@@ -245,6 +245,11 @@ pub(super) enum Acceptance {
     HadIt,
     #[display(fmt = "needed it")]
     NeededIt,
+}
+
+pub(super) struct RegisterExecResultsOutcome {
+    pub(super) exec_results: Option<HashMap<DeployHash, casper_types::ExecutionResult>>,
+    pub(super) acceptance: Option<Acceptance>,
 }
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
@@ -313,7 +318,7 @@ impl BlockAcquisitionState {
         validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         is_historical: bool,
-        max_simultaneous_peers: usize,
+        max_simultaneous_peers: u8,
     ) -> Result<BlockAcquisitionAction, BlockAcquisitionError> {
         // self is the resting state we are in, ret is the next action that should be taken
         // to acquire the necessary data to get us to the next step (if any), or an error
@@ -496,7 +501,7 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveBlockHeader(header, _)
             | BlockAcquisitionState::HaveWeakFinalitySignatures(header, _) => Some(header.height()),
             BlockAcquisitionState::HaveFinalizedBlock(_, finalized_block, _, _) => {
-                Some(finalized_block.height())
+                Some(finalized_block.height)
             }
             BlockAcquisitionState::HaveBlock(block, _, _)
             | BlockAcquisitionState::HaveGlobalState(block, ..)
@@ -672,7 +677,7 @@ impl BlockAcquisitionState {
         // Initialized and Failed. However, it can only cause a state transition when we
         // are in a resting state that needs weak finality or strict finality.
         let cloned_sig = signature.clone();
-        let signer = signature.public_key.clone();
+        let signer = signature.public_key().clone();
         let acceptance: Acceptance;
         let maybe_block_hash: Option<BlockHash>;
         let currently_acquiring_sigs: bool;
@@ -977,12 +982,11 @@ impl BlockAcquisitionState {
         &mut self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
         need_execution_state: bool,
-    ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, BlockAcquisitionError>
-    {
+    ) -> Result<RegisterExecResultsOutcome, BlockAcquisitionError> {
         debug!(state=%self, need_execution_state,
             block_execution_results_or_chunk=%block_execution_results_or_chunk,
             "register_execution_results_or_chunk");
-        let (new_state, ret) = match self {
+        let (new_state, maybe_exec_results, acceptance) = match self {
             BlockAcquisitionState::HaveGlobalState(
                 block,
                 signatures,
@@ -1000,35 +1004,36 @@ impl BlockAcquisitionState {
                         block_execution_results_or_chunk,
                         deploy_hashes,
                     ) {
-                    Ok(new_effects) => match new_effects {
+                    Ok((new_acquisition, acceptance)) => match new_acquisition {
                         ExecutionResultsAcquisition::Needed { .. }
                         | ExecutionResultsAcquisition::Pending { .. } => {
                             debug!("apply_block_execution_results_or_chunk: Needed | Pending");
-                            return Ok(None);
+                            return Ok(RegisterExecResultsOutcome {
+                                exec_results: None,
+                                acceptance: Some(acceptance),
+                            });
                         }
                         ExecutionResultsAcquisition::Complete { ref results, .. } => {
                             debug!("apply_block_execution_results_or_chunk: Complete");
-                            (
-                                BlockAcquisitionState::HaveGlobalState(
-                                    block.clone(),
-                                    signatures.clone(),
-                                    deploys.clone(),
-                                    new_effects.clone(),
-                                ),
-                                Some(results.clone()),
-                            )
+                            let new_state = BlockAcquisitionState::HaveGlobalState(
+                                block.clone(),
+                                signatures.clone(),
+                                deploys.clone(),
+                                new_acquisition.clone(),
+                            );
+                            let maybe_exec_results = Some(results.clone());
+                            (new_state, maybe_exec_results, acceptance)
                         }
                         ExecutionResultsAcquisition::Acquiring { .. } => {
                             debug!("apply_block_execution_results_or_chunk: Acquiring");
-                            (
-                                BlockAcquisitionState::HaveGlobalState(
-                                    block.clone(),
-                                    signatures.clone(),
-                                    deploys.clone(),
-                                    new_effects,
-                                ),
-                                None,
-                            )
+                            let new_state = BlockAcquisitionState::HaveGlobalState(
+                                block.clone(),
+                                signatures.clone(),
+                                deploys.clone(),
+                                new_acquisition,
+                            );
+                            let maybe_exec_results = None;
+                            (new_state, maybe_exec_results, acceptance)
                         }
                     },
                     Err(error) => {
@@ -1049,11 +1054,17 @@ impl BlockAcquisitionState {
             | BlockAcquisitionState::HaveFinalizedBlock(..)
             | BlockAcquisitionState::Failed(..)
             | BlockAcquisitionState::Complete(..) => {
-                return Ok(None);
+                return Ok(RegisterExecResultsOutcome {
+                    exec_results: None,
+                    acceptance: None,
+                });
             }
         };
         self.set_state(new_state);
-        Ok(ret)
+        Ok(RegisterExecResultsOutcome {
+            exec_results: maybe_exec_results,
+            acceptance: Some(acceptance),
+        })
     }
 
     /// Register execution results stored notification for this block.
@@ -1339,7 +1350,7 @@ impl BlockAcquisitionState {
 pub(super) fn signatures_from_missing_validators(
     validator_weights: &EraValidatorWeights,
     signatures: &mut SignatureAcquisition,
-    max_simultaneous_peers: usize,
+    max_simultaneous_peers: u8,
     peer_list: &PeerList,
     rng: &mut NodeRng,
     block_header: &BlockHeader,
@@ -1349,7 +1360,7 @@ pub(super) fn signatures_from_missing_validators(
         .cloned()
         .collect();
     // If there are too few, retry any in Pending state.
-    if missing_signatures_in_random_order.len() < max_simultaneous_peers {
+    if (missing_signatures_in_random_order.len() as u8) < max_simultaneous_peers {
         missing_signatures_in_random_order.extend(
             validator_weights
                 .missing_validators(signatures.not_pending())

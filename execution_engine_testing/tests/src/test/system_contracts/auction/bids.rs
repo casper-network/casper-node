@@ -14,7 +14,7 @@ use casper_engine_test_support::{
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         self,
         engine_config::{

@@ -5,11 +5,11 @@ use std::{
 
 use derive_more::From;
 
-use casper_types::EraId;
+use casper_types::{Block, BlockHash, BlockSignatures, EraId, FinalitySignature};
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
-    types::{Block, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, NodeId},
+    types::{MetaBlock, NodeId},
 };
 
 #[derive(Debug, From)]
@@ -85,7 +85,7 @@ impl Display for Event {
                     meta_block.block.hash(),
                     maybe_block_signatures
                         .as_ref()
-                        .map(|sigs| sigs.proofs.len())
+                        .map(|sigs| sigs.len())
                         .unwrap_or_default()
                 )
             }
@@ -98,7 +98,7 @@ impl Display for Event {
                     "stored {} finality signatures",
                     maybe_block_signatures
                         .as_ref()
-                        .map(|sigs| sigs.proofs.len())
+                        .map(|sigs| sigs.len())
                         .unwrap_or_default()
                 )
             }

@@ -1,11 +1,11 @@
 use std::time::Duration;
 use tracing::{debug, error, info, trace};
 
-use casper_types::{Digest, EraId, PublicKey, Timestamp};
+use casper_types::{BlockHash, BlockHeader, Digest, EraId, EraReport, PublicKey, Timestamp};
 
 use crate::{
     components::{
-        block_synchronizer, block_synchronizer::BlockSynchronizerProgress, consensus::EraReport,
+        block_synchronizer, block_synchronizer::BlockSynchronizerProgress,
         contract_runtime::ExecutionPreState, diagnostics_port, event_stream_server, network,
         rest_server, rpc_server, upgrade_watcher,
     },
@@ -17,7 +17,7 @@ use crate::{
         upgrading_instruction::UpgradingInstruction, utils, validate::ValidateInstruction,
         MainEvent, MainReactor, ReactorState,
     },
-    types::{BlockHash, BlockPayload, FinalizedBlock, MetaBlockState},
+    types::{BlockPayload, FinalizedBlock, MetaBlockState},
     NodeRng,
 };
 
@@ -95,6 +95,7 @@ impl MainReactor {
                 CatchUpInstruction::CommitGenesis => match self.commit_genesis(effect_builder) {
                     GenesisInstruction::Validator(duration, effects) => {
                         info!("CatchUp: switch to Validate at genesis");
+                        self.block_synchronizer.purge();
                         self.state = ReactorState::Validate;
                         (duration, effects)
                     }
@@ -111,6 +112,7 @@ impl MainReactor {
                 CatchUpInstruction::CommitUpgrade => match self.commit_upgrade(effect_builder) {
                     Ok(effects) => {
                         info!("CatchUp: switch to Upgrading");
+                        self.block_synchronizer.purge();
                         self.state = ReactorState::Upgrading;
                         self.last_progress = Timestamp::now();
                         self.attempts = 0;
@@ -134,8 +136,8 @@ impl MainReactor {
                         return (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore());
                     }
                     // purge to avoid polluting the status endpoints w/ stale state
-                    self.block_synchronizer.purge();
                     info!("CatchUp: switch to KeepUp");
+                    self.block_synchronizer.purge();
                     self.state = ReactorState::KeepUp;
                     (Duration::ZERO, Effects::new())
                 }
@@ -165,9 +167,9 @@ impl MainReactor {
                     (Duration::ZERO, Effects::new())
                 }
                 KeepUpInstruction::Validate(effects) => {
+                    info!("KeepUp: switch to Validate");
                     // purge to avoid polluting the status endpoints w/ stale state
                     self.block_synchronizer.purge();
-                    info!("KeepUp: switch to Validate");
                     self.state = ReactorState::Validate;
                     (Duration::ZERO, effects)
                 }
@@ -189,16 +191,22 @@ impl MainReactor {
                     trace!("Validate: node is processing effects");
                     (wait, effects)
                 }
-                ValidateInstruction::CatchUp => {
-                    info!("Validate: switch to CatchUp");
-                    self.state = ReactorState::CatchUp;
-                    (Duration::ZERO, Effects::new())
-                }
-                ValidateInstruction::KeepUp => {
-                    info!("Validate: switch to KeepUp");
-                    self.state = ReactorState::KeepUp;
-                    (Duration::ZERO, Effects::new())
-                }
+                ValidateInstruction::CatchUp => match self.deactivate_consensus_voting() {
+                    Ok(_) => {
+                        info!("Validate: switch to CatchUp");
+                        self.state = ReactorState::CatchUp;
+                        (Duration::ZERO, Effects::new())
+                    }
+                    Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
+                },
+                ValidateInstruction::KeepUp => match self.deactivate_consensus_voting() {
+                    Ok(_) => {
+                        info!("Validate: switch to KeepUp");
+                        self.state = ReactorState::KeepUp;
+                        (Duration::ZERO, Effects::new())
+                    }
+                    Err(msg) => (Duration::ZERO, fatal!(effect_builder, "{}", msg).ignore()),
+                },
             },
             ReactorState::ShutdownForUpgrade => {
                 match self.upgrade_shutdown_instruction(effect_builder) {
@@ -400,52 +408,41 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> Result<Effects<MainEvent>, String> {
-        info!("{:?}: committing upgrade", self.state);
-
-        // header of latest complete block, and that block needs to be switch block
-        let previous_block_header = match self
-            .storage
-            .read_highest_complete_block()
-            .map_err(|err| format!("Could not read highest complete block: {}", err))?
-        {
-            Some(highest_complete_block) => {
-                if highest_complete_block.header().is_switch_block() {
-                    highest_complete_block.take_header()
-                } else {
-                    return Err("Latest complete block is not a switch block".to_string());
-                }
+        let header = match self.get_local_tip_header()? {
+            Some(header) if header.is_switch_block() => header,
+            Some(_) => {
+                return Err("Latest complete block is not a switch block".to_string());
             }
-            None => return Err("No complete block found in storage".to_string()),
+            None => {
+                return Err("No complete block found in storage".to_string());
+            }
         };
 
+        let network_name = self.chainspec.network_config.name.clone();
         match self.chainspec.upgrade_config_from_parts(
-            *previous_block_header.state_root_hash(),
-            previous_block_header.protocol_version(),
+            *header.state_root_hash(),
+            header.protocol_version(),
             self.chainspec.protocol_config.activation_point.era_id(),
             self.chainspec_raw_bytes.clone(),
         ) {
             Ok(cfg) => match self.contract_runtime.commit_upgrade(cfg) {
                 Ok(success) => {
                     let post_state_hash = success.post_state_hash;
-                    info!(
-                        network_name = %self.chainspec.network_config.name,
-                        %post_state_hash,
-                        "upgrade committed"
-                    );
+                    info!(%network_name, %post_state_hash, "{:?}: committed upgrade", self.state);
 
-                    let next_block_height = previous_block_header.height() + 1;
+                    let next_block_height = header.height() + 1;
                     self.initialize_contract_runtime(
                         next_block_height,
                         post_state_hash,
-                        previous_block_header.block_hash(),
-                        previous_block_header.accumulated_seed(),
+                        header.block_hash(),
+                        *header.accumulated_seed(),
                     );
 
                     let finalized_block = FinalizedBlock::new(
                         BlockPayload::default(),
                         Some(EraReport::default()),
-                        previous_block_header.timestamp(),
-                        previous_block_header.next_block_era_id(),
+                        header.timestamp(),
+                        header.next_block_era_id(),
                         next_block_height,
                         PublicKey::System,
                     );
@@ -467,7 +464,10 @@ impl MainReactor {
         let recent_switch_block_headers = match self.storage.read_highest_switch_block_headers(1) {
             Ok(headers) => headers,
             Err(error) => {
-                error!("error getting recent switch block headers: {}", error);
+                error!(
+                    "{:?}: error getting recent switch block headers: {}",
+                    self.state, error
+                );
                 return false;
             }
         };
@@ -484,49 +484,32 @@ impl MainReactor {
     }
 
     pub(super) fn should_commit_upgrade(&self) -> bool {
-        // header of latest complete block, and that block needs to be switch block
-        let highest_switch_block_header = match self.storage.read_highest_complete_block() {
-            Ok(Some(highest_complete_block))
-                if highest_complete_block.header().is_switch_block() =>
-            {
-                highest_complete_block.take_header()
+        match self.get_local_tip_header() {
+            Ok(Some(block_header)) if block_header.is_switch_block() => {
+                block_header.is_last_block_before_activation(&self.chainspec.protocol_config)
             }
-            Ok(Some(_)) | Ok(None) => {
-                return false;
+            Ok(Some(_)) | Ok(None) => false,
+            Err(msg) => {
+                error!("{:?}: {}", self.state, msg);
+                false
             }
-            Err(error) => {
-                error!(
-                    "Could not read highest complete block from storage: {}",
-                    error
-                );
-                return false;
-            }
-        };
-
-        highest_switch_block_header.is_last_block_before_activation(&self.chainspec.protocol_config)
+        }
     }
 
     fn refresh_contract_runtime(&mut self) -> Result<(), String> {
-        match self.storage.read_highest_complete_block() {
-            Ok(Some(block)) => {
-                let block_header = block.header();
-                let block_height = block_header.height();
-                let state_root_hash = block_header.state_root_hash();
-                let block_hash = block_header.block_hash();
-                let accumulated_seed = block_header.accumulated_seed();
-                self.initialize_contract_runtime(
-                    block_height + 1,
-                    *state_root_hash,
-                    block_hash,
-                    accumulated_seed,
-                );
-                Ok(())
-            }
-            Ok(None) => {
-                Ok(()) // noop
-            }
-            Err(error) => Err(format!("failed to read highest block: {}", error)),
+        if let Some(block_header) = self.get_local_tip_header()? {
+            let block_height = block_header.height();
+            let state_root_hash = block_header.state_root_hash();
+            let block_hash = block_header.block_hash();
+            let accumulated_seed = *block_header.accumulated_seed();
+            self.initialize_contract_runtime(
+                block_height + 1,
+                *state_root_hash,
+                block_hash,
+                accumulated_seed,
+            );
         }
+        Ok(())
     }
 
     fn initialize_contract_runtime(
@@ -578,8 +561,29 @@ impl MainReactor {
         }
     }
 
+    fn deactivate_consensus_voting(&mut self) -> Result<(), String> {
+        let deactivated_era_id = self.consensus.deactivate_current_era()?;
+        info!(
+            era_id = %deactivated_era_id,
+            "{:?}: consensus deactivated",
+            self.state
+        );
+        Ok(())
+    }
+
     fn switch_to_shutdown_for_upgrade(&mut self) {
         self.state = ReactorState::ShutdownForUpgrade;
         self.switched_to_shutdown_for_upgrade = Timestamp::now();
+    }
+
+    fn get_local_tip_header(&self) -> Result<Option<BlockHeader>, String> {
+        match self
+            .storage
+            .read_highest_complete_block()
+            .map_err(|err| format!("Could not read highest complete block: {}", err))?
+        {
+            Some(local_tip) => Ok(Some(local_tip.take_header())),
+            None => Ok(None),
+        }
     }
 }

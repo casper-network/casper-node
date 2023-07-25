@@ -11,44 +11,34 @@ use std::{
 
 use filesize::PathExt;
 use lmdb::DatabaseFlags;
-use log::LevelFilter;
 use num_rational::Ratio;
 use num_traits::CheckedMul;
 
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            self,
-            era_validators::GetEraValidatorsRequest,
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-            PruneConfig, PruneResult, QueryRequest, QueryResult, StepError, SystemContractRegistry,
-            UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
-        },
-        execution,
+    engine_state::{
+        self,
+        era_validators::GetEraValidatorsRequest,
+        execute_request::ExecuteRequest,
+        execution_result::ExecutionResult,
+        run_genesis_request::RunGenesisRequest,
+        step::{StepRequest, StepSuccess},
+        BalanceResult, EngineConfig, EngineState, Error, ExecutionJournal, GenesisSuccess,
+        GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
+        SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
-    shared::{
-        execution_journal::ExecutionJournal,
-        logging::{self, Settings, Style},
-        utils::OS_PAGE_SIZE,
-    },
+    execution,
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
-        shared::{transform::Transform, AdditiveMap, CorrelationId},
-        storage::{
-            state::{
-                lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
-                StateReader,
-            },
-            transaction_source::lmdb::LmdbEnvironment,
-            trie::{merkle_proof::TrieMerkleProof, Trie},
-            trie_store::lmdb::LmdbTrieStore,
+        shared::{transform::Transform, AdditiveMap},
+        state::{
+            lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
+            StateReader,
         },
+        transaction_source::lmdb::LmdbEnvironment,
+        trie::{merkle_proof::TrieMerkleProof, Trie},
+        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
@@ -67,7 +57,7 @@ use casper_types::{
     AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
     MintCosts, Package, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, UpgradeConfig, U512,
+    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -120,13 +110,6 @@ pub struct WasmTestBuilder<S> {
     global_state_dir: Option<PathBuf>,
     /// Temporary directory, for implementation that uses one.
     temp_dir: Option<Rc<TempDir>>,
-}
-
-impl<S> WasmTestBuilder<S> {
-    fn initialize_logging() {
-        let log_settings = Settings::new(LevelFilter::Error).with_style(Style::HumanReadable);
-        let _ = logging::initialize(log_settings);
-    }
 }
 
 impl Default for LmdbWasmTestBuilder {
@@ -190,7 +173,7 @@ impl LmdbWasmTestBuilder {
         let scratch_state = self.engine_state.get_scratch_engine_state();
         let pre_state_hash = upgrade_config.pre_state_hash();
         let mut result = scratch_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config.clone())
+            .commit_upgrade(upgrade_config.clone())
             .unwrap();
         result.post_state_hash = self
             .engine_state
@@ -224,7 +207,7 @@ impl LmdbWasmTestBuilder {
         data_dir: &T,
         engine_config: EngineConfig,
     ) -> Self {
-        Self::initialize_logging();
+        let _ = env_logger::try_init();
         let page_size = *OS_PAGE_SIZE;
         let global_state_dir = Self::global_state_dir(data_dir);
         Self::create_global_state_dir(&global_state_dir);
@@ -328,7 +311,7 @@ impl LmdbWasmTestBuilder {
         engine_config: EngineConfig,
         mode: GlobalStateMode,
     ) -> Self {
-        Self::initialize_logging();
+        let _ = env_logger::try_init();
         let page_size = *OS_PAGE_SIZE;
 
         match mode {
@@ -492,13 +475,12 @@ impl LmdbWasmTestBuilder {
 
         let mut exec_results = Vec::new();
         // First execute the request against our scratch global state.
-        let maybe_exec_results = cached_state.run_execute(CorrelationId::new(), exec_request);
+        let maybe_exec_results = cached_state.run_execute(exec_request);
         for execution_result in maybe_exec_results.unwrap() {
             let journal = execution_result.execution_journal().clone();
             let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
             let _post_state_hash = cached_state
                 .apply_effect(
-                    CorrelationId::new(),
                     self.post_state_hash.expect("requires a post_state_hash"),
                     transforms,
                 )
@@ -537,7 +519,7 @@ impl LmdbWasmTestBuilder {
             .expect("scratch state should exist");
 
         cached_state
-            .commit_step(CorrelationId::new(), step_request)
+            .commit_step(step_request)
             .expect("unable to run step request against scratch global state");
         self
     }
@@ -559,7 +541,6 @@ where
         } = self
             .engine_state
             .commit_genesis(
-                CorrelationId::new(),
                 run_genesis_request.genesis_config_hash(),
                 run_genesis_request.protocol_version(),
                 run_genesis_request.ee_config(),
@@ -620,7 +601,7 @@ where
 
         let query_result = self
             .engine_state
-            .run_query(CorrelationId::new(), query_request)
+            .run_query(query_request)
             .expect("should get query response");
 
         if let QueryResult::Success { value, .. } = query_result {
@@ -660,7 +641,7 @@ where
 
         let query_result = self
             .engine_state
-            .run_query(CorrelationId::new(), query_request)
+            .run_query(query_request)
             .expect("should get query response");
 
         if let QueryResult::Success { value, proofs } = query_result {
@@ -747,10 +728,7 @@ where
             exec_request
         };
 
-        let maybe_exec_results = self
-            .engine_state
-            .run_execute(CorrelationId::new(), exec_request);
-
+        let maybe_exec_results = self.engine_state.run_execute(exec_request);
         assert!(maybe_exec_results.is_ok());
         // Parse deploy results
         let execution_results = maybe_exec_results.as_ref().unwrap();
@@ -788,7 +766,7 @@ where
     ) -> &mut Self {
         let post_state_hash = self
             .engine_state
-            .apply_effect(CorrelationId::new(), pre_state_hash, effects)
+            .apply_effect(pre_state_hash, effects)
             .expect("should commit");
         self.post_state_hash = Some(post_state_hash);
         self
@@ -808,9 +786,7 @@ where
         let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
         engine_state.update_config(engine_config);
 
-        let result = self
-            .engine_state
-            .commit_upgrade(CorrelationId::new(), upgrade_config.clone());
+        let result = self.engine_state.commit_upgrade(upgrade_config.clone());
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
@@ -853,9 +829,7 @@ where
 
     /// Increments engine state.
     pub fn step(&mut self, step_request: StepRequest) -> Result<StepSuccess, StepError> {
-        let step_result = self
-            .engine_state
-            .commit_step(CorrelationId::new(), step_request);
+        let step_result = self.engine_state.commit_step(step_request);
 
         if let Ok(StepSuccess {
             post_state_hash, ..
@@ -878,7 +852,6 @@ where
     ) -> Result<Digest, StepError> {
         let pre_state_hash = pre_state_hash.or(self.post_state_hash).unwrap();
         let post_state_hash = self.engine_state.distribute_block_rewards(
-            CorrelationId::new(),
             pre_state_hash,
             protocol_version,
             proposer,
@@ -1083,19 +1056,17 @@ where
 
     /// Returns a `BalanceResult` for a purse, panics if the balance can't be found.
     pub fn get_purse_balance_result(&self, purse: URef) -> BalanceResult {
-        let correlation_id = CorrelationId::new();
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         self.engine_state
-            .get_purse_balance(correlation_id, state_root_hash, purse)
+            .get_purse_balance(state_root_hash, purse)
             .expect("should get purse balance")
     }
 
     /// Returns a `BalanceResult` for a purse using a `PublicKey`.
     pub fn get_public_key_balance_result(&self, public_key: PublicKey) -> BalanceResult {
-        let correlation_id = CorrelationId::new();
         let state_root_hash: Digest = self.post_state_hash.expect("should have post_state_hash");
         self.engine_state
-            .get_balance(correlation_id, state_root_hash, public_key)
+            .get_balance(state_root_hash, public_key)
             .expect("should get purse balance using public key")
     }
 
@@ -1277,7 +1248,6 @@ where
 
     /// Gets [`EraValidators`].
     pub fn get_era_validators(&mut self) -> EraValidators {
-        let correlation_id = CorrelationId::new();
         let state_hash = self.get_post_state_hash();
         let request = GetEraValidatorsRequest::new(state_hash, *DEFAULT_PROTOCOL_VERSION);
         let system_contract_registry = self
@@ -1285,7 +1255,7 @@ where
             .clone()
             .expect("System contract registry not found. Please run genesis first.");
         self.engine_state
-            .get_era_validators(correlation_id, Some(system_contract_registry), request)
+            .get_era_validators(Some(system_contract_registry), request)
             .expect("get era validators should not error")
     }
 
@@ -1299,17 +1269,13 @@ where
     pub fn get_bids(&mut self) -> Bids {
         let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
-        let get_bids_result = self
-            .engine_state
-            .get_bids(CorrelationId::new(), get_bids_request)
-            .unwrap();
+        let get_bids_result = self.engine_state.get_bids(get_bids_request).unwrap();
 
         get_bids_result.into_success().unwrap()
     }
 
     /// Gets [`UnbondingPurses`].
     pub fn get_unbonds(&mut self) -> UnbondingPurses {
-        let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
         let tracking_copy = self
@@ -1321,13 +1287,13 @@ where
         let reader = tracking_copy.reader();
 
         let unbond_keys = reader
-            .keys_with_prefix(correlation_id, &[KeyTag::Unbond as u8])
+            .keys_with_prefix(&[KeyTag::Unbond as u8])
             .unwrap_or_default();
 
         let mut ret = BTreeMap::new();
 
         for key in unbond_keys.into_iter() {
-            let read_result = reader.read(correlation_id, &key);
+            let read_result = reader.read(&key);
             if let (Key::Unbond(account_hash), Ok(Some(StoredValue::Unbonding(unbonding_purses)))) =
                 (key, read_result)
             {
@@ -1340,7 +1306,6 @@ where
 
     /// Gets [`WithdrawPurses`].
     pub fn get_withdraw_purses(&mut self) -> WithdrawPurses {
-        let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
         let tracking_copy = self
@@ -1352,13 +1317,13 @@ where
         let reader = tracking_copy.reader();
 
         let withdraws_keys = reader
-            .keys_with_prefix(correlation_id, &[KeyTag::Withdraw as u8])
+            .keys_with_prefix(&[KeyTag::Withdraw as u8])
             .unwrap_or_default();
 
         let mut ret = BTreeMap::new();
 
         for key in withdraws_keys.into_iter() {
-            let read_result = reader.read(correlation_id, &key);
+            let read_result = reader.read(&key);
             if let (Key::Withdraw(account_hash), Ok(Some(StoredValue::Withdraw(withdraw_purses)))) =
                 (key, read_result)
             {
@@ -1376,7 +1341,6 @@ where
 
     /// Gets all keys in global state by a prefix.
     pub fn get_keys(&self, tag: KeyTag) -> Result<Vec<Key>, S::Error> {
-        let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
 
         let tracking_copy = self
@@ -1387,7 +1351,7 @@ where
 
         let reader = tracking_copy.reader();
 
-        reader.keys_with_prefix(correlation_id, &[tag as u8])
+        reader.keys_with_prefix(&[tag as u8])
     }
 
     /// Gets a stored value from a contract's named keys.
@@ -1431,39 +1395,35 @@ where
 
     /// Gets the [`ContractHash`] of the system auction contract, panics if it can't be found.
     pub fn get_system_auction_hash(&self) -> ContractHash {
-        let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
-            .get_system_auction_hash(correlation_id, state_root_hash)
+            .get_system_auction_hash(state_root_hash)
             .expect("should have auction hash")
     }
 
     /// Gets the [`ContractHash`] of the system mint contract, panics if it can't be found.
     pub fn get_system_mint_hash(&self) -> ContractHash {
-        let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
-            .get_system_mint_hash(correlation_id, state_root_hash)
+            .get_system_mint_hash(state_root_hash)
             .expect("should have auction hash")
     }
 
     /// Gets the [`ContractHash`] of the system handle payment contract, panics if it can't be
     /// found.
     pub fn get_system_handle_payment_hash(&self) -> ContractHash {
-        let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
-            .get_handle_payment_hash(correlation_id, state_root_hash)
+            .get_handle_payment_hash(state_root_hash)
             .expect("should have handle payment hash")
     }
 
     /// Returns the [`ContractHash`] of the system standard payment contract, panics if it can't be
     /// found.
     pub fn get_system_standard_payment_hash(&self) -> ContractHash {
-        let correlation_id = CorrelationId::new();
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
-            .get_standard_payment_hash(correlation_id, state_root_hash)
+            .get_standard_payment_hash(state_root_hash)
             .expect("should have standard payment hash")
     }
 
@@ -1507,7 +1467,7 @@ where
     /// Returns a trie by hash.
     pub fn get_trie(&mut self, state_hash: Digest) -> Option<Trie<Key, StoredValue>> {
         self.engine_state
-            .get_trie_full(CorrelationId::default(), state_hash)
+            .get_trie_full(state_hash)
             .unwrap()
             .map(|bytes| bytesrepr::deserialize(bytes.into_inner().into()).unwrap())
     }
@@ -1533,9 +1493,7 @@ where
 
     /// Commits a prune of leaf nodes from the tip of the merkle trie.
     pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
-        let result = self
-            .engine_state
-            .commit_prune(CorrelationId::new(), prune_config);
+        let result = self.engine_state.commit_prune(prune_config);
 
         if let Ok(PruneResult::Success { post_state_hash }) = &result {
             self.post_state_hash = Some(*post_state_hash);

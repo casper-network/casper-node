@@ -21,7 +21,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex, CLType, CLTyped, DeployHash, URef, U512,
+    checksummed_hex, serde_helpers, CLType, CLTyped, DeployHash, URef, U512,
 };
 
 /// The length of a transfer address.
@@ -35,6 +35,14 @@ pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
 #[serde(deny_unknown_fields)]
 pub struct Transfer {
     /// Deploy that created the transfer
+    #[serde(with = "serde_helpers::deploy_hash_as_array")]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            with = "DeployHash",
+            description = "Hex-encoded Deploy hash of Deploy that created the transfer."
+        )
+    )]
     pub deploy_hash: DeployHash,
     /// Account from which transfer was executed
     pub from: AccountHash,

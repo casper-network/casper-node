@@ -10,23 +10,24 @@ use std::{
     sync::Arc,
 };
 
-use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self,
     balance::{BalanceRequest, BalanceResult},
     era_validators::GetEraValidatorsError,
     get_bids::{GetBidsRequest, GetBidsResult},
     query::{QueryRequest, QueryResult},
 };
+use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, ChainspecRawBytes, Deploy, DeployHash,
-    DeployHeader, DeployId, Digest, DisplayIter, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash, BlockHeader,
+    BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId, Digest,
+    DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use super::GossipTarget;
@@ -50,11 +51,10 @@ use crate::{
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlockState, NodeId, StatusFeed, TrieOrChunk, TrieOrChunkId,
+        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
+        MetaBlockState, NodeId, SignedBlock, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
     utils::Source,
 };
@@ -412,15 +412,15 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the results.
         responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>>,
     },
-    /// Retrieve block and its metadata by its hash.
-    GetBlockAndMetadataByHash {
+    /// Retrieve block and its signatures by its hash.
+    GetSignedBlockByHash {
         /// The hash of the block.
         block_hash: BlockHash,
         /// If true, only return `Some` if the block is in the available block range, i.e. the
         /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// The responder to call with the results.
-        responder: Responder<Option<BlockWithMetadata>>,
+        responder: Responder<Option<SignedBlock>>,
     },
     /// Retrieve a finality signature by block hash and public key.
     GetFinalitySignature {
@@ -431,23 +431,23 @@ pub(crate) enum StorageRequest {
         id: Box<FinalitySignatureId>,
         responder: Responder<bool>,
     },
-    /// Retrieve block and its metadata at a given height.
-    GetBlockAndMetadataByHeight {
+    /// Retrieve block and its signatures at a given height.
+    GetSignedBlockByHeight {
         /// The height of the block.
         block_height: BlockHeight,
         /// If true, only return `Some` if the block is in the available block range, i.e. the
         /// highest contiguous range of complete blocks.
         only_from_available_block_range: bool,
         /// The responder to call with the results.
-        responder: Responder<Option<BlockWithMetadata>>,
+        responder: Responder<Option<SignedBlock>>,
     },
-    /// Get the highest block and its metadata.
-    GetHighestBlockWithMetadata {
+    /// Get the highest block and its signatures.
+    GetHighestSignedBlock {
         /// If true, only consider blocks in the available block range, i.e. the highest contiguous
         /// range of complete blocks.
         only_from_available_block_range: bool,
         /// The responder to call the results with.
-        responder: Responder<Option<BlockWithMetadata>>,
+        responder: Responder<Option<SignedBlock>>,
     },
     /// Get a single finality signature for a block hash.
     GetBlockSignature {
@@ -566,22 +566,22 @@ impl Display for StorageRequest {
             StorageRequest::IsFinalitySignatureStored { id, .. } => {
                 write!(formatter, "is finality signature {} stored", id)
             }
-            StorageRequest::GetBlockAndMetadataByHash { block_hash, .. } => {
+            StorageRequest::GetSignedBlockByHash { block_hash, .. } => {
                 write!(
                     formatter,
-                    "get block and metadata for block with hash: {}",
+                    "get signed block for block with hash: {}",
                     block_hash
                 )
             }
-            StorageRequest::GetBlockAndMetadataByHeight { block_height, .. } => {
+            StorageRequest::GetSignedBlockByHeight { block_height, .. } => {
                 write!(
                     formatter,
-                    "get block and metadata for block at height: {}",
+                    "get signed block for block at height: {}",
                     block_height
                 )
             }
-            StorageRequest::GetHighestBlockWithMetadata { .. } => {
-                write!(formatter, "get highest block with metadata")
+            StorageRequest::GetHighestSignedBlock { .. } => {
+                write!(formatter, "get highest signed block")
             }
             StorageRequest::GetBlockSignature {
                 block_hash,

@@ -6,12 +6,12 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Deploy, DeployId};
+use casper_types::{Block, Deploy, DeployId};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::requests::DeployBufferRequest,
-    types::{Block, FinalizedBlock},
+    types::FinalizedBlock,
 };
 
 #[derive(Debug, From, DataSize)]
@@ -54,7 +54,7 @@ impl Display for Event {
                 write!(
                     formatter,
                     "finalized block at height {}",
-                    finalized_block.height()
+                    finalized_block.height
                 )
             }
             Event::Block(_) => {

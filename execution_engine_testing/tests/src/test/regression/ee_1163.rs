@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_GAS_PRICE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
     execution,
 };

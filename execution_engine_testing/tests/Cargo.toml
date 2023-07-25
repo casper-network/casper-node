@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 base16 = "0.2.1"
-casper-storage = { version = "1.4.3", path = "../../storage" }
+casper-storage = { path = "../../storage" }
 casper-engine-test-support = { path = "../test_support" }
 casper-execution-engine = { path = "../../execution_engine", features = ["test-support"] }
 casper-types = { path = "../../types", default_features = false, features = ["datasize", "json-schema"] }
@@ -54,25 +54,3 @@ harness = false
 [[bin]]
 name = "disk_use"
 path = "bin/disk_use.rs"
-
-[[bin]]
-name = "state-initializer"
-path = "src/profiling/state_initializer.rs"
-test = false
-bench = false
-
-[[bin]]
-name = "simple-transfer"
-path = "src/profiling/simple_transfer.rs"
-test = false
-bench = false
-
-[[bin]]
-name = "host-function-metrics"
-path = "src/profiling/host_function_metrics.rs"
-test = false
-bench = false
-
-[[test]]
-name = "metrics"
-path = "src/logging/metrics.rs"

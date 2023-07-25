@@ -12,7 +12,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    ActivationPoint, Block, BlockHash, Digest, EraId, JsonBlock, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -22,7 +23,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     reactor::main_reactor::ReactorState,
-    types::{Block, BlockHash, NodeId, PeersMap},
+    types::{NodeId, PeersMap},
 };
 
 use super::AvailableBlockRange;
@@ -44,10 +45,10 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let mut peers = BTreeMap::new();
     peers.insert(*node_id, socket_addr.to_string());
     let status_feed = StatusFeed {
-        last_added_block: Some(Block::doc_example().clone()),
+        last_added_block: Some(Block::from(JsonBlock::doc_example().clone())),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
-        our_public_signing_key: Some(PublicKey::doc_example().clone()),
+        our_public_signing_key: Some(PublicKey::example().clone()),
         round_length: Some(TimeDiff::from_millis(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
         node_uptime: Duration::from_secs(13),
@@ -163,11 +164,11 @@ impl From<Block> for MinimalBlockInfo {
     fn from(block: Block) -> Self {
         MinimalBlockInfo {
             hash: *block.hash(),
-            timestamp: block.header().timestamp(),
-            era_id: block.header().era_id(),
-            height: block.header().height(),
-            state_root_hash: *block.header().state_root_hash(),
-            creator: block.body().proposer().clone(),
+            timestamp: block.timestamp(),
+            era_id: block.era_id(),
+            height: block.height(),
+            state_root_hash: *block.state_root_hash(),
+            creator: block.proposer().clone(),
         }
     }
 }

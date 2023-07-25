@@ -244,14 +244,29 @@ blocklist_retain_duration = '1min'
 # Any weight set to 0 means that the category of traffic is exempt from throttling.
 [network.estimator_weights]
 consensus = 0
-gossip = 0
-finality_signatures = 0
+block_gossip = 1
+deploy_gossip = 0
+finality_signature_gossip = 1
+address_gossip = 0
+finality_signature_broadcasts = 0
 deploy_requests = 1
-deploy_responses = 1
+deploy_responses = 0
+legacy_deploy_requests = 1
+legacy_deploy_responses = 0
 block_requests = 1
 block_responses = 0
+block_header_requests = 1
+block_header_responses = 0
 trie_requests = 1
 trie_responses = 0
+finality_signature_requests = 1
+finality_signature_responses = 0
+sync_leap_requests = 1
+sync_leap_responses = 0
+approvals_hashes_requests = 1
+approvals_hashes_responses = 0
+execution_results_requests = 1
+execution_results_responses = 0
 
 
 # ==================================================

@@ -106,7 +106,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use once_cell::sync::Lazy;
@@ -115,17 +114,16 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-        GetBidsResult, QueryRequest, QueryResult,
-    },
-    shared::execution_journal::ExecutionJournal,
+use casper_execution_engine::engine_state::{
+    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, ExecutionJournal,
+    GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
 };
+use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, AddressableEntity, ChainspecRawBytes, Deploy,
-    DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult, Key,
-    Package, PublicKey, StoredValue, TimeDiff, Timestamp, Transfer, URef, U512,
+    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash,
+    BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, Package, Deploy, DeployHash,
+    DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult, FinalitySignature,
+    FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512, AddressableEntity, Key, StoredValue,
 };
 
 use crate::{
@@ -146,11 +144,10 @@ use crate::{
     contract_runtime::SpeculativeExecutionState,
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
-        FinalitySignature, FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
-        MetaBlock, MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
+        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployMetadataExt,
+        DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
+        MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
@@ -1577,16 +1574,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block and its finality signatures.
-    pub(crate) async fn get_block_at_height_with_metadata_from_storage(
+    pub(crate) async fn get_signed_block_at_height_from_storage(
         self,
         block_height: u64,
         only_from_available_block_range: bool,
-    ) -> Option<BlockWithMetadata>
+    ) -> Option<SignedBlock>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockAndMetadataByHeight {
+            |responder| StorageRequest::GetSignedBlockByHeight {
                 block_height,
                 only_from_available_block_range,
                 responder,
@@ -1623,16 +1620,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block by hash with its associated metadata.
-    pub(crate) async fn get_block_with_metadata_from_storage(
+    pub(crate) async fn get_signed_block_from_storage(
         self,
         block_hash: BlockHash,
         only_from_available_block_range: bool,
-    ) -> Option<BlockWithMetadata>
+    ) -> Option<SignedBlock>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockAndMetadataByHash {
+            |responder| StorageRequest::GetSignedBlockByHash {
                 block_hash,
                 only_from_available_block_range,
                 responder,
@@ -1643,15 +1640,15 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the highest block with its associated metadata.
-    pub(crate) async fn get_highest_block_with_metadata_from_storage(
+    pub(crate) async fn get_highest_signed_block_from_storage(
         self,
         only_from_available_block_range: bool,
-    ) -> Option<BlockWithMetadata>
+    ) -> Option<SignedBlock>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetHighestBlockWithMetadata {
+            |responder| StorageRequest::GetHighestSignedBlock {
                 only_from_available_block_range,
                 responder,
             },

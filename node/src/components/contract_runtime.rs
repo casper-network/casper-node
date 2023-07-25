@@ -27,23 +27,21 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfig, EngineState, GenesisSuccess,
     SystemContractRegistry, UpgradeSuccess,
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
-        shared::CorrelationId,
-        storage::{
-            state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-            trie_store::lmdb::LmdbTrieStore,
-        },
+        state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
     },
 };
 use casper_types::{
-    bytesrepr::Bytes, ActivationPoint, Chainspec, ChainspecRawBytes, ChainspecRegistry, Deploy,
-    Digest, EraId, ProtocolVersion, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
+    bytesrepr::Bytes, ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes,
+    ChainspecRegistry, Deploy, Digest, EraId, ProtocolVersion, SystemConfig, Timestamp,
+    UpgradeConfig, WasmConfig,
 };
 
 use crate::{
@@ -59,10 +57,7 @@ use crate::{
     },
     fatal,
     protocol::Message,
-    types::{
-        BlockHash, BlockHeader, ChunkingError, FinalizedBlock, MetaBlock, MetaBlockState,
-        TrieOrChunk, TrieOrChunkId,
-    },
+    types::{ChunkingError, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId},
     NodeRng,
 };
 pub(crate) use config::Config;
@@ -168,7 +163,7 @@ impl ExecutionPreState {
             pre_state_root_hash: *block_header.state_root_hash(),
             next_block_height: block_header.height() + 1,
             parent_hash: block_header.block_hash(),
-            parent_seed: block_header.accumulated_seed(),
+            parent_seed: *block_header.accumulated_seed(),
         }
     }
 }
@@ -349,9 +344,8 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.run_query(correlation_id, query_request);
+                    let result = engine_state.run_query(query_request);
                     metrics.run_query.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "query result");
                     responder.respond(result).await
@@ -366,10 +360,8 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let correlation_id = CorrelationId::new();
                     let start = Instant::now();
                     let result = engine_state.get_purse_balance(
-                        correlation_id,
                         balance_request.state_hash(),
                         balance_request.purse_uref(),
                     );
@@ -390,13 +382,9 @@ impl ContractRuntime {
                 // Increment the counter to track the amount of times GetEraValidators was
                 // requested.
                 async move {
-                    let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let era_validators = engine_state.get_era_validators(
-                        correlation_id,
-                        system_contract_registry,
-                        request.into(),
-                    );
+                    let era_validators =
+                        engine_state.get_era_validators(system_contract_registry, request.into());
                     metrics
                         .get_era_validators
                         .observe(start.elapsed().as_secs_f64());
@@ -441,10 +429,8 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state
-                        .put_trie_if_all_children_present(correlation_id, trie_bytes.inner());
+                    let result = engine_state.put_trie_if_all_children_present(trie_bytes.inner());
                     // PERF: this *could* be called only periodically.
                     if let Err(lmdb_error) = engine_state.flush_environment() {
                         fatal!(
@@ -469,7 +455,7 @@ impl ContractRuntime {
             } => {
                 let mut effects = Effects::new();
                 let exec_queue = Arc::clone(&self.exec_queue);
-                let finalized_block_height = finalized_block.height();
+                let finalized_block_height = finalized_block.height;
                 let current_pre_state = self.execution_pre_state.lock().unwrap();
                 let next_block_height = current_pre_state.next_block_height;
                 match finalized_block_height.cmp(&next_block_height) {
@@ -544,9 +530,8 @@ impl ContractRuntime {
                 let engine_state = Arc::clone(&self.engine_state);
                 let metrics = Arc::clone(&self.metrics);
                 async move {
-                    let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state.get_bids(correlation_id, get_bids_request);
+                    let result = engine_state.get_bids(get_bids_request);
                     metrics.get_bids.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "get bids result");
                     responder.respond(result).await
@@ -557,10 +542,9 @@ impl ContractRuntime {
                 state_root_hash,
                 responder,
             } => {
-                let correlation_id = CorrelationId::new();
                 let result = self
                     .engine_state
-                    .get_checksum_registry(correlation_id, state_root_hash)
+                    .get_checksum_registry(state_root_hash)
                     .map(|maybe_registry| {
                         maybe_registry.and_then(|registry| {
                             registry.get(EXECUTION_RESULTS_CHECKSUM_NAME).copied()
@@ -678,7 +662,6 @@ impl ContractRuntime {
         chainspec: &Chainspec,
         chainspec_raw_bytes: &ChainspecRawBytes,
     ) -> Result<GenesisSuccess, engine_state::Error> {
-        let correlation_id = CorrelationId::new();
         let genesis_config_hash = chainspec.hash();
         let protocol_version = chainspec.protocol_config.version;
         // Transforms a chainspec into a valid genesis config for execution engine.
@@ -697,7 +680,6 @@ impl ContractRuntime {
         );
 
         let result = self.engine_state.commit_genesis(
-            correlation_id,
             genesis_config_hash,
             protocol_version,
             &ee_config,
@@ -715,7 +697,7 @@ impl ContractRuntime {
         let start = Instant::now();
         let scratch_state = self.engine_state.get_scratch_engine_state();
         let pre_state_hash = upgrade_config.pre_state_hash();
-        let mut result = scratch_state.commit_upgrade(CorrelationId::new(), upgrade_config)?;
+        let mut result = scratch_state.commit_upgrade(upgrade_config)?;
         result.post_state_hash = self
             .engine_state
             .write_scratch_to_db(pre_state_hash, scratch_state.into_inner())?;
@@ -821,7 +803,7 @@ impl ContractRuntime {
             }
         }
 
-        let current_era_id = block.header().era_id();
+        let current_era_id = block.era_id();
 
         if let Some(StepEffectAndUpcomingEraValidators {
             step_execution_journal,
@@ -853,9 +835,9 @@ impl ContractRuntime {
 
         info!(
             block_hash = %block.hash(),
-            height = block.header().height(),
-            era = block.header().era_id().value(),
-            is_switch_block = block.header().is_switch_block(),
+            height = block.height(),
+            era = block.era_id().value(),
+            is_switch_block = block.is_switch_block(),
             "executed block"
         );
 
@@ -930,10 +912,9 @@ impl ContractRuntime {
         metrics: &Metrics,
         trie_or_chunk_id: TrieOrChunkId,
     ) -> Result<Option<TrieOrChunk>, ContractRuntimeError> {
-        let correlation_id = CorrelationId::new();
         let start = Instant::now();
         let TrieOrChunkId(chunk_index, trie_key) = trie_or_chunk_id;
-        let ret = match engine_state.get_trie_full(correlation_id, trie_key)? {
+        let ret = match engine_state.get_trie_full(trie_key)? {
             None => Ok(None),
             Some(trie_raw) => Ok(Some(TrieOrChunk::new(trie_raw.into(), chunk_index)?)),
         };
@@ -946,9 +927,8 @@ impl ContractRuntime {
         metrics: &Metrics,
         trie_key: Digest,
     ) -> Result<Option<Bytes>, engine_state::Error> {
-        let correlation_id = CorrelationId::new();
         let start = Instant::now();
-        let result = engine_state.get_trie_full(correlation_id, trie_key);
+        let result = engine_state.get_trie_full(trie_key);
         metrics.get_trie.observe(start.elapsed().as_secs_f64());
         // Extract the inner Bytes, we don't want this change to ripple through the system right
         // now.
@@ -975,7 +955,7 @@ impl ContractRuntime {
         if self.system_contract_registry.is_none() {
             self.system_contract_registry = self
                 .engine_state
-                .get_system_contract_registry(CorrelationId::new(), state_root_hash)
+                .get_system_contract_registry(state_root_hash)
                 .ok();
         };
     }
@@ -987,11 +967,9 @@ mod trie_chunking_tests {
     use tempfile::tempdir;
 
     use casper_storage::global_state::{
-        shared::{transform::Transform, AdditiveMap, CorrelationId},
-        storage::{
-            state::StateProvider,
-            trie::{Pointer, Trie},
-        },
+        shared::{transform::Transform, AdditiveMap},
+        state::StateProvider,
+        trie::{Pointer, Trie},
     };
     use casper_types::{
         account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
@@ -1078,7 +1056,7 @@ mod trie_chunking_tests {
         }
         let post_state_hash = contract_runtime
             .engine_state()
-            .apply_effect(CorrelationId::new(), empty_state_root, effects)
+            .apply_effect(empty_state_root, effects)
             .expect("applying effects to succeed");
         (contract_runtime, post_state_hash)
     }

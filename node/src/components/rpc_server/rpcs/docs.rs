@@ -13,7 +13,7 @@ use schemars::{
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use casper_types::{Deploy, ProtocolVersion};
+use casper_types::ProtocolVersion;
 
 use super::{
     account::PutDeploy,
@@ -30,7 +30,7 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 5, 0);
+    ProtocolVersion::from_parts(1, 5, 1);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
@@ -122,12 +122,6 @@ static LIST_RPCS_RESULT: Lazy<ListRpcsResult> = Lazy::new(|| ListRpcsResult {
 pub trait DocExample {
     /// Generates a hardcoded example of `Self`.
     fn doc_example() -> &'static Self;
-}
-
-impl DocExample for Deploy {
-    fn doc_example() -> &'static Self {
-        Deploy::example()
-    }
 }
 
 /// The main schema for the casper node's RPC server, compliant with
@@ -465,22 +459,45 @@ impl RpcWithoutParams for ListRpcs {
 }
 
 mod doc_example_impls {
-    use std::str::FromStr;
-
-    use once_cell::sync::Lazy;
-
-    use casper_types::Timestamp;
+    use casper_types::{
+        Deploy, EraEnd, EraReport, JsonBlock, JsonBlockHeader, PublicKey, Timestamp,
+    };
 
     use super::DocExample;
 
-    static TIMESTAMP_EXAMPLE: Lazy<Timestamp> = Lazy::new(|| {
-        let example_str: &str = "2020-11-17T00:39:24.072Z";
-        Timestamp::from_str(example_str).unwrap()
-    });
+    impl DocExample for JsonBlock {
+        fn doc_example() -> &'static Self {
+            JsonBlock::example()
+        }
+    }
+
+    impl DocExample for JsonBlockHeader {
+        fn doc_example() -> &'static Self {
+            &JsonBlock::example().header
+        }
+    }
+
+    impl DocExample for Deploy {
+        fn doc_example() -> &'static Self {
+            Deploy::example()
+        }
+    }
+
+    impl DocExample for EraEnd {
+        fn doc_example() -> &'static Self {
+            EraEnd::example()
+        }
+    }
+
+    impl DocExample for EraReport<PublicKey> {
+        fn doc_example() -> &'static Self {
+            EraReport::<PublicKey>::example()
+        }
+    }
 
     impl DocExample for Timestamp {
         fn doc_example() -> &'static Self {
-            &TIMESTAMP_EXAMPLE
+            Timestamp::example()
         }
     }
 }

@@ -5,17 +5,15 @@ use casper_engine_test_support::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            engine_config::{
-                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    engine_state::{
+        engine_config::{
+            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
         },
-        execution::Error as ExecError,
+        EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     },
-    shared::wasm_prep::{self, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
+    execution::Error as ExecError,
+    runtime::{PreprocessingError, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
 };
 use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig, DEFAULT_WASM_MAX_MEMORY};
 
@@ -75,7 +73,7 @@ fn should_pass_max_parameter_count() {
     assert!(
         matches!(
             error,
-            Error::WasmPreprocessing(wasm_prep::PreprocessingError::WasmValidation(
+            Error::WasmPreprocessing(PreprocessingError::WasmValidation(
                 WasmValidationError::TooManyParameters {
                     max: 256,
                     actual: 257

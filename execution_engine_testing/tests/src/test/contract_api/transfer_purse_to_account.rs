@@ -1,4 +1,4 @@
-use casper_execution_engine::core::{engine_state, execution};
+use casper_execution_engine::{engine_state, execution};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{

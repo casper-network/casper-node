@@ -19,12 +19,12 @@ use tempfile::TempDir;
 use thiserror::Error;
 use tokio::time;
 
-use casper_execution_engine::core::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_execution_engine::engine_state::{BalanceResult, QueryResult, MAX_PAYMENT_AMOUNT};
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     testing::TestRng,
-    CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
+    Block, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -45,7 +45,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::ConditionCheckReactor,
-    types::{Block, NodeId},
+    types::{NodeId, TestBlockBuilder},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -696,7 +696,7 @@ fn inject_balance_check_for_peer(
     rng: &mut TestRng,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
-    let block_header = Box::new(Block::random(rng).header().clone());
+    let block_header = Box::new(TestBlockBuilder::new().build(rng).header().clone());
     |effect_builder: EffectBuilder<Event>| {
         let event_metadata = Box::new(EventMetadata::new(deploy, source, Some(responder)));
         effect_builder
@@ -733,7 +733,7 @@ async fn run_deploy_acceptor_without_timeout(
     .await
     .unwrap();
 
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     // Create a channel to assert that the block was successfully injected into storage.
     let (result_sender, result_receiver) = oneshot::channel();
 

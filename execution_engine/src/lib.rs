@@ -14,10 +14,19 @@
 )]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-pub mod config;
-pub mod core;
-pub mod shared;
+pub mod engine_state;
+pub mod execution;
+pub mod resolvers;
+pub mod runtime;
+pub mod runtime_context;
 mod system;
+pub mod tracking_copy;
+
+/// The length of an address.
+pub const ADDRESS_LENGTH: usize = 32;
+
+/// Alias for an array of bytes that represents an address.
+pub type Address = [u8; ADDRESS_LENGTH];
 
 /// A special contract wasm hash for contracts representing Accounts.
 pub const ACCOUNT_WASM_ADDR: [u8; 32] = [0u8; 32];

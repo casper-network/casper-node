@@ -35,13 +35,12 @@ use warp::{
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    Deploy, DeployHash, EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey,
-    TimeDiff, Timestamp,
+    BlockHash, Deploy, DeployHash, EraId, ExecutionEffect, ExecutionResult, FinalitySignature,
+    JsonBlock, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
 };
 
-use crate::types::{BlockHash, FinalitySignature, JsonBlock};
 #[cfg(test)]
-use crate::{testing, types::Block};
+use crate::{testing, types::TestBlockBuilder};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -148,10 +147,10 @@ impl SseData {
 
     /// Returns a random `SseData::BlockAdded`.
     pub(super) fn random_block_added(rng: &mut TestRng) -> Self {
-        let block = Block::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(&block, None)),
+            block: Box::new(JsonBlock::new(block, None)),
         }
     }
 
@@ -199,7 +198,8 @@ impl SseData {
     pub(super) fn random_finality_signature(rng: &mut TestRng) -> Self {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
-            rng.gen(),
+            EraId::random(rng),
+            rng,
         )))
     }
 

@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{Error, MAX_PAYMENT},
     execution,
 };

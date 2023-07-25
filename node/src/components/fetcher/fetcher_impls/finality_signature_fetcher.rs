@@ -3,15 +3,40 @@ use std::{collections::HashMap, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
+use casper_types::{crypto, FinalitySignature, FinalitySignatureId};
+
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    components::fetcher::{
+        metrics::Metrics, EmptyValidationMetadata, FetchItem, Fetcher, ItemFetcher, ItemHandle,
+        StoringState, Tag,
+    },
     effect::{
         announcements::FetchedNewFinalitySignatureAnnouncement,
         requests::{BlockAccumulatorRequest, StorageRequest},
         EffectBuilder,
     },
-    types::{FinalitySignature, FinalitySignatureId, NodeId},
+    types::NodeId,
 };
+
+impl FetchItem for FinalitySignature {
+    type Id = Box<FinalitySignatureId>;
+    type ValidationError = crypto::Error;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    const TAG: Tag = Tag::FinalitySignature;
+
+    fn fetch_id(&self) -> Self::Id {
+        Box::new(FinalitySignatureId::new(
+            *self.block_hash(),
+            self.era_id(),
+            self.public_key().clone(),
+        ))
+    }
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        self.is_verified()
+    }
+}
 
 #[async_trait]
 impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
@@ -37,7 +62,7 @@ impl ItemFetcher<FinalitySignature> for Fetcher<FinalitySignature> {
         id: Box<FinalitySignatureId>,
     ) -> Option<FinalitySignature> {
         effect_builder
-            .get_signature_from_storage(id.block_hash, id.public_key.clone())
+            .get_signature_from_storage(*id.block_hash(), id.public_key().clone())
             .await
     }
 

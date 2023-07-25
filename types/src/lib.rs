@@ -27,6 +27,7 @@ mod access_rights;
 pub mod account;
 pub mod addressable_entity;
 pub mod api_error;
+mod block;
 mod block_time;
 pub mod bytesrepr;
 #[cfg(any(feature = "std", test))]
@@ -56,6 +57,7 @@ pub mod package;
 mod phase;
 mod protocol_version;
 mod semver;
+pub(crate) mod serde_helpers;
 mod stored_value;
 pub mod system;
 mod tagged;
@@ -66,6 +68,11 @@ mod transfer;
 mod transfer_result;
 mod uint;
 mod uref;
+
+#[cfg(feature = "std")]
+use libc::{c_long, sysconf, _SC_PAGESIZE};
+#[cfg(feature = "std")]
+use once_cell::sync::Lazy;
 
 pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
@@ -78,6 +85,16 @@ pub use addressable_entity::{
 };
 #[doc(inline)]
 pub use api_error::ApiError;
+pub use block::{
+    Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
+    BlockSignaturesMergeError, BlockValidationError, EraEnd, EraReport, FinalitySignature,
+    FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
+};
+#[cfg(all(feature = "std", feature = "json-schema"))]
+pub use block::{
+    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
+    JsonValidatorWeight,
+};
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
@@ -156,3 +173,18 @@ pub use transfer_result::{TransferResult, TransferredTo};
 pub use uref::{
     FromStrError as URefFromStrError, URef, URefAddr, UREF_ADDR_LENGTH, UREF_SERIALIZED_LENGTH,
 };
+
+/// OS page size.
+#[cfg(feature = "std")]
+pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
+    /// Sensible default for many if not all systems.
+    const DEFAULT_PAGE_SIZE: usize = 4096;
+
+    // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
+    let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
+    if value <= 0 {
+        DEFAULT_PAGE_SIZE
+    } else {
+        value as usize
+    }
+});

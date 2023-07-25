@@ -12,7 +12,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
-use casper_types::Deploy;
+use casper_types::{Block, Deploy, FinalitySignature};
 
 use crate::{
     components::{
@@ -29,7 +29,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, FinalitySignature, NodeId},
+    types::NodeId,
 };
 
 /// Reactor message.
@@ -118,31 +118,33 @@ impl Payload for Message {
         match self {
             Message::Consensus(_) => weights.consensus,
             Message::ConsensusRequest(_) => weights.consensus,
-            Message::BlockGossiper(_) => weights.gossip,
-            Message::DeployGossiper(_) => weights.gossip,
-            Message::FinalitySignatureGossiper(_) => weights.gossip,
-            Message::AddressGossiper(_) => weights.gossip,
+            Message::BlockGossiper(_) => weights.block_gossip,
+            Message::DeployGossiper(_) => weights.deploy_gossip,
+            Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
+            Message::AddressGossiper(_) => weights.address_gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_requests,
+                Tag::Deploy => weights.deploy_requests,
+                Tag::LegacyDeploy => weights.legacy_deploy_requests,
                 Tag::Block => weights.block_requests,
-                Tag::BlockHeader => weights.block_requests,
+                Tag::BlockHeader => weights.block_header_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::SyncLeap => weights.block_requests,
-                Tag::ApprovalsHashes => weights.block_requests,
-                Tag::BlockExecutionResults => weights.block_requests,
+                Tag::FinalitySignature => weights.finality_signature_requests,
+                Tag::SyncLeap => weights.sync_leap_requests,
+                Tag::ApprovalsHashes => weights.approvals_hashes_requests,
+                Tag::BlockExecutionResults => weights.execution_results_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_responses,
+                Tag::Deploy => weights.deploy_responses,
+                Tag::LegacyDeploy => weights.legacy_deploy_responses,
                 Tag::Block => weights.block_responses,
-                Tag::BlockHeader => weights.block_responses,
+                Tag::BlockHeader => weights.block_header_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::SyncLeap => weights.block_responses,
-                Tag::ApprovalsHashes => weights.block_responses,
-                Tag::BlockExecutionResults => weights.block_responses,
+                Tag::FinalitySignature => weights.finality_signature_responses,
+                Tag::SyncLeap => weights.sync_leap_responses,
+                Tag::ApprovalsHashes => weights.approvals_hashes_responses,
+                Tag::BlockExecutionResults => weights.execution_results_responses,
             },
-            Message::FinalitySignature(_) => weights.finality_signatures,
+            Message::FinalitySignature(_) => weights.finality_signature_broadcasts,
         }
     }
 

@@ -1,12 +1,13 @@
-use either::Either;
 use std::{
     fmt::{Display, Formatter},
     time::Duration,
 };
+
+use either::Either;
 use tracing::{debug, error, info, warn};
 
-use casper_execution_engine::core::engine_state::GetEraValidatorsError;
-use casper_types::{ActivationPoint, EraId, TimeDiff, Timestamp};
+use casper_execution_engine::engine_state::GetEraValidatorsError;
+use casper_types::{ActivationPoint, BlockHash, BlockHeader, EraId, TimeDiff, Timestamp};
 
 use crate::{
     components::{
@@ -21,7 +22,7 @@ use crate::{
         requests::BlockSynchronizerRequest, EffectBuilder, EffectExt, EffectResultExt, Effects,
     },
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{BlockHash, BlockHeader, GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
+    types::{GlobalStatesMetadata, SyncLeap, SyncLeapIdentifier},
     NodeRng,
 };
 
@@ -168,16 +169,6 @@ impl MainReactor {
                 // execution effects.
                 Either::Left(self.keep_up_synced(block_hash, block_height, era_id))
             }
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                // working on syncing a block
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "KeepUp: block synchronizer stalled while syncing block; purging forward builder"
-                );
-                self.block_synchronizer.purge_forward();
-                self.keep_up_idle()
-            }
         }
     }
 
@@ -186,7 +177,7 @@ impl MainReactor {
             Ok(Some(block)) => Either::Left(SyncIdentifier::LocalTip(
                 *block.hash(),
                 block.height(),
-                block.header().era_id(),
+                block.era_id(),
             )),
             Ok(None) => {
                 // something out of the ordinary occurred; it isn't legit to be in keep up mode
@@ -593,14 +584,6 @@ impl MainReactor {
                 debug!("KeepUp: still syncing historical block");
                 return Ok(Some(SyncBackInstruction::Syncing));
             }
-            BlockSynchronizerProgress::Stalled(block_hash, _, last_progress_time) => {
-                warn!(
-                    %block_hash,
-                    %last_progress_time,
-                    "KeepUp: block synchronizer stalled while syncing historical block; purging historical builder"
-                );
-                self.block_synchronizer.purge_historical();
-            }
             BlockSynchronizerProgress::Executing(block_hash, height, _) => {
                 warn!(
                     %block_hash,
@@ -726,11 +709,11 @@ fn is_timestamp_at_ttl(
 mod tests {
     use std::str::FromStr;
 
-    use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff, Timestamp};
+    use casper_types::{testing::TestRng, TimeDiff, Timestamp};
 
     use crate::{
         reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
-        types::Block,
+        types::TestBlockBuilder,
     };
 
     const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
@@ -792,25 +775,19 @@ mod tests {
 
     #[test]
     fn should_detect_ttl_at_genesis() {
-        let mut rng = TestRng::new();
+        let rng = &mut TestRng::new();
 
-        let latest_switch_block = Block::random_with_specifics(
-            &mut rng,
-            100.into(),
-            1000,
-            ProtocolVersion::default(),
-            true,
-            None,
-        );
+        let latest_switch_block = TestBlockBuilder::new()
+            .era(100)
+            .height(1000)
+            .switch_block(true)
+            .build(rng);
 
-        let latest_orphaned_block = Block::random_with_specifics(
-            &mut rng,
-            0.into(),
-            0,
-            ProtocolVersion::default(),
-            true,
-            None,
-        );
+        let latest_orphaned_block = TestBlockBuilder::new()
+            .era(0)
+            .height(0)
+            .switch_block(true)
+            .build(rng);
 
         assert_eq!(latest_orphaned_block.height(), 0);
         assert_eq!(

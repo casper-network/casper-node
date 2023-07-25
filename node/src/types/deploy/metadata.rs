@@ -2,9 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use casper_types::ExecutionResult;
-
-use crate::types::{BlockHash, BlockHashAndHeight};
+use casper_types::{BlockHash, BlockHashAndHeight, ExecutionResult};
 
 /// The deploy mutable metadata.
 ///

@@ -10,8 +10,8 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{engine_state, execution},
-    shared::wasm_prep::{
+    engine_state, execution,
+    runtime::{
         PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
         DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
     },

@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{runtime_context::RANDOM_BYTES_COUNT, ADDRESS_LENGTH};
+use casper_execution_engine::{runtime_context::RANDOM_BYTES_COUNT, ADDRESS_LENGTH};
 use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
 
 const ARG_BYTES: &str = "bytes";

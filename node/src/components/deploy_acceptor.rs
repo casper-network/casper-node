@@ -12,13 +12,14 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, trace};
 
-use casper_execution_engine::core::engine_state::MAX_PAYMENT;
+use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{
-    account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, CLValue, Chainspec,
-    ContractHash, ContractIdentifier, ContractPackageHash, ContractPackageIdentifier,
-    ContractVersion, ContractVersionKey, Deploy, DeployConfig, DeployConfigurationFailure, Digest,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package, ProtocolVersion,
-    StoredValue, Timestamp, U512,
+    account::{Account, AccountHash},
+    system::auction::ARG_AMOUNT,
+    BlockHash, BlockHeader, Chainspec, Contract, ContractHash, ContractIdentifier, AddressableEntity, CLValue,
+    ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy,
+    DeployConfig, DeployConfigurationFailure, Digest, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, Key, ProtocolVersion, Timestamp, U512, StoredValue,  Package,
 };
 
 use crate::{
@@ -29,7 +30,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal,
-    types::{BlockHash, BlockHeader, FinalizedApprovals},
+    types::FinalizedApprovals,
     utils::Source,
     NodeRng,
 };

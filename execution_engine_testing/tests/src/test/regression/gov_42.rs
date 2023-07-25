@@ -17,7 +17,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::MAX_PAYMENT;
+use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{runtime_args, Gas, RuntimeArgs};
 use num_traits::Zero;
 

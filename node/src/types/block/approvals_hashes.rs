@@ -8,7 +8,7 @@ use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{bytesrepr, ApprovalsHash, DeployId, Digest, Key, StoredValue};
 
 use super::{Block, BlockHash};
@@ -61,10 +61,10 @@ impl ApprovalsHashes {
             .compute_state_hash()
             .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
-        if proof_state_root_hash != *block.header().state_root_hash() {
+        if proof_state_root_hash != *block.state_root_hash() {
             return Err(ApprovalsHashesValidationError::StateRootHashMismatch {
                 proof_state_root_hash,
-                block_state_root_hash: *block.header().state_root_hash(),
+                block_state_root_hash: *block.state_root_hash(),
             });
         }
 
@@ -173,7 +173,7 @@ mod specimen_support {
 
     use once_cell::sync::OnceCell;
 
-    use casper_storage::global_state::storage::trie::{
+    use casper_storage::global_state::trie::{
         merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
         Pointer,
     };

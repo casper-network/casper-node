@@ -6,12 +6,13 @@ use std::{
 use serde::Serialize;
 
 use casper_types::{
-    account::AccountHash, AddressableEntity, ContractHash, ContractPackageHash, ContractVersion,
-    Deploy, Package, StoredValue, Timestamp, U512,
+    account::{Account, AccountHash},
+    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Deploy,
+    Timestamp, U512, AddressableEntity, Package, StoredValue, BlockHeader,
 };
 
 use super::Source;
-use crate::{components::deploy_acceptor::Error, effect::Responder, types::BlockHeader};
+use crate::{components::deploy_acceptor::Error, effect::Responder};
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]

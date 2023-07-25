@@ -3,7 +3,7 @@ use std::{cmp, collections::BTreeMap, ops::Range, sync::Arc, time::Instant};
 use itertools::Itertools;
 use tracing::{debug, error, info, trace, warn};
 
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
         self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry, DeployItem,
         EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
@@ -14,18 +14,17 @@ use casper_execution_engine::core::{
 use casper_storage::{
     data_access_layer::DataAccessLayer,
     global_state::{
-        shared::{transform::Transform, AdditiveMap, CorrelationId},
-        storage::state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
+        shared::{transform::Transform, AdditiveMap},
+        state::{lmdb::LmdbGlobalState, CommitProvider, StateProvider},
     },
 };
 use casper_types::{
-    CLValue, Deploy, DeployHash, DeployHeader, Digest, EraId, ExecutionResult, Key,
-    ProtocolVersion, PublicKey, U512,
+    Block, CLValue, Deploy, DeployHash, DeployHeader, Digest, EraEnd, EraId, EraReport,
+    ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::{
     components::{
-        consensus::EraReport,
         contract_runtime::{
             error::BlockExecutionError, types::StepEffectAndUpcomingEraValidators,
             BlockAndExecutionResults, ExecutionPreState, Metrics, SpeculativeExecutionState,
@@ -33,7 +32,7 @@ use crate::{
         },
         fetcher::FetchItem,
     },
-    types::{self, error::BlockCreationError, ApprovalsHashes, Block, Chunkable, FinalizedBlock},
+    types::{self, ApprovalsHashes, Chunkable, FinalizedBlock},
 };
 
 fn generate_range_by_index(
@@ -99,7 +98,7 @@ pub fn execute_finalized_block(
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
-    if finalized_block.height() != execution_pre_state.next_block_height {
+    if finalized_block.height != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
             finalized_block: Box::new(finalized_block),
             execution_pre_state: Box::new(execution_pre_state),
@@ -115,22 +114,21 @@ pub fn execute_finalized_block(
     let mut execution_results: Vec<(_, DeployHeader, ExecutionResult)> =
         Vec::with_capacity(deploys.len());
     // Run any deploys that must be executed
-    let block_time = finalized_block.timestamp().millis();
+    let block_time = finalized_block.timestamp.millis();
     let start = Instant::now();
     let deploy_ids = deploys.iter().map(|deploy| deploy.fetch_id()).collect_vec();
     let approvals_checksum = types::compute_approvals_checksum(deploy_ids.clone())
-        .map_err(BlockCreationError::BytesRepr)?;
+        .map_err(BlockExecutionError::FailedToComputeApprovalsChecksum)?;
 
     // Create a new EngineState that reads from LMDB but only caches changes in memory.
     let scratch_state = engine_state.get_scratch_engine_state();
 
     // Pay out block rewards
-    let proposer = *finalized_block.proposer();
+    let proposer = *finalized_block.proposer.clone();
     state_root_hash = scratch_state.distribute_block_rewards(
-        CorrelationId::new(),
         state_root_hash,
         protocol_version,
-        proposer,
+        proposer.clone(),
         next_block_height,
         block_time,
     )?;
@@ -144,7 +142,7 @@ pub fn execute_finalized_block(
             block_time,
             vec![DeployItem::from(deploy)],
             protocol_version,
-            *finalized_block.proposer(),
+            proposer.clone(),
         );
 
         // TODO: this is currently working coincidentally because we are passing only one
@@ -185,11 +183,11 @@ pub fn execute_finalized_block(
         Key::ChecksumRegistry,
         Transform::Write(
             CLValue::from_t(checksum_registry)
-                .map_err(BlockCreationError::CLValue)?
+                .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
                 .into(),
         ),
     );
-    scratch_state.apply_effect(CorrelationId::new(), state_root_hash, effects)?;
+    scratch_state.apply_effect(state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -198,7 +196,7 @@ pub fn execute_finalized_block(
     // If the finalized block has an era report, run the auction contract and get the upcoming era
     // validators.
     let maybe_step_effect_and_upcoming_era_validators =
-        if let Some(era_report) = finalized_block.era_report() {
+        if let Some(era_report) = finalized_block.era_report.as_deref() {
             let StepSuccess {
                 post_state_hash: _, // ignore the post-state-hash returned from scratch
                 execution_journal: step_execution_journal,
@@ -208,8 +206,8 @@ pub fn execute_finalized_block(
                 protocol_version,
                 state_root_hash,
                 era_report,
-                finalized_block.timestamp().millis(),
-                finalized_block.era_id().successor(),
+                finalized_block.timestamp.millis(),
+                finalized_block.era_id.successor(),
             )?;
 
             state_root_hash =
@@ -220,7 +218,6 @@ pub fn execute_finalized_block(
             let system_contract_registry = None;
 
             let upcoming_era_validators = engine_state.get_era_validators(
-                CorrelationId::new(),
                 system_contract_registry,
                 GetEraValidatorsRequest::new(state_root_hash, protocol_version),
             )?;
@@ -240,7 +237,7 @@ pub fn execute_finalized_block(
     engine_state.flush_environment()?;
 
     // Pruning
-    if let Some(previous_block_height) = finalized_block.height().checked_sub(1) {
+    if let Some(previous_block_height) = finalized_block.height.checked_sub(1) {
         if let Some(keys_to_prune) = calculate_prune_eras(
             activation_point_era_id,
             key_block_height_for_activation_point,
@@ -258,7 +255,7 @@ pub fn execute_finalized_block(
                 "commit prune: preparing prune config"
             );
             let prune_config = PruneConfig::new(state_root_hash, keys_to_prune);
-            match engine_state.commit_prune(CorrelationId::new(), prune_config) {
+            match engine_state.commit_prune(prune_config) {
                 Ok(PruneResult::RootNotFound) => {
                     error!(
                         previous_block_height,
@@ -302,7 +299,7 @@ pub fn execute_finalized_block(
         }
     }
 
-    let next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
+    let maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>> =
         maybe_step_effect_and_upcoming_era_validators
             .as_ref()
             .and_then(
@@ -311,26 +308,44 @@ pub fn execute_finalized_block(
                      ..
                  }| {
                     upcoming_era_validators
-                        .get(&finalized_block.era_id().successor())
+                        .get(&finalized_block.era_id.successor())
                         .cloned()
                 },
             );
+
+    let era_end = match (finalized_block.era_report, maybe_next_era_validator_weights) {
+        (None, None) => None,
+        (Some(era_report), Some(next_era_validator_weights)) => {
+            Some(EraEnd::new(*era_report, next_era_validator_weights))
+        }
+        (maybe_era_report, maybe_next_era_validator_weights) => {
+            return Err(BlockExecutionError::FailedToCreateEraEnd {
+                maybe_era_report,
+                maybe_next_era_validator_weights,
+            })
+        }
+    };
 
     let block = Arc::new(Block::new(
         parent_hash,
         parent_seed,
         state_root_hash,
-        finalized_block,
-        next_era_validator_weights,
+        finalized_block.random_bit,
+        era_end,
+        finalized_block.timestamp,
+        finalized_block.era_id,
+        finalized_block.height,
         protocol_version,
-    )?);
+        proposer,
+        finalized_block.deploy_hashes,
+        finalized_block.transfer_hashes,
+    ));
 
     let approvals_hashes = deploy_ids
         .into_iter()
         .map(|id| id.destructure().1)
         .collect();
-    let proof_of_checksum_registry =
-        engine_state.get_checksum_registry_proof(CorrelationId::new(), state_root_hash)?;
+    let proof_of_checksum_registry = engine_state.get_checksum_registry_proof(state_root_hash)?;
     let approvals_hashes = Box::new(ApprovalsHashes::new(
         block.hash(),
         approvals_hashes,
@@ -404,9 +419,8 @@ where
     S::Error: Into<execution::Error>,
 {
     trace!(?state_root_hash, ?effects, "commit");
-    let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.apply_effect(correlation_id, state_root_hash, effects);
+    let result = engine_state.apply_effect(state_root_hash, effects);
     if let Some(metrics) = metrics {
         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     }
@@ -469,9 +483,8 @@ where
     S::Error: Into<execution::Error>,
 {
     trace!(?execute_request, "execute");
-    let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.run_execute(correlation_id, execute_request);
+    let result = engine_state.run_execute(execute_request);
     if let Some(metrics) = metrics {
         metrics.run_execute.observe(start.elapsed().as_secs_f64());
     }
@@ -492,17 +505,11 @@ where
     S: StateProvider + CommitProvider,
     S::Error: Into<execution::Error>,
 {
-    // Extract the rewards and the inactive validators if this is a switch block
-    let EraReport {
-        equivocators,
-        inactive_validators,
-        ..
-    } = era_report;
-
     // Both inactive validators and equivocators are evicted
-    let evict_items = inactive_validators
+    let evict_items = era_report
+        .inactive_validators()
         .iter()
-        .chain(equivocators)
+        .chain(era_report.equivocators())
         .cloned()
         .map(EvictItem::new)
         .collect();
@@ -518,9 +525,8 @@ where
     };
 
     // Have the EE commit the step.
-    let correlation_id = CorrelationId::new();
     let start = Instant::now();
-    let result = engine_state.commit_step(correlation_id, step_request);
+    let result = engine_state.commit_step(step_request);
     if let Some(metrics) = maybe_metrics {
         let elapsed = start.elapsed().as_secs_f64();
         metrics.commit_step.observe(elapsed);
@@ -536,10 +542,10 @@ where
 /// node receives the chunks of *full data* it has to be able to verify it against the Merkle root.
 fn compute_execution_results_checksum(
     execution_results: &Vec<ExecutionResult>,
-) -> Result<Digest, BlockCreationError> {
+) -> Result<Digest, BlockExecutionError> {
     execution_results
         .hash()
-        .map_err(BlockCreationError::BytesRepr)
+        .map_err(BlockExecutionError::FailedToComputeExecutionResultsChecksum)
 }
 
 #[cfg(test)]

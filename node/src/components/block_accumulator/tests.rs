@@ -15,8 +15,8 @@ use thiserror::Error as ThisError;
 use tokio::time;
 
 use casper_types::{
-    generate_ed25519_keypair, testing::TestRng, ActivationPoint, Chainspec, ChainspecRawBytes,
-    ProtocolVersion, PublicKey, SecretKey, SemVer, Signature, U512,
+    generate_ed25519_keypair, testing::TestRng, ActivationPoint, Block, Chainspec,
+    ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 use reactor::ReactorEvent;
 
@@ -35,7 +35,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Reactor, Runner, TryCrankOutcome},
-    types::{Block, EraValidatorWeights},
+    types::{EraValidatorWeights, TestBlockBuilder},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -51,9 +51,9 @@ fn meta_block_with_default_state(block: Arc<Block>) -> MetaBlock {
 }
 
 fn signatures_for_block(block: &Block, signatures: &Vec<FinalitySignature>) -> BlockSignatures {
-    let mut block_signatures = BlockSignatures::new(*block.hash(), block.header().era_id());
+    let mut block_signatures = BlockSignatures::new(*block.hash(), block.era_id());
     for signature in signatures {
-        block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
+        block_signatures.insert_signature(signature.clone());
     }
     block_signatures
 }
@@ -377,7 +377,7 @@ fn upsert_acceptor() {
 #[test]
 fn acceptor_get_peers() {
     let mut rng = TestRng::new();
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     assert!(acceptor.peers().is_empty());
     let first_peer = NodeId::random(&mut rng);
@@ -392,12 +392,13 @@ fn acceptor_get_peers() {
 fn acceptor_register_finality_signature() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut meta_block = MetaBlock::new(block.clone(), vec![], MetaBlockState::new());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create a finality signature with the wrong block hash.
-    let wrong_fin_sig = FinalitySignature::random_for_block(BlockHash::random(&mut rng), 0);
+    let wrong_fin_sig =
+        FinalitySignature::random_for_block(BlockHash::random(&mut rng), EraId::new(0), &mut rng);
     assert!(matches!(
         acceptor
             .register_finality_signature(wrong_fin_sig, None, VALIDATOR_SLOTS)
@@ -411,7 +412,7 @@ fn acceptor_register_finality_signature() {
     // Create an invalid finality signature.
     let invalid_fin_sig = FinalitySignature::new(
         *block.hash(),
-        rng.gen(),
+        EraId::random(&mut rng),
         Signature::System,
         PublicKey::random(&mut rng),
     );
@@ -432,8 +433,7 @@ fn acceptor_register_finality_signature() {
         Error::InvalidGossip(_)
     ));
     // Create a valid finality signature and register it.
-    let fin_sig =
-        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+    let fin_sig = FinalitySignature::random_for_block(*block.hash(), block.era_id(), &mut rng);
     assert!(acceptor
         .register_finality_signature(fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
         .unwrap()
@@ -445,18 +445,18 @@ fn acceptor_register_finality_signature() {
         .unwrap()
         .is_none());
     // Make sure the peer list is updated accordingly.
-    let (sig, senders) = acceptor.signatures().get(&fin_sig.public_key).unwrap();
+    let (sig, senders) = acceptor.signatures().get(fin_sig.public_key()).unwrap();
     assert_eq!(*sig, fin_sig);
     assert_eq!(*senders, BTreeSet::from([first_peer, second_peer]));
     // Create a second finality signature and register it.
     let second_fin_sig =
-        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+        FinalitySignature::random_for_block(*block.hash(), block.era_id(), &mut rng);
     assert!(acceptor
         .register_finality_signature(second_fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
         .unwrap()
         .is_none());
     // Make sure the peer list for the first signature is unchanged.
-    let (first_sig, first_sig_senders) = acceptor.signatures().get(&fin_sig.public_key).unwrap();
+    let (first_sig, first_sig_senders) = acceptor.signatures().get(fin_sig.public_key()).unwrap();
     assert_eq!(*first_sig, fin_sig);
     assert_eq!(
         *first_sig_senders,
@@ -465,7 +465,7 @@ fn acceptor_register_finality_signature() {
     // Make sure the peer list for the second signature is correct.
     let (sig, senders) = acceptor
         .signatures()
-        .get(&second_fin_sig.public_key)
+        .get(second_fin_sig.public_key())
         .unwrap();
     assert_eq!(*sig, second_fin_sig);
     assert_eq!(*senders, BTreeSet::from([first_peer]));
@@ -476,9 +476,8 @@ fn acceptor_register_finality_signature() {
         .register_block(meta_block.clone(), Some(first_peer))
         .unwrap();
     // Registering invalid signatures should still yield an error.
-    let mut invalid_fin_sig =
-        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
-    invalid_fin_sig.era_id = (u64::MAX ^ u64::from(invalid_fin_sig.era_id)).into();
+    let wrong_era = EraId::from(u64::MAX ^ u64::from(block.era_id()));
+    let invalid_fin_sig = FinalitySignature::random_for_block(*block.hash(), wrong_era, &mut rng);
     assert!(matches!(
         acceptor
             .register_finality_signature(invalid_fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
@@ -506,13 +505,13 @@ fn acceptor_register_finality_signature() {
         .is_none());
     assert!(acceptor
         .signatures()
-        .get(&second_fin_sig.public_key)
+        .get(second_fin_sig.public_key())
         .unwrap()
         .1
         .contains(&second_peer));
     // Register a new valid signature which should be yielded by the function.
     let third_fin_sig =
-        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+        FinalitySignature::random_for_block(*block.hash(), block.era_id(), &mut rng);
     assert_eq!(
         acceptor
             .register_finality_signature(third_fin_sig.clone(), Some(first_peer), VALIDATOR_SLOTS)
@@ -536,12 +535,13 @@ fn acceptor_register_finality_signature() {
 fn acceptor_register_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create a finality signature with the wrong block hash.
-    let wrong_block = meta_block_with_default_state(Arc::new(Block::random(&mut rng)));
+    let wrong_block =
+        meta_block_with_default_state(Arc::new(TestBlockBuilder::new().build(&mut rng)));
     assert!(matches!(
         acceptor.register_block(wrong_block, None).unwrap_err(),
         Error::BlockHashMismatch {
@@ -552,7 +552,7 @@ fn acceptor_register_block() {
 
     {
         // Invalid block case.
-        let invalid_block = Arc::new(Block::random_invalid(&mut rng));
+        let invalid_block = Arc::new(TestBlockBuilder::new().build_invalid(&mut rng));
         let mut invalid_block_acceptor = BlockAcceptor::new(*invalid_block.hash(), vec![]);
         let invalid_meta_block = meta_block_with_default_state(invalid_block);
         let malicious_peer = NodeId::random(&mut rng);
@@ -613,7 +613,7 @@ fn acceptor_register_block() {
 fn acceptor_should_store_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
@@ -625,7 +625,7 @@ fn acceptor_should_store_block() {
     // Register the keys into the era validator weights, front loaded on the
     // first 2 with 80% weight.
     let era_validator_weights = EraValidatorWeights::new(
-        block.header().era_id(),
+        block.era_id(),
         BTreeMap::from([
             (keys[0].1.clone(), U512::from(40)),
             (keys[1].1.clone(), U512::from(40)),
@@ -657,12 +657,7 @@ fn acceptor_should_store_block() {
     let mut signatures = vec![];
 
     // Create the first validator's signature.
-    let fin_sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &keys[0].0,
-        keys[0].1.clone(),
-    );
+    let fin_sig = FinalitySignature::create(*block.hash(), block.era_id(), &keys[0].0);
     signatures.push(fin_sig.clone());
     // First signature with 40% weight brings the block to weak finality.
     acceptor
@@ -677,12 +672,7 @@ fn acceptor_should_store_block() {
     assert_eq!(should_store, ShouldStore::Nothing);
 
     // Create the third validator's signature.
-    let fin_sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &keys[2].0,
-        keys[2].1.clone(),
-    );
+    let fin_sig = FinalitySignature::create(*block.hash(), block.era_id(), &keys[2].0);
     // The third signature with weight 10% doesn't make the block go to
     // strict finality.
     signatures.push(fin_sig.clone());
@@ -695,12 +685,7 @@ fn acceptor_should_store_block() {
     // Create a bogus signature from a non-validator for this era.
     let non_validator_keys = generate_ed25519_keypair();
     let faulty_peer = NodeId::random(&mut rng);
-    let bogus_sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &non_validator_keys.0,
-        non_validator_keys.1.clone(),
-    );
+    let bogus_sig = FinalitySignature::create(*block.hash(), block.era_id(), &non_validator_keys.0);
     acceptor
         .register_finality_signature(bogus_sig, Some(faulty_peer), VALIDATOR_SLOTS)
         .unwrap();
@@ -711,12 +696,7 @@ fn acceptor_should_store_block() {
     assert_eq!(offenders[0].0, faulty_peer);
 
     // Create the second validator's signature.
-    let fin_sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &keys[1].0,
-        keys[1].1.clone(),
-    );
+    let fin_sig = FinalitySignature::create(*block.hash(), block.era_id(), &keys[1].0);
     signatures.push(fin_sig.clone());
     // Second signature with 40% weight brings the block to strict finality.
     acceptor
@@ -738,12 +718,7 @@ fn acceptor_should_store_block() {
     );
 
     // Create the fourth validator's signature.
-    let fin_sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &keys[3].0,
-        keys[3].1.clone(),
-    );
+    let fin_sig = FinalitySignature::create(*block.hash(), block.era_id(), &keys[3].0);
     // Already have sufficient finality signatures, so we're not supposed to
     // store anything else.
     acceptor
@@ -772,13 +747,13 @@ fn acceptor_should_correctly_bound_the_signatures() {
     let validator_slots = 2;
 
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     let first_peer = NodeId::random(&mut rng);
 
     // Fill the signatures map:
     for fin_sig in (0..validator_slots * 2)
-        .map(|_| FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into()))
+        .map(|_| FinalitySignature::random_for_block(*block.hash(), block.era_id(), &mut rng))
     {
         assert!(acceptor
             .register_finality_signature(fin_sig, Some(first_peer), validator_slots)
@@ -786,8 +761,7 @@ fn acceptor_should_correctly_bound_the_signatures() {
             .is_none());
     }
 
-    let fin_sig =
-        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+    let fin_sig = FinalitySignature::random_for_block(*block.hash(), block.era_id(), &mut rng);
     assert!(matches!(
         acceptor.register_finality_signature(fin_sig, Some(first_peer), validator_slots),
         Err(Error::TooManySignatures { .. }),
@@ -800,14 +774,14 @@ fn acceptor_signatures_bound_should_not_be_triggered_if_peers_are_different() {
     let validator_slots = 3;
 
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     let first_peer = NodeId::random(&mut rng);
     let second_peer = NodeId::random(&mut rng);
 
     // Fill the signatures map:
     for fin_sig in (0..validator_slots)
-        .map(|_| FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into()))
+        .map(|_| FinalitySignature::random_for_block(*block.hash(), block.era_id(), &mut rng))
     {
         assert!(acceptor
             .register_finality_signature(fin_sig, Some(first_peer), validator_slots)
@@ -816,8 +790,7 @@ fn acceptor_signatures_bound_should_not_be_triggered_if_peers_are_different() {
     }
 
     // This should pass, because it is another peer:
-    let fin_sig =
-        FinalitySignature::random_for_block(*block.hash(), block.header().era_id().into());
+    let fin_sig = FinalitySignature::random_for_block(*block.hash(), block.era_id(), &mut rng);
     assert!(acceptor
         .register_finality_signature(fin_sig, Some(second_peer), validator_slots)
         .unwrap()
@@ -876,8 +849,11 @@ fn accumulator_should_leap() {
 
     // Create an acceptor to change the highest usable block height.
     {
-        let block =
-            Block::random_with_specifics(&mut rng, era_id, 1, ProtocolVersion::V1_0_0, false, None);
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(1)
+            .switch_block(false)
+            .build(&mut rng);
 
         block_accumulator
             .block_acceptors
@@ -892,14 +868,11 @@ fn accumulator_should_leap() {
     let block_height = attempt_execution_threshold;
     // Insert an acceptor within execution range
     {
-        let block = Block::random_with_specifics(
-            &mut rng,
-            era_id,
-            block_height,
-            ProtocolVersion::V1_0_0,
-            false,
-            None,
-        );
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(block_height)
+            .switch_block(false)
+            .build(&mut rng);
 
         block_accumulator
             .block_acceptors
@@ -916,14 +889,11 @@ fn accumulator_should_leap() {
     let centurion = 100;
     // Insert an upgrade boundary
     {
-        let block = Block::random_with_specifics(
-            &mut rng,
-            era_id,
-            centurion,
-            ProtocolVersion::new(SemVer::new(1, 1, 0)),
-            true,
-            None,
-        );
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(centurion)
+            .switch_block(true)
+            .build(&mut rng);
 
         block_accumulator
             .block_acceptors
@@ -1004,12 +974,7 @@ fn block_acceptor(block: Block) -> BlockAcceptor {
     // One finality signature from our only validator for block 1.
     acceptor
         .register_finality_signature(
-            FinalitySignature::create(
-                *block.hash(),
-                block.header().era_id(),
-                &ALICE_SECRET_KEY,
-                ALICE_PUBLIC_KEY.clone(),
-            ),
+            FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY),
             None,
             VALIDATOR_SLOTS,
         )
@@ -1055,43 +1020,24 @@ fn accumulator_purge() {
     let peer_2 = NodeId::random(&mut rng);
 
     // One finality signature from our only validator for block 1.
-    let fin_sig_1 = FinalitySignature::create(
-        *block_1.hash(),
-        block_1.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_1 = FinalitySignature::create(*block_1.hash(), block_1.era_id(), &ALICE_SECRET_KEY);
     // One finality signature from our only validator for block 2.
-    let fin_sig_2 = FinalitySignature::create(
-        *block_2.hash(),
-        block_2.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_2 = FinalitySignature::create(*block_2.hash(), block_2.era_id(), &ALICE_SECRET_KEY);
     // One finality signature from our only validator for block 3.
-    let fin_sig_3 = FinalitySignature::create(
-        *block_3.hash(),
-        block_3.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_3 = FinalitySignature::create(*block_3.hash(), block_3.era_id(), &ALICE_SECRET_KEY);
 
     // Register the eras in the validator matrix so the blocks are valid.
     {
-        register_evw_for_era(&mut validator_matrix, block_1.header().era_id());
-        register_evw_for_era(&mut validator_matrix, block_2.header().era_id());
-        register_evw_for_era(&mut validator_matrix, block_3.header().era_id());
+        register_evw_for_era(&mut validator_matrix, block_1.era_id());
+        register_evw_for_era(&mut validator_matrix, block_2.era_id());
+        register_evw_for_era(&mut validator_matrix, block_3.era_id());
     }
 
     // We will manually call `upsert_acceptor` in order to have
     // `peer_block_timestamps` populated.
     {
         // Insert the first block with sufficient finality from the first peer.
-        block_accumulator.upsert_acceptor(
-            *block_1.hash(),
-            Some(block_1.header().era_id()),
-            Some(peer_1),
-        );
+        block_accumulator.upsert_acceptor(*block_1.hash(), Some(block_1.era_id()), Some(peer_1));
         let acceptor = block_accumulator
             .block_acceptors
             .get_mut(block_1.hash())
@@ -1108,11 +1054,7 @@ fn accumulator_purge() {
     {
         // Insert the second block with sufficient finality from the second
         // peer.
-        block_accumulator.upsert_acceptor(
-            *block_2.hash(),
-            Some(block_2.header().era_id()),
-            Some(peer_2),
-        );
+        block_accumulator.upsert_acceptor(*block_2.hash(), Some(block_2.era_id()), Some(peer_2));
         let acceptor = block_accumulator
             .block_acceptors
             .get_mut(block_2.hash())
@@ -1128,16 +1070,8 @@ fn accumulator_purge() {
 
     {
         // Insert the third block with sufficient finality from the third peer.
-        block_accumulator.upsert_acceptor(
-            *block_3.hash(),
-            Some(block_3.header().era_id()),
-            Some(peer_1),
-        );
-        block_accumulator.upsert_acceptor(
-            *block_3.hash(),
-            Some(block_3.header().era_id()),
-            Some(peer_2),
-        );
+        block_accumulator.upsert_acceptor(*block_3.hash(), Some(block_3.era_id()), Some(peer_1));
+        block_accumulator.upsert_acceptor(*block_3.hash(), Some(block_3.era_id()), Some(peer_2));
         let acceptor = block_accumulator
             .block_acceptors
             .get_mut(block_3.hash())
@@ -1234,26 +1168,26 @@ fn accumulator_purge() {
         .contains_key(&peer_2));
 
     // Create a block just in range of block 3 to not qualify for a purge.
-    let in_range_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.header().era_id(),
-        block_3.height() - block_accumulator.attempt_execution_threshold,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let in_range_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() - block_accumulator.attempt_execution_threshold)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
+
     let in_range_block_sig = FinalitySignature::create(
         *in_range_block.hash(),
-        in_range_block.header().era_id(),
+        in_range_block.era_id(),
         &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
     );
 
     {
         // Insert the in range block with sufficient finality.
         block_accumulator.upsert_acceptor(
             *in_range_block.hash(),
-            Some(in_range_block.header().era_id()),
+            Some(in_range_block.era_id()),
             Some(peer_1),
         );
         let acceptor = block_accumulator
@@ -1270,26 +1204,25 @@ fn accumulator_purge() {
     }
 
     // Create a block just out of range of block 3 to qualify for a purge.
-    let out_of_range_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.header().era_id(),
-        block_3.height() - block_accumulator.attempt_execution_threshold - 1,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let out_of_range_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() - block_accumulator.attempt_execution_threshold - 1)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
     let out_of_range_block_sig = FinalitySignature::create(
         *out_of_range_block.hash(),
-        out_of_range_block.header().era_id(),
+        out_of_range_block.era_id(),
         &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
     );
 
     {
         // Insert the out of range block with sufficient finality.
         block_accumulator.upsert_acceptor(
             *out_of_range_block.hash(),
-            Some(out_of_range_block.header().era_id()),
+            Some(out_of_range_block.era_id()),
             Some(peer_1),
         );
         let acceptor = block_accumulator
@@ -1311,10 +1244,8 @@ fn accumulator_purge() {
             .block_acceptors
             .contains_key(block_3.hash()));
         // Make block 3 the local tip.
-        block_accumulator.local_tip = Some(LocalTipIdentifier::new(
-            block_3.header().height(),
-            block_3.header().era_id(),
-        ));
+        block_accumulator.local_tip =
+            Some(LocalTipIdentifier::new(block_3.height(), block_3.era_id()));
         // Change the timestamps to old ones so that all blocks would normally
         // get purged.
         let last_progress = time_before_insertion.saturating_sub(purge_interval * 10);
@@ -1354,26 +1285,25 @@ fn accumulator_purge() {
     }
 
     // Create a future block after block 3.
-    let future_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.header().era_id(),
-        block_3.height() + block_accumulator.attempt_execution_threshold,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let future_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() + block_accumulator.attempt_execution_threshold)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
     let future_block_sig = FinalitySignature::create(
         *future_block.hash(),
-        future_block.header().era_id(),
+        future_block.era_id(),
         &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
     );
 
     {
         // Insert the future block with sufficient finality.
         block_accumulator.upsert_acceptor(
             *future_block.hash(),
-            Some(future_block.header().era_id()),
+            Some(future_block.era_id()),
             Some(peer_1),
         );
         let acceptor = block_accumulator
@@ -1391,26 +1321,25 @@ fn accumulator_purge() {
 
     // Create a future block after block 3, but which will not have strict
     // finality.
-    let future_unsigned_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.header().era_id(),
-        block_3.height() + block_accumulator.attempt_execution_threshold * 2,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let future_unsigned_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() + block_accumulator.attempt_execution_threshold * 2)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
     let future_unsigned_block_sig = FinalitySignature::create(
         *future_unsigned_block.hash(),
-        future_unsigned_block.header().era_id(),
+        future_unsigned_block.era_id(),
         &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
     );
 
     {
         // Insert the future unsigned block without sufficient finality.
         block_accumulator.upsert_acceptor(
             *future_unsigned_block.hash(),
-            Some(future_unsigned_block.header().era_id()),
+            Some(future_unsigned_block.era_id()),
             Some(peer_1),
         );
         let acceptor = block_accumulator
@@ -1428,10 +1357,8 @@ fn accumulator_purge() {
     // Make sure block with sufficient finality doesn't get purged.
     {
         // Make block 3 the local tip again.
-        block_accumulator.local_tip = Some(LocalTipIdentifier::new(
-            block_3.header().height(),
-            block_3.header().era_id(),
-        ));
+        block_accumulator.local_tip =
+            Some(LocalTipIdentifier::new(block_3.height(), block_3.era_id()));
         assert!(block_accumulator
             .block_acceptors
             .contains_key(future_block.hash()));
@@ -1484,20 +1411,18 @@ fn register_evw_for_era(validator_matrix: &mut ValidatorMatrix, era_id: EraId) {
 }
 
 fn generate_next_block(rng: &mut TestRng, block: &Block) -> Block {
-    let era_id = if block.header().is_switch_block() {
-        block.header().era_id().successor()
+    let era_id = if block.is_switch_block() {
+        block.era_id().successor()
     } else {
-        block.header().era_id()
+        block.era_id()
     };
-    Block::random_with_specifics(
-        rng,
-        era_id,
-        // Safe because generated heights can't get to `u64::MAX`.
-        block.header().height() + 1,
-        block.protocol_version(),
-        false,
-        None,
-    )
+
+    TestBlockBuilder::new()
+        .era(era_id)
+        .height(block.height() + 1)
+        .protocol_version(block.protocol_version())
+        .switch_block(false)
+        .build(rng)
 }
 
 fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
@@ -1505,25 +1430,20 @@ fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
 
-    Block::random_with_specifics(
-        rng,
-        EraId::from(era),
-        height,
-        ProtocolVersion::V1_0_0,
-        is_switch,
-        None,
-    )
+    TestBlockBuilder::new()
+        .era(era)
+        .height(height)
+        .switch_block(is_switch)
+        .build(rng)
 }
 
 fn generate_older_block(rng: &mut TestRng, block: &Block, height_difference: u64) -> Block {
-    Block::random_with_specifics(
-        rng,
-        block.header().era_id().predecessor().unwrap_or_default(),
-        block.header().height() - height_difference,
-        block.protocol_version(),
-        false,
-        None,
-    )
+    TestBlockBuilder::new()
+        .era(block.era_id().predecessor().unwrap_or_default())
+        .height(block.height() - height_difference)
+        .protocol_version(block.protocol_version())
+        .switch_block(false)
+        .build(rng)
 }
 
 #[tokio::test]
@@ -1549,25 +1469,15 @@ async fn block_accumulator_reactor_flow() {
     let peer_2 = NodeId::random(&mut rng);
 
     // One finality signature from our only validator for block 1.
-    let fin_sig_1 = FinalitySignature::create(
-        *block_1.hash(),
-        block_1.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_1 = FinalitySignature::create(*block_1.hash(), block_1.era_id(), &ALICE_SECRET_KEY);
     // One finality signature from our only validator for block 2.
-    let fin_sig_2 = FinalitySignature::create(
-        *block_2.hash(),
-        block_2.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_2 = FinalitySignature::create(*block_2.hash(), block_2.era_id(), &ALICE_SECRET_KEY);
 
     // Register the eras in the validator matrix so the blocks are valid.
     {
         let mut validator_matrix = runner.reactor_mut().validator_matrix.clone();
-        register_evw_for_era(&mut validator_matrix, block_1.header().era_id());
-        register_evw_for_era(&mut validator_matrix, block_2.header().era_id());
+        register_evw_for_era(&mut validator_matrix, block_1.era_id());
+        register_evw_for_era(&mut validator_matrix, block_2.era_id());
     }
 
     // Register a signature for block 1.
@@ -1618,7 +1528,7 @@ async fn block_accumulator_reactor_flow() {
             .get_finality_signatures_for_block(*block_1.hash());
         assert_eq!(
             expected_block_signatures
-                .and_then(|sigs| sigs.get_finality_signature(&fin_sig_1.public_key))
+                .and_then(|sigs| sigs.finality_signature(fin_sig_1.public_key()))
                 .unwrap(),
             fin_sig_1
         );
@@ -1670,7 +1580,7 @@ async fn block_accumulator_reactor_flow() {
             .get_finality_signatures_for_block(*block_2.hash());
         assert_eq!(
             expected_block_signatures
-                .and_then(|sigs| sigs.get_finality_signature(&fin_sig_2.public_key))
+                .and_then(|sigs| sigs.finality_signature(fin_sig_2.public_key()))
                 .unwrap(),
             fin_sig_2
         );
@@ -1772,8 +1682,7 @@ async fn block_accumulator_reactor_flow() {
         let reactor = runner.reactor_mut();
         let block_accumulator = &mut reactor.block_accumulator;
         // Local tip should now be block 1.
-        let expected_local_tip =
-            LocalTipIdentifier::new(block_1.header().height(), block_1.header().era_id());
+        let expected_local_tip = LocalTipIdentifier::new(block_1.height(), block_1.era_id());
         assert_eq!(block_accumulator.local_tip, Some(expected_local_tip));
 
         assert!(block_accumulator
@@ -1845,12 +1754,8 @@ async fn block_accumulator_reactor_flow() {
             .contains_key(older_block.hash()));
     }
 
-    let older_block_signature = FinalitySignature::create(
-        *older_block.hash(),
-        older_block.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let older_block_signature =
+        FinalitySignature::create(*older_block.hash(), older_block.era_id(), &ALICE_SECRET_KEY);
     // Register a signature for an older block.
     {
         let effect_builder = runner.effect_builder();
@@ -1872,19 +1777,16 @@ async fn block_accumulator_reactor_flow() {
             .contains_key(older_block.hash()));
     }
 
-    let old_era_block = Block::random_with_specifics(
-        &mut rng,
-        block_1.header().era_id() - RECENT_ERA_INTERVAL - 1,
-        1,
-        ProtocolVersion::V1_0_0,
-        false,
-        None,
-    );
+    let old_era_block = TestBlockBuilder::new()
+        .era(block_1.era_id() - RECENT_ERA_INTERVAL - 1)
+        .height(1)
+        .switch_block(false)
+        .build(&mut rng);
+
     let old_era_signature = FinalitySignature::create(
         *old_era_block.hash(),
-        old_era_block.header().era_id(),
+        old_era_block.era_id(),
         &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
     );
     // Register a signature for a block in an old era.
     {
@@ -1927,32 +1829,19 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
     let peer_1 = NodeId::random(&mut rng);
     let peer_2 = NodeId::random(&mut rng);
 
-    let fin_sig_bob = FinalitySignature::create(
-        *block_1.hash(),
-        block_1.header().era_id(),
-        &BOB_SECRET_KEY,
-        BOB_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_bob = FinalitySignature::create(*block_1.hash(), block_1.era_id(), &BOB_SECRET_KEY);
 
-    let fin_sig_carol = FinalitySignature::create(
-        *block_1.hash(),
-        block_1.header().era_id(),
-        &CAROL_SECRET_KEY,
-        CAROL_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_carol =
+        FinalitySignature::create(*block_1.hash(), block_1.era_id(), &CAROL_SECRET_KEY);
 
-    let fin_sig_alice = FinalitySignature::create(
-        *block_1.hash(),
-        block_1.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let fin_sig_alice =
+        FinalitySignature::create(*block_1.hash(), block_1.era_id(), &ALICE_SECRET_KEY);
 
     // Register the era in the validator matrix so the block is valid.
     {
         let mut validator_matrix = runner.reactor_mut().validator_matrix.clone();
         let weights = EraValidatorWeights::new(
-            block_1.header().era_id(),
+            block_1.era_id(),
             BTreeMap::from([
                 (ALICE_PUBLIC_KEY.clone(), 10.into()), /* Less weight so that the sig from Alice
                                                         * would not have sufficient finality */
@@ -2027,7 +1916,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
             .get_finality_signatures_for_block(*block_1.hash());
         assert_eq!(
             expected_block_signatures
-                .and_then(|sigs| sigs.get_finality_signature(&fin_sig_alice.public_key))
+                .and_then(|sigs| sigs.finality_signature(fin_sig_alice.public_key()))
                 .unwrap(),
             fin_sig_alice
         );

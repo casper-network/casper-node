@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     genesis::ExecConfig, run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{

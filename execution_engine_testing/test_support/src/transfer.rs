@@ -1,4 +1,4 @@
-use casper_execution_engine::core::engine_state::ExecuteRequest;
+use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
 
 use crate::{

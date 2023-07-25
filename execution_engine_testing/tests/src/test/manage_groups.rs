@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     addressable_entity::{self, MAX_GROUPS},
     package::CONTRACT_INITIAL_VERSION,

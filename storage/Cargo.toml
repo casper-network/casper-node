@@ -2,7 +2,7 @@
 name = "casper-storage"
 version = "1.4.3"
 edition = "2018"
-description = "A library providing global state functionality."
+description = "Storage for a node on the Casper network."
 readme = "README.md"
 documentation = "https://docs.rs/casper-storage"
 homepage = "https://casperlabs.io"
@@ -30,3 +30,7 @@ anyhow = "1.0.33"
 proptest = "1.0.0"
 rand = "0.8.3"
 serde_json = "1"
+
+[package.metadata.docs.rs]
+all-features = true
+rustc-args = ["--cfg", "docsrs"]

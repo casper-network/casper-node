@@ -3,19 +3,21 @@ use std::{collections::BTreeMap, thread, time::Duration};
 use casper_types::testing::TestRng;
 use num_rational::Ratio;
 
-use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
+use crate::{
+    components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
+    types::TestBlockBuilder,
+};
 
 use super::*;
 
 #[test]
 fn handle_acceptance() {
     let mut rng = TestRng::new();
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
+        *block.hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -94,12 +96,11 @@ fn handle_acceptance() {
 #[test]
 fn register_era_validator_weights() {
     let mut rng = TestRng::new();
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
+        *block.hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -124,10 +125,10 @@ fn register_era_validator_weights() {
     assert!(builder.validator_weights.is_none());
     assert_eq!(latest_timestamp, builder.last_progress);
     // Set the era of the builder to the random block's era.
-    builder.era_id = Some(block.header().era_id());
+    builder.era_id = Some(block.era_id());
     // Add weights for that era to the validator matrix.
     let weights = EraValidatorWeights::new(
-        block.header().era_id(),
+        block.era_id(),
         BTreeMap::from([(ALICE_PUBLIC_KEY.clone(), 100.into())]),
         Ratio::new(1, 3),
     );
@@ -143,13 +144,12 @@ fn register_era_validator_weights() {
 fn register_finalized_block() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
+        *block.hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -157,7 +157,7 @@ fn register_finalized_block() {
     let mut latest_timestamp = builder.last_progress;
     // Create mock era weights for the block's era.
     let weights = EraValidatorWeights::new(
-        block.header().era_id(),
+        block.era_id(),
         BTreeMap::from([(ALICE_PUBLIC_KEY.clone(), 100.into())]),
         Ratio::new(1, 3),
     );
@@ -166,12 +166,7 @@ fn register_finalized_block() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
     assert_eq!(
         signature_acquisition.apply_signature(sig, &weights),
         Acceptance::NeededIt
@@ -217,13 +212,12 @@ fn register_finalized_block() {
 fn register_block_execution() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
+        *block.hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -231,7 +225,7 @@ fn register_block_execution() {
     let mut latest_timestamp = builder.last_progress;
     // Create mock era weights for the block's era.
     let weights = EraValidatorWeights::new(
-        block.header().era_id(),
+        block.era_id(),
         BTreeMap::from([(ALICE_PUBLIC_KEY.clone(), 100.into())]),
         Ratio::new(1, 3),
     );
@@ -240,12 +234,7 @@ fn register_block_execution() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
     assert_eq!(
         signature_acquisition.apply_signature(sig, &weights),
         Acceptance::NeededIt
@@ -300,13 +289,12 @@ fn register_block_execution() {
 fn register_block_executed() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
+        *block.hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -314,7 +302,7 @@ fn register_block_executed() {
     let mut latest_timestamp = builder.last_progress;
     // Create mock era weights for the block's era.
     let weights = EraValidatorWeights::new(
-        block.header().era_id(),
+        block.era_id(),
         BTreeMap::from([(ALICE_PUBLIC_KEY.clone(), 100.into())]),
         Ratio::new(1, 3),
     );
@@ -323,12 +311,7 @@ fn register_block_executed() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
     assert_eq!(
         signature_acquisition.apply_signature(sig, &weights),
         Acceptance::NeededIt
@@ -369,13 +352,12 @@ fn register_block_executed() {
 fn register_block_marked_complete() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
-        block.header().block_hash(),
+        *block.hash(),
         false,
         1,
-        TimeDiff::from_seconds(1),
         TimeDiff::from_seconds(1),
         LegacyRequiredFinality::Strict,
         ProtocolVersion::V1_0_0,
@@ -385,7 +367,7 @@ fn register_block_marked_complete() {
     let mut latest_timestamp = builder.last_progress;
     // Create mock era weights for the block's era.
     let weights = EraValidatorWeights::new(
-        block.header().era_id(),
+        block.era_id(),
         BTreeMap::from([(ALICE_PUBLIC_KEY.clone(), 100.into())]),
         Ratio::new(1, 3),
     );
@@ -394,12 +376,7 @@ fn register_block_marked_complete() {
         vec![ALICE_PUBLIC_KEY.clone()],
         LegacyRequiredFinality::Strict,
     );
-    let sig = FinalitySignature::create(
-        *block.hash(),
-        block.header().era_id(),
-        &ALICE_SECRET_KEY,
-        ALICE_PUBLIC_KEY.clone(),
-    );
+    let sig = FinalitySignature::create(*block.hash(), block.era_id(), &ALICE_SECRET_KEY);
     assert_eq!(
         signature_acquisition.apply_signature(sig, &weights),
         Acceptance::NeededIt

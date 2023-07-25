@@ -8,17 +8,12 @@ use std::{
 
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
-
 use tracing::{debug, error};
 
-use casper_types::{
-    bytesrepr::{self},
-    ChunkWithProof, DeployHash, Digest, ExecutionResult,
-};
+use casper_types::{bytesrepr, BlockHash, ChunkWithProof, DeployHash, Digest, ExecutionResult};
 
-use crate::types::{
-    BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, ValueOrChunk,
-};
+use super::block_acquisition::Acceptance;
+use crate::types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, ValueOrChunk};
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug, Serialize, Deserialize)]
 pub(crate) enum ExecutionResultsChecksum {
@@ -29,7 +24,7 @@ pub(crate) enum ExecutionResultsChecksum {
 }
 
 impl Display for ExecutionResultsChecksum {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Uncheckable => write!(f, "uncheckable execution results"),
             Self::Checkable(digest) => write!(f, "execution results checksum {}", digest),
@@ -83,6 +78,9 @@ pub(crate) enum Error {
         block_hash: BlockHash,
         expected: usize,
         actual: usize,
+    },
+    InvalidOutcomeFromApplyingChunk {
+        block_hash: BlockHash,
     },
 }
 
@@ -172,6 +170,11 @@ impl Display for Error {
                 f,
                 "chunks with different checksum for block_hash: {}; expected {} actual: {}",
                 block_hash, expected, actual
+            ),
+            Error::InvalidOutcomeFromApplyingChunk { block_hash } => write!(
+                f,
+                "cannot have already had chunk if in pending mode for block hash: {}",
+                block_hash
             ),
         }
     }
@@ -275,7 +278,7 @@ impl ExecutionResultsAcquisition {
         self,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
         deploy_hashes: Vec<DeployHash>,
-    ) -> Result<Self, Error> {
+    ) -> Result<(Self, Acceptance), Error> {
         let block_hash = *block_execution_results_or_chunk.block_hash();
         let value = block_execution_results_or_chunk.into_value();
 
@@ -313,18 +316,24 @@ impl ExecutionResultsAcquisition {
             ) => {
                 debug!("apply_block_execution_results_or_chunk: (Pending, ChunkWithProof)");
                 match apply_chunk(block_hash, checksum, HashMap::new(), chunk, None) {
+                    Ok(ApplyChunkOutcome::HadIt { .. }) => {
+                        error!("cannot have already had chunk if in pending mode");
+                        return Err(Error::InvalidOutcomeFromApplyingChunk { block_hash });
+                    }
                     Ok(ApplyChunkOutcome::NeedNext {
                         chunks,
                         chunk_count,
                         next,
                     }) => {
-                        return Ok(ExecutionResultsAcquisition::Acquiring {
+                        let acquisition = ExecutionResultsAcquisition::Acquiring {
                             block_hash,
                             checksum,
                             chunks,
                             chunk_count,
                             next,
-                        });
+                        };
+                        let acceptance = Acceptance::NeededIt;
+                        return Ok((acquisition, acceptance));
                     }
                     Ok(ApplyChunkOutcome::Complete { execution_results }) => {
                         (checksum, execution_results)
@@ -339,24 +348,38 @@ impl ExecutionResultsAcquisition {
                     checksum,
                     chunks,
                     chunk_count,
+                    next,
                     ..
                 },
                 ValueOrChunk::ChunkWithProof(chunk),
             ) => {
                 debug!("apply_block_execution_results_or_chunk: (Acquiring, ChunkWithProof)");
                 match apply_chunk(block_hash, checksum, chunks, chunk, Some(chunk_count)) {
-                    Ok(ApplyChunkOutcome::NeedNext {
-                        chunks,
-                        chunk_count,
-                        next,
-                    }) => {
-                        return Ok(ExecutionResultsAcquisition::Acquiring {
+                    Ok(ApplyChunkOutcome::HadIt { chunks }) => {
+                        let acquisition = ExecutionResultsAcquisition::Acquiring {
                             block_hash,
                             checksum,
                             chunks,
                             chunk_count,
                             next,
-                        });
+                        };
+                        let acceptance = Acceptance::HadIt;
+                        return Ok((acquisition, acceptance));
+                    }
+                    Ok(ApplyChunkOutcome::NeedNext {
+                        chunks,
+                        chunk_count,
+                        next,
+                    }) => {
+                        let acquisition = ExecutionResultsAcquisition::Acquiring {
+                            block_hash,
+                            checksum,
+                            chunks,
+                            chunk_count,
+                            next,
+                        };
+                        let acceptance = Acceptance::NeededIt;
+                        return Ok((acquisition, acceptance));
                     }
                     Ok(ApplyChunkOutcome::Complete { execution_results }) => {
                         (checksum, execution_results)
@@ -392,11 +415,13 @@ impl ExecutionResultsAcquisition {
             %block_hash,
             "apply_block_execution_results_or_chunk: returning ExecutionResultsAcquisition::Complete"
         );
-        Ok(ExecutionResultsAcquisition::Complete {
+        let acceptance = Acceptance::NeededIt;
+        let acquisition = ExecutionResultsAcquisition::Complete {
             block_hash,
             results,
             checksum,
-        })
+        };
+        Ok((acquisition, acceptance))
     }
 
     pub(super) fn is_checkable(&self) -> bool {
@@ -420,6 +445,9 @@ impl ExecutionResultsAcquisition {
 
 #[derive(Debug)]
 enum ApplyChunkOutcome {
+    HadIt {
+        chunks: HashMap<u64, ChunkWithProof>,
+    },
     NeedNext {
         chunks: HashMap<u64, ChunkWithProof>,
         chunk_count: u64,
@@ -438,6 +466,7 @@ impl ApplyChunkOutcome {
             next,
         }
     }
+
     fn execution_results(execution_results: Vec<ExecutionResult>) -> Self {
         ApplyChunkOutcome::Complete { execution_results }
     }
@@ -490,7 +519,11 @@ fn apply_chunk(
             });
         }
     }
-    let _ = chunks.insert(index, chunk);
+
+    if chunks.insert(index, chunk).is_some() {
+        debug!(%block_hash, index, "apply_chunk: already had it");
+        return Ok(ApplyChunkOutcome::HadIt { chunks });
+    };
 
     match (0..chunk_count).find(|idx| !chunks.contains_key(idx)) {
         Some(next) => Ok(ApplyChunkOutcome::need_next(chunks, chunk_count, next)),

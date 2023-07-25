@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use casper_types::{
-    ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionResult, ProtocolVersion, PublicKey,
+    BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionResult,
+    JsonBlock, ProtocolVersion, PublicKey,
 };
 
 use super::{
@@ -23,7 +24,7 @@ use crate::{
     components::consensus::ValidatorChange,
     effect::EffectBuilder,
     reactor::QueueKind,
-    types::{Block, BlockHash, BlockHashAndHeight, DeployMetadataExt, GetStatusResult, PeersMap},
+    types::{DeployMetadataExt, GetStatusResult, PeersMap},
 };
 
 static GET_DEPLOY_PARAMS: Lazy<GetDeployParams> = Lazy::new(|| GetDeployParams {
@@ -34,7 +35,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonExecutionResult {
-        block_hash: *Block::doc_example().hash(),
+        block_hash: JsonBlock::doc_example().hash,
         result: ExecutionResult::example().clone(),
     }],
     block_hash_and_height: None,
@@ -45,7 +46,7 @@ static GET_PEERS_RESULT: Lazy<GetPeersResult> = Lazy::new(|| GetPeersResult {
 });
 static GET_VALIDATOR_CHANGES_RESULT: Lazy<GetValidatorChangesResult> = Lazy::new(|| {
     let change = JsonValidatorStatusChange::new(EraId::new(1), ValidatorChange::Added);
-    let public_key = PublicKey::doc_example().clone();
+    let public_key = PublicKey::example().clone();
     let changes = vec![JsonValidatorChanges::new(public_key, vec![change])];
     GetValidatorChangesResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,

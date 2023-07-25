@@ -1,13 +1,15 @@
+use prometheus::Registry;
+use rand::Rng;
+
+use casper_types::{testing::TestRng, EraId, TimeDiff};
+
 use super::*;
 use crate::{
     effect::announcements::DeployBufferAnnouncement::{self, DeploysExpired},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{Block, FinalizedBlock},
+    types::{FinalizedBlock, TestBlockBuilder},
     utils,
 };
-use casper_types::{testing::TestRng, EraId, TimeDiff};
-use prometheus::Registry;
-use rand::Rng;
 
 enum DeployType {
     Transfer,
@@ -149,7 +151,15 @@ fn register_block_with_valid_deploys() {
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let block = Block::random_with_deploys(&mut rng, deploys.iter());
+    let era_id = EraId::new(rng.gen_range(0..6));
+    let height = era_id.value() * 10 + rng.gen_range(0..10);
+    let is_switch = rng.gen_bool(0.1);
+    let block = TestBlockBuilder::new()
+        .era(era_id)
+        .height(height)
+        .switch_block(is_switch)
+        .deploys(deploys.iter())
+        .build(&mut rng);
 
     deploy_buffer.register_block(&block);
     assert_container_sizes(&deploy_buffer, deploys.len(), deploys.len(), 0);
@@ -162,7 +172,7 @@ fn register_finalized_block_with_valid_deploys() {
         DeployBuffer::new(DeployConfig::default(), Config::default(), &Registry::new()).unwrap();
 
     let deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let block = FinalizedBlock::random_with_deploys(&mut rng, deploys.iter());
+    let block = FinalizedBlock::random(&mut rng, deploys.iter());
 
     deploy_buffer.register_block_finalized(&block);
     assert_container_sizes(&deploy_buffer, deploys.len(), deploys.len(), 0);
@@ -183,7 +193,7 @@ fn get_proposable_deploys() {
 
     // Create a block with some deploys and register it with the deploy_buffer
     let block_deploys = create_valid_deploys(&mut rng, 10, DeployType::Random, None, None);
-    let block = FinalizedBlock::random_with_deploys(&mut rng, block_deploys.iter());
+    let block = FinalizedBlock::random(&mut rng, block_deploys.iter());
     deploy_buffer.register_block_finalized(&block);
     assert_container_sizes(
         &deploy_buffer,
@@ -324,7 +334,17 @@ fn register_deploys_and_blocks() {
 
     // register a block with deploys
     let block_deploys = create_valid_deploys(&mut rng, 5, DeployType::Random, None, None);
-    let block = Block::random_with_deploys(&mut rng, block_deploys.iter());
+    let era = rng.gen_range(0..6);
+    let height = era * 10 + rng.gen_range(0..10);
+    let is_switch = rng.gen_bool(0.1);
+
+    let block = TestBlockBuilder::new()
+        .era(era)
+        .height(height)
+        .switch_block(is_switch)
+        .deploys(block_deploys.iter())
+        .build(&mut rng);
+
     deploy_buffer.register_block(&block);
     assert_container_sizes(
         &deploy_buffer,
@@ -470,7 +490,13 @@ async fn expire_deploys_and_check_announcement() {
     assert_container_sizes(&deploy_buffer, expired_deploys.len(), 0, 0);
 
     // include the last expired deploy in a block and register it
-    let block = Block::random_with_deploys(&mut rng, expired_deploys.last());
+    let era = rng.gen_range(0..6);
+    let block = TestBlockBuilder::new()
+        .era(era)
+        .height(era * 10 + rng.gen_range(0..10))
+        .deploys(expired_deploys.last())
+        .build(&mut rng);
+
     deploy_buffer.register_block(&block);
     assert_container_sizes(&deploy_buffer, expired_deploys.len(), 1, 0);
 
