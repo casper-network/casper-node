@@ -845,7 +845,7 @@ fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
 ///
 /// Panics in debug mode if the given payload length is larger than `u32::MAX`.
 #[inline]
-pub fn payload_is_multi_frame(max_frame_size: u32, payload_len: usize) -> bool {
+pub const fn payload_is_multi_frame(max_frame_size: u32, payload_len: usize) -> bool {
     debug_assert!(
         payload_len <= u32::MAX as usize,
         "payload cannot exceed `u32::MAX`"

@@ -38,13 +38,13 @@ impl OutgoingMessage {
     // Note: Do not make this function available to users of the library, to avoid them constructing
     //       messages by accident that may violate the protocol.
     #[inline(always)]
-    pub(super) fn new(header: Header, payload: Option<Bytes>) -> Self {
+    pub(super) const fn new(header: Header, payload: Option<Bytes>) -> Self {
         Self { header, payload }
     }
 
     /// Returns whether or not a message will span multiple frames.
     #[inline(always)]
-    pub fn is_multi_frame(&self, max_frame_size: u32) -> bool {
+    pub const fn is_multi_frame(&self, max_frame_size: u32) -> bool {
         if let Some(ref payload) = self.payload {
             payload_is_multi_frame(max_frame_size, payload.len())
         } else {
@@ -54,7 +54,7 @@ impl OutgoingMessage {
 
     /// Creates an iterator over all frames in the message.
     #[inline(always)]
-    pub fn frames(self) -> FrameIter {
+    pub const fn frames(self) -> FrameIter {
         FrameIter {
             msg: self,
             bytes_processed: 0,
@@ -63,31 +63,36 @@ impl OutgoingMessage {
 
     /// Returns the outgoing message's header.
     #[inline(always)]
-    pub fn header(&self) -> Header {
+    pub const fn header(&self) -> Header {
         self.header
     }
 
     /// Calculates the total number of bytes that are not header data that will be transmitted with
     /// this message (the payload + its variable length encoded length prefix).
     #[inline]
-    fn non_header_len(&self) -> usize {
+    const fn non_header_len(&self) -> usize {
         match self.payload {
-            Some(ref pl) => Varint32::length_of(pl.remaining() as u32) + pl.remaining(),
+            Some(ref pl) => Varint32::length_of(pl.len() as u32) + pl.len(),
             None => 0,
         }
     }
 
     /// Calculates the number of frames this message will produce.
     #[inline]
-    fn num_frames(&self, max_frame_size: u32) -> usize {
+    const fn num_frames(&self, max_frame_size: u32) -> usize {
         let usable_size = max_frame_size as usize - Header::SIZE;
 
-        1.max((self.non_header_len() + usable_size - 1) / usable_size)
+        let num_frames = (self.non_header_len() + usable_size - 1) / usable_size;
+        if num_frames == 0 {
+            1 // `Ord::max` is not `const fn`.
+        } else {
+            num_frames
+        }
     }
 
     /// Calculates the total length in bytes of all frames produced by this message.
     #[inline]
-    fn total_len(&self, max_frame_size: u32) -> usize {
+    const fn total_len(&self, max_frame_size: u32) -> usize {
         self.num_frames(max_frame_size) * Header::SIZE + self.non_header_len()
     }
 
@@ -158,7 +163,7 @@ impl Preamble {
     ///
     /// Passing [`Varint32::SENTINEL`] as the length will cause it to be omitted.
     #[inline(always)]
-    fn new(header: Header, payload_length: Varint32) -> Self {
+    const fn new(header: Header, payload_length: Varint32) -> Self {
         Self {
             header,
             payload_length,
@@ -167,12 +172,12 @@ impl Preamble {
 
     /// Returns the length of the preamble when encoded as as a bytestring.
     #[inline(always)]
-    fn len(self) -> usize {
+    const fn len(self) -> usize {
         Header::SIZE + self.payload_length.len()
     }
 
     #[inline(always)]
-    fn header(self) -> Header {
+    const fn header(self) -> Header {
         self.header
     }
 }
@@ -269,7 +274,7 @@ pub struct ByteIter {
 impl ByteIter {
     /// Returns the total number of bytes to be emitted by this [`ByteIter`].
     #[inline(always)]
-    fn total(&self) -> usize {
+    const fn total(&self) -> usize {
         self.msg.total_len(self.max_frame_size)
     }
 }
