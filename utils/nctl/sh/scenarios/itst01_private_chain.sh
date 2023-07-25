@@ -17,28 +17,32 @@ function main() {
     log "Starting Scenario: itst01"
     log "------------------------------------------------------------"
 
-    log "Node to be stopped: $NODE_ID"
+    local NODE_SHUTDOWN_ID
 
     # 0. Wait for network start up
     do_await_genesis_era_to_complete
+
+    NODE_SHUTDOWN_ID=$(get_node_for_dispatch)
+    log "Node to be stopped: $NODE_SHUTDOWN_ID"
+
     # 1. Allow chain to progress
     do_await_era_change
     # 2. Stop random node
-    do_stop_node "$NODE_ID"
+    do_stop_node "$NODE_SHUTDOWN_ID"
     # 3. Allow chain to progress
     do_await_era_change
     # 4. Get another random running node to compare
     do_get_another_node
     do_read_lfb_hash "$COMPARE_NODE_ID"
     # 5. Restart node from LFB
-    do_start_node "$NODE_ID" "$LFB_HASH"
+    do_start_node "$NODE_SHUTDOWN_ID" "$LFB_HASH"
     # 6-8. Check sync of restarted node,
     # wait 1 era, and then check they are still in sync.
     # This way we can verify that the node is up-to-date with the protocol state
     # after transitioning to an active validator.
-    check_network_sync
+    parallel_check_network_sync 1 5
     do_await_era_change
-    check_network_sync
+    parallel_check_network_sync 1 5
     # 9. Run Closing Health Checks
     # ... restarts=1: due to node being stopped and started
     source "$NCTL"/sh/scenarios/common/health_checks.sh \
@@ -65,7 +69,6 @@ function do_get_another_node() {
 
 unset SYNC_TIMEOUT_SEC
 unset LFB_HASH
-unset NODE_ID
 STEP=0
 
 for ARGUMENT in "$@"; do
@@ -77,7 +80,6 @@ for ARGUMENT in "$@"; do
     esac
 done
 
-NODE_ID=$(get_node_for_dispatch)
 SYNC_TIMEOUT_SEC=${SYNC_TIMEOUT_SEC:-"300"}
 
-main "$NODE_ID"
+main
