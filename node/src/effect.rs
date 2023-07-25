@@ -120,10 +120,10 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash,
-    BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, Package, Deploy, DeployHash,
-    DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult, FinalitySignature,
-    FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512, AddressableEntity, Key, StoredValue,
+    bytesrepr::Bytes, system::auction::EraValidators, AddressableEntity, Block, BlockHash,
+    BlockHeader, BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId,
+    Digest, EraId, ExecutionEffect, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
+    Package, PublicKey, StoredValue, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{

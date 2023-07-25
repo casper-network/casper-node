@@ -689,7 +689,7 @@ where
     ) -> Result<(AddressableEntity, ContractHash), Error> {
         let entity_record = match tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(correlation_id, protocol_version, account_hash)
+            .get_addressable_entity_by_account_hash(protocol_version, account_hash)
         {
             Ok(entity) => entity,
             Err(_) => return Err(Error::MissingContractByAccountHash(account_hash)),
@@ -697,7 +697,7 @@ where
 
         let entity_hash: ContractHash = match tracking_copy
             .borrow_mut()
-            .get_entity_hash_by_account_hash(correlation_id, account_hash)
+            .get_entity_hash_by_account_hash(account_hash)
         {
             Ok(contract_hash) => contract_hash,
             Err(error) => {
@@ -720,14 +720,13 @@ where
 
     fn migrate_account(
         &self,
-        correlation_id: CorrelationId,
         account_hash: AccountHash,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<(), Error> {
         let maybe_stored_value = tracking_copy
             .borrow_mut()
-            .read(correlation_id, &Key::Account(account_hash))
+            .read(&Key::Account(account_hash))
             .map_err(Into::into)?;
 
         match maybe_stored_value {
@@ -820,13 +819,13 @@ where
     /// Return the package kind.
     pub fn get_entity_package_kind(
         &self,
-        correlation_id: CorrelationId,
+
         entity_package_address: ContractPackageHash,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<ContractPackageKind, Error> {
         let entity_package = match tracking_copy
             .borrow_mut()
-            .read(correlation_id, &entity_package_address.into())
+            .read(&entity_package_address.into())
             .map_err(Into::into)?
         {
             Some(StoredValue::ContractPackage(entity_package)) => entity_package,
@@ -872,16 +871,13 @@ where
         let authorization_keys = deploy_item.authorization_keys;
 
         // Migrate the legacy account structure if necessary.
-        if let Err(e) = self.migrate_account(
-            account_hash,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-        ) {
+        if let Err(e) =
+            self.migrate_account(account_hash, protocol_version, Rc::clone(&tracking_copy))
+        {
             return Ok(ExecutionResult::precondition_failure(e));
         }
 
         let (entity, _contract_hash) = match self.get_authorized_addressable_entity(
-            correlation_id,
             account_hash,
             protocol_version,
             &authorization_keys,
@@ -891,11 +887,9 @@ where
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
 
-        let package_kind = match self.get_entity_package_kind(
-            correlation_id,
-            entity.contract_package_hash(),
-            Rc::clone(&tracking_copy),
-        ) {
+        let package_kind = match self
+            .get_entity_package_kind(entity.contract_package_hash(), Rc::clone(&tracking_copy))
+        {
             Ok(package_kind) => package_kind,
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
@@ -904,7 +898,7 @@ where
 
         let proposer_contract = match tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(correlation_id, protocol_version, proposer_addr)
+            .get_addressable_entity_by_account_hash(protocol_version, proposer_addr)
         {
             Ok(contract) => contract,
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
@@ -1009,11 +1003,8 @@ where
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
 
-        match runtime_args_builder.transfer_target_mode(
-            correlation_id,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-        ) {
+        match runtime_args_builder.transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))
+        {
             Ok(mode) => match mode {
                 TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
                 TransferTargetMode::CreateAccount(public_key) => {
@@ -1117,7 +1108,6 @@ where
 
         let transfer_args = match runtime_args_builder.build(
             &entity,
-            correlation_id,
             protocol_version,
             Rc::clone(&tracking_copy),
         ) {
@@ -1354,7 +1344,6 @@ where
                 tracking_copy
                     .borrow_mut()
                     .get_addressable_entity_by_account_hash(
-                        correlation_id,
                         protocol_version,
                         PublicKey::System.to_account_hash(),
                     )?
@@ -1458,12 +1447,9 @@ where
         let authorization_keys = deploy_item.authorization_keys;
         let account_hash = deploy_item.address;
 
-        if let Err(error) = self.migrate_account(
-            correlation_id,
-            account_hash,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-        ) {
+        if let Err(error) =
+            self.migrate_account(account_hash, protocol_version, Rc::clone(&tracking_copy))
+        {
             return Ok(ExecutionResult::precondition_failure(error));
         }
 
@@ -1482,14 +1468,11 @@ where
         };
 
         let package_address = entity.contract_package_hash();
-        let package_kind = match self.get_entity_package_kind(
-            correlation_id,
-            package_address,
-            Rc::clone(&tracking_copy),
-        ) {
-            Ok(package_kind) => package_kind,
-            Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
-        };
+        let package_kind =
+            match self.get_entity_package_kind(package_address, Rc::clone(&tracking_copy)) {
+                Ok(package_kind) => package_kind,
+                Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
+            };
 
         let payment = deploy_item.payment;
         let session = deploy_item.session;
@@ -1533,7 +1516,7 @@ where
         // transfer validation_spec_5: account main purse minimum balance
         let account_main_purse_balance: Motes = match tracking_copy
             .borrow_mut()
-            .get_purse_balance(correlation_id, entity_main_purse_key)
+            .get_purse_balance(entity_main_purse_key)
         {
             Ok(balance) => balance,
             Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
@@ -1554,7 +1537,6 @@ where
         let system_addressable_entity = tracking_copy
             .borrow_mut()
             .read_addressable_entity_by_account_hash(
-                correlation_id,
                 protocol_version,
                 PublicKey::System.to_account_hash(),
             )?;
@@ -1650,7 +1632,6 @@ where
             let proposer_contract = match tracking_copy
                 .borrow_mut()
                 .get_addressable_entity_by_account_hash(
-                    correlation_id,
                     protocol_version,
                     AccountHash::from(&proposer),
                 ) {
@@ -2151,11 +2132,7 @@ where
 
         let virtual_system_contract_by_account = tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(
-                correlation_id,
-                protocol_version,
-                system_account_addr,
-            )?;
+            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2224,11 +2201,7 @@ where
 
         let system_addressable_entity = tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(
-                correlation_id,
-                protocol_version,
-                system_account_addr,
-            )?;
+            .get_addressable_entity_by_account_hash(protocol_version, system_account_addr)?;
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
@@ -2351,15 +2324,15 @@ where
 
         let account_addr = public_key.to_account_hash();
 
-        let contract_hash = match tracking_copy.borrow_mut().get_entity_hash_by_account_hash(account_addr) {
+        let contract_hash = match tracking_copy
+            .borrow_mut()
+            .get_entity_hash_by_account_hash(account_addr)
+        {
             Ok(account) => account,
             Err(error) => return Err(error.into()),
         };
 
-        let account = match tracking_copy
-            .borrow_mut()
-            .get_contract(correlation_id, contract_hash)
-        {
+        let account = match tracking_copy.borrow_mut().get_contract(contract_hash) {
             Ok(contract) => contract,
             Err(error) => return Err(error.into()),
         };

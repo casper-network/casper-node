@@ -4,7 +4,8 @@ use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
 use casper_types::{
-    bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, ProtocolVersion,
+    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest,
+    ProtocolVersion,
 };
 
 use crate::{
@@ -12,9 +13,6 @@ use crate::{
     execution,
     runtime::{stack, PreprocessingError},
 };
-
-use casper_storage::global_state::storage::{self, lmdb, state::CommitError};
-use casper_types::account::AccountHash;
 
 /// Engine state errors.
 #[derive(Clone, Error, Debug)]

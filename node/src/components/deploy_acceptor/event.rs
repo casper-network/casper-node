@@ -6,9 +6,8 @@ use std::{
 use serde::Serialize;
 
 use casper_types::{
-    account::{Account, AccountHash},
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion, Deploy,
-    Timestamp, U512, AddressableEntity, Package, StoredValue, BlockHeader,
+    account::AccountHash, AddressableEntity, BlockHeader, ContractHash, ContractPackageHash,
+    ContractVersion, Deploy, Package, StoredValue, Timestamp, U512,
 };
 
 use super::Source;

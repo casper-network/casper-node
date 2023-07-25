@@ -14,12 +14,11 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{
-    account::{Account, AccountHash},
-    system::auction::ARG_AMOUNT,
-    BlockHash, BlockHeader, Chainspec, Contract, ContractHash, ContractIdentifier, AddressableEntity, CLValue,
-    ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy,
-    DeployConfig, DeployConfigurationFailure, Digest, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, Key, ProtocolVersion, Timestamp, U512, StoredValue,  Package,
+    account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, BlockHash, BlockHeader,
+    CLValue, Chainspec, ContractHash, ContractIdentifier, ContractPackageHash,
+    ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy, DeployConfig,
+    DeployConfigurationFailure, Digest, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key,
+    Package, ProtocolVersion, StoredValue, Timestamp, U512,
 };
 
 use crate::{

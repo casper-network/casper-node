@@ -22,7 +22,8 @@ use super::{
 use crate::{
     engine_state::{EngineConfig, ExecutionJournal},
     runtime_context::dictionary,
-    tracking_copy::{self, ValidationError}, ACCOUNT_WASM_ADDR,
+    tracking_copy::{self, ValidationError},
+    ACCOUNT_WASM_ADDR,
 };
 
 struct CountingDb {

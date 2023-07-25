@@ -47,17 +47,14 @@ use casper_types::{
 };
 
 use crate::{
-    core::{
-        execution::{self, Error},
-        runtime::host_function_flag::HostFunctionFlag,
-        runtime_context::{self, RuntimeContext},
-        tracking_copy::TrackingCopyExt,
-    },
-    shared::wasm_prep::{self, PreprocessingError},
+    execution::{self, Error},
+    runtime::host_function_flag::HostFunctionFlag,
+    runtime_context::{self, RuntimeContext},
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
         standard_payment::StandardPayment,
     },
+    tracking_copy::TrackingCopyExt,
     ACCOUNT_WASM_ADDR,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};

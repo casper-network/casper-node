@@ -98,7 +98,6 @@ pub struct RuntimeContext<'a, R> {
 
     blocktime: BlockTime,
     protocol_version: ProtocolVersion,
-    correlation_id: CorrelationId,
     deploy_hash: DeployHash,
     phase: Phase,
     args: RuntimeArgs,
@@ -134,7 +133,6 @@ where
         engine_config: EngineConfig,
         blocktime: BlockTime,
         protocol_version: ProtocolVersion,
-        correlation_id: CorrelationId,
         deploy_hash: DeployHash,
         phase: Phase,
         runtime_args: RuntimeArgs,
@@ -190,7 +188,6 @@ where
 
         let blocktime = self.blocktime;
         let protocol_version = self.protocol_version;
-        let correlation_id = self.correlation_id;
         let deploy_hash = self.deploy_hash;
         let phase = self.phase;
 

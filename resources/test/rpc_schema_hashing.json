@@ -3651,7 +3651,7 @@
             "additionalProperties": false
           },
           "ContractPackageHash": {
-            "description": "The hex-encoded hash address of the contract package.",
+            "description": "The hex-encoded hash address of the contract package",
             "type": "string"
           },
           "ContractWasmHash": {
@@ -3806,7 +3806,7 @@
             }
           },
           "ContractHash": {
-            "description": "The hex-encoded hash address of the contract.",
+            "description": "The hex-encoded hash address of the contract",
             "type": "string"
           },
           "DisabledVersion": {

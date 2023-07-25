@@ -204,7 +204,6 @@ impl TransferRuntimeArgsBuilder {
     /// Returns [`TransferTargetMode`] with a resolved variant.
     fn resolve_transfer_target_mode<R>(
         &mut self,
-        correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
@@ -251,7 +250,7 @@ impl TransferRuntimeArgsBuilder {
 
         match tracking_copy
             .borrow_mut()
-            .get_addressable_entity_by_account_hash(correlation_id, protocol_version, account_hash)
+            .get_addressable_entity_by_account_hash(protocol_version, account_hash)
         {
             Ok(contract) => Ok(TransferTargetMode::PurseExists(
                 contract.main_purse().with_access_rights(AccessRights::ADD),
@@ -301,7 +300,6 @@ impl TransferRuntimeArgsBuilder {
     /// Returns a resolved [`TransferTargetMode`].
     pub(crate) fn transfer_target_mode<R>(
         &mut self,
-        correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
@@ -313,7 +311,7 @@ impl TransferRuntimeArgsBuilder {
         if mode != TransferTargetMode::Unknown {
             return Ok(mode);
         }
-        match self.resolve_transfer_target_mode(correlation_id, protocol_version, tracking_copy) {
+        match self.resolve_transfer_target_mode(protocol_version, tracking_copy) {
             Ok(mode) => {
                 self.transfer_target_mode = mode;
                 Ok(mode)
@@ -326,7 +324,6 @@ impl TransferRuntimeArgsBuilder {
     pub fn build<R>(
         mut self,
         from: &AddressableEntity,
-        correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
@@ -336,16 +333,13 @@ impl TransferRuntimeArgsBuilder {
     {
         let to = self.to;
 
-        let target_uref = match self.resolve_transfer_target_mode(
-            correlation_id,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-        )? {
-            TransferTargetMode::PurseExists(uref) => uref,
-            _ => {
-                return Err(Error::reverter(ApiError::Transfer));
-            }
-        };
+        let target_uref =
+            match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
+                TransferTargetMode::PurseExists(uref) => uref,
+                _ => {
+                    return Err(Error::reverter(ApiError::Transfer));
+                }
+            };
 
         let source_uref = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
 

@@ -132,8 +132,7 @@ where
         let contract_name = system_contract_type.contract_name();
         let entry_points = system_contract_type.contract_entry_points();
 
-        let mut contract =
-            self.retrieve_system_contract(correlation_id, contract_hash, system_contract_type)?;
+        let mut contract = self.retrieve_system_contract(contract_hash, system_contract_type)?;
 
         let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
@@ -199,14 +198,13 @@ where
 
     fn retrieve_system_contract(
         &self,
-        correlation_id: CorrelationId,
         contract_hash: ContractHash,
         system_contract_type: SystemContractType,
     ) -> Result<AddressableEntity, ProtocolUpgradeError> {
         match self
             .tracking_copy
             .borrow_mut()
-            .read(correlation_id, &contract_hash.into())
+            .read(&contract_hash.into())
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),

@@ -12,12 +12,10 @@ use casper_types::{
 };
 
 use crate::{
-    core::{
-        engine_state::{ChecksumRegistry, SystemContractRegistry},
-        execution,
-        execution::AddressGenerator,
-        tracking_copy::TrackingCopy,
-    },
+    engine_state::{ChecksumRegistry, SystemContractRegistry},
+    execution,
+    execution::AddressGenerator,
+    tracking_copy::TrackingCopy,
     ACCOUNT_WASM_ADDR,
 };
 
@@ -27,12 +25,14 @@ pub trait TrackingCopyExt<R> {
     type Error;
 
     /// Gets the contract hash for the account at a given account address.
-    fn get_entity_hash_by_account_hash(&mut self, account_hash: AccountHash) -> Result<ContractHash, Self::Error>;
+    fn get_entity_hash_by_account_hash(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<ContractHash, Self::Error>;
 
     /// Gets the entity for a given account by its account address
     fn get_addressable_entity_by_account_hash(
         &mut self,
-        correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error>;
@@ -43,7 +43,6 @@ pub trait TrackingCopyExt<R> {
     /// Reads the entity for a given account by its account address
     fn read_addressable_entity_by_account_hash(
         &mut self,
-        correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error>;
@@ -58,31 +57,30 @@ pub trait TrackingCopyExt<R> {
     /// Gets the purse balance key for a given purse id and provides a Merkle proof.
     fn get_purse_balance_key_with_proof(
         &self,
-
         purse_key: Key,
     ) -> Result<(Key, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
     /// Gets the balance at a given balance key and provides a Merkle proof.
     fn get_purse_balance_with_proof(
         &self,
-
         balance_key: Key,
     ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
     /// Gets a contract by Key.
     fn get_contract_wasm(
         &mut self,
-
         contract_wasm_hash: ContractWasmHash,
     ) -> Result<ContractWasm, Self::Error>;
 
     /// Gets an addressable entity  by Key.
-    fn get_contract(&mut self, contract_hash: ContractHash) -> Result<AddressableEntity, Self::Error>;
+    fn get_contract(
+        &mut self,
+        contract_hash: ContractHash,
+    ) -> Result<AddressableEntity, Self::Error>;
 
     /// Gets a contract package by Key.
     fn get_contract_package(
         &mut self,
-
         contract_package_hash: ContractPackageHash,
     ) -> Result<Package, Self::Error>;
 
@@ -100,7 +98,10 @@ where
 {
     type Error = execution::Error;
 
-    fn get_entity_hash_by_account_hash(&mut self, account_hash: AccountHash) -> Result<ContractHash, Self::Error> {
+    fn get_entity_hash_by_account_hash(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<ContractHash, Self::Error> {
         let account_key = Key::Account(account_hash);
         match self.get(&account_key).map_err(Into::into)? {
             Some(StoredValue::CLValue(cl_value)) => {
@@ -121,13 +122,12 @@ where
 
     fn get_addressable_entity_by_account_hash(
         &mut self,
-        correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error> {
         let account_key = Key::Account(account_hash);
 
-        let contract_key = match self.get(correlation_id, &account_key).map_err(Into::into)? {
+        let contract_key = match self.get(&account_key).map_err(Into::into)? {
             Some(StoredValue::CLValue(contract_key_as_cl_value)) => {
                 CLValue::into_t::<Key>(contract_key_as_cl_value)?
             }
@@ -190,10 +190,7 @@ where
             }
             None => return Err(execution::Error::KeyNotFound(account_key)),
         };
-        match self
-            .get(correlation_id, &contract_key)
-            .map_err(Into::into)?
-        {
+        match self.get(&contract_key).map_err(Into::into)? {
             Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
@@ -215,11 +212,10 @@ where
 
     fn read_addressable_entity_by_account_hash(
         &mut self,
-        correlation_id: CorrelationId,
         protocol_version: ProtocolVersion,
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error> {
-        self.get_addressable_entity_by_account_hash(correlation_id, protocol_version, account_hash)
+        self.get_addressable_entity_by_account_hash(protocol_version, account_hash)
     }
 
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error> {
@@ -294,7 +290,10 @@ where
     }
 
     /// Gets a contract header by Key
-    fn get_contract(&mut self, contract_hash: ContractHash) -> Result<AddressableEntity, Self::Error> {
+    fn get_contract(
+        &mut self,
+        contract_hash: ContractHash,
+    ) -> Result<AddressableEntity, Self::Error> {
         let key = contract_hash.into();
 
         match self.read(&key).map_err(Into::into)? {
