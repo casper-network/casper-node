@@ -304,7 +304,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     /// By default, there is an infinite timeout.
     ///
     /// **TODO**: Currently the timeout feature is not implemented.
-    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+    pub const fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
     }
@@ -527,7 +527,7 @@ pub struct IncomingRequest {
 impl IncomingRequest {
     /// Returns a reference to the payload, if any.
     #[inline(always)]
-    pub fn payload(&self) -> &Option<Bytes> {
+    pub const fn payload(&self) -> &Option<Bytes> {
         &self.payload
     }
 

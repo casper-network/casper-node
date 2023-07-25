@@ -190,17 +190,22 @@ pub struct ChannelConfiguration {
 
 impl Default for ChannelConfiguration {
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ChannelConfiguration {
+    /// Creates a new [`ChannelConfiguration`] with default values.
+    pub const fn new() -> Self {
         Self {
             request_limit: 1,
             max_request_payload_size: 0,
             max_response_payload_size: 0,
         }
     }
-}
 
-impl ChannelConfiguration {
     /// Creates a configuration with the given request limit (default is 1).
-    pub fn with_request_limit(mut self, request_limit: u16) -> ChannelConfiguration {
+    pub const fn with_request_limit(mut self, request_limit: u16) -> ChannelConfiguration {
         self.request_limit = request_limit;
         self
     }
@@ -210,7 +215,7 @@ impl ChannelConfiguration {
     /// There is nothing magical about payload sizes, a size of 0 allows for payloads that are no
     /// longer than 0 bytes in size. On the protocol level, there is a distinction between a request
     /// with a zero-sized payload and no payload.
-    pub fn with_max_request_payload_size(
+    pub const fn with_max_request_payload_size(
         mut self,
         max_request_payload_size: u32,
     ) -> ChannelConfiguration {
@@ -223,7 +228,7 @@ impl ChannelConfiguration {
     /// There is nothing magical about payload sizes, a size of 0 allows for payloads that are no
     /// longer than 0 bytes in size. On the protocol level, there is a distinction between a request
     /// with a zero-sized payload and no payload.
-    pub fn with_max_response_payload_size(
+    pub const fn with_max_response_payload_size(
         mut self,
         max_response_payload_size: u32,
     ) -> ChannelConfiguration {

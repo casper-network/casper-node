@@ -276,7 +276,7 @@ pub struct IoCoreBuilder<const N: usize> {
 impl<const N: usize> IoCoreBuilder<N> {
     /// Creates a new builder for an [`IoCore`].
     #[inline]
-    pub fn new(protocol: ProtocolBuilder<N>) -> Self {
+    pub const fn new(protocol: ProtocolBuilder<N>) -> Self {
         Self {
             protocol,
             buffer_size: [1; N],
@@ -288,7 +288,7 @@ impl<const N: usize> IoCoreBuilder<N> {
     /// # Panics
     ///
     /// Will panic if given an invalid channel or a size less than one.
-    pub fn buffer_size(mut self, channel: ChannelId, size: usize) -> Self {
+    pub const fn buffer_size(mut self, channel: ChannelId, size: usize) -> Self {
         assert!(size > 0, "cannot have a memory buffer size of zero");
 
         self.buffer_size[channel.get() as usize] = size;

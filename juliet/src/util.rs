@@ -29,7 +29,7 @@ impl<'a> Deref for Index<'a> {
 
 impl<'a> Index<'a> {
     /// Creates a new `Index` with offset value `index`, borrowing `buffer`.
-    pub(crate) fn new(buffer: &'a BytesMut, index: usize) -> Self {
+    pub(crate) const fn new(buffer: &'a BytesMut, index: usize) -> Self {
         let _ = buffer;
         Index {
             index,

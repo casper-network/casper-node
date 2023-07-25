@@ -100,14 +100,19 @@ pub struct ProtocolBuilder<const N: usize> {
 impl<const N: usize> Default for ProtocolBuilder<N> {
     #[inline]
     fn default() -> Self {
-        Self::with_default_channel_config(Default::default())
+        Self::new()
     }
 }
 
 impl<const N: usize> ProtocolBuilder<N> {
+    /// Creates a new protocol builder with default configuration for every channel.
+    pub const fn new() -> Self {
+        Self::with_default_channel_config(ChannelConfiguration::new())
+    }
+
     /// Creates a new protocol builder with all channels preconfigured using the given config.
     #[inline]
-    pub fn with_default_channel_config(config: ChannelConfiguration) -> Self {
+    pub const fn with_default_channel_config(config: ChannelConfiguration) -> Self {
         Self {
             channel_config: [config; N],
             max_frame_size: 4096,
@@ -115,7 +120,11 @@ impl<const N: usize> ProtocolBuilder<N> {
     }
 
     /// Update the channel configuration for a given channel.
-    pub fn channel_config(mut self, channel: ChannelId, config: ChannelConfiguration) -> Self {
+    pub const fn channel_config(
+        mut self,
+        channel: ChannelId,
+        config: ChannelConfiguration,
+    ) -> Self {
         self.channel_config[channel.get() as usize] = config;
         self
     }
@@ -137,7 +146,7 @@ impl<const N: usize> ProtocolBuilder<N> {
     ///
     /// Will panic if the maximum size is too small to holder a header, payload length and at least
     /// one byte of payload.
-    pub fn max_frame_size(mut self, max_frame_size: u32) -> Self {
+    pub const fn max_frame_size(mut self, max_frame_size: u32) -> Self {
         assert!(max_frame_size as usize > Header::SIZE + Varint32::MAX_LEN);
 
         self.max_frame_size = max_frame_size;
@@ -358,7 +367,7 @@ impl<const N: usize> JulietProtocol<N> {
     /// Will panic if `max_frame_size` is too small to hold header and payload length encoded, i.e.
     /// < 9 bytes.
     #[inline]
-    pub fn builder(config: ChannelConfiguration) -> ProtocolBuilder<N> {
+    pub const fn builder(config: ChannelConfiguration) -> ProtocolBuilder<N> {
         ProtocolBuilder {
             channel_config: [config; N],
             max_frame_size: 1024,
@@ -369,7 +378,7 @@ impl<const N: usize> JulietProtocol<N> {
     ///
     /// Returns a `LocalProtocolViolation` if called with non-existant channel.
     #[inline(always)]
-    fn lookup_channel(&self, channel: ChannelId) -> Result<&Channel, LocalProtocolViolation> {
+    const fn lookup_channel(&self, channel: ChannelId) -> Result<&Channel, LocalProtocolViolation> {
         if channel.0 as usize >= N {
             Err(LocalProtocolViolation::InvalidChannel(channel))
         } else {
@@ -394,7 +403,7 @@ impl<const N: usize> JulietProtocol<N> {
 
     /// Returns the configured maximum frame size.
     #[inline(always)]
-    pub fn max_frame_size(&self) -> u32 {
+    pub const fn max_frame_size(&self) -> u32 {
         self.max_frame_size
     }
 
@@ -833,7 +842,7 @@ impl<const N: usize> JulietProtocol<N> {
 /// Pure convenience function for the common use case of producing a response message from a
 /// received header with an appropriate error.
 #[inline(always)]
-fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
+const fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
     log_frame!(header);
     Fatal(OutgoingMessage::new(header.with_err(kind), None))
 }
