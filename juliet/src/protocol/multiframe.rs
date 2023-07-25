@@ -194,3 +194,74 @@ impl MultiframeReceiver {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::{BufMut, Bytes, BytesMut};
+
+    use crate::{
+        header::{ErrorKind, Header, Kind},
+        protocol::OutgoingMessage,
+        ChannelId, Id,
+    };
+
+    use super::MultiframeReceiver;
+
+    /// Frame size used for multiframe tests.
+    const MAXIMUM_FRAME_SIZE: u32 = 16;
+
+    /// Maximum payload size used in testing.
+    const MAXIMUM_PAYLOAD_SIZE: u32 = 4096;
+
+    const HEADER_1: Header = Header::new(Kind::RequestPl, ChannelId(1), Id(1));
+    const HEADER_2: Header = Header::new(Kind::ResponsePl, ChannelId(2), Id(2));
+    const HEADER_3: Header = Header::new(Kind::ResponsePl, ChannelId(99), Id(100));
+    const HEADER_4: Header = Header::new(Kind::RequestPl, ChannelId(7), Id(42));
+
+    const LONG_PAYLOAD: &[u8] = &[
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
+        25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
+        48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+    ];
+
+    #[test]
+    fn single_message_frame_by_frame() {
+        // We single-feed a message frame-by-frame into the multi-frame receiver:
+        let mut receiver = MultiframeReceiver::default();
+
+        let msg = OutgoingMessage::new(HEADER_1, Some(Bytes::from_static(LONG_PAYLOAD)));
+
+        let mut buffer = BytesMut::new();
+        let mut frames_left = msg.num_frames(MAXIMUM_FRAME_SIZE);
+
+        for frame in msg.frame_iter(MAXIMUM_FRAME_SIZE) {
+            assert!(frames_left > 0);
+            frames_left -= 1;
+
+            buffer.put(frame);
+
+            match receiver.accept(
+                HEADER_1,
+                &mut buffer,
+                MAXIMUM_FRAME_SIZE,
+                MAXIMUM_PAYLOAD_SIZE,
+                ErrorKind::RequestLimitExceeded,
+            ) {
+                crate::Outcome::Incomplete(n) => {
+                    assert_eq!(n.get(), 4, "expected multi-frame to ask for header next");
+                }
+                crate::Outcome::Fatal(_) => {
+                    panic!("did not expect fatal error on multi-frame parse")
+                }
+                crate::Outcome::Success(output) => {
+                    assert_eq!(output.expect("should have payload"), LONG_PAYLOAD);
+                    assert_eq!(frames_left, 0, "should have consumed all frames");
+                }
+            }
+            assert!(
+                buffer.is_empty(),
+                "multi frame receiver should consume entire frame"
+            );
+        }
+    }
+}

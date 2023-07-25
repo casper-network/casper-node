@@ -7,6 +7,7 @@
 use std::{
     fmt::{self, Debug, Display, Formatter, Write},
     io::Cursor,
+    iter,
 };
 
 use bytemuck::{Pod, Zeroable};
@@ -61,6 +62,21 @@ impl OutgoingMessage {
         }
     }
 
+    /// Creates an iterator over all frames in the message with a fixed maximum frame size.
+    ///
+    /// A slightly more convenient `frames` method, with a fixed `max_frame_size`. The resulting
+    /// iterator will use slightly more memory than the equivalent `FrameIter`.
+    pub fn frame_iter(self, max_frame_size: u32) -> impl Iterator<Item = OutgoingFrame> {
+        let mut frames = Some(self.frames());
+
+        iter::from_fn(move || {
+            let iter = frames.take()?;
+            let (frame, more) = iter.next_owned(max_frame_size);
+            frames = more;
+            Some(frame)
+        })
+    }
+
     /// Returns the outgoing message's header.
     #[inline(always)]
     pub const fn header(&self) -> Header {
@@ -70,7 +86,7 @@ impl OutgoingMessage {
     /// Calculates the total number of bytes that are not header data that will be transmitted with
     /// this message (the payload + its variable length encoded length prefix).
     #[inline]
-    const fn non_header_len(&self) -> usize {
+    pub const fn non_header_len(&self) -> usize {
         match self.payload {
             Some(ref pl) => Varint32::length_of(pl.len() as u32) + pl.len(),
             None => 0,
@@ -79,7 +95,7 @@ impl OutgoingMessage {
 
     /// Calculates the number of frames this message will produce.
     #[inline]
-    const fn num_frames(&self, max_frame_size: u32) -> usize {
+    pub const fn num_frames(&self, max_frame_size: u32) -> usize {
         let usable_size = max_frame_size as usize - Header::SIZE;
 
         let num_frames = (self.non_header_len() + usable_size - 1) / usable_size;
@@ -92,7 +108,7 @@ impl OutgoingMessage {
 
     /// Calculates the total length in bytes of all frames produced by this message.
     #[inline]
-    const fn total_len(&self, max_frame_size: u32) -> usize {
+    pub const fn total_len(&self, max_frame_size: u32) -> usize {
         self.num_frames(max_frame_size) * Header::SIZE + self.non_header_len()
     }
 
@@ -121,7 +137,7 @@ impl OutgoingMessage {
     /// Writes out all frames as they should be sent out on the wire into a [`Bytes`] struct.
     ///
     /// Consider using the `frames()` or `bytes()` methods instead to avoid additional copies. This
-    /// message is not zero-copy, but still consumes `self` to avoid a conversion of a potentially
+    /// method is not zero-copy, but still consumes `self` to avoid a conversion of a potentially
     /// unshared payload buffer.
     #[inline]
     pub fn to_bytes(self, max_frame_size: u32) -> Bytes {
@@ -397,6 +413,14 @@ impl OutgoingFrame {
     pub fn header(&self) -> Header {
         self.0.first_ref().get_ref().header()
     }
+
+    /// Writes out the frame.
+    ///
+    /// Equivalent to `self.copy_to_bytes(self.remaining)`.
+    #[inline]
+    pub fn to_bytes(mut self, max_frame_size: u32) -> Bytes {
+        self.copy_to_bytes(self.remaining())
+    }
 }
 
 impl Buf for OutgoingFrame {
@@ -487,6 +511,10 @@ mod tests {
 
         // A zero-byte payload is still expected to produce a single byte for the 0-length.
         let frames = collect_frames(msg.clone().frames());
+
+        // Addtional test: Ensure `frame_iter` yields the same result.
+        let mut from_frame_iter: Vec<u8> = Vec::new();
+        for frame in msg.clone().frame_iter(MAX_FRAME_SIZE) {}
 
         // We could compare without creating a new vec, but this gives nicer error messages.
         let comparable: Vec<_> = frames.iter().map(|v| v.as_slice()).collect();
