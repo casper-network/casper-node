@@ -145,14 +145,14 @@ impl Header {
 
     /// Creates a new non-error header.
     #[inline(always)]
-    pub fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
+    pub const fn new(kind: Kind, channel: ChannelId, id: Id) -> Self {
         let id = id.get().to_le_bytes();
         Header([kind as u8, channel.get(), id[0], id[1]])
     }
 
     /// Creates a new error header.
     #[inline(always)]
-    pub fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
+    pub const fn new_error(kind: ErrorKind, channel: ChannelId, id: Id) -> Self {
         let id = id.get().to_le_bytes();
         Header([
             kind as u8 | Header::KIND_ERR_BIT,
@@ -166,7 +166,7 @@ impl Header {
     ///
     /// Returns `None` if the given `raw` bytes are not a valid header.
     #[inline(always)]
-    pub fn parse(mut raw: [u8; Header::SIZE]) -> Option<Self> {
+    pub const fn parse(mut raw: [u8; Header::SIZE]) -> Option<Self> {
         // Zero-out reserved bits.
         raw[0] &= Self::KIND_ERR_MASK | Self::KIND_MASK | Self::KIND_ERR_BIT;
 
@@ -193,32 +193,32 @@ impl Header {
 
     /// Returns the raw kind byte.
     #[inline(always)]
-    fn kind_byte(self) -> u8 {
+    const fn kind_byte(self) -> u8 {
         self.0[0]
     }
 
     /// Returns the channel.
     #[inline(always)]
-    pub fn channel(self) -> ChannelId {
+    pub const fn channel(self) -> ChannelId {
         ChannelId::new(self.0[1])
     }
 
     /// Returns the id.
     #[inline(always)]
-    pub fn id(self) -> Id {
+    pub const fn id(self) -> Id {
         let [_, _, id @ ..] = self.0;
         Id::new(u16::from_le_bytes(id))
     }
 
     /// Returns whether the error bit is set.
     #[inline(always)]
-    pub fn is_error(self) -> bool {
+    pub const fn is_error(self) -> bool {
         self.kind_byte() & Self::KIND_ERR_BIT == Self::KIND_ERR_BIT
     }
 
     /// Returns whether or not the given header is a request header.
     #[inline]
-    pub fn is_request(self) -> bool {
+    pub const fn is_request(self) -> bool {
         if !self.is_error() {
             matches!(self.kind(), Kind::Request | Kind::RequestPl)
         } else {
@@ -232,7 +232,7 @@ impl Header {
     ///
     /// Will panic if `Self::is_error()` is not `true`.
     #[inline(always)]
-    pub fn error_kind(self) -> ErrorKind {
+    pub const fn error_kind(self) -> ErrorKind {
         debug_assert!(self.is_error());
         match self.kind_byte() & Self::KIND_ERR_MASK {
             0 => ErrorKind::Other,
@@ -260,7 +260,7 @@ impl Header {
     ///
     /// Will panic if `Self::is_error()` is not `false`.
     #[inline(always)]
-    pub fn kind(self) -> Kind {
+    pub const fn kind(self) -> Kind {
         debug_assert!(!self.is_error());
         match self.kind_byte() & Self::KIND_MASK {
             0 => Kind::Request,
@@ -276,7 +276,7 @@ impl Header {
 
     /// Creates a new header with the same id and channel but an error kind.
     #[inline]
-    pub(crate) fn with_err(self, kind: ErrorKind) -> Self {
+    pub(crate) const fn with_err(self, kind: ErrorKind) -> Self {
         Header::new_error(kind, self.channel(), self.id())
     }
 }
