@@ -268,6 +268,12 @@ impl FrameIter {
             )
         }
     }
+
+    /// Returns the outgoing message's header.
+    #[inline(always)]
+    pub const fn header(&self) -> Header {
+        self.msg.header()
+    }
 }
 
 /// Byte-wise message iterator.
@@ -496,6 +502,7 @@ mod tests {
         let msg = OutgoingMessage::new(header, payload);
 
         assert_eq!(msg.header(), header);
+        assert_eq!(msg.clone().frames().header(), header);
         assert_eq!(expected.len() > 1, msg.is_multi_frame(MAX_FRAME_SIZE));
         assert_eq!(expected.len(), msg.num_frames(MAX_FRAME_SIZE));
 
