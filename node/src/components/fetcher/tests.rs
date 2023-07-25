@@ -287,7 +287,7 @@ impl ReactorTrait for Reactor {
             chainspec.protocol_config.version,
             chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
-            chainspec.deploy_config.max_ttl,
+            chainspec.deploy_config.max_ttl.into(),
             chainspec.core_config.unbonding_delay,
             Some(registry),
             false,

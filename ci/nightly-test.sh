@@ -121,6 +121,7 @@ start_run_teardown "sync_test.sh timeout=500"
 start_run_teardown "gov96.sh"
 start_run_teardown "swap_validator_set.sh"
 start_run_teardown "sync_upgrade_test.sh node=6 era=5 timeout=500"
+start_run_teardown "validators_disconnect.sh"
 # Without start_run_teardown - these ones perform their own assets setup, network start and teardown
 source "$SCENARIOS_DIR/upgrade_after_emergency_upgrade_test_pre_1.5.sh"
 source "$SCENARIOS_DIR/regression_3976.sh"
