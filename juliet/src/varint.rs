@@ -31,10 +31,13 @@ pub struct ParsedU32 {
 }
 
 /// Decodes a varint32 from the given input.
-pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
+pub const fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
     let mut value = 0u32;
 
-    for (idx, &c) in input.iter().enumerate() {
+    // `for` is not stable in `const fn` yet.
+    let mut idx = 0;
+    while idx < input.len() {
+        let c = input[idx];
         if idx >= 4 && c & 0b1111_0000 != 0 {
             return Fatal(Overflow);
         }
@@ -44,13 +47,15 @@ pub fn decode_varint32(input: &[u8]) -> Outcome<ParsedU32, Overflow> {
         if c & 0b1000_0000 == 0 {
             return Success(ParsedU32 {
                 value,
-                offset: NonZeroU8::new((idx + 1) as u8).unwrap(),
+                offset: unsafe { NonZeroU8::new_unchecked((idx + 1) as u8) },
             });
         }
+
+        idx += 1;
     }
 
     // We found no stop bit, so our integer is incomplete.
-    Incomplete(NonZeroU32::new(1).unwrap())
+    Incomplete(unsafe { NonZeroU32::new_unchecked(1) })
 }
 
 /// An encoded varint32.
@@ -118,7 +123,7 @@ impl Varint32 {
     ///
     /// Should only be used in debug assertions, as `Varint32`s not meant to encoded/decoded cheaply
     /// throughout their lifecycle. The sentinel value is decoded as 0.
-    pub(crate) fn decode(self) -> u32 {
+    pub(crate) const fn decode(self) -> u32 {
         // Note: It is not possible to decorate this function with `#[cfg(debug_assertions)]`, since
         //       `debug_assert!` will not remove the assertion from the code, but put it behind an
         //       `if false { .. }` instead. Furthermore we also don't panic at runtime, as adding
@@ -129,14 +134,15 @@ impl Varint32 {
             return 0;
         }
 
-        decode_varint32(&self.0[..])
-            .expect("did not expect self-encoded varint32 to fail decoding")
-            .value
+        match decode_varint32(self.0.as_slice()) {
+            Incomplete(_) | Fatal(_) => 0, // actually unreachable.
+            Success(v) => v.value,
+        }
     }
 
     /// Returns the length of the given value encoded as a `Varint32`.
     #[inline]
-    pub fn length_of(value: u32) -> usize {
+    pub const fn length_of(value: u32) -> usize {
         if value < 128 {
             return 1;
         }
