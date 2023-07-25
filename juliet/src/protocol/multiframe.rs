@@ -84,50 +84,46 @@ impl MultiframeReceiver {
                         OutgoingMessage::new(header.with_err(ErrorKind::BadVarInt), None)
                     }));
 
-                {
-                    {
-                        if payload_size.value > max_payload_size {
-                            return err_msg(header, payload_exceeded_error_kind);
-                        }
+                if payload_size.value > max_payload_size {
+                    return err_msg(header, payload_exceeded_error_kind);
+                }
 
-                        // We have a valid varint32.
-                        let preamble_size = Header::SIZE as u32 + payload_size.offset.get() as u32;
-                        let max_data_in_frame = max_frame_size - preamble_size;
+                // We have a valid varint32.
+                let preamble_size = Header::SIZE as u32 + payload_size.offset.get() as u32;
+                let max_data_in_frame = max_frame_size - preamble_size;
 
-                        // Determine how many additional bytes are needed for frame completion.
-                        let frame_end = Index::new(
-                            buffer,
-                            preamble_size as usize
-                                + (max_data_in_frame as usize).min(payload_size.value as usize),
-                        );
-                        if buffer.remaining() < *frame_end {
-                            return Outcome::incomplete(*frame_end - buffer.remaining());
-                        }
+                // Determine how many additional bytes are needed for frame completion.
+                let frame_end = Index::new(
+                    buffer,
+                    preamble_size as usize
+                        + (max_data_in_frame as usize).min(payload_size.value as usize),
+                );
+                if buffer.remaining() < *frame_end {
+                    return Outcome::incomplete(*frame_end - buffer.remaining());
+                }
 
-                        // At this point we are sure to complete a frame, so drop the preamble.
-                        buffer.advance(preamble_size as usize);
+                // At this point we are sure to complete a frame, so drop the preamble.
+                buffer.advance(preamble_size as usize);
 
-                        // Is the payload complete in one frame?
-                        if payload_size.value <= max_data_in_frame {
-                            let payload = buffer.split_to(payload_size.value as usize);
+                // Is the payload complete in one frame?
+                if payload_size.value <= max_data_in_frame {
+                    let payload = buffer.split_to(payload_size.value as usize);
 
-                            // No need to alter the state, we stay `Ready`.
-                            Success(Some(payload))
-                        } else {
-                            // Length exceeds the frame boundary, split to maximum and store that.
-                            let partial_payload = buffer.split_to(max_frame_size as usize);
+                    // No need to alter the state, we stay `Ready`.
+                    Success(Some(payload))
+                } else {
+                    // Length exceeds the frame boundary, split to maximum and store that.
+                    let partial_payload = buffer.split_to(max_data_in_frame as usize);
 
-                            // We are now in progress of reading a payload.
-                            *self = MultiframeReceiver::InProgress {
-                                header,
-                                payload: partial_payload,
-                                total_payload_size: payload_size.value,
-                            };
+                    // We are now in progress of reading a payload.
+                    *self = MultiframeReceiver::InProgress {
+                        header,
+                        payload: partial_payload,
+                        total_payload_size: payload_size.value,
+                    };
 
-                            // We have successfully consumed a frame, but are not finished yet.
-                            Success(None)
-                        }
-                    }
+                    // We have successfully consumed a frame, but are not finished yet.
+                    Success(None)
                 }
             }
             MultiframeReceiver::InProgress {
@@ -202,7 +198,7 @@ mod tests {
     use crate::{
         header::{ErrorKind, Header, Kind},
         protocol::OutgoingMessage,
-        ChannelId, Id,
+        ChannelId, Id, Outcome,
     };
 
     use super::MultiframeReceiver;
@@ -247,15 +243,18 @@ mod tests {
                 MAXIMUM_PAYLOAD_SIZE,
                 ErrorKind::RequestLimitExceeded,
             ) {
-                crate::Outcome::Incomplete(n) => {
+                Outcome::Incomplete(n) => {
                     assert_eq!(n.get(), 4, "expected multi-frame to ask for header next");
                 }
-                crate::Outcome::Fatal(_) => {
+                Outcome::Fatal(_) => {
                     panic!("did not expect fatal error on multi-frame parse")
                 }
-                crate::Outcome::Success(output) => {
-                    assert_eq!(output.expect("should have payload"), LONG_PAYLOAD);
+                Outcome::Success(Some(output)) => {
                     assert_eq!(frames_left, 0, "should have consumed all frames");
+                    assert_eq!(output, LONG_PAYLOAD);
+                }
+                Outcome::Success(None) => {
+                    // all good, we will read another frame
                 }
             }
             assert!(
