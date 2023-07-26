@@ -3,9 +3,11 @@
 use std::{
     fs,
     io::{self, Write},
-    os::unix::fs::OpenOptionsExt,
     path::{Path, PathBuf},
 };
+
+#[cfg(not(any(feature = "sdk")))]
+use std::os::unix::fs::OpenOptionsExt;
 
 use thiserror::Error;
 
@@ -31,6 +33,7 @@ pub struct WriteFileError {
     error: io::Error,
 }
 
+#[cfg(not(any(feature = "sdk")))]
 /// Read complete at `path` into memory.
 ///
 /// Wraps `fs::read`, but preserves the filename for better error printing.
@@ -42,6 +45,7 @@ pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> 
     })
 }
 
+#[cfg(not(any(feature = "sdk")))]
 /// Write data to `path`.
 ///
 /// Wraps `fs::write`, but preserves the filename for better error printing.
@@ -56,6 +60,7 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     })
 }
 
+#[cfg(not(any(feature = "sdk")))]
 /// Writes data to `path`, ensuring only the owner can read or write it.
 ///
 /// Otherwise functions like [`write_file`].

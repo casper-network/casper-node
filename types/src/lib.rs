@@ -43,6 +43,7 @@ mod display_iter;
 mod era_id;
 pub mod execution;
 #[cfg(any(feature = "std", test))]
+#[cfg(feature = "std")]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -67,6 +68,7 @@ mod uint;
 mod uref;
 
 #[cfg(feature = "std")]
+#[cfg(not(any(feature = "sdk")))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
 use once_cell::sync::Lazy;
@@ -169,6 +171,7 @@ pub use uref::{
 
 /// OS page size.
 #[cfg(feature = "std")]
+#[cfg(not(any(feature = "sdk")))]
 pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
     /// Sensible default for many if not all systems.
     const DEFAULT_PAGE_SIZE: usize = 4096;

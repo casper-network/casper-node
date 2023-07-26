@@ -43,6 +43,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 #[cfg(any(feature = "std", test))]
 use untrusted::Input;
 
+#[cfg(any(feature = "std", test))]
+use crate::crypto::ErrorExt;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -53,11 +55,9 @@ use crate::{
     crypto::Error,
     CLType, CLTyped, Tagged,
 };
-#[cfg(any(feature = "std", test))]
-use crate::{
-    crypto::ErrorExt,
-    file_utils::{read_file, write_file, write_private_file},
-};
+
+#[cfg(not(any(feature = "sdk")))]
+use crate::file_utils::{read_file, write_file, write_private_file};
 
 #[cfg(any(feature = "testing", test))]
 pub mod gens;
@@ -237,12 +237,14 @@ impl SecretKey {
 
     /// Attempts to write the key bytes to the configured file path.
     #[cfg(any(feature = "std", test))]
+    #[cfg(not(any(feature = "sdk")))]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
         write_private_file(file, self.to_pem()?).map_err(ErrorExt::SecretKeySave)
     }
 
     /// Attempts to read the key bytes from configured file path.
     #[cfg(any(feature = "std", test))]
+    #[cfg(not(any(feature = "sdk")))]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
         let data = read_file(file).map_err(ErrorExt::SecretKeyLoad)?;
         Self::from_pem(data)
@@ -509,12 +511,14 @@ impl PublicKey {
 
     /// Attempts to write the key bytes to the configured file path.
     #[cfg(any(feature = "std", test))]
+    #[cfg(not(any(feature = "sdk")))]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
         write_file(file, self.to_pem()?).map_err(ErrorExt::PublicKeySave)
     }
 
     /// Attempts to read the key bytes from configured file path.
     #[cfg(any(feature = "std", test))]
+    #[cfg(not(any(feature = "sdk")))]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
         let data = read_file(file).map_err(ErrorExt::PublicKeyLoad)?;
         Self::from_pem(data)
