@@ -2570,7 +2570,6 @@ fn check_block_operations_with_node_1_5_2_storage() {
 
         let transfers = get_block_transfers(&mut harness, &mut storage, *hash);
         if !block_info.deploy_hashes.is_empty() {
-            print!("transfer check Block height: {} .. ", block_info.height);
             let mut stored_transfers: Vec<DeployHash> = transfers
                 .unwrap()
                 .iter()
