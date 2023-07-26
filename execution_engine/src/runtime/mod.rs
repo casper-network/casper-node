@@ -44,7 +44,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::EngineConfig,
+    engine_state::engine_config::EngineConfig,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::{self, RuntimeContext},

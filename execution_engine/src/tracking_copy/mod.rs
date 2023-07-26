@@ -29,9 +29,11 @@ use casper_types::{
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
-use super::engine_state::EngineConfig;
 use crate::{
-    engine_state::{execution_effect::ExecutionEffect, ExecutionJournal},
+    engine_state::{
+        engine_config::EngineConfig, execution_effect::ExecutionEffect,
+        execution_journal::ExecutionJournal,
+    },
     runtime_context::dictionary,
 };
 

@@ -9,7 +9,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::Error,
+    engine_state::error::Error,
     execution::Error as ExecError,
     tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
