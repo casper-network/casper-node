@@ -16,7 +16,7 @@ use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     testing::TestRng, AccessRights, CLValue, Chainspec, DeployId, EraId, Key,
     LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef,
-    U512,
+    U512, Block
 };
 
 use super::*;
@@ -363,7 +363,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(
-        historical_builder.register_block(block, None).is_ok(),
+        historical_builder.register_block(block.into(), None).is_ok(),
         "should register block"
     );
     // Register the remaining signatures to reach strict finality
@@ -1483,7 +1483,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1546,7 +1546,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1617,7 +1617,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1692,7 +1692,7 @@ async fn fwd_have_block_body_without_deploys_and_strict_finality_transitions_sta
     // Register finality signatures to reach strict finality
     register_multiple_signatures(fwd_builder, block, validators_secret_keys.iter());
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1758,7 +1758,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1829,7 +1829,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1920,7 +1920,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1992,7 +1992,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2060,7 +2060,7 @@ async fn historical_sync_announces_meta_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         historical_builder,
@@ -2200,7 +2200,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2299,7 +2299,7 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder.register_block(block.into(), None).is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2401,7 +2401,7 @@ async fn historical_sync_no_legacy_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder.register_block(block.into(), None).is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2623,7 +2623,7 @@ async fn historical_sync_legacy_block_strict_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder.register_block(block.into(), None).is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2821,7 +2821,7 @@ async fn historical_sync_legacy_block_weak_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder.register_block(block.into(), None).is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -3030,7 +3030,7 @@ async fn historical_sync_legacy_block_any_finality() {
         block,
         validators_secret_keys.iter().take(1),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder.register_block(block.into(), None).is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 

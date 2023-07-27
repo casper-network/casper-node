@@ -12,7 +12,7 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, Digest, EraId,
+    BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, Digest, EraId,
     FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
     VersionedBlock,
 };
@@ -476,7 +476,7 @@ impl BlockBuilder {
 
     pub(super) fn register_block(
         &mut self,
-        block: &Block,
+        block: VersionedBlock,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let acceptance = self

@@ -30,7 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
+    BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
     FinalitySignatureId, Timestamp, VersionedBlock,
 };
 
@@ -865,8 +865,7 @@ impl BlockSynchronizer {
                     }
                 }
                 Some(versioned_block) => {
-                    let block: Block = (*versioned_block).into(); // TODO[RC]: We might have fetched V1 here
-                    if let Err(error) = builder.register_block(&block, maybe_peer_id) {
+                    if let Err(error) = builder.register_block(*versioned_block, maybe_peer_id) {
                         error!(%error, "BlockSynchronizer: failed to apply block");
                     }
                 }

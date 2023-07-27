@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, thread, time::Duration};
 
 use casper_types::testing::TestRng;
 use num_rational::Ratio;
+use casper_types::Block;
 
 use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
 
