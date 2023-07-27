@@ -15,7 +15,7 @@ use super::PricingMode;
 use super::Transaction;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    PublicKey, TimeDiff, Timestamp,
+    Digest, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use crate::{TransactionConfig, TransactionConfigFailure, TransactionHash};
@@ -34,6 +34,7 @@ pub struct TransactionHeader {
     timestamp: Timestamp,
     ttl: TimeDiff,
     pricing_mode: PricingMode,
+    body_hash: Digest,
     chain_name: String,
 }
 
@@ -44,6 +45,7 @@ impl TransactionHeader {
         timestamp: Timestamp,
         ttl: TimeDiff,
         pricing_mode: PricingMode,
+        body_hash: Digest,
         chain_name: String,
     ) -> Self {
         TransactionHeader {
@@ -51,6 +53,7 @@ impl TransactionHeader {
             timestamp,
             ttl,
             pricing_mode,
+            body_hash,
             chain_name,
         }
     }
@@ -82,6 +85,11 @@ impl TransactionHeader {
     /// Returns the pricing mode for the `Transaction`.
     pub fn pricing_mode(&self) -> &PricingMode {
         &self.pricing_mode
+    }
+
+    /// Returns the hash of the body of the `Transaction`.
+    pub fn body_hash(&self) -> &Digest {
+        &self.body_hash
     }
 
     /// Returns the name of the chain the `Transaction` should be executed on.
@@ -142,6 +150,7 @@ impl ToBytes for TransactionHeader {
         self.timestamp.write_bytes(writer)?;
         self.ttl.write_bytes(writer)?;
         self.pricing_mode.write_bytes(writer)?;
+        self.body_hash.write_bytes(writer)?;
         self.chain_name.write_bytes(writer)
     }
 
@@ -156,6 +165,7 @@ impl ToBytes for TransactionHeader {
             + self.timestamp.serialized_length()
             + self.ttl.serialized_length()
             + self.pricing_mode.serialized_length()
+            + self.body_hash.serialized_length()
             + self.chain_name.serialized_length()
     }
 }
@@ -166,12 +176,14 @@ impl FromBytes for TransactionHeader {
         let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
         let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
         let (pricing_mode, remainder) = PricingMode::from_bytes(remainder)?;
+        let (body_hash, remainder) = Digest::from_bytes(remainder)?;
         let (chain_name, remainder) = String::from_bytes(remainder)?;
         let transaction_header = TransactionHeader {
             account,
             timestamp,
             ttl,
             pricing_mode,
+            body_hash,
             chain_name,
         };
         Ok((transaction_header, remainder))

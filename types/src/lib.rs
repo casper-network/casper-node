@@ -169,9 +169,9 @@ pub use timestamp::{TimeDiff, Timestamp};
 pub use transaction::TestTransactionBuilder;
 pub use transaction::{
     AuctionTransaction, DirectCall, NativeTransaction, PricingMode, Transaction,
-    TransactionApproval, TransactionConfigFailure, TransactionDecodeFromJsonError,
-    TransactionError, TransactionExcessiveSizeError, TransactionHash, TransactionHeader,
-    TransactionKind, UserlandTransaction,
+    TransactionApproval, TransactionApprovalsHash, TransactionConfigFailure,
+    TransactionDecodeFromJsonError, TransactionError, TransactionExcessiveSizeError,
+    TransactionHash, TransactionHeader, TransactionId, TransactionKind, UserlandTransaction,
 };
 #[cfg(any(feature = "std", test))]
 pub use transaction::{TransactionBuilder, TransactionBuilderError};

@@ -45,6 +45,9 @@ pub enum TransactionConfigFailure {
         got: Timestamp,
     },
 
+    /// The provided body hash does not match the actual hash of the body.
+    InvalidBodyHash,
+
     /// The provided `Transaction` hash does not match the actual hash of the `Transaction`.
     InvalidTransactionHash,
 
@@ -106,6 +109,12 @@ impl Display for TransactionConfigFailure {
                     got, validation_timestamp
                 )
             }
+            TransactionConfigFailure::InvalidBodyHash => {
+                write!(
+                    formatter,
+                    "the provided hash does not match the actual hash of the transaction body"
+                )
+            }
             TransactionConfigFailure::InvalidTransactionHash => {
                 write!(
                     formatter,
@@ -159,6 +168,7 @@ impl StdError for TransactionConfigFailure {
             | TransactionConfigFailure::ExcessiveSize(_)
             | TransactionConfigFailure::ExcessiveTimeToLive { .. }
             | TransactionConfigFailure::TimestampInFuture { .. }
+            | TransactionConfigFailure::InvalidBodyHash
             | TransactionConfigFailure::InvalidTransactionHash
             | TransactionConfigFailure::EmptyApprovals
             | TransactionConfigFailure::ExcessiveArgsLength { .. }

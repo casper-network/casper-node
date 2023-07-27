@@ -6,10 +6,12 @@ mod pricing_mode;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 mod test_transaction_builder;
 mod transaction_approval;
+mod transaction_approvals_hash;
 #[cfg(any(feature = "std", test))]
 mod transaction_builder;
 mod transaction_hash;
 mod transaction_header;
+mod transaction_id;
 mod transaction_kind;
 mod userland_transaction;
 
@@ -51,10 +53,12 @@ pub use pricing_mode::PricingMode;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use test_transaction_builder::TestTransactionBuilder;
 pub use transaction_approval::TransactionApproval;
+pub use transaction_approvals_hash::TransactionApprovalsHash;
 #[cfg(any(feature = "std", test))]
 pub use transaction_builder::{TransactionBuilder, TransactionBuilderError};
 pub use transaction_hash::TransactionHash;
 pub use transaction_header::TransactionHeader;
+pub use transaction_id::TransactionId;
 pub use transaction_kind::TransactionKind;
 pub use userland_transaction::UserlandTransaction;
 
@@ -117,10 +121,20 @@ impl Transaction {
         account_and_secret_key: AccountAndSecretKey,
     ) -> Transaction {
         let account = account_and_secret_key.account();
-        let header = TransactionHeader::new(account, timestamp, ttl, pricing_mode, chain_name);
+        let body_hash = Digest::hash(
+            body.to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize body: {}", error)),
+        );
+        let header =
+            TransactionHeader::new(account, timestamp, ttl, pricing_mode, body_hash, chain_name);
 
+        let hash = TransactionHash::new(Digest::hash(
+            header
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize header: {}", error)),
+        ));
         let mut transaction = Transaction {
-            hash: TransactionHash::default(),
+            hash,
             header,
             body,
             approvals: BTreeSet::new(),
@@ -168,6 +182,11 @@ impl Transaction {
         self.header.pricing_mode()
     }
 
+    /// Returns the hash of the body of the `Transaction`.
+    pub fn body_hash(&self) -> &Digest {
+        self.header.body_hash()
+    }
+
     /// Returns the name of the chain the `Transaction` should be executed on.
     pub fn chain_name(&self) -> &str {
         self.header.chain_name()
@@ -193,25 +212,15 @@ impl Transaction {
         &self.approvals
     }
 
-    /// Adds a signature of the hash of this `Transaction`'s header and body to its approvals.
+    /// Adds a signature of this `Transaction`'s hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
-        let digest_to_sign = make_digest_to_sign(&self.header, &self.body);
-        let approval = TransactionApproval::create(&digest_to_sign, secret_key);
+        let approval = TransactionApproval::create(&self.hash, secret_key);
         self.approvals.insert(approval);
-        self.hash = self.calculate_hash(&digest_to_sign);
     }
 
-    fn calculate_hash(&self, digest_to_sign: &Digest) -> TransactionHash {
-        let mut buffer = Vec::with_capacity(
-            digest_to_sign.serialized_length() + self.approvals.serialized_length(),
-        );
-        digest_to_sign
-            .write_bytes(&mut buffer)
-            .unwrap_or_else(|error| panic!("should serialize digest: {}", error));
-        self.approvals
-            .write_bytes(&mut buffer)
-            .unwrap_or_else(|error| panic!("should serialize approvals: {}", error));
-        TransactionHash::new(Digest::hash(buffer))
+    /// Returns the `TransactionApprovalsHash` of this `Transaction`'s approvals.
+    pub fn compute_approvals_hash(&self) -> Result<TransactionApprovalsHash, bytesrepr::Error> {
+        TransactionApprovalsHash::compute(&self.approvals)
     }
 
     /// Returns `true` if the serialized size of the `Transaction` is not greater than
@@ -231,12 +240,29 @@ impl Transaction {
         Ok(())
     }
 
-    /// Returns `Ok` if and only if the `Transaction` hash is correct.
-    ///
-    /// This should be the hash of the signed hash concatenated with the approvals, where the
-    /// signed hash should be the hash of the header concatenated with the body.
+    /// Returns `Ok` if and only if this `Transaction`'s body hashes to the value of `body_hash()`,
+    /// and if this `Transaction`'s header hashes to the value claimed as the transaction hash.
     pub fn has_valid_hash(&self) -> Result<(), TransactionConfigFailure> {
-        self.do_verify(true)
+        let body_hash = Digest::hash(
+            self.body
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize body: {}", error)),
+        );
+        if body_hash != *self.header.body_hash() {
+            debug!(?self, ?body_hash, "invalid transaction body hash");
+            return Err(TransactionConfigFailure::InvalidBodyHash);
+        }
+
+        let hash = TransactionHash::new(Digest::hash(
+            self.header
+                .to_bytes()
+                .unwrap_or_else(|error| panic!("should serialize header: {}", error)),
+        ));
+        if hash != self.hash {
+            debug!(?self, ?hash, "invalid transaction hash");
+            return Err(TransactionConfigFailure::InvalidTransactionHash);
+        }
+        Ok(())
     }
 
     /// Returns `Ok` if and only if:
@@ -245,36 +271,22 @@ impl Transaction {
     ///   * all approvals are valid signatures of the signed hash
     pub fn verify(&self) -> Result<(), TransactionConfigFailure> {
         #[cfg(any(feature = "once_cell", test))]
-        return self
-            .is_verified
-            .get_or_init(|| self.do_verify(false))
-            .clone();
+        return self.is_verified.get_or_init(|| self.do_verify()).clone();
 
         #[cfg(not(any(feature = "once_cell", test)))]
-        self.do_verify(false)
+        self.do_verify()
     }
 
-    fn do_verify(&self, skip_approval_checks: bool) -> Result<(), TransactionConfigFailure> {
-        if !skip_approval_checks && self.approvals.is_empty() {
+    fn do_verify(&self) -> Result<(), TransactionConfigFailure> {
+        if self.approvals.is_empty() {
             debug!(?self, "transaction has no approvals");
             return Err(TransactionConfigFailure::EmptyApprovals);
         }
 
-        let digest_to_sign = make_digest_to_sign(&self.header, &self.body);
-        let calculated_hash = self.calculate_hash(&digest_to_sign);
-        if calculated_hash != self.hash {
-            debug!(?self, ?calculated_hash, "invalid transaction hash");
-            return Err(TransactionConfigFailure::InvalidTransactionHash);
-        }
-
-        if skip_approval_checks {
-            return Ok(());
-        }
+        self.has_valid_hash()?;
 
         for (index, approval) in self.approvals.iter().enumerate() {
-            if let Err(error) =
-                crypto::verify(digest_to_sign, approval.signature(), approval.signer())
-            {
+            if let Err(error) = crypto::verify(self.hash, approval.signature(), approval.signer()) {
                 debug!(
                     ?self,
                     "failed to verify transaction approval {}: {}", index, error
@@ -344,6 +356,16 @@ impl Transaction {
         Ok(())
     }
 
+    // This method is not intended to be used by third party crates.
+    //
+    // It is required to allow finalized approvals to be injected after reading a `Transaction` from
+    // storage.
+    #[doc(hidden)]
+    pub fn with_approvals(mut self, approvals: BTreeSet<TransactionApproval>) -> Self {
+        self.approvals = approvals;
+        self
+    }
+
     /// Returns a random, valid but possibly expired `Transaction`.
     ///
     /// Note that the [`TestTransactionBuilder`] can be used to create a random `Transaction` with
@@ -371,8 +393,6 @@ impl Transaction {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub(super) fn apply_approvals(&mut self, approvals: Vec<TransactionApproval>) {
         self.approvals.extend(approvals);
-        let digest_to_sign = make_digest_to_sign(&self.header, &self.body);
-        self.hash = self.calculate_hash(&digest_to_sign);
     }
 }
 
@@ -487,16 +507,6 @@ impl Display for Transaction {
             DisplayIter::new(self.approvals.iter())
         )
     }
-}
-
-fn make_digest_to_sign(header: &TransactionHeader, body: &TransactionKind) -> Digest {
-    let mut buffer = Vec::with_capacity(header.serialized_length() + body.serialized_length());
-    header
-        .write_bytes(&mut buffer)
-        .unwrap_or_else(|error| panic!("should serialize transaction header: {}", error));
-    body.write_bytes(&mut buffer)
-        .unwrap_or_else(|error| panic!("should serialize transaction body: {}", error));
-    Digest::hash(buffer)
 }
 
 #[cfg(test)]

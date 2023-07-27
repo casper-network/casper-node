@@ -7,11 +7,12 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::TransactionHash;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, Digest, PublicKey, SecretKey, Signature,
+    crypto, PublicKey, SecretKey, Signature,
 };
 
 /// A struct containing a signature of a `Transaction` hash and the public key of the signer.
@@ -25,8 +26,8 @@ pub struct TransactionApproval {
 }
 
 impl TransactionApproval {
-    /// Creates an approval by signing the given hash digest using the given secret key.
-    pub fn create(hash: &Digest, secret_key: &SecretKey) -> Self {
+    /// Creates an approval by signing the given transaction hash using the given secret key.
+    pub fn create(hash: &TransactionHash, secret_key: &SecretKey) -> Self {
         let signer = PublicKey::from(secret_key);
         let signature = crypto::sign(hash, secret_key, &signer);
         Self { signer, signature }
@@ -50,7 +51,7 @@ impl TransactionApproval {
     /// Returns a random `TransactionApproval`.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        let hash = Digest::random(rng);
+        let hash = TransactionHash::random(rng);
         let secret_key = SecretKey::random(rng);
         TransactionApproval::create(&hash, &secret_key)
     }

@@ -2,8 +2,8 @@ use rand::Rng;
 
 use super::{PricingMode, Transaction, TransactionKind};
 use crate::{
-    testing::TestRng, AccountAndSecretKey, Digest, PublicKey, SecretKey, TimeDiff, Timestamp,
-    TransactionApproval, TransactionConfig,
+    testing::TestRng, AccountAndSecretKey, PublicKey, SecretKey, TimeDiff, Timestamp,
+    TransactionApproval, TransactionConfig, TransactionHash,
 };
 
 /// A builder for constructing a random [`Transaction`] for use in tests.
@@ -81,7 +81,7 @@ impl TestTransactionBuilder {
     /// Sets an invalid approval in the `Transaction`.
     pub fn with_invalid_approval(mut self, rng: &mut TestRng) -> Self {
         let secret_key = SecretKey::random(rng);
-        let hash = Digest::random(rng);
+        let hash = TransactionHash::random(rng);
         let approval = TransactionApproval::create(&hash, &secret_key);
         self.invalid_approvals.push(approval);
         self
