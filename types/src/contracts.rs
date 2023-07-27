@@ -31,6 +31,10 @@ use crate::{
     CLType, CLTyped, ContextAccessRights, HashAddr, Key, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
+mod entry_point_type;
+
+pub use entry_point_type::EntryPointType;
+
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
@@ -1245,44 +1249,6 @@ impl Default for Contract {
     }
 }
 
-/// Context of method execution
-#[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum EntryPointType {
-    /// Runs as session code
-    Session = 0,
-    /// Runs within contract's context
-    Contract = 1,
-}
-
-impl ToBytes for EntryPointType {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        (*self as u8).to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        1
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(*self as u8);
-        Ok(())
-    }
-}
-
-impl FromBytes for EntryPointType {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (value, bytes) = u8::from_bytes(bytes)?;
-        match value {
-            0 => Ok((EntryPointType::Session, bytes)),
-            1 => Ok((EntryPointType::Contract, bytes)),
-            _ => Err(bytesrepr::Error::Formatting),
-        }
-    }
-}
-
 /// Default name for an entry point
 pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
 
@@ -1448,10 +1414,13 @@ pub enum EntryPointAccess {
     /// list is empty then this method is not callable from outside the
     /// contract.
     Groups(Vec<Group>),
+    /// Can't be accessed directly but are kept in the derived wasm bytes.
+    Abstract,
 }
 
 const ENTRYPOINTACCESS_PUBLIC_TAG: u8 = 1;
 const ENTRYPOINTACCESS_GROUPS_TAG: u8 = 2;
+const ENTRYPOINTACCESS_ABSTRACT_TAG: u8 = 3;
 
 impl EntryPointAccess {
     /// Constructor for access granted to only listed groups.
@@ -1473,7 +1442,11 @@ impl ToBytes for EntryPointAccess {
                 result.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 result.append(&mut groups.to_bytes()?);
             }
+            EntryPointAccess::Abstract => {
+                result.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
+            }
         }
+
         Ok(result)
     }
 
@@ -1481,6 +1454,7 @@ impl ToBytes for EntryPointAccess {
         match self {
             EntryPointAccess::Public => 1,
             EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
+            EntryPointAccess::Abstract => 1,
         }
     }
 
@@ -1492,6 +1466,9 @@ impl ToBytes for EntryPointAccess {
             EntryPointAccess::Groups(groups) => {
                 writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 groups.write_bytes(writer)?;
+            }
+            EntryPointAccess::Abstract => {
+                writer.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
             }
         }
         Ok(())
@@ -1509,6 +1486,7 @@ impl FromBytes for EntryPointAccess {
                 let result = EntryPointAccess::Groups(groups);
                 Ok((result, bytes))
             }
+            ENTRYPOINTACCESS_ABSTRACT_TAG => Ok((EntryPointAccess::Abstract, bytes)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

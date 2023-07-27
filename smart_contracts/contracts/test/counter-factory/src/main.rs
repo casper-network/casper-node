@@ -1,0 +1,145 @@
+#![no_std]
+#![no_main]
+
+extern crate alloc;
+
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
+
+use casper_contract::{
+    contract_api::{runtime, storage},
+    unwrap_or_revert::UnwrapOrRevert,
+};
+use casper_types::{
+    bytesrepr::FromBytes,
+    contracts::{EntryPoint, EntryPoints, NamedKeys, Parameters},
+    ApiError, CLType, CLTyped, ContractHash, EntryPointAccess, EntryPointType, URef, U512,
+};
+
+const INCREASE_ENTRY_POINT: &str = "increment";
+const DECREASE_ENTRY_POINT: &str = "decrement";
+const HASH_KEY_NAME: &str = "factory_hash";
+const PACKAGE_HASH_KEY_NAME: &str = "factory_package_hash";
+const ACCESS_KEY_NAME: &str = "factory_access";
+const CONTRACT_VERSION: &str = "contract_version";
+
+fn get_named_uref(name: &str) -> Result<URef, ApiError> {
+    runtime::get_key(name)
+        .ok_or(ApiError::MissingKey)?
+        .into_uref()
+        .ok_or(ApiError::UnexpectedKeyVariant)
+}
+
+fn read_uref<T: CLTyped + FromBytes>(uref: URef) -> Result<T, ApiError> {
+    let value: T = storage::read(uref)?.ok_or(ApiError::ValueNotFound)?;
+    Ok(value)
+}
+
+fn modify_counter(func: impl FnOnce(U512) -> U512) -> Result<(), ApiError> {
+    let current_value_uref = get_named_uref("current_value")?;
+    let value: U512 = read_uref(current_value_uref)?;
+    let new_value = func(value);
+    storage::write(current_value_uref, new_value);
+    Ok(())
+}
+
+#[no_mangle]
+pub extern "C" fn increment() {
+    modify_counter(|value| value + U512::one()).unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn decrement() {
+    modify_counter(|value| value - U512::one()).unwrap_or_revert();
+}
+
+#[no_mangle]
+pub extern "C" fn contract_factory() {
+    let name: String = runtime::get_named_arg("name");
+    let initial_value: U512 = runtime::get_named_arg("initial_value");
+
+    let named_keys = {
+        let new_uref = storage::new_uref(initial_value);
+        let mut named_keys = NamedKeys::new();
+        named_keys.insert("current_value".to_string(), new_uref.into());
+        named_keys
+    };
+
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
+        let entry_point: EntryPoint = EntryPoint::new(
+            INCREASE_ENTRY_POINT.to_string(),
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Normal,
+        );
+        entry_points.add_entry_point(entry_point);
+        let entry_point: EntryPoint = EntryPoint::new(
+            DECREASE_ENTRY_POINT.to_string(),
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Normal,
+        );
+        entry_points.add_entry_point(entry_point);
+
+        entry_points
+    };
+
+    let (contract_hash, contract_version) = storage::new_contract(
+        entry_points,
+        Some(named_keys),
+        Some(PACKAGE_HASH_KEY_NAME.to_string()),
+        Some(ACCESS_KEY_NAME.to_string()),
+    );
+
+    runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
+    runtime::put_key(&name, contract_hash.into());
+}
+
+#[no_mangle]
+pub extern "C" fn call() {
+    let entry_points = {
+        let mut entry_points = EntryPoints::new();
+
+        let entry_point: EntryPoint = EntryPoint::new(
+            "contract_factory".to_string(),
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Install,
+        );
+        entry_points.add_entry_point(entry_point);
+        let entry_point: EntryPoint = EntryPoint::new(
+            INCREASE_ENTRY_POINT.to_string(),
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Abstract,
+            EntryPointType::Normal,
+        );
+        entry_points.add_entry_point(entry_point);
+        let entry_point: EntryPoint = EntryPoint::new(
+            DECREASE_ENTRY_POINT.to_string(),
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Abstract,
+            EntryPointType::Normal,
+        );
+        entry_points.add_entry_point(entry_point);
+
+        entry_points
+    };
+
+    let (contract_hash, contract_version) = storage::new_contract(
+        entry_points,
+        None,
+        Some(PACKAGE_HASH_KEY_NAME.to_string()),
+        Some(ACCESS_KEY_NAME.to_string()),
+    );
+
+    runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
+    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
+}

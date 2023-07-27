@@ -207,6 +207,7 @@ fn assert_each_context_has_correct_call_stack_info(
             EntryPointType::Session => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
+            _ => todo!("factory pattern"),
         };
         assert_eq!(
             call_stack.len(),
@@ -268,6 +269,7 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
             EntryPointType::Session => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
+            _ => unreachable!(),
         };
         let (head, rest) = call_stack.split_at(usize::one());
         assert_eq!(

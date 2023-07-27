@@ -1103,6 +1103,11 @@ where
             }
             (EntryPointType::Session, EntryPointType::Contract)
             | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
+
+            _ => {
+                // Any other combination (installer, normal, etc.) is a contract context.
+                Ok(contract_hash.into())
+            }
         }
     }
 
@@ -1188,7 +1193,12 @@ where
         // Get contract entry point hash
         // if public, allowed
         // if not public, restricted to user group access
-        self.validate_group_membership(&contract_package, entry_point.access())?;
+        // if abstract, not allowed
+        self.validate_entry_point_access(
+            &contract_package,
+            entry_point_name,
+            entry_point.access(),
+        )?;
 
         if self.config.strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
@@ -1240,6 +1250,10 @@ where
                 contract.named_keys().clone(),
                 contract.extract_access_rights(contract_hash),
             ),
+            EntryPointType::Install | EntryPointType::Normal => (
+                contract.named_keys().clone(),
+                contract.extract_access_rights(contract_hash),
+            ),
         };
 
         let stack = {
@@ -1255,6 +1269,12 @@ where
                     contract.contract_package_hash(),
                     contract_hash,
                 ),
+                EntryPointType::Install | EntryPointType::Normal => {
+                    CallStackElement::stored_contract(
+                        contract.contract_package_hash(),
+                        contract_hash,
+                    )
+                }
             };
             stack.push(call_stack_element)?;
 
@@ -2512,14 +2532,21 @@ where
     }
 
     /// Enforce group access restrictions (if any) on attempts to call an `EntryPoint`.
-    fn validate_group_membership(
+    fn validate_entry_point_access(
         &self,
         package: &ContractPackage,
+        name: &str,
         access: &EntryPointAccess,
     ) -> Result<(), Error> {
-        runtime_context::validate_group_membership(package, access, |uref| {
-            self.context.validate_uref(uref).is_ok()
-        })
+        match access {
+            EntryPointAccess::Public => Ok(()),
+            EntryPointAccess::Groups(groups) => {
+                runtime_context::validate_group_membership(package, groups, |uref| {
+                    self.context.validate_uref(uref).is_ok()
+                })
+            }
+            EntryPointAccess::Abstract => Err(Error::NoSuchMethod(name.to_string())),
+        }
     }
 
     /// Remove a user group from access to a contract
@@ -2548,7 +2575,7 @@ where
             };
             for entry_point in entry_points {
                 match entry_point.access() {
-                    EntryPointAccess::Public => {
+                    EntryPointAccess::Public | EntryPointAccess::Abstract => {
                         continue;
                     }
                     EntryPointAccess::Groups(groups) => {

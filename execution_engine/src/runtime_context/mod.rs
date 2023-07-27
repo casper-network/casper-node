@@ -27,8 +27,8 @@ use casper_types::{
     contracts::NamedKeys,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
-    ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointAccess, EntryPointType,
-    Gas, GrantedAccess, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointType, Gas,
+    GrantedAccess, Group, Key, KeyTag, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
     Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
@@ -51,28 +51,27 @@ pub const RANDOM_BYTES_COUNT: usize = 32;
 /// and an unit value is returned.
 pub fn validate_group_membership(
     contract_package: &ContractPackage,
-    access: &EntryPointAccess,
+    groups: &[Group],
     validator: impl Fn(&URef) -> bool,
 ) -> Result<(), Error> {
-    if let EntryPointAccess::Groups(groups) = access {
-        if groups.is_empty() {
-            // Exits early in a special case of empty list of groups regardless of the group
-            // checking logic below it.
-            return Err(Error::InvalidContext);
-        }
-
-        let find_result = groups.iter().find(|g| {
-            contract_package
-                .groups()
-                .get(g)
-                .and_then(|set| set.iter().find(|u| validator(u)))
-                .is_some()
-        });
-
-        if find_result.is_none() {
-            return Err(Error::InvalidContext);
-        }
+    if groups.is_empty() {
+        // Exits early in a special case of empty list of groups regardless of the group
+        // checking logic below it.
+        return Err(Error::InvalidContext);
     }
+
+    let find_result = groups.iter().find(|g| {
+        contract_package
+            .groups()
+            .get(g)
+            .and_then(|set| set.iter().find(|u| validator(u)))
+            .is_some()
+    });
+
+    if find_result.is_none() {
+        return Err(Error::InvalidContext);
+    }
+
     Ok(())
 }
 
