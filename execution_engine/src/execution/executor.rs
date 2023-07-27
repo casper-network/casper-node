@@ -11,10 +11,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{
-        engine_config::EngineConfig, execution_kind::ExecutionKind,
-        execution_result::ExecutionResult,
-    },
+    engine_state::{execution_kind::ExecutionKind, EngineConfig, ExecutionResult},
     execution::{address_generator::AddressGenerator, Error},
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,

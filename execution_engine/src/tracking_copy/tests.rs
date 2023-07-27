@@ -20,7 +20,7 @@ use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
 use crate::{
-    engine_state::{engine_config::EngineConfig, execution_journal::ExecutionJournal},
+    engine_state::{EngineConfig, ExecutionJournal},
     runtime_context::dictionary,
     tracking_copy::{self, ValidationError},
 };

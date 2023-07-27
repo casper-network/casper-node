@@ -8,9 +8,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{
-        checksum_registry::ChecksumRegistry, system_contract_registry::SystemContractRegistry,
-    },
+    engine_state::{ChecksumRegistry, SystemContractRegistry},
     execution,
     tracking_copy::TrackingCopy,
 };

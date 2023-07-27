@@ -30,10 +30,7 @@ use casper_types::{
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
 use crate::{
-    engine_state::{
-        engine_config::EngineConfig, execution_effect::ExecutionEffect,
-        execution_journal::ExecutionJournal,
-    },
+    engine_state::{execution_effect::ExecutionEffect, EngineConfig, ExecutionJournal},
     runtime_context::dictionary,
 };
 

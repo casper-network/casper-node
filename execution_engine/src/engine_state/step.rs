@@ -7,7 +7,7 @@ use std::vec::Vec;
 use casper_types::{bytesrepr, CLValueError, Digest, EraId, ProtocolVersion, PublicKey};
 
 use crate::{
-    engine_state::{error::Error, execution_journal::ExecutionJournal},
+    engine_state::{Error, ExecutionJournal},
     execution,
     runtime::stack::RuntimeStackOverflow,
 };

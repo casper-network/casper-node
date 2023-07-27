@@ -11,8 +11,7 @@ use tracing::error;
 
 use crate::{
     engine_state::{
-        engine_config::EngineConfig, execution_effect::ExecutionEffect,
-        execution_journal::ExecutionJournal, system_contract_registry::SystemContractRegistry,
+        execution_effect::ExecutionEffect, EngineConfig, ExecutionJournal, SystemContractRegistry,
     },
     execution::{AddressGenerator, Error},
     runtime_context::dictionary::DictionaryValue,

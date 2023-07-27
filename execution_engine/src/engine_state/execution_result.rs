@@ -9,7 +9,7 @@ use casper_types::{
 };
 
 use super::error;
-use crate::{engine_state::execution_journal::ExecutionJournal, execution::Error as ExecError};
+use crate::{engine_state::ExecutionJournal, execution::Error as ExecError};
 
 fn make_payment_error_effects(
     max_payment_cost: Motes,

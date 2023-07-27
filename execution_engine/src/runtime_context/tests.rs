@@ -29,7 +29,7 @@ use tempfile::TempDir;
 
 use super::{Error, RuntimeContext};
 use crate::{
-    engine_state::{engine_config::EngineConfig, system_contract_registry::SystemContractRegistry},
+    engine_state::{EngineConfig, SystemContractRegistry},
     execution::AddressGenerator,
     tracking_copy::TrackingCopy,
 };

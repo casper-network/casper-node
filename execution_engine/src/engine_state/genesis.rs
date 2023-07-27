@@ -32,9 +32,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{
-        execution_effect::ExecutionEffect, system_contract_registry::SystemContractRegistry,
-    },
+    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry},
     execution,
     execution::AddressGenerator,
     tracking_copy::TrackingCopy,

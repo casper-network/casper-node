@@ -7,7 +7,7 @@ pub mod era_validators;
 mod error;
 pub mod execute_request;
 pub mod execution_effect;
-pub(crate) mod execution_journal;
+mod execution_journal;
 pub(crate) mod execution_kind;
 pub mod execution_result;
 pub mod genesis;
