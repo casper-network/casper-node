@@ -320,15 +320,15 @@ where
                 )?;
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
 
                 let ret = match self.transfer_to_account(account_hash, amount, id)? {
@@ -382,19 +382,19 @@ where
                 )?;
                 let source_purse = {
                     let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let account_hash: AccountHash = {
                     let bytes = self.bytes_from_mem(key_ptr, key_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let amount: U512 = {
                     let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let id: Option<u64> = {
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                    bytesrepr::deserialize_from_slice(bytes).map_err(Error::BytesRepr)?
                 };
                 let ret = match self.transfer_from_purse_to_account(
                     source_purse,
@@ -695,13 +695,13 @@ where
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;
                 let args_bytes: Vec<u8> = {
                     let args_size: u32 = args_size;
-                    self.bytes_from_mem(args_ptr, args_size as usize)?
+                    self.bytes_from_mem(args_ptr, args_size as usize)?.to_vec()
                 };
 
                 let ret = self.call_contract_host_buffer(
                     contract_hash,
                     &entry_point_name,
-                    args_bytes,
+                    &args_bytes,
                     result_size_ptr,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -751,14 +751,14 @@ where
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;
                 let args_bytes: Vec<u8> = {
                     let args_size: u32 = args_size;
-                    self.bytes_from_mem(args_ptr, args_size as usize)?
+                    self.bytes_from_mem(args_ptr, args_size as usize)?.to_vec()
                 };
 
                 let ret = self.call_versioned_contract_host_buffer(
                     contract_package_hash,
                     contract_version,
                     entry_point_name,
-                    args_bytes,
+                    &args_bytes,
                     result_size_ptr,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
@@ -882,8 +882,10 @@ where
                     &host_function_costs.blake2b,
                     [in_ptr, in_size, out_ptr, out_size],
                 )?;
-                let input: Vec<u8> = self.bytes_from_mem(in_ptr, in_size as usize)?;
-                let digest = crypto::blake2b(input);
+                let digest =
+                    self.checked_memory_slice(in_ptr as usize, in_size as usize, |input| {
+                        crypto::blake2b(input)
+                    })?;
 
                 let result = if digest.len() != out_size as usize {
                     Err(ApiError::BufferTooSmall)
