@@ -11,8 +11,8 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{Error, ExecError},
-    execution,
+    engine_state::error::Error,
+    execution::{self, Error as ExecError},
     tracking_copy::{TrackingCopy, TrackingCopyExt},
 };
 
