@@ -77,6 +77,7 @@ impl Update {
             .clone()
     }
 
+    #[track_caller]
     pub(crate) fn assert_written_balance(&self, purse: URef, balance: u64) {
         assert_eq!(
             self.entries.get(&Key::Balance(purse.addr())),
@@ -86,6 +87,7 @@ impl Update {
         );
     }
 
+    #[track_caller]
     pub(crate) fn assert_total_supply<R: StateReader>(&self, reader: &mut R, supply: u64) {
         let total = self
             .entries
@@ -103,6 +105,7 @@ impl Update {
         );
     }
 
+    #[track_caller]
     pub(crate) fn assert_written_purse_is_unit(&self, purse: URef) {
         assert_eq!(
             self.entries.get(&Key::URef(purse)),
@@ -112,12 +115,14 @@ impl Update {
         );
     }
 
+    #[track_caller]
     pub(crate) fn assert_seigniorage_recipients_written<R: StateReader>(&self, reader: &mut R) {
         assert!(self
             .entries
             .contains_key(&reader.get_seigniorage_recipients_key()));
     }
 
+    #[track_caller]
     pub(crate) fn assert_written_bid(&self, account: AccountHash, bid: Bid) {
         assert_eq!(
             self.entries.get(&Key::Bid(account)),
@@ -125,6 +130,7 @@ impl Update {
         );
     }
 
+    #[track_caller]
     pub(crate) fn assert_unbonding_purse(
         &self,
         bid_purse: URef,
@@ -147,20 +153,63 @@ impl Update {
         ))
     }
 
+    /// `expected`: (bid_purse, unbonder_key, amount)
+    #[track_caller]
+    pub(crate) fn assert_unbonding_purses<'a>(
+        &self,
+        validator_key: &PublicKey,
+        expected: impl IntoIterator<Item = (URef, &'a PublicKey, u64)>,
+    ) {
+        let mut expected: Vec<_> = expected
+            .into_iter()
+            .map(|(bid_purse, unbonder_key, amount)| {
+                (validator_key, bid_purse, unbonder_key, U512::from(amount))
+            })
+            .collect();
+        let mut data: Vec<_> = self
+            .entries
+            .get(&Key::Unbond(validator_key.to_account_hash()))
+            .expect("should have unbonds for the account")
+            .as_unbonding()
+            .expect("should be unbonding purses")
+            .iter()
+            .map(|unbonding_purse| {
+                (
+                    unbonding_purse.validator_public_key(),
+                    *unbonding_purse.bonding_purse(),
+                    unbonding_purse.unbonder_public_key(),
+                    *unbonding_purse.amount(),
+                )
+            })
+            .collect();
+
+        expected.sort();
+        data.sort();
+
+        assert_eq!(
+            data, expected,
+            "\nThe data we got:\n{data:#?}\nExpected values:\n{expected:#?}"
+        );
+    }
+
+    #[track_caller]
     pub(crate) fn assert_key_absent(&self, key: &Key) {
         assert!(!self.entries.contains_key(key))
     }
 
+    #[track_caller]
     pub(crate) fn assert_validators(&self, validators: &[ValidatorInfo]) {
         let self_set: HashSet<_> = self.validators.as_ref().unwrap().iter().collect();
         let other_set: HashSet<_> = validators.iter().collect();
         assert_eq!(self_set, other_set);
     }
 
+    #[track_caller]
     pub(crate) fn assert_validators_unchanged(&self) {
         assert!(self.validators.is_none());
     }
 
+    #[track_caller]
     pub(crate) fn assert_withdraws_empty(&self, validator_key: &PublicKey) {
         let withdraws = self
             .entries
@@ -171,6 +220,7 @@ impl Update {
         assert!(withdraws.is_empty());
     }
 
+    #[track_caller]
     pub(crate) fn assert_unbonds_empty(&self, validator_key: &PublicKey) {
         let unbonds = self
             .entries

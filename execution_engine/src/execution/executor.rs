@@ -12,9 +12,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{
-        execution_kind::ExecutionKind, execution_result::ExecutionResult, EngineConfig, ExecError,
-    },
+    engine_state::{execution_kind::ExecutionKind, EngineConfig, ExecutionResult},
     execution::{address_generator::AddressGenerator, Error},
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,
@@ -23,10 +21,8 @@ use crate::{
 
 const ARG_AMOUNT: &str = "amount";
 
-fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, ExecError> {
-    runtime_args
-        .try_get_number(ARG_AMOUNT)
-        .map_err(ExecError::from)
+fn try_get_amount(runtime_args: &RuntimeArgs) -> Result<U512, Error> {
+    runtime_args.try_get_number(ARG_AMOUNT).map_err(Error::from)
 }
 
 /// Executor object deals with execution of WASM modules.
