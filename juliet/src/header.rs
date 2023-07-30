@@ -100,7 +100,7 @@ pub enum ErrorKind {
 }
 
 /// Frame kind, from the kind byte.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 

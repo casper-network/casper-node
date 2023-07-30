@@ -109,7 +109,7 @@ impl From<Id> for u16 {
 }
 
 /// The outcome of a parsing operation on a potentially incomplete buffer.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 #[must_use]
 pub enum Outcome<T, E> {
     /// The given data was incomplete, at least the given amount of additional bytes is needed.

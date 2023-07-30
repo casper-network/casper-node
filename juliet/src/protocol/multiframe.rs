@@ -213,25 +213,23 @@ mod tests {
     /// Frame size used for multiframe tests.
     const MAX_FRAME_SIZE: u32 = 16;
 
+    /// Maximum size of a payload of a single frame message.
+    ///
+    /// One byte is required to encode the length, which is <= 16.
     const MAX_SINGLE_FRAME_PAYLOAD_SIZE: u32 = MAX_FRAME_SIZE - Header::SIZE as u32 - 1;
 
     /// Maximum payload size used in testing.
     const MAX_PAYLOAD_SIZE: u32 = 4096;
-
-    const HEADER_1: Header = Header::new(Kind::RequestPl, ChannelId(1), Id(1));
-
-    const LONG_PAYLOAD: &[u8] = &[
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
-        25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47,
-        48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63,
-    ];
 
     #[test]
     fn single_message_frame_by_frame() {
         // We single-feed a message frame-by-frame into the multi-frame receiver:
         let mut receiver = MultiframeReceiver::default();
 
-        let msg = OutgoingMessage::new(HEADER_1, Some(Bytes::from_static(LONG_PAYLOAD)));
+        let payload = gen_payload(64);
+        let header = Header::new(Kind::RequestPl, ChannelId(1), Id(1));
+
+        let msg = OutgoingMessage::new(header, Some(Bytes::from(payload.clone())));
 
         let mut buffer = BytesMut::new();
         let mut frames_left = msg.num_frames(MAX_FRAME_SIZE);
@@ -243,7 +241,7 @@ mod tests {
             buffer.put(frame);
 
             match receiver.accept(
-                HEADER_1,
+                header,
                 &mut buffer,
                 MAX_FRAME_SIZE,
                 MAX_PAYLOAD_SIZE,
@@ -257,7 +255,7 @@ mod tests {
                 }
                 Outcome::Success(Some(output)) => {
                     assert_eq!(frames_left, 0, "should have consumed all frames");
-                    assert_eq!(output, LONG_PAYLOAD);
+                    assert_eq!(output, payload);
                 }
                 Outcome::Success(None) => {
                     // all good, we will read another frame
@@ -271,7 +269,7 @@ mod tests {
     }
 
     /// A testing model action .
-    #[derive(Arbitrary, Debug)]
+    #[derive(Arbitrary, derive_more::Debug)]
     enum Action {
         /// Sends a single frame not subject to multi-frame (due to its payload fitting the size).
         #[proptest(weight = 30)]
@@ -284,6 +282,7 @@ mod tests {
             #[proptest(
                 strategy = "collection::vec(any::<u8>(), 0..=MAX_SINGLE_FRAME_PAYLOAD_SIZE as usize)"
             )]
+            #[debug("{} bytes", payload.len())]
             payload: Vec<u8>,
         },
         /// Creates a new multi-frame message, does nothing if there is already one in progress.
@@ -295,6 +294,7 @@ mod tests {
             #[proptest(
                 strategy = "collection::vec(any::<u8>(), (MAX_SINGLE_FRAME_PAYLOAD_SIZE as usize+1)..=MAX_PAYLOAD_SIZE as usize)"
             )]
+            #[debug("{} bytes", payload.len())]
             payload: Vec<u8>,
         },
         /// Continue sending the current multi-frame message; does nothing if no multi-frame send
@@ -313,6 +313,7 @@ mod tests {
             #[proptest(
                 strategy = "collection::vec(any::<u8>(), (MAX_SINGLE_FRAME_PAYLOAD_SIZE as usize+1)..=MAX_PAYLOAD_SIZE as usize)"
             )]
+            #[debug("{} bytes", payload.len())]
             payload: Vec<u8>,
         },
         /// Sends another frame with data.
@@ -329,6 +330,7 @@ mod tests {
             #[proptest(strategy = "collection::vec(any::<u8>(),
                     (MAX_SINGLE_FRAME_PAYLOAD_SIZE as usize + 1)
                     ..=(2+2*MAX_SINGLE_FRAME_PAYLOAD_SIZE as usize))")]
+            #[debug("{} bytes", payload.len())]
             payload: Vec<u8>,
         },
     }
@@ -339,6 +341,7 @@ mod tests {
         actions in collection::vec(any::<Action>(), 0..1000)
     ) {
         let (input, expected) = generate_model_sequence(actions);
+        check_model_sequence(input, expected)
     }
     }
 
@@ -352,6 +355,11 @@ mod tests {
         }
     }
 
+    /// Generates a model sequence and encodes it as input.
+    ///
+    /// Returns a [`BytesMut`] buffer filled with a syntactically valid sequence of bytes that
+    /// decode to multiple frames, along with vector of expected outcomes of the
+    /// [`MultiframeReceiver::accept`] method.
     fn generate_model_sequence(
         actions: Vec<Action>,
     ) -> (BytesMut, Vec<Outcome<Option<BytesMut>, OutgoingMessage>>) {
@@ -481,5 +489,92 @@ mod tests {
         }
 
         (input, expected)
+    }
+
+    /// Extracts a header from a slice.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no syntactically well-formed header in the first four bytes of `data`.
+    #[track_caller]
+    fn expect_header_from_slice(data: &[u8]) -> Header {
+        let raw_header: [u8; Header::SIZE] =
+            <[u8; Header::SIZE] as TryFrom<&[u8]>>::try_from(&data[..Header::SIZE])
+                .expect("did not expect header to be missing")
+                .clone();
+        Header::parse(raw_header).expect("did not expect header parsing to fail")
+    }
+
+    /// Process a given input and compare it against predetermined expected outcomes.
+    fn check_model_sequence(
+        mut input: BytesMut,
+        expected: Vec<Outcome<Option<BytesMut>, OutgoingMessage>>,
+    ) {
+        let mut receiver = MultiframeReceiver::default();
+
+        let mut actual = Vec::new();
+        while !input.is_empty() {
+            // We need to perform the work usually done by the IO system and protocol layer before
+            // we can pass it on to the multi-frame handler.
+            let header = expect_header_from_slice(&input);
+
+            let outcome = receiver.accept(
+                header,
+                &mut input,
+                MAX_FRAME_SIZE,
+                MAX_PAYLOAD_SIZE,
+                ErrorKind::RequestTooLarge,
+            );
+            actual.push(outcome);
+
+            // On error, we exit.
+            if matches!(actual.last().unwrap(), Outcome::Fatal(_)) {
+                break;
+            }
+        }
+
+        assert_eq!(actual, expected);
+        assert!(input.is_empty(), "error should be last message");
+    }
+
+    /// Generates a payload.
+    fn gen_payload(size: usize) -> Vec<u8> {
+        let mut payload = Vec::with_capacity(size);
+        for i in 0..size {
+            payload.push((i % 256) as u8);
+        }
+        payload
+    }
+
+    #[test]
+    fn mutltiframe_allows_interspersed_frames() {
+        let sf_payload = gen_payload(10);
+
+        let actions = vec![
+            Action::BeginMultiFrameMessage {
+                header: Header::new(Kind::Request, ChannelId(0), Id(0)),
+                payload: gen_payload(1361),
+            },
+            Action::SendSingleFrame {
+                header: Header::new_error(ErrorKind::Other, ChannelId(1), Id(42188)),
+                payload: sf_payload.clone(),
+            },
+        ];
+
+        // Failed sequence was generated by a proptest, check that it matches.
+        assert_eq!(format!("{:?}", actions), "[BeginMultiFrameMessage { header: [Request chan: 0 id: 0], payload: 1361 bytes }, SendSingleFrame { header: [err:Other chan: 1 id: 42188], payload: 10 bytes }]");
+
+        let (input, expected) = generate_model_sequence(actions);
+
+        // We expect the single frame message to come through.
+        assert_eq!(
+            expected,
+            vec![
+                Outcome::Success(None),
+                Outcome::Success(Some(sf_payload.as_slice().into()))
+            ]
+        );
+
+        check_model_sequence(input, expected);
     }
 }

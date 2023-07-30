@@ -26,7 +26,7 @@ use super::payload_is_multi_frame;
 /// interspersed with other messages at will. In general, the [`OutgoingMessage::frames()`] iterator
 /// should be used, even for single-frame messages.
 #[must_use]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OutgoingMessage {
     /// The common header for all outgoing messages.
     header: Header,
