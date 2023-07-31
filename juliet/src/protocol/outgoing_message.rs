@@ -164,7 +164,7 @@ struct Preamble {
 
 impl Display for Preamble {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.header, f)?;
+        Debug::fmt(&self.header, f)?;
         if !self.payload_length.is_sentinel() {
             write!(f, " [len={}]", self.payload_length.decode())?;
         }

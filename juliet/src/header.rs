@@ -2,7 +2,7 @@
 //!
 //! This module is typically only used by the protocol implementation (see
 //! [`protocol`](crate::protocol)), but may be of interested to those writing low level tooling.
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 use bytemuck::{Pod, Zeroable};
 use thiserror::Error;
@@ -36,13 +36,6 @@ impl Debug for Header {
                 self.id()
             )
         }
-    }
-}
-
-impl Display for Header {
-    #[inline(always)]
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
     }
 }
 
@@ -383,8 +376,8 @@ mod tests {
             assert_eq!(rebuilt, header);
             assert_eq!(reencoded, <[u8; Header::SIZE]>::from(header));
 
-            // Ensure display/debug don't panic.
-            assert_eq!(format!("{}", header), format!("{:?}", header));
+            // Ensure debug doesn't panic.
+            assert_eq!(format!("{:?}", header), format!("{:?}", header));
 
             // Check bytewise it is the same.
             assert_eq!(&reencoded[..], header.as_ref());
