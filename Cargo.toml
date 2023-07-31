@@ -6,6 +6,7 @@ members = [
     "execution_engine_testing/tests",
     "hashing",
     "json_rpc",
+    "juliet",
     "muxink",
     "node",
     "smart_contracts/contract",
@@ -14,6 +15,8 @@ members = [
     "utils/global-state-update-gen",
     "utils/validation",
 ]
+# Ensures we do not pull in all the features of dev dependencies when building.
+resolver = "2"
 
 default-members = [
     "ci/casper_updater",
@@ -22,6 +25,7 @@ default-members = [
     "execution_engine_testing/tests",
     "hashing",
     "json_rpc",
+    "juliet",    
     "node",
     "types",
     "utils/global-state-update-gen",
@@ -29,11 +33,6 @@ default-members = [
 ]
 
 exclude = ["utils/nctl/remotes/casper-client-rs"]
-
-# Include debug symbols in the release build of `casper-engine-tests` so that `simple-transfer` will yield useful
-# perf data.
-[profile.release.package.casper-engine-tests]
-debug = true
 
 [profile.release]
 codegen-units = 1

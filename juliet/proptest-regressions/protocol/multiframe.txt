@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 6e7fd627a8f19cd62a9ddcaa90d051076fcfbbce9735fe0b25f9e68f2272dc7e # shrinks to actions = [SendSingleFrame { header: [Request chan: 0 id: 0], payload: [] }]
