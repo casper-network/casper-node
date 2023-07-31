@@ -168,7 +168,7 @@ impl Display for Preamble {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.header, f)?;
         if !self.payload_length.is_sentinel() {
-            write!(f, " [l={}]", self.payload_length.decode())?;
+            write!(f, " [len={}]", self.payload_length.decode())?;
         }
         Ok(())
     }
@@ -692,7 +692,7 @@ mod tests {
         let header = Header::new(Kind::RequestPl, ChannelId(1), Id(2));
         let preamble = Preamble::new(header, Varint32::encode(678));
 
-        assert_eq!(preamble.to_string(), "[RequestPl chan: 1 id: 2] [l=678]");
+        assert_eq!(preamble.to_string(), "[RequestPl chan: 1 id: 2] [len=678]");
 
         let preamble_no_payload = Preamble::new(header, Varint32::SENTINEL);
 
@@ -703,7 +703,7 @@ mod tests {
 
         assert_eq!(
             frame.to_string(),
-            "<[RequestPl chan: 1 id: 2] [l=4] 61 73 64 66 (4 bytes)>"
+            "<[RequestPl chan: 1 id: 2] [len=4] 61 73 64 66 (4 bytes)>"
         );
 
         let msg_no_payload = OutgoingMessage::new(header, None);

@@ -68,7 +68,7 @@ pub enum ErrorKind {
     /// A `varint32` could not be decoded.
     #[error("bad varint")]
     BadVarInt = 4,
-    /// Invalid channel: A channel number greater or equal the highest channel number was received.
+    /// Invalid channel: A channel number greater than the highest channel number was received.
     #[error("invalid channel")]
     InvalidChannel = 5,
     /// A new request or response was sent without completing the previous one.
@@ -116,6 +116,7 @@ pub enum Kind {
     CancelReq = 4,
     /// Cancellation of a response.
     CancelResp = 5,
+    // Note: When adding additional kinds, update the `HIGHEST` associated constant.
 }
 
 impl ErrorKind {

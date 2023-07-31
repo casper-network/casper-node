@@ -188,7 +188,7 @@ impl Channel {
         Channel {
             incoming_requests: Default::default(),
             outgoing_requests: Default::default(),
-            current_multiframe_receive: MultiframeReceiver::default(),
+            current_multiframe_receiver: MultiframeReceiver::default(),
             cancellation_allowance: 0,
             config,
             prev_request_id: 0,
@@ -722,10 +722,11 @@ impl<const N: usize> JulietProtocol<N> {
                 }
                 Kind::RequestPl => {
                     // Make a note whether or not we are continuing an existing request.
-                    let is_new_request = channel.current_multiframe_receive.is_new_transfer(header);
+                    let is_new_request =
+                        channel.current_multiframe_receiver.is_new_transfer(header);
 
                     let multiframe_outcome: Option<BytesMut> =
-                        try_outcome!(channel.current_multiframe_receive.accept(
+                        try_outcome!(channel.current_multiframe_receiver.accept(
                             header,
                             buffer,
                             self.max_frame_size,
@@ -764,7 +765,7 @@ impl<const N: usize> JulietProtocol<N> {
                 }
                 Kind::ResponsePl => {
                     let is_new_response =
-                        channel.current_multiframe_receive.is_new_transfer(header);
+                        channel.current_multiframe_receiver.is_new_transfer(header);
 
                     // Ensure it is not a bogus response.
                     if is_new_response && !channel.outgoing_requests.contains(&header.id()) {
@@ -772,7 +773,7 @@ impl<const N: usize> JulietProtocol<N> {
                     }
 
                     let multiframe_outcome: Option<BytesMut> =
-                        try_outcome!(channel.current_multiframe_receive.accept(
+                        try_outcome!(channel.current_multiframe_receiver.accept(
                             header,
                             buffer,
                             self.max_frame_size,
