@@ -226,8 +226,8 @@ impl ChannelConfiguration {
     /// Creates a configuration with the given maximum size for response payloads (default is 0).
     ///
     /// There is nothing magical about payload sizes, a size of 0 allows for payloads that are no
-    /// longer than 0 bytes in size. On the protocol level, there is a distinction between a request
-    /// with a zero-sized payload and no payload.
+    /// longer than 0 bytes in size. On the protocol level, there is a distinction between a
+    /// response with a zero-sized payload and no payload.
     pub const fn with_max_response_payload_size(
         mut self,
         max_response_payload_size: u32,

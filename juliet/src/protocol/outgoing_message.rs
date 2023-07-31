@@ -35,7 +35,7 @@ pub struct OutgoingMessage {
 }
 
 impl OutgoingMessage {
-    /// Constructs a new outgoing messages.
+    /// Constructs a new outgoing message.
     // Note: Do not make this function available to users of the library, to avoid them constructing
     //       messages by accident that may violate the protocol.
     #[inline(always)]
