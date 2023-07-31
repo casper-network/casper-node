@@ -22,9 +22,9 @@ use super::{payload_is_multi_frame, MaxFrameSize};
 /// [`OutgoingMessage`]s are generated when the protocol requires data to be sent to the peer.
 /// Unless the connection is terminated, they should not be dropped, but can be sent in any order.
 ///
-/// While *frames* can be sent in any order, a message may span one or more frames, which can be
-/// interspersed with other messages at will. In general, the [`OutgoingMessage::frames()`] iterator
-/// should be used, even for single-frame messages.
+/// A message that spans one or more frames must have its internal frame order preserved. In
+/// general, the [`OutgoingMessage::frames()`] iterator should be used, even for single-frame
+/// messages.
 #[must_use]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OutgoingMessage {
