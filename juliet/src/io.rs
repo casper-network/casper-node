@@ -206,8 +206,8 @@ struct IoShared<const N: usize> {
     /// Tracks how many requests are in the wait queue.
     ///
     /// Tickets are freed once the item is in the wait queue, thus the semaphore permit count
-    /// controls how many requests can be buffered in addition to those already permitted due to the
-    /// protocol.
+    /// controls how many requests can be buffered in addition to those already permitted due to
+    /// the protocol.
     ///
     /// The maximum number of available tickets must be >= 1 for the IO layer to function.
     buffered_requests: [Arc<Semaphore>; N],
@@ -244,8 +244,9 @@ pub enum IoEvent {
     },
     /// A response has been received.
     ///
-    /// For every [`IoId`] there will eventually be exactly either one [`IoEvent::ReceivedResponse`]
-    /// or [`IoEvent::ReceivedCancellationResponse`], unless the connection is shutdown beforehand.
+    /// For every [`IoId`] there will eventually be exactly either one
+    /// [`IoEvent::ReceivedResponse`] or [`IoEvent::ReceivedCancellationResponse`], unless the
+    /// connection is shutdown beforehand.
     ReceivedResponse {
         /// The local request ID for which the response was sent.
         io_id: IoId,
@@ -256,8 +257,9 @@ pub enum IoEvent {
     ///
     /// Indicates the peer is not going to answer the request.
     ///
-    /// For every [`IoId`] there will eventually be exactly either one [`IoEvent::ReceivedResponse`]
-    /// or [`IoEvent::ReceivedCancellationResponse`], unless the connection is shutdown beforehand.
+    /// For every [`IoId`] there will eventually be exactly either one
+    /// [`IoEvent::ReceivedResponse`] or [`IoEvent::ReceivedCancellationResponse`], unless the
+    /// connection is shutdown beforehand.
     ReceivedCancellationResponse {
         /// The local request ID which will not be answered.
         io_id: IoId,
@@ -754,8 +756,8 @@ pub struct RequestHandle<const N: usize> {
     sender: UnboundedSender<QueuedItem>,
     /// The next generation [`IoId`].
     ///
-    /// IoIDs are just generated sequentially until they run out (which at 1 billion at second takes
-    /// roughly 10^22 years).
+    /// IoIDs are just generated sequentially until they run out (which at 1 billion at second
+    /// takes roughly 10^22 years).
     next_io_id: Arc<AtomicU128>,
 }
 
@@ -770,7 +772,8 @@ pub struct RequestHandle<const N: usize> {
 /// ## Usage
 ///
 /// To send any sort of message, response, cancellation or error, use one of the `enqueue_*`
-/// methods. The [`io`] layer does some, but not complete bookkeeping, if a complete solution is required, use the [`rpc`](crate::rpc) layer instead.
+/// methods. The [`io`] layer does some, but not complete bookkeeping, if a complete solution is
+/// required, use the [`rpc`](crate::rpc) layer instead.
 #[derive(Clone, Debug)]
 #[repr(transparent)]
 pub struct Handle {

@@ -168,7 +168,8 @@ struct Channel {
     outgoing_requests: HashSet<Id>,
     /// The multiframe receiver state machine.
     ///
-    /// Every channel allows for at most one multi-frame message to be in progress at the same time.
+    /// Every channel allows for at most one multi-frame message to be in progress at the same
+    /// time.
     current_multiframe_receive: MultiframeReceiver,
     /// Number of requests received minus number of cancellations received.
     ///

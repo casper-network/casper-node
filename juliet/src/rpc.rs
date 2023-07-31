@@ -486,8 +486,8 @@ impl RequestGuard {
     }
 
     fn take_inner(self) -> Result<Option<Bytes>, RequestError> {
-        // TODO: Best to move `Notified` + `OnceCell` into a separate struct for testing and upholding
-        // these invariants, avoiding the extra clones.
+        // TODO: Best to move `Notified` + `OnceCell` into a separate struct for testing and
+        // upholding these invariants, avoiding the extra clones.
 
         self.inner
             .outcome

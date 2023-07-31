@@ -63,7 +63,8 @@ pub enum ErrorKind {
     /// An invalid header was received.
     #[error("invalid header")]
     InvalidHeader = 2,
-    /// A segment was sent with a frame where none was allowed, or a segment was too small or missing.
+    /// A segment was sent with a frame where none was allowed, or a segment was too small or
+    /// missing.
     #[error("segment violation")]
     SegmentViolation = 3,
     /// A `varint32` could not be decoded.
