@@ -81,50 +81,30 @@ impl MultiframeReceiver {
 
         match self {
             MultiframeReceiver::Ready => {
-                // We have a new segment, which has a variable size.
-                let segment_buf = &buffer[Header::SIZE..];
-
-                let payload_size =
-                    try_outcome!(decode_varint32(segment_buf).map_err(|_overflow| {
-                        OutgoingMessage::new(header.with_err(ErrorKind::BadVarInt), None)
-                    }));
-
-                if payload_size.value > max_payload_size {
-                    return err_msg(header, payload_exceeded_error_kind);
-                }
-
-                // We have a valid varint32.
-                let preamble_size = Header::SIZE as u32 + payload_size.offset.get() as u32;
-                let max_data_in_frame = max_frame_size - preamble_size;
-
-                // Determine how many additional bytes are needed for frame completion.
-                let frame_end = Index::new(
+                // We know there has to be a starting segment.
+                let frame_data = try_outcome!(detect_starting_segment(
+                    header,
                     buffer,
-                    preamble_size as usize
-                        + (max_data_in_frame as usize).min(payload_size.value as usize),
-                );
-                if buffer.remaining() < *frame_end {
-                    return Outcome::incomplete(*frame_end - buffer.remaining());
-                }
+                    max_frame_size,
+                    max_payload_size,
+                    payload_exceeded_error_kind,
+                ));
 
                 // At this point we are sure to complete a frame, so drop the preamble.
-                buffer.advance(preamble_size as usize);
+                buffer.advance(frame_data.preamble_len);
 
-                // Is the payload complete in one frame?
-                if payload_size.value <= max_data_in_frame {
-                    let payload = buffer.split_to(payload_size.value as usize);
+                // Consume the segment.
+                let segment = buffer.split_to(frame_data.segment_len);
 
+                if frame_data.is_complete() {
                     // No need to alter the state, we stay `Ready`.
-                    Success(Some(payload))
+                    Success(Some(segment))
                 } else {
                     // Length exceeds the frame boundary, split to maximum and store that.
-                    let partial_payload = buffer.split_to(max_data_in_frame as usize);
-
-                    // We are now in progress of reading a payload.
                     *self = MultiframeReceiver::InProgress {
                         header,
-                        payload: partial_payload,
-                        total_payload_size: payload_size.value,
+                        payload: segment,
+                        total_payload_size: frame_data.payload_size,
                     };
 
                     // We have successfully consumed a frame, but are not finished yet.
@@ -137,8 +117,25 @@ impl MultiframeReceiver {
                 total_payload_size,
             } => {
                 if header != *active_header {
-                    // The newly supplied header does not match the one active.
-                    return err_msg(header, ErrorKind::InProgress);
+                    // The newly supplied header does not match the one active. Let's see if we have
+                    // a valid start frame.
+                    let frame_data = try_outcome!(detect_starting_segment(
+                        header,
+                        buffer,
+                        max_frame_size,
+                        max_payload_size,
+                        payload_exceeded_error_kind,
+                    ));
+
+                    if frame_data.is_complete() {
+                        // An interspersed complete frame is fine, consume and return it.
+                        buffer.advance(frame_data.preamble_len);
+                        let segment = buffer.split_to(frame_data.segment_len);
+                        return Success(Some(segment));
+                    } else {
+                        // Otherwise, `InProgress`, we cannot start a second multiframe transfer.
+                        return err_msg(header, ErrorKind::InProgress);
+                    }
                 }
 
                 // Determine whether we expect an intermediate or end segment.
@@ -194,6 +191,66 @@ impl MultiframeReceiver {
             MultiframeReceiver::InProgress { header, .. } => *header != new_header,
         }
     }
+}
+
+/// Information about an initial frame in a given buffer.
+#[derive(Copy, Clone, Debug)]
+struct InitialFrameData {
+    /// The length of the preamble.
+    preamble_len: usize,
+    /// The length of the segment.
+    segment_len: usize,
+    /// The total payload size described in the frame preamble.
+    payload_size: u32,
+}
+
+impl InitialFrameData {
+    /// Returns whether or not the initial frame data describes a complete initial frame.
+    #[inline(always)]
+    fn is_complete(self) -> bool {
+        self.segment_len >= self.payload_size as usize
+    }
+}
+
+/// Detects a complete start frame in the given buffer.
+///
+/// Assumes that buffer still contains the frames header. Returns (`preamble_size`, `payload_len`).
+#[inline(always)]
+fn detect_starting_segment<'a>(
+    header: Header,
+    buffer: &'a BytesMut,
+    max_frame_size: u32,
+    max_payload_size: u32,
+    payload_exceeded_error_kind: ErrorKind,
+) -> Outcome<InitialFrameData, OutgoingMessage> {
+    // The `segment_buf` is the frame's data without the header.
+    let segment_buf = &buffer[Header::SIZE..];
+
+    // Try to decode a payload size.
+    let payload_size = try_outcome!(decode_varint32(segment_buf).map_err(|_overflow| {
+        OutgoingMessage::new(header.with_err(ErrorKind::BadVarInt), None)
+    }));
+
+    if payload_size.value > max_payload_size {
+        return err_msg(header, payload_exceeded_error_kind);
+    }
+
+    // We have a valid varint32.
+    let preamble_len = Header::SIZE + payload_size.offset.get() as usize;
+    let max_data_in_frame = max_frame_size - preamble_len as u32;
+
+    // Determine how many additional bytes are needed for frame completion.
+    let segment_len = (max_data_in_frame as usize).min(payload_size.value as usize);
+    let frame_end = preamble_len + segment_len;
+    if buffer.remaining() < frame_end {
+        return Outcome::incomplete(frame_end - buffer.remaining());
+    }
+
+    Success(InitialFrameData {
+        preamble_len,
+        segment_len,
+        payload_size: payload_size.value,
+    })
 }
 
 #[cfg(test)]
