@@ -13,11 +13,9 @@ use crate::{ChannelId, Id};
 ///
 /// Implements [`AsRef<u8>`], which will return a byte slice with the correct encoding of the header
 /// that can be sent directly to a peer.
-// Note: `[u8; 4]` below should ideally be `[u8; Self::SIZE]`, but this prevents the `Zeroable`
-//       derive from working.
 #[derive(Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
 #[repr(transparent)]
-pub struct Header([u8; 4]);
+pub struct Header([u8; Header::SIZE]);
 
 impl Debug for Header {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
