@@ -89,7 +89,7 @@ impl<const N: usize> RpcBuilder<N> {
 /// The client is used to create new RPC calls through [`JulietRpcClient::create_request`].
 #[derive(Debug)]
 pub struct JulietRpcClient<const N: usize> {
-    new_request_sender: UnboundedSender<NewRequest>,
+    new_request_sender: UnboundedSender<NewOutgoingRequest>,
     request_handle: RequestHandle<N>,
 }
 
@@ -119,11 +119,11 @@ pub struct JulietRpcServer<const N: usize, R, W> {
     core: IoCore<N, R, W>,
     handle: Handle,
     pending: HashMap<IoId, Arc<RequestGuardInner>>,
-    new_requests_receiver: UnboundedReceiver<NewRequest>,
+    new_requests_receiver: UnboundedReceiver<NewOutgoingRequest>,
 }
 
 /// Internal structure representing a new outgoing request.
-struct NewRequest {
+struct NewOutgoingRequest {
     /// The already reserved ticket.
     ticket: RequestTicket,
     /// Request guard to store results.
@@ -204,7 +204,7 @@ where
                 biased;
 
                 opt_new_request = self.new_requests_receiver.recv() => {
-                    if let Some(NewRequest { ticket, guard, payload }) = opt_new_request {
+                    if let Some(NewOutgoingRequest { ticket, guard, payload }) = opt_new_request {
                         match self.handle.enqueue_request(ticket, payload) {
                             Ok(io_id) => {
                                 // The request will be sent out, store it in our pending map.
@@ -278,7 +278,7 @@ impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
             guard.set_and_notify(Err(RequestError::Shutdown));
         }
 
-        while let Ok(NewRequest {
+        while let Ok(NewOutgoingRequest {
             ticket: _,
             guard,
             payload,
@@ -352,7 +352,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     fn do_enqueue_request(self, ticket: RequestTicket) -> RequestGuard {
         let inner = Arc::new(RequestGuardInner::new());
 
-        match self.client.new_request_sender.send(NewRequest {
+        match self.client.new_request_sender.send(NewOutgoingRequest {
             ticket,
             guard: inner.clone(),
             payload: self.payload,
