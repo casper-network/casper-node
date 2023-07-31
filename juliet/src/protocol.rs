@@ -612,7 +612,7 @@ impl<const N: usize> JulietProtocol<N> {
             return Ok(None);
         }
 
-        let header = Header::new(header::Kind::CancelReq, channel, id);
+        let header = Header::new(header::Kind::CancelResp, channel, id);
         Ok(Some(OutgoingMessage::new(header, None)))
     }
 
