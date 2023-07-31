@@ -15,16 +15,17 @@ use casper_types::{
     ApiError, CLType, CLTyped, EntryPointAccess, EntryPointType, URef, U512,
 };
 
-const INCREASE_ENTRY_POINT: &str = "increment";
-const DECREASE_ENTRY_POINT: &str = "decrement";
-const HASH_KEY_NAME: &str = "factory_hash";
-const PACKAGE_HASH_KEY_NAME: &str = "factory_package_hash";
 const ACCESS_KEY_NAME: &str = "factory_access";
+const ARG_INITIAL_VALUE: &str = "initial_value";
+const ARG_NAME: &str = "name";
+const CONTRACT_FACTORY_DEFAULT_ENTRY_POINT: &str = "contract_factory_default";
+const CONTRACT_FACTORY_ENTRY_POINT: &str = "contract_factory";
 const CONTRACT_VERSION: &str = "contract_version";
 const CURRENT_VALUE_KEY: &str = "current_value";
-const ARG_NAME: &str = "name";
-const ARG_INITIAL_VALUE: &str = "initial_value";
-const CONTRACT_FACTORY_ENTRY_POINT: &str = "contract_factory";
+const DECREASE_ENTRY_POINT: &str = "decrement";
+const HASH_KEY_NAME: &str = "factory_hash";
+const INCREASE_ENTRY_POINT: &str = "increment";
+const PACKAGE_HASH_KEY_NAME: &str = "factory_package_hash";
 
 fn get_named_uref(name: &str) -> Result<URef, ApiError> {
     runtime::get_key(name)
@@ -60,7 +61,16 @@ pub extern "C" fn decrement() {
 pub extern "C" fn contract_factory() {
     let name: String = runtime::get_named_arg(ARG_NAME);
     let initial_value: U512 = runtime::get_named_arg(ARG_INITIAL_VALUE);
+    installer(name, initial_value);
+}
 
+#[no_mangle]
+pub extern "C" fn contract_factory_default() {
+    let name: String = runtime::get_named_arg(ARG_NAME);
+    installer(name, U512::zero());
+}
+
+fn installer(name: String, initial_value: U512) {
     let named_keys = {
         let new_uref = storage::new_uref(initial_value);
         let mut named_keys = NamedKeys::new();
@@ -108,6 +118,14 @@ pub extern "C" fn call() {
 
         let entry_point: EntryPoint = EntryPoint::new(
             CONTRACT_FACTORY_ENTRY_POINT.to_string(),
+            Parameters::new(),
+            CLType::Unit,
+            EntryPointAccess::Public,
+            EntryPointType::Install,
+        );
+        entry_points.add_entry_point(entry_point);
+        let entry_point: EntryPoint = EntryPoint::new(
+            CONTRACT_FACTORY_DEFAULT_ENTRY_POINT.to_string(),
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,

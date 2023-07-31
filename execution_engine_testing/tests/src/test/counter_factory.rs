@@ -5,10 +5,18 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution};
-use casper_types::{runtime_args, RuntimeArgs, U512};
+use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, RuntimeArgs, U512};
 use walrus::Module;
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
+const CONTRACT_FACTORY_DEFAULT_ENTRY_POINT: &str = "contract_factory_default";
+const CONTRACT_FACTORY_ENTRY_POINT: &str = "contract_factory";
+const DECREASE_ENTRY_POINT: &str = "decrement";
+const INCREASE_ENTRY_POINT: &str = "increment";
+const ARG_INITIAL_VALUE: &str = "initial_value";
+const ARG_NAME: &str = "name";
+const NEW_COUNTER_1_NAME: &str = "new-counter-1";
+const NEW_COUNTER_2_NAME: &str = "new-counter-2";
 
 #[ignore]
 #[test]
@@ -56,7 +64,12 @@ fn should_install_factory() {
         .map(|export| export.name.as_str())
         .collect();
 
-    let expected_entrypoints = BTreeSet::from_iter(["increment", "decrement", "contract_factory"]);
+    let expected_entrypoints = BTreeSet::from_iter([
+        INCREASE_ENTRY_POINT,
+        DECREASE_ENTRY_POINT,
+        CONTRACT_FACTORY_ENTRY_POINT,
+        CONTRACT_FACTORY_DEFAULT_ENTRY_POINT,
+    ]);
     assert_eq!(factory_wasm_exports, expected_entrypoints);
 
     let contract_hash = (*contract_hash_key).into_contract_hash().unwrap();
@@ -74,13 +87,13 @@ fn should_install_factory() {
     let no_such_method = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(no_such_method, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == "call")
+        matches!(no_such_method, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == DEFAULT_ENTRY_POINT_NAME)
     );
 
     let exec_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
-        "increment", // should not be able to call "call" entry point
+        INCREASE_ENTRY_POINT,
         RuntimeArgs::new(),
     )
     .with_block_time(block_time)
@@ -91,38 +104,62 @@ fn should_install_factory() {
     let no_such_method = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(&no_such_method, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == "increment"),
+        matches!(&no_such_method, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
         "{:?}",
         &no_such_method
     );
 
-    let exec_request = ExecuteRequestBuilder::contract_call_by_hash(
+    let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         contract_hash,
-        "contract_factory", // should not be able to call "call" entry point
+        CONTRACT_FACTORY_ENTRY_POINT,
         runtime_args! {
-            "name" => "new-counter-1",
-            "initial_value" => U512::one(),
+            ARG_NAME => NEW_COUNTER_1_NAME,
+            ARG_INITIAL_VALUE => U512::one(),
         },
     )
     .with_block_time(block_time)
     .build();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder.exec(exec_request_3).commit().expect_success();
 
-    let contract = builder
+    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CONTRACT_FACTORY_DEFAULT_ENTRY_POINT,
+        runtime_args! {
+            ARG_NAME => NEW_COUNTER_2_NAME,
+        },
+    )
+    .with_block_time(block_time)
+    .build();
+
+    builder.exec(exec_request_4).commit().expect_success();
+
+    let new_counter_1_contract = builder
         .get_contract(contract_hash)
         .expect("should have contract hash");
 
-    let new_counter_1 = contract
+    let new_counter_1 = new_counter_1_contract
         .named_keys()
-        .get("new-counter-1")
+        .get(NEW_COUNTER_1_NAME)
+        .expect("new counter should exist")
+        .into_contract_hash()
+        .unwrap();
+
+    let new_counter_2 = new_counter_1_contract
+        .named_keys()
+        .get(NEW_COUNTER_2_NAME)
         .expect("new counter should exist")
         .into_contract_hash()
         .unwrap();
 
     let new_counter_1_contract = builder
         .get_contract(new_counter_1)
+        .expect("should have contract instance");
+
+    let _new_counter_2_contract = builder
+        .get_contract(new_counter_2)
         .expect("should have contract instance");
 
     let contract_wasm = builder
@@ -140,13 +177,13 @@ fn should_install_factory() {
             .iter()
             .map(|export| export.name.as_str())
             .collect::<BTreeSet<&str>>(),
-        BTreeSet::from_iter(["increment", "decrement"])
+        BTreeSet::from_iter([INCREASE_ENTRY_POINT, DECREASE_ENTRY_POINT])
     );
 
     let increment_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         new_counter_1,
-        "increment", // should not be able to call "call" entry point
+        INCREASE_ENTRY_POINT,
         RuntimeArgs::new(),
     )
     .with_block_time(block_time)
@@ -157,7 +194,7 @@ fn should_install_factory() {
     let decrement_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         new_counter_1,
-        "decrement", // should not be able to call "call" entry point
+        DECREASE_ENTRY_POINT,
         RuntimeArgs::new(),
     )
     .with_block_time(block_time)
