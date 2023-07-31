@@ -27,12 +27,14 @@
 use std::{
     collections::{BTreeSet, VecDeque},
     io,
-    sync::{atomic::Ordering, Arc},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
 };
 
 use bimap::BiMap;
 use bytes::{Buf, Bytes, BytesMut};
-use portable_atomic::AtomicU128;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -157,7 +159,7 @@ pub enum CoreError {
 /// endpoint. They are used to allow for buffering large numbers of items without exhausting the
 /// pool of protocol level request IDs, which are limited to `u16`s.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct IoId(u128);
+pub struct IoId(u64);
 
 /// IO layer for the juliet protocol.
 ///
@@ -758,7 +760,7 @@ pub struct RequestHandle<const N: usize> {
     ///
     /// IoIDs are just generated sequentially until they run out (which at 1 billion at second
     /// takes roughly 10^22 years).
-    next_io_id: Arc<AtomicU128>,
+    next_io_id: Arc<AtomicU64>,
 }
 
 /// Simple [`IoCore`] handle.
