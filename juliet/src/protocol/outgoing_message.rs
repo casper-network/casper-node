@@ -144,7 +144,7 @@ impl OutgoingMessage {
     }
 }
 
-/// Combination of header and potential frame payload length.
+/// Combination of header and potential message payload length.
 ///
 /// A message with a payload always starts with an initial frame that has a header and a varint
 /// encoded payload length. This type combines the two, and allows for the payload length to
