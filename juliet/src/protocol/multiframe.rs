@@ -216,9 +216,9 @@ impl InitialFrameData {
 ///
 /// Assumes that buffer still contains the frames header. Returns (`preamble_size`, `payload_len`).
 #[inline(always)]
-fn detect_starting_segment<'a>(
+fn detect_starting_segment(
     header: Header,
-    buffer: &'a BytesMut,
+    buffer: &BytesMut,
     max_frame_size: u32,
     max_payload_size: u32,
     payload_exceeded_error_kind: ErrorKind,
@@ -472,8 +472,8 @@ mod tests {
                         more.expect("test generated multi-frame message that only has one frame"),
                     );
                 }
-                Action::Continue => match active_transfer.take() {
-                    Some(frames) => {
+                Action::Continue => {
+                    if let Some(frames) = active_transfer.take() {
                         let (frame, more) = frames.next_owned(MAX_FRAME_SIZE);
 
                         if more.is_some() {
@@ -487,10 +487,8 @@ mod tests {
                         input.put(frame);
                         active_transfer = more;
                     }
-                    None => {
-                        // Nothing to do - there is no transfer to continue.
-                    }
-                },
+                    // Otherwise nothing to do - there is no transfer to continue.
+                }
                 Action::SendConflictingMultiFrameMessage {
                     channel,
                     id,
@@ -565,8 +563,7 @@ mod tests {
     fn expect_header_from_slice(data: &[u8]) -> Header {
         let raw_header: [u8; Header::SIZE] =
             <[u8; Header::SIZE] as TryFrom<&[u8]>>::try_from(&data[..Header::SIZE])
-                .expect("did not expect header to be missing")
-                .clone();
+                .expect("did not expect header to be missing");
         Header::parse(raw_header).expect("did not expect header parsing to fail")
     }
 

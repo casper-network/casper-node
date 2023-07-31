@@ -530,12 +530,8 @@ mod tests {
         assert_eq!(&comparable, expected);
 
         // Ensure that the written out version is the same as expected.
-        let expected_bytestring: Vec<u8> = expected
-            .into_iter()
-            .map(Deref::deref)
-            .flatten()
-            .copied()
-            .collect();
+        let expected_bytestring: Vec<u8> =
+            expected.iter().flat_map(Deref::deref).copied().collect();
         assert_eq!(expected_bytestring.len(), msg.total_len(MAX_FRAME_SIZE));
         assert_eq!(from_frame_iter, expected_bytestring);
 
