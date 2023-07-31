@@ -93,7 +93,9 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
     });
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
-        state_identifier: GlobalStateIdentifier::BlockHash(JsonBlock::doc_example().hash),
+        state_identifier: Some(GlobalStateIdentifier::BlockHash(
+            JsonBlock::doc_example().hash,
+        )),
         key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
         path: vec![],
     });
@@ -767,8 +769,9 @@ pub enum GlobalStateIdentifier {
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct QueryGlobalStateParams {
-    /// The identifier used for the query.
-    pub state_identifier: GlobalStateIdentifier,
+    /// The identifier used for the query. If none is passed
+    /// the tip of the chain will be used.
+    pub state_identifier: Option<GlobalStateIdentifier>,
     /// `casper_types::Key` as formatted string.
     pub key: String,
     /// The path components starting from the key as base.
@@ -817,9 +820,29 @@ impl RpcWithParams for QueryGlobalState {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let (state_root_hash, maybe_block_header) =
-            get_state_root_hash_and_optional_header(effect_builder, params.state_identifier)
-                .await?;
+        let (state_root_hash, maybe_block_header) = match params.state_identifier {
+            None => match effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+            {
+                None => {
+                    return Err(Error::new(
+                        ErrorCode::NoSuchBlock,
+                        "query-global-state failed to retrieve highest block header",
+                    ))
+                }
+                Some(block_header) => (
+                    *block_header.state_root_hash(),
+                    Some(JsonBlockHeader::from(block_header.clone())),
+                ),
+            },
+            Some(state_identifier) => {
+                let (state_root_hash, maybe_block_header) =
+                    get_state_root_hash_and_optional_header(effect_builder, state_identifier)
+                        .await?;
+                (state_root_hash, maybe_block_header)
+            }
+        };
 
         let base_key = match Key::from_formatted_str(&params.key)
             .map_err(|error| format!("failed to parse key: {}", error))

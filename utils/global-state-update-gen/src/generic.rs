@@ -75,16 +75,13 @@ fn update_account_balances<T: StateReader>(
     accounts: &[AccountConfig],
 ) {
     for account in accounts {
-        let target_balance = if let Some(balance) = account.balance {
-            balance
-        } else {
-            continue;
-        };
-        let account_hash = account.public_key.to_account_hash();
-        if let Some(account) = state.get_account(&account_hash) {
-            state.set_purse_balance(account.main_purse(), target_balance);
-        } else {
-            state.create_account(account_hash, target_balance);
+        if let Some(target_balance) = account.balance {
+            let account_hash = account.public_key.to_account_hash();
+            if let Some(account) = state.get_account(&account_hash) {
+                state.set_purse_balance(account.main_purse(), target_balance);
+            } else {
+                state.create_account(account_hash, target_balance);
+            }
         }
     }
 }

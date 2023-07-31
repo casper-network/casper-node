@@ -99,7 +99,7 @@ impl reactor::Reactor for Reactor {
             chainspec.protocol_version(),
             EraId::default(),
             "test",
-            MAX_TTL,
+            MAX_TTL.into(),
             RECENT_ERA_COUNT,
             Some(registry),
             false,

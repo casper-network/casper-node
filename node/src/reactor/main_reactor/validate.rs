@@ -9,9 +9,10 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{
         self,
-        main_reactor::{keep_up::synced_to_ttl, MainEvent, MainReactor},
+        main_reactor::{MainEvent, MainReactor},
     },
     storage::HighestOrphanedBlockResult,
+    types::MaxTtl,
     NodeRng,
 };
 
@@ -149,10 +150,10 @@ impl MainReactor {
         if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
             self.storage.get_highest_orphaned_block_header()
         {
-            if synced_to_ttl(
-                highest_switch_block_header,
+            let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
+            if max_ttl.synced_to_ttl(
+                highest_switch_block_header.timestamp(),
                 &highest_orphaned_block_header,
-                self.chainspec.deploy_config.max_ttl,
             )? {
                 debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
             } else {
