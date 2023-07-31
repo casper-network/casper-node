@@ -331,7 +331,7 @@ impl StateProvider for ScratchGlobalState {
         Ok(missing_descendants)
     }
 
-    fn delete_keys(
+    fn purge_keys(
         &self,
         correlation_id: CorrelationId,
         mut state_root_hash: Digest,
@@ -560,7 +560,7 @@ mod tests {
                 tmp.insert(*key, Transform::Write(value.to_owned()));
             }
             for TestPair { key, .. } in &tail {
-                tmp.insert(*key, Transform::Delete);
+                tmp.insert(*key, Transform::Purge);
             }
 
             tmp

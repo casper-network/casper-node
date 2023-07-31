@@ -509,7 +509,7 @@ where
             // Post-migration clean up
 
             for withdraw_key in withdraw_keys {
-                tracking_copy.borrow_mut().delete(withdraw_key);
+                tracking_copy.borrow_mut().purge(withdraw_key);
             }
         }
 
@@ -605,7 +605,7 @@ where
 
         match self
             .state
-            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
+            .purge_keys(correlation_id, state_root_hash, keys_to_delete)
         {
             Ok(DeleteResult::Deleted(post_state_hash)) => {
                 Ok(PruneResult::Success { post_state_hash })
