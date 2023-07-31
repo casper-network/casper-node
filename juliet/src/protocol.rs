@@ -9,15 +9,15 @@
 //! An instance of [`JulietProtocol<N>`] must be created using [`JulietProtocol<N>::builder`], the
 //! resulting builder can be used to fine-tune the configuration of the given protocol. The
 //! parameter `N` denotes the number of valid channels, which must be set at compile time. See the
-//! types documentation for more details.
+//! type's documentation for more details.
 //!
 //! ## Efficiency
 //!
 //! In general, all bulky data used in the protocol is as zero-copy as possible, for example large
 //! messages going out in multiple frames will still share the one original payload buffer passed in
 //! at construction. The "exception" to this is the re-assembly of multi-frame messages, which
-//! causes fragments to be copied once to form a continguous byte sequence for the payload to avoid
-//! memory-exhaustion attacks based on the semtantics of the underlying [`bytes::BytesMut`].
+//! causes fragments to be copied once to form a contiguous byte sequence for the payload to avoid
+//! memory-exhaustion attacks based on the semantics of the underlying [`bytes::BytesMut`].
 
 mod multiframe;
 mod outgoing_message;
@@ -38,7 +38,7 @@ use crate::{
     Outcome::{self, Fatal, Incomplete, Success},
 };
 
-/// A channel ID to fill in when the channel is actually or not relevant unknown.
+/// A channel ID to fill in when the channel is actually unknown or not relevant.
 ///
 /// Note that this is not a reserved channel, just a default chosen -- it may clash with an
 /// actually active channel.
@@ -46,7 +46,7 @@ const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
 
 /// An ID to fill in when the ID should not matter.
 ///
-/// Note a reserved id, it may clash with existing ones.
+/// Not a reserved id, it may clash with existing ones.
 const UNKNOWN_ID: Id = Id::new(0);
 
 /// A parser/state machine that processes an incoming stream and is able to construct messages to
@@ -144,7 +144,7 @@ impl<const N: usize> ProtocolBuilder<N> {
     ///
     /// # Panics
     ///
-    /// Will panic if the maximum size is too small to holder a header, payload length and at least
+    /// Will panic if the maximum size is too small to hold a header, payload length and at least
     /// one byte of payload.
     pub const fn max_frame_size(mut self, max_frame_size: u32) -> Self {
         assert!(max_frame_size as usize > Header::SIZE + Varint32::MAX_LEN);
@@ -170,7 +170,7 @@ struct Channel {
     ///
     /// Every channel allows for at most one multi-frame message to be in progress at the same
     /// time.
-    current_multiframe_receive: MultiframeReceiver,
+    current_multiframe_receiver: MultiframeReceiver,
     /// Number of requests received minus number of cancellations received.
     ///
     /// Capped at the request limit.
@@ -199,12 +199,12 @@ impl Channel {
     ///
     /// Depending on the size of the payload an [`OutgoingMessage`] may span multiple frames. On a
     /// single channel, only one multi-frame message may be in the process of sending at a time,
-    /// thus it is not permissable to begin sending frames of a different multi-frame message before
+    /// thus it is not permissible to begin sending frames of a different multi-frame message before
     /// the send of a previous one has been completed.
     ///
     /// Additional single-frame messages can be interspersed in between at will.
     ///
-    /// [`JulietProtocol`] does not track whether or not a multi-channel message is in-flight; it is
+    /// [`JulietProtocol`] does not track whether or not a multi-frame message is in-flight; it is
     /// up to the caller to ensure no second multi-frame message commences sending before the first
     /// one completes.
     ///
@@ -313,7 +313,7 @@ pub enum CompletedRead {
 pub enum LocalProtocolViolation {
     /// A request was not sent because doing so would exceed the request limit on channel.
     ///
-    /// Wait for addtional requests to be cancelled or answered. Calling
+    /// Wait for additional requests to be cancelled or answered. Calling
     /// [`JulietProtocol::allowed_to_send_request()`] beforehand is recommended.
     #[error("sending would exceed request limit")]
     WouldExceedRequestLimit,
@@ -377,7 +377,7 @@ impl<const N: usize> JulietProtocol<N> {
 
     /// Looks up a given channel by ID.
     ///
-    /// Returns a `LocalProtocolViolation` if called with non-existant channel.
+    /// Returns a `LocalProtocolViolation` if called with non-existent channel.
     #[inline(always)]
     const fn lookup_channel(&self, channel: ChannelId) -> Result<&Channel, LocalProtocolViolation> {
         if channel.0 as usize >= N {
@@ -389,7 +389,7 @@ impl<const N: usize> JulietProtocol<N> {
 
     /// Looks up a given channel by ID, mutably.
     ///
-    /// Returns a `LocalProtocolViolation` if called with non-existant channel.
+    /// Returns a `LocalProtocolViolation` if called with non-existent channel.
     #[inline(always)]
     fn lookup_channel_mut(
         &mut self,
@@ -450,7 +450,7 @@ impl<const N: usize> JulietProtocol<N> {
             return Err(LocalProtocolViolation::WouldExceedRequestLimit);
         }
 
-        // The `unwrap_or_default` below should never be triggered, as long as `u16::MAX` or less
+        // The `unwrap_or` below should never be triggered, as long as `u16::MAX` or less
         // requests are currently in flight, which is always the case.
         let id = chan.generate_request_id().unwrap_or(Id(0));
 
@@ -721,7 +721,7 @@ impl<const N: usize> JulietProtocol<N> {
                     }
                 }
                 Kind::RequestPl => {
-                    // Make a note whether or not we are continueing an existing request.
+                    // Make a note whether or not we are continuing an existing request.
                     let is_new_request = channel.current_multiframe_receive.is_new_transfer(header);
 
                     let multiframe_outcome: Option<BytesMut> =

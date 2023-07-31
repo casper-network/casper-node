@@ -174,7 +174,6 @@ impl<const N: usize> JulietRpcClient<N> {
 
 /// An error produced by the RPC error.
 #[derive(Debug, Error)]
-
 pub enum RpcServerError {
     /// An [`IoCore`] error.
     #[error(transparent)]
@@ -192,7 +191,7 @@ where
     /// peer. On success, this function should be called again immediately.
     ///
     /// On a regular shutdown (`None` returned) or an error ([`RpcServerError`] returned), a caller
-    /// must stop calling [`next_request`](Self::next_request) and shoudl drop the entire
+    /// must stop calling [`next_request`](Self::next_request) and should drop the entire
     /// [`JulietRpcServer`].
     ///
     /// **Important**: Even if the local peer is not intending to handle any requests, this function
@@ -385,9 +384,9 @@ pub enum RequestError {
     /// Local timeout.
     ///
     /// The request was cancelled on our end due to a timeout.
-    #[error("request timed out ")]
+    #[error("request timed out")]
     TimedOut,
-    /// Remove responsed with cancellation.
+    /// Remote responded with cancellation.
     ///
     /// Instead of sending a response, the remote sent a cancellation.
     #[error("remote cancelled our request")]
@@ -397,16 +396,16 @@ pub enum RequestError {
     /// Request was cancelled on our end.
     #[error("request cancelled locally")]
     Cancelled,
-    /// API misuse
+    /// API misuse.
     ///
-    /// Either the API was misued, or a bug in this crate appeared.
+    /// Either the API was misused, or a bug in this crate appeared.
     #[error("API misused or other internal error")]
     Error(LocalProtocolViolation),
 }
 
 /// Handle to an in-flight outgoing request.
 ///
-/// The existance of a [`RequestGuard`] indicates that a request has been made or is on-going. It
+/// The existence of a [`RequestGuard`] indicates that a request has been made or is ongoing. It
 /// can also be used to attempt to [`cancel`](RequestGuard::cancel) the request, or retrieve its
 /// values using [`wait_for_response`](RequestGuard::wait_for_response) or
 /// [`try_wait_for_response`](RequestGuard::try_wait_for_response).
@@ -450,8 +449,8 @@ impl RequestGuard {
 
     /// Forgets the request was made.
     ///
-    /// Similar [`cancel`](Self::cancel), except that it will not cause an actual cancellation, so
-    /// the peer will likely perform all the work. The response will be discarded.
+    /// Similar to [`cancel`](Self::cancel), except that it will not cause an actual cancellation,
+    /// so the peer will likely perform all the work. The response will be discarded.
     pub fn forget(self) {
         // Just do nothing.
     }
@@ -531,7 +530,7 @@ impl IncomingRequest {
         &self.payload
     }
 
-    /// Returns a reference to the payload, if any.
+    /// Returns a mutable reference to the payload, if any.
     ///
     /// Typically used in conjunction with [`Option::take()`].
     #[inline(always)]

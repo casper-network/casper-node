@@ -1,7 +1,7 @@
 //! `juliet` header parsing and serialization.
 //!
-//! This module is typically only used by the protocol implementation (see [`crate::protocol`]), but
-//! may be of interested to those writing low level tooling.
+//! This module is typically only used by the protocol implementation (see
+//! [`protocol`](crate::protocol)), but may be of interested to those writing low level tooling.
 use std::fmt::{Debug, Display};
 
 use bytemuck::{Pod, Zeroable};
@@ -76,23 +76,23 @@ pub enum ErrorKind {
     /// A new request or response was sent without completing the previous one.
     #[error("multi-frame in progress")]
     InProgress = 6,
-    /// The indicated size of the response would be exceeded the configured limit.
+    /// The indicated size of the response would exceed the configured limit.
     #[error("response too large")]
     ResponseTooLarge = 7,
-    /// The indicated size of the request would be exceeded the configured limit.
+    /// The indicated size of the request would exceed the configured limit.
     #[error("request too large")]
     RequestTooLarge = 8,
     /// Peer attempted to create two in-flight requests with the same ID on the same channel.
     #[error("duplicate request")]
     DuplicateRequest = 9,
     /// Sent a response for request not in-flight.
-    #[error("response for ficticious request")]
+    #[error("response for fictitious request")]
     FictitiousRequest = 10,
     /// The dynamic request limit has been exceeded.
     #[error("request limit exceeded")]
     RequestLimitExceeded = 11,
     /// Response cancellation for a request not in-flight.
-    #[error("cancellation for ficticious request")]
+    #[error("cancellation for fictitious request")]
     FictitiousCancel = 12,
     /// Peer sent a request cancellation exceeding the cancellation allowance.
     #[error("cancellation limit exceeded")]
@@ -259,7 +259,7 @@ impl Header {
     ///
     /// # Panics
     ///
-    /// Will panic if `Self::is_error()` is not `false`.
+    /// Will panic if `Self::is_error()` is `true`.
     #[inline(always)]
     pub const fn kind(self) -> Kind {
         debug_assert!(!self.is_error());

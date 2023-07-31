@@ -148,7 +148,7 @@ impl OutgoingMessage {
 
 /// Combination of header and potential frame payload length.
 ///
-/// A message with a payload always start with an initial frame that has a header and a varint
+/// A message with a payload always starts with an initial frame that has a header and a varint
 /// encoded payload length. This type combines the two, and allows for the payload length to
 /// effectively be omitted (through [`Varint32::SENTINEL`]). It has a compact, constant size memory
 /// representation regardless of whether a variably sized integer is present or not.
@@ -221,13 +221,13 @@ pub struct FrameIter {
 impl FrameIter {
     /// Returns the next frame to send.
     ///
-    /// Will return the next frame, and `Some(self)` is there are additional frames to send to
+    /// Will return the next frame, and `Some(self)` if there are additional frames to send to
     /// complete the message, `None` otherwise.
     ///
     /// # Note
     ///
     /// While different [`OutgoingMessage`]s can have their send order mixed or interspersed, a
-    /// caller MUST NOT send [`OutgoingFrame`]s of a single messagw in any order but the one
+    /// caller MUST NOT send [`OutgoingFrame`]s of a single message in any order but the one
     /// produced by this method. In other words, reorder messages, but not frames within a message.
     pub fn next_owned(mut self, max_frame_size: u32) -> (OutgoingFrame, Option<Self>) {
         if let Some(ref payload) = self.msg.payload {

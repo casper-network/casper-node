@@ -3,12 +3,12 @@
 //! The IO layer combines a lower-level transport like a TCP Stream with the
 //! [`JulietProtocol`](crate::protocol::JulietProtocol) protocol implementation and some memory
 //! buffers to provide a working high-level transport for juliet messages. It allows users of this
-//! layer to send messages across over multiple channels, without having to worry about frame
-//! multiplexing or request limits.
+//! layer to send messages over multiple channels, without having to worry about frame multiplexing
+//! or request limits.
 //!
 //! ## Usage
 //!
-//! Most, if not all functionality is provided by the [`IoCore<N, R, W>`] type, which constructed
+//! Most, if not all functionality is provided by the [`IoCore<N, R, W>`] type, which is constructed
 //! using an [`IoCoreBuilder`] (see [`IoCoreBuilder::new`]). Similarly to [`JulietProtocol<N>`] the
 //! `N` denotes the number of predefined channels.
 //!
@@ -146,7 +146,7 @@ pub enum CoreError {
     LocalProtocolViolation(#[from] LocalProtocolViolation),
     /// Internal error.
     ///
-    /// An error occured that should be impossible, this is indicative of a bug in this library.
+    /// An error occurred that should be impossible, this is indicative of a bug in this library.
     #[error("internal consistency error: {0}")]
     InternalError(&'static str),
 }
@@ -161,11 +161,11 @@ pub struct IoId(u128);
 
 /// IO layer for the juliet protocol.
 ///
-/// The central structure for the IO layer built on top the juliet protocol, once instance per
+/// The central structure for the IO layer built on top of the juliet protocol, one instance per
 /// connection. It manages incoming (`R`) and outgoing (`W`) transports, as well as a queue for
 /// items to be sent.
 ///
-/// Once instantiated, a continuously polling of [`IoCore::next_event`] is expected.
+/// Once instantiated, a continuous polling of [`IoCore::next_event`] is expected.
 pub struct IoCore<const N: usize, R, W> {
     /// The actual protocol state.
     juliet: JulietProtocol<N>,
@@ -341,11 +341,11 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    /// Retrieve the next event.
+    /// Retrieves the next event.
     ///
-    /// This is the central loop of the IO layer. It polls all underlying transports and reads/write
-    /// if data is available, until enough processing has been done to produce an [`IoEvent`]. Thus
-    /// any application using the IO layer should loop over calling this function.
+    /// This is the central loop of the IO layer. It polls all underlying transports and
+    /// reads/writes if data is available, until enough processing has been done to produce an
+    /// [`IoEvent`]. Thus any application using the IO layer should loop over calling this function.
     ///
     /// Polling of this function must continue only until `Err(_)` or `Ok(None)` is returned,
     /// indicating that the connection should be closed or has been closed.
@@ -938,7 +938,7 @@ impl Handle {
             .map_err(|send_err| EnqueueError::Closed(send_err.0.into_payload()))
     }
 
-    /// Enqueus an error.
+    /// Enqueues an error.
     ///
     /// Enqueuing an error causes the [`IoCore`] to begin shutting down immediately, only making an
     /// effort to finish sending the error before doing so.

@@ -1,6 +1,6 @@
 //! Multiframe reading support.
 //!
-//! The juliet protocol supports multi-frame messages, which are subject to addtional rules and
+//! The juliet protocol supports multi-frame messages, which are subject to additional rules and
 //! checks. The resulting state machine is encoded in the [`MultiframeReceiver`] type.
 
 use std::mem;
@@ -49,7 +49,7 @@ impl MultiframeReceiver {
     /// that includes a payload. If this is the case, the entire receive `buffer` should be passed
     /// to this function.
     ///
-    /// If a message payload matching the given header has been succesfully completed, both header
+    /// If a message payload matching the given header has been successfully completed, both header
     /// and payload are consumed from the `buffer`, the payload being returned. If a starting or
     /// intermediate segment was processed without completing the message, both are still consumed,
     /// but `None` is returned instead. This method will never consume more than one frame.
