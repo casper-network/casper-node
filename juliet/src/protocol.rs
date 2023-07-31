@@ -49,6 +49,63 @@ const UNKNOWN_CHANNEL: ChannelId = ChannelId::new(0);
 /// Not a reserved id, it may clash with existing ones.
 const UNKNOWN_ID: Id = Id::new(0);
 
+/// Maximum frame size.
+///
+/// The maximum configured frame size is subject to some invariants and is wrapped into a newtype
+/// for convenience.
+#[derive(Copy, Clone, Debug)]
+#[repr(transparent)]
+pub struct MaxFrameSize(u32);
+
+impl MaxFrameSize {
+    /// The minimum sensible frame size maximum.
+    ///
+    /// Set to fit at least a full preamble and a single byte of payload.
+    pub const MIN: u32 = Header::SIZE as u32 + Varint32::MAX_LEN as u32 + 1;
+
+    /// Recommended default for the maximum frame size.
+    ///
+    /// Chosen according to the Juliet RFC.
+    pub const DEFAULT: MaxFrameSize = MaxFrameSize(4096);
+
+    /// Constructs a new maximum frame size.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the given maximum frame size is less than [`MaxFrameSize::MIN`].
+    #[inline(always)]
+    pub const fn new(max_frame_size: u32) -> Self {
+        assert!(max_frame_size >= Self::MIN);
+        MaxFrameSize(max_frame_size)
+    }
+
+    /// Returns the maximum frame size.
+    #[inline(always)]
+    pub const fn get(self) -> u32 {
+        self.0
+    }
+
+    /// Returns the maximum frame size cast as `usize`.
+    #[inline(always)]
+    pub const fn get_usize(self) -> usize {
+        // Safe cast on all 32-bit and up systems.
+        self.0 as usize
+    }
+
+    /// Returns the maximum frame size without the header size.
+    #[inline(always)]
+    pub const fn without_header(self) -> usize {
+        self.get_usize() - Header::SIZE
+    }
+}
+
+impl Default for MaxFrameSize {
+    #[inline(always)]
+    fn default() -> Self {
+        MaxFrameSize::DEFAULT
+    }
+}
+
 /// A parser/state machine that processes an incoming stream and is able to construct messages to
 /// send out.
 ///
@@ -77,7 +134,7 @@ pub struct JulietProtocol<const N: usize> {
     /// Bi-directional channels.
     channels: [Channel; N],
     /// The maximum size for a single frame.
-    max_frame_size: u32,
+    max_frame_size: MaxFrameSize,
 }
 
 /// A builder for a [`JulietProtocol`] instance.
@@ -94,7 +151,7 @@ pub struct ProtocolBuilder<const N: usize> {
     /// Configuration for every channel.
     channel_config: [ChannelConfiguration; N],
     /// Maximum frame size.
-    max_frame_size: u32,
+    max_frame_size: MaxFrameSize,
 }
 
 impl<const N: usize> Default for ProtocolBuilder<N> {
@@ -115,7 +172,7 @@ impl<const N: usize> ProtocolBuilder<N> {
     pub const fn with_default_channel_config(config: ChannelConfiguration) -> Self {
         Self {
             channel_config: [config; N],
-            max_frame_size: 4096,
+            max_frame_size: MaxFrameSize::DEFAULT,
         }
     }
 
@@ -145,11 +202,9 @@ impl<const N: usize> ProtocolBuilder<N> {
     /// # Panics
     ///
     /// Will panic if the maximum size is too small to hold a header, payload length and at least
-    /// one byte of payload.
+    /// one byte of payload (see [`MaxFrameSize::MIN`]).
     pub const fn max_frame_size(mut self, max_frame_size: u32) -> Self {
-        assert!(max_frame_size as usize > Header::SIZE + Varint32::MAX_LEN);
-
-        self.max_frame_size = max_frame_size;
+        self.max_frame_size = MaxFrameSize::new(max_frame_size);
         self
     }
 }
@@ -362,16 +417,11 @@ macro_rules! log_frame {
 
 impl<const N: usize> JulietProtocol<N> {
     /// Creates a new juliet protocol builder instance.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if `max_frame_size` is too small to hold header and payload length encoded, i.e.
-    /// < 9 bytes.
     #[inline]
     pub const fn builder(config: ChannelConfiguration) -> ProtocolBuilder<N> {
         ProtocolBuilder {
             channel_config: [config; N],
-            max_frame_size: 1024,
+            max_frame_size: MaxFrameSize::DEFAULT,
         }
     }
 
@@ -404,7 +454,7 @@ impl<const N: usize> JulietProtocol<N> {
 
     /// Returns the configured maximum frame size.
     #[inline(always)]
-    pub const fn max_frame_size(&self) -> u32 {
+    pub const fn max_frame_size(&self) -> MaxFrameSize {
         self.max_frame_size
     }
 
@@ -656,7 +706,7 @@ impl<const N: usize> JulietProtocol<N> {
                         let frame_end = Index::new(buffer, *preamble_end + payload_length);
 
                         // No multi-frame messages allowed!
-                        if *frame_end > self.max_frame_size as usize {
+                        if *frame_end > self.max_frame_size.get_usize() {
                             return err_msg(header, ErrorKind::SegmentViolation);
                         }
 
@@ -856,12 +906,12 @@ fn err_msg<T>(header: Header, kind: ErrorKind) -> Outcome<T, OutgoingMessage> {
 ///
 /// Panics in debug mode if the given payload length is larger than `u32::MAX`.
 #[inline]
-pub const fn payload_is_multi_frame(max_frame_size: u32, payload_len: usize) -> bool {
+pub const fn payload_is_multi_frame(max_frame_size: MaxFrameSize, payload_len: usize) -> bool {
     debug_assert!(
         payload_len <= u32::MAX as usize,
         "payload cannot exceed `u32::MAX`"
     );
 
     payload_len as u64 + Header::SIZE as u64 + (Varint32::encode(payload_len as u32)).len() as u64
-        > max_frame_size as u64
+        > max_frame_size.get() as u64
 }

@@ -15,7 +15,7 @@ use bytes::{buf::Chain, Buf, Bytes};
 
 use crate::{header::Header, varint::Varint32};
 
-use super::payload_is_multi_frame;
+use super::{payload_is_multi_frame, MaxFrameSize};
 
 /// A message to be sent to the peer.
 ///
@@ -45,7 +45,7 @@ impl OutgoingMessage {
 
     /// Returns whether or not a message will span multiple frames.
     #[inline(always)]
-    pub const fn is_multi_frame(&self, max_frame_size: u32) -> bool {
+    pub const fn is_multi_frame(&self, max_frame_size: MaxFrameSize) -> bool {
         if let Some(ref payload) = self.payload {
             payload_is_multi_frame(max_frame_size, payload.len())
         } else {
@@ -66,7 +66,7 @@ impl OutgoingMessage {
     ///
     /// A slightly more convenient `frames` method, with a fixed `max_frame_size`. The resulting
     /// iterator will use slightly more memory than the equivalent `FrameIter`.
-    pub fn frame_iter(self, max_frame_size: u32) -> impl Iterator<Item = OutgoingFrame> {
+    pub fn frame_iter(self, max_frame_size: MaxFrameSize) -> impl Iterator<Item = OutgoingFrame> {
         let mut frames = Some(self.frames());
 
         iter::from_fn(move || {
@@ -95,8 +95,8 @@ impl OutgoingMessage {
 
     /// Calculates the number of frames this message will produce.
     #[inline]
-    pub const fn num_frames(&self, max_frame_size: u32) -> usize {
-        let usable_size = max_frame_size as usize - Header::SIZE;
+    pub const fn num_frames(&self, max_frame_size: MaxFrameSize) -> usize {
+        let usable_size = max_frame_size.without_header();
 
         let num_frames = (self.non_header_len() + usable_size - 1) / usable_size;
         if num_frames == 0 {
@@ -108,7 +108,7 @@ impl OutgoingMessage {
 
     /// Calculates the total length in bytes of all frames produced by this message.
     #[inline]
-    pub const fn total_len(&self, max_frame_size: u32) -> usize {
+    pub const fn total_len(&self, max_frame_size: MaxFrameSize) -> usize {
         self.num_frames(max_frame_size) * Header::SIZE + self.non_header_len()
     }
 
@@ -118,9 +118,7 @@ impl OutgoingMessage {
     /// with no regard for frame boundaries, thus it is only suitable to send all frames of the
     /// message with no interleaved data.
     #[inline]
-    pub fn iter_bytes(self, max_frame_size: u32) -> ByteIter {
-        debug_assert!(max_frame_size > 10);
-
+    pub fn iter_bytes(self, max_frame_size: MaxFrameSize) -> ByteIter {
         let length_prefix = self
             .payload
             .as_ref()
@@ -140,7 +138,7 @@ impl OutgoingMessage {
     /// method is not zero-copy, but still consumes `self` to avoid a conversion of a potentially
     /// unshared payload buffer.
     #[inline]
-    pub fn to_bytes(self, max_frame_size: u32) -> Bytes {
+    pub fn to_bytes(self, max_frame_size: MaxFrameSize) -> Bytes {
         let mut everything = self.iter_bytes(max_frame_size);
         everything.copy_to_bytes(everything.remaining())
     }
@@ -229,7 +227,7 @@ impl FrameIter {
     /// While different [`OutgoingMessage`]s can have their send order mixed or interspersed, a
     /// caller MUST NOT send [`OutgoingFrame`]s of a single message in any order but the one
     /// produced by this method. In other words, reorder messages, but not frames within a message.
-    pub fn next_owned(mut self, max_frame_size: u32) -> (OutgoingFrame, Option<Self>) {
+    pub fn next_owned(mut self, max_frame_size: MaxFrameSize) -> (OutgoingFrame, Option<Self>) {
         if let Some(ref payload) = self.msg.payload {
             let mut payload_remaining = payload.len() - self.bytes_processed;
 
@@ -245,7 +243,7 @@ impl FrameIter {
                 Preamble::new(self.msg.header, Varint32::SENTINEL)
             };
 
-            let frame_capacity = max_frame_size as usize - preamble.len();
+            let frame_capacity = max_frame_size.get_usize() - preamble.len();
             let frame_payload_len = frame_capacity.min(payload_remaining);
 
             let range = self.bytes_processed..(self.bytes_processed + frame_payload_len);
@@ -290,7 +288,7 @@ pub struct ByteIter {
     //       interface, which can only deal with usize arguments anyway.
     consumed: usize,
     /// Maximum frame size at construction.
-    max_frame_size: u32,
+    max_frame_size: MaxFrameSize,
 }
 
 impl ByteIter {
@@ -314,8 +312,8 @@ impl Buf for ByteIter {
         }
 
         // Determine where we are.
-        let frames_completed = self.consumed / self.max_frame_size as usize;
-        let frame_progress = self.consumed % self.max_frame_size as usize;
+        let frames_completed = self.consumed / self.max_frame_size.get_usize();
+        let frame_progress = self.consumed % self.max_frame_size.get_usize();
         let in_first_frame = frames_completed == 0;
 
         if frame_progress < Header::SIZE {
@@ -331,13 +329,13 @@ impl Buf for ByteIter {
         }
 
         // Currently sending a payload chunk.
-        let space_in_frame = self.max_frame_size as usize - Header::SIZE;
+        let space_in_frame = self.max_frame_size.without_header();
         let first_preamble = Header::SIZE + self.length_prefix.len();
         let (frame_payload_start, frame_payload_progress, frame_payload_end) = if in_first_frame {
             (
                 0,
                 frame_progress - first_preamble,
-                self.max_frame_size as usize - first_preamble,
+                self.max_frame_size.get_usize() - first_preamble,
             )
         } else {
             let start = frames_completed * space_in_frame - self.length_prefix.len();
@@ -454,6 +452,7 @@ mod tests {
 
     use crate::{
         header::{Header, Kind},
+        protocol::MaxFrameSize,
         varint::Varint32,
         ChannelId, Id,
     };
@@ -461,7 +460,7 @@ mod tests {
     use super::{FrameIter, OutgoingMessage, Preamble};
 
     /// Maximum frame size used across tests.
-    const MAX_FRAME_SIZE: u32 = 16;
+    const MAX_FRAME_SIZE: MaxFrameSize = MaxFrameSize::new(16);
 
     /// A reusable sample payload.
     const PAYLOAD: &[u8] = &[
@@ -542,7 +541,7 @@ mod tests {
         assert_eq!(converted_to_bytes, expected_bytestring);
 
         // Finally, we do a trickle-test with various step sizes.
-        for step_size in 1..=(MAX_FRAME_SIZE as usize * 2) {
+        for step_size in 1..=(MAX_FRAME_SIZE.get_usize() * 2) {
             let mut buf: Vec<u8> = Vec::new();
 
             let mut bytes_iter = msg.clone().iter_bytes(MAX_FRAME_SIZE);
@@ -699,7 +698,7 @@ mod tests {
         assert_eq!(preamble_no_payload.to_string(), "[RequestPl chan: 1 id: 2]");
 
         let msg = OutgoingMessage::new(header, Some(Bytes::from(&b"asdf"[..])));
-        let (frame, _) = msg.frames().next_owned(4096);
+        let (frame, _) = msg.frames().next_owned(Default::default());
 
         assert_eq!(
             frame.to_string(),
@@ -707,7 +706,7 @@ mod tests {
         );
 
         let msg_no_payload = OutgoingMessage::new(header, None);
-        let (frame, _) = msg_no_payload.frames().next_owned(4096);
+        let (frame, _) = msg_no_payload.frames().next_owned(Default::default());
 
         assert_eq!(frame.to_string(), "<[RequestPl chan: 1 id: 2]>");
     }

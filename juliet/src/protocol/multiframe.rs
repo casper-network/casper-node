@@ -18,7 +18,7 @@ use crate::{
     varint::decode_varint32,
 };
 
-use super::outgoing_message::OutgoingMessage;
+use super::{outgoing_message::OutgoingMessage, MaxFrameSize};
 
 /// The multi-frame message receival state of a single channel, as specified in the RFC.
 ///
@@ -59,24 +59,14 @@ impl MultiframeReceiver {
     /// `max_payload_size` is the maximum size of a payload across multiple frames. If it is
     /// exceeded, the `payload_exceeded_error_kind` function is used to construct an error `Header`
     /// to return.
-    ///
-    /// # Panics
-    ///
-    /// Panics in debug builds if `max_frame_size` is too small to hold a maximum sized varint and
-    /// a header.
     pub(super) fn accept(
         &mut self,
         header: Header,
         buffer: &mut BytesMut,
-        max_frame_size: u32,
+        max_frame_size: MaxFrameSize,
         max_payload_size: u32,
         payload_exceeded_error_kind: ErrorKind,
     ) -> Outcome<Option<BytesMut>, OutgoingMessage> {
-        debug_assert!(
-            max_frame_size >= 10,
-            "maximum frame size must be enough to hold header and varint"
-        );
-
         // TODO: Use tracing to log frames here.
 
         match self {
@@ -140,12 +130,14 @@ impl MultiframeReceiver {
 
                 // Determine whether we expect an intermediate or end segment.
                 let bytes_remaining = *total_payload_size as usize - payload.remaining();
-                let max_data_in_frame = max_frame_size as usize - Header::SIZE;
+                let max_data_in_frame = max_frame_size.without_header();
 
                 if bytes_remaining > max_data_in_frame {
                     // Intermediate segment.
-                    if buffer.remaining() < max_frame_size as usize {
-                        return Outcome::incomplete(max_frame_size as usize - buffer.remaining());
+                    if buffer.remaining() < max_frame_size.get_usize() {
+                        return Outcome::incomplete(
+                            max_frame_size.get_usize() - buffer.remaining(),
+                        );
                     }
 
                     // Discard header.
@@ -219,7 +211,7 @@ impl InitialFrameData {
 fn detect_starting_segment(
     header: Header,
     buffer: &BytesMut,
-    max_frame_size: u32,
+    max_frame_size: MaxFrameSize,
     max_payload_size: u32,
     payload_exceeded_error_kind: ErrorKind,
 ) -> Outcome<InitialFrameData, OutgoingMessage> {
@@ -237,7 +229,7 @@ fn detect_starting_segment(
 
     // We have a valid varint32.
     let preamble_len = Header::SIZE + payload_size.offset.get() as usize;
-    let max_data_in_frame = max_frame_size - preamble_len as u32;
+    let max_data_in_frame = max_frame_size.get() - preamble_len as u32;
 
     // Determine how many additional bytes are needed for frame completion.
     let segment_len = (max_data_in_frame as usize).min(payload_size.value as usize);
@@ -261,19 +253,19 @@ mod tests {
 
     use crate::{
         header::{ErrorKind, Header, Kind},
-        protocol::{FrameIter, OutgoingMessage},
+        protocol::{FrameIter, MaxFrameSize, OutgoingMessage},
         ChannelId, Id, Outcome,
     };
 
     use super::MultiframeReceiver;
 
     /// Frame size used for multiframe tests.
-    const MAX_FRAME_SIZE: u32 = 16;
+    const MAX_FRAME_SIZE: MaxFrameSize = MaxFrameSize::new(16);
 
     /// Maximum size of a payload of a single frame message.
     ///
     /// One byte is required to encode the length, which is <= 16.
-    const MAX_SINGLE_FRAME_PAYLOAD_SIZE: u32 = MAX_FRAME_SIZE - Header::SIZE as u32 - 1;
+    const MAX_SINGLE_FRAME_PAYLOAD_SIZE: u32 = MAX_FRAME_SIZE.get() - Header::SIZE as u32 - 1;
 
     /// Maximum payload size used in testing.
     const MAX_PAYLOAD_SIZE: u32 = 4096;
