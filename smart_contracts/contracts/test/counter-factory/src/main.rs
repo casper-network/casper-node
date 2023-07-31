@@ -3,10 +3,7 @@
 
 extern crate alloc;
 
-use alloc::{
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::string::{String, ToString};
 
 use casper_contract::{
     contract_api::{runtime, storage},
@@ -15,7 +12,7 @@ use casper_contract::{
 use casper_types::{
     bytesrepr::FromBytes,
     contracts::{EntryPoint, EntryPoints, NamedKeys, Parameters},
-    ApiError, CLType, CLTyped, ContractHash, EntryPointAccess, EntryPointType, URef, U512,
+    ApiError, CLType, CLTyped, EntryPointAccess, EntryPointType, URef, U512,
 };
 
 const INCREASE_ENTRY_POINT: &str = "increment";
@@ -24,6 +21,10 @@ const HASH_KEY_NAME: &str = "factory_hash";
 const PACKAGE_HASH_KEY_NAME: &str = "factory_package_hash";
 const ACCESS_KEY_NAME: &str = "factory_access";
 const CONTRACT_VERSION: &str = "contract_version";
+const CURRENT_VALUE_KEY: &str = "current_value";
+const ARG_NAME: &str = "name";
+const ARG_INITIAL_VALUE: &str = "initial_value";
+const CONTRACT_FACTORY_ENTRY_POINT: &str = "contract_factory";
 
 fn get_named_uref(name: &str) -> Result<URef, ApiError> {
     runtime::get_key(name)
@@ -38,7 +39,7 @@ fn read_uref<T: CLTyped + FromBytes>(uref: URef) -> Result<T, ApiError> {
 }
 
 fn modify_counter(func: impl FnOnce(U512) -> U512) -> Result<(), ApiError> {
-    let current_value_uref = get_named_uref("current_value")?;
+    let current_value_uref = get_named_uref(CURRENT_VALUE_KEY)?;
     let value: U512 = read_uref(current_value_uref)?;
     let new_value = func(value);
     storage::write(current_value_uref, new_value);
@@ -57,13 +58,13 @@ pub extern "C" fn decrement() {
 
 #[no_mangle]
 pub extern "C" fn contract_factory() {
-    let name: String = runtime::get_named_arg("name");
-    let initial_value: U512 = runtime::get_named_arg("initial_value");
+    let name: String = runtime::get_named_arg(ARG_NAME);
+    let initial_value: U512 = runtime::get_named_arg(ARG_INITIAL_VALUE);
 
     let named_keys = {
         let new_uref = storage::new_uref(initial_value);
         let mut named_keys = NamedKeys::new();
-        named_keys.insert("current_value".to_string(), new_uref.into());
+        named_keys.insert(CURRENT_VALUE_KEY.to_string(), new_uref.into());
         named_keys
     };
 
@@ -106,7 +107,7 @@ pub extern "C" fn call() {
         let mut entry_points = EntryPoints::new();
 
         let entry_point: EntryPoint = EntryPoint::new(
-            "contract_factory".to_string(),
+            CONTRACT_FACTORY_ENTRY_POINT.to_string(),
             Parameters::new(),
             CLType::Unit,
             EntryPointAccess::Public,
