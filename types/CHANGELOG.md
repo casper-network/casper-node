@@ -11,6 +11,13 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## [Unreleased]
+
+### Added
+* Add new `EntryPointType::Install`, `EntryPointType::Normal`, `EntryPointAccess::Abstract` variants to support implementation of a factory pattern.
+
+
+
 ## 3.0.0
 
 ### Added

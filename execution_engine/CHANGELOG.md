@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.  The format
 
 ## [Unreleased]
 
+### Added
+* Add support for a factory pattern on the host side.
+
 ### Changed
 * Default value for `max_stack_height` is increased to 500.
 
