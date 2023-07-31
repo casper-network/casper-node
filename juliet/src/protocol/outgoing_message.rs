@@ -231,17 +231,14 @@ impl FrameIter {
         if let Some(ref payload) = self.msg.payload {
             let mut payload_remaining = payload.len() - self.bytes_processed;
 
+            // If this is the first frame, include the message payload length.
             let length_prefix = if self.bytes_processed == 0 {
                 Varint32::encode(payload_remaining as u32)
             } else {
                 Varint32::SENTINEL
             };
 
-            let preamble = if self.bytes_processed == 0 {
-                Preamble::new(self.msg.header, length_prefix)
-            } else {
-                Preamble::new(self.msg.header, Varint32::SENTINEL)
-            };
+            let preamble = Preamble::new(self.msg.header, length_prefix);
 
             let frame_capacity = max_frame_size.get_usize() - preamble.len();
             let frame_payload_len = frame_capacity.min(payload_remaining);
