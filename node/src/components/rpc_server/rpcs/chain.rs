@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::{self, QueryResult};
 use casper_types::{
-    Block, BlockHash, Digest, DigestError, JsonBlock, Key, ProtocolVersion, Transfer,
+    Block, BlockHash, BlockV2, Digest, DigestError, JsonBlock, Key, ProtocolVersion, Transfer,
 };
 
 use super::{
@@ -175,6 +175,8 @@ impl RpcWithOptionalParams for GetBlock {
             effect_builder,
         )
         .await?;
+
+        let block: BlockV2 = block.into(); // TODO: change this to support versioning
         let json_block = JsonBlock::new(block, Some(block_signatures));
 
         // Return the result.
@@ -406,6 +408,7 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
             });
         }
 
+        let block: BlockV2 = block.into(); //TODO: change this to support versioning
         let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,
@@ -462,6 +465,8 @@ impl RpcWithOptionalParams for GetEraSummary {
     ) -> Result<Self::ResponseResult, Error> {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
         let block = common::get_block(maybe_block_id, true, effect_builder).await?;
+
+        let block: BlockV2 = block.into(); // TODO: change this to support versioning
         let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,

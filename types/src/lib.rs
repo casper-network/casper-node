@@ -80,9 +80,9 @@ pub use access_rights::{
 pub use api_error::ApiError;
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSignaturesMergeError, BlockV1, BlockValidationError, EraEnd, EraReport, FinalitySignature,
-    FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError, VersionedBlock,
-    VersionedBlockBody,
+    BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd, EraReport,
+    FinalitySignature, FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
+    VersionedBlock, VersionedBlockBody,
 };
 #[cfg(all(feature = "std", feature = "json-schema"))]
 pub use block::{

@@ -6,7 +6,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
-use casper_types::{Block, Deploy, DeployId};
+use casper_types::{Block, Deploy, DeployId, VersionedBlock};
 
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(Debug, From, DataSize)]
 pub(crate) enum Event {
-    Initialize(Vec<Block>),
+    Initialize(Vec<VersionedBlock>),
     #[from]
     Request(DeployBufferRequest),
     ReceiveDeployGossiped(DeployId),

@@ -59,3 +59,6 @@ pub type NodeRng = casper_types::testing::TestRng;
 
 #[cfg(test)]
 pub(crate) use block::test_block_builder::TestBlockBuilder;
+
+#[cfg(test)]
+pub(crate) use block::test_block_builder::FromTestBlockBuilder;

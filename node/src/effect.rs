@@ -1349,7 +1349,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the highest complete block.
-    pub(crate) async fn get_highest_complete_block_from_storage(self) -> Option<Block>
+    pub(crate) async fn get_highest_complete_block_from_storage(self) -> Option<VersionedBlock>
     where
         REv: From<StorageRequest>,
     {
