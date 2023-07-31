@@ -554,9 +554,6 @@ impl IncomingRequest {
                         // TODO: Add seperate type to avoid this.
                         unreachable!("cannot hit request limit when responding")
                     }
-                    EnqueueError::LocalProtocolViolation(_) => {
-                        todo!("what to do with this?")
-                    }
                 }
             }
         }
@@ -579,9 +576,6 @@ impl IncomingRequest {
                     }
                     EnqueueError::BufferLimitHit(_) => {
                         unreachable!("cannot hit request limit when responding")
-                    }
-                    EnqueueError::LocalProtocolViolation(_) => {
-                        todo!("what to do with this?")
                     }
                 }
             }

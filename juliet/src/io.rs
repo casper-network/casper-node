@@ -792,9 +792,6 @@ pub enum EnqueueError {
     /// The request limit for locally buffered requests was hit, try again.
     #[error("request limit hit")]
     BufferLimitHit(Option<Bytes>),
-    /// Violation of local invariants, this is likely a bug in this library or the calling code.
-    #[error("local protocol violation during enqueueing")]
-    LocalProtocolViolation(#[from] LocalProtocolViolation),
 }
 
 /// A reserved slot in the memory buffer of [`IoCore`], on a specific channel.
