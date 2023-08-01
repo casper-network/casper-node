@@ -4,7 +4,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{
-        auction::{Bid, BidKind, EraInfo, Error, UnbondingPurse},
+        auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
     CLTyped, EraId, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
@@ -27,6 +27,9 @@ pub trait RuntimeProvider {
     /// Gets keys by prefix.
     fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error>;
 
+    /// Returns the current number of delegators for this validator.
+    fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
+
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
 
@@ -43,7 +46,7 @@ pub trait StorageProvider {
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error>;
 
     /// Reads [`Bid`] at account hash derived from given public key
-    fn read_bid(&mut self, key: &Key) -> Result<Option<Bid>, Error>;
+    fn read_bid(&mut self, key: &Key) -> Result<Option<BidKind>, Error>;
 
     /// Writes given [`BidKind`] at given key.
     fn write_bid(&mut self, key: Key, bid_kind: BidKind) -> Result<(), Error>;

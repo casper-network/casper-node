@@ -591,6 +591,7 @@ where
             .map_err(Into::into)
     }
 
+    /// Returns all key's that start with prefix, if any.
     pub fn get_keys_with_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
         self.tracking_copy
             .borrow_mut()

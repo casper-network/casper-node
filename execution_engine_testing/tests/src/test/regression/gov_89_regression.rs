@@ -14,7 +14,7 @@ use casper_execution_engine::engine_state::{SlashItem, StepSuccess};
 use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
     system::auction::{
-        Bids, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        BidsExt, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
     SecretKey, StoredValue, U512,
@@ -90,16 +90,16 @@ fn should_not_create_any_purse() {
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
         builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
-    let bids_before_slashing: Bids = builder.get_bids();
+    let bids_before_slashing = builder.get_bids();
     assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PUBLIC_KEY),
+        bids_before_slashing.contains_validator_public_key(&ACCOUNT_1_PUBLIC_KEY),
         "should have entry in the genesis bids table {:?}",
         bids_before_slashing
     );
 
-    let bids_before_slashing: Bids = builder.get_bids();
+    let bids_before_slashing = builder.get_bids();
     assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PUBLIC_KEY),
+        bids_before_slashing.contains_validator_public_key(&ACCOUNT_1_PUBLIC_KEY),
         "should have entry in bids table before slashing {:?}",
         bids_before_slashing
     );
@@ -109,12 +109,14 @@ fn should_not_create_any_purse() {
         ..
     } = builder.step(step_request_1).expect("should execute step");
 
-    let bids_after_slashing: Bids = builder.get_bids();
-    let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PUBLIC_KEY).unwrap();
+    let bids_after_slashing = builder.get_bids();
+    let account_1_bid = bids_after_slashing
+        .validator_bid(&ACCOUNT_1_PUBLIC_KEY)
+        .unwrap();
     assert!(account_1_bid.inactive());
     assert!(account_1_bid.staked_amount().is_zero());
 
-    let bids_after_slashing: Bids = builder.get_bids();
+    let bids_after_slashing = builder.get_bids();
     assert_ne!(
         bids_before_slashing, bids_after_slashing,
         "bids table should be different before and after slashing"

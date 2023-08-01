@@ -12,7 +12,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{
-        Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+        BidsExt, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
     },
     GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
@@ -161,9 +161,11 @@ fn should_run_ee_1120_slash_delegators() {
         .commit();
 
     // Ensure that initial bid entries exist for validator 1 and validator 2
-    let initial_bids: Bids = builder.get_bids();
+    let initial_bids = builder.get_bids();
+    let key_map = initial_bids.public_key_map();
+    let initial_bids_keys = key_map.keys().cloned().collect::<BTreeSet<_>>();
     assert_eq!(
-        initial_bids.keys().cloned().collect::<BTreeSet<_>>(),
+        initial_bids_keys,
         BTreeSet::from_iter(vec![VALIDATOR_2.clone(), VALIDATOR_1.clone()])
     );
 
@@ -270,10 +272,16 @@ fn should_run_ee_1120_slash_delegators() {
 
     // Check bids before slashing
 
-    let bids_before: Bids = builder.get_bids();
+    let bids_before = builder.get_bids();
+    let bids_before_keys = bids_before
+        .public_key_map()
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
     assert_eq!(
-        bids_before.keys().collect::<Vec<_>>(),
-        initial_bids.keys().collect::<Vec<_>>()
+        bids_before_keys, initial_bids_keys,
+        "prior to taking action, keys should match initial keys"
     );
 
     let slash_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
@@ -289,23 +297,27 @@ fn should_run_ee_1120_slash_delegators() {
     builder.exec(slash_request_1).expect_success().commit();
 
     // Compare bids after slashing validator 2
-    let bids_after: Bids = builder.get_bids();
+    let bids_after = builder.get_bids();
     assert_ne!(bids_before, bids_after);
     assert_eq!(bids_after.len(), 2);
-    let validator_2_bid = bids_after.get(&VALIDATOR_2).unwrap();
+    let validator_2_bid = bids_after
+        .validator_bid(&VALIDATOR_2)
+        .expect("should have validator2 bid");
     assert!(validator_2_bid.inactive());
     assert!(validator_2_bid.staked_amount().is_zero());
 
-    assert!(bids_after.contains_key(&VALIDATOR_1));
-    assert_eq!(bids_after[&VALIDATOR_1].delegators().len(), 2);
+    let validator_1_bid = bids_after
+        .validator_bid(&VALIDATOR_1)
+        .expect("should have validator1 bid");
+    let delegators = bids_after
+        .delegators_by_validator_public_key(validator_1_bid.validator_public_key())
+        .expect("should have delegators");
+    assert_eq!(delegators.len(), 2);
 
-    // validator 2's delegation bid on validator 1 was not slashed.
-    assert!(bids_after[&VALIDATOR_1]
-        .delegators()
-        .contains_key(&VALIDATOR_2));
-    assert!(bids_after[&VALIDATOR_1]
-        .delegators()
-        .contains_key(&DELEGATOR_1));
+    bids_after.delegator_by_public_keys(&VALIDATOR_1, &VALIDATOR_2).expect("the delegation record from VALIDATOR2 should exist on VALIDATOR1, in this particular and unusual edge case");
+    bids_after
+        .delegator_by_public_keys(&VALIDATOR_1, &DELEGATOR_1)
+        .expect("the delegation record from DELEGATOR_1 should exist on VALIDATOR1");
 
     let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
     assert_ne!(unbond_purses_before, unbond_purses_after);
@@ -345,9 +357,9 @@ fn should_run_ee_1120_slash_delegators() {
 
     builder.exec(slash_request_2).expect_success().commit();
 
-    let bids_after: Bids = builder.get_bids();
+    let bids_after = builder.get_bids();
     assert_eq!(bids_after.len(), 2);
-    let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
+    let validator_1_bid = bids_after.validator_bid(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 

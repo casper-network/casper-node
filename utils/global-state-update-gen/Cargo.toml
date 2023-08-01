@@ -8,6 +8,7 @@ description = "A tool used to make changes to casper-node's global state"
 readme = "README.md"
 
 [dependencies]
+itertools = "0.10.3"
 base16 = "0.2.1"
 base64 = "0.13"
 casper-engine-test-support = { path = "../../execution_engine_testing/test_support" }

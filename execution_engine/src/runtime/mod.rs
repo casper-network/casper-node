@@ -893,12 +893,14 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
+                let minimum_delegation_amount = self.config.minimum_delegation_amount();
 
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
                         evicted_validators,
                         max_delegators_per_validator,
+                        minimum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 

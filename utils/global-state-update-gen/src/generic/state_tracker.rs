@@ -12,7 +12,7 @@ use casper_types::{
     package::{
         ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
-    system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
+    system::auction::{BidAddr, BidKind, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
     EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
@@ -28,7 +28,7 @@ pub struct StateTracker<T> {
     accounts_cache: BTreeMap<AccountHash, AddressableEntity>,
     unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
-    bids_cache: Option<Bids>,
+    staking: Option<Vec<BidKind>>,
     seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshot)>,
     protocol_version: ProtocolVersion,
 }
@@ -56,7 +56,7 @@ impl<T: StateReader> StateTracker<T> {
             accounts_cache: BTreeMap::new(),
             unbonds_cache: BTreeMap::new(),
             purses_cache: BTreeMap::new(),
-            bids_cache: None,
+            staking: None,
             seigniorage_recipients: None,
             protocol_version,
         }
@@ -70,6 +70,23 @@ impl<T: StateReader> StateTracker<T> {
     /// Stores a write of an entry in the global state.
     pub fn write_entry(&mut self, key: Key, value: StoredValue) {
         let _ = self.entries_to_write.insert(key, value);
+    }
+
+    pub fn write_bid(&mut self, bid_kind: BidKind) {
+        let bid_addr = match bid_kind.clone() {
+            BidKind::Unified(bid) => BidAddr::from(bid.validator_public_key().clone()),
+            BidKind::Validator(validator_bid) => {
+                BidAddr::from(validator_bid.validator_public_key().clone())
+            }
+            BidKind::Delegator(delegator) => BidAddr::new_from_public_keys(
+                delegator.validator_public_key(),
+                Some(delegator.delegator_public_key()),
+            ),
+        };
+
+        let _ = self
+            .entries_to_write
+            .insert(bid_addr.into(), bid_kind.into());
     }
 
     /// Increases the total supply of the tokens in the network.
@@ -265,109 +282,55 @@ impl<T: StateReader> StateTracker<T> {
     }
 
     /// Reads the bids from the global state.
-    pub fn get_bids(&mut self) -> Bids {
-        if let Some(ref bids) = self.bids_cache {
-            bids.clone()
+    pub fn get_bids(&mut self) -> Vec<BidKind> {
+        if let Some(ref staking) = self.staking {
+            staking.clone()
         } else {
-            let bids = self.reader.get_bids();
-            self.bids_cache = Some(bids.clone());
-            bids
+            let staking = self.reader.get_bids();
+            self.staking = Some(staking.clone());
+            staking
         }
     }
 
     /// Sets the bid for the given account.
-    pub fn set_bid(&mut self, public_key: PublicKey, bid: Bid, slash: bool) {
-        let maybe_current_bid = self.get_bids().get(&public_key).cloned();
+    pub fn set_bid(&mut self, bid_kind: BidKind, slash: bool) {
+        let bids = self.get_bids();
+        let (previous_stake, new_stake) = match bids.iter().find(|x| **x == bid_kind) {
+            Some(existing_bid_kind) => {
+                let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
+                // only zero the bonding purse and write the balance to the new purse if the new one
+                // is different (just to save unnecessary writes)
+                if existing_bid_kind.bonding_purse() != bid_kind.bonding_purse() {
+                    self.set_purse_balance(existing_bid_kind.bonding_purse(), U512::zero());
+                    self.set_purse_balance(bid_kind.bonding_purse(), previous_stake);
+                }
 
-        let new_amount = *bid.staked_amount();
-        let old_amount = maybe_current_bid
-            .as_ref()
-            .map(|bid| self.get_purse_balance(*bid.bonding_purse()))
-            .unwrap_or_else(U512::zero);
+                (previous_stake, bid_kind.staked_amount())
+            }
+            None => (U512::zero(), bid_kind.staked_amount()),
+        };
 
-        // we called `get_bids` above, so `bids_cache` will be `Some`
-        self.bids_cache
-            .as_mut()
-            .unwrap()
-            .insert(public_key.clone(), bid.clone());
-
-        let account_hash = public_key.to_account_hash();
+        // we called `get_bids` above, so `staking` will be `Some`
+        self.staking.as_mut().unwrap().push(bid_kind.clone());
 
         // Replace the bid (overwrite the previous bid, if any):
-        self.write_entry(Key::Bid(account_hash), bid.clone().into());
+        self.write_bid(bid_kind.clone());
 
-        // Update the bonding purses - this will also take care of the total supply changes.
-        if let Some(old_bid) = maybe_current_bid {
-            // only zero the bonding purse and write the balance to the new purse if the new one is
-            // different (just to save unnecessary writes)
-            if old_bid.bonding_purse() != bid.bonding_purse() {
-                self.set_purse_balance(*old_bid.bonding_purse(), U512::zero());
-                self.set_purse_balance(*bid.bonding_purse(), old_amount);
-            }
+        if (slash && new_stake != previous_stake) || new_stake > previous_stake {
+            self.set_purse_balance(bid_kind.bonding_purse(), new_stake);
+        } else if new_stake < previous_stake {
+            let unbonder_key = match bid_kind.delegator_public_key() {
+                None => bid_kind.validator_public_key(),
+                Some(delegator_public_key) => delegator_public_key,
+            };
 
-            for (delegator_pub_key, delegator) in old_bid
-                .delegators()
-                .iter()
-                // Skip zeroing purses of delegators whose purses do not change - that will
-                // be handled later:
-                .filter(|(delegator_pub_key, delegator)| {
-                    bid.delegators()
-                        .get(delegator_pub_key)
-                        .map_or(true, |new_delegator| {
-                            new_delegator.bonding_purse() != delegator.bonding_purse()
-                        })
-                })
-            {
-                // zero the old purse if we are going to transfer the funds to a new purse, or if
-                // we're supposed to slash the delegator
-                if slash || bid.delegators().contains_key(delegator_pub_key) {
-                    // if we're transferring funds to a new purse, set the new purse balance to the
-                    // old amount
-                    let old_amount = self.get_purse_balance(*delegator.bonding_purse());
-                    if let Some(new_delegator) = bid.delegators().get(delegator_pub_key) {
-                        self.set_purse_balance(*new_delegator.bonding_purse(), old_amount);
-                    }
-                    self.set_purse_balance(*delegator.bonding_purse(), U512::zero());
-                } else {
-                    let amount = self.get_purse_balance(*delegator.bonding_purse());
-                    let already_unbonding =
-                        self.already_unbonding_amount(&account_hash, delegator_pub_key);
-                    self.create_unbonding_purse(
-                        *delegator.bonding_purse(),
-                        &public_key,
-                        delegator_pub_key,
-                        amount - already_unbonding,
-                    );
-                }
-            }
-        }
-
-        if (slash && new_amount != old_amount) || new_amount > old_amount {
-            self.set_purse_balance(*bid.bonding_purse(), new_amount);
-        } else if new_amount < old_amount {
             let already_unbonded = self.already_unbonding_amount(&account_hash, &public_key);
             self.create_unbonding_purse(
-                *bid.bonding_purse(),
-                &public_key,
-                &public_key,
-                old_amount - new_amount - already_unbonded,
+                bid_kind.bonding_purse(),
+                &bid_kind.validator_public_key(),
+                &unbonder_key,
+                previous_stake - new_stake - already_unbonded,
             );
-        }
-
-        for (delegator_public_key, delegator) in bid.delegators() {
-            let old_amount = self.get_purse_balance(*delegator.bonding_purse());
-            let new_amount = *delegator.staked_amount();
-            if (slash && new_amount != old_amount) || new_amount > old_amount {
-                self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());
-            } else if new_amount < old_amount {
-                let already_unbonded = self.already_unbonding_amount(&account_hash, &public_key);
-                self.create_unbonding_purse(
-                    *delegator.bonding_purse(),
-                    &public_key,
-                    delegator_public_key,
-                    old_amount - new_amount - already_unbonded,
-                );
-            }
         }
     }
 

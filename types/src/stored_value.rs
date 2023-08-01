@@ -128,7 +128,7 @@ impl StoredValue {
     }
 
     /// Returns a wrapped [`Bid`] if this is a `Bid` variant.
-    pub fn as_bid(&self) -> Option<&BidKind> {
+    pub fn as_bid_kind(&self) -> Option<&BidKind> {
         match self {
             StoredValue::Bid(bid) => Some(bid),
             _ => None,

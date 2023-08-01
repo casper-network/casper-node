@@ -6,9 +6,9 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     system::auction::{
-        Bid, Bids, Delegator, SeigniorageRecipient, SeigniorageRecipients,
-        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, WithdrawPurse,
-        WithdrawPurses,
+        BidKind, BidsExt, Delegator, SeigniorageRecipient, SeigniorageRecipients,
+        SeigniorageRecipientsSnapshot, UnbondingPurse, UnbondingPurses, ValidatorBid,
+        WithdrawPurse, WithdrawPurses,
     },
     testing::TestRng,
     AccessRights, AddressableEntity, CLValue, ContractPackageHash, ContractWasmHash, EntryPoints,
@@ -31,7 +31,7 @@ struct MockStateReader {
     purses: BTreeMap<URefAddr, U512>,
     total_supply: U512,
     seigniorage_recipients: SeigniorageRecipientsSnapshot,
-    bids: Bids,
+    bids: Vec<BidKind>,
     withdraws: WithdrawPurses,
     unbonds: UnbondingPurses,
     protocol_version: ProtocolVersion,
@@ -44,7 +44,7 @@ impl MockStateReader {
             purses: BTreeMap::new(),
             total_supply: U512::zero(),
             seigniorage_recipients: SeigniorageRecipientsSnapshot::new(),
-            bids: Bids::new(),
+            bids: vec![],
             withdraws: WithdrawPurses::new(),
             unbonds: UnbondingPurses::new(),
             protocol_version: ProtocolVersion::V1_0_0,
@@ -109,8 +109,6 @@ impl MockStateReader {
             }
 
             // create the bid
-            let mut bid = Bid::unlocked(public_key.clone(), bonding_purse, stake, delegation_rate);
-
             for (delegator_pub_key, delegator_stake) in &delegators {
                 let bonding_purse = URef::new(rng.gen(), AccessRights::READ_ADD_WRITE);
                 self.purses.insert(bonding_purse.addr(), *delegator_stake);
@@ -122,11 +120,14 @@ impl MockStateReader {
                     bonding_purse,
                     public_key.clone(),
                 );
-                bid.delegators_mut()
-                    .insert(delegator_pub_key.clone(), delegator);
+
+                self.bids.push(BidKind::Delegator(Box::new(delegator)));
             }
 
-            self.bids.insert(public_key, bid);
+            let validator_bid =
+                ValidatorBid::unlocked(public_key.clone(), bonding_purse, stake, delegation_rate);
+
+            self.bids.push(BidKind::Validator(Box::new(validator_bid)));
         }
 
         for era_id in 0..5 {
@@ -143,11 +144,17 @@ impl MockStateReader {
         validator_public_key: &PublicKey,
         unbonder_public_key: &PublicKey,
     ) -> Option<URef> {
-        let bid = self.bids.get(validator_public_key)?;
+        let bid = self.bids.validator_bid(validator_public_key)?;
         if unbonder_public_key == validator_public_key {
             return Some(*bid.bonding_purse());
         }
-        Some(*bid.delegators().get(unbonder_public_key)?.bonding_purse())
+
+        Some(
+            *self
+                .bids
+                .delegator_by_public_keys(validator_public_key, unbonder_public_key)?
+                .bonding_purse(),
+        )
     }
 
     /// Returns the bonding purse if the unbonder exists in `self.bids`, or creates a new account
@@ -273,7 +280,7 @@ impl StateReader for MockStateReader {
         self.accounts.get(&account_hash).cloned()
     }
 
-    fn get_bids(&mut self) -> Bids {
+    fn get_bids(&mut self) -> Vec<BidKind> {
         self.bids.clone()
     }
 
@@ -497,15 +504,15 @@ fn should_change_one_validator() {
 
     let old_bid3 = reader
         .get_bids()
-        .get(&validator3)
-        .cloned()
+        .validator_bid(&validator3)
         .expect("should have bid");
     let bid_purse = *old_bid3.bonding_purse();
     update.assert_written_balance(bid_purse, 104);
 
     // check bid overwrite
-    let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
-    update.assert_written_bid(account3_hash, expected_bid);
+    let expected_bid =
+        ValidatorBid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
+    update.assert_written_bid(account3_hash, BidKind::Validator(Box::new(expected_bid)));
 
     // 5 keys should be written:
     // - seigniorage recipients
@@ -584,16 +591,16 @@ fn should_change_only_stake_of_one_validator() {
     let account3_hash = validator3.to_account_hash();
     let old_bid3 = reader
         .get_bids()
-        .get(&validator3)
-        .cloned()
+        .validator_bid(&validator3)
         .expect("should have bid");
     let bid_purse = *old_bid3.bonding_purse();
 
     update.assert_written_balance(bid_purse, 104);
 
     // check bid overwrite
-    let expected_bid = Bid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
-    update.assert_written_bid(account3_hash, expected_bid);
+    let expected_bid =
+        ValidatorBid::unlocked(validator3, bid_purse, U512::from(104), Default::default());
+    update.assert_written_bid(account3_hash, BidKind::Validator(Box::new(expected_bid)));
 
     // 4 keys should be written:
     // - seigniorage recipients
@@ -718,8 +725,7 @@ fn should_replace_one_validator() {
     // check purse write for validator1
     let old_bid1 = reader
         .get_bids()
-        .get(&validator1)
-        .cloned()
+        .validator_bid(&validator1)
         .expect("should have bid");
     let bid_purse = *old_bid1.bonding_purse();
 
@@ -727,9 +733,10 @@ fn should_replace_one_validator() {
 
     // check bid overwrite
     let account1_hash = validator1.to_account_hash();
-    let mut expected_bid_1 = Bid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
+    let mut expected_bid_1 =
+        ValidatorBid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
     expected_bid_1.deactivate();
-    update.assert_written_bid(account1_hash, expected_bid_1);
+    update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // check writes for validator2
     let account2_hash = validator2.to_account_hash();
@@ -742,18 +749,16 @@ fn should_replace_one_validator() {
     update.assert_written_balance(account2.main_purse(), 102);
 
     let bid_write = update.get_written_bid(account2_hash);
-    assert_eq!(bid_write.validator_public_key(), &validator2);
-    assert_eq!(
-        bid_write
-            .total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(102)
-    );
+    assert_eq!(bid_write.validator_public_key(), validator2);
+    let total_stake = update
+        .get_total_stake(account2_hash)
+        .expect("should have total stake");
+    assert_eq!(total_stake, U512::from(102));
     assert!(!bid_write.inactive());
 
     // check that the bid purse for the new validator has been created with the correct amount
-    update.assert_written_purse_is_unit(*bid_write.bonding_purse());
-    update.assert_written_balance(*bid_write.bonding_purse(), 102);
+    update.assert_written_purse_is_unit(bid_write.bonding_purse());
+    update.assert_written_balance(bid_write.bonding_purse(), 102);
 
     // 12 keys should be written:
     // - seigniorage recipients
@@ -816,8 +821,7 @@ fn should_replace_one_validator_with_unbonding() {
     // check purse write for validator1
     let old_bid1 = reader
         .get_bids()
-        .get(&validator1)
-        .cloned()
+        .validator_bid(&validator1)
         .expect("should have bid");
     let bid_purse = *old_bid1.bonding_purse();
 
@@ -829,9 +833,10 @@ fn should_replace_one_validator_with_unbonding() {
 
     // check bid overwrite
     let account1_hash = validator1.to_account_hash();
-    let mut expected_bid_1 = Bid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
+    let mut expected_bid_1 =
+        ValidatorBid::unlocked(validator1, bid_purse, U512::zero(), Default::default());
     expected_bid_1.deactivate();
-    update.assert_written_bid(account1_hash, expected_bid_1);
+    update.assert_written_bid(account1_hash, BidKind::Validator(Box::new(expected_bid_1)));
 
     // check writes for validator2
     let account2_hash = validator2.to_account_hash();
@@ -844,18 +849,16 @@ fn should_replace_one_validator_with_unbonding() {
     update.assert_written_balance(account2.main_purse(), 102);
 
     let bid_write = update.get_written_bid(account2_hash);
-    assert_eq!(bid_write.validator_public_key(), &validator2);
-    assert_eq!(
-        bid_write
-            .total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(102)
-    );
+    assert_eq!(bid_write.validator_public_key(), validator2);
+    let total_stake = update
+        .get_total_stake(account2_hash)
+        .expect("should have total stake");
+    assert_eq!(total_stake, U512::from(102));
     assert!(!bid_write.inactive());
 
     // check that the bid purse for the new validator has been created with the correct amount
-    update.assert_written_purse_is_unit(*bid_write.bonding_purse());
-    update.assert_written_balance(*bid_write.bonding_purse(), 102);
+    update.assert_written_purse_is_unit(bid_write.bonding_purse());
+    update.assert_written_balance(bid_write.bonding_purse(), 102);
 
     // 12 keys should be written:
     // - seigniorage recipients
@@ -951,17 +954,16 @@ fn should_add_one_validator() {
     update.assert_written_balance(account4.main_purse(), 100);
 
     let bid4 = update.get_written_bid(account4_hash);
-    assert_eq!(bid4.validator_public_key(), &validator4);
-    assert_eq!(
-        bid4.total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(104)
-    );
+    assert_eq!(bid4.validator_public_key(), validator4);
+    let total_stake = update
+        .get_total_stake(account4_hash)
+        .expect("should have total stake");
+    assert_eq!(total_stake, U512::from(104));
     assert!(!bid4.inactive());
 
     // check that the bid purse for the new validator has been created with the correct amount
-    update.assert_written_purse_is_unit(*bid4.bonding_purse());
-    update.assert_written_balance(*bid4.bonding_purse(), 104);
+    update.assert_written_purse_is_unit(bid4.bonding_purse());
+    update.assert_written_balance(bid4.bonding_purse(), 104);
 
     // 10 keys should be written:
     // - seigniorage recipients snapshot
@@ -1037,28 +1039,27 @@ fn should_add_one_validator_with_delegators() {
     update.assert_written_balance(account2.main_purse(), 100);
 
     let bid2 = update.get_written_bid(account2_hash);
-    assert_eq!(bid2.validator_public_key(), &validator2);
-    assert_eq!(*bid2.staked_amount(), U512::from(102));
-    assert_eq!(
-        bid2.total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(115)
-    );
+    assert_eq!(bid2.validator_public_key(), validator2);
+    assert_eq!(bid2.staked_amount(), U512::from(102));
+    let total_staked = update
+        .get_total_stake(account2_hash)
+        .expect("should have total stake");
+    assert_eq!(total_staked, U512::from(115));
     assert!(!bid2.inactive());
 
     // check that the bid purse for the new validator has been created with the correct amount
-    update.assert_written_purse_is_unit(*bid2.bonding_purse());
-    update.assert_written_balance(*bid2.bonding_purse(), 102);
+    update.assert_written_purse_is_unit(bid2.bonding_purse());
+    update.assert_written_balance(bid2.bonding_purse(), 102);
 
-    let bid_delegator_purse = *bid2
-        .delegators()
-        .get(&delegator1)
-        .expect("should have delegator")
-        .bonding_purse();
-
-    // check that the bid purse for the new delegator has been created with the correct amount
-    update.assert_written_purse_is_unit(bid_delegator_purse);
-    update.assert_written_balance(bid_delegator_purse, 13);
+    if let BidKind::Validator(validator_bid) = bid2 {
+        let bid_delegator_purse = *update
+            .delegator(&validator_bid, &delegator1)
+            .expect("should have delegator")
+            .bonding_purse();
+        // check that the bid purse for the new delegator has been created with the correct amount
+        update.assert_written_purse_is_unit(bid_delegator_purse);
+        update.assert_written_balance(bid_delegator_purse, 13);
+    }
 
     // 12 keys should be written:
     // - seigniorage recipients
@@ -1130,30 +1131,27 @@ fn should_replace_a_delegator() {
     let account1_hash = validator1.to_account_hash();
 
     let bid1 = update.get_written_bid(account1_hash);
-    assert_eq!(bid1.validator_public_key(), &validator1);
-    assert_eq!(*bid1.staked_amount(), U512::from(101));
-    assert_eq!(
-        bid1.total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(115)
-    );
+    assert_eq!(bid1.validator_public_key(), validator1);
+    assert_eq!(bid1.staked_amount(), U512::from(101));
+    let total_stake = update
+        .get_total_stake(account1_hash)
+        .expect("should have total stake");
+    assert_eq!(total_stake, U512::from(115));
     assert!(!bid1.inactive());
 
-    let old_bid1 = reader
-        .get_bids()
-        .get(&validator1)
-        .cloned()
+    let old_bids = reader.get_bids();
+
+    let _ = old_bids
+        .validator_bid(&validator1)
         .expect("should have old bid");
-    let delegator1_bid_purse = *old_bid1
-        .delegators()
-        .get(&delegator1)
+    let delegator1_bid_purse = *old_bids
+        .delegator_by_public_keys(&validator1, &delegator1)
         .expect("should have old delegator")
         .bonding_purse();
 
-    let delegator2_bid_purse = *bid1
-        .delegators()
-        .get(&delegator2)
-        .expect("should have new delegator")
+    let delegator2_bid_purse = *old_bids
+        .delegator_by_public_keys(&validator1, &delegator2)
+        .expect("should have old delegator")
         .bonding_purse();
 
     // check that the old delegator's bid purse got zeroed
@@ -1227,30 +1225,28 @@ fn should_replace_a_delegator_with_unbonding() {
     let account1_hash = validator1.to_account_hash();
 
     let bid1 = update.get_written_bid(account1_hash);
-    assert_eq!(bid1.validator_public_key(), &validator1);
-    assert_eq!(*bid1.staked_amount(), U512::from(101));
-    assert_eq!(
-        bid1.total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(115)
-    );
+    assert_eq!(bid1.validator_public_key(), validator1);
+    assert_eq!(bid1.staked_amount(), U512::from(101));
+    let total_stake = update
+        .get_total_stake(account1_hash)
+        .expect("should have total stake");
+    assert_eq!(total_stake, U512::from(115));
     assert!(!bid1.inactive());
 
-    let old_bid1 = reader
-        .get_bids()
-        .get(&validator1)
-        .cloned()
+    let old_bids = reader.get_bids();
+
+    let _ = old_bids
+        .validator_bid(&validator1)
         .expect("should have old bid");
-    let delegator1_bid_purse = *old_bid1
-        .delegators()
-        .get(&delegator1)
+
+    let delegator1_bid_purse = *old_bids
+        .delegator_by_public_keys(&validator1, &delegator1)
         .expect("should have old delegator")
         .bonding_purse();
 
-    let delegator2_bid_purse = *bid1
-        .delegators()
-        .get(&delegator2)
-        .expect("should have new delegator")
+    let delegator2_bid_purse = *old_bids
+        .delegator_by_public_keys(&validator1, &delegator2)
+        .expect("should have old delegator")
         .bonding_purse();
 
     // check that the old delegator's bid purse hasn't been updated
@@ -1322,17 +1318,16 @@ fn should_not_change_the_delegator() {
     let account1_hash = validator1.to_account_hash();
 
     let bid1 = update.get_written_bid(account1_hash);
-    assert_eq!(bid1.validator_public_key(), &validator1);
-    assert_eq!(*bid1.staked_amount(), U512::from(111));
-    assert_eq!(
-        bid1.total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(124)
-    );
+    assert_eq!(bid1.validator_public_key(), validator1);
+    assert_eq!(bid1.staked_amount(), U512::from(111));
+    let total_stake = update
+        .get_total_stake(account1_hash)
+        .expect("should have total stake");
+    assert_eq!(total_stake, U512::from(124));
     assert!(!bid1.inactive());
 
     // check that the validator's bid purse got updated
-    update.assert_written_balance(*bid1.bonding_purse(), 111);
+    update.assert_written_balance(bid1.bonding_purse(), 111);
 
     // 4 keys should be written:
     // - seigniorage recipients
@@ -1365,13 +1360,14 @@ fn should_remove_the_delegator() {
         &mut rng,
     );
 
+    let initial_bonded = U512::from(111);
     // we'll be removing the delegator
     let config = Config {
         accounts: vec![AccountConfig {
             public_key: validator1.clone(),
             balance: Some(U512::from(101)),
             validator: Some(ValidatorConfig {
-                bonded_amount: U512::from(111),
+                bonded_amount: initial_bonded,
                 delegation_rate: None,
                 delegators: Some(vec![]),
             }),
@@ -1392,27 +1388,24 @@ fn should_remove_the_delegator() {
     let account1_hash = validator1.to_account_hash();
 
     let bid1 = update.get_written_bid(account1_hash);
-    assert_eq!(bid1.validator_public_key(), &validator1);
-    assert_eq!(*bid1.staked_amount(), U512::from(111));
-    assert_eq!(
-        bid1.total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(111)
-    );
+    assert_eq!(bid1.validator_public_key(), validator1);
+    assert_eq!(bid1.staked_amount(), initial_bonded);
+    let total_staked = update
+        .get_total_stake(account1_hash)
+        .expect("should have total stake");
+    assert_eq!(total_staked, initial_bonded);
     assert!(!bid1.inactive());
 
     // check that the validator's bid purse got updated
-    update.assert_written_balance(*bid1.bonding_purse(), 111);
+    update.assert_written_balance(bid1.bonding_purse(), initial_bonded.as_u64());
 
-    let old_bid1 = reader
-        .get_bids()
-        .get(&validator1)
-        .cloned()
+    let old_bids = reader.get_bids();
+    let _ = old_bids
+        .validator_bid(&validator1)
         .expect("should have old bid");
-    let delegator1_bid_purse = *old_bid1
-        .delegators()
-        .get(&delegator1)
-        .expect("should have old delegator")
+    let delegator1_bid_purse = *old_bids
+        .delegator_by_public_keys(&validator1, &delegator1)
+        .expect("should have delegator")
         .bonding_purse();
 
     // check that the old delegator's bid purse got zeroed
@@ -1476,29 +1469,31 @@ fn should_remove_the_delegator_with_unbonding() {
 
     let account1_hash = validator1.to_account_hash();
 
+    let expected = U512::from(111);
     let bid1 = update.get_written_bid(account1_hash);
-    assert_eq!(bid1.validator_public_key(), &validator1);
-    assert_eq!(*bid1.staked_amount(), U512::from(111));
-    assert_eq!(
-        bid1.total_staked_amount()
-            .expect("should read total staked amount"),
-        U512::from(111)
-    );
+    assert_eq!(bid1.validator_public_key(), validator1);
+    assert_eq!(bid1.staked_amount(), expected);
+
+    let total_stake = update
+        .get_total_stake(account1_hash)
+        .expect("should have total stake");
+
+    assert_eq!(total_stake, expected);
     assert!(!bid1.inactive());
 
     // check that the validator's bid purse got updated
-    update.assert_written_balance(*bid1.bonding_purse(), 111);
+    update.assert_written_balance(bid1.bonding_purse(), 111);
 
-    let old_bid1 = reader
-        .get_bids()
-        .get(&validator1)
-        .cloned()
-        .expect("should have old bid");
-    let delegator1_bid_purse = *old_bid1
-        .delegators()
-        .get(&delegator1)
-        .expect("should have old delegator")
-        .bonding_purse();
+    let old_bids1 = reader.get_bids();
+    let _ = old_bids1
+        .validator_bid(&validator1)
+        .expect("should have validator1");
+
+    let delegator1_bid = old_bids1
+        .delegator_by_public_keys(&validator1, &delegator1)
+        .expect("should have delegator1");
+
+    let delegator1_bid_purse = *delegator1_bid.bonding_purse();
 
     // check that the old delegator's bid purse hasn't been updated
     update.assert_key_absent(&Key::Balance(delegator1_bid_purse.addr()));
@@ -1587,21 +1582,18 @@ fn should_slash_a_validator_and_delegator_with_enqueued_withdraws() {
     update.assert_total_supply(&mut reader, 327);
 
     // check validator2 slashed
-    let old_bid2 = reader
-        .get_bids()
-        .get(&validator2)
-        .cloned()
-        .expect("should have bid");
+    let old_bids2 = reader.get_bids();
+    let old_bid2 = old_bids2
+        .validator_bid(&validator2)
+        .expect("should have validator2");
+
     update.assert_written_balance(*old_bid2.bonding_purse(), 0);
+    let delegator2 = old_bids2
+        .delegator_by_public_keys(&validator2, &delegator2)
+        .expect("should have delegator 2");
+
     // check delegator2 slashed
-    update.assert_written_balance(
-        *old_bid2
-            .delegators()
-            .get(&delegator2)
-            .expect("should have delegator")
-            .bonding_purse(),
-        0,
-    );
+    update.assert_written_balance(*delegator2.bonding_purse(), 0);
     // check past_delegator2 slashed
     update.assert_written_balance(
         *reader
@@ -1711,22 +1703,19 @@ fn should_slash_a_validator_and_delegator_with_enqueued_unbonds() {
     update.assert_seigniorage_recipients_written(&mut reader);
     update.assert_total_supply(&mut reader, 327);
 
+    let old_bids = reader.get_bids();
     // check validator2 slashed
-    let old_bid2 = reader
-        .get_bids()
-        .get(&validator2)
-        .cloned()
+    let old_bid2 = old_bids
+        .validator_bid(&validator2)
         .expect("should have bid");
     update.assert_written_balance(*old_bid2.bonding_purse(), 0);
+
+    let delegator = old_bids
+        .delegator_by_public_keys(&validator2, &delegator2)
+        .expect("should have delegator");
+
     // check delegator2 slashed
-    update.assert_written_balance(
-        *old_bid2
-            .delegators()
-            .get(&delegator2)
-            .expect("should have delegator")
-            .bonding_purse(),
-        0,
-    );
+    update.assert_written_balance(*delegator.bonding_purse(), 0);
     // check past_delegator2 slashed
     update.assert_written_balance(
         *reader

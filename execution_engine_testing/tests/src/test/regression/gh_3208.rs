@@ -22,10 +22,10 @@ use casper_execution_engine::{
 use casper_types::{
     runtime_args,
     system::{
-        auction::{self, DelegationRate},
+        auction::{self, BidAddr, DelegationRate},
         standard_payment,
     },
-    ApiError, GenesisAccount, GenesisValidator, Key, Motes, RuntimeArgs, StoredValue, U512,
+    ApiError, GenesisAccount, GenesisValidator, Motes, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::lmdb_fixture;
@@ -64,10 +64,10 @@ fn should_run_regression_with_already_initialized_fixed_schedule() {
     let (builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(LMDB_FIXTURE_NAME);
 
-    let stored_value = builder
-        .query(None, Key::Bid(*DEFAULT_PROPOSER_ADDR), &[])
-        .unwrap();
-    let bid = stored_value.as_bid().unwrap();
+    let bid_addr = BidAddr::from(*DEFAULT_PROPOSER_ADDR);
+
+    let stored_value = builder.query(None, bid_addr.into(), &[]).unwrap();
+    let bid = stored_value.as_bid_kind().expect("expected BidKind");
     assert!(bid.is_locked_with_vesting_schedule(7776000000, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS));
     let vesting_schedule = bid
         .vesting_schedule()
@@ -102,8 +102,9 @@ fn should_initialize_default_vesting_schedule() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&genesis_request);
 
+    let bid_addr = BidAddr::from(*DEFAULT_PROPOSER_ADDR);
     let stored_value_before = builder
-        .query(None, Key::Bid(*DEFAULT_PROPOSER_ADDR), &[])
+        .query(None, bid_addr.into(), &[])
         .expect("should query proposers bid");
 
     let bid_before = if let StoredValue::Bid(bid) = stored_value_before {
@@ -136,7 +137,7 @@ fn should_initialize_default_vesting_schedule() {
         .expect("should run step to initialize a schedule");
 
     let stored_value_after = builder
-        .query(None, Key::Bid(*DEFAULT_PROPOSER_ADDR), &[])
+        .query(None, bid_addr.into(), &[])
         .expect("should query proposers bid");
 
     let bid_after = if let StoredValue::Bid(bid) = stored_value_after {

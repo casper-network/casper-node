@@ -66,6 +66,7 @@ pub const KEY_DICTIONARY_LENGTH: usize = 32;
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
 const PADDING_BYTES: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
+const BID_TAG_SERIALIZED_LENGTH: usize = 1;
 // u8 used to determine the ID
 const KEY_HASH_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UREF_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_SERIALIZED_LENGTH;
@@ -73,7 +74,10 @@ const KEY_TRANSFER_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_TRA
 const KEY_DEPLOY_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DEPLOY_INFO_LENGTH;
 const KEY_ERA_INFO_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + U64_SERIALIZED_LENGTH;
 const KEY_BALANCE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + UREF_ADDR_LENGTH;
-const KEY_BID_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+const KEY_VALIDATOR_BID_SERIALIZED_LENGTH: usize =
+    KEY_ID_SERIALIZED_LENGTH + BID_TAG_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
+const KEY_DELEGATOR_BID_SERIALIZED_LENGTH: usize =
+    KEY_VALIDATOR_BID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_WITHDRAW_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_UNBOND_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH;
 const KEY_DICTIONARY_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_DICTIONARY_LENGTH;
@@ -84,6 +88,8 @@ const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+
+const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
@@ -273,7 +279,7 @@ impl Key {
 
     /// Returns the maximum size a [`Key`] can be serialized into.
     pub const fn max_serialized_length() -> usize {
-        KEY_UREF_SERIALIZED_LENGTH
+        MAX_SERIALIZED_LENGTH
     }
 
     /// If `self` is of type [`Key::URef`], returns `self` with the
@@ -600,9 +606,9 @@ impl Key {
         false
     }
 
-    /// Returns true if the key is of type [`Key::Account`].
-    pub fn is_account_key(&self) -> bool {
-        if let Key::Account(_) = self {
+    /// Returns true if the key is of type [`Key::Bid`].
+    pub fn is_bid_key(&self) -> bool {
+        if let Key::Bid(_) = self {
             return true;
         }
         false
@@ -746,7 +752,7 @@ impl ToBytes for Key {
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
-            Key::Bid(_) => KEY_BID_SERIALIZED_LENGTH,
+            Key::Bid(bid_addr) => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length(),
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
@@ -1304,8 +1310,16 @@ mod tests {
     fn key_max_serialized_length() {
         let mut got_max = false;
         for key in KEYS {
-            assert!(key.serialized_length() <= Key::max_serialized_length());
-            if key.serialized_length() == Key::max_serialized_length() {
+            let expected = Key::max_serialized_length();
+            let actual = key.serialized_length();
+            assert!(
+                actual <= expected,
+                "key too long {} expected {} actual {}",
+                key,
+                expected,
+                actual
+            );
+            if actual == Key::max_serialized_length() {
                 got_max = true;
             }
         }
@@ -1477,8 +1491,8 @@ mod tests {
     fn serialization_roundtrip_json() {
         let round_trip = |key: &Key| {
             let encoded = serde_json::to_value(key).unwrap();
-            let decoded =
-                serde_json::from_value(encoded.clone()).expect(&format!("{} {}", key, encoded));
+            let decoded = serde_json::from_value(encoded.clone())
+                .unwrap_or_else(|_| panic!("{} {}", key, encoded));
             assert_eq!(key, &decoded);
         };
 

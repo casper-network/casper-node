@@ -270,7 +270,7 @@ impl Bid {
         }
 
         for delegator in self.delegators_mut().values_mut() {
-            let staked_amount = *delegator.staked_amount();
+            let staked_amount = delegator.staked_amount();
             if let Some(vesting_schedule) = delegator.vesting_schedule_mut() {
                 if timestamp_millis >= vesting_schedule.initial_release_timestamp_millis()
                     && vesting_schedule
@@ -301,7 +301,7 @@ impl Bid {
         self.delegators
             .iter()
             .fold(Some(U512::zero()), |maybe_a, (_, b)| {
-                maybe_a.and_then(|a| a.checked_add(*b.staked_amount()))
+                maybe_a.and_then(|a| a.checked_add(b.staked_amount()))
             })
             .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
             .ok_or(Error::InvalidAmount)
@@ -549,7 +549,7 @@ mod prop_tests {
 
     proptest! {
         #[test]
-        fn test_value_bid(bid in gens::bid_arb(1..100)) {
+        fn test_value_bid(bid in gens::bid_arb()) {
             bytesrepr::test_serialization_roundtrip(&bid);
         }
     }

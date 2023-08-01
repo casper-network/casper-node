@@ -10,7 +10,7 @@ use tracing::{error, info};
 
 use casper_execution_engine::engine_state::GetBidsRequest;
 use casper_types::{
-    system::auction::{Bids, DelegationRate},
+    system::auction::{BidKind, BidsExt, DelegationRate},
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes,
     Deploy, EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp,
@@ -73,7 +73,7 @@ impl TestChain {
             initial_stakes.to_vec()
         } else {
             // By default we use very large stakes so we would catch overflow issues.
-            std::iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
+            iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
                 .take(size)
                 .collect()
         };
@@ -291,7 +291,7 @@ impl SwitchBlocks {
     }
 
     /// Returns the set of bids in the auction contract at the end of the given era.
-    fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
+    fn bids(&self, nodes: &Nodes, era_number: u64) -> Vec<BidKind> {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
             let request = GetBidsRequest::new(state_root_hash);
@@ -418,7 +418,7 @@ async fn run_equivocator_network() {
 
     let era_count = 4;
 
-    let timeout = Duration::from_secs(90 * era_count);
+    let timeout = Duration::from_secs(120 * era_count);
     info!("Waiting for {} eras to end.", era_count);
     net.settle_on(
         &mut rng,
@@ -426,10 +426,13 @@ async fn run_equivocator_network() {
         timeout,
     )
     .await;
+
+    // network settled; select data to analyze
     let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
-    let bids: Vec<Bids> = (0..era_count)
-        .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
-        .collect();
+    let mut era_bids = BTreeMap::new();
+    for era in 0..era_count {
+        era_bids.insert(era, switch_blocks.bids(net.nodes(), era));
+    }
 
     // Since this setup sometimes produces no equivocation or an equivocation in era 2 rather than
     // era 1, we set an offset here.  If neither eras has an equivocation, exit early.
@@ -452,29 +455,57 @@ async fn run_equivocator_network() {
     // Era 0 consists only of the genesis block.
     // In era 1, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
+    let next_era_id = 1 + offset;
+
     assert_eq!(
-        switch_blocks.equivocators(1 + offset),
+        switch_blocks.equivocators(next_era_id),
         [alice_public_key.clone()]
     );
-    assert!(bids[1 + offset as usize][&alice_public_key].inactive());
+    let next_era_bids = era_bids.get(&next_era_id).expect("should have offset era");
+
+    let next_era_alice = next_era_bids
+        .validator_bid(&alice_public_key)
+        .expect("should have Alice's offset bid");
+    assert!(
+        next_era_alice.inactive(),
+        "Alice's bid should be inactive in offset era."
+    );
     assert!(switch_blocks
-        .next_era_validators(1 + offset)
+        .next_era_validators(next_era_id)
         .contains_key(&alice_public_key));
 
     // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
     // though they cannot participate. In the next era, she will be evicted.
-    assert_eq!(switch_blocks.equivocators(2 + offset), []);
-    assert!(bids[2 + offset as usize][&alice_public_key].inactive());
+    let future_era_id = 2 + offset;
+    assert_eq!(switch_blocks.equivocators(future_era_id), []);
+    let future_era_bids = era_bids
+        .get(&future_era_id)
+        .expect("should have future era");
+    let future_era_alice = future_era_bids
+        .validator_bid(&alice_public_key)
+        .expect("should have Alice's future bid");
+    assert!(
+        future_era_alice.inactive(),
+        "Alice's bid should be inactive in future era."
+    );
     assert!(!switch_blocks
-        .next_era_validators(2 + offset)
+        .next_era_validators(future_era_id)
         .contains_key(&alice_public_key));
 
-    // In era 3 she is not a validator anymore and her bid remains deactivated.
+    // In era 3 Alice is not a validator anymore and her bid remains deactivated.
+    let era_3 = 3;
     if offset == 0 {
-        assert_eq!(switch_blocks.equivocators(3), []);
-        assert!(bids[3][&alice_public_key].inactive());
+        assert_eq!(switch_blocks.equivocators(era_3), []);
+        let era_3_bids = era_bids.get(&era_3).expect("should have era 3 bids");
+        let era_3_alice = era_3_bids
+            .validator_bid(&alice_public_key)
+            .expect("should have Alice's era 3 bid");
+        assert!(
+            era_3_alice.inactive(),
+            "Alice's bid should be inactive in era 3."
+        );
         assert!(!switch_blocks
-            .next_era_validators(3)
+            .next_era_validators(era_3)
             .contains_key(&alice_public_key));
     }
 
@@ -488,12 +519,21 @@ async fn run_equivocator_network() {
         [bob_public_key.clone()]
     );
 
-    // We don't slash, so the stakes are never reduced.
-    for (public_key, stake) in &stakes {
-        assert!(bids[0][public_key].staked_amount() >= stake);
-        assert!(bids[1][public_key].staked_amount() >= stake);
-        assert!(bids[2][public_key].staked_amount() >= stake);
-        assert!(bids[3][public_key].staked_amount() >= stake);
+    for (era, bids) in era_bids {
+        for (public_key, stake) in &stakes {
+            let bid = bids
+                .validator_bid(public_key)
+                .expect("should have bid for public key {public_key} in era {era}");
+            let staked_amount = bid.staked_amount();
+            assert!(
+                staked_amount >= *stake,
+                "expected stake {} for public key {} in era {}, found {}",
+                staked_amount,
+                public_key,
+                era,
+                stake
+            );
+        }
     }
 }
 

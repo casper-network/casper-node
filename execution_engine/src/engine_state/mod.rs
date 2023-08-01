@@ -2046,7 +2046,8 @@ where
 
     /// Gets current bids from the auction system.
     pub fn get_bids(&self, get_bids_request: GetBidsRequest) -> Result<GetBidsResult, Error> {
-        let tracking_copy = match self.tracking_copy(get_bids_request.state_hash())? {
+        let state_root_hash = get_bids_request.state_hash();
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
             None => return Ok(GetBidsResult::RootNotFound),
         };
@@ -2057,14 +2058,12 @@ where
             .get_keys(&KeyTag::Bid)
             .map_err(|err| Error::Exec(err.into()))?;
 
-        let mut bids = BTreeMap::new();
-
+        let mut bids = vec![];
         for key in bid_keys.iter() {
-            if let Some(StoredValue::Bid(bid)) = tracking_copy.get(key).map_err(Into::into)? {
-                bids.insert(bid.validator_public_key().clone(), *bid);
+            if let Some(StoredValue::Bid(bid_kind)) = tracking_copy.get(key).map_err(Into::into)? {
+                bids.push(bid_kind);
             };
         }
-
         Ok(GetBidsResult::Success { bids })
     }
 

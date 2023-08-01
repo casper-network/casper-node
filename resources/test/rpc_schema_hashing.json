@@ -1609,9 +1609,16 @@
                         "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
                         "bid": {
                           "bonding_purse": "uref-fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa-007",
-                          "staked_amount": "10",
+                          "staked_amount": "20",
                           "delegation_rate": 0,
-                          "delegators": [],
+                          "delegators": [
+                            {
+                              "public_key": "014508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff",
+                              "staked_amount": "10",
+                              "bonding_purse": "uref-fbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfb-007",
+                              "delegatee": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61"
+                            }
+                          ],
                           "inactive": false
                         }
                       }
@@ -2570,7 +2577,7 @@
                 ],
                 "properties": {
                   "WriteBid": {
-                    "$ref": "#/components/schemas/Bid"
+                    "$ref": "#/components/schemas/BidKind"
                   }
                 },
                 "additionalProperties": false
@@ -2960,6 +2967,50 @@
             },
             "additionalProperties": false
           },
+          "BidKind": {
+            "description": "Auction bid variants.",
+            "anyOf": [
+              {
+                "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. This format is legacy and will be deprecated in a future release.",
+                "type": "object",
+                "required": [
+                  "Unified"
+                ],
+                "properties": {
+                  "Unified": {
+                    "$ref": "#/components/schemas/Bid"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A bid record containing only validator data.",
+                "type": "object",
+                "required": [
+                  "Validator"
+                ],
+                "properties": {
+                  "Validator": {
+                    "$ref": "#/components/schemas/ValidatorBid"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A bid record containing only delegator data.",
+                "type": "object",
+                "required": [
+                  "Delegator"
+                ],
+                "properties": {
+                  "Delegator": {
+                    "$ref": "#/components/schemas/Delegator"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
           "Bid": {
             "description": "An entry in the validator map.",
             "type": "object",
@@ -3083,6 +3134,65 @@
                     "type": "null"
                   }
                 ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "ValidatorBid": {
+            "description": "An entry in the validator map.",
+            "type": "object",
+            "required": [
+              "bonding_purse",
+              "delegation_rate",
+              "inactive",
+              "staked_amount",
+              "validator_public_key"
+            ],
+            "properties": {
+              "validator_public_key": {
+                "description": "Validator public key",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "bonding_purse": {
+                "description": "The purse that was used for bonding.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "staked_amount": {
+                "description": "The amount of tokens staked by a validator (not including delegators).",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              },
+              "delegation_rate": {
+                "description": "Delegation rate",
+                "type": "integer",
+                "format": "uint8",
+                "minimum": 0.0
+              },
+              "vesting_schedule": {
+                "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/VestingSchedule"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "inactive": {
+                "description": "`true` if validator has been \"evicted\"",
+                "type": "boolean"
               }
             },
             "additionalProperties": false
@@ -3570,7 +3680,7 @@
                 ],
                 "properties": {
                   "Bid": {
-                    "$ref": "#/components/schemas/Bid"
+                    "$ref": "#/components/schemas/BidKind"
                   }
                 },
                 "additionalProperties": false

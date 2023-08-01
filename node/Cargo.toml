@@ -41,7 +41,7 @@ hostname = "0.3.0"
 http = "0.2.1"
 humantime = "2.1.0"
 hyper = "0.14.26"
-itertools = "0.10.0"
+itertools = "0.10.3"
 libc = "0.2.66"
 linked-hash-map = "0.5.3"
 lmdb-rkv = "0.14"
@@ -78,7 +78,7 @@ sys-info = "0.8.0"
 tempfile = "3.4.0"
 thiserror = "1"
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
-tokio-openssl = "0.6.1"
+tokio-openssl = "0.6.3"
 tokio-serde = { version = "0.8.0", features = ["bincode"] }
 tokio-stream = { version = "0.1.4", features = ["sync"] }
 tokio-util = { version = "0.6.4", features = ["codec"] }
@@ -105,7 +105,7 @@ pretty_assertions = "0.7.2"
 proptest = "1.0.0"
 proptest-derive = "0.3.0"
 rand_core = "0.6.2"
-reqwest = { version = "0.11.3", features = ["stream"] }
+reqwest = { version = "0.11.18", features = ["stream"] }
 tokio = { version = "1", features = ["test-util"] }
 
 [features]

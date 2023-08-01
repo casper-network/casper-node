@@ -6,7 +6,7 @@ use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
     crypto,
     system::{
-        auction::{BidKind, EraInfo, Error, UnbondingPurse},
+        auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
     CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
@@ -61,9 +61,9 @@ where
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
     }
 
-    fn read_bid(&mut self, key: Key) -> Result<Option<BidKind>, Error> {
-        match self.context.read_gs(&key) {
-            Ok(Some(StoredValue::Bid(bid_kind))) => Ok(Some(*bid_kind)),
+    fn read_bid(&mut self, key: &Key) -> Result<Option<BidKind>, Error> {
+        match self.context.read_gs(key) {
+            Ok(Some(StoredValue::Bid(bid_kind))) => Ok(Some(bid_kind)),
             Ok(Some(_)) => Err(Error::Storage),
             Ok(None) => Ok(None),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
@@ -137,6 +137,15 @@ where
         self.context
             .get_keys_with_prefix(prefix)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+    }
+
+    fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error> {
+        let prefix = bid_addr.delegators_prefix()?;
+        let keys = self
+            .context
+            .get_keys_with_prefix(&prefix)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+        Ok(keys.len())
     }
 
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {

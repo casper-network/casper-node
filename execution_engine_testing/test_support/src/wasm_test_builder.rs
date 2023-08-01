@@ -47,9 +47,9 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights, WithdrawPurses,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
+            BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
+            WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
@@ -1265,8 +1265,8 @@ where
         result.remove(&era_id)
     }
 
-    /// Gets [`Bids`].
-    pub fn get_bids(&mut self) -> Bids {
+    /// Gets [`Vec<BidKind>`].
+    pub fn get_bids(&mut self) -> Vec<BidKind> {
         let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
         let get_bids_result = self.engine_state.get_bids(get_bids_request).unwrap();

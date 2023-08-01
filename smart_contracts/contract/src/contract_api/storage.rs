@@ -95,9 +95,12 @@ pub fn new_uref<T: CLTyped + ToBytes>(init: T) -> URef {
 /// Create a new contract stored under a Key::Hash at version 1. You may upgrade this contract in
 /// the future; if you want a contract that is locked (i.e. cannot be upgraded) call
 /// `new_locked_contract` instead.
-/// if `named_keys` are provided, will apply them
-/// if `hash_name` is provided, puts contract hash in current context's named keys under `hash_name`
-/// if `uref_name` is provided, puts access_uref in current context's named keys under `uref_name`
+/// if `named_keys` is provided, puts all of the included named keys into the newly created
+///     contract version's named keys.
+/// if `hash_name` is provided, puts Key::Hash(contract_package_hash) into the
+///     installing account's named keys under `hash_name`.
+/// if `uref_name` is provided, puts Key::URef(access_uref) into the installing account's named
+///     keys under `uref_name`
 pub fn new_contract(
     entry_points: EntryPoints,
     named_keys: Option<NamedKeys>,
@@ -109,9 +112,12 @@ pub fn new_contract(
 
 /// Create a locked contract stored under a Key::Hash, which can never be upgraded. This is an
 /// irreversible decision; for a contract that can be upgraded use `new_contract` instead.
-/// if `named_keys` are provided, will apply them
-/// if `hash_name` is provided, puts contract hash in current context's named keys under `hash_name`
-/// if `uref_name` is provided, puts access_uref in current context's named keys under `uref_name`
+/// if `named_keys` is provided, puts all of the included named keys into the newly created
+///     contract version's named keys.
+/// if `hash_name` is provided, puts Key::Hash(contract_package_hash) into the
+///     installing account's named keys under `hash_name`.
+/// if `uref_name` is provided, puts Key::URef(access_uref) into the installing account's named
+///     keys under `uref_name`
 pub fn new_locked_contract(
     entry_points: EntryPoints,
     named_keys: Option<NamedKeys>,

@@ -129,8 +129,8 @@ impl ValidatorBid {
     }
 
     /// Gets the staked amount of the provided bid
-    pub fn staked_amount(&self) -> &U512 {
-        &self.staked_amount
+    pub fn staked_amount(&self) -> U512 {
+        self.staked_amount
     }
 
     /// Gets the staked amount of the provided bid
@@ -294,11 +294,23 @@ mod tests {
         AccessRights, PublicKey, SecretKey, URef, U512,
     };
 
-    // const WEEK_MILLIS: u64 = 7 * 24 * 60 * 60 * 1000;
-    // const TEST_VESTING_SCHEDULE_LENGTH_MILLIS: u64 = 7 * WEEK_MILLIS;
+    #[test]
+    fn serialization_roundtrip_active() {
+        let founding_validator = ValidatorBid {
+            validator_public_key: PublicKey::from(
+                &SecretKey::ed25519_from_bytes([0u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
+            bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
+            staked_amount: U512::one(),
+            delegation_rate: DelegationRate::max_value(),
+            vesting_schedule: Some(VestingSchedule::default()),
+            inactive: false,
+        };
+        bytesrepr::test_serialization_roundtrip(&founding_validator);
+    }
 
     #[test]
-    fn serialization_roundtrip() {
+    fn serialization_roundtrip_inactive() {
         let founding_validator = ValidatorBid {
             validator_public_key: PublicKey::from(
                 &SecretKey::ed25519_from_bytes([0u8; SecretKey::ED25519_LENGTH]).unwrap(),
@@ -466,7 +478,7 @@ mod prop_tests {
 
     proptest! {
         #[test]
-        fn test_value_bid(bid in gens::bid_arb(1..100)) {
+        fn test_value_bid(bid in gens::bid_arb()) {
             bytesrepr::test_serialization_roundtrip(&bid);
         }
     }

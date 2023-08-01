@@ -481,7 +481,7 @@ mod tests {
     use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
     #[test]
-    fn schema() {
+    fn schema_test() {
         let schema_path = format!(
             "{}/../resources/test/rpc_schema_hashing.json",
             env!("CARGO_MANIFEST_DIR")

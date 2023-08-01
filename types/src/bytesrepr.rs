@@ -1315,10 +1315,9 @@ where
     assert_eq!(
         serialized.len(),
         t.serialized_length(),
-        "\nLength of serialized data: {},\nserialized_length() yielded: {},\nserialized data: {:?}, t is {:?}",
+        "\nLength of serialized data: {},\nserialized_length() yielded: {},\n t is {:?}",
         serialized.len(),
         t.serialized_length(),
-        serialized,
         t
     );
     let mut written_bytes = vec![];

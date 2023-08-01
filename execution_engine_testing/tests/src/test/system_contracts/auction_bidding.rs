@@ -14,8 +14,8 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            self, Bids, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID,
-            METHOD_SLASH,
+            self, BidsExt, DelegationRate, UnbondingPurses, ARG_VALIDATOR_PUBLIC_KEYS,
+            INITIAL_ERA_ID, METHOD_SLASH,
         },
         mint,
     },
@@ -81,9 +81,9 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
+    let bids = builder.get_bids();
     let default_account_bid = bids
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid");
     let bid_purse = *default_account_bid.bonding_purse();
     assert_eq!(
@@ -181,8 +181,8 @@ fn should_run_successful_bond_and_unbond_and_slashing() {
         .unwrap()
         .is_empty());
 
-    let bids: Bids = builder.get_bids();
-    let default_account_bid = bids.get(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
+    let bids = builder.get_bids();
+    let default_account_bid = bids.validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY).unwrap();
     assert!(default_account_bid.inactive());
     assert!(default_account_bid.staked_amount().is_zero());
 
@@ -442,8 +442,10 @@ fn should_run_successful_bond_and_unbond_with_release() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bids = builder.get_bids();
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),
@@ -540,10 +542,12 @@ fn should_run_successful_bond_and_unbond_with_release() {
         .unwrap()
         .is_empty());
 
-    let bids: Bids = builder.get_bids();
+    let bids = builder.get_bids();
     assert!(!bids.is_empty());
 
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),
@@ -619,8 +623,10 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    let bids: Bids = builder.get_bids();
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bids = builder.get_bids();
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),
@@ -733,10 +739,12 @@ fn should_run_successful_unbond_funds_after_changing_unbonding_delay() {
         .unwrap()
         .is_empty());
 
-    let bids: Bids = builder.get_bids();
+    let bids = builder.get_bids();
     assert!(!bids.is_empty());
 
-    let bid = bids.get(&default_public_key_arg).expect("should have bid");
+    let bid = bids
+        .validator_bid(&default_public_key_arg)
+        .expect("should have bid");
     let bid_purse = *bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(bid_purse),

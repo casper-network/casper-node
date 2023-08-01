@@ -12,7 +12,7 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+            BidsExt, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
             ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -101,8 +101,8 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         .expect_success()
         .commit();
 
-    let bids: Bids = builder.get_bids();
-    let validator_1_bid = bids.get(&VALIDATOR_1).expect("should have bid");
+    let bids = builder.get_bids();
+    let validator_1_bid = bids.validator_bid(&VALIDATOR_1).expect("should have bid");
     let bid_purse = validator_1_bid.bonding_purse();
     assert_eq!(
         builder.get_purse_balance(*bid_purse),
@@ -207,9 +207,9 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
         "slashing default validator should be noop because no unbonding was done"
     );
 
-    let bids: Bids = builder.get_bids();
+    let bids = builder.get_bids();
     assert!(!bids.is_empty());
-    assert!(bids.contains_key(&VALIDATOR_1)); // still bid upon
+    bids.validator_bid(&VALIDATOR_1).expect("bids should exist");
 
     //
     // Slash - only `withdraw_bid` amount is slashed
@@ -236,8 +236,8 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
 
     assert!(unbond_purses.get(&VALIDATOR_1_ADDR).unwrap().is_empty());
 
-    let bids: Bids = builder.get_bids();
-    let validator_1_bid = bids.get(&VALIDATOR_1).unwrap();
+    let bids = builder.get_bids();
+    let validator_1_bid = bids.validator_bid(&VALIDATOR_1).unwrap();
     assert!(validator_1_bid.inactive());
     assert!(validator_1_bid.staked_amount().is_zero());
 

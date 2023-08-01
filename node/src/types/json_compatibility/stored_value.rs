@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
+    system::auction::{BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
     CLValue, DeployInfo, StoredValue as ExecutionEngineStoredValue, Transfer,
 };
 
@@ -42,7 +42,7 @@ pub enum StoredValue {
     /// Auction metadata
     EraInfo(EraInfo),
     /// A bid
-    Bid(Box<Bid>),
+    Bid(Box<BidKind>),
     /// A withdraw
     Withdraw(Vec<WithdrawPurse>),
     /// A collection of unbonding purses
@@ -75,7 +75,7 @@ impl TryFrom<ExecutionEngineStoredValue> for StoredValue {
                 StoredValue::DeployInfo(deploy_info)
             }
             ExecutionEngineStoredValue::EraInfo(era_info) => StoredValue::EraInfo(era_info),
-            ExecutionEngineStoredValue::Bid(bid) => StoredValue::Bid(bid),
+            ExecutionEngineStoredValue::Bid(bid_kind) => StoredValue::Bid(Box::new(bid_kind)),
             ExecutionEngineStoredValue::Withdraw(withdraw_purses) => {
                 StoredValue::Withdraw(withdraw_purses)
             }
