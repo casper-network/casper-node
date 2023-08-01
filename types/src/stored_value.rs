@@ -50,7 +50,7 @@ pub enum StoredValue {
     Account(Account),
     /// Variant that stores [`ContractWasm`].
     ContractWasm(ContractWasm),
-    /// Variant that stores [`ContractWasm`].
+    /// Variant that stores [`Contract`].
     Contract(Contract),
     /// Variant that stores [`Package`].
     ContractPackage(Package),

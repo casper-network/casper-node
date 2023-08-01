@@ -181,9 +181,9 @@ pub enum Error {
     Transform(transform::Error),
     /// Invalid key
     #[error("Invalid key {0}")]
-    InvalidKey(Key),
+    UnexpectedKeyVariant(Key),
     /// Invalid Contract package kind.
-    #[error("Invalid contract package kind")]
+    #[error("Invalid contract package kind: {0}")]
     InvalidContractPackageKind(ContractPackageKind),
 }
 

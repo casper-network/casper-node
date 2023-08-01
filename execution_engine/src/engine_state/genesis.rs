@@ -35,14 +35,13 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry},
+    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry, DEFAULT_ADDRESS},
     execution,
     execution::AddressGenerator,
     tracking_copy::TrackingCopy,
 };
 
 const NO_WASM: bool = true;
-const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
@@ -915,10 +914,7 @@ where
         let main_purse = self.create_purse(starting_balance)?;
         let associated_keys = contract_package_kind.associated_keys();
         let maybe_account_hash = contract_package_kind.maybe_account_hash();
-        let named_keys = match maybe_named_keys {
-            Some(named_keys) => named_keys,
-            None => NamedKeys::default(),
-        };
+        let named_keys = maybe_named_keys.unwrap_or_default();
         let entry_points = match maybe_entry_points {
             Some(entry_points) => entry_points,
             None => {

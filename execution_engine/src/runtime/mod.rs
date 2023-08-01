@@ -40,13 +40,14 @@ use casper_types::{
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
-    EntryPointType, Gas, GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter,
-    Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Gas,
+    GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter, Phase, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
+    engine_state::ACCOUNT_WASM_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::{self, RuntimeContext},
@@ -55,7 +56,6 @@ use crate::{
         standard_payment::StandardPayment,
     },
     tracking_copy::TrackingCopyExt,
-    ACCOUNT_WASM_ADDR,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 pub use wasm_prep::{
@@ -2197,7 +2197,7 @@ where
         match result? {
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
-                let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
+                let contract_wasm_hash = *ACCOUNT_WASM_HASH;
                 let contract_hash = ContractHash::new(self.context.new_hash_address()?);
                 let contract_package_hash =
                     ContractPackageHash::new(self.context.new_hash_address()?);
@@ -2318,7 +2318,7 @@ where
                     if let Some(contract_hash) = contract_key.into_hash().map(ContractHash::new) {
                         contract_hash
                     } else {
-                        return Err(Error::InvalidKey(contract_key));
+                        return Err(Error::UnexpectedKeyVariant(contract_key));
                     };
                 let target_uref = if let Some(StoredValue::AddressableEntity(contract)) =
                     self.context.read_gs(&contract_hash.into())?

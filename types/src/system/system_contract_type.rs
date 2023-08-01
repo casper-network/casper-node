@@ -50,25 +50,28 @@ pub enum SystemContractType {
 impl ToBytes for SystemContractType {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            SystemContractType::Mint => {
-                buffer.insert(0, MINT_TAG);
-            }
-            SystemContractType::HandlePayment => {
-                buffer.insert(0, HANDLE_PAYMENT_TAG);
-            }
-            SystemContractType::StandardPayment => {
-                buffer.insert(0, STANDARD_PAYMENT_TAG);
-            }
-            SystemContractType::Auction => {
-                buffer.insert(0, AUCTION_TAG);
-            }
-        }
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            SystemContractType::Mint => {
+                writer.push(MINT_TAG);
+            }
+            SystemContractType::HandlePayment => {
+                writer.push(HANDLE_PAYMENT_TAG);
+            }
+            SystemContractType::StandardPayment => {
+                writer.push(STANDARD_PAYMENT_TAG);
+            }
+            SystemContractType::Auction => writer.push(AUCTION_TAG),
+        }
+        Ok(())
     }
 }
 
@@ -80,7 +83,7 @@ impl FromBytes for SystemContractType {
             HANDLE_PAYMENT_TAG => Ok((SystemContractType::HandlePayment, remainder)),
             STANDARD_PAYMENT_TAG => Ok((SystemContractType::StandardPayment, remainder)),
             AUCTION_TAG => Ok((SystemContractType::Auction, remainder)),
-            _ => Err(bytesrepr::Error::Formatting),
+            _ => Err(Error::Formatting),
         }
     }
 }

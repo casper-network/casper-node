@@ -12,11 +12,10 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{ChecksumRegistry, SystemContractRegistry},
+    engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_WASM_HASH},
     execution,
     execution::AddressGenerator,
     tracking_copy::TrackingCopy,
-    ACCOUNT_WASM_ADDR,
 };
 
 /// Higher-level operations on the state via a `TrackingCopy`.
@@ -135,7 +134,7 @@ where
                 let mut generator =
                     AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-                let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
+                let contract_wasm_hash = *ACCOUNT_WASM_HASH;
                 let contract_hash = ContractHash::new(generator.new_hash_address());
                 let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
 

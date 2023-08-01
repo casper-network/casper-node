@@ -47,8 +47,8 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    account::AccountHash,
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    account::{Account, AccountHash},
+    addressable_entity::{AssociatedKeys, NamedKeys},
     bytesrepr::ToBytes,
     package::{
         ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
@@ -102,9 +102,9 @@ use crate::{
     runtime::RuntimeStack,
     system::auction,
     tracking_copy::{TrackingCopy, TrackingCopyExt},
-    ACCOUNT_WASM_ADDR,
 };
 
+const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 /// The maximum amount of motes that payment code execution can cost.
 pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// The maximum amount of gas a payment code can use.
@@ -113,6 +113,10 @@ pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 /// executing payment code, as such amount is held as collateral to compensate for
 /// code execution.
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
+
+/// A special contract wasm hash for contracts representing Accounts.
+pub static ACCOUNT_WASM_HASH: Lazy<ContractWasmHash> =
+    Lazy::new(|| ContractWasmHash::new(DEFAULT_ADDRESS));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
@@ -718,6 +722,71 @@ where
         Ok((entity_record, entity_hash))
     }
 
+    fn create_addressable_entity_from_account(
+        &self,
+        account: Account,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
+    ) -> Result<(), Error> {
+        let account_hash = account.account_hash();
+
+        let mut generator =
+            AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
+
+        let contract_wasm_hash = *ACCOUNT_WASM_HASH;
+        let contract_hash = ContractHash::new(generator.new_hash_address());
+        let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
+
+        let entry_points = EntryPoints::new();
+
+        let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
+
+        let entity = AddressableEntity::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            account.named_keys().clone(),
+            entry_points,
+            protocol_version,
+            account.main_purse(),
+            associated_keys,
+            account.action_thresholds().clone().into(),
+        );
+
+        let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
+
+        let contract_package = {
+            let mut contract_package = Package::new(
+                access_key,
+                ContractVersions::default(),
+                DisabledVersions::default(),
+                Groups::default(),
+                ContractPackageStatus::Locked,
+                ContractPackageKind::Account(account_hash),
+            );
+            contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
+            contract_package
+        };
+
+        let contract_key: Key = contract_hash.into();
+
+        tracking_copy
+            .borrow_mut()
+            .write(contract_key, entity.into());
+        tracking_copy
+            .borrow_mut()
+            .write(contract_package_hash.into(), contract_package.into());
+        let contract_by_account = match CLValue::from_t(contract_key) {
+            Ok(cl_value) => cl_value,
+            Err(_) => return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string())),
+        };
+
+        tracking_copy.borrow_mut().write(
+            Key::Account(account_hash),
+            StoredValue::CLValue(contract_by_account),
+        );
+        Ok(())
+    }
+
     fn migrate_account(
         &self,
         account_hash: AccountHash,
@@ -730,66 +799,11 @@ where
             .map_err(Into::into)?;
 
         match maybe_stored_value {
-            Some(StoredValue::Account(account)) => {
-                let mut generator =
-                    AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
-
-                let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
-                let contract_hash = ContractHash::new(generator.new_hash_address());
-                let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
-
-                let entry_points = EntryPoints::new();
-
-                let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
-
-                let entity = AddressableEntity::new(
-                    contract_package_hash,
-                    contract_wasm_hash,
-                    account.named_keys().clone(),
-                    entry_points,
-                    protocol_version,
-                    account.main_purse(),
-                    associated_keys,
-                    account.action_thresholds().clone().into(),
-                );
-
-                let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
-
-                let contract_package = {
-                    let mut contract_package = Package::new(
-                        access_key,
-                        ContractVersions::default(),
-                        DisabledVersions::default(),
-                        Groups::default(),
-                        ContractPackageStatus::Locked,
-                        ContractPackageKind::Account(account_hash),
-                    );
-                    contract_package
-                        .insert_contract_version(protocol_version.value().major, contract_hash);
-                    contract_package
-                };
-
-                let contract_key: Key = contract_hash.into();
-
-                tracking_copy
-                    .borrow_mut()
-                    .write(contract_key, entity.into());
-                tracking_copy
-                    .borrow_mut()
-                    .write(contract_package_hash.into(), contract_package.into());
-                let contract_by_account = match CLValue::from_t(contract_key) {
-                    Ok(cl_value) => cl_value,
-                    Err(_) => {
-                        return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string()))
-                    }
-                };
-
-                tracking_copy.borrow_mut().write(
-                    Key::Account(account_hash),
-                    StoredValue::CLValue(contract_by_account),
-                );
-                Ok(())
-            }
+            Some(StoredValue::Account(account)) => self.create_addressable_entity_from_account(
+                account,
+                protocol_version,
+                Rc::clone(&tracking_copy),
+            ),
             Some(StoredValue::CLValue(_)) => Ok(()),
             // This means the Account does not exist, which we consider to be
             // an authorization error. As used by the node, this type of deploy
@@ -1029,68 +1043,14 @@ where
                         );
                     match maybe_uref {
                         Some(main_purse) => {
-                            let mut generator =
-                                AddressGenerator::new(main_purse.addr().as_ref(), Phase::Session);
-
-                            let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
-                            let contract_hash = ContractHash::new(generator.new_hash_address());
-                            let contract_package_hash =
-                                ContractPackageHash::new(generator.new_hash_address());
-
-                            let associated_keys = AssociatedKeys::new(public_key, Weight::new(1));
-                            let named_keys = NamedKeys::default();
-                            let entry_points = EntryPoints::new();
-
-                            let entity = AddressableEntity::new(
-                                contract_package_hash,
-                                contract_wasm_hash,
-                                named_keys,
-                                entry_points,
+                            let account = Account::create(public_key, NamedKeys::new(), main_purse);
+                            if let Err(error) = self.create_addressable_entity_from_account(
+                                account,
                                 protocol_version,
-                                main_purse,
-                                associated_keys,
-                                ActionThresholds::default(),
-                            );
-
-                            let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
-
-                            let contract_package = {
-                                let mut contract_package = Package::new(
-                                    access_key,
-                                    ContractVersions::default(),
-                                    DisabledVersions::default(),
-                                    Groups::default(),
-                                    ContractPackageStatus::Locked,
-                                    ContractPackageKind::Account(account_hash),
-                                );
-                                contract_package.insert_contract_version(
-                                    protocol_version.value().major,
-                                    contract_hash,
-                                );
-                                contract_package
-                            };
-
-                            let contract_key: Key = contract_hash.into();
-
-                            tracking_copy
-                                .borrow_mut()
-                                .write(contract_key, entity.into());
-                            tracking_copy
-                                .borrow_mut()
-                                .write(contract_package_hash.into(), contract_package.into());
-                            let contract_by_account = match CLValue::from_t(contract_key) {
-                                Ok(cl_value) => cl_value,
-                                Err(_) => {
-                                    return Ok(make_charged_execution_failure(Error::Bytesrepr(
-                                        "Failed to convert to CLValue".to_string(),
-                                    )))
-                                }
-                            };
-
-                            tracking_copy.borrow_mut().write(
-                                Key::Account(public_key),
-                                StoredValue::CLValue(contract_by_account),
-                            );
+                                Rc::clone(&tracking_copy),
+                            ) {
+                                return Ok(make_charged_execution_failure(error));
+                            }
                         }
                         None => {
                             // This case implies that the execution_result is a failure variant as
@@ -1629,7 +1589,7 @@ where
 
         // the proposer of the block this deploy is in receives the gas from this deploy execution
         let proposer_purse = {
-            let proposer_contract = match tracking_copy
+            let proposer_entity = match tracking_copy
                 .borrow_mut()
                 .get_addressable_entity_by_account_hash(
                     protocol_version,
@@ -1639,7 +1599,7 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-            proposer_contract.main_purse()
+            proposer_entity.main_purse()
         };
 
         let proposer_main_purse_balance_key = {
@@ -2593,7 +2553,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::ValueTooLarge
                 | ExecError::MissingRuntimeStack
                 | ExecError::DisabledContract(_)
-                | ExecError::InvalidKey(_)
+                | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidContractPackageKind(_)
                 | ExecError::Transform(_) => false,
             },

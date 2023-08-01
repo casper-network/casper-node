@@ -27,6 +27,3 @@ pub const ADDRESS_LENGTH: usize = 32;
 
 /// Alias for an array of bytes that represents an address.
 pub type Address = [u8; ADDRESS_LENGTH];
-
-/// A special contract wasm hash for contracts representing Accounts.
-pub const ACCOUNT_WASM_ADDR: [u8; 32] = [0u8; 32];

@@ -1850,7 +1850,7 @@ fn should_handle_unbonding_to_oneself_correctly() {
     let account2_hash = new_validator.to_account_hash();
 
     // The new account should be created
-    let account2 = update.get_written_account(account2_hash);
+    let account2 = update.get_written_addressable_entity(account2_hash);
 
     // Check that the main purse for the new account has been created with the correct amount
     update.assert_written_purse_is_unit(account2.main_purse());
@@ -1870,7 +1870,7 @@ fn should_handle_unbonding_to_oneself_correctly() {
     update.assert_written_purse_is_unit(*bid_write.bonding_purse());
     update.assert_written_balance(*bid_write.bonding_purse(), NEW_STAKE);
 
-    // 10 keys should be written:
+    // 12 keys should be written:
     // - seigniorage recipients
     // - total supply
     // - bid for old validator
@@ -1878,10 +1878,12 @@ fn should_handle_unbonding_to_oneself_correctly() {
     // - account for new validator
     // - main purse for account for new validator
     // - main purse balance for account for new validator
+    // - addressable entity for new validator
+    // - package for the newly created addressable entity
     // - bid for new validator
     // - bonding purse for new validator
     // - bonding purse balance for new validator
-    assert_eq!(update.len(), 10);
+    assert_eq!(update.len(), 12);
 }
 
 #[test]
@@ -1995,7 +1997,7 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
     let account2_hash = new_validator.to_account_hash();
 
     // The new account should be created
-    let account2 = update.get_written_account(account2_hash);
+    let account2 = update.get_written_addressable_entity(account2_hash);
 
     // Check that the main purse for the new account has been created with the correct amount
     update.assert_written_purse_is_unit(account2.main_purse());
@@ -2015,7 +2017,7 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
     update.assert_written_purse_is_unit(*bid_write.bonding_purse());
     update.assert_written_balance(*bid_write.bonding_purse(), NEW_STAKE);
 
-    // 10 keys should be written:
+    // 12 keys should be written:
     // - seigniorage recipients
     // - total supply
     // - bid for old validator
@@ -2023,10 +2025,12 @@ fn should_handle_unbonding_to_a_delegator_correctly() {
     // - account for new validator
     // - main purse for account for new validator
     // - main purse balance for account for new validator
+    // - addressable entity for new validator
+    // - package for the newly created addressable entity
     // - bid for new validator
     // - bonding purse for new validator
     // - bonding purse balance for new validator
-    assert_eq!(update.len(), 10);
+    assert_eq!(update.len(), 12);
 }
 
 #[test]
@@ -2116,7 +2120,7 @@ fn should_handle_legacy_unbonding_to_oneself_correctly() {
     let account2_hash = new_validator.to_account_hash();
 
     // The new account should be created
-    let account2 = update.get_written_account(account2_hash);
+    let account2 = update.get_written_addressable_entity(account2_hash);
 
     // Check that the main purse for the new account has been created with the correct amount
     update.assert_written_purse_is_unit(account2.main_purse());
@@ -2136,7 +2140,7 @@ fn should_handle_legacy_unbonding_to_oneself_correctly() {
     update.assert_written_purse_is_unit(*bid_write.bonding_purse());
     update.assert_written_balance(*bid_write.bonding_purse(), NEW_STAKE);
 
-    // 10 keys should be written:
+    // 12 keys should be written:
     // - seigniorage recipients
     // - total supply
     // - bid for old validator
@@ -2144,10 +2148,12 @@ fn should_handle_legacy_unbonding_to_oneself_correctly() {
     // - account for new validator
     // - main purse for account for new validator
     // - main purse balance for account for new validator
+    // - addressable entity for new validator
+    // - package for the newly created addressable entity
     // - bid for new validator
     // - bonding purse for new validator
     // - bonding purse balance for new validator
-    assert_eq!(update.len(), 10);
+    assert_eq!(update.len(), 12);
 }
 
 #[test]
@@ -2263,7 +2269,7 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
     let account2_hash = new_validator.to_account_hash();
 
     // The new account should be created
-    let account2 = update.get_written_account(account2_hash);
+    let account2 = update.get_written_addressable_entity(account2_hash);
 
     // Check that the main purse for the new account has been created with the correct amount
     update.assert_written_purse_is_unit(account2.main_purse());
@@ -2283,7 +2289,7 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
     update.assert_written_purse_is_unit(*bid_write.bonding_purse());
     update.assert_written_balance(*bid_write.bonding_purse(), NEW_STAKE);
 
-    // 10 keys should be written:
+    // 12 keys should be written:
     // - seigniorage recipients
     // - total supply
     // - bid for old validator
@@ -2291,8 +2297,10 @@ fn should_handle_legacy_unbonding_to_a_delegator_correctly() {
     // - account for new validator
     // - main purse for account for new validator
     // - main purse balance for account for new validator
+    // - addressable entity for new validator
+    // - package for the newly created addressable entity
     // - bid for new validator
     // - bonding purse for new validator
     // - bonding purse balance for new validator
-    assert_eq!(update.len(), 10);
+    assert_eq!(update.len(), 12);
 }

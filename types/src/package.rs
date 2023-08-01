@@ -553,6 +553,25 @@ impl FromBytes for ContractPackageKind {
     }
 }
 
+impl Display for ContractPackageKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            ContractPackageKind::Wasm => {
+                write!(f, "ContractPackageKind:Wasm")
+            }
+            ContractPackageKind::System(system_contract) => {
+                write!(f, "ContractPackageKind:System({})", system_contract)
+            }
+            ContractPackageKind::Account(account_hash) => {
+                write!(f, "ContractPackageKind:Account({})", account_hash)
+            }
+            ContractPackageKind::Legacy => {
+                write!(f, "ContractPackageKind:Legacy")
+            }
+        }
+    }
+}
+
 /// Contract definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]

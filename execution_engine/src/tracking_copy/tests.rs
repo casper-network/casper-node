@@ -20,10 +20,9 @@ use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
 use crate::{
-    engine_state::{EngineConfig, ExecutionJournal},
+    engine_state::{EngineConfig, ExecutionJournal, ACCOUNT_WASM_HASH},
     runtime_context::dictionary,
     tracking_copy::{self, ValidationError},
-    ACCOUNT_WASM_ADDR,
 };
 
 struct CountingDb {
@@ -184,7 +183,7 @@ fn tracking_copy_add_named_key() {
     let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
     let contract = AddressableEntity::new(
         ContractPackageHash::new([3u8; 32]),
-        ACCOUNT_WASM_ADDR.into(),
+        *ACCOUNT_WASM_HASH,
         NamedKeys::new(),
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
@@ -369,7 +368,7 @@ proptest! {
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let account = AddressableEntity::new(
             ContractPackageHash::new([1u8;32]),
-            ACCOUNT_WASM_ADDR.into(),
+            *ACCOUNT_WASM_HASH,
             named_keys,
             EntryPoints::default(),
             ProtocolVersion::V1_0_0,
@@ -574,7 +573,7 @@ fn validate_query_proof_should_work() {
 
     let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([20; 32]),
-        ACCOUNT_WASM_ADDR.into(),
+        *ACCOUNT_WASM_HASH,
         NamedKeys::default(),
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,
@@ -619,7 +618,7 @@ fn validate_query_proof_should_work() {
 
     let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([21; 32]),
-        ACCOUNT_WASM_ADDR.into(),
+        *ACCOUNT_WASM_HASH,
         named_keys,
         EntryPoints::default(),
         ProtocolVersion::V1_0_0,

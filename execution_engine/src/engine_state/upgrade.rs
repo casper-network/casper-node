@@ -3,7 +3,6 @@ use std::{cell::RefCell, fmt, rc::Rc};
 
 use thiserror::Error;
 
-use crate::ACCOUNT_WASM_ADDR;
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
@@ -13,12 +12,12 @@ use casper_types::{
     },
     system::SystemContractType,
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
-    ContractWasmHash, Digest, EntryPoints, Key, Package, Phase, ProtocolVersion, PublicKey,
-    StoredValue, URef, U512,
+    Digest, EntryPoints, Key, Package, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use crate::{
-    engine_state::execution_effect::ExecutionEffect, execution::AddressGenerator,
+    engine_state::{execution_effect::ExecutionEffect, ACCOUNT_WASM_HASH},
+    execution::AddressGenerator,
     tracking_copy::TrackingCopy,
 };
 
@@ -227,7 +226,7 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
-        let contract_wasm_hash = ContractWasmHash::new(ACCOUNT_WASM_ADDR);
+        let contract_wasm_hash = *ACCOUNT_WASM_HASH;
         let contract_hash = ContractHash::new(address_generator.new_hash_address());
         let contract_package_hash = ContractPackageHash::new(address_generator.new_hash_address());
 
