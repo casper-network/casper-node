@@ -333,7 +333,7 @@ impl EngineConfigBuilder {
             RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
                 debug_assert!(
                     refund_ratio <= Ratio::one(),
-                    "refund ratio should be a proper fraction"
+                    "refund ratio should be in the range of [0, 1]"
                 );
             }
         }

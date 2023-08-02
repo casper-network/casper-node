@@ -232,7 +232,7 @@ impl TransferRuntimeArgsBuilder {
     /// If the "target" account hash is not existing, then a special variant is returned that
     /// indicates that the system has to create new account first.
     ///
-    /// Returns [`TransferTargetMode`] with a resolved variant.
+    /// Returns [`NewTransferTargetMode`] with a resolved variant.
     pub(super) fn resolve_transfer_target_mode<R>(
         &mut self,
         correlation_id: CorrelationId,

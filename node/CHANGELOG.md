@@ -176,27 +176,6 @@ All notable changes to this project will be documented in this file.  The format
 
 ## 1.4.8
 
-### Changed
-* Update `casper-execution-engine`.
-
-
-
-## 1.4.7
-
-### Changed
-* Update `casper-execution-engine` and three `openssl` crates to latest versions.
-
-
-
-## 1.4.6
-
-### Changed
-* Update dependencies to make use of scratch global state in the contract runtime.
-
-
-
-## 1.4.8
-
 ### Added
 * Add an `identity` option to load existing network identity certificates signed by a CA.
 
