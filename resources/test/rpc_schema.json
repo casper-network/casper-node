@@ -490,7 +490,7 @@
             {
               "name": "state_identifier",
               "schema": {
-                "description": "The identifier used for the query. If none is passed the tip of the chain will be used.",
+                "description": "The identifier used for the query. If not provided, the tip of the chain will be used.",
                 "anyOf": [
                   {
                     "$ref": "#/components/schemas/GlobalStateIdentifier"

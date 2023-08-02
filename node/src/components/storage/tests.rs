@@ -1033,11 +1033,12 @@ fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = TestBlockBuilder::new().build(&mut harness.rng);
-    let block_height = block.height();
-
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
+    let block = TestBlockBuilder::new()
+        .deploys(Some(&deploy))
+        .build(&mut harness.rng);
+    let block_height = block.height();
     let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
     put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
     put_complete_block(&mut harness, &mut storage, Arc::new(block.clone()));
