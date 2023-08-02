@@ -76,17 +76,16 @@ impl MetaBlock {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
-
     use casper_types::{execution::ExecutionResultV2, testing::TestRng, Deploy};
 
     use super::*;
+    use crate::types::TestBlockBuilder;
 
     #[test]
     fn should_merge_when_same_non_empty_execution_results() {
         let rng = &mut TestRng::new();
 
-        let block = Arc::new(Block::random(rng));
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
         let execution_results = vec![(
             *deploy.hash(),
@@ -110,7 +109,7 @@ mod tests {
     fn should_merge_when_both_empty_execution_results() {
         let rng = &mut TestRng::new();
 
-        let block = Arc::new(Block::random(rng));
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
         let state = State::new();
 
         let meta_block1 = MetaBlock::new(Arc::clone(&block), vec![], state);
@@ -128,7 +127,7 @@ mod tests {
     fn should_merge_when_one_empty_execution_results() {
         let rng = &mut TestRng::new();
 
-        let block = Arc::new(Block::random(rng));
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy = Deploy::random(rng);
         let execution_results = vec![(
             *deploy.hash(),
@@ -152,15 +151,14 @@ mod tests {
     fn should_fail_to_merge_different_blocks() {
         let rng = &mut TestRng::new();
 
-        let block1 = Arc::new(Block::random(rng));
-        let block2 = Arc::new(Block::random_with_specifics(
-            rng,
-            block1.era_id().successor(),
-            block1.height() + 1,
-            block1.protocol_version(),
-            true,
-            iter::empty(),
-        ));
+        let block1 = Arc::new(TestBlockBuilder::new().build(rng));
+        let block2 = Arc::new(
+            TestBlockBuilder::new()
+                .era(block1.era_id().successor())
+                .height(block1.height() + 1)
+                .switch_block(true)
+                .build(rng),
+        );
         let deploy = Deploy::random(rng);
         let execution_results = vec![(
             *deploy.hash(),
@@ -186,7 +184,7 @@ mod tests {
     fn should_fail_to_merge_different_execution_results() {
         let rng = &mut TestRng::new();
 
-        let block = Arc::new(Block::random(rng));
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
         let deploy1 = Deploy::random(rng);
         let execution_results1 = vec![(
             *deploy1.hash(),

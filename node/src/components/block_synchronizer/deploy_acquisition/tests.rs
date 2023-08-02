@@ -4,10 +4,9 @@ use assert_matches::assert_matches;
 use rand::Rng;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{
-    testing::TestRng, AccessRights, Block, CLValue, Deploy, EraId, ProtocolVersion, StoredValue,
-    URef,
-};
+use casper_types::{testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, URef};
+
+use crate::types::TestBlockBuilder;
 
 use super::*;
 
@@ -27,16 +26,12 @@ fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Deploy> + Clone>(
     deploys_iter: I,
 ) -> ApprovalsHashes {
     let era = rng.gen_range(0..6);
-    let height = era * 10 + rng.gen_range(0..10);
-    let is_switch = rng.gen_bool(0.1);
-    let block = Block::random_with_specifics(
-        rng,
-        EraId::from(era),
-        height,
-        ProtocolVersion::V1_0_0,
-        is_switch,
-        deploys_iter.clone().map(|deploy| *deploy.hash()),
-    );
+    let block = TestBlockBuilder::new()
+        .era(era)
+        .height(era * 10 + rng.gen_range(0..10))
+        .deploys(deploys_iter.clone())
+        .build(rng);
+
     ApprovalsHashes::new(
         block.hash(),
         deploys_iter

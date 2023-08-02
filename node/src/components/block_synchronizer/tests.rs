@@ -714,7 +714,7 @@ fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
     assert!(!block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Trying to register a different block should replace the old one
-    let new_block = Block::random(&mut rng);
+    let new_block = TestBlockBuilder::new().build(&mut rng);
     assert!(block_synchronizer.register_block_by_hash(*new_block.hash(), false));
     assert_eq!(
         block_synchronizer.forward.unwrap().block_hash(),
@@ -2141,7 +2141,8 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Registering block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
+    assert!(block_synchronizer
+        .register_block_by_hash(*TestBlockBuilder::new().build(&mut rng).hash(), true));
 
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
@@ -2150,7 +2151,8 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_none());
 
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
+    assert!(block_synchronizer
+        .register_block_by_hash(*TestBlockBuilder::new().build(&mut rng).hash(), true));
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
 

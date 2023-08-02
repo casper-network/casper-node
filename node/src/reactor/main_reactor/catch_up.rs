@@ -260,7 +260,8 @@ impl MainReactor {
         sync_instruction: SyncInstruction,
     ) -> Option<CatchUpInstruction> {
         match sync_instruction {
-            SyncInstruction::Leap { block_hash } => {
+            SyncInstruction::Leap { block_hash }
+            | SyncInstruction::LeapIntervalElapsed { block_hash } => {
                 Some(self.catch_up_leap(effect_builder, rng, block_hash))
             }
             SyncInstruction::BlockSync { block_hash } => {

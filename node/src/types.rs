@@ -7,6 +7,7 @@ mod chunkable;
 mod deploy;
 mod exit_code;
 pub mod json_compatibility;
+mod max_ttl;
 mod node_config;
 mod node_id;
 /// Peers map.
@@ -34,6 +35,7 @@ pub(crate) use deploy::{
     DeployWithFinalizedApprovals, FinalizedApprovals, LegacyDeploy,
 };
 pub use exit_code::ExitCode;
+pub(crate) use max_ttl::MaxTtl;
 pub use node_config::NodeConfig;
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
