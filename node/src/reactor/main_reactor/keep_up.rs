@@ -651,14 +651,6 @@ impl MainReactor {
             .map_err(|err| err.to_string())?
             .last()
         {
-            // It is possible that if a node just caught up, its highest orphaned block
-            // is within the current active era. We need to let the node sync back past the
-            // start of the active era and only after that we can determine if it is synced
-            // to TTL.
-            if highest_switch_block_header.era_id() < highest_orphaned_block_header.era_id() {
-                return Ok(None);
-            }
-
             let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
             if max_ttl.synced_to_ttl(
                 highest_switch_block_header.timestamp(),
