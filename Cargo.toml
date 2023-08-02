@@ -12,6 +12,7 @@ members = [
     "types",
     "utils/global-state-update-gen",
     "utils/validation",
+    "vm",
 ]
 
 default-members = [
