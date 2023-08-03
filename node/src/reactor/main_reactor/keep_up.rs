@@ -644,7 +644,11 @@ impl MainReactor {
         // range of at least 18 hours worth of blocks. note however
         // that we measure from the start of the active era (for consensus reasons),
         // so this can be up to TTL + era length in practice
-
+        // It is possible that if a node just caught up, its highest orphaned block
+        // is within the current active era and the node did not yet sync back past the
+        // start of the current era. In order to guarantee that the range we are
+        // checking the TTL awareness for is unbroken, the highest switch block that
+        // the node knows of must be a complete block.
         if let Some(highest_switch_block_header) = self
             .storage
             .read_highest_switch_block_headers(1)
@@ -652,10 +656,14 @@ impl MainReactor {
             .last()
         {
             let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
-            if max_ttl.synced_to_ttl(
-                highest_switch_block_header.timestamp(),
-                highest_orphaned_block_header,
-            )? {
+            if self
+                .storage
+                .block_at_height_is_complete(highest_switch_block_header.height())
+                && max_ttl.synced_to_ttl(
+                    highest_switch_block_header.timestamp(),
+                    highest_orphaned_block_header,
+                )?
+            {
                 return Ok(Some(SyncBackInstruction::TtlSynced));
             }
         }

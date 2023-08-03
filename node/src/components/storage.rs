@@ -2409,6 +2409,11 @@ impl Storage {
         Ok(FetchResponse::NotFound(sync_leap_identifier))
     }
 
+    /// Checks if a block at the specified `block_height` is marked complete in storage.
+    pub(crate) fn block_at_height_is_complete(&self, block_height: u64) -> bool {
+        self.get_available_block_range().contains(block_height)
+    }
+
     /// Creates a serialized representation of a `FetchResponse` and the resulting message.
     ///
     /// If the given item is `Some`, returns a serialization of `FetchResponse::Fetched`. If

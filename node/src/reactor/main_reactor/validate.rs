@@ -151,6 +151,17 @@ impl MainReactor {
             self.storage.get_highest_orphaned_block_header()
         {
             let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
+            if !self
+                .storage
+                .block_at_height_is_complete(highest_switch_block_header.height())
+            {
+                info!(
+                    "{}: cannot determine TTL awareness to safely participate in consensus; highest switch block is not complete",
+                    self.state
+                );
+                return Ok(None);
+            }
+
             if max_ttl.synced_to_ttl(
                 highest_switch_block_header.timestamp(),
                 &highest_orphaned_block_header,

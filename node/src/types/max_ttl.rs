@@ -29,22 +29,14 @@ impl MaxTtl {
     /// Determine if orphaned block header is older than ttl requires.
     pub fn synced_to_ttl(
         &self,
-        latest_switch_block_timestamp: Timestamp,
+        latest_complete_switch_block_timestamp: Timestamp,
         highest_orphaned_block_header: &BlockHeader,
     ) -> Result<bool, String> {
         if highest_orphaned_block_header.is_genesis() {
             Ok(true)
         } else {
-            // It is possible that if a node just caught up, its highest orphaned block
-            // is within the current active era. We need to let the node sync back past the
-            // start of the active era and only after that we can determine if it is synced
-            // to TTL.
-            if latest_switch_block_timestamp < highest_orphaned_block_header.timestamp() {
-                return Ok(false);
-            }
-
             self.ttl_elapsed(
-                latest_switch_block_timestamp,
+                latest_complete_switch_block_timestamp,
                 highest_orphaned_block_header.timestamp(),
             )
         }
