@@ -906,7 +906,7 @@ mod tests {
     #[test]
     fn delete_should_produce_correct_transform() {
         {
-            // delete + write == write
+            // prune + write == write
             let lhs = Transform::Prune;
             let rhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
 
@@ -915,21 +915,21 @@ mod tests {
         }
 
         {
-            // delete + identity == delete (delete modifies the global state, identity does not
-            // modify, so we need to preserve delete)
+            // prune + identity == prune (prune modifies the global state, identity does not
+            // modify, so we need to preserve prune)
             let new_transform = Transform::Prune + Transform::Identity;
             assert_eq!(new_transform, Transform::Prune);
         }
 
         {
-            // delete + failure == failure
+            // prune + failure == failure
             let failure = Transform::Failure(Error::Serialization(bytesrepr::Error::Formatting));
             let new_transform = Transform::Prune + failure.clone();
             assert_eq!(new_transform, failure);
         }
 
         {
-            // write + delete == delete
+            // write + prune == prune
             let lhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
             let rhs = Transform::Prune;
 
@@ -938,7 +938,7 @@ mod tests {
         }
 
         {
-            // add + delete == delete
+            // add + prune == prune
             for lhs in add_transforms(123) {
                 let rhs = Transform::Prune;
                 let new_transform = lhs + rhs.clone();
@@ -947,7 +947,7 @@ mod tests {
         }
 
         {
-            // delete + add == add
+            // prune + add == add
             for rhs in add_transforms(123) {
                 let lhs = Transform::Prune;
                 let new_transform = lhs + rhs.clone();

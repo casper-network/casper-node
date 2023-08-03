@@ -96,7 +96,7 @@ enum TransformTag {
     AddKeys = 16,
     Failure = 17,
     WriteUnbonding = 18,
-    Delete = 19,
+    Prune = 19,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -586,7 +586,7 @@ impl Transform {
             Transform::AddKeys(_) => TransformTag::AddKeys,
             Transform::Failure(_) => TransformTag::Failure,
             Transform::WriteUnbonding(_) => TransformTag::WriteUnbonding,
-            Transform::Prune => TransformTag::Delete,
+            Transform::Prune => TransformTag::Prune,
         }
     }
 }
@@ -749,7 +749,7 @@ impl FromBytes for Transform {
                     <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
                 Ok((Transform::WriteUnbonding(unbonding_purses), remainder))
             }
-            TransformTag::Delete => Ok((Transform::Prune, remainder)),
+            TransformTag::Prune => Ok((Transform::Prune, remainder)),
         }
     }
 }
