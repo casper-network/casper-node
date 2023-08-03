@@ -14,7 +14,10 @@ pub enum Error {
     Bar,
 }
 
-pub trait Storage {
-    fn write(&mut self, key: &[u8], value: &[u8]) -> Result<(), Error>;
-    fn read(&mut self, key: &[u8]) -> Result<Bytes, Error>;
+/// An abstraction over a key-value storage.
+pub trait Storage: Clone + Send {
+    /// Write an entry to the underlying kv-storage.
+    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), Error>;
+    /// Read an entry from the underlying kv-storage.
+    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, Error>;
 }

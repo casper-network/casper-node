@@ -1,10 +1,11 @@
-mod backend;
+pub mod backend;
+pub(crate) mod host;
 pub mod storage;
 
 use bytes::Bytes;
-use casper_types::account::AccountHash;
 
-use backend::{Error as BackendError, GasSummary, wasmer::WasmerInstance};
+use backend::{wasmer::WasmerInstance, Context, Error as BackendError, WasmInstance};
+use storage::Storage;
 
 struct Arguments {
     bytes: Bytes,
@@ -14,10 +15,8 @@ struct Arguments {
 /// to execute.
 pub struct ExecuteRequest {
     /// Wasm module.
-    wasm_bytes: Bytes,
+    pub wasm_bytes: Bytes,
 }
-
-pub trait Storage {}
 
 pub struct VM;
 
@@ -26,38 +25,18 @@ enum VMError {
 }
 
 impl VM {
-    pub(crate) fn prepare(
+    pub fn prepare<S: Storage + 'static>(
         &mut self,
         execute_request: ExecuteRequest,
-    ) -> Result<WasmerInstance, BackendError> {
-    // ) -> (Result<WasmerInstance, BackendError>, GasSummary) {
+        context: Context<S>,
+    ) -> Result<impl WasmInstance<S>, BackendError> {
+        // ) -> (Result<WasmerInstance, BackendError>, GasSummary) {
         let ExecuteRequest { wasm_bytes } = execute_request;
-        let instance = WasmerInstance::from_wasm_bytes(&wasm_bytes)?;
+        let instance = WasmerInstance::from_wasm_bytes(&wasm_bytes, context)?;
         Ok(instance)
     }
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         VM
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::backend::wasmer::WasmerInstance;
-
-    use super::*;
-    const TEST_CONTRACT_WASM: &[u8] = include_bytes!("../test-contract.wasm");
-
-    #[test]
-    fn smoke() {
-        let mut vm = VM::new();
-        let execute_request = ExecuteRequest {
-            wasm_bytes: Bytes::from_static(TEST_CONTRACT_WASM),
-        };
-
-        // let wasmer_instance = WasmerInstance::new
-        let mut instance = vm.prepare(execute_request).expect("should prepare");
-        instance.call_export0("call").expect("should call");
-        // dbg!(&res);
     }
 }
