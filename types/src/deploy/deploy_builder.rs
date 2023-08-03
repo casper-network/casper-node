@@ -36,10 +36,15 @@ impl<'a> DeployBuilder<'a> {
     ///     [`with_standard_payment`](Self::with_standard_payment) or
     ///     [`with_payment`](Self::with_payment)
     pub fn new<C: Into<String>>(chain_name: C, session: ExecutableDeployItem) -> Self {
+        #[cfg(not(any(feature = "sdk")))]
+        let timestamp = Timestamp::now();
+        #[cfg(feature = "sdk")]
+        let timestamp = Timestamp::zero();
+
         DeployBuilder {
             account: None,
             secret_key: None,
-            timestamp: Timestamp::now(),
+            timestamp,
             ttl: Self::DEFAULT_TTL,
             gas_price: Self::DEFAULT_GAS_PRICE,
             dependencies: vec![],

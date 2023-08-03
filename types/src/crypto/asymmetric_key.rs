@@ -14,6 +14,7 @@ use core::{
     marker::Copy,
 };
 #[cfg(any(feature = "std", test))]
+#[cfg(not(any(feature = "sdk")))]
 use std::path::Path;
 
 #[cfg(feature = "datasize")]

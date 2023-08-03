@@ -1,13 +1,10 @@
 //! Utilities for handling reading from and writing to files.
 
-use std::{
-    fs,
-    io::{self, Write},
-    path::{Path, PathBuf},
-};
+use std::io::{self};
+use std::path::PathBuf;
 
 #[cfg(not(any(feature = "sdk")))]
-use std::os::unix::fs::OpenOptionsExt;
+use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 use thiserror::Error;
 
