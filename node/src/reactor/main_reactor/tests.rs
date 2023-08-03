@@ -38,8 +38,8 @@ use crate::{
     },
     types::{
         chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes, Deploy, ExitCode,
-        NodeRng,
+        ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes,
+        Deploy, ExitCode, NodeId, NodeRng,
     },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
@@ -51,6 +51,7 @@ struct TestChain {
     storages: Vec<TempDir>,
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+    first_node_port: u16,
 }
 
 type Nodes = testing::network::Nodes<FilterReactor<MainReactor>>;
@@ -133,16 +134,31 @@ impl TestChain {
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
 
+        let first_node_port = testing::unused_port_on_localhost();
+
         TestChain {
             keys,
             storages: Vec::new(),
             chainspec: Arc::new(chainspec),
             chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
+            first_node_port,
         }
     }
 
     fn chainspec_mut(&mut self) -> &mut Chainspec {
         Arc::get_mut(&mut self.chainspec).unwrap()
+    }
+
+    fn chainspec(&self) -> Arc<Chainspec> {
+        self.chainspec.clone()
+    }
+
+    fn chainspec_raw_bytes(&self) -> Arc<ChainspecRawBytes> {
+        self.chainspec_raw_bytes.clone()
+    }
+
+    fn first_node_port(&self) -> u16 {
+        self.first_node_port
     }
 
     /// Creates an initializer/validator configuration for the `idx`th validator.
@@ -180,11 +196,10 @@ impl TestChain {
         let root = RESOURCES_PATH.join("local");
 
         let mut network: TestingNetwork<FilterReactor<MainReactor>> = TestingNetwork::new();
-        let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
             info!("creating node {}", idx);
-            let cfg = self.create_node_config(idx, first_node_port);
+            let cfg = self.create_node_config(idx, self.first_node_port);
             network
                 .add_node_with_config_and_chainspec(
                     WithDir::new(root.clone(), cfg),
@@ -221,6 +236,26 @@ fn has_completed_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
                 .unwrap()
                 .last()
                 .map_or(false, |header| header.era_id() == era_id)
+        })
+    }
+}
+
+/// Given a block height and a node id, returns a predicate to check if the lowest available block
+/// for the specified node is at or below the specified height.
+fn node_has_lowest_available_block_at_or_below_height(
+    height: u64,
+    node_id: NodeId,
+) -> impl Fn(&Nodes) -> bool {
+    move |nodes: &Nodes| {
+        nodes.get(&node_id).map_or(true, |runner| {
+            let storage = runner.main_reactor().storage();
+
+            let available_block_range = storage.get_available_block_range();
+            if available_block_range.low() == 0 && available_block_range.high() == 0 {
+                false
+            } else {
+                available_block_range.low() <= height
+            }
         })
     }
 }
@@ -337,6 +372,113 @@ async fn run_network() {
         &mut rng,
         is_in_era(EraId::from(2)),
         Duration::from_secs(1001),
+    )
+    .await;
+}
+
+fn highest_complete_block_hash(
+    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
+) -> Option<BlockHash> {
+    let storage = runner.main_reactor().storage();
+
+    if let Some(highest_block) = storage.read_highest_complete_block().unwrap_or(None) {
+        return Some(*highest_block.hash());
+    } else {
+        None
+    }
+}
+
+#[tokio::test]
+async fn historical_sync_with_era_height_1() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Instantiate a new chain with a fixed size.
+    const NETWORK_SIZE: usize = 5;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
+    chain.chainspec_mut().core_config.minimum_era_height = 1;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Wait for all nodes to reach era 3.
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(3)),
+        Duration::from_secs(1000),
+    )
+    .await;
+
+    let (_, first_node) = net
+        .nodes()
+        .iter()
+        .next()
+        .expect("Expected non-empty network");
+
+    // Get a trusted hash
+    let lfb = highest_complete_block_hash(first_node)
+        .expect("Could not determine the latest complete block for this network");
+
+    // Create a joiner node
+    let mut config = Config {
+        network: network::Config::default_local_net(chain.first_node_port()),
+        gossip: gossiper::Config::new_with_small_timeouts(),
+        ..Default::default()
+    };
+    let joiner_key = Arc::new(SecretKey::random(&mut rng));
+    let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+    {
+        let secret_key_path = temp_dir.path().join("secret_key");
+        joiner_key
+            .to_file(secret_key_path.clone())
+            .expect("could not write secret key");
+        config.consensus.secret_key_path = External::Path(secret_key_path);
+    }
+    config.storage = storage_cfg;
+    config.node.trusted_hash = Some(lfb);
+    config.node.sync_to_genesis = true;
+    let root = RESOURCES_PATH.join("local");
+    let cfg = WithDir::new(root.clone(), config);
+
+    let (joiner_id, _) = net
+        .add_node_with_config_and_chainspec(
+            cfg,
+            chain.chainspec(),
+            chain.chainspec_raw_bytes(),
+            &mut rng,
+        )
+        .await
+        .expect("could not add node to reactor");
+
+    // Wait for joiner node to sync back to the block from era 1
+    net.settle_on(
+        &mut rng,
+        node_has_lowest_available_block_at_or_below_height(1, joiner_id),
+        Duration::from_secs(1000),
+    )
+    .await;
+
+    // Remove the weights for era 0 and era 1 from the validator matrix
+    let runner = net
+        .nodes_mut()
+        .get_mut(&joiner_id)
+        .expect("Could not find runner for node {joiner_id}");
+    let reactor = runner.reactor_mut().inner_mut().inner_mut();
+    reactor
+        .validator_matrix
+        .purge_era_validators(&EraId::from(0));
+    reactor
+        .validator_matrix
+        .purge_era_validators(&EraId::from(1));
+
+    // Continue syncing and check if the joiner node reaches era 0
+    net.settle_on(
+        &mut rng,
+        node_has_lowest_available_block_at_or_below_height(0, joiner_id),
+        Duration::from_secs(1000),
     )
     .await;
 }

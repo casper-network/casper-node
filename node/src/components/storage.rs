@@ -2456,7 +2456,7 @@ impl Storage {
         }
     }
 
-    fn get_available_block_range(&self) -> AvailableBlockRange {
+    pub(crate) fn get_available_block_range(&self) -> AvailableBlockRange {
         match self.completed_blocks.highest_sequence() {
             Some(&seq) => seq.into(),
             None => AvailableBlockRange::RANGE_0_0,
