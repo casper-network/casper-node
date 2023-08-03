@@ -30,7 +30,6 @@ impl VM {
         execute_request: ExecuteRequest,
         context: Context<S>,
     ) -> Result<impl WasmInstance<S>, BackendError> {
-        // ) -> (Result<WasmerInstance, BackendError>, GasSummary) {
         let ExecuteRequest { wasm_bytes } = execute_request;
         let instance = WasmerInstance::from_wasm_bytes(&wasm_bytes, context)?;
         Ok(instance)

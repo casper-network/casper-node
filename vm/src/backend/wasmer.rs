@@ -164,7 +164,7 @@ where
                      key_ptr: u32,
                      key_size: u32,
                      info_ptr: u32|
-                     -> u32 {
+                     -> i32 {
                         let wasmer_caller = WasmerCaller { env };
                         host::casper_read(wasmer_caller, key_space, key_ptr, key_size, info_ptr)
                     },

@@ -44,8 +44,10 @@ pub(crate) fn casper_print<S: Storage>(
 
 #[repr(C)]
 struct ReadInfo {
+    /// Allocated pointer.
+    data: u32,
     /// Size in bytes.
-    size: u64,
+    data_size: u64,
     /// Value tag.
     tag: u64,
 }
@@ -57,36 +59,31 @@ pub(crate) fn casper_read<S: Storage>(
     key_ptr: u32,
     key_size: u32,
     info_ptr: u32,
-) -> u32 {
+) -> i32 {
     let key = caller
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
 
     match caller.context().storage.read(&key) {
         Ok(Some(value)) => {
-            // let info = ReadInfo {
-            //     size: value.len(),
-            //     tag: u64::MAX, // TODO: placeholder
-            // };
-            // let info_bytes = [0u8; mem::size_of::<ReadInfo>()];
+            let out_ptr: u32 = caller.alloc(value.len());
 
-            // let mut info = BytesMut::with_capacity(mem::size_of::<ReadInfo>()); // TODO: fix, use
-            // C ABI, consider using wasmer::WasmPtr info.put_u64(value.len().
-            // try_into().unwrap()); info.put_u64(u64::MAX); // TODO: placeholder
             let read_info = ReadInfo {
-                size: value.len().try_into().unwrap(),
-                tag: u64::MAX, // TODO: placeholder
+                data: out_ptr,
+                data_size: value.len().try_into().unwrap(),
+                tag: u64::MAX,
             };
+
             let read_info_bytes: [u8; mem::size_of::<ReadInfo>()] =
                 unsafe { mem::transmute_copy(&read_info) };
             caller.memory_write(info_ptr, &read_info_bytes).unwrap();
 
-            let out_ptr: u32 = caller.alloc(value.len());
-            caller.memory_write(out_ptr, &value).unwrap();
+            // caller.memory_write(out_ptr, &value).unwrap();
 
-            out_ptr
+            // out_ptr
+            0
         }
-        Ok(None) => 0,
-        Err(_) => u32::MAX, // TODO: error handling
+        Ok(None) => 1,
+        Err(_) => i32::MAX, // TODO: error handling
     }
 }
