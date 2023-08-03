@@ -23,7 +23,9 @@ use tower::ServiceBuilder;
 use tracing::info;
 use warp::Filter;
 
-use casper_json_rpc::{Error, Params, RequestHandlers, RequestHandlersBuilder, ReservedErrorCode};
+use casper_json_rpc::{
+    CorsOrigin, Error, Params, RequestHandlers, RequestHandlersBuilder, ReservedErrorCode,
+};
 use casper_types::ProtocolVersion;
 
 use super::{ReactorEventT, RpcRequest};
@@ -252,6 +254,49 @@ pub(super) trait RpcWithOptionalParams {
         api_version: ProtocolVersion,
         params: Option<Self::OptionalRequestParams>,
     ) -> Result<Self::ResponseResult, Error>;
+}
+
+/// Start JSON RPC server with CORS enabled in a background.
+pub(super) async fn run_with_cors(
+    builder: Builder<AddrIncoming>,
+    handlers: RequestHandlers,
+    qps_limit: u64,
+    max_body_bytes: u32,
+    api_path: &'static str,
+    server_name: &'static str,
+    cors_header: CorsOrigin,
+) {
+    let make_svc = hyper::service::make_service_fn(move |_| {
+        let service_routes = casper_json_rpc::route_with_cors(
+            api_path,
+            max_body_bytes,
+            handlers.clone(),
+            ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+            &cors_header,
+        );
+
+        // Supports content negotiation for gzip responses. This is an interim fix until
+        // https://github.com/seanmonstar/warp/pull/513 moves forward.
+        let service_routes_gzip = warp::header::exact(ACCEPT_ENCODING.as_str(), "gzip")
+            .and(service_routes.clone())
+            .with(warp::compression::gzip());
+
+        let service = warp::service(service_routes_gzip.or(service_routes));
+        async move { Ok::<_, Infallible>(service.clone()) }
+    });
+
+    let make_svc = ServiceBuilder::new()
+        .rate_limit(qps_limit, Duration::from_secs(1))
+        .service(make_svc);
+
+    let server = builder.serve(make_svc);
+    info!(address = %server.local_addr(), "started {} server", server_name);
+
+    let shutdown_fuse = ObservableFuse::new();
+    let server_with_shutdown = server.with_graceful_shutdown(shutdown_fuse.wait_owned());
+
+    let _ = tokio::spawn(server_with_shutdown).await;
+    info!("{} server shut down", server_name);
 }
 
 /// Start JSON RPC server in a background.

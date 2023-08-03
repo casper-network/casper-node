@@ -1,6 +1,6 @@
 [package]
 name = "casper-json-rpc"
-version = "1.0.0"
+version = "1.1.0"
 authors = ["Fraser Hutchison <fraser@casperlabs.io>"]
 edition = "2018"
 description = "A library suitable for use as the framework for a JSON-RPC server."

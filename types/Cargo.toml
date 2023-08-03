@@ -22,7 +22,7 @@ getrandom = { version = "0.2.0", features = ["rdrand"], optional = true }
 hex = { version = "0.4.2", default-features = false, features = ["alloc"] }
 hex_fmt = "0.3.0"
 humantime = { version = "2", optional = true }
-k256 = { version = "0.7.2", default-features = false, features = ["ecdsa", "sha256", "zeroize"] }
+k256 = { version = "0.13.1", default-features = false, features = ["ecdsa", "sha256"] }
 num = { version = "0.4.0", default-features = false, features = ["alloc"] }
 num-derive = { version = "0.3.0", default-features = false }
 num-integer = { version = "0.1.42", default-features = false }

@@ -10,6 +10,14 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+
+## 1.1.0
+
+### Added
+* Support configuration of CORS Origin.
+
+
+
 ## 1.0.0
 
 ### Added
