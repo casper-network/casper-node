@@ -382,7 +382,7 @@ async fn run_network() {
     .await;
 }
 
-fn highest_finalized_block_hash(
+fn highest_complete_block_hash(
     runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
 ) -> Option<BlockHash> {
     let storage = runner.main_reactor().storage();
@@ -425,8 +425,8 @@ async fn historical_sync_with_era_height_1() {
         .expect("Expected non-empty network");
 
     // Get a trusted hash
-    let lfb = highest_finalized_block_hash(first_node)
-        .expect("Could not determine the latest finalized block for this network");
+    let lfb = highest_complete_block_hash(first_node)
+        .expect("Could not determine the latest complete block for this network");
 
     // Create a joiner node
     let mut config = Config {
