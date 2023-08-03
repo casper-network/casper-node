@@ -1,6 +1,11 @@
+use std::{
+    ptr::NonNull,
+    sync::{Arc, Mutex},
+};
+
 use wasmer::{
-    AsStoreRef, Engine, Exports, Function, FunctionEnv, FunctionEnvMut, Imports, Instance, Memory,
-    MemoryView, Module, Store,
+    AsStoreMut, AsStoreRef, Engine, Exports, Function, FunctionEnv, FunctionEnvMut, Imports,
+    Instance, Memory, MemoryView, Module, Store,
 };
 use wasmer_compiler_singlepass::Singlepass;
 
@@ -17,7 +22,11 @@ pub(crate) struct WasmerEngine {}
 struct WasmerEnv<S: Storage> {
     context: Context<S>,
     memory: Option<Memory>,
+    instance: Arc<Mutex<Option<NonNull<Instance>>>>,
 }
+
+unsafe impl<S: Storage> Send for WasmerEnv<S> {}
+unsafe impl<S: Storage> Sync for WasmerEnv<S> {}
 
 pub(crate) struct WasmerCaller<'a, S: Storage> {
     env: FunctionEnvMut<'a, WasmerEnv<S>>,
@@ -33,12 +42,9 @@ impl<'a, S: Storage + 'static> WasmerCaller<'a, S> {
 }
 
 impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
-    fn memory_read(&self, offset: u32, size: usize) -> Result<Vec<u8>, BackendError> {
-        let mut v = vec![0; size]; // TODO: Ensure safe access to the linear memory
-        self.with_memory(|mem| mem.read(offset.into(), &mut v))
-            .expect("should read");
-        Ok(v)
-    }
+    // fn memory_read(&self, offset: u32, size: usize) -> Result<Vec<u8>, BackendError> {
+    //     Ok(v)
+    // }
 
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), BackendError> {
         self.with_memory(|mem| mem.write(offset.into(), data))
@@ -49,6 +55,29 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
     fn context(&self) -> &Context<S> {
         &self.env.data().context
     }
+
+    fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), BackendError> {
+        self.with_memory(|mem| mem.read(offset.into(), output))
+            .expect("should read");
+        Ok(())
+    }
+
+    fn alloc(&mut self, size: usize) -> u32 {
+        let tref = self.env.data().instance.as_ref();
+        let instance_ref = unsafe {
+            tref.lock()
+                .unwrap()
+                .as_ref()
+                .expect("should have instance")
+                .as_ref()
+        };
+        let func = instance_ref
+            .exports
+            .get_typed_function::<u32, u32>(&self.env, "alloc")
+            .expect("should have function");
+        let ret = func.call(&mut self.env, size.try_into().unwrap()).unwrap();
+        ret
+    }
 }
 
 impl<S: Storage> WasmerEnv<S> {}
@@ -58,6 +87,7 @@ impl<S: Storage> WasmerEnv<S> {
         Self {
             context,
             memory: None,
+            instance: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -123,13 +153,47 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_read",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                     key_space: u64,
+                     key_ptr: u32,
+                     key_size: u32,
+                     info_ptr: u32|
+                     -> u32 {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_read(wasmer_caller, key_space, key_ptr, key_size, info_ptr)
+                    },
+                ),
+            );
+            imports.define(
+                "env",
+                "casper_print",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                     message_ptr: u32,
+                     message_size: u32|
+                     -> i32 {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_print(wasmer_caller, message_ptr, message_size)
+                    },
+                ),
+            );
+
             imports
         };
         // imports.insert()
 
         let exports = Exports::new();
 
-        let instance = Instance::new(&mut store, &module, &imports).expect("should instantiate");
+        let instance =
+            Box::new(Instance::new(&mut store, &module, &imports).expect("should instantiate"));
 
         let memory = instance
             .exports
@@ -140,12 +204,14 @@ where
             // let env = wasmer_env.clone();
             let function_env_mut = function_env.as_mut(&mut store);
             function_env_mut.memory = Some(memory.clone());
+            function_env_mut.instance =
+                Arc::new(Mutex::new(Some(NonNull::from(instance.as_ref()))));
 
             // wasmer_env.memory = Some(memory.clone());
         }
 
         Ok(Self {
-            instance: Box::new(instance),
+            instance,
             env: function_env,
             store,
         })
