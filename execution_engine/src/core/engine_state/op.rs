@@ -14,8 +14,8 @@ pub enum Op {
     Write,
     /// Add a value into a `Key`.
     Add,
-    /// Purge a value under a `Key`.
-    Purge,
+    /// Prune a value under a `Key`.
+    Prune,
     /// No operation.
     NoOp,
 }
@@ -59,7 +59,7 @@ impl From<&Op> for casper_types::OpKind {
             Op::Write => casper_types::OpKind::Write,
             Op::Add => casper_types::OpKind::Add,
             Op::NoOp => casper_types::OpKind::NoOp,
-            Op::Purge => casper_types::OpKind::Delete,
+            Op::Prune => casper_types::OpKind::Delete,
         }
     }
 }

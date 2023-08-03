@@ -86,8 +86,8 @@ pub enum Transform {
     ///
     /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
-    /// Purges a key.
-    Purge,
+    /// Prunes a key.
+    Prune,
     /// Represents the case where applying a transform would cause an error.
     #[data_size(skip)]
     Failure(Error),
@@ -236,8 +236,8 @@ impl Transform {
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
             },
-            Transform::Purge => {
-                // Delete does not produce new values, it just consumes a stored value that it
+            Transform::Prune => {
+                // Prune does not produce new values, it just consumes a stored value that it
                 // receives.
                 Ok(None)
             }
@@ -284,13 +284,13 @@ impl Add for Transform {
             (a @ Transform::Failure(_), _) => a,
             (_, b @ Transform::Failure(_)) => b,
             (_, b @ Transform::Write(_)) => b,
-            (_, Transform::Purge) => Transform::Purge,
-            (Transform::Purge, b) => b,
+            (_, Transform::Prune) => Transform::Prune,
+            (Transform::Prune, b) => b,
             (Transform::Write(v), b) => {
                 // second transform changes value being written
                 match b.apply(v) {
                     Ok(Some(new_value)) => Transform::Write(new_value),
-                    Ok(None) => Transform::Purge,
+                    Ok(None) => Transform::Prune,
                     Err(error) => Transform::Failure(error),
                 }
             }
@@ -401,7 +401,7 @@ impl From<&Transform> for casper_types::Transform {
                     .collect(),
             ),
             Transform::Failure(error) => casper_types::Transform::Failure(error.to_string()),
-            Transform::Purge => casper_types::Transform::Purge,
+            Transform::Prune => casper_types::Transform::Prune,
         }
     }
 }
@@ -432,7 +432,7 @@ pub mod gens {
                 buf.copy_from_slice(&u);
                 Transform::AddUInt512(buf.into())
             }),
-            Just(Transform::Purge)
+            Just(Transform::Prune)
         ]
     }
 }
@@ -907,7 +907,7 @@ mod tests {
     fn delete_should_produce_correct_transform() {
         {
             // delete + write == write
-            let lhs = Transform::Purge;
+            let lhs = Transform::Prune;
             let rhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
 
             let new_transform = lhs + rhs.clone();
@@ -917,21 +917,21 @@ mod tests {
         {
             // delete + identity == delete (delete modifies the global state, identity does not
             // modify, so we need to preserve delete)
-            let new_transform = Transform::Purge + Transform::Identity;
-            assert_eq!(new_transform, Transform::Purge);
+            let new_transform = Transform::Prune + Transform::Identity;
+            assert_eq!(new_transform, Transform::Prune);
         }
 
         {
             // delete + failure == failure
             let failure = Transform::Failure(Error::Serialization(bytesrepr::Error::Formatting));
-            let new_transform = Transform::Purge + failure.clone();
+            let new_transform = Transform::Prune + failure.clone();
             assert_eq!(new_transform, failure);
         }
 
         {
             // write + delete == delete
             let lhs = Transform::Write(StoredValue::CLValue(CLValue::unit()));
-            let rhs = Transform::Purge;
+            let rhs = Transform::Prune;
 
             let new_transform = lhs + rhs.clone();
             assert_eq!(new_transform, rhs);
@@ -940,7 +940,7 @@ mod tests {
         {
             // add + delete == delete
             for lhs in add_transforms(123) {
-                let rhs = Transform::Purge;
+                let rhs = Transform::Prune;
                 let new_transform = lhs + rhs.clone();
                 assert_eq!(new_transform, rhs);
             }
@@ -949,7 +949,7 @@ mod tests {
         {
             // delete + add == add
             for rhs in add_transforms(123) {
-                let lhs = Transform::Purge;
+                let lhs = Transform::Prune;
                 let new_transform = lhs + rhs.clone();
                 assert_eq!(new_transform, rhs);
             }

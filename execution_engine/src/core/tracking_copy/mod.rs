@@ -353,10 +353,10 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         self.journal.push((normalized_key, Transform::Write(value)));
     }
 
-    /// Purges a `key`.
-    pub(crate) fn purge(&mut self, key: Key) {
+    /// Prunes a `key`.
+    pub(crate) fn prune(&mut self, key: Key) {
         let normalized_key = key.normalize();
-        self.journal.push((normalized_key, Transform::Purge));
+        self.journal.push((normalized_key, Transform::Prune));
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.

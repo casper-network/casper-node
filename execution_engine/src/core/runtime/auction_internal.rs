@@ -100,7 +100,7 @@ where
     ) -> Result<(), Error> {
         let unbond_key = Key::Unbond(account_hash);
         if unbonding_purses.is_empty() {
-            self.context.purge_gs_unsafe(unbond_key);
+            self.context.prune_gs_unsafe(unbond_key);
             Ok(())
         } else {
             self.context

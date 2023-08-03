@@ -924,15 +924,15 @@ where
         Ok(())
     }
 
-    /// PUrges a key from the global state.
+    /// Prune a key from the global state.
     ///
     /// Use with caution - there is no validation done as the key is assumed to be validated
     /// already.
-    pub(crate) fn purge_gs_unsafe<K>(&mut self, key: K)
+    pub(crate) fn prune_gs_unsafe<K>(&mut self, key: K)
     where
         K: Into<Key>,
     {
-        self.tracking_copy.borrow_mut().purge(key.into());
+        self.tracking_copy.borrow_mut().prune(key.into());
     }
 
     /// Writes data to a global state and charges for bytes stored.

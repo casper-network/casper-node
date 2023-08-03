@@ -123,8 +123,8 @@ pub trait StateProvider {
         trie_raw: &[u8],
     ) -> Result<Vec<Digest>, Self::Error>;
 
-    /// Purge keys from the global state.
-    fn purge_keys(
+    /// Prune keys from the global state.
+    fn prune_keys(
         &self,
         correlation_id: CorrelationId,
         root: Digest,

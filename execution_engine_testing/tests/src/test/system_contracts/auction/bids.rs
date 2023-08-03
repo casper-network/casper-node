@@ -3498,7 +3498,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
         .transforms
         .iter()
         .filter_map(|(key, transform)| {
-            if transform == &Transform::Purge {
+            if transform == &Transform::Prune {
                 Some(key)
             } else {
                 None

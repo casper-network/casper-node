@@ -284,7 +284,7 @@ impl StateProvider for InMemoryGlobalState {
         Ok(missing_descendants)
     }
 
-    fn purge_keys(
+    fn prune_keys(
         &self,
         correlation_id: CorrelationId,
         mut root: Digest,
