@@ -2487,7 +2487,7 @@
             ]
           },
           "ExecutionEffect": {
-            "description": "The journal of execution transforms from a single deploy.",
+            "description": "The sequence of execution transforms from a single deploy.",
             "type": "object",
             "required": [
               "operations",
@@ -2502,7 +2502,7 @@
                 }
               },
               "transforms": {
-                "description": "The journal of execution transforms.",
+                "description": "The sequence of execution transforms.",
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/TransformEntry"
@@ -3419,7 +3419,7 @@
                         "description": "The effects of executing the deploy.",
                         "allOf": [
                           {
-                            "$ref": "#/components/schemas/ExecutionJournal"
+                            "$ref": "#/components/schemas/Effects"
                           }
                         ]
                       },
@@ -3467,7 +3467,7 @@
                         "description": "The effects of executing the deploy.",
                         "allOf": [
                           {
-                            "$ref": "#/components/schemas/ExecutionJournal"
+                            "$ref": "#/components/schemas/Effects"
                           }
                         ]
                       },
@@ -3494,7 +3494,7 @@
               }
             ]
           },
-          "ExecutionJournal": {
+          "Effects": {
             "description": "A log of all transforms produced during execution.",
             "type": "array",
             "items": {

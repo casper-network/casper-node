@@ -122,7 +122,7 @@ use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     account::Account,
     bytesrepr::Bytes,
-    execution::{ExecutionJournal, ExecutionResultV2},
+    execution::{Effects as ExecutionEffects, ExecutionResultV2},
     system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage,
     Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature,
@@ -1006,7 +1006,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a committed Step success.
-    pub(crate) async fn announce_commit_step_success(self, era_id: EraId, effects: ExecutionJournal)
+    pub(crate) async fn announce_commit_step_success(self, era_id: EraId, effects: ExecutionEffects)
     where
         REv: From<ContractRuntimeAnnouncement>,
     {

@@ -6,7 +6,7 @@ use thiserror::Error;
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     bytesrepr::{self},
-    execution::ExecutionJournal,
+    execution::Effects,
     system::SystemContractType,
     Contract, ContractHash, Digest, Key, ProtocolVersion, StoredValue,
 };
@@ -19,7 +19,7 @@ pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Digest,
     /// Effects of executing an upgrade request.
-    pub effects: ExecutionJournal,
+    pub effects: Effects,
 }
 
 impl fmt::Display for UpgradeSuccess {

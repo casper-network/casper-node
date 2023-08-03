@@ -4,7 +4,7 @@ use lmdb::DatabaseFlags;
 use tempfile::TempDir;
 
 use casper_types::{
-    execution::{ExecutionJournal, Transform, TransformKind},
+    execution::{Effects, Transform, TransformKind},
     Digest, Key, StoredValue,
 };
 
@@ -194,11 +194,7 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
 }
 
 impl CommitProvider for LmdbGlobalState {
-    fn commit(
-        &self,
-        prestate_hash: Digest,
-        effects: ExecutionJournal,
-    ) -> Result<Digest, Self::Error> {
+    fn commit(&self, prestate_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
         commit::<LmdbEnvironment, LmdbTrieStore, Self::Error>(
             &self.environment,
             &self.trie_store,
@@ -320,7 +316,7 @@ pub fn make_temporary_global_state(
 
     let mut root_hash = lmdb_global_state.empty_root_hash;
 
-    let mut effects = ExecutionJournal::new();
+    let mut effects = Effects::new();
 
     for (key, stored_value) in initial_data {
         let transform = Transform::new(key.normalize(), TransformKind::Write(stored_value));
@@ -397,7 +393,7 @@ mod tests {
         let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
 
         let effects = {
-            let mut tmp = ExecutionJournal::new();
+            let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
                 let transform = Transform::new(*key, TransformKind::Write(value.clone()));
                 tmp.push(transform);
@@ -421,7 +417,7 @@ mod tests {
         let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
 
         let effects = {
-            let mut tmp = ExecutionJournal::new();
+            let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
                 let transform = Transform::new(*key, TransformKind::Write(value.clone()));
                 tmp.push(transform);

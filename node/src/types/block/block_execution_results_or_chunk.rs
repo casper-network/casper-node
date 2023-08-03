@@ -12,7 +12,7 @@ use casper_types::{
 };
 #[cfg(test)]
 use casper_types::{
-    execution::{ExecutionJournal, ExecutionResultV2},
+    execution::{Effects, ExecutionResultV2},
     U512,
 };
 
@@ -167,7 +167,7 @@ impl BlockExecutionResultsOrChunk {
         Self {
             block_hash,
             value: ValueOrChunk::Value(vec![ExecutionResult::V2(ExecutionResultV2::Success {
-                effects: ExecutionJournal::new(),
+                effects: Effects::new(),
                 transfers: vec![],
                 cost: U512::from(123),
             })]),

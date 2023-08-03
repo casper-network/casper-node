@@ -35,7 +35,7 @@ use warp::{
 #[cfg(test)]
 use casper_types::{execution::ExecutionResultV2, testing::TestRng};
 use casper_types::{
-    execution::{ExecutionJournal, ExecutionResult},
+    execution::{Effects, ExecutionResult},
     BlockHash, Deploy, DeployHash, EraId, FinalitySignature, JsonBlock, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
@@ -112,7 +112,7 @@ pub enum SseData {
     /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
-        execution_effects: ExecutionJournal,
+        execution_effects: Effects,
     },
     /// The node is about to shut down.
     Shutdown,

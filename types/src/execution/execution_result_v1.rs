@@ -262,7 +262,7 @@ impl FromBytes for ExecutionResultV1 {
     }
 }
 
-/// The journal of execution transforms from a single deploy.
+/// The sequence of execution transforms from a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -270,7 +270,7 @@ impl FromBytes for ExecutionResultV1 {
 pub struct ExecutionEffect {
     /// The resulting operations.
     pub operations: Vec<Operation>,
-    /// The journal of execution transforms.
+    /// The sequence of execution transforms.
     pub transforms: Vec<TransformEntry>,
 }
 
@@ -295,11 +295,11 @@ impl FromBytes for ExecutionEffect {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (operations, remainder) = Vec::<Operation>::from_bytes(bytes)?;
         let (transforms, remainder) = Vec::<TransformEntry>::from_bytes(remainder)?;
-        let json_execution_journal = ExecutionEffect {
+        let json_effects = ExecutionEffect {
             operations,
             transforms,
         };
-        Ok((json_execution_journal, remainder))
+        Ok((json_effects, remainder))
     }
 }
 

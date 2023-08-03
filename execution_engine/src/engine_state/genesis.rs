@@ -18,7 +18,7 @@ use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     account::{Account, AccountHash},
     contracts::ContractPackageStatus,
-    execution::ExecutionJournal,
+    execution::Effects,
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -50,7 +50,7 @@ pub struct GenesisSuccess {
     /// State hash after genesis is committed to the global state.
     pub post_state_hash: Digest,
     /// Effects of a successful genesis.
-    pub effects: ExecutionJournal,
+    pub effects: Effects,
 }
 
 impl fmt::Display for GenesisSuccess {
@@ -419,7 +419,7 @@ where
         }
     }
 
-    pub(crate) fn finalize(self) -> ExecutionJournal {
+    pub(crate) fn finalize(self) -> Effects {
         self.tracking_copy.borrow().effects()
     }
 

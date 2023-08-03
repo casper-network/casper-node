@@ -45,7 +45,7 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::ToBytes,
-    execution::ExecutionJournal,
+    execution::Effects,
     system::{
         auction::{
             EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
@@ -1770,11 +1770,7 @@ where
     /// to be run after an execution has been made to persists the effects of it.
     ///
     /// Returns new state root hash.
-    pub fn apply_effects(
-        &self,
-        pre_state_hash: Digest,
-        effects: ExecutionJournal,
-    ) -> Result<Digest, Error> {
+    pub fn apply_effects(&self, pre_state_hash: Digest, effects: Effects) -> Result<Digest, Error> {
         self.state
             .commit(pre_state_hash, effects)
             .map_err(|err| Error::Exec(err.into()))

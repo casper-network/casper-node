@@ -43,7 +43,7 @@ use casper_storage::{
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes},
-    execution::{ExecutionJournal, TransformKind},
+    execution::{Effects, TransformKind},
     runtime_args,
     system::{
         auction::{
@@ -97,11 +97,11 @@ pub struct WasmTestBuilder<S> {
     post_state_hash: Option<Digest>,
     /// Cached effects after successful runs i.e. `effects[0]` is the collection of effects for
     /// first exec call, etc.
-    effects: Vec<ExecutionJournal>,
+    effects: Vec<Effects>,
     /// Cached genesis account.
     genesis_account: Option<Account>,
     /// Genesis effects.
-    genesis_effects: Option<ExecutionJournal>,
+    genesis_effects: Option<Effects>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry.
@@ -752,11 +752,7 @@ where
 
     /// Runs a commit request, expects a successful response, and
     /// overwrites existing cached post state hash with a new one.
-    pub fn commit_transforms(
-        &mut self,
-        pre_state_hash: Digest,
-        effects: ExecutionJournal,
-    ) -> &mut Self {
+    pub fn commit_transforms(&mut self, pre_state_hash: Digest, effects: Effects) -> &mut Self {
         let post_state_hash = self
             .engine_state
             .apply_effects(pre_state_hash, effects)
@@ -915,8 +911,8 @@ where
             .cloned()
     }
 
-    /// Gets `ExecutionJournal`s of all previous runs.
-    pub fn get_effects(&self) -> Vec<ExecutionJournal> {
+    /// Gets `Effects` of all previous runs.
+    pub fn get_effects(&self) -> Vec<Effects> {
         self.effects.clone()
     }
 
@@ -963,7 +959,7 @@ where
     }
 
     /// Returns genesis effects, panics if there aren't any.
-    pub fn get_genesis_effects(&self) -> &ExecutionJournal {
+    pub fn get_genesis_effects(&self) -> &Effects {
         self.genesis_effects
             .as_ref()
             .expect("should have genesis transforms")

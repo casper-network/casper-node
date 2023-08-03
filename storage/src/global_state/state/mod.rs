@@ -12,7 +12,7 @@ use tracing::error;
 
 use casper_types::{
     bytesrepr,
-    execution::{ExecutionJournal, Transform, TransformError, TransformKind},
+    execution::{Effects, Transform, TransformError, TransformKind},
     Digest, Key, StoredValue,
 };
 
@@ -70,7 +70,7 @@ pub enum CommitError {
 pub trait CommitProvider: StateProvider {
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(&self, state_hash: Digest, effects: ExecutionJournal) -> Result<Digest, Self::Error>;
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error>;
 }
 
 /// A trait expressing operations over the trie.
@@ -145,7 +145,7 @@ pub fn commit<'a, R, S, E>(
     environment: &'a R,
     store: &S,
     prestate_hash: Digest,
-    effects: ExecutionJournal,
+    effects: Effects,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,

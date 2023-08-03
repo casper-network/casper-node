@@ -21,7 +21,7 @@ use casper_types::{
         UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
-    execution::ExecutionJournal,
+    execution::Effects,
     system::auction::EraInfo,
     AccessRights, BlockTime, CLType, CLValue, ContextAccessRights, Contract, ContractHash,
     ContractPackage, ContractPackageHash, DeployHash, DeployInfo, EntryPointType, Gas,
@@ -588,7 +588,7 @@ where
     }
 
     /// Returns a copy of the current effects of a tracking copy.
-    pub fn effects(&self) -> ExecutionJournal {
+    pub fn effects(&self) -> Effects {
         self.tracking_copy.borrow().effects()
     }
 

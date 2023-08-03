@@ -9,7 +9,7 @@ use casper_storage::global_state::{
 };
 use casper_types::{
     account::{Account, AccountHash, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH},
-    execution::{ExecutionJournal, Transform, TransformKind},
+    execution::{Effects, Transform, TransformKind},
     gens::*,
     AccessRights, CLValue, Contract, Digest, EntryPoints, HashAddr, Key, KeyTag, NamedKeys,
     ProtocolVersion, StoredValue, URef, U256, U512,
@@ -69,8 +69,8 @@ impl StateReader<Key, StoredValue> for CountingDb {
     }
 }
 
-fn effects(transform_keys_and_kinds: Vec<(Key, TransformKind)>) -> ExecutionJournal {
-    let mut effects = ExecutionJournal::new();
+fn effects(transform_keys_and_kinds: Vec<(Key, TransformKind)>) -> Effects {
+    let mut effects = Effects::new();
     for (key, kind) in transform_keys_and_kinds {
         effects.push(Transform::new(key, kind));
     }

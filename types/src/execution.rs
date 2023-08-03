@@ -1,6 +1,6 @@
 //! Types related to execution of deploys.
 
-mod execution_journal;
+mod effects;
 mod execution_result;
 pub mod execution_result_v1;
 mod execution_result_v2;
@@ -8,7 +8,7 @@ mod transform;
 mod transform_error;
 mod transform_kind;
 
-pub use execution_journal::ExecutionJournal;
+pub use effects::Effects;
 pub use execution_result::ExecutionResult;
 pub use execution_result_v1::ExecutionResultV1;
 pub use execution_result_v2::ExecutionResultV2;

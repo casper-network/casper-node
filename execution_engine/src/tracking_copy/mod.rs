@@ -18,7 +18,7 @@ use thiserror::Error;
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     bytesrepr::{self},
-    execution::{ExecutionJournal, Transform, TransformError, TransformKind},
+    execution::{Effects, Transform, TransformError, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, NamedKeys, StoredValue,
     StoredValueTypeMismatch, Tagged, U512,
 };
@@ -220,7 +220,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
-    effects: ExecutionJournal,
+    effects: Effects,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -258,7 +258,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             reader,
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
-            effects: ExecutionJournal::new(),
+            effects: Effects::new(),
         }
     }
 
@@ -408,8 +408,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    /// Returns a copy of the execution journal cached by this instance.
-    pub fn effects(&self) -> ExecutionJournal {
+    /// Returns a copy of the execution effects cached by this instance.
+    pub fn effects(&self) -> Effects {
         self.effects.clone()
     }
 
