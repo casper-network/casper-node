@@ -67,30 +67,31 @@ pub(super) async fn run<REv: ReactorEventT>(
                 max_body_bytes,
                 RPC_API_PATH,
                 RPC_API_SERVER_NAME,
+                None,
             )
             .await
         }
         "*" => {
-            super::rpcs::run_with_cors(
+            super::rpcs::run(
                 builder,
                 handlers,
                 qps_limit,
                 max_body_bytes,
                 RPC_API_PATH,
                 RPC_API_SERVER_NAME,
-                CorsOrigin::Any,
+                Some(CorsOrigin::Any),
             )
             .await
         }
         _ => {
-            super::rpcs::run_with_cors(
+            super::rpcs::run(
                 builder,
                 handlers,
                 qps_limit,
                 max_body_bytes,
                 RPC_API_PATH,
                 RPC_API_SERVER_NAME,
-                CorsOrigin::Specified(cors_origin),
+                Some(CorsOrigin::Specified(cors_origin)),
             )
             .await
         }

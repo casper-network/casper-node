@@ -96,6 +96,7 @@ pub use response::Response;
 const JSON_RPC_VERSION: &str = "2.0";
 
 /// Specifies the CORS origin
+#[derive(Debug)]
 pub enum CorsOrigin {
     /// Any (*) origin is allowed.
     Any,
@@ -118,60 +119,47 @@ pub enum CorsOrigin {
 /// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
 /// respond with an error.
 ///
+/// If `cors_header` is `Some`, it is used to add a [a warp CORS
+/// filter](https://docs.rs/warp/latest/warp/filters/cors/index.html) which
+///
+///   * allows any origin or specified origin
+///   * allows "content-type" as a header
+///   * allows the method "POST"
+///
 /// For further details, see the docs for the [`filters`] functions.
 pub fn route<P: AsRef<str>>(
     path: P,
     max_body_bytes: u32,
     handlers: RequestHandlers,
     allow_unknown_fields: bool,
-) -> BoxedFilter<(impl Reply,)> {
-    filters::base_filter(path, max_body_bytes)
+    cors_header: Option<&CorsOrigin>,
+) -> BoxedFilter<(Box<dyn Reply>,)> {
+    let base = filters::base_filter(path, max_body_bytes)
         .and(filters::main_filter(handlers, allow_unknown_fields))
-        .recover(filters::handle_rejection)
-        .boxed()
-}
+        .recover(filters::handle_rejection);
 
-/// Constructs a set of warp filters suitable for use in a JSON-RPC server.
-///
-/// `path` specifies the exact HTTP path for JSON-RPC requests, e.g. "rpc" will match requests on
-/// exactly "/rpc", and not "/rpc/other".
-///
-/// `max_body_bytes` sets an upper limit for the number of bytes in the HTTP request body.  For
-/// further details, see
-/// [`warp::filters::body::content_length_limit`](https://docs.rs/warp/latest/warp/filters/body/fn.content_length_limit.html).
-///
-/// `handlers` is the map of functions to which incoming requests will be dispatched.  These are
-/// keyed by the JSON-RPC request's "method".
-///
-/// If `allow_unknown_fields` is `false`, requests with unknown fields will cause the server to
-/// respond with an error.
-///
-/// Note that this is a convenience function combining the lower-level functions in [`filters`]
-/// along with [a warp CORS filter](https://docs.rs/warp/latest/warp/filters/cors/index.html) which
-///   * allows any origin or specified origin
-///   * allows "content-type" as a header
-///   * allows the method "POST"
-///
-/// For further details, see the docs for the [`filters`] functions.
-pub fn route_with_cors<P: AsRef<str>>(
-    path: P,
-    max_body_bytes: u32,
-    handlers: RequestHandlers,
-    allow_unknown_fields: bool,
-    cors_header: &CorsOrigin,
-) -> BoxedFilter<(impl Reply,)> {
-    filters::base_filter(path, max_body_bytes)
-        .and(filters::main_filter(handlers, allow_unknown_fields))
-        .recover(filters::handle_rejection)
-        .with(match cors_header {
+    if let Some(cors_origin) = cors_header {
+        let cors = match cors_origin {
             CorsOrigin::Any => warp::cors()
                 .allow_any_origin()
                 .allow_header(CONTENT_TYPE)
-                .allow_method(Method::POST),
+                .allow_method(Method::POST)
+                .build(),
             CorsOrigin::Specified(origin) => warp::cors()
                 .allow_origin(origin.as_str())
                 .allow_header(CONTENT_TYPE)
-                .allow_method(Method::POST),
-        })
-        .boxed()
+                .allow_method(Method::POST)
+                .build(),
+        };
+        base.with(cors).map(box_reply).boxed()
+    } else {
+        base.map(box_reply).boxed()
+    }
+}
+
+/// Boxes a reply of a warp filter.
+#[inline(always)]
+fn box_reply<T: Reply + 'static>(reply: T) -> Box<dyn Reply> {
+    let boxed: Box<dyn Reply> = Box::new(reply);
+    boxed
 }
