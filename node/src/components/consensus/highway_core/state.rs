@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 mod block;
 mod index_panorama;
 mod panorama;

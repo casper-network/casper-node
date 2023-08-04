@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 pub(crate) mod config;
 mod participation;
 mod round_success_meter;
@@ -602,7 +604,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                         unit_seq_number,
                     }
                 })
-                .into_iter()
                 .collect()
         } else {
             // We're ahead.
@@ -642,7 +643,6 @@ impl<C: Context + 'static> HighwayProtocol<C> {
                                 .wire_unit(unit, *self.highway.instance_id())
                                 .map(|swu| HighwayMessage::NewVertex(Vertex::Unit(swu)))
                         })
-                        .into_iter()
                         .collect(),
                 },
             }

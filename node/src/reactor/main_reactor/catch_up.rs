@@ -130,12 +130,10 @@ impl MainReactor {
                         // no trusted hash, no local block, might be genesis
                         self.catch_up_check_genesis()
                     }
-                    Err(storage_err) => {
-                        return Either::Right(CatchUpInstruction::Fatal(format!(
-                            "CatchUp: Could not read storage to find highest switch block header: {}",
-                            storage_err
-                        )));
-                    }
+                    Err(storage_err) => Either::Right(CatchUpInstruction::Fatal(format!(
+                        "CatchUp: Could not read storage to find highest switch block header: {}",
+                        storage_err
+                    ))),
                 }
             }
             Err(err) => Either::Right(CatchUpInstruction::Fatal(format!(

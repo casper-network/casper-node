@@ -9,7 +9,7 @@ use datasize::DataSize;
 use tracing::{debug, warn};
 
 /// Describes whether a connection is uni- or bi-directional.
-#[derive(DataSize, Debug)]
+#[derive(DataSize, Debug, Default)]
 pub(super) enum ConnectionSymmetry {
     /// We have only seen an incoming connection.
     IncomingOnly {
@@ -29,13 +29,8 @@ pub(super) enum ConnectionSymmetry {
         peer_addrs: BTreeSet<SocketAddr>,
     },
     /// The connection is invalid/missing and should be removed.
+    #[default]
     Gone,
-}
-
-impl Default for ConnectionSymmetry {
-    fn default() -> Self {
-        ConnectionSymmetry::Gone
-    }
 }
 
 impl ConnectionSymmetry {
