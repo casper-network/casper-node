@@ -2,10 +2,10 @@ pub(crate) mod wasmer;
 
 use std::{marker::PhantomData, ops::Deref};
 
-use crate::storage::Storage;
+use crate::{storage::Storage, Error as VMError};
 
 #[derive(Debug)]
-pub(crate) struct GasSummary;
+pub struct GasSummary {}
 
 /// Container that holds all relevant modules necessary to process an execution request.
 pub struct Context<S: Storage> {
@@ -37,6 +37,6 @@ pub enum Error {
 }
 
 pub trait WasmInstance<S: Storage> {
-    fn call_export0(&mut self, name: &str) -> Result<(), Error>;
+    fn call_export0(&mut self, name: &str) -> (Result<(), VMError>, GasSummary);
     fn teardown(self) -> Context<S>;
 }

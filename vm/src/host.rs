@@ -87,3 +87,8 @@ pub(crate) fn casper_read<S: Storage>(
         Err(_) => i32::MAX, // TODO: error handling
     }
 }
+
+/// Write value under a key.
+pub(crate) fn casper_revert(code: u32) -> i32 {
+    todo!()
+}

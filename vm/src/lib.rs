@@ -4,8 +4,9 @@ pub mod storage;
 
 use bytes::Bytes;
 
-use backend::{wasmer::WasmerInstance, Context, Error as BackendError, WasmInstance};
+use backend::{wasmer::WasmerInstance, Context, Error as BackendError, GasSummary, WasmInstance};
 use storage::Storage;
+use thiserror::Error;
 
 struct Arguments {
     bytes: Bytes,
@@ -20,8 +21,13 @@ pub struct ExecuteRequest {
 
 pub struct VM;
 
-enum VMError {
-    Revert,
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum Error {
+    #[error("Revert: {code}")]
+    Revert { code: u32 },
+    #[error("Error executing Wasm: {message}")]
+    Runtime { message: String },
 }
 
 impl VM {

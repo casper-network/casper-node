@@ -59,7 +59,8 @@ fn smoke() {
             .prepare(execute_request, mock_context)
             .expect("should prepare");
 
-        instance.call_export0("call").expect("should call");
+        let (result, gas_summary) = instance.call_export0("call");
+        dbg!(&result, gas_summary);
 
         instance.teardown()
     };

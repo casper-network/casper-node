@@ -5,13 +5,14 @@ use std::{
 
 use wasmer::{
     AsStoreMut, AsStoreRef, Engine, Exports, Function, FunctionEnv, FunctionEnvMut, Imports,
-    Instance, Memory, MemoryView, Module, Store,
+    Instance, Memory, MemoryView, Module, RuntimeError, Store,
 };
 use wasmer_compiler_singlepass::Singlepass;
 
 use crate::{host, storage::Storage};
 
-use super::{Caller, Context, Error as BackendError, WasmInstance};
+use super::{Caller, Context, Error as BackendError, GasSummary, WasmInstance};
+use crate::Error as VMError;
 
 pub(crate) struct WasmerModule {
     module: Module,
@@ -186,6 +187,25 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_revert",
+                // Function::new_typed_with_env(
+                //     &mut store,
+                //     &function_env,
+                //     |_env: FunctionEnvMut<WasmerEnv<S>>,
+                //         code: u32|
+                //      -> i32 {
+                //         host::casper_revert( code)
+                //     },
+                // ),
+                Function::new_typed(&mut store, |code| -> Result<(), RuntimeError> {
+                    eprintln!("casper_revert({code})");
+                    Err(RuntimeError::user(Box::new(VMError::Revert { code })))
+                    // host::casper_revert(code)
+                }),
+            );
+
             imports
         };
         // imports.insert()
@@ -206,8 +226,6 @@ where
             function_env_mut.memory = Some(memory.clone());
             function_env_mut.instance =
                 Arc::new(Mutex::new(Some(NonNull::from(instance.as_ref()))));
-
-            // wasmer_env.memory = Some(memory.clone());
         }
 
         Ok(Self {
@@ -222,15 +240,35 @@ impl<S> WasmInstance<S> for WasmerInstance<S>
 where
     S: Storage + 'static,
 {
-    fn call_export0(&mut self, name: &str) -> Result<(), BackendError> {
+    fn call_export0(&mut self, name: &str) -> (Result<(), VMError>, GasSummary) {
         let typed_function = self
             .instance
             .exports
             .get_typed_function::<(), ()>(&self.store, name)
             .expect("export error");
-        typed_function.call(&mut self.store).expect("call error");
-        Ok(())
+        let vm_result = match typed_function.call(&mut self.store) {
+            Ok(()) => Ok(()),
+            Err(error) => match error.downcast::<VMError>() {
+                Ok(vm_error) => Err(vm_error),
+                Err(vm_error) => todo!("handle {vm_error:?}"),
+            },
+        };
+        let gas_summary = GasSummary {};
+        (vm_result, gas_summary)
     }
+
+    // pub fn run_export<S: Storage + 'static>(
+    //     &mut self,
+    //     mut instance: impl WasmInstance<S>,
+    //     name: &str,
+    // ) -> (Result<(), Error>, GasSummary) {
+    //     let gas_summary = GasSummary {};
+
+    //     let result = instance.call_export0(name);
+    //     dbg!(&result);
+
+    //     (result, gas_summary)
+    // }
 
     /// Consume instance object and retrieve the [`Context`] object.
     fn teardown(self) -> Context<S> {
