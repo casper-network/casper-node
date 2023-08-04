@@ -1,6 +1,6 @@
 use std::{
     ptr::NonNull,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
 };
 
 use wasmer::{
@@ -23,7 +23,7 @@ pub(crate) struct WasmerEngine {}
 struct WasmerEnv<S: Storage> {
     context: Context<S>,
     memory: Option<Memory>,
-    instance: Arc<Mutex<Option<NonNull<Instance>>>>,
+    instance: Weak<Instance>,
 }
 
 unsafe impl<S: Storage> Send for WasmerEnv<S> {}
@@ -64,15 +64,21 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
     }
 
     fn alloc(&mut self, size: usize) -> u32 {
-        let tref = self.env.data().instance.as_ref();
-        let instance_ref = unsafe {
-            tref.lock()
-                .unwrap()
-                .as_ref()
-                .expect("should have instance")
-                .as_ref()
-        };
-        let func = instance_ref
+        // let tref = self.env.data().instance.as_ref();
+        let tref = self
+            .env
+            .data()
+            .instance
+            .upgrade()
+            .expect("instance should be alive");
+        // let instance_ref = unsafe {
+        //     tref.lock()
+        //         .unwrap()
+        //         .as_ref()
+        //         .expect("should have instance")
+        //         .as_ref()
+        // };
+        let func = tref
             .exports
             .get_typed_function::<u32, u32>(&self.env, "alloc")
             .expect("should have function");
@@ -88,13 +94,13 @@ impl<S: Storage> WasmerEnv<S> {
         Self {
             context,
             memory: None,
-            instance: Arc::new(Mutex::new(None)),
+            instance: Weak::new(),
         }
     }
 }
 
 pub(crate) struct WasmerInstance<S: Storage> {
-    instance: Box<Instance>,
+    instance: Arc<Instance>,
     env: FunctionEnv<WasmerEnv<S>>,
     store: Store,
 }
@@ -213,7 +219,7 @@ where
         let exports = Exports::new();
 
         let instance =
-            Box::new(Instance::new(&mut store, &module, &imports).expect("should instantiate"));
+            Arc::new(Instance::new(&mut store, &module, &imports).expect("should instantiate"));
 
         let memory = instance
             .exports
@@ -224,8 +230,8 @@ where
             // let env = wasmer_env.clone();
             let function_env_mut = function_env.as_mut(&mut store);
             function_env_mut.memory = Some(memory.clone());
-            function_env_mut.instance =
-                Arc::new(Mutex::new(Some(NonNull::from(instance.as_ref()))));
+            function_env_mut.instance = Arc::downgrade(&instance);
+            // Arc::new(Mutex::new(Some(NonNull::from(instance.as_ref()))));
         }
 
         Ok(Self {

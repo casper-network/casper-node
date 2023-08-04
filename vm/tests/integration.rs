@@ -13,11 +13,6 @@ use vm::{
 // use super::*;
 const TEST_CONTRACT_WASM: &[u8] = include_bytes!("../test-contract.wasm");
 
-// #[derive(Debug, Clone)]
-// struct MockKey(u64, Vec<u8>);
-
-// struct MockValue(u64, Vec<u8>);
-
 #[derive(Default, Debug, Clone)]
 struct MockStorage {
     // journal: Arc<Vec<JournalEntry>>,
