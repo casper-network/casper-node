@@ -1,0 +1,32 @@
+[package]
+name = "juliet"
+version = "0.1.0"
+edition = "2021"
+authors = [ "Marc Brinkmann <marc@casperlabs.io>" ]
+exclude = [ "proptest-regressions" ]
+
+[dependencies]
+array-init = "2.1.0"
+bimap = "0.6.3"
+bytemuck = { version = "1.13.1", features = [ "derive" ] }
+bytes = "1.4.0"
+futures = "0.3.28"
+thiserror = "1.0.40"
+tokio = { version = "1.29.1", features = [ "macros", "io-util", "sync" ] }
+tracing = { version = "0.1.37", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.29.1", features = [ "net", "rt-multi-thread", "time" ] }
+proptest = "1.1.0"
+proptest-attr-macro = "1.0.0"
+proptest-derive = "0.3.0"
+rand = "0.8.5"
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.17", features = [ "env-filter" ] }
+derivative = "2.2.0"
+# TODO: Upgrade `derive_more` to non-beta version, once released.
+derive_more = { version = "1.0.0-beta.2", features = [ "debug" ] }
+
+[[example]]
+name = "fizzbuzz"
+required-features = [ "tracing" ]
