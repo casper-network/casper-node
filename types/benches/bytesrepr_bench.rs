@@ -447,42 +447,6 @@ fn deserialize_u512(b: &mut Bencher) {
     b.iter(|| U512::from_bytes(black_box(&num_u512_bytes)))
 }
 
-// fn sample_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
-//     let account_hash = AccountHash::default();
-//     let named_keys: NamedKeys = sample_named_keys(named_keys_len);
-//     let main_purse = URef::default();
-//     let associated_keys = {
-//         let mut tmp = AssociatedKeys::new(AccountHash::default(), Weight::new(1));
-//         (1..associated_keys_len).for_each(|i| {
-//             tmp.add_key(
-//                 AccountHash::new([i; casper_types::contracts::ACCOUNT_HASH_LENGTH]),
-//                 Weight::new(1),
-//             )
-//             .unwrap()
-//         });
-//         tmp
-//     };
-//     let action_thresholds = ActionThresholds::default();
-//     Account::new(
-//         account_hash,
-//         named_keys,
-//         main_purse,
-//         associated_keys,
-//         action_thresholds,
-//     )
-// }
-//
-// fn serialize_account(b: &mut Bencher) {
-//     let account = sample_account(10, 10);
-//     b.iter(|| ToBytes::to_bytes(black_box(&account)));
-// }
-//
-// fn deserialize_account(b: &mut Bencher) {
-//     let account = sample_account(10, 10);
-//     let account_bytes = Account::to_bytes(&account).unwrap();
-//     b.iter(|| Account::from_bytes(black_box(&account_bytes)).unwrap());
-// }
-
 fn serialize_contract(b: &mut Bencher) {
     let contract = sample_contract(10, 10);
     b.iter(|| ToBytes::to_bytes(black_box(&contract)));

@@ -378,31 +378,12 @@ impl DeployAcceptor {
                     })
             }
             Some(StoredValue::Account(account)) => {
-                let authorization_keys = event_metadata
-                    .deploy
-                    .approvals()
-                    .iter()
-                    .map(|approval| approval.signer().to_account_hash())
-                    .collect();
-                if !account.can_authorize(&authorization_keys) {
-                    let error = Error::parameter_failure(
-                        &block_header,
-                        DeployParameterFailure::InvalidAssociatedKeys,
-                    );
-                    debug!(?authorization_keys, "account authorization invalid");
-                    return self.handle_invalid_deploy_result(
-                        effect_builder,
-                        event_metadata,
-                        error,
-                        verification_start_timestamp,
-                    );
-                }
-                if !account.can_deploy_with(&authorization_keys) {
-                    let error = Error::parameter_failure(
-                        &block_header,
-                        DeployParameterFailure::InsufficientDeploySignatureWeight,
-                    );
-                    debug!(?authorization_keys, "insufficient deploy signature weight");
+                let main_purse = account.main_purse();
+                let entity = account.into();
+                if let Err(deploy_parameter_failure) =
+                    self.is_authorized_entity(&entity, &event_metadata)
+                {
+                    let error = Error::parameter_failure(&block_header, deploy_parameter_failure);
                     return self.handle_invalid_deploy_result(
                         effect_builder,
                         event_metadata,
@@ -411,7 +392,7 @@ impl DeployAcceptor {
                     );
                 }
                 effect_builder
-                    .check_purse_balance(*block_header.state_root_hash(), account.main_purse())
+                    .check_purse_balance(*block_header.state_root_hash(), main_purse)
                     .event(move |maybe_balance_value| Event::GetBalanceResult {
                         event_metadata,
                         block_header,
@@ -468,18 +449,10 @@ impl DeployAcceptor {
                 )
             }
             Some(entity) => {
-                let authorization_keys = event_metadata
-                    .deploy
-                    .approvals()
-                    .iter()
-                    .map(|approval| approval.signer().to_account_hash())
-                    .collect();
-                if !entity.can_authorize(&authorization_keys) {
-                    let error = Error::parameter_failure(
-                        &block_header,
-                        DeployParameterFailure::InvalidAssociatedKeys,
-                    );
-                    debug!(?authorization_keys, "account authorization invalid");
+                if let Err(deploy_parameter_failure) =
+                    self.is_authorized_entity(&entity, &event_metadata)
+                {
+                    let error = Error::parameter_failure(&block_header, deploy_parameter_failure);
                     return self.handle_invalid_deploy_result(
                         effect_builder,
                         event_metadata,
@@ -487,19 +460,7 @@ impl DeployAcceptor {
                         verification_start_timestamp,
                     );
                 }
-                if !entity.can_deploy_with(&authorization_keys) {
-                    let error = Error::parameter_failure(
-                        &block_header,
-                        DeployParameterFailure::InsufficientDeploySignatureWeight,
-                    );
-                    debug!(?authorization_keys, "insufficient deploy signature weight");
-                    return self.handle_invalid_deploy_result(
-                        effect_builder,
-                        event_metadata,
-                        error,
-                        verification_start_timestamp,
-                    );
-                }
+
                 effect_builder
                     .check_purse_balance(*block_header.state_root_hash(), entity.main_purse())
                     .event(move |maybe_balance_value| Event::GetBalanceResult {
@@ -1096,6 +1057,31 @@ impl DeployAcceptor {
             effects.extend(responder.respond(Ok(())).ignore());
         }
         effects
+    }
+
+    fn is_authorized_entity(
+        &self,
+        addressable_entity: &AddressableEntity,
+        event_metadata: &EventMetadata,
+    ) -> Result<(), DeployParameterFailure> {
+        let authorization_keys = event_metadata
+            .deploy
+            .approvals()
+            .iter()
+            .map(|approval| approval.signer().to_account_hash())
+            .collect();
+
+        if !addressable_entity.can_authorize(&authorization_keys) {
+            debug!(?authorization_keys, "account authorization invalid");
+            return Err(DeployParameterFailure::InvalidAssociatedKeys);
+        }
+
+        if !addressable_entity.can_deploy_with(&authorization_keys) {
+            debug!(?authorization_keys, "insufficient deploy signature weight");
+            return Err(DeployParameterFailure::InsufficientDeploySignatureWeight);
+        }
+
+        Ok(())
     }
 }
 

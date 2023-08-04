@@ -562,14 +562,6 @@ mod tests {
         assert_yields_type_mismatch_error(contract);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
-        // let account = StoredValue::Account(Account::new(
-        //     ZERO_PUBLIC_KEY,
-        //     NamedKeys::new(),
-        //     uref,
-        //     AssociatedKeys::default(),
-        //     ActionThresholds::default(),
-        // ));
-        // assert_yields_type_mismatch_error(account);
 
         let cl_bool =
             StoredValue::CLValue(CLValue::from_t(TEST_BOOL).expect("should create CLValue"));

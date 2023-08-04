@@ -38,6 +38,7 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
+use crate::account::Account;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
@@ -996,6 +997,21 @@ impl From<Contract> for AddressableEntity {
     }
 }
 
+impl From<Account> for AddressableEntity {
+    fn from(value: Account) -> Self {
+        AddressableEntity::new(
+            ContractPackageHash::default(),
+            ContractWasmHash::new([0u8; 32]),
+            value.named_keys().clone(),
+            EntryPoints::new(),
+            ProtocolVersion::default(),
+            value.main_purse(),
+            value.associated_keys().clone().into(),
+            value.action_thresholds().clone().into(),
+        )
+    }
+}
+
 /// Context of method execution
 #[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1428,11 +1444,6 @@ mod prop_tests {
     use crate::{bytesrepr, gens};
 
     proptest! {
-        // #![proptest_config(ProptestConfig {
-        //     cases: 1024,
-        //     .. ProptestConfig::default()
-        // })]
-
         #[test]
         fn test_value_contract(contract in gens::addressable_entity_arb()) {
             bytesrepr::test_serialization_roundtrip(&contract);
