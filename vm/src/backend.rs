@@ -37,6 +37,6 @@ pub enum Error {
 }
 
 pub trait WasmInstance<S: Storage> {
-    fn call_export0(&mut self, name: &str) -> (Result<(), VMError>, GasSummary);
+    fn call_export(&mut self, name: &str, args: &[&[u8]]) -> (Result<(), VMError>, GasSummary);
     fn teardown(self) -> Context<S>;
 }
