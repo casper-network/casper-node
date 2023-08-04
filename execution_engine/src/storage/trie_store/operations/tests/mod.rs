@@ -649,7 +649,7 @@ where
     Ok(ret)
 }
 
-fn check_keys<K, V, T, S, E>(
+fn check_keys<K, V, T, S>(
     correlation_id: CorrelationId,
     txn: &T,
     store: &S,
@@ -662,7 +662,6 @@ where
     T: Readable<Handle = S::Handle>,
     S: TrieStore<K, V>,
     S::Error: From<T::Error>,
-    E: From<S::Error> + From<bytesrepr::Error>,
 {
     let expected = {
         let mut tmp = leaves
@@ -725,7 +724,7 @@ where
             .all(bool::not)
     );
 
-    assert!(check_keys::<_, _, _, _, E>(
+    assert!(check_keys::<_, _, _, _>(
         correlation_id,
         &txn,
         store,
