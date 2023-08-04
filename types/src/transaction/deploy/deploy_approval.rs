@@ -20,12 +20,12 @@ use crate::{
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub struct Approval {
+pub struct DeployApproval {
     signer: PublicKey,
     signature: Signature,
 }
 
-impl Approval {
+impl DeployApproval {
     /// Creates an approval by signing the given deploy hash using the given secret key.
     pub fn create(hash: &DeployHash, secret_key: &SecretKey) -> Self {
         let signer = PublicKey::from(secret_key);
@@ -58,13 +58,13 @@ impl Approval {
     }
 }
 
-impl Display for Approval {
+impl Display for DeployApproval {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(formatter, "approval({})", self.signer)
     }
 }
 
-impl ToBytes for Approval {
+impl ToBytes for DeployApproval {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.signer.write_bytes(writer)?;
         self.signature.write_bytes(writer)
@@ -81,11 +81,11 @@ impl ToBytes for Approval {
     }
 }
 
-impl FromBytes for Approval {
+impl FromBytes for DeployApproval {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (signer, remainder) = PublicKey::from_bytes(bytes)?;
         let (signature, remainder) = Signature::from_bytes(remainder)?;
-        let approval = Approval { signer, signature };
+        let approval = DeployApproval { signer, signature };
         Ok((approval, remainder))
     }
 }
@@ -97,7 +97,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let approval = Approval::random(rng);
+        let approval = DeployApproval::random(rng);
         bytesrepr::test_serialization_roundtrip(&approval);
     }
 }

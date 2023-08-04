@@ -7,7 +7,8 @@ use casper_execution_engine::{
     engine_state::{
         self, execution_result::ExecutionResults, step::EvictItem, ChecksumRegistry, DeployItem,
         EngineState, ExecuteRequest, ExecutionResult as EngineExecutionResult,
-        GetEraValidatorsRequest, PruneConfig, PruneResult, StepError, StepRequest, StepSuccess,
+        GetEraValidatorsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
+        StepRequest, StepSuccess,
     },
     execution,
 };
@@ -18,8 +19,8 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    Block, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport, Key, ProtocolVersion,
-    PublicKey, U512,
+    AddressableEntity, Block, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport,
+    HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, U512,
 };
 
 use crate::{
@@ -531,7 +532,7 @@ where
 pub(crate) fn compute_execution_results_checksum<'a>(
     execution_results_iter: impl Iterator<Item = &'a ExecutionResult> + Clone,
 ) -> Result<Digest, BlockExecutionError> {
-    // Serialize the execution results as if they were `Vec<VersionedExecutionResult>`.
+    // Serialize the execution results as if they were `Vec<ExecutionResult>`.
     let serialized_length = U32_SERIALIZED_LENGTH
         + execution_results_iter
             .clone()
@@ -566,6 +567,98 @@ pub(crate) fn compute_execution_results_checksum<'a>(
     serialized.hash().map_err(|_| {
         BlockExecutionError::FailedToComputeExecutionResultsChecksum(bytesrepr::Error::OutOfMemory)
     })
+}
+
+pub(super) fn get_addressable_entity<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    key: Key,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let account_key = match key {
+        Key::Hash(hash_addr) => {
+            return get_addressable_entity_under_hash(engine_state, state_root_hash, hash_addr)
+        }
+        account_key @ Key::Account(_) => account_key,
+        _ => {
+            warn!(%key, "expected a Key::Hash or Key::Account");
+            return None;
+        }
+    };
+    let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
+    let value = match engine_state.run_query(query_request) {
+        Ok(QueryResult::Success { value, .. }) => *value,
+        Ok(result) => {
+            debug!(?result, %key, "expected to find stored value under account hash");
+            return None;
+        }
+        Err(error) => {
+            warn!(%error, %key, "failed querying for stored value under account hash");
+            return None;
+        }
+    };
+    match value {
+        StoredValue::CLValue(cl_value) => match cl_value.into_t::<Key>() {
+            Ok(Key::Hash(hash_addr)) => {
+                get_addressable_entity_under_hash(engine_state, state_root_hash, hash_addr)
+            }
+            Ok(invalid_key) => {
+                warn!(
+                    %account_key,
+                    %invalid_key,
+                    "expected a Key::Hash to be stored under account hash"
+                );
+                None
+            }
+            Err(error) => {
+                warn!(%account_key, %error, "expected a Key to be stored under account hash");
+                None
+            }
+        },
+        StoredValue::Account(account) => Some(AddressableEntity::from(account)),
+        _ => {
+            warn!(
+                type_name = %value.type_name(),
+                %account_key,
+                "expected a CLValue or Account to be stored under account hash"
+            );
+            None
+        }
+    }
+}
+
+fn get_addressable_entity_under_hash<S>(
+    engine_state: &EngineState<S>,
+    state_root_hash: Digest,
+    hash_addr: HashAddr,
+) -> Option<AddressableEntity>
+where
+    S: StateProvider + CommitProvider,
+    S::Error: Into<execution::Error>,
+{
+    let key = Key::Hash(hash_addr);
+    let query_request = QueryRequest::new(state_root_hash, key, vec![]);
+    let value = match engine_state.run_query(query_request) {
+        Ok(QueryResult::Success { value, .. }) => *value,
+        Ok(result) => {
+            debug!(?result, %key, "expected to find addressable entity");
+            return None;
+        }
+        Err(error) => {
+            warn!(%error, %key, "failed querying for addressable entity");
+            return None;
+        }
+    };
+    match value {
+        StoredValue::AddressableEntity(addressable_entity) => Some(addressable_entity),
+        _ => {
+            debug!(type_name = %value.type_name(), %key, "expected an AddressableEntity");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

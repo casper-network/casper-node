@@ -1733,7 +1733,7 @@
               "approvals": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/Approval"
+                  "$ref": "#/components/schemas/DeployApproval"
                 },
                 "uniqueItems": true
               }
@@ -2332,7 +2332,7 @@
               }
             ]
           },
-          "Approval": {
+          "DeployApproval": {
             "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
             "type": "object",
             "required": [

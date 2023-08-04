@@ -181,7 +181,7 @@ impl Reactor for MockReactor {
             ProtocolVersion::from_parts(1, 0, 0),
             EraId::default(),
             "test",
-            chainspec.deploy_config.max_ttl.into(),
+            chainspec.transaction_config.max_ttl.into(),
             chainspec.core_config.recent_era_count(),
             Some(registry),
             false,

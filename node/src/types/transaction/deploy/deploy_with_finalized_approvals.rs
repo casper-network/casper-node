@@ -4,11 +4,11 @@ use std::collections::BTreeSet;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
-use casper_types::Approval;
 use casper_types::Deploy;
+#[cfg(test)]
+use casper_types::DeployApproval;
 
-use crate::types::FinalizedApprovals;
+use crate::types::FinalizedDeployApprovals;
 
 /// A deploy combined with a potential set of finalized approvals.
 ///
@@ -24,12 +24,15 @@ pub(crate) struct DeployWithFinalizedApprovals {
     /// The deploy that likely has been included in a block.
     deploy: Deploy,
     /// Approvals used to verify the deploy during block execution.
-    finalized_approvals: Option<FinalizedApprovals>,
+    finalized_approvals: Option<FinalizedDeployApprovals>,
 }
 
 impl DeployWithFinalizedApprovals {
     /// Creates a new deploy with finalized approvals from parts.
-    pub(crate) fn new(deploy: Deploy, finalized_approvals: Option<FinalizedApprovals>) -> Self {
+    pub(crate) fn new(
+        deploy: Deploy,
+        finalized_approvals: Option<FinalizedDeployApprovals>,
+    ) -> Self {
         Self {
             deploy,
             finalized_approvals,
@@ -53,12 +56,12 @@ impl DeployWithFinalizedApprovals {
     }
 
     #[cfg(test)]
-    pub(crate) fn original_approvals(&self) -> &BTreeSet<Approval> {
+    pub(crate) fn original_approvals(&self) -> &BTreeSet<DeployApproval> {
         self.deploy.approvals()
     }
 
     #[cfg(test)]
-    pub(crate) fn finalized_approvals(&self) -> Option<&FinalizedApprovals> {
+    pub(crate) fn finalized_approvals(&self) -> Option<&FinalizedDeployApprovals> {
         self.finalized_approvals.as_ref()
     }
 }

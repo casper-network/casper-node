@@ -56,7 +56,9 @@ use crate::{
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal, protocol,
-    types::{DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId},
+    types::{
+        DeployOrTransferHash, FinalizedBlock, FinalizedDeployApprovals, MetaBlockState, NodeId,
+    },
     NodeRng,
 };
 
@@ -1066,7 +1068,7 @@ impl EraSupervisor {
                     .map(|dwa| {
                         (
                             *dwa.deploy_hash(),
-                            FinalizedApprovals::new(dwa.approvals().clone()),
+                            FinalizedDeployApprovals::new(dwa.approvals().clone()),
                         )
                     })
                     .collect();
@@ -1304,14 +1306,14 @@ where
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
-    finalized_approvals: HashMap<DeployHash, FinalizedApprovals>,
+    finalized_approvals: HashMap<DeployHash, FinalizedDeployApprovals>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
 {
     for (deploy_hash, finalized_approvals) in finalized_approvals {
         effect_builder
-            .store_finalized_approvals(deploy_hash, finalized_approvals)
+            .store_finalized_approvals(deploy_hash.into(), finalized_approvals.into())
             .await;
     }
     // Get all deploys in order they appear in the finalized block.

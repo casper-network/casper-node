@@ -13,8 +13,8 @@ use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes,
-    Deploy, EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp,
-    ValidatorConfig, U512,
+    Deploy, EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -38,7 +38,10 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeRng},
+    types::{
+        BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals, ExitCode, NodeRng,
+        TransactionWithFinalizedApprovals,
+    },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -737,14 +740,17 @@ async fn should_store_finalized_approvals() {
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_deploy_to_storage(Arc::new(deploy.clone()))
+                    .put_transaction_to_storage(Transaction::from(deploy.clone()))
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_deploy_accepted(Arc::new(deploy), Source::Client)
+                    .announce_new_transaction_accepted(
+                        Arc::new(Transaction::from(deploy)),
+                        Source::Client,
+                    )
                     .ignore()
             })
             .await;
@@ -772,7 +778,14 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_deploy_with_finalized_approvals_by_hash(&deploy_hash);
+            .get_transaction_with_finalized_approvals_by_hash(&TransactionHash::from(deploy_hash))
+            .map(|transaction_wfa| match transaction_wfa {
+                TransactionWithFinalizedApprovals::Deploy {
+                    deploy,
+                    finalized_approvals,
+                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+                _ => panic!("should receive deploy with finalized approvals"),
+            });
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())

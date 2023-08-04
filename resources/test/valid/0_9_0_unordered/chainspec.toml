@@ -33,22 +33,21 @@ reduced_reward_multiplier = [1, 5]
 [transactions]
 max_ttl = '18hours'
 max_transaction_size = 1_048_576
+block_max_deploy_count = 50
+block_max_native_count = 1250
 block_max_approval_count = 2600
+max_block_size = 10_485_760
+block_gas_limit = 10_000_000_000_000
+native_transfer_minimum_motes = 2_500_000_000
+
+[transactions.v1]
 max_args_length = 1024
 
-[deploys]
+[transactions.deploy]
 max_payment_cost = '9'
-max_ttl = '10months'
 max_dependencies = 11
-max_deploy_size = 1_048_576
-max_block_size = 12
-block_max_deploy_count = 125
-block_max_transfer_count = 1000
-block_max_approval_count = 2600
-block_gas_limit = 13
 payment_args_max_length = 1024
 session_args_max_length = 1024
-native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 max_memory = 17

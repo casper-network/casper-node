@@ -1,6 +1,6 @@
 //! RPCs related to accounts.
 
-use std::{str, sync::Arc};
+use std::str;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::debug;
 
-use casper_types::{Deploy, DeployHash, ProtocolVersion};
+use casper_types::{Deploy, DeployHash, ProtocolVersion, Transaction};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -71,11 +71,11 @@ impl RpcWithParams for PutDeploy {
     ) -> Result<Self::ResponseResult, Error> {
         let deploy_hash = *params.deploy.hash();
 
-        let accept_deploy_result = effect_builder
-            .try_accept_deploy(Arc::new(params.deploy), None)
+        let accept_transaction_result = effect_builder
+            .try_accept_transaction(Transaction::from(params.deploy), None)
             .await;
 
-        match accept_deploy_result {
+        match accept_transaction_result {
             Ok(_) => {
                 debug!(%deploy_hash, "deploy was stored");
                 let result = Self::ResponseResult {

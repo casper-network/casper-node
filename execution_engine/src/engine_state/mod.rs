@@ -474,9 +474,8 @@ where
                     .read(unbonding_delay_key)
                     .map_err(|error| error.into())?
                     .ok_or(Error::FailedToRetrieveUnbondingDelay)?
-                    .as_cl_value()
+                    .into_cl_value()
                     .ok_or_else(|| Error::Bytesrepr("unbonding_delay".to_string()))?
-                    .clone()
                     .into_t::<u64>()
                     .map_err(execution::Error::from)?;
 
@@ -490,9 +489,8 @@ where
                     .read(era_id_key)
                     .map_err(|error| error.into())?
                     .ok_or(Error::FailedToRetrieveEraId)?
-                    .as_cl_value()
+                    .into_cl_value()
                     .ok_or_else(|| Error::Bytesrepr("era_id".to_string()))?
-                    .clone()
                     .into_t::<EraId>()
                     .map_err(execution::Error::from)?;
 
@@ -507,9 +505,8 @@ where
                     .read(&key)
                     .map_err(|_| Error::FailedToGetWithdrawKeys)?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
-                    .as_withdraw()
-                    .ok_or(Error::FailedToGetWithdrawPurses)?
-                    .to_owned();
+                    .into_withdraw()
+                    .ok_or(Error::FailedToGetWithdrawPurses)?;
 
                 // Ensure that sufficient balance exists for all unbond purses that are to be
                 // migrated.
@@ -852,7 +849,6 @@ where
     /// Return the package kind.
     pub fn get_entity_package_kind(
         &self,
-
         entity_package_address: ContractPackageHash,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Result<ContractPackageKind, Error> {
@@ -2039,8 +2035,8 @@ where
                 return Err(GetEraValidatorsError::UnexpectedQueryFailure);
             }
             QueryResult::Success { value, proofs: _ } => {
-                let cl_value = match value.as_cl_value() {
-                    Some(snapshot_cl_value) => snapshot_cl_value.clone(),
+                let cl_value = match value.into_cl_value() {
+                    Some(snapshot_cl_value) => snapshot_cl_value,
                     None => {
                         error!("unexpected query failure; seigniorage recipients snapshot is not a CLValue");
                         return Err(GetEraValidatorsError::UnexpectedQueryFailure);

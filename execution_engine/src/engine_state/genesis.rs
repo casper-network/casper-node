@@ -993,9 +993,8 @@ where
             .ok_or_else(|| {
                 GenesisError::CLValue("failed to convert registry as stored value".to_string())
             })?
-            .as_cl_value()
-            .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?
-            .to_owned();
+            .into_cl_value()
+            .ok_or_else(|| GenesisError::CLValue("failed to convert to CLValue".to_string()))?;
         let mut partial_registry = CLValue::into_t::<SystemContractRegistry>(partial_cl_registry)
             .map_err(|error| GenesisError::CLValue(error.to_string()))?;
         partial_registry.insert(contract_name.to_string(), contract_hash);

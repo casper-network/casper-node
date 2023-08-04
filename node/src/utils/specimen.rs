@@ -20,10 +20,11 @@ use strum::{EnumIter, IntoEnumIterator};
 use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
-    Approval, ApprovalsHash, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures,
-    ChunkWithProof, ContractPackageHash, Deploy, DeployHash, DeployId, Digest, EraEnd, EraId,
-    EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId, ProtocolVersion,
-    RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
+    AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures, ChunkWithProof,
+    ContractPackageHash, Deploy, DeployApproval, DeployApprovalsHash, DeployHash, DeployId, Digest,
+    EraEnd, EraId, EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId,
+    ProtocolVersion, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff, Timestamp,
+    KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -694,16 +695,16 @@ impl LargestSpecimen for DeployHash {
     }
 }
 
-impl LargestSpecimen for Approval {
+impl LargestSpecimen for DeployApproval {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        Approval::new(
+        DeployApproval::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
     }
 }
 
-impl<E> LargeUniqueSequence<E> for Approval
+impl<E> LargeUniqueSequence<E> for DeployApproval
 where
     Self: Sized + Ord,
     E: SizeEstimator,
@@ -712,7 +713,7 @@ where
         PublicKey::large_unique_sequence(estimator, count, cache)
             .into_iter()
             .map(|public_key| {
-                Approval::new(
+                DeployApproval::new(
                     public_key,
                     LargestSpecimen::largest_specimen(estimator, cache),
                 )
@@ -766,9 +767,10 @@ impl LargestSpecimen for DeployId {
     }
 }
 
-impl LargestSpecimen for ApprovalsHash {
+impl LargestSpecimen for DeployApprovalsHash {
     fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
-        ApprovalsHash::compute(&Default::default()).expect("empty approvals hash should compute")
+        DeployApprovalsHash::compute(&Default::default())
+            .expect("empty approvals hash should compute")
     }
 }
 
@@ -868,6 +870,9 @@ pub(crate) fn largest_get_request<E: SizeEstimator>(estimator: &E, cache: &mut C
             Tag::BlockExecutionResults => Message::new_get_request::<BlockExecutionResultsOrChunk>(
                 &LargestSpecimen::largest_specimen(estimator, cache),
             ),
+            Tag::Transaction => Message::new_get_request::<Deploy>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
         }
         .expect("did not expect new_get_request from largest deploy to fail")
     })
@@ -906,6 +911,9 @@ pub(crate) fn largest_get_response<E: SizeEstimator>(estimator: &E, cache: &mut 
                     &LargestSpecimen::largest_specimen(estimator, cache),
                 )
             }
+            Tag::Transaction => Message::new_get_response::<Deploy>(
+                &LargestSpecimen::largest_specimen(estimator, cache),
+            ),
         }
         .expect("did not expect new_get_response from largest deploy to fail")
     })

@@ -12,7 +12,7 @@ use serde::Serialize;
 
 #[cfg(doc)]
 use super::TransactionV1;
-use crate::{crypto, TimeDiff, Timestamp};
+use crate::{crypto, CLType, TimeDiff, Timestamp, U512};
 
 /// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -79,6 +79,41 @@ pub enum TransactionV1ConfigFailure {
         /// Number of approvals on the transaction.
         got: u32,
     },
+
+    /// The payment amount associated with the transaction exceeds the block gas limit.
+    ExceedsBlockGasLimit {
+        /// Configured block gas limit.
+        block_gas_limit: u64,
+        /// The payment amount received.
+        got: u64,
+    },
+
+    /// Missing a required runtime arg.
+    MissingArg {
+        /// The name of the missing arg.
+        arg_name: String,
+    },
+
+    /// Given runtime arg is not expected type.
+    UnexpectedArgType {
+        /// The name of the invalid arg.
+        arg_name: String,
+        /// The expected type for the given runtime arg.
+        expected: CLType,
+        /// The provided type of the given runtime arg.
+        got: CLType,
+    },
+
+    /// Insufficient transfer amount.
+    InsufficientTransferAmount {
+        /// The minimum transfer amount.
+        minimum: u64,
+        /// The attempted transfer amount.
+        attempted: U512,
+    },
+
+    /// The transaction has empty module bytes.
+    EmptyModuleBytes,
 }
 
 impl Display for TransactionV1ConfigFailure {
@@ -87,18 +122,16 @@ impl Display for TransactionV1ConfigFailure {
             TransactionV1ConfigFailure::InvalidChainName { expected, got } => {
                 write!(
                     formatter,
-                    "invalid chain name: expected {}, got {}",
-                    expected, got
+                    "invalid chain name: expected {expected}, got {got}"
                 )
             }
             TransactionV1ConfigFailure::ExcessiveSize(error) => {
-                write!(formatter, "transaction size too large: {}", error)
+                write!(formatter, "transaction size too large: {error}")
             }
             TransactionV1ConfigFailure::ExcessiveTimeToLive { max_ttl, got } => {
                 write!(
                     formatter,
-                    "time-to-live of {} exceeds limit of {}",
-                    got, max_ttl
+                    "time-to-live of {got} exceeds limit of {max_ttl}"
                 )
             }
             TransactionV1ConfigFailure::TimestampInFuture {
@@ -107,8 +140,8 @@ impl Display for TransactionV1ConfigFailure {
             } => {
                 write!(
                     formatter,
-                    "timestamp of {} is later than node's validation timestamp of {}",
-                    got, validation_timestamp
+                    "timestamp of {got} is later than node's validation timestamp of \
+                    {validation_timestamp}"
                 )
             }
             TransactionV1ConfigFailure::InvalidBodyHash => {
@@ -129,15 +162,14 @@ impl Display for TransactionV1ConfigFailure {
             TransactionV1ConfigFailure::InvalidApproval { index, error } => {
                 write!(
                     formatter,
-                    "the transaction approval at index {} is invalid: {}",
-                    index, error
+                    "the transaction approval at index {index} is invalid: {error}"
                 )
             }
             TransactionV1ConfigFailure::ExcessiveArgsLength { max_length, got } => {
                 write!(
                     formatter,
-                    "serialized transaction runtime args of {} bytes exceeds limit of {} bytes",
-                    got, max_length
+                    "serialized transaction runtime args of {got} bytes exceeds limit of \
+                    {max_length} bytes"
                 )
             }
             TransactionV1ConfigFailure::ExcessiveApprovals {
@@ -146,10 +178,40 @@ impl Display for TransactionV1ConfigFailure {
             } => {
                 write!(
                     formatter,
-                    "number of transaction approvals {} exceeds the maximum number of associated \
-                    keys {}",
-                    got, max_associated_keys
+                    "number of transaction approvals {got} exceeds the maximum number of \
+                    associated keys {max_associated_keys}",
                 )
+            }
+            TransactionV1ConfigFailure::ExceedsBlockGasLimit {
+                block_gas_limit,
+                got,
+            } => {
+                write!(
+                    formatter,
+                    "payment amount of {got} exceeds the block gas limit of {block_gas_limit}"
+                )
+            }
+            TransactionV1ConfigFailure::MissingArg { arg_name } => {
+                write!(formatter, "missing required runtime argument '{arg_name}'")
+            }
+            TransactionV1ConfigFailure::UnexpectedArgType {
+                arg_name,
+                expected,
+                got,
+            } => {
+                write!(
+                    formatter,
+                    "expected type of '{arg_name}' runtime argument to be {expected}, but got {got}"
+                )
+            }
+            TransactionV1ConfigFailure::InsufficientTransferAmount { minimum, attempted } => {
+                write!(
+                    formatter,
+                    "insufficient transfer amount; minimum: {minimum} attempted: {attempted}"
+                )
+            }
+            TransactionV1ConfigFailure::EmptyModuleBytes => {
+                write!(formatter, "the transaction has empty module bytes")
             }
         }
     }
@@ -174,7 +236,12 @@ impl StdError for TransactionV1ConfigFailure {
             | TransactionV1ConfigFailure::InvalidTransactionHash
             | TransactionV1ConfigFailure::EmptyApprovals
             | TransactionV1ConfigFailure::ExcessiveArgsLength { .. }
-            | TransactionV1ConfigFailure::ExcessiveApprovals { .. } => None,
+            | TransactionV1ConfigFailure::ExcessiveApprovals { .. }
+            | TransactionV1ConfigFailure::ExceedsBlockGasLimit { .. }
+            | TransactionV1ConfigFailure::MissingArg { .. }
+            | TransactionV1ConfigFailure::UnexpectedArgType { .. }
+            | TransactionV1ConfigFailure::InsufficientTransferAmount { .. }
+            | TransactionV1ConfigFailure::EmptyModuleBytes => None,
         }
     }
 }

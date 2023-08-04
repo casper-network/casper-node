@@ -1,9 +1,9 @@
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
 
-use casper_types::{Deploy, DeployHash};
+use casper_types::{Deploy, DeployHash, Transaction};
 
 use crate::{
     components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
@@ -42,7 +42,7 @@ impl ItemFetcher<LegacyDeploy> for Fetcher<LegacyDeploy> {
     ) -> StoringState<'a, LegacyDeploy> {
         StoringState::Enqueued(
             effect_builder
-                .put_deploy_to_storage(Arc::new(Deploy::from(item)))
+                .put_transaction_to_storage(Transaction::from(Deploy::from(item)))
                 .map(|_| ())
                 .boxed(),
         )

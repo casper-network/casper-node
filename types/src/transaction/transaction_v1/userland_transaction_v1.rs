@@ -15,6 +15,9 @@ use super::TransactionV1;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
+    addressable_entity::{
+        DEFAULT_ENTRY_POINT_NAME, INSTALL_ENTRY_POINT_NAME, UPGRADE_ENTRY_POINT_NAME,
+    },
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     ContractPackageIdentifier, RuntimeArgs,
 };
@@ -34,7 +37,6 @@ const CLOSED_TAG: u8 = 4;
     schemars(description = "A TransactionV1 with userland (i.e. not native) functionality.")
 )]
 #[serde(deny_unknown_fields)]
-#[non_exhaustive]
 pub enum UserlandTransactionV1 {
     /// A general purpose transaction.
     Standard {
@@ -116,6 +118,45 @@ impl UserlandTransactionV1 {
             | UserlandTransactionV1::Noop { args, .. }
             | UserlandTransactionV1::Closed { args, .. } => args,
             UserlandTransactionV1::DirectCall(direct_call) => direct_call.args(),
+        }
+    }
+
+    pub(super) fn args_mut(&mut self) -> &mut RuntimeArgs {
+        match self {
+            UserlandTransactionV1::Standard { args, .. }
+            | UserlandTransactionV1::InstallerUpgrader { args, .. }
+            | UserlandTransactionV1::Noop { args, .. }
+            | UserlandTransactionV1::Closed { args, .. } => args,
+            UserlandTransactionV1::DirectCall(direct_call) => direct_call.args_mut(),
+        }
+    }
+
+    /// Returns the entry point name.
+    pub fn entry_point_name(&self) -> &str {
+        match self {
+            UserlandTransactionV1::Standard { .. }
+            | UserlandTransactionV1::Noop { .. }
+            | UserlandTransactionV1::Closed { .. } => DEFAULT_ENTRY_POINT_NAME,
+            UserlandTransactionV1::InstallerUpgrader {
+                contract_package_id: Some(_),
+                ..
+            } => UPGRADE_ENTRY_POINT_NAME,
+            UserlandTransactionV1::InstallerUpgrader {
+                contract_package_id: None,
+                ..
+            } => INSTALL_ENTRY_POINT_NAME,
+            UserlandTransactionV1::DirectCall(direct_call) => direct_call.entry_point_name(),
+        }
+    }
+
+    #[cfg(any(feature = "std", test))]
+    pub(super) fn module_bytes_is_present_but_empty(&self) -> bool {
+        match self {
+            UserlandTransactionV1::Standard { module_bytes, .. }
+            | UserlandTransactionV1::InstallerUpgrader { module_bytes, .. }
+            | UserlandTransactionV1::Noop { module_bytes, .. }
+            | UserlandTransactionV1::Closed { module_bytes, .. } => module_bytes.is_empty(),
+            UserlandTransactionV1::DirectCall(_) => false,
         }
     }
 

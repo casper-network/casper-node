@@ -138,8 +138,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .unwrap();
 
         cl_value
-            .as_cl_value()
-            .cloned()
+            .into_cl_value()
             .map(CLValue::into_t::<Vec<CallStackElement>>)
             .unwrap()
             .unwrap()
@@ -170,8 +169,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .unwrap();
 
         cl_value
-            .as_cl_value()
-            .cloned()
+            .into_cl_value()
             .map(CLValue::into_t::<Vec<CallStackElement>>)
             .unwrap()
             .unwrap()

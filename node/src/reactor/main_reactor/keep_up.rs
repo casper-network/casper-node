@@ -649,7 +649,7 @@ impl MainReactor {
             .map_err(|err| err.to_string())?
             .last()
         {
-            let max_ttl: MaxTtl = self.chainspec.deploy_config.max_ttl.into();
+            let max_ttl: MaxTtl = self.chainspec.transaction_config.max_ttl.into();
             if max_ttl.synced_to_ttl(
                 highest_switch_block_header.timestamp(),
                 highest_orphaned_block_header,

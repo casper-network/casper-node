@@ -73,7 +73,7 @@ pub enum StoredValue {
 }
 
 impl StoredValue {
-    /// Returns a wrapped [`CLValue`] if this is a `CLValue` variant.
+    /// Returns a reference to the wrapped `CLValue` if this is a `CLValue` variant.
     pub fn as_cl_value(&self) -> Option<&CLValue> {
         match self {
             StoredValue::CLValue(cl_value) => Some(cl_value),
@@ -81,7 +81,7 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`Account`] if this is an `Account` variant.
+    /// Returns a reference to the wrapped `Account` if this is an `Account` variant.
     pub fn as_account(&self) -> Option<&Account> {
         match self {
             StoredValue::Account(account) => Some(account),
@@ -89,15 +89,7 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`AddressableEntity`] if this is a `AddressableEntity` variant.
-    pub fn as_addressable_entity(&self) -> Option<&AddressableEntity> {
-        match self {
-            StoredValue::AddressableEntity(entity) => Some(entity),
-            _ => None,
-        }
-    }
-
-    /// Returns a wrapped [`ContractWasm`] if this is a `ContractWasm` variant.
+    /// Returns a reference to the wrapped `ContractWasm` if this is a `ContractWasm` variant.
     pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
         match self {
             StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
@@ -105,7 +97,15 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`Package`] if this is a `ContractPackage` variant.
+    /// Returns a reference to the wrapped `Contract` if this is a `Contract` variant.
+    pub fn as_contract(&self) -> Option<&Contract> {
+        match self {
+            StoredValue::Contract(contract) => Some(contract),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the wrapped `Package` if this is a `Package` variant.
     pub fn as_contract_package(&self) -> Option<&Package> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
@@ -113,7 +113,15 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`DeployInfo`] if this is a `DeployInfo` variant.
+    /// Returns a reference to the wrapped `Transfer` if this is a `Transfer` variant.
+    pub fn as_transfer(&self) -> Option<&Transfer> {
+        match self {
+            StoredValue::Transfer(transfer) => Some(transfer),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the wrapped `DeployInfo` if this is a `DeployInfo` variant.
     pub fn as_deploy_info(&self) -> Option<&DeployInfo> {
         match self {
             StoredValue::DeployInfo(deploy_info) => Some(deploy_info),
@@ -121,7 +129,7 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`EraInfo`] if this is a `EraInfo` variant.
+    /// Returns a reference to the wrapped `EraInfo` if this is an `EraInfo` variant.
     pub fn as_era_info(&self) -> Option<&EraInfo> {
         match self {
             StoredValue::EraInfo(era_info) => Some(era_info),
@@ -129,7 +137,7 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`Bid`] if this is a `Bid` variant.
+    /// Returns a reference to the wrapped `Bid` if this is a `Bid` variant.
     pub fn as_bid(&self) -> Option<&Bid> {
         match self {
             StoredValue::Bid(bid) => Some(bid),
@@ -137,7 +145,7 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped list of [`WithdrawPurse`]s if this is a `Withdraw` variant.
+    /// Returns a reference to the wrapped list of `WithdrawPurse`s if this is a `Withdraw` variant.
     pub fn as_withdraw(&self) -> Option<&Vec<WithdrawPurse>> {
         match self {
             StoredValue::Withdraw(withdraw_purses) => Some(withdraw_purses),
@@ -145,10 +153,116 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped list of [`UnbondingPurse`]s if this is a `Unbonding` variant.
+    /// Returns a reference to the wrapped list of `UnbondingPurse`s if this is an `Unbonding`
+    /// variant.
     pub fn as_unbonding(&self) -> Option<&Vec<UnbondingPurse>> {
         match self {
             StoredValue::Unbonding(unbonding_purses) => Some(unbonding_purses),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the wrapped `AddressableEntity` if this is an `AddressableEntity`
+    /// variant.
+    pub fn as_addressable_entity(&self) -> Option<&AddressableEntity> {
+        match self {
+            StoredValue::AddressableEntity(entity) => Some(entity),
+            _ => None,
+        }
+    }
+
+    /// Returns the `CLValue` if this is a `CLValue` variant.
+    pub fn into_cl_value(self) -> Option<CLValue> {
+        match self {
+            StoredValue::CLValue(cl_value) => Some(cl_value),
+            _ => None,
+        }
+    }
+
+    /// Returns the `Account` if this is an `Account` variant.
+    pub fn into_account(self) -> Option<Account> {
+        match self {
+            StoredValue::Account(account) => Some(account),
+            _ => None,
+        }
+    }
+
+    /// Returns the `ContractWasm` if this is a `ContractWasm` variant.
+    pub fn into_contract_wasm(self) -> Option<ContractWasm> {
+        match self {
+            StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
+            _ => None,
+        }
+    }
+
+    /// Returns the `Contract` if this is a `Contract` variant.
+    pub fn into_contract(self) -> Option<Contract> {
+        match self {
+            StoredValue::Contract(contract) => Some(contract),
+            _ => None,
+        }
+    }
+
+    /// Returns the `Package` if this is a `Package` variant.
+    pub fn into_contract_package(self) -> Option<Package> {
+        match self {
+            StoredValue::ContractPackage(contract_package) => Some(contract_package),
+            _ => None,
+        }
+    }
+
+    /// Returns the `Transfer` if this is a `Transfer` variant.
+    pub fn into_transfer(self) -> Option<Transfer> {
+        match self {
+            StoredValue::Transfer(transfer) => Some(transfer),
+            _ => None,
+        }
+    }
+
+    /// Returns the `DeployInfo` if this is a `DeployInfo` variant.
+    pub fn into_deploy_info(self) -> Option<DeployInfo> {
+        match self {
+            StoredValue::DeployInfo(deploy_info) => Some(deploy_info),
+            _ => None,
+        }
+    }
+
+    /// Returns the `EraInfo` if this is an `EraInfo` variant.
+    pub fn into_era_info(self) -> Option<EraInfo> {
+        match self {
+            StoredValue::EraInfo(era_info) => Some(era_info),
+            _ => None,
+        }
+    }
+
+    /// Returns the `Bid` if this is a `Bid` variant.
+    pub fn into_bid(self) -> Option<Bid> {
+        match self {
+            StoredValue::Bid(bid) => Some(*bid),
+            _ => None,
+        }
+    }
+
+    /// Returns the list of `WithdrawPurse`s if this is a `Withdraw` variant.
+    pub fn into_withdraw(self) -> Option<Vec<WithdrawPurse>> {
+        match self {
+            StoredValue::Withdraw(withdraw_purses) => Some(withdraw_purses),
+            _ => None,
+        }
+    }
+
+    /// Returns the list of `UnbondingPurse`s if this is an `Unbonding` variant.
+    pub fn into_unbonding(self) -> Option<Vec<UnbondingPurse>> {
+        match self {
+            StoredValue::Unbonding(unbonding_purses) => Some(unbonding_purses),
+            _ => None,
+        }
+    }
+
+    /// Returns the `AddressableEntity` if this is an `AddressableEntity` variant.
+    pub fn into_addressable_entity(self) -> Option<AddressableEntity> {
+        match self {
+            StoredValue::AddressableEntity(entity) => Some(entity),
             _ => None,
         }
     }

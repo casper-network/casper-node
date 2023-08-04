@@ -23,7 +23,7 @@ use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
 use tracing::{info, warn};
 
-use casper_types::{Approval, Chainspec, Deploy, DeployFootprint, DeployHash, Timestamp};
+use casper_types::{Chainspec, Deploy, DeployApproval, DeployFootprint, DeployHash, Timestamp};
 
 use crate::{
     components::{
@@ -60,7 +60,7 @@ impl ProposedBlock<ClContext> {
 
     fn deploys_and_transfers_iter(
         &self,
-    ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<Approval>)> + '_ {
+    ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<DeployApproval>)> + '_ {
         let deploys = self.value().deploys().iter().map(|dwa| {
             (
                 DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
@@ -109,7 +109,7 @@ pub(crate) struct BlockValidationState {
     appendable_block: AppendableBlock,
     /// The set of approvals contains approvals from deploys that would be finalized with the
     /// block.
-    missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<Approval>>,
+    missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<DeployApproval>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
 }
@@ -187,12 +187,12 @@ where
                 responder,
             }) => {
                 if block.deploy_hashes().count()
-                    > self.chainspec.deploy_config.block_max_deploy_count as usize
+                    > self.chainspec.transaction_config.block_max_deploy_count as usize
                 {
                     return responder.respond(false).ignore();
                 }
                 if block.transfer_hashes().count()
-                    > self.chainspec.deploy_config.block_max_transfer_count as usize
+                    > self.chainspec.transaction_config.block_max_native_count as usize
                 {
                     return responder.respond(false).ignore();
                 }
@@ -216,7 +216,7 @@ where
                     .entry(block)
                     .or_insert(BlockValidationState {
                         appendable_block: AppendableBlock::new(
-                            self.chainspec.deploy_config,
+                            self.chainspec.transaction_config,
                             block_timestamp,
                         ),
                         missing_deploys: block_deploys.clone(),
