@@ -24,8 +24,10 @@ use crate::{
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
+#[rustfmt::skip]
 pub struct AssociatedKeys(
-    #[serde(with = "BTreeMapToArray::<AccountHash, Weight, Labels>")] BTreeMap<AccountHash, Weight>,
+    #[serde(with = "BTreeMapToArray::<AccountHash, Weight, Labels>")]
+    BTreeMap<AccountHash, Weight>,
 );
 
 impl AssociatedKeys {

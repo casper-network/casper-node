@@ -75,7 +75,7 @@ impl BlockExecutionResultsOrChunk {
         }
 
         // If it is V1, we need to construct the `ValueOrChunk` from a `Vec<ExecutionResultV1>` if
-        // it's big enough to need chunked, otherwise we need to use the
+        // it's big enough to need chunking, otherwise we need to use the
         // `Vec<VersionedExecutionResult>` as the `ValueOrChunk::Value`.
         let mut v1_results = Vec::with_capacity(execution_results.len());
         for result in &execution_results {
@@ -90,7 +90,12 @@ impl BlockExecutionResultsOrChunk {
             }
         }
         if v1_results.serialized_length() <= ChunkWithProof::CHUNK_SIZE_BYTES {
-            let value = make_value_or_chunk(execution_results, &block_hash, chunk_index)?;
+            // Avoid using `make_value_or_chunk(execution_results, ..)` as that will chunk if
+            // `v1_results.serialized_length() == ChunkWithProof::CHUNK_SIZE_BYTES`, since
+            // `execution_results.serialized_length()` will definitely be greater than
+            // `ChunkWithProof::CHUNK_SIZE_BYTES` due to the extra tag byte specifying V1 in the
+            // enum `ExecutionResult`.
+            let value = ValueOrChunk::Value(execution_results);
             return Some(BlockExecutionResultsOrChunk {
                 block_hash,
                 value,
@@ -269,7 +274,11 @@ mod specimen_support {
 mod tests {
     use rand::Rng;
 
-    use casper_types::{execution::ExecutionResultV1, testing::TestRng, ChunkWithProof};
+    use casper_types::{
+        execution::{execution_result_v1::ExecutionEffect, ExecutionResultV1},
+        testing::TestRng,
+        ChunkWithProof, TransferAddr,
+    };
 
     use super::*;
     use crate::contract_runtime::compute_execution_results_checksum;
@@ -278,6 +287,49 @@ mod tests {
         v1_execution_results: Vec<&ExecutionResultV1>,
     ) -> ExecutionResultsChecksum {
         ExecutionResultsChecksum::Checkable(v1_execution_results.hash().unwrap())
+    }
+
+    /// Checks that a Vec of `ExecutionResultV1`s which are right at the limit to avoid being
+    /// chunked are still not chunked when constructing a BlockExecutionResultsOrChunk from them
+    /// when they are held as a Vec of `ExecutionResult`s.
+    #[test]
+    fn should_not_chunk_for_v1_at_upper_bound() {
+        let rng = &mut TestRng::new();
+
+        // The serialized_length() of this should be equal to `ChunkWithProof::CHUNK_SIZE_BYTES`
+        let execution_results_v1 = vec![ExecutionResultV1::Failure {
+            effect: ExecutionEffect::default(),
+            transfers: vec![TransferAddr::new([1; 32]); 262143],
+            cost: 2_u64.into(),
+            error_message: "ninebytes".to_string(),
+        }];
+        assert!(
+            execution_results_v1.serialized_length() == ChunkWithProof::CHUNK_SIZE_BYTES,
+            "need execution_results_v1.serialized_length() [{}] to be <= \
+            ChunkWithProof::CHUNK_SIZE_BYTES [{}]",
+            execution_results_v1.serialized_length(),
+            ChunkWithProof::CHUNK_SIZE_BYTES
+        );
+        // The serialized_length() of this should be greater than `ChunkWithProof::CHUNK_SIZE_BYTES`
+        // meaning it would be chunked unless we explicitly avoid chunking it in the
+        // `BlockExecutionResultsOrChunk` constructor.
+        let execution_results = execution_results_v1
+            .iter()
+            .map(|res| ExecutionResult::V1(res.clone()))
+            .collect::<Vec<_>>();
+        assert!(
+            execution_results.serialized_length() > ChunkWithProof::CHUNK_SIZE_BYTES,
+            "need execution_results.serialized_length() [{}] to be > \
+            ChunkWithProof::CHUNK_SIZE_BYTES [{}]",
+            execution_results_v1.serialized_length(),
+            ChunkWithProof::CHUNK_SIZE_BYTES
+        );
+        assert!(execution_results.serialized_length() > ChunkWithProof::CHUNK_SIZE_BYTES);
+
+        let block_hash = BlockHash::random(rng);
+        let value_or_chunk =
+            BlockExecutionResultsOrChunk::new(block_hash, 0, execution_results).unwrap();
+        assert!(matches!(value_or_chunk.value, ValueOrChunk::Value(_)));
     }
 
     #[test]

@@ -30,9 +30,9 @@ pub extern "C" fn call() {
 
     let n: u32 = runtime::get_named_arg("n");
     let mut named_keys = NamedKeys::new();
-    (0..n).for_each(|i| {
+    for i in 0..n {
         named_keys.insert(format!("uref-{}", i), Key::URef(storage::new_uref(0_i32)));
-    });
+    }
     named_keys.insert("n-urefs".to_string(), Key::URef(storage::new_uref(n)));
 
     let (contract_hash, _contract_version) =

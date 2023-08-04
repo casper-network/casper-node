@@ -934,7 +934,10 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
 
     let block_hash = BlockHash::random(&mut harness.rng);
     let block_height = harness.rng.gen();
-    let deploy_hash = DeployHash::random(&mut harness.rng);
+    let deploy = Deploy::random(&mut harness.rng);
+    let deploy_hash = *deploy.hash();
+
+    put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
 
     let mut exec_result_1 = HashMap::new();
     exec_result_1.insert(
@@ -943,10 +946,8 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     );
 
     let mut exec_result_2 = HashMap::new();
-    exec_result_2.insert(
-        deploy_hash,
-        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
-    );
+    let new_exec_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+    exec_result_2.insert(deploy_hash, new_exec_result.clone());
 
     put_execution_results(
         &mut harness,
@@ -956,7 +957,8 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
         exec_result_1,
     );
 
-    // Storing a second execution result for the same deploy on the same block should panic.
+    // Storing a second execution result for the same deploy on the same block should overwrite the
+    // first.
     put_execution_results(
         &mut harness,
         &mut storage,
@@ -964,39 +966,18 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
         block_height,
         exec_result_2,
     );
-}
 
-#[test]
-fn store_identical_execution_results() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let block_hash = BlockHash::random(&mut harness.rng);
-    let block_height = harness.rng.gen();
-    let deploy_hash = DeployHash::random(&mut harness.rng);
-
-    let mut exec_result = HashMap::new();
-    exec_result.insert(
-        deploy_hash,
-        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
-    );
-
-    put_execution_results(
-        &mut harness,
-        &mut storage,
+    let (returned_deploy, returned_exec_info) =
+        get_naive_deploy_and_execution_info(&mut harness, &mut storage, deploy_hash)
+            .expect("missing deploy");
+    let expected_exec_info = Some(DeployExecutionInfo {
         block_hash,
         block_height,
-        exec_result.clone(),
-    );
+        execution_result: Some(new_exec_result),
+    });
 
-    // We should be fine storing the exact same result twice.
-    put_execution_results(
-        &mut harness,
-        &mut storage,
-        block_hash,
-        block_height,
-        exec_result,
-    );
+    assert_eq!(returned_deploy, deploy);
+    assert_eq!(returned_exec_info, expected_exec_info);
 }
 
 /// Example state used in storage.
