@@ -544,32 +544,49 @@ where
                 .map_err(|_| Error::FailedToGetKeys(KeyTag::Bid))?;
             for key in existing_bid_keys {
                 let mut borrow = tracking_copy.borrow_mut();
-
                 if let Some(StoredValue::Bid(BidKind::Unified(existing_bid))) =
                     borrow.get(&key).map_err(|err| err.into())?
                 {
+                    // prune away the original record, we don't need it anymore
+                    borrow.prune(key);
+
+                    if existing_bid.staked_amount().is_zero() {
+                        // the previous logic enforces unbonding all delegators of
+                        // a validator that reduced their personal stake to 0 (and we have
+                        // various existent tests that prove this), thus there is no need
+                        // to handle the complicated hypothetical case of one or more
+                        // delegator stakes being > 0 if the validator stake is 0.
+                        //
+                        // tl;dr this is a "zombie" bid and we don't need to continue
+                        // carrying it forward at tip.
+                        continue;
+                    }
+
                     let validator_public_key = existing_bid.validator_public_key();
+                    let validator_bid_addr = BidAddr::from(validator_public_key.clone());
+                    let validator_bid = ValidatorBid::from(*existing_bid.clone());
+                    borrow.write(
+                        validator_bid_addr.into(),
+                        StoredValue::Bid(BidKind::Validator(Box::new(validator_bid))),
+                    );
+
                     let delegators = existing_bid.delegators().clone();
                     for (_, delegator) in delegators {
                         let delegator_bid_addr = BidAddr::new_from_public_keys(
                             validator_public_key,
                             Some(delegator.delegator_public_key()),
                         );
-
-                        borrow.write(
-                            delegator_bid_addr.into(),
-                            StoredValue::Bid(BidKind::Delegator(Box::new(delegator))),
-                        );
+                        // the previous code was removing a delegator bid from the embedded
+                        // collection within their validator's bid when the delegator fully
+                        // unstaked, so technically we don't need to check for 0 balance here.
+                        // However, since it is low effort to check, doing it just to be sure.
+                        if !delegator.staked_amount().is_zero() {
+                            borrow.write(
+                                delegator_bid_addr.into(),
+                                StoredValue::Bid(BidKind::Delegator(Box::new(delegator))),
+                            );
+                        }
                     }
-
-                    let validator_bid_addr = BidAddr::from(validator_public_key.clone());
-                    let validator_bid = ValidatorBid::from(*existing_bid);
-                    borrow.write(
-                        validator_bid_addr.into(),
-                        StoredValue::Bid(BidKind::Validator(Box::new(validator_bid))),
-                    );
-                    // prune away the original record
-                    borrow.prune(key);
                 }
             }
         }
@@ -628,7 +645,7 @@ where
 
         // Validate the state root hash just to make sure we can safely short circuit in case the
         // list of keys is empty.
-        let tc = match self.tracking_copy(pre_state_hash)? {
+        let tracking_copy = match self.tracking_copy(pre_state_hash)? {
             None => return Ok(PruneResult::RootNotFound),
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
         };
@@ -643,11 +660,11 @@ where
         }
 
         for key in keys_to_delete {
-            tc.borrow_mut().prune(*key)
+            tracking_copy.borrow_mut().prune(*key)
         }
 
-        let execution_effect = tc.borrow().effect();
-        let execution_journal = tc.borrow().execution_journal();
+        let execution_effect = tracking_copy.borrow().effect();
+        let execution_journal = tracking_copy.borrow().execution_journal();
 
         let post_state_hash = self
             .state
