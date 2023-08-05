@@ -107,11 +107,8 @@ fn should_step() {
     builder.step(step_request).unwrap();
 
     let bids_after_slashing = builder.get_bids();
-    let account_1_bid = bids_after_slashing.validator_bid(&ACCOUNT_1_PK).unwrap();
-    assert!(account_1_bid.inactive());
-    assert!(account_1_bid.staked_amount().is_zero());
+    assert!(bids_after_slashing.validator_bid(&ACCOUNT_1_PK).is_none());
 
-    let bids_after_slashing = builder.get_bids();
     assert_ne!(
         bids_before_slashing, bids_after_slashing,
         "bids table should be different before and after slashing"

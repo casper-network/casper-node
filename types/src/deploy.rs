@@ -1105,6 +1105,7 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 /// signing verification.
 fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
     if deploy.approvals.is_empty() {
+        #[cfg(any(feature = "std", test))]
         warn!(?deploy, "deploy has no approvals");
         return Err(DeployConfigurationFailure::EmptyApprovals);
     }
@@ -1113,6 +1114,7 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
 
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(deploy.hash, approval.signature(), approval.signer()) {
+            #[cfg(any(feature = "std", test))]
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
             return Err(DeployConfigurationFailure::InvalidApproval { index, error });
         }

@@ -64,7 +64,7 @@ fn should_run_regression_with_already_initialized_fixed_schedule() {
     let (builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(LMDB_FIXTURE_NAME);
 
-    let bid_addr = BidAddr::from(*DEFAULT_PROPOSER_ADDR);
+    let bid_addr = BidAddr::legacy(*DEFAULT_PROPOSER_ADDR);
 
     let stored_value = builder.query(None, bid_addr.into(), &[]).unwrap();
     let bid = stored_value.as_bid_kind().expect("expected BidKind");

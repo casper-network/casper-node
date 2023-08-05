@@ -4,8 +4,7 @@ use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest,
-    ProtocolVersion,
+    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash,Digest, KeyTag, ProtocolVersion,
 };
 
 use crate::{
@@ -84,9 +83,9 @@ pub enum Error {
     /// An attempt to push to the runtime stack while already at the maximum height.
     #[error("Runtime stack overflow")]
     RuntimeStackOverflow,
-    /// Failed to get the set of Key::Withdraw from global state.
-    #[error("Failed to get withdraw keys")]
-    FailedToGetWithdrawKeys,
+    /// Failed to get the set of keys matching the specified tag.
+    #[error("Failed to get keys of kind: {0:?}")]
+    FailedToGetKeys(KeyTag),
     /// Failed to get the purses stored under Key::Withdraw
     #[error("Failed to get stored values under withdraws")]
     FailedToGetStoredWithdraws,

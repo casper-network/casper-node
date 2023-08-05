@@ -110,11 +110,8 @@ fn should_not_create_any_purse() {
     } = builder.step(step_request_1).expect("should execute step");
 
     let bids_after_slashing = builder.get_bids();
-    let account_1_bid = bids_after_slashing
-        .validator_bid(&ACCOUNT_1_PUBLIC_KEY)
-        .unwrap();
-    assert!(account_1_bid.inactive());
-    assert!(account_1_bid.staked_amount().is_zero());
+    let account_1_bid = bids_after_slashing.validator_bid(&ACCOUNT_1_PUBLIC_KEY);
+    assert!(account_1_bid.is_none());
 
     let bids_after_slashing = builder.get_bids();
     assert_ne!(

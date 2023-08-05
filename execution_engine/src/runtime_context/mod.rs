@@ -176,7 +176,6 @@ where
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
     ) -> Self {
-        // debug_assert!(base_key != self.base_key);
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
@@ -596,7 +595,7 @@ where
         self.tracking_copy
             .borrow_mut()
             .reader()
-            .keys_with_prefix(self.correlation_id, prefix)
+            .keys_with_prefix(prefix)
             .map_err(Into::into)
     }
 
@@ -908,6 +907,17 @@ where
     {
         let amount: Gas = call_cost.into();
         self.charge_gas(amount)
+    }
+
+    /// Prune a key from the global state.
+    ///
+    /// Use with caution - there is no validation done as the key is assumed to be validated
+    /// already.
+    pub(crate) fn prune_gs_unsafe<K>(&mut self, key: K)
+    where
+        K: Into<Key>,
+    {
+        self.tracking_copy.borrow_mut().prune(key.into());
     }
 
     /// Writes data to global state with a measurement.

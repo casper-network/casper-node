@@ -3011,6 +3011,10 @@ where
         Ok(Ok(()))
     }
 
+    fn prune(&mut self, key: Key) {
+        self.context.prune_gs_unsafe(key);
+    }
+
     pub(crate) fn migrate_contract_and_contract_package(
         &mut self,
         contract_hash: ContractHash,

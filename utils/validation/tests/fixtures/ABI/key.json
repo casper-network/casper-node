@@ -65,7 +65,7 @@
         ],
         "output": "060a55eff764d397fea51e66daff6781f8ab4e69cc1deb19b9f27241f9b7f0e56c"
     },
-    "Bid": {
+    "ValidatorBid": {
         "input": [
             [
                 "Key",
@@ -74,7 +74,18 @@
                 }
             ]
         ],
-        "output": "07a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a22"
+        "output": "0701a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a22"
+    },
+    "DelegatorBid": {
+        "input": [
+            [
+                "Key",
+                {
+                    "Bid": "bid-a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a22a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a7a"
+                }
+            ]
+        ],
+        "output": "0702a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a22a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a7a"
     },
     "Withdraw": {
         "input": [

@@ -43,7 +43,6 @@ use casper_storage::{
             StateReader,
         },
         trie::{merkle_proof::TrieMerkleProof, TrieRaw},
-        trie_store::operations::DeleteResult,
     },
 };
 use casper_types::{
@@ -55,10 +54,10 @@ use casper_types::{
     },
     system::{
         auction::{
-            EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-            ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_VALIDATOR,
+            ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment,
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
@@ -452,7 +451,7 @@ where
             let withdraw_keys = tracking_copy
                 .borrow_mut()
                 .get_keys(&KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
+                .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?;
 
             let (unbonding_delay, current_era_id) = {
                 let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
@@ -491,7 +490,7 @@ where
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
                     .read(&key)
-                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                    .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
                     .ok_or(Error::FailedToGetWithdrawPurses)?
@@ -537,8 +536,45 @@ where
             tracking_copy.borrow_mut().write(unbonding_delay_key, value);
         }
 
-        // Perform global state migrations that require state.
+        // One time upgrade of existing bids
+        {
+            let existing_bid_keys = tracking_copy
+                .borrow_mut()
+                .get_keys(&KeyTag::Bid)
+                .map_err(|_| Error::FailedToGetKeys(KeyTag::Bid))?;
+            for key in existing_bid_keys {
+                let mut borrow = tracking_copy.borrow_mut();
 
+                if let Some(StoredValue::Bid(BidKind::Unified(existing_bid))) =
+                    borrow.get(&key).map_err(|err| err.into())?
+                {
+                    let validator_public_key = existing_bid.validator_public_key();
+                    let delegators = existing_bid.delegators().clone();
+                    for (_, delegator) in delegators {
+                        let delegator_bid_addr = BidAddr::new_from_public_keys(
+                            validator_public_key,
+                            Some(delegator.delegator_public_key()),
+                        );
+
+                        borrow.write(
+                            delegator_bid_addr.into(),
+                            StoredValue::Bid(BidKind::Delegator(Box::new(delegator))),
+                        );
+                    }
+
+                    let validator_bid_addr = BidAddr::from(validator_public_key.clone());
+                    let validator_bid = ValidatorBid::from(*existing_bid);
+                    borrow.write(
+                        validator_bid_addr.into(),
+                        StoredValue::Bid(BidKind::Validator(Box::new(validator_bid))),
+                    );
+                    // prune away the original record
+                    borrow.prune(key);
+                }
+            }
+        }
+
+        // Perform global state migrations that require state.
         if let Some(activation_point) = upgrade_config.activation_point() {
             // The highest stored era is the immediate predecessor of the activation point.
             let highest_era_info_id = activation_point.saturating_sub(1);
@@ -576,7 +612,7 @@ where
         // commit
         let post_state_hash = self
             .state
-            .commit(pre_state_hash, execution_effect.transforms.to_owned())
+            .commit(pre_state_hash, execution_effect.transforms.clone())
             .map_err(Into::into)?;
 
         // return result and effects
@@ -588,30 +624,40 @@ where
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
     pub fn commit_prune(&self, prune_config: PruneConfig) -> Result<PruneResult, Error> {
-        let state_root_hash = prune_config.pre_state_hash();
+        let pre_state_hash = prune_config.pre_state_hash();
 
         // Validate the state root hash just to make sure we can safely short circuit in case the
         // list of keys is empty.
-        match self.tracking_copy(state_root_hash)? {
+        let tc = match self.tracking_copy(pre_state_hash)? {
             None => return Ok(PruneResult::RootNotFound),
-            Some(_tracking_copy) => {}
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
         };
 
         let keys_to_delete = prune_config.keys_to_prune();
         if keys_to_delete.is_empty() {
+            // effectively a noop
             return Ok(PruneResult::Success {
-                post_state_hash: state_root_hash,
+                post_state_hash: pre_state_hash,
+                execution_journal: ExecutionJournal::default(),
             });
         }
 
-        match self.state.delete_keys(state_root_hash, keys_to_delete) {
-            Ok(DeleteResult::Deleted(post_state_hash)) => {
-                Ok(PruneResult::Success { post_state_hash })
-            }
-            Ok(DeleteResult::DoesNotExist) => Ok(PruneResult::DoesNotExist),
-            Ok(DeleteResult::RootNotFound) => Ok(PruneResult::RootNotFound),
-            Err(error) => Err(Error::Exec(error.into())),
+        for key in keys_to_delete {
+            tc.borrow_mut().prune(*key)
         }
+
+        let execution_effect = tc.borrow().effect();
+        let execution_journal = tc.borrow().execution_journal();
+
+        let post_state_hash = self
+            .state
+            .commit(pre_state_hash, execution_effect.transforms)
+            .map_err(Into::<execution::Error>::into)?;
+
+        Ok(PruneResult::Success {
+            post_state_hash,
+            execution_journal,
+        })
     }
 
     /// Creates a new tracking copy instance.
@@ -2579,7 +2625,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::MissingSystemContractHash(_)
             | Error::MissingChecksumRegistry
             | Error::RuntimeStackOverflow
-            | Error::FailedToGetWithdrawKeys
+            | Error::FailedToGetKeys(_)
             | Error::FailedToGetStoredWithdraws
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay

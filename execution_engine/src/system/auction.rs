@@ -12,7 +12,7 @@ use casper_types::{
     account::AccountHash,
     system::auction::{
         BidAddr, BidKind, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
-        ValidatorBid, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
+        UnbondingPurse, ValidatorBid, ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, PublicKey, U512,
 };
@@ -80,17 +80,19 @@ pub trait Auction:
             return Err(Error::InvalidContext.into());
         }
 
-        let bid_key = BidAddr::from(public_key.clone()).into();
-        let (target, validator_bid) =
-            if let Some(BidKind::Validator(mut validator_bid)) = self.read_bid(&bid_key)? {
-                validator_bid.increase_stake(amount)?;
-                (*validator_bid.bonding_purse(), validator_bid)
-            } else {
-                let bonding_purse = self.create_purse()?;
-                let validator_bid =
-                    ValidatorBid::unlocked(public_key, bonding_purse, amount, delegation_rate);
-                (bonding_purse, Box::new(validator_bid))
-            };
+        let validator_bid_key = BidAddr::from(public_key.clone()).into();
+        let (target, validator_bid) = if let Some(BidKind::Validator(mut validator_bid)) =
+            self.read_bid(&validator_bid_key)?
+        {
+            validator_bid.increase_stake(amount)?;
+            validator_bid.with_delegation_rate(delegation_rate);
+            (*validator_bid.bonding_purse(), validator_bid)
+        } else {
+            let bonding_purse = self.create_purse()?;
+            let validator_bid =
+                ValidatorBid::unlocked(public_key, bonding_purse, amount, delegation_rate);
+            (bonding_purse, Box::new(validator_bid))
+        };
 
         let source = self.get_main_purse()?;
         self.mint_transfer_direct(
@@ -109,7 +111,7 @@ pub trait Auction:
         })?;
 
         let updated_amount = validator_bid.staked_amount();
-        self.write_bid(bid_key, BidKind::Validator(validator_bid))?;
+        self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
         Ok(updated_amount)
     }
 
@@ -134,7 +136,8 @@ pub trait Auction:
             return Err(Error::InvalidContext);
         }
 
-        let validator_bid_key = BidAddr::from(public_key.clone()).into();
+        let validator_bid_addr = BidAddr::from(public_key.clone());
+        let validator_bid_key = validator_bid_addr.into();
         let mut validator_bid = read_validator_bid(self, &validator_bid_key)?;
 
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
@@ -166,16 +169,14 @@ pub trait Auction:
                     None,
                 )?;
                 delegator.decrease_stake(delegator.staked_amount(), era_end_timestamp_millis)?;
-                self.write_bid(
-                    BidAddr::from(delegator_public_key).into(),
-                    BidKind::Delegator(Box::new(delegator)),
-                )?;
+                let delegator_bid_addr =
+                    BidAddr::new_from_public_keys(&public_key, Some(&delegator_public_key));
+                self.prune_bid(delegator_bid_addr)
             }
-            // Deactivate validator's bid
-            validator_bid.deactivate();
+            self.prune_bid(validator_bid_addr);
+        } else {
+            self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
         }
-
-        self.write_bid(validator_bid_key, BidKind::Validator(validator_bid))?;
         Ok(updated_stake)
     }
 
@@ -233,8 +234,9 @@ pub trait Auction:
         let validator_bid_key = BidAddr::from(validator_public_key.clone()).into();
         let _ = read_validator_bid(self, &validator_bid_key)?;
 
-        let delegator_bid_key = BidAddr::from(delegator_public_key.clone()).into();
-        let mut delegator_bid = read_delegator_bid(self, &delegator_bid_key)?;
+        let delegator_bid_addr =
+            BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key));
+        let mut delegator_bid = read_delegator_bid(self, &delegator_bid_addr.into())?;
         detail::create_unbonding_purse(
             self,
             validator_public_key,
@@ -247,9 +249,9 @@ pub trait Auction:
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
         let new_amount = delegator_bid.decrease_stake(amount, era_end_timestamp_millis)?;
         if new_amount == U512::zero() {
-            // todo!("important -- implement prune");
+            self.prune_bid(delegator_bid_addr);
         };
-        self.write_bid(delegator_bid_key, BidKind::Delegator(delegator_bid))?;
+        self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
         Ok(new_amount)
     }
 
@@ -285,11 +287,10 @@ pub trait Auction:
         let validator_addr = BidAddr::from(validator_public_key.clone());
         let _ = read_validator_bid(self, &validator_addr.into())?;
 
-        let delegator_bid_key =
-            BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key))
-                .into();
+        let delegator_bid_addr =
+            BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key));
 
-        let mut delegator_bid = read_delegator_bid(self, &delegator_bid_key)?;
+        let mut delegator_bid = read_delegator_bid(self, &delegator_bid_addr.into())?;
         detail::create_unbonding_purse(
             self,
             validator_public_key,
@@ -302,9 +303,9 @@ pub trait Auction:
         let era_end_timestamp_millis = detail::get_era_end_timestamp_millis(self)?;
         let new_amount = delegator_bid.decrease_stake(amount, era_end_timestamp_millis)?;
         if new_amount == U512::zero() {
-            // todo!("important -- implement prune");
+            self.prune_bid(delegator_bid_addr);
         };
-        self.write_bid(delegator_bid_key, BidKind::Delegator(delegator_bid))?;
+        self.write_bid(delegator_bid_addr.into(), BidKind::Delegator(delegator_bid))?;
 
         Ok(new_amount)
     }
@@ -313,6 +314,22 @@ pub trait Auction:
     ///
     /// This can be only invoked through a system call.
     fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
+        fn unbonds(
+            validator_public_key: &PublicKey,
+            unbonding_purses: Vec<UnbondingPurse>,
+        ) -> (U512, Vec<UnbondingPurse>) {
+            let mut burned_amount = U512::zero();
+            let mut new_unbonding_purses: Vec<UnbondingPurse> = vec![];
+            for unbonding_purse in unbonding_purses {
+                if unbonding_purse.validator_public_key() != validator_public_key {
+                    new_unbonding_purses.push(unbonding_purse);
+                    continue;
+                }
+                burned_amount += *unbonding_purse.amount();
+            }
+            (burned_amount, new_unbonding_purses)
+        }
+
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
@@ -320,27 +337,42 @@ pub trait Auction:
         let mut burned_amount: U512 = U512::zero();
 
         for validator_public_key in validator_public_keys {
-            let bid_addr = BidAddr::from(validator_public_key.clone());
+            let validator_bid_addr = BidAddr::from(validator_public_key.clone());
             // Burn stake, deactivate
-            if let Some(BidKind::Validator(mut validator_bid)) = self.read_bid(&bid_addr.into())? {
+            if let Some(BidKind::Validator(validator_bid)) =
+                self.read_bid(&validator_bid_addr.into())?
+            {
                 burned_amount += validator_bid.staked_amount();
-                *validator_bid.staked_amount_mut() = U512::zero();
-                validator_bid.deactivate();
+                self.prune_bid(validator_bid_addr);
 
                 // Also slash delegator stakes when deactivating validator bid.
-                let prefix = bid_addr.delegators_prefix()?;
+                let prefix = validator_bid_addr.delegators_prefix()?;
                 let delegator_keys = self.get_keys_by_prefix(&prefix)?;
                 for delegator_key in delegator_keys {
-                    if let Some(BidKind::Delegator(mut delegator_bid)) =
+                    if let Some(BidKind::Delegator(delegator_bid)) =
                         self.read_bid(&delegator_key)?
                     {
                         burned_amount += delegator_bid.staked_amount();
-                        *delegator_bid.staked_amount_mut() = U512::zero();
-                        self.write_bid(delegator_key, BidKind::Delegator(delegator_bid))?;
+                        let delegator_bid_addr = BidAddr::new_from_public_keys(
+                            &validator_public_key,
+                            Some(delegator_bid.delegator_public_key()),
+                        );
+                        self.prune_bid(delegator_bid_addr);
+
+                        let unbonding_purses = self.read_unbond(&AccountHash::from(
+                            delegator_bid.delegator_public_key(),
+                        ))?;
+                        if unbonding_purses.is_empty() {
+                            continue;
+                        }
+                        let (burned, remaining) = unbonds(&validator_public_key, unbonding_purses);
+                        burned_amount += burned;
+                        self.write_unbond(
+                            AccountHash::from(&delegator_bid.delegator_public_key().clone()),
+                            remaining,
+                        )?;
                     }
                 }
-
-                self.write_bid(bid_addr.into(), BidKind::Validator(validator_bid))?;
             }
 
             // Update unbonding entries for given validator
@@ -348,12 +380,9 @@ pub trait Auction:
             if unbonding_purses.is_empty() {
                 continue;
             }
-
-            burned_amount += unbonding_purses
-                .into_iter()
-                .map(|unbonding_purse| *unbonding_purse.amount())
-                .sum();
-            self.write_unbond(AccountHash::from(&validator_public_key.clone()), Vec::new())?;
+            let (burned, remaining) = unbonds(&validator_public_key, unbonding_purses);
+            burned_amount += burned;
+            self.write_unbond(AccountHash::from(&validator_public_key.clone()), remaining)?;
         }
 
         self.reduce_total_supply(burned_amount)?;
@@ -382,7 +411,7 @@ pub trait Auction:
         let auction_delay = detail::get_auction_delay(self)?;
         let snapshot_size = auction_delay as usize + 1;
         let mut era_id: EraId = detail::get_era_id(self)?;
-        let mut validator_bids = detail::get_bids(self)?;
+        let mut validator_bids = detail::get_validator_bids(self)?;
 
         // Process unbond requests
         detail::process_unbond_requests(
@@ -489,7 +518,7 @@ pub trait Auction:
         detail::set_era_end_timestamp_millis(self, era_end_timestamp_millis)?;
 
         if bids_modified {
-            detail::set_bids(self, validator_bids)?;
+            detail::set_validator_bids(self, validator_bids)?;
         }
 
         Ok(())
@@ -601,7 +630,7 @@ pub trait Auction:
             return Err(Error::InvalidContext);
         }
 
-        let key = provided_account_hash.into();
+        let key = BidAddr::from(validator_public_key).into();
         if let Some(BidKind::Validator(mut validator_bid)) = self.read_bid(&key)? {
             validator_bid.activate();
             self.write_bid(key, BidKind::Validator(validator_bid))?;

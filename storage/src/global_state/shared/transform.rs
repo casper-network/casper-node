@@ -13,8 +13,31 @@ use num::traits::{AsPrimitive, WrappingAdd};
 use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
+    CLType, CLTyped, CLValue, CLValueError, Key, StoredValue, StoredValueTypeMismatch, U128, U256,
+    U512,
 };
+
+#[derive(PartialEq, Eq, Debug, Clone, DataSize)]
+pub enum TransformInstruction {
+    Store(StoredValue),
+    Prune(Key),
+}
+
+impl TransformInstruction {
+    pub(crate) fn store(stored_value: StoredValue) -> Self {
+        Self::Store(stored_value)
+    }
+
+    pub(crate) fn prune(key: Key) -> Self {
+        Self::Prune(key)
+    }
+}
+
+impl From<StoredValue> for TransformInstruction {
+    fn from(value: StoredValue) -> Self {
+        TransformInstruction::Store(value)
+    }
+}
 
 /// Error type for applying and combining transforms. A `TypeMismatch`
 /// occurs when a transform cannot be applied because the types are
@@ -89,6 +112,11 @@ pub enum Transform {
     ///
     /// This transform assumes that the existing stored value is either an Account or a Contract.
     AddKeys(NamedKeys),
+    /// Removes the pathing to the global state entry of the specified key. The pruned element
+    /// remains reachable from previously generated global state root hashes, but will not be
+    /// included in the next generated global state root hash and subsequent state accumulated
+    /// from it.
+    Prune(Key),
     /// Represents the case where applying a transform would cause an error.
     #[data_size(skip)]
     Failure(Error),
@@ -115,6 +143,7 @@ macro_rules! from_try_from_impl {
     };
 }
 
+from_try_from_impl!(Key, Prune);
 from_try_from_impl!(StoredValue, Write);
 from_try_from_impl!(i32, AddInt32);
 from_try_from_impl!(u64, AddUInt64);
@@ -126,7 +155,7 @@ from_try_from_impl!(Error, Failure);
 
 /// Attempts a wrapping addition of `to_add` to `stored_value`, assuming `stored_value` is
 /// compatible with type `Y`.
-fn wrapping_addition<Y>(stored_value: StoredValue, to_add: Y) -> Result<StoredValue, Error>
+fn wrapping_addition<Y>(stored_value: StoredValue, to_add: Y) -> Result<TransformInstruction, Error>
 where
     Y: AsPrimitive<i32>
         + AsPrimitive<i64>
@@ -157,24 +186,29 @@ where
 }
 
 /// Attempts a wrapping addition of `to_add` to the value represented by `cl_value`.
-fn do_wrapping_addition<X, Y>(cl_value: CLValue, to_add: Y) -> Result<StoredValue, Error>
+fn do_wrapping_addition<X, Y>(cl_value: CLValue, to_add: Y) -> Result<TransformInstruction, Error>
 where
     X: WrappingAdd + CLTyped + ToBytes + FromBytes + Copy + 'static,
     Y: AsPrimitive<X>,
 {
     let x: X = cl_value.into_t()?;
     let result = x.wrapping_add(&(to_add.as_()));
-    Ok(StoredValue::CLValue(CLValue::from_t(result)?))
+    let stored_value = StoredValue::CLValue(CLValue::from_t(result)?);
+    Ok(TransformInstruction::store(stored_value))
 }
 
 impl Transform {
     /// Applies the transformation on a specified stored value instance.
     ///
     /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant.
-    pub fn apply(self, stored_value: StoredValue) -> Result<StoredValue, Error> {
+    pub fn apply(self, stored_value: StoredValue) -> Result<TransformInstruction, Error> {
+        fn store(sv: StoredValue) -> TransformInstruction {
+            TransformInstruction::Store(sv)
+        }
         match self {
-            Transform::Identity => Ok(stored_value),
-            Transform::Write(new_value) => Ok(new_value),
+            Transform::Identity => Ok(store(stored_value)),
+            Transform::Write(new_value) => Ok(store(new_value)),
+            Transform::Prune(key) => Ok(TransformInstruction::prune(key)),
             Transform::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
             Transform::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
             Transform::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
@@ -183,7 +217,7 @@ impl Transform {
             Transform::AddKeys(mut keys) => match stored_value {
                 StoredValue::AddressableEntity(mut entity) => {
                     entity.named_keys_append(&mut keys);
-                    Ok(StoredValue::AddressableEntity(entity))
+                    Ok(store(StoredValue::AddressableEntity(entity)))
                 }
                 StoredValue::Account(_) | StoredValue::Contract(_) => Err(Error::Deprecated),
                 StoredValue::CLValue(cl_value) => {
@@ -272,6 +306,8 @@ impl Add for Transform {
         match (self, other) {
             (a, Transform::Identity) => a,
             (Transform::Identity, b) => b,
+            (a @ Transform::Prune(_), _) => a,
+            (_, b @ Transform::Prune(_)) => b,
             (a @ Transform::Failure(_), _) => a,
             (_, b @ Transform::Failure(_)) => b,
             (_, b @ Transform::Write(_)) => b,
@@ -279,7 +315,8 @@ impl Add for Transform {
                 // second transform changes value being written
                 match b.apply(v) {
                     Err(error) => Transform::Failure(error),
-                    Ok(new_value) => Transform::Write(new_value),
+                    Ok(TransformInstruction::Store(new_value)) => Transform::Write(new_value),
+                    Ok(TransformInstruction::Prune(key)) => Transform::Prune(key),
                 }
             }
             (Transform::AddInt32(i), b) => match b {
@@ -343,6 +380,7 @@ impl From<&Transform> for casper_types::Transform {
     fn from(transform: &Transform) -> Self {
         match transform {
             Transform::Identity => casper_types::Transform::Identity,
+            Transform::Prune(key) => casper_types::Transform::Prune(*key),
             Transform::Write(StoredValue::CLValue(cl_value)) => {
                 casper_types::Transform::WriteCLValue(cl_value.clone())
             }
@@ -491,8 +529,14 @@ mod tests {
         let transform_overflow = Transform::AddInt32(max) + Transform::AddInt32(1);
         let transform_underflow = Transform::AddInt32(min) + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow.expect("Unexpected overflow"), min_value);
-        assert_eq!(apply_underflow.expect("Unexpected underflow"), max_value);
+        assert_eq!(
+            apply_overflow.expect("Unexpected overflow"),
+            TransformInstruction::store(min_value)
+        );
+        assert_eq!(
+            apply_underflow.expect("Unexpected underflow"),
+            TransformInstruction::store(max_value)
+        );
 
         assert_eq!(transform_overflow, min.into());
         assert_eq!(transform_underflow, max.into());
@@ -525,9 +569,9 @@ mod tests {
         let transform_overflow_uint = max_transform + one_transform;
         let transform_underflow = min_transform + Transform::AddInt32(-1);
 
-        assert_eq!(apply_overflow, Ok(zero_value.clone()));
-        assert_eq!(apply_overflow_uint, Ok(zero_value));
-        assert_eq!(apply_underflow, Ok(max_value));
+        assert_eq!(apply_overflow, Ok(zero_value.clone().into()));
+        assert_eq!(apply_overflow_uint, Ok(zero_value.into()));
+        assert_eq!(apply_underflow, Ok(max_value.into()));
 
         assert_eq!(transform_overflow, zero.into());
         assert_eq!(transform_overflow_uint, zero.into());
@@ -638,12 +682,16 @@ mod tests {
             let current = StoredValue::CLValue(
                 CLValue::from_t(current_value).expect("should create CLValue"),
             );
-            let result =
-                wrapping_addition(current, to_add).expect("wrapping addition should succeed");
-            CLValue::try_from(result)
-                .expect("should be CLValue")
-                .into_t()
-                .expect("should parse to X")
+            if let TransformInstruction::Store(result) =
+                wrapping_addition(current, to_add).expect("wrapping addition should succeed")
+            {
+                CLValue::try_from(result)
+                    .expect("should be CLValue")
+                    .into_t()
+                    .expect("should parse to X")
+            } else {
+                panic!("expected TransformInstruction::Store");
+            }
         }
 
         // Adding to i32

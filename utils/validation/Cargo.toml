@@ -7,13 +7,14 @@ edition = "2018"
 [dependencies]
 anyhow = "1"
 base16 = "0.2.1"
-casper-types = { path = "../../types" }
+casper-types = { path = "../../types", features = ["testing"] }
 clap = { version ="3.0.0-rc.0", features = ["derive"] }
 derive_more = "0.99.13"
 hex = { version = "0.4.2", features = ["serde"] }
 serde = "1"
 serde_json = "1"
 thiserror = "1.0.18"
+rand = { version = "0.8.3", default-features = false, features = ["small_rng", "std_rng"] }
 
 [[test]]
 name = "validation_test"

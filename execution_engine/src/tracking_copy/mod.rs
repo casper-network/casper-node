@@ -17,7 +17,7 @@ use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
 use casper_storage::global_state::{
-    shared::transform::{self, Transform},
+    shared::transform::{self, Transform, TransformInstruction},
     state::StateReader,
     trie::merkle_proof::TrieMerkleProof,
 };
@@ -134,6 +134,7 @@ pub struct TrackingCopyCache<M> {
     current_cache_size: usize,
     reads_cached: LinkedHashMap<Key, StoredValue>,
     muts_cached: HashMap<Key, StoredValue>,
+    prunes_cached: HashSet<Key>,
     key_tag_reads_cached: LinkedHashMap<KeyTag, BTreeSet<Key>>,
     key_tag_muts_cached: HashMap<KeyTag, BTreeSet<Key>>,
     meter: M,
@@ -152,6 +153,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             muts_cached: HashMap::new(),
             key_tag_reads_cached: LinkedHashMap::new(),
             key_tag_muts_cached: HashMap::new(),
+            prunes_cached: HashSet::new(),
             meter,
         }
     }
@@ -190,6 +192,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 
     /// Inserts `key` and `value` pair to Write/Add cache.
     pub fn insert_write(&mut self, key: Key, value: StoredValue) {
+        self.prunes_cached.remove(&key);
         self.muts_cached.insert(key, value);
 
         let key_set = self
@@ -200,8 +203,18 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
         key_set.insert(key);
     }
 
+    /// Inserts `key` and `value` pair to Write/Add cache.
+    pub fn insert_prune(&mut self, key: Key) {
+        self.prunes_cached.insert(key);
+    }
+
     /// Gets value from `key` in the cache.
     pub fn get(&mut self, key: &Key) -> Option<&StoredValue> {
+        if self.prunes_cached.get(key).is_some() {
+            // the item is marked for pruning and therefore
+            // is no longer accessible.
+            return None;
+        }
         if let Some(value) = self.muts_cached.get(key) {
             return Some(value);
         };
@@ -340,6 +353,13 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         self.journal.push((normalized_key, Transform::Write(value)));
     }
 
+    /// Prunes a `key`.
+    pub(crate) fn prune(&mut self, key: Key) {
+        let normalized_key = key.normalize();
+        self.cache.insert_prune(normalized_key);
+        self.journal.push((normalized_key, Transform::Prune(key)));
+    }
+
     /// Ok(None) represents missing key to which we want to "add" some value.
     /// Ok(Some(unit)) represents successful operation.
     /// Err(error) is reserved for unexpected errors when accessing global
@@ -399,8 +419,13 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         };
 
         match transform.clone().apply(current_value) {
-            Ok(new_value) => {
+            Ok(TransformInstruction::Store(new_value)) => {
                 self.cache.insert_write(normalized_key, new_value);
+                self.journal.push((normalized_key, transform));
+                Ok(AddResult::Success)
+            }
+            Ok(TransformInstruction::Prune(_)) => {
+                self.cache.insert_prune(normalized_key);
                 self.journal.push((normalized_key, transform));
                 Ok(AddResult::Success)
             }

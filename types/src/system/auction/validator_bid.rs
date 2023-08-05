@@ -11,6 +11,7 @@ use crate::{
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
+use crate::system::auction::Bid;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
@@ -286,6 +287,19 @@ impl FromBytes for ValidatorBid {
     }
 }
 
+impl From<Bid> for ValidatorBid {
+    fn from(bid: Bid) -> Self {
+        ValidatorBid {
+            validator_public_key: bid.validator_public_key().clone(),
+            bonding_purse: *bid.bonding_purse(),
+            staked_amount: *bid.staked_amount(),
+            delegation_rate: *bid.delegation_rate(),
+            vesting_schedule: bid.vesting_schedule().cloned(),
+            inactive: bid.inactive(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -302,7 +316,7 @@ mod tests {
             ),
             bonding_purse: URef::new([42; 32], AccessRights::READ_ADD_WRITE),
             staked_amount: U512::one(),
-            delegation_rate: DelegationRate::max_value(),
+            delegation_rate: DelegationRate::MAX,
             vesting_schedule: Some(VestingSchedule::default()),
             inactive: false,
         };

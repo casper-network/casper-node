@@ -40,7 +40,7 @@ where
     provider.write(uref, value)
 }
 
-pub fn get_bids<P>(provider: &mut P) -> Result<ValidatorBids, Error>
+pub fn get_validator_bids<P>(provider: &mut P) -> Result<ValidatorBids, Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -65,7 +65,7 @@ where
     Ok(ret)
 }
 
-pub fn set_bids<P>(provider: &mut P, validators: ValidatorBids) -> Result<(), Error>
+pub fn set_validator_bids<P>(provider: &mut P, validators: ValidatorBids) -> Result<(), Error>
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
@@ -262,8 +262,8 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         return Err(Error::UnbondTooLarge);
     }
 
-    let validator_account_hash = AccountHash::from(&validator_public_key);
-    let mut unbonding_purses = provider.read_unbond(&validator_account_hash)?;
+    let account_hash = AccountHash::from(&unbonder_public_key);
+    let mut unbonding_purses = provider.read_unbond(&account_hash)?;
     let era_of_creation = provider.read_era_id()?;
     let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
@@ -274,7 +274,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         new_validator,
     );
     unbonding_purses.push(new_unbonding_purse);
-    provider.write_unbond(validator_account_hash, unbonding_purses)?;
+    provider.write_unbond(account_hash, unbonding_purses)?;
 
     Ok(())
 }
@@ -417,13 +417,6 @@ where
     let validator_bid_addr = BidAddr::from(validator_public_key.clone());
     // is there such a validator?
     let _ = read_validator_bid(provider, &validator_bid_addr.into())?;
-    // is this validator over the delegator limit?
-    let delegator_count = provider.delegator_count(&validator_bid_addr)?;
-    if let Some(cap) = max_delegators_per_validator {
-        if delegator_count >= cap as usize {
-            return Err(Error::ExceededDelegatorSizeLimit.into());
-        }
-    }
 
     // is there already a record for this delegator?
     let delegator_bid_key =
@@ -435,6 +428,14 @@ where
         delegator_bid.increase_stake(amount)?;
         (*delegator_bid.bonding_purse(), delegator_bid)
     } else {
+        // is this validator over the delegator limit?
+        let delegator_count = provider.delegator_count(&validator_bid_addr)?;
+        if let Some(cap) = max_delegators_per_validator {
+            if delegator_count >= cap as usize {
+                return Err(Error::ExceededDelegatorSizeLimit.into());
+            }
+        }
+
         let bonding_purse = provider.create_purse()?;
         let delegator_bid = Delegator::unlocked(
             delegator_public_key,
@@ -582,34 +583,43 @@ pub(crate) fn process_with_vesting_schedule<P>(
 where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
-    let staked_amount = validator_bid.staked_amount();
-    let vesting_schedule = match validator_bid.vesting_schedule_mut() {
+    let validator_public_key = validator_bid.validator_public_key().clone();
+
+    let delegator_bids = read_delegator_bids(provider, &validator_public_key)?;
+    for mut delegator_bid in delegator_bids {
+        let delegator_staked_amount = delegator_bid.staked_amount();
+        let delegator_vesting_schedule = match delegator_bid.vesting_schedule_mut() {
+            Some(vesting_schedule) => vesting_schedule,
+            None => continue,
+        };
+        if timestamp_millis < delegator_vesting_schedule.initial_release_timestamp_millis() {
+            continue;
+        }
+        if delegator_vesting_schedule
+            .initialize_with_schedule(delegator_staked_amount, vesting_schedule_period_millis)
+        {
+            let delegator_bid_addr = BidAddr::new_from_public_keys(
+                &validator_public_key,
+                Some(delegator_bid.delegator_public_key()),
+            );
+            provider.write_bid(
+                delegator_bid_addr.into(),
+                BidKind::Delegator(Box::new(delegator_bid)),
+            )?;
+        }
+    }
+
+    let validator_staked_amount = validator_bid.staked_amount();
+    let validator_vesting_schedule = match validator_bid.vesting_schedule_mut() {
         Some(vesting_schedule) => vesting_schedule,
         None => return Ok(false),
     };
-    if timestamp_millis < vesting_schedule.initial_release_timestamp_millis() {
-        return Ok(false);
+    if timestamp_millis < validator_vesting_schedule.initial_release_timestamp_millis() {
+        Ok(false)
+    } else {
+        Ok(validator_vesting_schedule
+            .initialize_with_schedule(validator_staked_amount, vesting_schedule_period_millis))
     }
-
-    let mut initialized = false;
-
-    if vesting_schedule.initialize_with_schedule(staked_amount, vesting_schedule_period_millis) {
-        initialized = true;
-    }
-
-    let delegator_bids = read_delegator_bids(provider, validator_bid.validator_public_key())?;
-    for mut delegator_bid in delegator_bids {
-        let staked_amount = delegator_bid.staked_amount();
-        if let Some(vesting_schedule) = delegator_bid.vesting_schedule_mut() {
-            if timestamp_millis >= vesting_schedule.initial_release_timestamp_millis()
-                && vesting_schedule
-                    .initialize_with_schedule(staked_amount, vesting_schedule_period_millis)
-            {
-                initialized = true;
-            }
-        }
-    }
-    Ok(initialized)
 }
 
 /// Returns the total staked amount of validator + all delegators

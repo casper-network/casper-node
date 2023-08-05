@@ -274,7 +274,9 @@ pub fn execute_finalized_block(
                         "commit prune: key does not exist"
                     );
                 }
-                Ok(PruneResult::Success { post_state_hash }) => {
+                Ok(PruneResult::Success {
+                    post_state_hash, ..
+                }) => {
                     info!(
                         previous_block_height,
                         %key_block_height_for_activation_point,

@@ -371,9 +371,7 @@ fn should_distribute_delegation_rate_zero() {
             VALIDATOR_1.clone(),
             validator_1_actual_payout + U512::from(VALIDATOR_1_STAKE),
         );
-        let validator_1_bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
-        assert!(validator_1_bid.inactive());
-        assert!(validator_1_bid.staked_amount().is_zero());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
         U512::zero()
     };
     assert_eq!(validator_1_balance, U512::zero());
@@ -688,9 +686,7 @@ fn should_withdraw_bids_after_distribute() {
             withdraw_bid_amount,
         );
 
-        let bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
-        assert!(bid.inactive());
-        assert!(bid.staked_amount().is_zero());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
 
         withdraw_bid_amount
     };
@@ -3238,7 +3234,7 @@ fn should_not_restake_after_full_unbond() {
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
-        .get(&VALIDATOR_1_ADDR)
+        .get(&DELEGATOR_1_ADDR)
         .expect("should have validator entry");
     let delegator_unbond_amount = unbonding_purses
         .iter()
@@ -3389,7 +3385,7 @@ fn delegator_full_unbond_during_first_reward_era() {
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
-        .get(&VALIDATOR_1_ADDR)
+        .get(&DELEGATOR_1_ADDR)
         .expect("should have validator entry");
     let delegator_unbond_amount = unbonding_purses
         .iter()

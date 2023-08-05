@@ -44,7 +44,7 @@ const VESTING_WEEKS: u64 = 14;
 
 #[ignore]
 #[test]
-fn should_run_ee_1119_dont_slash_delegated_validators() {
+fn should_slash_validator_and_their_delegators() {
     let accounts = {
         let validator_1 = GenesisAccount::account(
             VALIDATOR_1.clone(),
@@ -158,35 +158,21 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     builder.exec(withdraw_bid_request).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert_eq!(unbond_purses.len(), 1);
+    assert_eq!(unbond_purses.len(), 2);
 
     let unbond_list = unbond_purses
         .get(&VALIDATOR_1_ADDR)
         .cloned()
         .expect("should have unbond");
-    assert_eq!(unbond_list.len(), 2); // two entries in order: undelegate, and withdraw bid
-
-    // undelegate entry
-
+    assert_eq!(unbond_list.len(), 1);
     assert_eq!(unbond_list[0].validator_public_key(), &*VALIDATOR_1,);
-    assert_eq!(
-        unbond_list[0].unbonder_public_key(),
-        &*DEFAULT_ACCOUNT_PUBLIC_KEY,
-    );
-    assert!(!unbond_list[0].is_validator());
-
-    //
-    // withdraw_bid entry
-    //
-
-    assert_eq!(unbond_list[1].validator_public_key(), &*VALIDATOR_1,);
-    assert_eq!(unbond_list[1].unbonder_public_key(), &*VALIDATOR_1,);
-    assert!(unbond_list[1].is_validator());
-    assert_eq!(unbond_list[1].amount(), &unbond_amount);
+    assert_eq!(unbond_list[0].unbonder_public_key(), &*VALIDATOR_1,);
+    assert!(unbond_list[0].is_validator());
+    assert_eq!(unbond_list[0].amount(), &unbond_amount);
 
     assert!(
-        !unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
-        "should not be part of unbonds"
+        unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR),
+        "should be part of unbonds"
     );
 
     let slash_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
@@ -230,21 +216,16 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     builder.exec(slash_request_2).expect_success().commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
-    assert_eq!(unbond_purses.len(), 1);
-
-    assert!(!unbond_purses.contains_key(&*DEFAULT_ACCOUNT_ADDR));
-
-    assert!(unbond_purses.get(&VALIDATOR_1_ADDR).unwrap().is_empty());
+    assert_eq!(unbond_purses.len(), 0);
 
     let bids = builder.get_bids();
-    let validator_1_bid = bids.validator_bid(&VALIDATOR_1).unwrap();
-    assert!(validator_1_bid.inactive());
-    assert!(validator_1_bid.staked_amount().is_zero());
+    assert!(bids.validator_bid(&VALIDATOR_1).is_none());
 
     let total_supply_after_slashing: U512 =
         builder.get_value(builder.get_mint_contract_hash(), TOTAL_SUPPLY_KEY);
+
     assert_eq!(
-        total_supply_before_slashing - total_supply_after_slashing,
-        U512::from(VALIDATOR_1_STAKE + UNDELEGATE_AMOUNT_1),
+        total_supply_after_slashing + VALIDATOR_1_STAKE + DELEGATE_AMOUNT_1,
+        total_supply_before_slashing,
     );
 }

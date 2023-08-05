@@ -293,21 +293,37 @@ impl<T: StateReader> StateTracker<T> {
     }
 
     /// Sets the bid for the given account.
-    pub fn set_bid(&mut self, bid_kind: BidKind, slash: bool) {
+    pub fn set_bid(&mut self, bid_kind: BidKind, slash_instead_of_unbonding: bool) {
         let bids = self.get_bids();
-        let (previous_stake, new_stake) = match bids.iter().find(|x| **x == bid_kind) {
-            Some(existing_bid_kind) => {
-                let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
-                // only zero the bonding purse and write the balance to the new purse if the new one
-                // is different (just to save unnecessary writes)
-                if existing_bid_kind.bonding_purse() != bid_kind.bonding_purse() {
-                    self.set_purse_balance(existing_bid_kind.bonding_purse(), U512::zero());
+
+        let maybe_existing_bid = bids
+            .iter()
+            .find(|x| match x {
+                BidKind::Unified(b) => b.validator_public_key() == &bid_kind.validator_public_key(),
+                BidKind::Validator(v) => {
+                    v.validator_public_key() == &bid_kind.validator_public_key()
+                }
+                BidKind::Delegator(d) => {
+                    d.validator_public_key() == &bid_kind.validator_public_key()
+                        && Some(d.delegator_public_key())
+                            == bid_kind.delegator_public_key().as_ref()
+                }
+            })
+            .cloned();
+
+        let new_stake = bid_kind.staked_amount();
+
+        let previous_stake = match maybe_existing_bid {
+            None => U512::zero(),
+            Some(existing_bid) => {
+                //let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
+                let previous_stake = existing_bid.staked_amount();
+                if existing_bid.bonding_purse() != bid_kind.bonding_purse() {
+                    self.set_purse_balance(existing_bid.bonding_purse(), U512::zero());
                     self.set_purse_balance(bid_kind.bonding_purse(), previous_stake);
                 }
-
-                (previous_stake, bid_kind.staked_amount())
+                previous_stake
             }
-            None => (U512::zero(), bid_kind.staked_amount()),
         };
 
         // we called `get_bids` above, so `staking` will be `Some`
@@ -316,7 +332,8 @@ impl<T: StateReader> StateTracker<T> {
         // Replace the bid (overwrite the previous bid, if any):
         self.write_bid(bid_kind.clone());
 
-        if (slash && new_stake != previous_stake) || new_stake > previous_stake {
+        if (slash_instead_of_unbonding && new_stake != previous_stake) || new_stake > previous_stake
+        {
             self.set_purse_balance(bid_kind.bonding_purse(), new_stake);
         } else if new_stake < previous_stake {
             let unbonder_key = match bid_kind.delegator_public_key() {
@@ -324,38 +341,47 @@ impl<T: StateReader> StateTracker<T> {
                 Some(delegator_public_key) => delegator_public_key,
             };
 
-            let already_unbonded = self.already_unbonding_amount(&account_hash, &public_key);
+            let already_unbonded =
+                self.already_unbonding_amount(&bid_kind.validator_public_key(), &unbonder_key);
+
+            let amount = previous_stake - new_stake - already_unbonded;
             self.create_unbonding_purse(
                 bid_kind.bonding_purse(),
                 &bid_kind.validator_public_key(),
                 &unbonder_key,
-                previous_stake - new_stake - already_unbonded,
+                amount,
             );
         }
     }
 
     /// Returns the sum of already unbonding purses for the given validator account & unbonder.
-    fn already_unbonding_amount(&mut self, account: &AccountHash, unbonder: &PublicKey) -> U512 {
-        let existing_purses = self
-            .reader
-            .get_unbonds()
-            .get(account)
-            .cloned()
-            .unwrap_or_default();
-        let existing_purses_legacy = self
-            .reader
-            .get_withdraws()
-            .get(account)
-            .cloned()
-            .unwrap_or_default()
-            .into_iter()
-            .map(UnbondingPurse::from);
+    fn already_unbonding_amount(
+        &mut self,
+        validator_public_key: &PublicKey,
+        unbonder_public_key: &PublicKey,
+    ) -> U512 {
+        let unbonds = self.reader.get_unbonds();
+        let account_hash = AccountHash::from(validator_public_key);
+        if let Some(purses) = unbonds.get(&account_hash) {
+            if let Some(purse) = purses
+                .iter()
+                .find(|x| x.unbonder_public_key() == unbonder_public_key)
+            {
+                return *purse.amount();
+            }
+        }
 
-        existing_purses_legacy
-            .chain(existing_purses)
-            .filter(|purse| purse.unbonder_public_key() == unbonder)
-            .map(|purse| *purse.amount())
-            .sum()
+        let withdrawals = self.reader.get_withdraws();
+        if let Some(withdraws) = withdrawals.get(&account_hash) {
+            if let Some(withdraw) = withdraws
+                .iter()
+                .find(|x| x.unbonder_public_key() == unbonder_public_key)
+            {
+                return *withdraw.amount();
+            }
+        }
+
+        U512::zero()
     }
 
     /// Generates the writes to the global state that will remove the pending withdraws and unbonds
@@ -366,18 +392,17 @@ impl<T: StateReader> StateTracker<T> {
         let unbonds = self.reader.get_unbonds();
         for removed_validator in removed {
             let acc = removed_validator.to_account_hash();
-            if let Some(withdraw_set) = withdraws.get(&acc) {
-                for withdraw in withdraw_set {
-                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
-                }
-                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
-            }
-
             if let Some(unbond_set) = unbonds.get(&acc) {
                 for unbond in unbond_set {
                     self.set_purse_balance(*unbond.bonding_purse(), U512::zero());
                 }
                 self.write_entry(Key::Unbond(acc), StoredValue::Unbonding(vec![]));
+            }
+            if let Some(withdraw_set) = withdraws.get(&acc) {
+                for withdraw in withdraw_set {
+                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
             }
         }
     }
@@ -405,6 +430,10 @@ impl<T: StateReader> StateTracker<T> {
                 entry.insert(existing_purses)
             }
         };
+
+        if amount == U512::zero() {
+            return;
+        }
 
         // Take the first era from the snapshot as the unbonding era.
         let new_purse = UnbondingPurse::new(

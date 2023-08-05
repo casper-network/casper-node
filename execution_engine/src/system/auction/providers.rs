@@ -63,6 +63,9 @@ pub trait StorageProvider {
 
     /// Records era summary.
     fn record_era_info(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error>;
+
+    /// Prunes a given bid at [`BidAddr`].
+    fn prune_bid(&mut self, bid_addr: BidAddr);
 }
 
 /// Provides an access to mint.

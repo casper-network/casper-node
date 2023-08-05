@@ -1,4 +1,5 @@
 //! Support for pruning leaf nodes from the merkle trie.
+use crate::engine_state::ExecutionJournal;
 use casper_types::{Digest, Key};
 
 /// The result of performing a prune.
@@ -12,6 +13,8 @@ pub enum PruneResult {
     Success {
         /// State root hash.
         post_state_hash: Digest,
+        /// Effects of executing a step request.
+        execution_journal: ExecutionJournal,
     },
 }
 

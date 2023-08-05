@@ -156,7 +156,7 @@ impl RpcWithParams for SpeculativeExec {
                     | EngineStateError::MissingSystemContractRegistry
                     | EngineStateError::MissingSystemContractHash(_)
                     | EngineStateError::RuntimeStackOverflow
-                    | EngineStateError::FailedToGetWithdrawKeys
+                    | EngineStateError::FailedToGetKeys(_)
                     | EngineStateError::FailedToGetStoredWithdraws
                     | EngineStateError::FailedToGetWithdrawPurses
                     | EngineStateError::FailedToRetrieveUnbondingDelay

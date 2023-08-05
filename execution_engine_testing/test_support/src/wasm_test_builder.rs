@@ -824,7 +824,7 @@ where
             },
         )
         .build();
-        self.exec(run_request).commit().expect_success()
+        self.exec(run_request).expect_success().commit()
     }
 
     /// Increments engine state.
@@ -1495,8 +1495,13 @@ where
     pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
         let result = self.engine_state.commit_prune(prune_config);
 
-        if let Ok(PruneResult::Success { post_state_hash }) = &result {
+        if let Ok(PruneResult::Success {
+            post_state_hash,
+            execution_journal,
+        }) = &result
+        {
             self.post_state_hash = Some(*post_state_hash);
+            self.transforms.push(execution_journal.clone());
         }
 
         self.prune_results.push(result);

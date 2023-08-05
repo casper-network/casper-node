@@ -256,7 +256,7 @@ fn should_increase_existing_bid() {
     )
     .build();
 
-    builder.exec(exec_request_2).commit().expect_success();
+    builder.exec(exec_request_2).expect_success().commit();
 
     let bids = builder.get_bids();
 
@@ -390,9 +390,9 @@ fn should_run_delegate_and_undelegate() {
     )
     .build();
 
-    builder.exec(transfer_request_1).commit().expect_success();
-    builder.exec(transfer_request_2).commit().expect_success();
-    builder.exec(add_bid_request_1).commit().expect_success();
+    builder.exec(transfer_request_1).expect_success().commit();
+    builder.exec(transfer_request_2).expect_success().commit();
+    builder.exec(add_bid_request_1).expect_success().commit();
 
     let auction_hash = builder.get_auction_contract_hash();
 
@@ -477,7 +477,7 @@ fn should_run_delegate_and_undelegate() {
         },
     )
     .build();
-    builder.exec(exec_request_3).commit().expect_success();
+    builder.exec(exec_request_3).expect_success().commit();
 
     let bids = builder.get_bids();
     assert_eq!(bids.len(), 2);
@@ -498,7 +498,7 @@ fn should_run_delegate_and_undelegate() {
     assert_eq!(unbonding_purses.len(), 1);
 
     let unbond_list = unbonding_purses
-        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
+        .get(&BID_ACCOUNT_1_ADDR)
         .expect("should have unbonding purse for non founder validator");
     assert_eq!(unbond_list.len(), 1);
     assert_eq!(
@@ -1609,63 +1609,54 @@ fn should_undelegate_delegators_when_validator_unbonds() {
         .expect_success();
 
     let bids_after = builder.get_bids();
-    let validator_1_bid = bids_after.validator_bid(&VALIDATOR_1).unwrap();
-    assert!(validator_1_bid.inactive());
-    assert!(validator_1_bid.staked_amount().is_zero());
+    assert!(bids_after.validator_bid(&VALIDATOR_1).is_none());
 
     let unbonding_purses_after: UnbondingPurses = builder.get_unbonds();
     assert_ne!(unbonding_purses_after, unbonding_purses_before);
 
-    let validator_1_unbonding_purse = unbonding_purses_after
+    let validator1 = unbonding_purses_after
         .get(&VALIDATOR_1_ADDR)
-        .expect("should have unbonding purse entry");
-    assert_eq!(validator_1_unbonding_purse.len(), 4); // validator1, validator1, delegator1, delegator2
+        .expect("should have validator1");
 
-    let delegator_1_unbonding_purse = validator_1_unbonding_purse
+    let validator1_unbonding = validator1
         .iter()
-        .find(|unbonding_purse| {
-            (
-                unbonding_purse.validator_public_key(),
-                unbonding_purse.unbonder_public_key(),
-            ) == (&*VALIDATOR_1, &*DELEGATOR_1)
-        })
-        .expect("should have delegator 1 entry");
+        .find(|x| x.validator_public_key() == &*VALIDATOR_1)
+        .expect("should have validator1 unbonding");
+
     assert_eq!(
-        delegator_1_unbonding_purse.amount(),
-        &U512::from(DELEGATOR_1_STAKE)
+        validator1_unbonding.amount(),
+        &U512::from(VALIDATOR_1_WITHDRAW_AMOUNT),
+        "expected validator1 amount to match"
     );
 
-    let delegator_2_unbonding_purse = validator_1_unbonding_purse
-        .iter()
-        .find(|unbonding_purse| {
-            (
-                unbonding_purse.validator_public_key(),
-                unbonding_purse.unbonder_public_key(),
-            ) == (&*VALIDATOR_1, &*DELEGATOR_2)
-        })
-        .expect("should have delegator 2 entry");
-    assert_eq!(
-        delegator_2_unbonding_purse.amount(),
-        &U512::from(DELEGATOR_2_STAKE)
-    );
+    let delegator1 = unbonding_purses_after
+        .get(&DELEGATOR_1_ADDR)
+        .expect("should have delegator1");
 
-    let validator_1_unbonding_purse: Vec<_> = validator_1_unbonding_purse
+    let delegator1_unbonding = delegator1
         .iter()
-        .filter(|unbonding_purse| {
-            (
-                unbonding_purse.validator_public_key(),
-                unbonding_purse.unbonder_public_key(),
-            ) == (&*VALIDATOR_1, &*VALIDATOR_1)
-        })
-        .collect();
+        .find(|x| x.unbonder_public_key() == &*DELEGATOR_1)
+        .expect("should have delegator1 unbonding");
 
     assert_eq!(
-        validator_1_unbonding_purse[0].amount(),
-        &U512::from(VALIDATOR_1_WITHDRAW_AMOUNT)
+        delegator1_unbonding.amount(),
+        &U512::from(DELEGATOR_1_STAKE),
+        "expected delegator1 amount to match"
     );
+
+    let delegator2 = unbonding_purses_after
+        .get(&DELEGATOR_2_ADDR)
+        .expect("should have delegator2");
+
+    let delegator2_unbonding = delegator2
+        .iter()
+        .find(|x| x.unbonder_public_key() == &*DELEGATOR_2)
+        .expect("should have delegator2 unbonding");
+
     assert_eq!(
-        validator_1_unbonding_purse[1].amount(),
-        &U512::from(VALIDATOR_1_REMAINING_BID)
+        delegator2_unbonding.amount(),
+        &U512::from(DELEGATOR_2_STAKE),
+        "expected delegator2 amount to match"
     );
 
     // Process unbonding requests to verify delegators recevied their stakes
@@ -1821,40 +1812,39 @@ fn should_undelegate_delegators_when_validator_fully_unbonds() {
         .expect_success();
 
     let bids_after = builder.get_bids();
-    let validator_1_bid = bids_after.validator_bid(&VALIDATOR_1).unwrap();
-    assert!(validator_1_bid.inactive());
-    assert!(validator_1_bid.staked_amount().is_zero());
+    assert!(bids_after.validator_bid(&VALIDATOR_1).is_none());
 
     let unbonding_purses_before: UnbondingPurses = builder.get_unbonds();
 
     let validator_1_unbonding_purse = unbonding_purses_before
         .get(&VALIDATOR_1_ADDR)
-        .expect("should have unbonding purse entry");
-    assert_eq!(validator_1_unbonding_purse.len(), 3); // validator1, delegator1, delegator2
-
-    let delegator_1_unbonding_purse = validator_1_unbonding_purse
+        .expect("should have unbonding purse entry")
         .iter()
-        .find(|unbonding_purse| {
-            (
-                unbonding_purse.validator_public_key(),
-                unbonding_purse.unbonder_public_key(),
-            ) == (&*VALIDATOR_1, &*DELEGATOR_1)
-        })
-        .expect("should have delegator 1 entry");
+        .find(|x| x.unbonder_public_key() == &*VALIDATOR_1)
+        .expect("should have unbonding purse");
+
+    let delegator_1_unbonding_purse = unbonding_purses_before
+        .get(&DELEGATOR_1_ADDR)
+        .expect("should have unbonding purse entry")
+        .iter()
+        .find(|x| x.unbonder_public_key() == &*DELEGATOR_1)
+        .expect("should have unbonding purse");
+
+    let delegator_2_unbonding_purse = unbonding_purses_before
+        .get(&DELEGATOR_2_ADDR)
+        .expect("should have unbonding purse entry")
+        .iter()
+        .find(|x| x.unbonder_public_key() == &*DELEGATOR_2)
+        .expect("should have unbonding purse");
+
+    assert_eq!(
+        validator_1_unbonding_purse.amount(),
+        &U512::from(VALIDATOR_1_STAKE)
+    );
     assert_eq!(
         delegator_1_unbonding_purse.amount(),
         &U512::from(DELEGATOR_1_STAKE)
     );
-
-    let delegator_2_unbonding_purse = validator_1_unbonding_purse
-        .iter()
-        .find(|unbonding_purse| {
-            (
-                unbonding_purse.validator_public_key(),
-                unbonding_purse.unbonder_public_key(),
-            ) == (&*VALIDATOR_1, &*DELEGATOR_2)
-        })
-        .expect("should have delegator 2 entry");
     assert_eq!(
         delegator_2_unbonding_purse.amount(),
         &U512::from(DELEGATOR_2_STAKE)
@@ -1912,7 +1902,7 @@ fn should_handle_evictions() {
             },
         )
         .build();
-        builder.exec(run_request).commit().expect_success();
+        builder.exec(run_request).expect_success().commit();
     };
 
     let latest_validators = |builder: &mut LmdbWasmTestBuilder| {
@@ -1985,7 +1975,7 @@ fn should_handle_evictions() {
 
     builder.run_genesis(&run_genesis_request);
 
-    builder.exec(system_fund_request).commit().expect_success();
+    builder.exec(system_fund_request).expect_success().commit();
 
     // No evictions
     builder.run_auction(timestamp, Vec::new());
@@ -2521,10 +2511,27 @@ fn should_not_undelegate_vfta_holder_stake() {
         let vesting_schedule = delegator
             .vesting_schedule()
             .expect("should have delegator vesting schedule");
-        assert_eq!(vesting_schedule.locked_amounts(), None);
+        assert!(
+            vesting_schedule.locked_amounts().is_none(),
+            "should not be locked"
+        );
     }
 
     builder.run_auction(WEEK_TIMESTAMPS[0], Vec::new());
+
+    {
+        let bids = builder.get_bids();
+        let delegator = bids
+            .delegator_by_public_keys(&VALIDATOR_1, &DELEGATOR_1)
+            .expect("should have delegator");
+        let vesting_schedule = delegator
+            .vesting_schedule()
+            .expect("should have vesting schedule");
+        assert!(
+            vesting_schedule.locked_amounts().is_some(),
+            "should be locked"
+        );
+    }
 
     let partial_unbond = ExecuteRequestBuilder::standard(
         *DELEGATOR_1_ADDR,
@@ -2536,18 +2543,6 @@ fn should_not_undelegate_vfta_holder_stake() {
         },
     )
     .build();
-
-    {
-        let bids = builder.get_bids();
-        let delegator = bids
-            .delegator_by_public_keys(&VALIDATOR_1, &DELEGATOR_1)
-            .expect("should have delegator");
-        let vesting_schedule = delegator
-            .vesting_schedule()
-            .expect("should have vesting schedule");
-        assert!(matches!(vesting_schedule.locked_amounts(), Some(_)));
-    }
-
     builder.exec(partial_unbond).commit();
     let error = {
         let response = builder
@@ -2705,7 +2700,7 @@ fn should_release_vfta_holder_stake() {
     // Check bid and its vesting schedule
     {
         let bids = builder.get_bids();
-        assert_eq!(bids.len(), 1);
+        assert_eq!(bids.len(), 2);
         let delegator = bids
             .delegator_by_public_keys(&ACCOUNT_1_PK, &DELEGATOR_1)
             .expect("should have delegator");
@@ -2733,7 +2728,7 @@ fn should_release_vfta_holder_stake() {
     // Check bid and its vesting schedule
     {
         let bids = builder.get_bids();
-        assert_eq!(bids.len(), 1);
+        assert_eq!(bids.len(), 2);
         let delegator = bids
             .delegator_by_public_keys(&ACCOUNT_1_PK, &DELEGATOR_1)
             .expect("should have delegator");
@@ -3010,18 +3005,7 @@ fn should_reset_delegators_stake_after_slashing() {
     };
     assert!(validator_1_delegator_stakes_2 > U512::zero());
 
-    let validator_2_bid_2 = bids_2
-        .validator_bid(&NON_FOUNDER_VALIDATOR_2_PK)
-        .expect("should have bids");
-    assert!(validator_2_bid_2.inactive());
-
-    let validator_2_delegator_stakes_2 = {
-        match bids_1.delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_2_PK) {
-            None => U512::zero(),
-            Some(delegators) => delegators.iter().map(|x| x.staked_amount()).sum(),
-        }
-    };
-    assert_eq!(validator_2_delegator_stakes_2, U512::zero());
+    assert!(bids_2.validator_bid(&NON_FOUNDER_VALIDATOR_2_PK).is_none());
 
     // Validator 1 total delegated stake did not change
     assert_eq!(
@@ -3048,11 +3032,9 @@ fn should_reset_delegators_stake_after_slashing() {
     assert_ne!(bids_3, bids_2);
     assert_ne!(bids_3, bids_1);
 
-    let _ = bids_3
-        .validator_bid(&NON_FOUNDER_VALIDATOR_1_PK)
-        .expect("should have bids");
+    assert!(bids_3.validator_bid(&NON_FOUNDER_VALIDATOR_1_PK).is_none());
     let validator_1_delegator_stakes_3 = {
-        match bids_1.delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK) {
+        match bids_3.delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK) {
             None => U512::zero(),
             Some(delegators) => delegators.iter().map(|x| x.staked_amount()).sum(),
         }
@@ -3276,7 +3258,7 @@ fn should_delegate_and_redelegate() {
 
     let after_redelegation = builder
         .get_unbonds()
-        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
+        .get(&BID_ACCOUNT_1_ADDR)
         .expect("must have purses")
         .len();
 
@@ -3303,7 +3285,7 @@ fn should_delegate_and_redelegate() {
     );
 
     let bids = builder.get_bids();
-    assert_eq!(bids.len(), 2);
+    assert_eq!(bids.len(), 4);
 
     let delegators = bids
         .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK)
@@ -3743,7 +3725,7 @@ fn should_continue_auction_state_from_release_1_4_x() {
     );
 
     let bids = builder.get_bids();
-    assert_eq!(bids.len(), 3);
+    assert_eq!(bids.len(), 8);
 
     let delegator = bids
         .delegator_by_public_keys(&NON_FOUNDER_VALIDATOR_1_PK, &DELEGATOR_2)
@@ -3771,11 +3753,9 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
         lmdb_fixture::builder_from_global_state_fixture(lmdb_fixture::RELEASE_1_4_3);
 
     let withdraw_purses: WithdrawPurses = builder.get_withdraw_purses();
-
     assert_eq!(withdraw_purses.len(), 1);
 
     let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
     let new_protocol_version = ProtocolVersion::from_parts(
         previous_protocol_version.value().major,
         previous_protocol_version.value().minor + 1,
@@ -3963,11 +3943,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
 
     let bids = builder.get_bids();
-    let validator_bid = bids
-        .validator_bid(&NON_FOUNDER_VALIDATOR_1_PK)
-        .expect("should have validator");
-
-    assert!(validator_bid.inactive(), "should be inactive");
+    assert!(bids.validator_bid(&NON_FOUNDER_VALIDATOR_1_PK).is_none());
 
     // Since we have re-delegated to an inactive validator,
     // the funds should cycle back to the delegator.
@@ -4343,9 +4319,13 @@ fn should_enforce_max_delegators_per_validator_cap() {
     builder.exec(undelegation_request).expect_success().commit();
 
     let bids = builder.get_bids();
+
     let current_delegator_count = bids
         .delegators_by_validator_public_key(&NON_FOUNDER_VALIDATOR_1_PK)
         .expect("must have bid record")
+        .iter()
+        .filter(|x| x.staked_amount() > U512::zero())
+        .collect::<Vec<&auction::Delegator>>()
         .len();
 
     assert_eq!(current_delegator_count, 1);
@@ -4517,7 +4497,7 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
 
     let after_redelegation = builder
         .get_unbonds()
-        .get(&NON_FOUNDER_VALIDATOR_1_ADDR)
+        .get(&BID_ACCOUNT_1_ADDR)
         .expect("must have purses")
         .len();
 

@@ -16,6 +16,7 @@ use super::state_reader::StateReader;
 
 use crate::utils::{print_entry, print_validators, ValidatorInfo};
 
+#[derive(Debug)]
 pub(crate) struct Update {
     entries: BTreeMap<Key, StoredValue>,
     // Holds the complete set of validators, only if the validator set changed
@@ -74,9 +75,9 @@ impl Update {
     pub(crate) fn get_written_bid(&self, account: AccountHash) -> BidKind {
         self.entries
             .get(&Key::Bid(BidAddr::from(account)))
-            .expect("should create bid")
+            .expect("stored value should exist")
             .as_bid_kind()
-            .expect("should be bid")
+            .expect("stored value should be be BidKind")
             .clone()
     }
 
@@ -213,27 +214,28 @@ impl Update {
 
     /// `expected`: (bid_purse, unbonder_key, amount)
     #[track_caller]
+    #[allow(unused)]
     pub(crate) fn assert_unbonding_purses<'a>(
         &self,
-        validator_key: &PublicKey,
+        account_hash: AccountHash,
         expected: impl IntoIterator<Item = (URef, &'a PublicKey, u64)>,
     ) {
         let mut expected: Vec<_> = expected
             .into_iter()
             .map(|(bid_purse, unbonder_key, amount)| {
-                (validator_key, bid_purse, unbonder_key, U512::from(amount))
+                (account_hash, bid_purse, unbonder_key, U512::from(amount))
             })
             .collect();
         let mut data: Vec<_> = self
             .entries
-            .get(&Key::Unbond(validator_key.to_account_hash()))
+            .get(&Key::Unbond(account_hash))
             .expect("should have unbonds for the account")
             .as_unbonding()
             .expect("should be unbonding purses")
             .iter()
             .map(|unbonding_purse| {
                 (
-                    unbonding_purse.validator_public_key(),
+                    unbonding_purse.validator_public_key().to_account_hash(),
                     *unbonding_purse.bonding_purse(),
                     unbonding_purse.unbonder_public_key(),
                     *unbonding_purse.amount(),

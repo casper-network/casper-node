@@ -38,7 +38,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
+    CLValue, DeployInfo, Key, NamedKey, Transfer, TransferAddr, U128, U256, U512,
 };
 
 #[derive(FromPrimitive, ToPrimitive, Debug)]
@@ -63,6 +63,7 @@ enum OpTag {
     Write = 1,
     Add = 2,
     NoOp = 3,
+    Prune = 4,
 }
 
 impl TryFrom<u8> for OpTag {
@@ -96,6 +97,7 @@ enum TransformTag {
     Failure = 17,
     WriteUnbonding = 18,
     WriteAddressableEntity = 19,
+    Prune = 20,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -439,6 +441,8 @@ pub enum OpKind {
     Add,
     /// An operation which has no effect.
     NoOp,
+    /// A prune operation.
+    Prune,
 }
 
 impl OpKind {
@@ -448,6 +452,7 @@ impl OpKind {
             OpKind::Write => OpTag::Write,
             OpKind::Add => OpTag::Add,
             OpKind::NoOp => OpTag::NoOp,
+            OpKind::Prune => OpTag::Prune,
         }
     }
 }
@@ -472,6 +477,7 @@ impl FromBytes for OpKind {
             OpTag::Write => Ok((OpKind::Write, remainder)),
             OpTag::Add => Ok((OpKind::Add, remainder)),
             OpTag::NoOp => Ok((OpKind::NoOp, remainder)),
+            OpTag::Prune => Ok((OpKind::Prune, remainder)),
         }
     }
 }
@@ -519,6 +525,10 @@ impl FromBytes for TransformEntry {
 pub enum Transform {
     /// A transform having no effect.
     Identity,
+    /// Removes pathing to keyed value within global state. This is a form of soft delete; the
+    /// underlying value remains in global state and is reachable from older global state root
+    /// hashes where it was included in the hash up.
+    Prune(Key),
     /// Writes the given CLValue to global state.
     WriteCLValue(CLValue),
     /// Writes the given Account to global state.
@@ -563,6 +573,7 @@ impl Transform {
     fn tag(&self) -> TransformTag {
         match self {
             Transform::Identity => TransformTag::Identity,
+            Transform::Prune(_) => TransformTag::Prune,
             Transform::WriteCLValue(_) => TransformTag::WriteCLValue,
             Transform::WriteAccount(_) => TransformTag::WriteAccount,
             Transform::WriteContractWasm => TransformTag::WriteContractWasm,
@@ -594,6 +605,9 @@ impl ToBytes for Transform {
         buffer.insert(0, tag_bytes);
         match self {
             Transform::Identity => {}
+            Transform::Prune(key) => {
+                buffer.extend(key.to_bytes()?);
+            }
             Transform::WriteCLValue(value) => {
                 buffer.extend(value.to_bytes()?);
             }
@@ -649,6 +663,7 @@ impl ToBytes for Transform {
 
     fn serialized_length(&self) -> usize {
         let body_len = match self {
+            Transform::Prune(key) => key.serialized_length(),
             Transform::WriteCLValue(value) => value.serialized_length(),
             Transform::WriteAccount(value) => value.serialized_length(),
             Transform::WriteDeployInfo(value) => value.serialized_length(),
@@ -679,6 +694,10 @@ impl FromBytes for Transform {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match TryFrom::try_from(tag)? {
             TransformTag::Identity => Ok((Transform::Identity, remainder)),
+            TransformTag::Prune => {
+                let (key, remainder) = Key::from_bytes(remainder)?;
+                Ok((Transform::Prune(key), remainder))
+            }
             TransformTag::WriteCLValue => {
                 let (cl_value, remainder) = CLValue::from_bytes(remainder)?;
                 Ok((Transform::WriteCLValue(cl_value), remainder))

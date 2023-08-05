@@ -1,12 +1,12 @@
 use super::*;
-use crate::global_state::{transaction_source::Writable, trie_store::operations::DeleteResult};
+use crate::global_state::{transaction_source::Writable, trie_store::operations::PruneResult};
 
 fn checked_delete<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
     root: &Digest,
     key_to_delete: &K,
-) -> Result<DeleteResult, E>
+) -> Result<PruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + std::fmt::Debug + Eq,
     V: ToBytes + FromBytes + Clone + std::fmt::Debug,
@@ -16,11 +16,11 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let _counter = TestValue::before_operation(TestOperation::Delete);
-    let delete_result = operations::delete::<K, V, T, S, E>(txn, store, root, key_to_delete);
+    let delete_result = operations::prune::<K, V, T, S, E>(txn, store, root, key_to_delete);
     let counter = TestValue::after_operation(TestOperation::Delete);
     assert_eq!(counter, 0, "Delete should never deserialize a value");
     let delete_result = delete_result?;
-    if let DeleteResult::Deleted(new_root) = delete_result {
+    if let PruneResult::Pruned(new_root) = delete_result {
         operations::check_integrity::<K, V, T, S, E>(txn, store, vec![new_root])?;
     }
     Ok(delete_result)
@@ -28,7 +28,7 @@ where
 
 mod partial_tries {
     use super::*;
-    use crate::global_state::trie_store::operations::DeleteResult;
+    use crate::global_state::trie_store::operations::PruneResult;
 
     fn delete_from_partial_trie_had_expected_results<'a, K, V, R, S, E>(
         environment: &'a R,
@@ -51,9 +51,9 @@ mod partial_tries {
         assert_eq!(store.get(&txn, expected_root_after_delete)?, None);
         let root_after_delete =
             match checked_delete::<K, V, _, _, E>(&mut txn, store, root, key_to_delete)? {
-                DeleteResult::Deleted(root_after_delete) => root_after_delete,
-                DeleteResult::DoesNotExist => panic!("key did not exist"),
-                DeleteResult::RootNotFound => panic!("root should be found"),
+                PruneResult::Pruned(root_after_delete) => root_after_delete,
+                PruneResult::DoesNotExist => panic!("key did not exist"),
+                PruneResult::RootNotFound => panic!("root should be found"),
             };
         assert_eq!(root_after_delete, *expected_root_after_delete);
         for HashedTrie { hash, trie } in expected_tries_after_delete {
@@ -98,9 +98,9 @@ mod partial_tries {
     {
         let mut txn = environment.create_read_write_txn()?;
         match checked_delete::<K, V, _, _, E>(&mut txn, store, root, key_to_delete)? {
-            DeleteResult::Deleted(_) => panic!("should not delete"),
-            DeleteResult::DoesNotExist => Ok(()),
-            DeleteResult::RootNotFound => panic!("root should be found"),
+            PruneResult::Pruned(_) => panic!("should not delete"),
+            PruneResult::DoesNotExist => Ok(()),
+            PruneResult::RootNotFound => panic!("root should be found"),
         }
     }
 
@@ -144,9 +144,9 @@ mod full_tries {
         transaction_source::TransactionSource,
         trie_store::{
             operations::{
-                delete,
+                prune,
                 tests::{LmdbTestContext, TestKey, TestOperation, TestValue, TEST_TRIE_GENERATORS},
-                write, DeleteResult, WriteResult,
+                write, PruneResult, WriteResult,
             },
             TrieStore,
         },
@@ -182,10 +182,10 @@ mod full_tries {
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
         for (key, _value) in pairs.iter().rev() {
             let _counter = TestValue::before_operation(TestOperation::Delete);
-            let delete_result = delete::<K, V, _, _, E>(&mut txn, store, &current_root, key);
+            let delete_result = prune::<K, V, _, _, E>(&mut txn, store, &current_root, key);
             let counter = TestValue::after_operation(TestOperation::Delete);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
-            if let DeleteResult::Deleted(new_root) = delete_result? {
+            if let PruneResult::Pruned(new_root) = delete_result? {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
             } else {
@@ -251,15 +251,15 @@ mod full_tries {
         }
         for key in keys_to_delete.iter() {
             let _counter = TestValue::before_operation(TestOperation::Delete);
-            let delete_result = delete::<K, V, _, _, E>(&mut txn, store, &expected_root, key);
+            let delete_result = prune::<K, V, _, _, E>(&mut txn, store, &expected_root, key);
             let counter = TestValue::after_operation(TestOperation::Delete);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
             match delete_result? {
-                DeleteResult::Deleted(new_root) => {
+                PruneResult::Pruned(new_root) => {
                     expected_root = new_root;
                 }
-                DeleteResult::DoesNotExist => {}
-                DeleteResult::RootNotFound => panic!("should find root"),
+                PruneResult::DoesNotExist => {}
+                PruneResult::RootNotFound => panic!("should find root"),
             }
         }
 

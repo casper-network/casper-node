@@ -23,6 +23,8 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
@@ -33,7 +35,7 @@ use crate::{
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     package::ContractPackageHash,
-    system::auction::BidAddr,
+    system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
     UREF_ADDR_LENGTH,
@@ -123,6 +125,7 @@ pub enum KeyTag {
 #[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum Key {
     /// A `Key` under which a user account is stored.
     Account(AccountHash),
@@ -434,14 +437,13 @@ impl Key {
                     addr[BidAddr::VALIDATOR_BID_ADDR_LENGTH..].as_ref(),
                 )
                 .map_err(|err| FromStrError::Bid(err.to_string()))?;
-                return Ok(Key::Bid(BidAddr(
-                    AccountHash::new(validator_bytes),
-                    Some(AccountHash::new(delegator_bytes)),
-                )));
+                let bid_addr = BidAddr::new_delegator_addr((validator_bytes, delegator_bytes));
+                return Ok(bid_addr.into());
             } else if len == BidAddr::VALIDATOR_BID_ADDR_LENGTH {
                 let addr = <[u8; BidAddr::VALIDATOR_BID_ADDR_LENGTH]>::try_from(bytes.as_ref())
                     .map_err(|err| FromStrError::Bid(err.to_string()))?;
-                return Ok(Key::Bid(BidAddr(AccountHash::new(addr), None)));
+                let bid_addr = BidAddr::new_validator_addr(addr);
+                return Ok(bid_addr.into());
             } else {
                 return Err(FromStrError::Bid("invalid length".to_string()));
             }
@@ -613,6 +615,14 @@ impl Key {
         }
         false
     }
+
+    /// Returns true if the key is of type [`Key::Bid`].
+    pub fn is_balance_key(&self) -> bool {
+        if let Key::Balance(_) = self {
+            return true;
+        }
+        false
+    }
 }
 
 impl Display for Key {
@@ -752,7 +762,12 @@ impl ToBytes for Key {
             Key::DeployInfo(_) => KEY_DEPLOY_INFO_SERIALIZED_LENGTH,
             Key::EraInfo(_) => KEY_ERA_INFO_SERIALIZED_LENGTH,
             Key::Balance(_) => KEY_BALANCE_SERIALIZED_LENGTH,
-            Key::Bid(bid_addr) => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length(),
+            Key::Bid(bid_addr) => match bid_addr.tag() {
+                BidAddrTag::Unified => KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length() - 1,
+                BidAddrTag::Validator | BidAddrTag::Delegator => {
+                    KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
+                }
+            },
             Key::Withdraw(_) => KEY_WITHDRAW_SERIALIZED_LENGTH,
             Key::Dictionary(_) => KEY_DICTIONARY_SERIALIZED_LENGTH,
             Key::SystemContractRegistry => KEY_SYSTEM_CONTRACT_REGISTRY_SERIALIZED_LENGTH,
@@ -773,7 +788,14 @@ impl ToBytes for Key {
             Key::DeployInfo(deploy_hash) => deploy_hash.write_bytes(writer),
             Key::EraInfo(era_id) => era_id.write_bytes(writer),
             Key::Balance(uref_addr) => uref_addr.write_bytes(writer),
-            Key::Bid(bid_addr) => bid_addr.write_bytes(writer),
+            Key::Bid(bid_addr) => match bid_addr.tag() {
+                BidAddrTag::Unified => {
+                    let bytes = bid_addr.to_bytes()?;
+                    writer.extend(&bytes[1..]);
+                    Ok(())
+                }
+                BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
+            },
             Key::Withdraw(account_hash) => account_hash.write_bytes(writer),
             Key::Dictionary(addr) => addr.write_bytes(writer),
             Key::Unbond(account_hash) => account_hash.write_bytes(writer),
@@ -820,12 +842,12 @@ impl FromBytes for Key {
             tag if tag == KeyTag::Bid as u8 => {
                 match BidAddr::from_bytes(remainder) {
                     // attempt new style first
-                    Ok((bid_addr, rem)) => Ok((Key::Bid(bid_addr), rem)),
+                    Ok((bid_addr, rem)) => Ok((bid_addr.into(), rem)),
                     Err(_) => {
                         // attempt legacy before failing
                         let (account_hash, rem) = AccountHash::from_bytes(remainder)?;
-                        let bid_addr = BidAddr(account_hash, None);
-                        Ok((Key::Bid(bid_addr), rem))
+                        let bid_addr = BidAddr::legacy(account_hash);
+                        Ok((bid_addr.into(), rem))
                     }
                 }
             }
@@ -1111,11 +1133,8 @@ mod tests {
     const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
     const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
     const BALANCE_KEY: Key = Key::Balance([42; 32]);
-    const VALIDATOR_BID_KEY: Key = Key::Bid(BidAddr(AccountHash::new([42; 32]), None));
-    const DELEGATOR_BID_KEY: Key = Key::Bid(BidAddr(
-        AccountHash::new([42; 32]),
-        Some(AccountHash::new([24; 32])),
-    ));
+    const VALIDATOR_BID_KEY: Key = Key::Bid(BidAddr::new_validator_addr([42; 32]));
+    const DELEGATOR_BID_KEY: Key = Key::Bid(BidAddr::new_delegator_addr(([42; 32], [24; 32])));
     const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
     const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
     const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
@@ -1510,11 +1529,8 @@ mod tests {
         round_trip(&Key::DeployInfo(DeployHash::from_raw(zeros)));
         round_trip(&Key::EraInfo(EraId::from(0)));
         round_trip(&Key::Balance(URef::new(zeros, AccessRights::READ).addr()));
-        round_trip(&Key::Bid(BidAddr(AccountHash::new(zeros), None)));
-        round_trip(&Key::Bid(BidAddr(
-            AccountHash::new(zeros),
-            Some(AccountHash::new(nines)),
-        )));
+        round_trip(&Key::Bid(BidAddr::from(AccountHash::new(zeros))));
+        round_trip(&Key::Bid(BidAddr::new_delegator_addr((zeros, nines))));
         round_trip(&Key::Withdraw(AccountHash::new(zeros)));
         round_trip(&Key::Dictionary(zeros));
         round_trip(&Key::SystemContractRegistry);

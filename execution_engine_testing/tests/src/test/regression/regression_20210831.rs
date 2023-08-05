@@ -462,10 +462,8 @@ fn regression_20210831_should_fail_to_activate_bid() {
     builder.exec(withdraw_bid_request).expect_success().commit();
 
     let bids = builder.get_bids();
-    let bid = bids
-        .validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY)
-        .expect("should have bid");
-    assert!(bid.inactive());
+    let bid = bids.validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY);
+    assert!(bid.is_none());
 
     let sender = *ACCOUNT_2_ADDR;
     let activate_bid_args = runtime_args! {

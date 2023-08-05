@@ -2465,7 +2465,8 @@
               "Read",
               "Write",
               "Add",
-              "NoOp"
+              "NoOp",
+              "Prune"
             ]
           },
           "TransformEntry": {
@@ -2503,6 +2504,19 @@
                   "WriteContractPackage",
                   "WriteAddressableEntity"
                 ]
+              },
+              {
+                "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
+                "type": "object",
+                "required": [
+                  "Prune"
+                ],
+                "properties": {
+                  "Prune": {
+                    "$ref": "#/components/schemas/Key"
+                  }
+                },
+                "additionalProperties": false
               },
               {
                 "description": "Writes the given CLValue to global state.",
@@ -2713,9 +2727,234 @@
               }
             ]
           },
+          "Key": {
+            "description": "The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts) are indexed on the network.",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SystemContractRegistry",
+                  "EraSummary",
+                  "ChainspecRegistry",
+                  "ChecksumRegistry"
+                ]
+              },
+              {
+                "description": "A `Key` under which a user account is stored.",
+                "type": "object",
+                "required": [
+                  "Account"
+                ],
+                "properties": {
+                  "Account": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which a smart contract is stored and which is the pseudo-hash of the contract.",
+                "type": "object",
+                "required": [
+                  "Hash"
+                ],
+                "properties": {
+                  "Hash": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "uint8",
+                      "minimum": 0.0
+                    },
+                    "maxItems": 32,
+                    "minItems": 32
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` which is a [`URef`], under which most types of data can be stored.",
+                "type": "object",
+                "required": [
+                  "URef"
+                ],
+                "properties": {
+                  "URef": {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store a transfer.",
+                "type": "object",
+                "required": [
+                  "Transfer"
+                ],
+                "properties": {
+                  "Transfer": {
+                    "$ref": "#/components/schemas/TransferAddr"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store a deploy info.",
+                "type": "object",
+                "required": [
+                  "DeployInfo"
+                ],
+                "properties": {
+                  "DeployInfo": {
+                    "$ref": "#/components/schemas/DeployHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store an era info.",
+                "type": "object",
+                "required": [
+                  "EraInfo"
+                ],
+                "properties": {
+                  "EraInfo": {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store a purse balance.",
+                "type": "object",
+                "required": [
+                  "Balance"
+                ],
+                "properties": {
+                  "Balance": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "uint8",
+                      "minimum": 0.0
+                    },
+                    "maxItems": 32,
+                    "minItems": 32
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store bid information",
+                "type": "object",
+                "required": [
+                  "Bid"
+                ],
+                "properties": {
+                  "Bid": {
+                    "$ref": "#/components/schemas/BidAddr"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store withdraw information.",
+                "type": "object",
+                "required": [
+                  "Withdraw"
+                ],
+                "properties": {
+                  "Withdraw": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.",
+                "type": "object",
+                "required": [
+                  "Dictionary"
+                ],
+                "properties": {
+                  "Dictionary": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "uint8",
+                      "minimum": 0.0
+                    },
+                    "maxItems": 32,
+                    "minItems": 32
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store unbond information.",
+                "type": "object",
+                "required": [
+                  "Unbond"
+                ],
+                "properties": {
+                  "Unbond": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
           "AccountHash": {
             "description": "Hex-encoded account hash.",
             "type": "string"
+          },
+          "URef": {
+            "description": "Hex-encoded, formatted URef.",
+            "type": "string"
+          },
+          "TransferAddr": {
+            "description": "Hex-encoded transfer address.",
+            "type": "string"
+          },
+          "EraId": {
+            "description": "Era ID newtype.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
+          },
+          "BidAddr": {
+            "description": "Bid Address",
+            "type": "array",
+            "items": [
+              {
+                "$ref": "#/components/schemas/AccountHash"
+              },
+              {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/BidAddrTag"
+              }
+            ],
+            "maxItems": 3,
+            "minItems": 3
+          },
+          "BidAddrTag": {
+            "description": "Serialization tag for BidAddr variants.",
+            "type": "string",
+            "enum": [
+              "Unified",
+              "Validator",
+              "Delegator"
+            ]
           },
           "DeployInfo": {
             "description": "Information relating to the given Deploy.",
@@ -2769,14 +3008,6 @@
               }
             },
             "additionalProperties": false
-          },
-          "TransferAddr": {
-            "description": "Hex-encoded transfer address.",
-            "type": "string"
-          },
-          "URef": {
-            "description": "Hex-encoded, formatted URef.",
-            "type": "string"
           },
           "U512": {
             "description": "Decimal representation of a 512-bit integer.",
@@ -2971,7 +3202,7 @@
             "description": "Auction bid variants.",
             "anyOf": [
               {
-                "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. This format is legacy and will be deprecated in a future release.",
+                "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
                 "type": "object",
                 "required": [
                   "Unified"
@@ -3250,12 +3481,6 @@
               }
             },
             "additionalProperties": false
-          },
-          "EraId": {
-            "description": "Era ID newtype.",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0.0
           },
           "U128": {
             "description": "Decimal representation of a 128-bit integer.",
