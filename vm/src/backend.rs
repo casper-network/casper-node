@@ -36,6 +36,8 @@ pub enum Error {
     CompileError(String),
 }
 
+// struct Payload
+
 pub trait WasmInstance<S: Storage> {
     fn call_export(&mut self, name: &str, args: &[&[u8]]) -> (Result<(), VMError>, GasSummary);
     fn teardown(self) -> Context<S>;

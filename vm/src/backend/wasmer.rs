@@ -1,11 +1,12 @@
 use std::{
+    mem,
     ptr::NonNull,
-    sync::{Arc, Mutex, Weak}, mem,
+    sync::{Arc, Mutex, Weak},
 };
 
 use wasmer::{
     AsStoreMut, AsStoreRef, Engine, Exports, Function, FunctionEnv, FunctionEnvMut, Imports,
-    Instance, Memory, MemoryView, Module, RuntimeError, Store,
+    Instance, Memory, MemoryView, Module, RuntimeError, Store, Value,
 };
 use wasmer_compiler_singlepass::Singlepass;
 
@@ -29,16 +30,27 @@ struct WasmerEnv<S: Storage> {
 unsafe impl<S: Storage> Send for WasmerEnv<S> {}
 unsafe impl<S: Storage> Sync for WasmerEnv<S> {}
 
-
 fn call_alloc<E: AsStoreMut>(instance: &Instance, mut env: E, size: usize) -> u32 {
-     // let tref = self.env.data().instance.as_ref();
-     let func = instance
-     .exports
-     .get_typed_function::<u32, u32>(&env, "alloc")
-     .expect("should have function");
- let ret = func.call(&mut env, size.try_into().unwrap()).unwrap();
- ret
+    // println!("call_alloc({})", size);
+    // let tref = self.env.data().instance.as_ref();
+    let func = instance
+        .exports
+        .get_typed_function::<u32, u32>(&env, "alloc")
+        .expect("should have function");
+    let ret = func.call(&mut env, size.try_into().unwrap()).unwrap();
+    ret
 }
+
+fn call_dealloc<E: AsStoreMut>(instance: &Instance, mut env: E, ptr: u32, size: usize) {
+    // println!("call_alloc({})", size);
+    // let tref = self.env.data().instance.as_ref();
+    let func = instance
+        .exports
+        .get_typed_function::<(u32, u32), ()>(&env, "dealloc")
+        .expect("should have function");
+    func.call(&mut env, ptr, size.try_into().unwrap()).unwrap();
+}
+
 
 pub(crate) struct WasmerCaller<'a, S: Storage> {
     env: FunctionEnvMut<'a, WasmerEnv<S>>,
@@ -238,64 +250,87 @@ where
     }
 }
 
+type wasm32_ptr = u32;
+type wasm32_usize = u32;
+
+#[repr(C)]
+struct Slice {
+    ptr: wasm32_ptr,
+    size: wasm32_usize,
+}
+
 impl<S> WasmInstance<S> for WasmerInstance<S>
 where
     S: Storage + 'static,
 {
     fn call_export(&mut self, name: &str, args: &[&[u8]]) -> (Result<(), VMError>, GasSummary) {
-        // Inject arguments
-        // alloc(sum(args.size) + len(args) * sizeof(u32))
-        // [offset1, offset2, offset3]
-
+        // Allocate memory inside the VM and copy over each argument into the provided pointer.
         let mut data_size: usize = args.iter().map(|arg| arg.len()).sum();
-        let mut offset_size: usize = args.len();
+        data_size += args.len() * mem::size_of::<Slice>();
 
-        // let mut arg_ptrs = Vec::new();
-        let mut args_ptr_chunk = Vec::new();
-
-        let args_ptr = call_alloc(&self.instance, &mut self.store, args.len());
-        let memory = self.instance.exports.get_memory("memory").expect("should have memory").clone();
-        // let view = memory.view(&self.store);
-
-        #[repr(C)]
-        struct Slice {
-            ptr: u32,
-            size: u32,
-        }
-
-
-        for arg in args {
-            let arg_ptr = call_alloc(&self.instance, &mut self.store.as_store_mut(), arg.len());
-            memory.view(&self.store).write(arg_ptr.into(), arg).unwrap();
-
-            let slice = Slice {
-                ptr: arg_ptr,
-                size: arg.len() as _,
-            };
-
-            let slice_bytes: [u8; mem::size_of::<Slice>()] = unsafe { mem::transmute_copy(&slice) };
-
-            args_ptr_chunk.extend_from_slice(&slice_bytes);
-        }
-
-        let offsets_ptr = call_alloc(&self.instance, &mut self.store, args_ptr_chunk.len());
-        // let args_ptr = call_alloc(&self.instance, &mut self.store, args.len());
-        memory.view(&self.store).write(offsets_ptr.into(), &args_ptr_chunk).unwrap();
-
-
-
-        let typed_function = self
+        // let mut offset_size: usize = args.len() * 8;
+        let memory = self
             .instance
             .exports
-            .get_typed_function::<(u64, u32), ()>(&self.store, name)
+            .get_memory("memory")
+            .expect("should have memory")
+            .clone();
+        let arg_ptr = call_alloc(&self.instance, &mut self.store.as_store_mut(), data_size);
+        let mut cur_ptr = arg_ptr;
+        let mut slices = Vec::new();
+
+        for arg in args {
+            memory.view(&self.store).write(cur_ptr as _, arg).unwrap();
+            slices.push(Slice {
+                ptr: cur_ptr,
+                size: arg.len() as _,
+            });
+            cur_ptr += arg.len() as u32;
+        }
+        let mut slices_ptr = cur_ptr;
+        let mut ptr = slices_ptr;
+        let mut slices_ptrs = Vec::new();
+        for slice in slices {
+            let slice_bytes: [u8; mem::size_of::<Slice>()] = unsafe { mem::transmute_copy(&slice) };
+            // dbg!(&slice_bytes.len());
+            memory.view(&self.store).write(ptr as _, &slice_bytes).unwrap();
+            slices_ptrs.push(ptr);
+            ptr += slice_bytes.len() as u32;
+        }
+
+
+        let exported_function = self
+            .instance
+            .exports
+            // .get_typed_function::<(u64, u32), ()>(&self.store, name)
+            .get_function(name)
             .expect("export error");
-        let vm_result = match typed_function.call(&mut self.store, args.len().try_into().unwrap(), offsets_ptr) {
-            Ok(()) => Ok(()),
+
+        let result = if args.len() == 2 {
+            let typed = exported_function.typed::<(u32, u32), ()>(&mut self.store).unwrap();
+            typed.call(&mut self.store, slices_ptrs[0], slices_ptrs[1])
+        }
+        else {
+            todo!()
+        };
+
+        let vm_result = match result {
+            Ok(result) => Ok(()),
             Err(error) => match error.downcast::<VMError>() {
                 Ok(vm_error) => Err(vm_error),
                 Err(vm_error) => todo!("handle {vm_error:?}"),
             },
         };
+
+
+        // let params = [
+        //     Value::I64(args.len().try_into().unwrap()),
+        //     Value::I32(slices_ptr as _)
+        // ];
+
+
+        call_dealloc(&self.instance, &mut self.store.as_store_mut(), arg_ptr, data_size);
+
         let gas_summary = GasSummary {};
         (vm_result, gas_summary)
     }
@@ -321,5 +356,4 @@ where
             storage: a.context.storage.clone(),
         }
     }
-
 }
