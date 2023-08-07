@@ -38,9 +38,8 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-use crate::account::Account;
 use crate::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
