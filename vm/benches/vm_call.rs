@@ -9,7 +9,6 @@ use vm::{
 // use super::*;
 const TEST_CONTRACT_WASM: &[u8] = include_bytes!("../test-contract.wasm");
 
-
 // fn fibonacci(n: u64) -> u64 {
 //     match n {
 //         0 => 1,
@@ -54,7 +53,6 @@ impl Storage for MockStorage {
     }
 }
 
-
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("call", |b| {
         let mut vm = VM::new();
@@ -67,8 +65,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         let mock_context = Context { storage };
 
         let mut instance = vm
-        .prepare(execute_request, mock_context)
-        .expect("should prepare");
+            .prepare(execute_request, mock_context)
+            .expect("should prepare");
 
         b.iter(|| {
             let args = &[b"hello".as_slice(), b"world but longer".as_slice()];
@@ -76,7 +74,6 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
 
         instance.teardown();
-
     });
 }
 

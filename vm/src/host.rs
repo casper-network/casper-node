@@ -38,7 +38,7 @@ pub(crate) fn casper_print<S: Storage>(
         .memory_read(message_ptr, message_size.try_into().unwrap())
         .expect("should work");
     let msg = String::from_utf8_lossy(&vec);
-    eprintln!("💬 {msg}");
+    eprintln!("⛓️ {msg}");
     0
 }
 

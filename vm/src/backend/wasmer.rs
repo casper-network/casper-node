@@ -51,7 +51,6 @@ fn call_dealloc<E: AsStoreMut>(instance: &Instance, mut env: E, ptr: u32, size: 
     func.call(&mut env, ptr, size.try_into().unwrap()).unwrap();
 }
 
-
 pub(crate) struct WasmerCaller<'a, S: Storage> {
     env: FunctionEnvMut<'a, WasmerEnv<S>>,
 }
@@ -293,11 +292,13 @@ where
         for slice in slices {
             let slice_bytes: [u8; mem::size_of::<Slice>()] = unsafe { mem::transmute_copy(&slice) };
             // dbg!(&slice_bytes.len());
-            memory.view(&self.store).write(ptr as _, &slice_bytes).unwrap();
-            slices_ptrs.push(ptr);
+            memory
+                .view(&self.store)
+                .write(ptr as _, &slice_bytes)
+                .unwrap();
+            slices_ptrs.push(Value::I32(ptr as _));
             ptr += slice_bytes.len() as u32;
         }
-
 
         let exported_function = self
             .instance
@@ -306,13 +307,17 @@ where
             .get_function(name)
             .expect("export error");
 
-        let result = if args.len() == 2 {
-            let typed = exported_function.typed::<(u32, u32), ()>(&mut self.store).unwrap();
-            typed.call(&mut self.store, slices_ptrs[0], slices_ptrs[1])
-        }
-        else {
-            todo!()
-        };
+        // TODO: Possible optimization is to use get_typed_function to optimize the call, rather
+        // than using dynamic interface.
+        let result = exported_function.call(&mut self.store, &slices_ptrs);
+        // let result = if args.len() == 2 {
+        //     let typed = exported_function
+        //         .typed::<(u32, u32), ()>(&mut self.store)
+        //         .unwrap();
+        //     typed.call(&mut self.store, slices_ptrs[0], slices_ptrs[1])
+        // } else {
+        //     todo!()
+        // };
 
         let vm_result = match result {
             Ok(result) => Ok(()),
@@ -322,14 +327,17 @@ where
             },
         };
 
-
         // let params = [
         //     Value::I64(args.len().try_into().unwrap()),
         //     Value::I32(slices_ptr as _)
         // ];
 
-
-        call_dealloc(&self.instance, &mut self.store.as_store_mut(), arg_ptr, data_size);
+        call_dealloc(
+            &self.instance,
+            &mut self.store.as_store_mut(),
+            arg_ptr,
+            data_size,
+        );
 
         let gas_summary = GasSummary {};
         (vm_result, gas_summary)
