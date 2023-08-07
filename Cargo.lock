@@ -657,7 +657,6 @@ dependencies = [
  "linked-hash-map",
  "lmdb-rkv",
  "log",
- "muxink",
  "num",
  "num-derive",
  "num-rational",
@@ -3509,20 +3508,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "muxink"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "futures",
- "rand 0.8.5",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tokio-util 0.7.7",
- "tracing",
-]
-
-[[package]]
 name = "named-dictionary-test"
 version = "0.1.0"
 dependencies = [
@@ -5485,7 +5470,6 @@ checksum = "5427d89453009325de0d8f342c9490009f76e999cb7672d77e46267448f7e6b2"
 dependencies = [
  "bytes",
  "futures-core",
- "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",

@@ -7,7 +7,6 @@ members = [
     "hashing",
     "json_rpc",
     "juliet",
-    "muxink",
     "node",
     "smart_contracts/contract",
     "smart_contracts/contracts/[!.]*/*",
