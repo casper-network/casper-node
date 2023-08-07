@@ -40,7 +40,7 @@
 //!     let path = "rpc";
 //!     let max_body_bytes = 1024;
 //!     let allow_unknown_fields = false;
-//!     let route = casper_json_rpc::route(path, max_body_bytes, handlers, allow_unknown_fields);
+//!     let route = casper_json_rpc::route(path, max_body_bytes, handlers, allow_unknown_fields, None);
 //!
 //!     // Convert it into a `Service` and run it.
 //!     let make_svc = hyper::service::make_service_fn(move |_| {
@@ -104,6 +104,33 @@ pub enum CorsOrigin {
     Specified(String),
 }
 
+impl CorsOrigin {
+    /// Converts the [`CorsOrigin`] into a CORS [`Builder`](warp::cors::Builder).
+    #[inline]
+    pub fn to_cors_builder(&self) -> warp::cors::Builder {
+        match self {
+            CorsOrigin::Any => warp::cors().allow_any_origin(),
+            CorsOrigin::Specified(origin) => warp::cors().allow_origin(origin.as_str()),
+        }
+    }
+
+    /// Parses a [`CorsOrigin`] from a given configuration string.
+    ///
+    /// The input string will be parsed as follows:
+    ///
+    /// * `""` (empty string): No CORS Origin (i.e. returns [`None`]).
+    /// * `"*"`: [`CorsOrigin::Any`].
+    /// * otherwise, returns `CorsOrigin::Specified(raw)`.
+    #[inline]
+    pub fn from_str<T: ToString + AsRef<str>>(raw: T) -> Option<Self> {
+        match raw.as_ref() {
+            "" => None,
+            "*" => Some(CorsOrigin::Any),
+            _ => Some(CorsOrigin::Specified(raw.to_string())),
+        }
+    }
+}
+
 /// Constructs a set of warp filters suitable for use in a JSON-RPC server.
 ///
 /// `path` specifies the exact HTTP path for JSON-RPC requests, e.g. "rpc" will match requests on
@@ -139,18 +166,11 @@ pub fn route<P: AsRef<str>>(
         .recover(filters::handle_rejection);
 
     if let Some(cors_origin) = cors_header {
-        let cors = match cors_origin {
-            CorsOrigin::Any => warp::cors()
-                .allow_any_origin()
-                .allow_header(CONTENT_TYPE)
-                .allow_method(Method::POST)
-                .build(),
-            CorsOrigin::Specified(origin) => warp::cors()
-                .allow_origin(origin.as_str())
-                .allow_header(CONTENT_TYPE)
-                .allow_method(Method::POST)
-                .build(),
-        };
+        let cors = cors_origin
+            .to_cors_builder()
+            .allow_header(CONTENT_TYPE)
+            .allow_method(Method::POST)
+            .build();
         base.with(cors).map(box_reply).boxed()
     } else {
         base.map(box_reply).boxed()
@@ -158,8 +178,20 @@ pub fn route<P: AsRef<str>>(
 }
 
 /// Boxes a reply of a warp filter.
+///
+/// Can be combined with [`Filter::boxed`] through [`Filter::map`] to erase the type on filters:
+///
+/// ```rust
+/// use warp::{Filter, filters::BoxedFilter, http::Response, reply::Reply};
+///# use casper_json_rpc::box_reply;
+///
+/// let filter: BoxedFilter<(Box<dyn Reply>,)> = warp::any()
+///                .map(|| Response::builder().body("hello world"))
+///                .map(box_reply).boxed();
+///# drop(filter);
+/// ```
 #[inline(always)]
-fn box_reply<T: Reply + 'static>(reply: T) -> Box<dyn Reply> {
+pub fn box_reply<T: Reply + 'static>(reply: T) -> Box<dyn Reply> {
     let boxed: Box<dyn Reply> = Box::new(reply);
     boxed
 }
