@@ -330,31 +330,14 @@ where
 
         let builder = utils::start_listening(&cfg.address)?;
 
-        let server_join_handle = match cfg.cors_origin.as_str() {
-            "" => Some(tokio::spawn(http_server::run(
-                builder,
-                effect_builder,
-                self.api_version,
-                shutdown_fuse.clone(),
-                cfg.qps_limit,
-            ))),
-            "*" => Some(tokio::spawn(http_server::run_with_cors(
-                builder,
-                effect_builder,
-                self.api_version,
-                shutdown_fuse.clone(),
-                cfg.qps_limit,
-                CorsOrigin::Any,
-            ))),
-            _ => Some(tokio::spawn(http_server::run_with_cors(
-                builder,
-                effect_builder,
-                self.api_version,
-                shutdown_fuse.clone(),
-                cfg.qps_limit,
-                CorsOrigin::Specified(cfg.cors_origin.clone()),
-            ))),
-        };
+        let server_join_handle = Some(tokio::spawn(http_server::run(
+            builder,
+            effect_builder,
+            self.api_version,
+            shutdown_fuse.clone(),
+            cfg.qps_limit,
+            CorsOrigin::from_str(&cfg.cors_origin),
+        )));
 
         let node_startup_instant = self.node_startup_instant;
         let network_name = self.network_name.clone();
