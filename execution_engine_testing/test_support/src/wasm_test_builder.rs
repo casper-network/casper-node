@@ -1406,7 +1406,7 @@ where
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_system_mint_hash(state_root_hash)
-            .expect("should have auction hash")
+            .expect("should have mint hash")
     }
 
     /// Gets the [`ContractHash`] of the system handle payment contract, panics if it can't be

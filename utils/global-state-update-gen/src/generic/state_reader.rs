@@ -72,18 +72,28 @@ impl StateReader for LmdbWasmTestBuilder {
         // Find the hash of the mint contract.
         let mint_contract_hash = self.get_system_mint_hash();
 
-        self.get_addressable_entity(mint_contract_hash)
-            .expect("mint should exist")
-            .named_keys()[TOTAL_SUPPLY_KEY]
+        let named_key = if let Some(entity) = self.get_addressable_entity(mint_contract_hash) {
+            entity.named_keys()[TOTAL_SUPPLY_KEY]
+        } else {
+            self.get_legacy_contract(mint_contract_hash)
+                .expect("mint should exist")
+                .named_keys()[TOTAL_SUPPLY_KEY]
+        };
+        named_key
     }
 
     fn get_seigniorage_recipients_key(&mut self) -> Key {
         // Find the hash of the auction contract.
         let auction_contract_hash = self.get_system_auction_hash();
 
-        self.get_addressable_entity(auction_contract_hash)
-            .expect("auction should exist")
-            .named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY]
+        let named_key = if let Some(entity) = self.get_addressable_entity(auction_contract_hash) {
+            entity.named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY]
+        } else {
+            self.get_legacy_contract(auction_contract_hash)
+                .expect("auction should exist")
+                .named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY]
+        };
+        named_key
     }
 
     fn get_account(&mut self, account_hash: AccountHash) -> Option<AddressableEntity> {
