@@ -171,7 +171,7 @@ impl Transform {
     /// Applies the transformation on a specified stored value instance.
     ///
     /// This method produces a new [`StoredValue`] instance based on the [`Transform`] variant. If a
-    /// given transform is a [`Transform::Delete`] then `None` is returned as the [`StoredValue`] is
+    /// given transform is a [`Transform::Prune`] then `None` is returned as the [`StoredValue`] is
     /// consumed but no new value is produced.
     pub fn apply(self, stored_value: StoredValue) -> Result<Option<StoredValue>, Error> {
         match self {
