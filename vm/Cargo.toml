@@ -10,6 +10,9 @@ bytes = "1.4.0"
 casper-types = { path = "../types" }
 wasmer = "4.1.0"
 wasmer-compiler-singlepass = "4.1.0"
+wasmer-middlewares = "4.1.0"
+wasmer-types = "4.1.0"
+
 thiserror = "1.0.44"
 criterion = "0.5.1"
 

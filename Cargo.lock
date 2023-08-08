@@ -6464,6 +6464,8 @@ dependencies = [
  "thiserror",
  "wasmer",
  "wasmer-compiler-singlepass",
+ "wasmer-middlewares",
+ "wasmer-types",
 ]
 
 [[package]]
@@ -6791,6 +6793,17 @@ dependencies = [
  "proc-macro2 1.0.63",
  "quote 1.0.29",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "wasmer-middlewares"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce87a2a7b622d91a901630c9879922a39087e8046eabe9d8d7879ba781f7c8ce"
+dependencies = [
+ "wasmer",
+ "wasmer-types",
+ "wasmer-vm",
 ]
 
 [[package]]

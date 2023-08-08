@@ -67,7 +67,12 @@ fn smoke() {
 
     let storage = MockStorage::default();
 
-    let mock_context = Context { storage };
+    const GAS_LIMIT: u64 = 5;
+
+    let mock_context = Context {
+        storage,
+        initial_gas_limit: GAS_LIMIT,
+    };
 
     let retrieved_context = {
         let mut instance = vm
