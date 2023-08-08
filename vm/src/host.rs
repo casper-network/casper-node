@@ -9,10 +9,10 @@ use crate::{backend::Caller, storage::Storage};
 /// Write value under a key.
 pub(crate) fn casper_write<S: Storage>(
     caller: impl Caller<S>,
-    _key_space: u64,
+    key_space: u64,
     key_ptr: u32,
     key_size: u32,
-    _value_tag: u64,
+    value_tag: u64,
     value_ptr: u32,
     value_size: u32,
 ) -> i32 {
@@ -24,7 +24,11 @@ pub(crate) fn casper_write<S: Storage>(
         .expect("should read value bytes");
 
     // Write data to key value storage
-    caller.context().storage.write(&key, &value).unwrap();
+    caller
+        .context()
+        .storage
+        .write(key_space, &key, value_tag, &value)
+        .unwrap();
 
     0
 }
@@ -47,7 +51,7 @@ struct ReadInfo {
     /// Allocated pointer.
     data: u32,
     /// Size in bytes.
-    data_size: u64,
+    data_size: u32,
     /// Value tag.
     tag: u64,
 }
@@ -55,7 +59,7 @@ struct ReadInfo {
 /// Write value under a key.
 pub(crate) fn casper_read<S: Storage>(
     mut caller: impl Caller<S>,
-    _key_space: u64,
+    key_tag: u64,
     key_ptr: u32,
     key_size: u32,
     info_ptr: u32,
@@ -64,21 +68,23 @@ pub(crate) fn casper_read<S: Storage>(
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
 
-    match caller.context().storage.read(&key) {
-        Ok(Some(value)) => {
-            let out_ptr: u32 = caller.alloc(value.len());
+    match caller.context().storage.read(key_tag, &key) {
+        Ok(Some(entry)) => {
+            let out_ptr: u32 = caller.alloc(entry.data.len());
 
             let read_info = ReadInfo {
                 data: out_ptr,
-                data_size: value.len().try_into().unwrap(),
-                tag: u64::MAX,
+                data_size: entry.data.len().try_into().unwrap(),
+                tag: entry.tag,
             };
 
             let read_info_bytes: [u8; mem::size_of::<ReadInfo>()] =
                 unsafe { mem::transmute_copy(&read_info) };
+            dbg!(read_info_bytes.len());
+
             caller.memory_write(info_ptr, &read_info_bytes).unwrap();
 
-            // caller.memory_write(out_ptr, &value).unwrap();
+            caller.memory_write(out_ptr, &entry.data).unwrap();
 
             // out_ptr
             0

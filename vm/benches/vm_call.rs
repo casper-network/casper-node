@@ -44,12 +44,18 @@ fn bench_call() {
 #[derive(Default, Debug, Clone)]
 struct MockStorage;
 impl Storage for MockStorage {
-    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), storage::Error> {
-        Ok(())
+    fn write(
+        &self,
+        key_tag: u64,
+        key: &[u8],
+        value_tag: u64,
+        value: &[u8],
+    ) -> Result<(), storage::Error> {
+        todo!()
     }
 
-    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, storage::Error> {
-        Ok(None)
+    fn read(&self, key_tag: u64, key: &[u8]) -> Result<Option<storage::Entry>, storage::Error> {
+        todo!()
     }
 }
 

@@ -1,12 +1,12 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     sync::{Arc, RwLock},
 };
 
 use bytes::Bytes;
 use vm::{
     backend::{Context, WasmInstance},
-    storage::{self, Storage},
+    storage::{self, Entry, Storage},
     ExecuteRequest, VM,
 };
 
@@ -16,23 +16,43 @@ const TEST_CONTRACT_WASM: &[u8] = include_bytes!("../test-contract.wasm");
 #[derive(Default, Debug, Clone)]
 struct MockStorage {
     // journal: Arc<Vec<JournalEntry>>,
-    db: Arc<RwLock<HashMap<Bytes, Bytes>>>,
+    db: Arc<RwLock<BTreeMap<u64, BTreeMap<Bytes, (u64, Bytes)>>>>,
 }
 
 impl Storage for MockStorage {
-    fn write(&self, key: &[u8], value: &[u8]) -> Result<(), storage::Error> {
+    fn write(
+        &self,
+        key_tag: u64,
+        key: &[u8],
+        value_tag: u64,
+        value: &[u8],
+    ) -> Result<(), storage::Error> {
         let key_bytes = Bytes::copy_from_slice(key);
         let value_bytes = Bytes::copy_from_slice(value);
         // self.journal.push(JournalEntry::Write(key_bytes.clone(), value_bytes.clone()));
-        self.db.write().unwrap().insert(key_bytes, value_bytes);
+        self.db
+            .write()
+            .unwrap()
+            .entry(key_tag)
+            .or_default()
+            .insert(key_bytes, (value_tag, value_bytes));
         Ok(())
     }
 
-    fn read(&self, key: &[u8]) -> Result<Option<Bytes>, storage::Error> {
+    fn read(&self, key_tag: u64, key: &[u8]) -> Result<Option<Entry>, storage::Error> {
         // let key_bytes = Bytes::copy_from_slice(key);
         // self.journal.push(JournalEntry::Read(key_bytes.clone()));
-        match self.db.read().unwrap().get(key) {
-            Some(value) => Ok(Some(value.clone())),
+        match self
+            .db
+            .read()
+            .unwrap()
+            .get(&key_tag)
+            .and_then(|inner| inner.get(key))
+        {
+            Some((value_tag, value)) => Ok(Some(Entry {
+                tag: *value_tag,
+                data: value.clone(),
+            })),
             None => Ok(None),
         }
     }
