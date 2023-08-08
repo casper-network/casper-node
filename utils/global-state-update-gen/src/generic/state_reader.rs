@@ -115,15 +115,12 @@ impl StateReader for LmdbWasmTestBuilder {
     fn get_protocol_version(&mut self) -> ProtocolVersion {
         let mint_contract_hash = self.get_system_mint_hash();
 
-        let protocol_version = if let Some(entity) = self.get_addressable_entity(mint_contract_hash)
-        {
+        if let Some(entity) = self.get_addressable_entity(mint_contract_hash) {
             entity.protocol_version()
         } else {
             self.get_legacy_contract(mint_contract_hash)
                 .expect("mint should exist")
                 .protocol_version()
-        };
-
-        protocol_version
+        }
     }
 }
