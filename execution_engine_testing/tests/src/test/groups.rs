@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    account::AccountHash, contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
+    account::AccountHash, package::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
 
 use crate::wasm_utils;
@@ -51,11 +51,8 @@ fn should_call_group_restricted_session() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract");
 
     let _package_hash = account
         .named_keys()
@@ -92,7 +89,7 @@ fn should_call_group_restricted_session() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -116,11 +113,8 @@ fn should_call_group_restricted_session_caller() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -155,7 +149,7 @@ fn should_call_group_restricted_session_caller() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -188,12 +182,8 @@ fn should_not_call_restricted_session_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)
@@ -226,7 +216,7 @@ fn should_not_call_restricted_session_from_wrong_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
@@ -267,11 +257,8 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -307,7 +294,7 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
@@ -339,11 +326,8 @@ fn should_call_group_restricted_contract() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -382,7 +366,7 @@ fn should_call_group_restricted_contract() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -413,11 +397,8 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -481,11 +462,8 @@ fn should_call_group_unrestricted_contract_caller() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -520,7 +498,7 @@ fn should_call_group_unrestricted_contract_caller() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 }
@@ -549,11 +527,8 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -616,11 +591,8 @@ fn should_call_group_restricted_contract_as_session() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -683,11 +655,8 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -751,11 +720,8 @@ fn should_not_call_uncallable_contract_from_deploy() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -840,11 +806,8 @@ fn should_not_call_uncallable_session_from_deploy() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -938,11 +901,8 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()
@@ -980,7 +940,7 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
     let _account = builder
         .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
         .expect("should query account")
-        .as_account()
+        .as_cl_value()
         .cloned()
         .expect("should be account");
 
@@ -1021,11 +981,8 @@ fn should_call_group_restricted_stored_payment_code() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default contract package");
 
     let package_hash = account
         .named_keys()

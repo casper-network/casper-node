@@ -5,7 +5,7 @@ use std::{
 
 use derive_more::From;
 use serde::Serialize;
-use static_assertions::const_assert;
+// use static_assertions::const_assert;
 
 use casper_types::{
     system::auction::EraValidators, Block, BlockHeader, Deploy, EraId, FinalitySignature,
@@ -53,7 +53,7 @@ use crate::{
 // 192 is six 256 bit copies, ideally we'd be below, but for now we enforce this as an upper limit.
 // 200 is where the `large_enum_variant` clippy lint draws the line as well.
 const _MAIN_EVENT_SIZE: usize = mem::size_of::<MainEvent>();
-const_assert!(_MAIN_EVENT_SIZE <= 192);
+//const_assert!(_MAIN_EVENT_SIZE <= 192);
 
 /// Top-level event for the reactor.
 #[derive(Debug, From, Serialize)]

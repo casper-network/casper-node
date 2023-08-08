@@ -4,7 +4,7 @@ use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
 
 use casper_types::{
-    contracts::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
+    addressable_entity::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
     RuntimeArgs, URef, URefAddr, WasmConfig, U128, U256, U512,
 };
 

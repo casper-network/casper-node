@@ -11,8 +11,8 @@ use datasize::DataSize;
 use num::traits::{AsPrimitive, WrappingAdd};
 
 use casper_types::{
+    addressable_entity::NamedKeys,
     bytesrepr::{self, FromBytes, ToBytes},
-    contracts::NamedKeys,
     CLType, CLTyped, CLValue, CLValueError, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
@@ -32,6 +32,9 @@ pub enum Error {
     /// Type mismatch error.
     #[error("{0}")]
     TypeMismatch(StoredValueTypeMismatch),
+    /// Type no longer supported.
+    #[error("Type no longer supported")]
+    Deprecated,
 }
 
 impl From<StoredValueTypeMismatch> for Error {
@@ -178,14 +181,11 @@ impl Transform {
             Transform::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
             Transform::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
             Transform::AddKeys(mut keys) => match stored_value {
-                StoredValue::Contract(mut contract) => {
-                    contract.named_keys_append(&mut keys);
-                    Ok(StoredValue::Contract(contract))
+                StoredValue::AddressableEntity(mut entity) => {
+                    entity.named_keys_append(&mut keys);
+                    Ok(StoredValue::AddressableEntity(entity))
                 }
-                StoredValue::Account(mut account) => {
-                    account.named_keys_append(&mut keys);
-                    Ok(StoredValue::Account(account))
-                }
+                StoredValue::Account(_) | StoredValue::Contract(_) => Err(Error::Deprecated),
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
                     let found = format!("{:?}", cl_value.cl_type());
@@ -353,6 +353,9 @@ impl From<&Transform> for casper_types::Transform {
                 casper_types::Transform::WriteContractWasm
             }
             Transform::Write(StoredValue::Contract(_)) => casper_types::Transform::WriteContract,
+            Transform::Write(StoredValue::AddressableEntity(_)) => {
+                casper_types::Transform::WriteAddressableEntity
+            }
             Transform::Write(StoredValue::ContractPackage(_)) => {
                 casper_types::Transform::WriteContractPackage
             }
@@ -427,17 +430,12 @@ pub mod gens {
 mod tests {
     use num::{Bounded, Num};
 
-    use casper_types::{
-        account::{Account, AccountHash, ActionThresholds, AssociatedKeys},
-        bytesrepr::Bytes,
-        AccessRights, ContractWasm, Key, URef, U128, U256, U512,
-    };
+    use casper_types::{bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256, U512};
 
     use super::*;
     use std::collections::BTreeMap;
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];
-    const ZERO_PUBLIC_KEY: AccountHash = AccountHash::new(ZERO_ARRAY);
     const TEST_STR: &str = "a";
     const TEST_BOOL: bool = true;
 
@@ -564,14 +562,6 @@ mod tests {
         assert_yields_type_mismatch_error(contract);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
-        let account = StoredValue::Account(Account::new(
-            ZERO_PUBLIC_KEY,
-            NamedKeys::new(),
-            uref,
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-        ));
-        assert_yields_type_mismatch_error(account);
 
         let cl_bool =
             StoredValue::CLValue(CLValue::from_t(TEST_BOOL).expect("should create CLValue"));

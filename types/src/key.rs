@@ -26,11 +26,13 @@ use rand::{
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account::{self, AccountHash, ACCOUNT_HASH_LENGTH},
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    addressable_entity,
+    addressable_entity::ContractHash,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
-    contracts::{ContractHash, ContractPackageHash},
+    package::ContractPackageHash,
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
     UREF_ADDR_LENGTH,
@@ -153,7 +155,7 @@ pub enum Key {
 #[non_exhaustive]
 pub enum FromStrError {
     /// Account parse error.
-    Account(account::FromStrError),
+    Account(addressable_entity::FromStrError),
     /// Hash parse error.
     Hash(String),
     /// URef parse error.
@@ -186,8 +188,8 @@ pub enum FromStrError {
     UnknownPrefix,
 }
 
-impl From<account::FromStrError> for FromStrError {
-    fn from(error: account::FromStrError) -> Self {
+impl From<addressable_entity::FromStrError> for FromStrError {
+    fn from(error: addressable_entity::FromStrError) -> Self {
         FromStrError::Account(error)
     }
 }
@@ -355,7 +357,7 @@ impl Key {
     pub fn from_formatted_str(input: &str) -> Result<Key, FromStrError> {
         match AccountHash::from_formatted_str(input) {
             Ok(account_hash) => return Ok(Key::Account(account_hash)),
-            Err(account::FromStrError::InvalidPrefix) => {}
+            Err(addressable_entity::FromStrError::InvalidPrefix) => {}
             Err(error) => return Err(error.into()),
         }
 
@@ -572,6 +574,14 @@ impl Key {
     /// Returns true if the key is of type [`Key::Dictionary`].
     pub fn is_dictionary_key(&self) -> bool {
         if let Key::Dictionary(_) = self {
+            return true;
+        }
+        false
+    }
+
+    /// Returns true if the key is of type [`Key::Account`].
+    pub fn is_account_key(&self) -> bool {
+        if let Key::Account(_) = self {
             return true;
         }
         false

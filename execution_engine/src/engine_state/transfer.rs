@@ -2,10 +2,8 @@ use std::{cell::RefCell, convert::TryFrom, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    account::{Account, AccountHash},
-    system::mint,
-    AccessRights, ApiError, CLType, CLValueError, Key, PublicKey, RuntimeArgs, StoredValue, URef,
-    U512,
+    account::AccountHash, system::mint, AccessRights, AddressableEntity, ApiError, CLType,
+    CLValueError, Key, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -140,7 +138,7 @@ impl TransferRuntimeArgsBuilder {
     /// Returns resolved [`URef`].
     fn resolve_source_uref<R>(
         &self,
-        account: &Account,
+        account: &AddressableEntity,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<URef, Error>
     where
@@ -206,6 +204,7 @@ impl TransferRuntimeArgsBuilder {
     /// Returns [`TransferTargetMode`] with a resolved variant.
     fn resolve_transfer_target_mode<R>(
         &mut self,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
     where
@@ -248,9 +247,13 @@ impl TransferRuntimeArgsBuilder {
         };
 
         self.to = Some(account_hash);
-        match tracking_copy.borrow_mut().read_account(account_hash) {
-            Ok(account) => Ok(TransferTargetMode::PurseExists(
-                account.main_purse().with_access_rights(AccessRights::ADD),
+
+        match tracking_copy
+            .borrow_mut()
+            .get_addressable_entity_by_account_hash(protocol_version, account_hash)
+        {
+            Ok(contract) => Ok(TransferTargetMode::PurseExists(
+                contract.main_purse().with_access_rights(AccessRights::ADD),
             )),
             Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
         }
@@ -297,6 +300,7 @@ impl TransferRuntimeArgsBuilder {
     /// Returns a resolved [`TransferTargetMode`].
     pub(crate) fn transfer_target_mode<R>(
         &mut self,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferTargetMode, Error>
     where
@@ -307,7 +311,7 @@ impl TransferRuntimeArgsBuilder {
         if mode != TransferTargetMode::Unknown {
             return Ok(mode);
         }
-        match self.resolve_transfer_target_mode(tracking_copy) {
+        match self.resolve_transfer_target_mode(protocol_version, tracking_copy) {
             Ok(mode) => {
                 self.transfer_target_mode = mode;
                 Ok(mode)
@@ -319,7 +323,8 @@ impl TransferRuntimeArgsBuilder {
     /// Creates new [`TransferArgs`] instance.
     pub fn build<R>(
         mut self,
-        from: &Account,
+        from: &AddressableEntity,
+        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     ) -> Result<TransferArgs, Error>
     where
@@ -328,12 +333,13 @@ impl TransferRuntimeArgsBuilder {
     {
         let to = self.to;
 
-        let target_uref = match self.resolve_transfer_target_mode(Rc::clone(&tracking_copy))? {
-            TransferTargetMode::PurseExists(uref) => uref,
-            _ => {
-                return Err(Error::reverter(ApiError::Transfer));
-            }
-        };
+        let target_uref =
+            match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
+                TransferTargetMode::PurseExists(uref) => uref,
+                _ => {
+                    return Err(Error::reverter(ApiError::Transfer));
+                }
+            };
 
         let source_uref = self.resolve_source_uref(from, Rc::clone(&tracking_copy))?;
 

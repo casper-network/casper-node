@@ -39,7 +39,7 @@ fn should_run_regression() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let disabled_contract_hash = account.named_keys()[DISABLED_CONTRACT_HASH_KEY]
         .into_hash()

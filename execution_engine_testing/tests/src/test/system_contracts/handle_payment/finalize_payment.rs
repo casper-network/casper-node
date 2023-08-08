@@ -1,14 +1,9 @@
-use std::convert::TryInto;
-
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
 };
 use casper_types::{
-    account::{Account, AccountHash},
-    runtime_args,
-    system::handle_payment,
-    Key, RuntimeArgs, URef, U512,
+    account::AccountHash, runtime_args, system::handle_payment, Key, RuntimeArgs, URef, U512,
 };
 
 const CONTRACT_FINALIZE_PAYMENT: &str = "finalize_payment.wasm";
@@ -209,12 +204,9 @@ fn get_named_account_balance(
     account_address: AccountHash,
     name: &str,
 ) -> Option<U512> {
-    let account_key = Key::Account(account_address);
-
-    let account: Account = builder
-        .query(None, account_key, &[])
-        .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
-        .expect("should find balance uref");
+    let account = builder
+        .get_entity_by_account_hash(account_address)
+        .expect("should have account");
 
     let purse = account
         .named_keys()

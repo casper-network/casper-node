@@ -1,13 +1,15 @@
 //! Types which are serializable to JSON, which map to types defined outside this module.
 
 mod account;
+mod addressable_entity;
 mod auction_state;
 mod contracts;
 mod stored_value;
 
-use casper_types::{contracts::NamedKeys, NamedKey};
+use casper_types::{addressable_entity::NamedKeys, NamedKey};
 
 pub use account::Account;
+pub use addressable_entity::AddressableEntity;
 pub use auction_state::AuctionState;
 pub use contracts::{Contract, ContractPackage};
 pub use stored_value::StoredValue;

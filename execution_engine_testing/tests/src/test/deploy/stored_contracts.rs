@@ -8,11 +8,11 @@ use casper_execution_engine::{
     execution,
 };
 use casper_types::{
-    account::{Account, AccountHash},
-    contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
+    account::AccountHash,
+    package::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
-    ApiError, ContractHash, EraId, Key, ProtocolVersion, RuntimeArgs, U512,
+    AddressableEntity, ApiError, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -45,7 +45,9 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
 }
 
-fn store_payment_to_account_context(builder: &mut LmdbWasmTestBuilder) -> (Account, ContractHash) {
+fn store_payment_to_account_context(
+    builder: &mut LmdbWasmTestBuilder,
+) -> (AddressableEntity, ContractHash) {
     // store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -57,7 +59,7 @@ fn store_payment_to_account_context(builder: &mut LmdbWasmTestBuilder) -> (Accou
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     // check account named keys
@@ -112,7 +114,7 @@ fn should_exec_non_stored_code() {
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
 
@@ -149,12 +151,9 @@ fn should_fail_if_calling_non_existent_entry_point() {
 
     builder.exec(exec_request).commit();
 
-    let query_result = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query default account");
-    let default_account = query_result
-        .as_account()
-        .expect("query result should be an account");
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract associated with default account");
     let stored_payment_contract_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
@@ -534,12 +533,9 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
 
     builder.exec(exec_request).commit();
 
-    let query_result = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query default account");
-    let default_account = query_result
-        .as_account()
-        .expect("query result should be an account");
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     assert!(
         default_account
@@ -618,12 +614,9 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
 
     builder.exec(exec_request).commit();
 
-    let query_result = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query default account");
-    let default_account = query_result
-        .as_account()
-        .expect("query result should be an account");
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract associated with default account");
     let stored_payment_contract_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
@@ -708,12 +701,9 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
 
     builder.exec(exec_request).commit();
 
-    let query_result = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query default account");
-    let default_account = query_result
-        .as_account()
-        .expect("query result should be an account");
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract associated with default account");
     assert!(
         default_account
             .named_keys()
@@ -799,12 +789,9 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
 
     builder.exec(exec_request_1).commit();
 
-    let query_result = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query default account");
-    let default_account = query_result
-        .as_account()
-        .expect("query result should be an account");
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     assert!(
         default_account
             .named_keys()
@@ -914,12 +901,9 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
     // Call stored session code
 
     // query both stored contracts by their named keys
-    let query_result = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query default account");
-    let default_account = query_result
-        .as_account()
-        .expect("query result should be an account");
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let test_payment_stored_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
@@ -1015,12 +999,9 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     builder.exec(exec_request_2).expect_success().commit();
 
     // query both stored contracts by their named keys
-    let query_result = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query default account");
-    let default_account = query_result
-        .as_account()
-        .expect("query result should be an account");
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let test_payment_stored_hash = default_account
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)

@@ -1297,7 +1297,8 @@
             "Identity",
             "WriteContractWasm",
             "WriteContract",
-            "WriteContractPackage"
+            "WriteContractPackage",
+            "WriteAddressableEntity"
           ]
         },
         {

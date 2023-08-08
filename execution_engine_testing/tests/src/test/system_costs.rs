@@ -83,13 +83,13 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
         .expect_success()
         .commit();
 
-    let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+    let entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        account
+        entity
             .named_keys()
             .get(AUCTION)
             .unwrap()
@@ -105,12 +105,12 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     )
     .build();
 
-    let balance_before = builder.get_purse_balance(account.main_purse());
+    let balance_before = builder.get_purse_balance(entity.main_purse());
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
     builder.exec(add_bid_request).expect_success().commit();
-    let balance_after = builder.get_purse_balance(account.main_purse());
+    let balance_after = builder.get_purse_balance(entity.main_purse());
 
     let transaction_fee_1 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_1;
@@ -132,7 +132,7 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     // Withdraw bid
     let withdraw_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
-        account
+        entity
             .named_keys()
             .get(AUCTION)
             .unwrap()
@@ -147,13 +147,13 @@ fn add_bid_and_withdraw_bid_have_expected_costs() {
     )
     .build();
 
-    let balance_before = builder.get_purse_balance(account.main_purse());
+    let balance_before = builder.get_purse_balance(entity.main_purse());
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
     builder.exec(withdraw_bid_request).expect_success().commit();
 
-    let balance_after = builder.get_purse_balance(account.main_purse());
+    let balance_after = builder.get_purse_balance(entity.main_purse());
 
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
@@ -231,7 +231,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let add_bid_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -349,7 +349,7 @@ fn delegate_and_undelegate_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -555,7 +555,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let delegate_request = ExecuteRequestBuilder::contract_call_by_hash(
@@ -674,7 +674,7 @@ fn mint_transfer_has_expected_costs() {
     builder.exec(transfer_request_1).expect_success().commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let purse_1 = default_account.named_keys()[NAMED_PURSE_NAME]
@@ -733,7 +733,7 @@ fn should_charge_for_erroneous_system_contract_calls() {
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let system_config = *builder.get_engine_state().config().system_config();
@@ -860,7 +860,7 @@ fn should_verify_do_nothing_charges_only_for_standard_payment() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let do_nothing_request = {
@@ -1031,7 +1031,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
     builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
     let add_bid_request = ExecuteRequestBuilder::standard(

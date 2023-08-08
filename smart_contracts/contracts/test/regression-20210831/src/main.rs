@@ -11,8 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
+    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
-    contracts::NamedKeys,
     runtime_args,
     system::auction::{self, DelegationRate},
     CLType, CLTyped, CLValue, ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType,

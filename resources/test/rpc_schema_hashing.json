@@ -2493,7 +2493,8 @@
                   "Identity",
                   "WriteContractWasm",
                   "WriteContract",
-                  "WriteContractPackage"
+                  "WriteContractPackage",
+                  "WriteAddressableEntity"
                 ]
               },
               {
@@ -3605,6 +3606,19 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "An AddressableEntity.",
+                "type": "object",
+                "required": [
+                  "AddressableEntity"
+                ],
+                "properties": {
+                  "AddressableEntity": {
+                    "$ref": "#/components/schemas/AddressableEntity"
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
@@ -3644,7 +3658,7 @@
             "additionalProperties": false
           },
           "ContractPackageHash": {
-            "description": "The hex-encoded hash address of the contract package.",
+            "description": "The hex-encoded hash address of the contract package",
             "type": "string"
           },
           "ContractWasmHash": {
@@ -3799,7 +3813,7 @@
             }
           },
           "ContractHash": {
-            "description": "The hex-encoded hash address of the contract.",
+            "description": "The hex-encoded hash address of the contract",
             "type": "string"
           },
           "DisabledVersion": {
@@ -3846,6 +3860,56 @@
               "Locked",
               "Unlocked"
             ]
+          },
+          "AddressableEntity": {
+            "description": "A contract struct that can be serialized as  JSON object.",
+            "type": "object",
+            "required": [
+              "action_thresholds",
+              "associated_keys",
+              "contract_package_hash",
+              "contract_wasm_hash",
+              "entry_points",
+              "main_purse",
+              "named_keys",
+              "protocol_version"
+            ],
+            "properties": {
+              "contract_package_hash": {
+                "$ref": "#/components/schemas/ContractPackageHash"
+              },
+              "contract_wasm_hash": {
+                "$ref": "#/components/schemas/ContractWasmHash"
+              },
+              "named_keys": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/NamedKey"
+                }
+              },
+              "entry_points": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/EntryPoint"
+                }
+              },
+              "protocol_version": {
+                "type": "string"
+              },
+              "main_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "associated_keys": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AssociatedKey"
+                }
+              },
+              "action_thresholds": {
+                "$ref": "#/components/schemas/ActionThresholds"
+              }
+            },
+            "additionalProperties": false
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",

@@ -12,7 +12,7 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash,
-    contracts::NamedKeys,
+    addressable_entity::NamedKeys,
     runtime_args,
     system::{handle_payment, mint},
     AccessRights, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
