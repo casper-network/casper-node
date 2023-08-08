@@ -87,11 +87,9 @@ impl BlockAcquisitionAction {
         rng: &mut NodeRng,
     ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
-        // TODO[RC] .into(), becasue we want to avoid polluting `NeedNext` with `VersionedBlock`,
-        // but maybe we'd have to
         BlockAcquisitionAction {
             peers_to_ask,
-            need_next: NeedNext::ApprovalsHashes(*block.hash(), Box::new(block.into())),
+            need_next: NeedNext::ApprovalsHashes(*block.hash(), Box::new(block.clone())),
         }
     }
 
