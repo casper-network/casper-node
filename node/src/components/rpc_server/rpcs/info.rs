@@ -1,8 +1,5 @@
 //! RPCs returning ancillary information.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{collections::BTreeMap, str};
 
 use async_trait::async_trait;
@@ -13,7 +10,7 @@ use tracing::info;
 
 use casper_types::{
     BlockHash, BlockHashAndHeight, ChainspecRawBytes, Deploy, DeployHash, EraId, ExecutionResult,
-    JsonBlock, ProtocolVersion, PublicKey,
+    ProtocolVersion, PublicKey,
 };
 
 use super::{
@@ -35,7 +32,7 @@ static GET_DEPLOY_RESULT: Lazy<GetDeployResult> = Lazy::new(|| GetDeployResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     deploy: Deploy::doc_example().clone(),
     execution_results: vec![JsonExecutionResult {
-        block_hash: JsonBlock::doc_example().hash,
+        block_hash: *BlockHash::example(),
         result: ExecutionResult::example().clone(),
     }],
     block_hash_and_height: None,

@@ -14,9 +14,9 @@ use rand::{seq::IteratorRandom, Rng};
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, Chainspec, DeployId, EraId, Key,
+    testing::TestRng, AccessRights, Block, CLValue, Chainspec, DeployId, EraId, Key,
     LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef,
-    U512, Block
+    U512,
 };
 
 use super::*;
@@ -363,7 +363,9 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(
-        historical_builder.register_block(block.into(), None).is_ok(),
+        historical_builder
+            .register_block(block.into(), None)
+            .is_ok(),
         "should register block"
     );
     // Register the remaining signatures to reach strict finality
@@ -2060,7 +2062,9 @@ async fn historical_sync_announces_meta_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block.into(), None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         historical_builder,
@@ -2299,7 +2303,9 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block.into(), None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2401,7 +2407,9 @@ async fn historical_sync_no_legacy_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block.into(), None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2623,7 +2631,9 @@ async fn historical_sync_legacy_block_strict_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block.into(), None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2821,7 +2831,9 @@ async fn historical_sync_legacy_block_weak_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block.into(), None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -3030,7 +3042,9 @@ async fn historical_sync_legacy_block_any_finality() {
         block,
         validators_secret_keys.iter().take(1),
     );
-    assert!(historical_builder.register_block(block.into(), None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 

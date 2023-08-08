@@ -2,13 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SseData",
   "description": "The \"data\" field of the events sent on the event stream to clients.",
-  "anyOf": [
-    {
-      "type": "string",
-      "enum": [
-        "Shutdown"
-      ]
-    },
+  "oneOf": [
     {
       "description": "The version of this node's API server.  This event will always be the first sent to a new client, and will have no associated event ID provided.",
       "type": "object",
@@ -40,7 +34,7 @@
               "$ref": "#/definitions/BlockHash"
             },
             "block": {
-              "$ref": "#/definitions/JsonBlock"
+              "$ref": "#/definitions/VersionedBlock"
             }
           }
         }
@@ -208,6 +202,13 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "description": "The node is about to shut down.",
+      "type": "string",
+      "enum": [
+        "Shutdown"
+      ]
     }
   ],
   "definitions": {
@@ -227,14 +228,44 @@
       "description": "Hex-encoded hash digest.",
       "type": "string"
     },
-    "JsonBlock": {
-      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain",
+    "VersionedBlock": {
+      "description": "A versioned block after execution.",
+      "oneOf": [
+        {
+          "description": "The legacy, initial version of the block.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/BlockV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The version 2 of the block.",
+          "type": "object",
+          "required": [
+            "Version2"
+          ],
+          "properties": {
+            "Version2": {
+              "$ref": "#/definitions/BlockV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "BlockV1": {
+      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 1.",
       "type": "object",
       "required": [
         "body",
         "hash",
-        "header",
-        "proofs"
+        "header"
       ],
       "properties": {
         "hash": {
@@ -249,7 +280,7 @@
           "description": "The header portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/JsonBlockHeader"
+              "$ref": "#/definitions/BlockHeader"
             }
           ]
         },
@@ -257,21 +288,13 @@
           "description": "The body portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/JsonBlockBody"
+              "$ref": "#/definitions/BlockBodyV1"
             }
           ]
-        },
-        "proofs": {
-          "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/JsonProof"
-          }
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "JsonBlockHeader": {
+    "BlockHeader": {
       "description": "The header portion of a block.",
       "type": "object",
       "required": [
@@ -326,7 +349,7 @@
           "description": "The `EraEnd` of a block if it is a switch block.",
           "anyOf": [
             {
-              "$ref": "#/definitions/JsonEraEnd"
+              "$ref": "#/definitions/EraEnd"
             },
             {
               "type": "null"
@@ -363,10 +386,9 @@
             }
           ]
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "JsonEraEnd": {
+    "EraEnd": {
       "description": "Information related to the end of an era, and validator weights for the following era.",
       "type": "object",
       "required": [
@@ -378,21 +400,21 @@
           "description": "Equivocation, reward and validator inactivity information.",
           "allOf": [
             {
-              "$ref": "#/definitions/JsonEraReport"
+              "$ref": "#/definitions/EraReport_for_PublicKey"
             }
           ]
         },
         "next_era_validator_weights": {
           "description": "The validators for the upcoming era and their respective weights.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/JsonValidatorWeight"
-          }
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_ValidatorWeight"
+            }
+          ]
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "JsonEraReport": {
+    "EraReport_for_PublicKey": {
       "description": "Equivocation, reward and validator inactivity information.",
       "type": "object",
       "required": [
@@ -410,10 +432,11 @@
         },
         "rewards": {
           "description": "Rewards for finalization of earlier blocks.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/JsonReward"
-          }
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_EraReward"
+            }
+          ]
         },
         "inactive_validators": {
           "description": "Validators that haven't produced any unit during the era.",
@@ -422,14 +445,19 @@
             "$ref": "#/definitions/PublicKey"
           }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "PublicKey": {
       "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
       "type": "string"
     },
-    "JsonReward": {
+    "Array_of_EraReward": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EraReward"
+      }
+    },
+    "EraReward": {
       "description": "A validator's public key paired with a measure of the value of its contribution to consensus, as a fraction of the configured maximum block reward.",
       "type": "object",
       "required": [
@@ -451,10 +479,15 @@
           "format": "uint64",
           "minimum": 0.0
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "JsonValidatorWeight": {
+    "Array_of_ValidatorWeight": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ValidatorWeight"
+      }
+    },
+    "ValidatorWeight": {
       "description": "A validator's public key paired with its weight, i.e. the total number of motes staked by it and its delegators.",
       "type": "object",
       "required": [
@@ -478,8 +511,7 @@
             }
           ]
         }
-      },
-      "additionalProperties": false
+      }
     },
     "U512": {
       "description": "Decimal representation of a 512-bit integer.",
@@ -497,7 +529,7 @@
       "format": "uint64",
       "minimum": 0.0
     },
-    "JsonBlockBody": {
+    "BlockBodyV1": {
       "description": "The body portion of a block.",
       "type": "object",
       "required": [
@@ -528,8 +560,7 @@
             "$ref": "#/definitions/DeployHash"
           }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "DeployHash": {
       "description": "Hex-encoded deploy hash.",
@@ -539,36 +570,91 @@
         }
       ]
     },
-    "JsonProof": {
-      "description": "A validator's public key paired with a corresponding signature of a given block hash.",
+    "BlockV2": {
+      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
       "type": "object",
       "required": [
-        "public_key",
-        "signature"
+        "body",
+        "hash",
+        "header"
       ],
       "properties": {
-        "public_key": {
-          "description": "The validator's public key.",
+        "hash": {
+          "description": "The block hash identifying this block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "header": {
+          "description": "The header portion of the block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHeader"
+            }
+          ]
+        },
+        "body": {
+          "description": "The body portion of the block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockBodyV2"
+            }
+          ]
+        }
+      }
+    },
+    "BlockBodyV2": {
+      "description": "The body portion of a block.",
+      "type": "object",
+      "required": [
+        "deploy_hashes",
+        "past_finality_signatures",
+        "proposer",
+        "transfer_hashes"
+      ],
+      "properties": {
+        "proposer": {
+          "description": "The public key of the validator which proposed the block.",
           "allOf": [
             {
               "$ref": "#/definitions/PublicKey"
             }
           ]
         },
-        "signature": {
-          "description": "The validator's signature.",
+        "deploy_hashes": {
+          "description": "The deploy hashes of the non-transfer deploys within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
+        },
+        "transfer_hashes": {
+          "description": "The deploy hashes of the transfers within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
+        },
+        "past_finality_signatures": {
+          "description": "The past finality signatures.",
           "allOf": [
             {
-              "$ref": "#/definitions/Signature"
+              "$ref": "#/definitions/PastFinalitySignatures"
             }
           ]
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "Signature": {
-      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
-      "type": "string"
+    "PastFinalitySignatures": {
+      "description": "TODO[RC]: This is a placeholder and should be replaced with the real `PastFinalitySignatures` structure which is being implemented on the separate branch for the Zug consensus rewards. Also, the target file location may be different.",
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "format": "uint8",
+        "minimum": 0.0
+      }
     },
     "Deploy": {
       "description": "A signed smart contract.",
@@ -653,7 +739,7 @@
     },
     "ExecutableDeployItem": {
       "description": "The executable component of a [`Deploy`].",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "Executable specified as raw bytes that represent Wasm code and an instance of [`RuntimeArgs`].",
           "type": "object",
@@ -922,25 +1008,103 @@
     },
     "CLType": {
       "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
-      "anyOf": [
+      "oneOf": [
         {
+          "description": "`bool` primitive.",
           "type": "string",
           "enum": [
-            "Bool",
-            "I32",
-            "I64",
-            "U8",
-            "U32",
-            "U64",
-            "U128",
-            "U256",
-            "U512",
-            "Unit",
-            "String",
-            "Key",
-            "URef",
-            "PublicKey",
-            "Any"
+            "Bool"
+          ]
+        },
+        {
+          "description": "`i32` primitive.",
+          "type": "string",
+          "enum": [
+            "I32"
+          ]
+        },
+        {
+          "description": "`i64` primitive.",
+          "type": "string",
+          "enum": [
+            "I64"
+          ]
+        },
+        {
+          "description": "`u8` primitive.",
+          "type": "string",
+          "enum": [
+            "U8"
+          ]
+        },
+        {
+          "description": "`u32` primitive.",
+          "type": "string",
+          "enum": [
+            "U32"
+          ]
+        },
+        {
+          "description": "`u64` primitive.",
+          "type": "string",
+          "enum": [
+            "U64"
+          ]
+        },
+        {
+          "description": "[`U128`] large unsigned integer type.",
+          "type": "string",
+          "enum": [
+            "U128"
+          ]
+        },
+        {
+          "description": "[`U256`] large unsigned integer type.",
+          "type": "string",
+          "enum": [
+            "U256"
+          ]
+        },
+        {
+          "description": "[`U512`] large unsigned integer type.",
+          "type": "string",
+          "enum": [
+            "U512"
+          ]
+        },
+        {
+          "description": "`()` primitive.",
+          "type": "string",
+          "enum": [
+            "Unit"
+          ]
+        },
+        {
+          "description": "`String` primitive.",
+          "type": "string",
+          "enum": [
+            "String"
+          ]
+        },
+        {
+          "description": "[`Key`] system type.",
+          "type": "string",
+          "enum": [
+            "Key"
+          ]
+        },
+        {
+          "description": "[`URef`] system type.",
+          "type": "string",
+          "enum": [
+            "URef"
+          ]
+        },
+        {
+          "description": "[`PublicKey`](crate::PublicKey) system type.",
+          "type": "string",
+          "enum": [
+            "PublicKey"
           ]
         },
         {
@@ -1089,6 +1253,13 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Unspecified type.",
+          "type": "string",
+          "enum": [
+            "Any"
+          ]
         }
       ]
     },
@@ -1109,9 +1280,13 @@
       },
       "additionalProperties": false
     },
+    "Signature": {
+      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
+      "type": "string"
+    },
     "ExecutionResult": {
       "description": "The result of executing a single deploy.",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "The result of a failed execution.",
           "type": "object",
@@ -1257,12 +1432,35 @@
     },
     "OpKind": {
       "description": "The type of operation performed while executing a deploy.",
-      "type": "string",
-      "enum": [
-        "Read",
-        "Write",
-        "Add",
-        "NoOp"
+      "oneOf": [
+        {
+          "description": "A read operation.",
+          "type": "string",
+          "enum": [
+            "Read"
+          ]
+        },
+        {
+          "description": "A write operation.",
+          "type": "string",
+          "enum": [
+            "Write"
+          ]
+        },
+        {
+          "description": "An addition.",
+          "type": "string",
+          "enum": [
+            "Add"
+          ]
+        },
+        {
+          "description": "An operation which has no effect.",
+          "type": "string",
+          "enum": [
+            "NoOp"
+          ]
+        }
       ]
     },
     "TransformEntry": {
@@ -1290,14 +1488,12 @@
     },
     "Transform": {
       "description": "The actual transformation performed while executing a deploy.",
-      "anyOf": [
+      "oneOf": [
         {
+          "description": "A transform having no effect.",
           "type": "string",
           "enum": [
-            "Identity",
-            "WriteContractWasm",
-            "WriteContract",
-            "WriteContractPackage"
+            "Identity"
           ]
         },
         {
@@ -1325,6 +1521,27 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Writes a smart contract as Wasm to global state.",
+          "type": "string",
+          "enum": [
+            "WriteContractWasm"
+          ]
+        },
+        {
+          "description": "Writes a smart contract to global state.",
+          "type": "string",
+          "enum": [
+            "WriteContract"
+          ]
+        },
+        {
+          "description": "Writes a smart contract package to global state.",
+          "type": "string",
+          "enum": [
+            "WriteContractPackage"
+          ]
         },
         {
           "description": "Writes the given DeployInfo to global state.",
@@ -1592,7 +1809,7 @@
     },
     "SeigniorageAllocation": {
       "description": "Information about a seigniorage allocation",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "Info about a seigniorage allocation for a validator",
           "type": "object",

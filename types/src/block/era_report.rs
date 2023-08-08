@@ -2,6 +2,7 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 #[cfg(any(feature = "testing", test))]
 use core::iter;
+use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -9,10 +10,10 @@ use datasize::DataSize;
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use super::JsonEraReport;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 #[cfg(feature = "json-schema")]
@@ -46,13 +47,19 @@ static ERA_REPORT: Lazy<EraReport<PublicKey>> = Lazy::new(|| {
 /// `VID` represents validator ID type, generally [`PublicKey`].
 #[derive(Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(bound(
     serialize = "VID: Ord + Serialize",
     deserialize = "VID: Ord + Deserialize<'de>",
 ))]
+#[schemars(description = "Equivocation, reward and validator inactivity information.")]
 pub struct EraReport<VID> {
+    /// The set of equivocators.
     pub(super) equivocators: Vec<VID>,
+    /// Rewards for finalization of earlier blocks.
+    #[serde(with = "BTreeMapToArray::<VID, u64, EraRewardsLabels>")]
     pub(super) rewards: BTreeMap<VID, u64>,
+    /// Validators that haven't produced any unit during the era.
     pub(super) inactive_validators: Vec<VID>,
 }
 
@@ -209,22 +216,21 @@ impl EraReport<PublicKey> {
     }
 }
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonEraReport> for EraReport<PublicKey> {
-    fn from(era_report: JsonEraReport) -> Self {
-        let equivocators = era_report.equivocators;
-        let rewards = era_report
-            .rewards
-            .into_iter()
-            .map(|reward| (reward.validator, reward.amount))
-            .collect();
-        let inactive_validators = era_report.inactive_validators;
-        EraReport {
-            equivocators,
-            rewards,
-            inactive_validators,
-        }
-    }
+struct EraRewardsLabels;
+
+impl KeyValueLabels for EraRewardsLabels {
+    const KEY: &'static str = "validator";
+    const VALUE: &'static str = "amount";
+}
+
+impl KeyValueJsonSchema for EraRewardsLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("EraReward");
+    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> = Some(
+        "A validator's public key paired with a measure of the value of its \
+        contribution to consensus, as a fraction of the configured maximum block reward.",
+    );
+    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> = Some("The validator's public key.");
+    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The reward amount.");
 }
 
 #[cfg(test)]

@@ -17,8 +17,8 @@ use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{Bytes, ToBytes},
-    BlockHash, CLValue, Digest, JsonBlock, JsonBlockHeader, Key, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue as DomainStoredValue, URef, U512,
+    BlockHash, BlockHeader, BlockV2, CLValue, Digest, Key, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue as DomainStoredValue, URef, U512,
 };
 
 use crate::{
@@ -34,7 +34,7 @@ use crate::{
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
-    state_root_hash: JsonBlock::doc_example().header.state_root_hash,
+    state_root_hash: *BlockHeader::example().state_root_hash(),
     key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
     path: vec!["inner".to_string()],
 });
@@ -44,7 +44,7 @@ static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_BALANCE_PARAMS: Lazy<GetBalanceParams> = Lazy::new(|| GetBalanceParams {
-    state_root_hash: JsonBlock::doc_example().header.state_root_hash,
+    state_root_hash: *BlockHeader::example().state_root_hash(),
     purse_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
         .to_string(),
 });
@@ -54,7 +54,7 @@ static GET_BALANCE_RESULT: Lazy<GetBalanceResult> = Lazy::new(|| GetBalanceResul
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_AUCTION_INFO_PARAMS: Lazy<GetAuctionInfoParams> = Lazy::new(|| GetAuctionInfoParams {
-    block_identifier: BlockIdentifier::Hash(JsonBlock::doc_example().hash),
+    block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
 });
 static GET_AUCTION_INFO_RESULT: Lazy<GetAuctionInfoResult> = Lazy::new(|| GetAuctionInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -65,7 +65,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
         public_key,
-        block_identifier: Some(BlockIdentifier::Hash(JsonBlock::doc_example().hash)),
+        block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     }
 });
 static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
@@ -75,7 +75,7 @@ static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAcc
 });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
     Lazy::new(|| GetDictionaryItemParams {
-        state_root_hash: JsonBlock::doc_example().header.state_root_hash,
+        state_root_hash: *BlockHeader::example().state_root_hash(),
         dictionary_identifier: DictionaryIdentifier::URef {
             seed_uref: "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
                 .to_string(),
@@ -93,28 +93,26 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
     });
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
-        state_identifier: GlobalStateIdentifier::BlockHash(JsonBlock::doc_example().hash),
+        state_identifier: GlobalStateIdentifier::BlockHash(*BlockV2::example().hash()),
         key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
         path: vec![],
     });
 static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
     Lazy::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        block_header: Some(JsonBlockHeader::doc_example().clone()),
+        block_header: Some(BlockHeader::example().clone()),
         stored_value: StoredValue::Account(JsonAccount::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
 static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
-    trie_key: JsonBlock::doc_example().header.state_root_hash,
+    trie_key: *BlockHeader::example().state_root_hash(),
 });
 static GET_TRIE_RESULT: Lazy<GetTrieResult> = Lazy::new(|| GetTrieResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     maybe_trie_bytes: None,
 });
 static QUERY_BALANCE_PARAMS: Lazy<QueryBalanceParams> = Lazy::new(|| QueryBalanceParams {
-    state_identifier: Some(GlobalStateIdentifier::BlockHash(
-        JsonBlock::doc_example().hash,
-    )),
+    state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockHash::example())),
     purse_identifier: PurseIdentifier::MainPurseUnderAccountHash(AccountHash::new([9u8; 32])),
 });
 static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanceResult {
@@ -790,7 +788,7 @@ pub struct QueryGlobalStateResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The block header if a Block hash was provided.
-    pub block_header: Option<JsonBlockHeader>,
+    pub block_header: Option<BlockHeader>,
     /// The stored value.
     pub stored_value: StoredValue,
     /// The Merkle proof.
@@ -1146,7 +1144,7 @@ async fn get_account<REv: ReactorEventT>(
 pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_identifier: GlobalStateIdentifier,
-) -> Result<(Digest, Option<JsonBlockHeader>), Error> {
+) -> Result<(Digest, Option<BlockHeader>), Error> {
     // This RPC request is restricted by the block availability index.
     let only_from_available_block_range = true;
     match state_identifier {
@@ -1160,10 +1158,7 @@ pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
                         format!("failed to retrieve specified block header {}", block_hash);
                     Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
                 }
-                Some(block_header) => {
-                    let json_block_header = JsonBlockHeader::from(block_header.clone());
-                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
-                }
+                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
             }
         }
         GlobalStateIdentifier::BlockHeight(block_height) => {
@@ -1179,10 +1174,7 @@ pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
                         format!("failed to retrieve block header at height {}", block_height);
                     Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
                 }
-                Some(block_header) => {
-                    let json_block_header = JsonBlockHeader::from(block_header.clone());
-                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
-                }
+                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
             }
         }
         GlobalStateIdentifier::StateRootHash(state_root_hash) => Ok((state_root_hash, None)),

@@ -185,8 +185,7 @@
                   "format": "uint64",
                   "minimum": 0.0
                 }
-              },
-              "additionalProperties": false
+              }
             }
           },
           "examples": [
@@ -258,7 +257,7 @@
                   },
                   "execution_results": [
                     {
-                      "block_hash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1",
+                      "block_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "result": {
                         "Success": {
                           "effect": {
@@ -365,7 +364,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1"
+                    "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 }
               ],
@@ -535,7 +534,7 @@
                   "description": "The block header if a Block hash was provided.",
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/JsonBlockHeader"
+                      "$ref": "#/components/schemas/BlockHeader"
                     },
                     {
                       "type": "null"
@@ -580,7 +579,7 @@
                   "block_header": {
                     "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                    "body_hash": "f54c4288ba56e2deddb460423bbae8474f251aa6fc576a641bc88fceeb0defc4",
+                    "body_hash": "0505050505050505050505050505050505050505050505050505050505050505",
                     "random_bit": true,
                     "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                     "era_end": {
@@ -692,7 +691,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1"
+                    "BlockHash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 },
                 {
@@ -1044,11 +1043,11 @@
                   "description": "The RPC API version.",
                   "type": "string"
                 },
-                "block": {
+                "block_with_signatures": {
                   "description": "The block, if found.",
                   "anyOf": [
                     {
-                      "$ref": "#/components/schemas/JsonBlock"
+                      "$ref": "#/components/schemas/JsonBlockWithSignatures"
                     },
                     {
                       "type": "null"
@@ -1074,52 +1073,63 @@
                 "name": "chain_get_block_example_result",
                 "value": {
                   "api_version": "1.5.1",
-                  "block": {
-                    "hash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1",
-                    "header": {
-                      "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
-                      "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                      "body_hash": "f54c4288ba56e2deddb460423bbae8474f251aa6fc576a641bc88fceeb0defc4",
-                      "random_bit": true,
-                      "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
-                      "era_end": {
-                        "era_report": {
-                          "equivocators": [
-                            "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
-                          ],
-                          "rewards": [],
-                          "inactive_validators": [
-                            "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
-                          ]
+                  "block_with_signatures": {
+                    "block": {
+                      "Version2": {
+                        "hash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1",
+                        "header": {
+                          "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
+                          "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
+                          "body_hash": "f54c4288ba56e2deddb460423bbae8474f251aa6fc576a641bc88fceeb0defc4",
+                          "random_bit": true,
+                          "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
+                          "era_end": {
+                            "era_report": {
+                              "equivocators": [
+                                "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                              ],
+                              "rewards": [],
+                              "inactive_validators": [
+                                "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+                              ]
+                            },
+                            "next_era_validator_weights": [
+                              {
+                                "validator": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
+                                "weight": "123"
+                              },
+                              {
+                                "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                                "weight": "456"
+                              },
+                              {
+                                "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+                                "weight": "789"
+                              }
+                            ]
+                          },
+                          "timestamp": "2020-11-17T00:39:24.072Z",
+                          "era_id": 1,
+                          "height": 10,
+                          "protocol_version": "1.0.0"
                         },
-                        "next_era_validator_weights": [
-                          {
-                            "validator": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29",
-                            "weight": "123"
-                          },
-                          {
-                            "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
-                            "weight": "456"
-                          },
-                          {
-                            "validator": "018a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
-                            "weight": "789"
-                          }
-                        ]
-                      },
-                      "timestamp": "2020-11-17T00:39:24.072Z",
-                      "era_id": 1,
-                      "height": 10,
-                      "protocol_version": "1.0.0"
-                    },
-                    "body": {
-                      "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                      "deploy_hashes": [
-                        "1414141414141414141414141414141414141414141414141414141414141414"
-                      ],
-                      "transfer_hashes": [
-                        "1515151515151515151515151515151515151515151515151515151515151515"
-                      ]
+                        "body": {
+                          "proposer": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+                          "deploy_hashes": [
+                            "1414141414141414141414141414141414141414141414141414141414141414"
+                          ],
+                          "transfer_hashes": [
+                            "1515151515151515151515151515151515151515151515151515151515151515"
+                          ],
+                          "past_finality_signatures": [
+                            1,
+                            2,
+                            3,
+                            4,
+                            5
+                          ]
+                        }
+                      }
                     },
                     "proofs": [
                       {
@@ -1191,7 +1201,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1"
+                    "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 }
               ],
@@ -1199,7 +1209,7 @@
                 "name": "chain_get_block_transfers_example_result",
                 "value": {
                   "api_version": "1.5.1",
-                  "block_hash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1",
+                  "block_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                   "transfers": [
                     {
                       "deploy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -1575,7 +1585,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "6236f42918b33cc6bd6fe1d3670792e9c62343863e6e095be95cab4e6acb31c1"
+                    "Hash": "0707070707070707070707070707070707070707070707070707070707070707"
                   }
                 }
               ],
@@ -1803,7 +1813,7 @@
           },
           "ExecutableDeployItem": {
             "description": "The executable component of a [`Deploy`].",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Executable specified as raw bytes that represent Wasm code and an instance of [`RuntimeArgs`].",
                 "type": "object",
@@ -2072,25 +2082,103 @@
           },
           "CLType": {
             "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
-            "anyOf": [
+            "oneOf": [
               {
+                "description": "`bool` primitive.",
                 "type": "string",
                 "enum": [
-                  "Bool",
-                  "I32",
-                  "I64",
-                  "U8",
-                  "U32",
-                  "U64",
-                  "U128",
-                  "U256",
-                  "U512",
-                  "Unit",
-                  "String",
-                  "Key",
-                  "URef",
-                  "PublicKey",
-                  "Any"
+                  "Bool"
+                ]
+              },
+              {
+                "description": "`i32` primitive.",
+                "type": "string",
+                "enum": [
+                  "I32"
+                ]
+              },
+              {
+                "description": "`i64` primitive.",
+                "type": "string",
+                "enum": [
+                  "I64"
+                ]
+              },
+              {
+                "description": "`u8` primitive.",
+                "type": "string",
+                "enum": [
+                  "U8"
+                ]
+              },
+              {
+                "description": "`u32` primitive.",
+                "type": "string",
+                "enum": [
+                  "U32"
+                ]
+              },
+              {
+                "description": "`u64` primitive.",
+                "type": "string",
+                "enum": [
+                  "U64"
+                ]
+              },
+              {
+                "description": "[`U128`] large unsigned integer type.",
+                "type": "string",
+                "enum": [
+                  "U128"
+                ]
+              },
+              {
+                "description": "[`U256`] large unsigned integer type.",
+                "type": "string",
+                "enum": [
+                  "U256"
+                ]
+              },
+              {
+                "description": "[`U512`] large unsigned integer type.",
+                "type": "string",
+                "enum": [
+                  "U512"
+                ]
+              },
+              {
+                "description": "`()` primitive.",
+                "type": "string",
+                "enum": [
+                  "Unit"
+                ]
+              },
+              {
+                "description": "`String` primitive.",
+                "type": "string",
+                "enum": [
+                  "String"
+                ]
+              },
+              {
+                "description": "[`Key`] system type.",
+                "type": "string",
+                "enum": [
+                  "Key"
+                ]
+              },
+              {
+                "description": "[`URef`] system type.",
+                "type": "string",
+                "enum": [
+                  "URef"
+                ]
+              },
+              {
+                "description": "[`PublicKey`](crate::PublicKey) system type.",
+                "type": "string",
+                "enum": [
+                  "PublicKey"
                 ]
               },
               {
@@ -2239,6 +2327,13 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Unspecified type.",
+                "type": "string",
+                "enum": [
+                  "Any"
+                ]
               }
             ]
           },
@@ -2300,7 +2395,7 @@
           },
           "ExecutionResult": {
             "description": "The result of executing a single deploy.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "The result of a failed execution.",
                 "type": "object",
@@ -2446,12 +2541,35 @@
           },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
-            "type": "string",
-            "enum": [
-              "Read",
-              "Write",
-              "Add",
-              "NoOp"
+            "oneOf": [
+              {
+                "description": "A read operation.",
+                "type": "string",
+                "enum": [
+                  "Read"
+                ]
+              },
+              {
+                "description": "A write operation.",
+                "type": "string",
+                "enum": [
+                  "Write"
+                ]
+              },
+              {
+                "description": "An addition.",
+                "type": "string",
+                "enum": [
+                  "Add"
+                ]
+              },
+              {
+                "description": "An operation which has no effect.",
+                "type": "string",
+                "enum": [
+                  "NoOp"
+                ]
+              }
             ]
           },
           "TransformEntry": {
@@ -2479,14 +2597,12 @@
           },
           "Transform": {
             "description": "The actual transformation performed while executing a deploy.",
-            "anyOf": [
+            "oneOf": [
               {
+                "description": "A transform having no effect.",
                 "type": "string",
                 "enum": [
-                  "Identity",
-                  "WriteContractWasm",
-                  "WriteContract",
-                  "WriteContractPackage"
+                  "Identity"
                 ]
               },
               {
@@ -2514,6 +2630,27 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Writes a smart contract as Wasm to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContractWasm"
+                ]
+              },
+              {
+                "description": "Writes a smart contract to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContract"
+                ]
+              },
+              {
+                "description": "Writes a smart contract package to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContractPackage"
+                ]
               },
               {
                 "description": "Writes the given DeployInfo to global state.",
@@ -2785,7 +2922,7 @@
           },
           "SeigniorageAllocation": {
             "description": "Information about a seigniorage allocation",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Info about a seigniorage allocation for a validator",
                 "type": "object",
@@ -3233,7 +3370,7 @@
           },
           "BlockIdentifier": {
             "description": "Identifier for possible ways to retrieve a block.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Identify and retrieve the block with its hash.",
                 "type": "object",
@@ -3340,7 +3477,7 @@
           },
           "DictionaryIdentifier": {
             "description": "Options for dictionary item lookups.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Lookup a dictionary item via an Account's named keys.",
                 "type": "object",
@@ -3449,7 +3586,7 @@
           },
           "StoredValue": {
             "description": "Representation of a value stored in global state.\n\n`Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations (see their docs for further info).",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "A CasperLabs value.",
                 "type": "object",
@@ -3693,8 +3830,9 @@
           },
           "EntryPointAccess": {
             "description": "Enum describing the possible access control options for a contract entry point (method).",
-            "anyOf": [
+            "oneOf": [
               {
+                "description": "Anyone can call this method (no access controls).",
                 "type": "string",
                 "enum": [
                   "Public"
@@ -3724,10 +3862,21 @@
           },
           "EntryPointType": {
             "description": "Context of method execution",
-            "type": "string",
-            "enum": [
-              "Session",
-              "Contract"
+            "oneOf": [
+              {
+                "description": "Runs as session code",
+                "type": "string",
+                "enum": [
+                  "Session"
+                ]
+              },
+              {
+                "description": "Runs within contract's context",
+                "type": "string",
+                "enum": [
+                  "Contract"
+                ]
+              }
             ]
           },
           "ContractPackage": {
@@ -3834,15 +3983,26 @@
           },
           "ContractPackageStatus": {
             "description": "A enum to determine the lock status of the contract package.",
-            "type": "string",
-            "enum": [
-              "Locked",
-              "Unlocked"
+            "oneOf": [
+              {
+                "description": "The package is locked and cannot be versioned.",
+                "type": "string",
+                "enum": [
+                  "Locked"
+                ]
+              },
+              {
+                "description": "The package is unlocked and can be versioned.",
+                "type": "string",
+                "enum": [
+                  "Unlocked"
+                ]
+              }
             ]
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Query using a block hash.",
                 "type": "object",
@@ -3886,7 +4046,7 @@
               }
             ]
           },
-          "JsonBlockHeader": {
+          "BlockHeader": {
             "description": "The header portion of a block.",
             "type": "object",
             "required": [
@@ -3941,7 +4101,7 @@
                 "description": "The `EraEnd` of a block if it is a switch block.",
                 "anyOf": [
                   {
-                    "$ref": "#/components/schemas/JsonEraEnd"
+                    "$ref": "#/components/schemas/EraEnd"
                   },
                   {
                     "type": "null"
@@ -3978,10 +4138,9 @@
                   }
                 ]
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonEraEnd": {
+          "EraEnd": {
             "description": "Information related to the end of an era, and validator weights for the following era.",
             "type": "object",
             "required": [
@@ -3993,21 +4152,21 @@
                 "description": "Equivocation, reward and validator inactivity information.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/JsonEraReport"
+                    "$ref": "#/components/schemas/EraReport_for_PublicKey"
                   }
                 ]
               },
               "next_era_validator_weights": {
                 "description": "The validators for the upcoming era and their respective weights.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonValidatorWeight"
-                }
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_ValidatorWeight"
+                  }
+                ]
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonEraReport": {
+          "EraReport_for_PublicKey": {
             "description": "Equivocation, reward and validator inactivity information.",
             "type": "object",
             "required": [
@@ -4025,10 +4184,11 @@
               },
               "rewards": {
                 "description": "Rewards for finalization of earlier blocks.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonReward"
-                }
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_EraReward"
+                  }
+                ]
               },
               "inactive_validators": {
                 "description": "Validators that haven't produced any unit during the era.",
@@ -4037,10 +4197,15 @@
                   "$ref": "#/components/schemas/PublicKey"
                 }
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonReward": {
+          "Array_of_EraReward": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EraReward"
+            }
+          },
+          "EraReward": {
             "description": "A validator's public key paired with a measure of the value of its contribution to consensus, as a fraction of the configured maximum block reward.",
             "type": "object",
             "required": [
@@ -4062,10 +4227,15 @@
                 "format": "uint64",
                 "minimum": 0.0
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonValidatorWeight": {
+          "Array_of_ValidatorWeight": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ValidatorWeight"
+            }
+          },
+          "ValidatorWeight": {
             "description": "A validator's public key paired with its weight, i.e. the total number of motes staked by it and its delegators.",
             "type": "object",
             "required": [
@@ -4089,8 +4259,7 @@
                   }
                 ]
               }
-            },
-            "additionalProperties": false
+            }
           },
           "ProtocolVersion": {
             "description": "Casper Platform protocol version",
@@ -4098,7 +4267,7 @@
           },
           "PurseIdentifier": {
             "description": "Identifier of a purse.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "The main purse of the account identified by this public key.",
                 "type": "object",
@@ -4240,14 +4409,49 @@
           },
           "ReactorState": {
             "description": "The state of the reactor.",
-            "type": "string",
-            "enum": [
-              "Initialize",
-              "CatchUp",
-              "Upgrading",
-              "KeepUp",
-              "Validate",
-              "ShutdownForUpgrade"
+            "oneOf": [
+              {
+                "description": "Get all components and reactor state set up on start.",
+                "type": "string",
+                "enum": [
+                  "Initialize"
+                ]
+              },
+              {
+                "description": "Orient to the network and attempt to catch up to tip.",
+                "type": "string",
+                "enum": [
+                  "CatchUp"
+                ]
+              },
+              {
+                "description": "Running commit upgrade and creating immediate switch block.",
+                "type": "string",
+                "enum": [
+                  "Upgrading"
+                ]
+              },
+              {
+                "description": "Stay caught up with tip.",
+                "type": "string",
+                "enum": [
+                  "KeepUp"
+                ]
+              },
+              {
+                "description": "Node is currently caught up and is an active validator.",
+                "type": "string",
+                "enum": [
+                  "Validate"
+                ]
+              },
+              {
+                "description": "Node should be shut down for upgrade.",
+                "type": "string",
+                "enum": [
+                  "ShutdownForUpgrade"
+                ]
+              }
             ]
           },
           "AvailableBlockRange": {
@@ -4389,13 +4593,42 @@
           },
           "ValidatorChange": {
             "description": "A change to a validator's status between two eras.",
-            "type": "string",
-            "enum": [
-              "Added",
-              "Removed",
-              "Banned",
-              "CannotPropose",
-              "SeenAsFaulty"
+            "oneOf": [
+              {
+                "description": "The validator got newly added to the validator set.",
+                "type": "string",
+                "enum": [
+                  "Added"
+                ]
+              },
+              {
+                "description": "The validator was removed from the validator set.",
+                "type": "string",
+                "enum": [
+                  "Removed"
+                ]
+              },
+              {
+                "description": "The validator was banned from this era.",
+                "type": "string",
+                "enum": [
+                  "Banned"
+                ]
+              },
+              {
+                "description": "The validator was excluded from proposing new blocks in this era.",
+                "type": "string",
+                "enum": [
+                  "CannotPropose"
+                ]
+              },
+              {
+                "description": "We saw the validator misbehave in this era.",
+                "type": "string",
+                "enum": [
+                  "SeenAsFaulty"
+                ]
+              }
             ]
           },
           "ChainspecRawBytes": {
@@ -4421,14 +4654,71 @@
               }
             }
           },
-          "JsonBlock": {
-            "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain",
+          "JsonBlockWithSignatures": {
+            "description": "A JSON-friendly representation of a block and the signatures for that block.",
+            "type": "object",
+            "required": [
+              "block",
+              "proofs"
+            ],
+            "properties": {
+              "block": {
+                "description": "The block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/VersionedBlock"
+                  }
+                ]
+              },
+              "proofs": {
+                "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_BlockProof"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "VersionedBlock": {
+            "description": "A versioned block after execution.",
+            "oneOf": [
+              {
+                "description": "The legacy, initial version of the block.",
+                "type": "object",
+                "required": [
+                  "Version1"
+                ],
+                "properties": {
+                  "Version1": {
+                    "$ref": "#/components/schemas/BlockV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "The version 2 of the block.",
+                "type": "object",
+                "required": [
+                  "Version2"
+                ],
+                "properties": {
+                  "Version2": {
+                    "$ref": "#/components/schemas/BlockV2"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "BlockV1": {
+            "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 1.",
             "type": "object",
             "required": [
               "body",
               "hash",
-              "header",
-              "proofs"
+              "header"
             ],
             "properties": {
               "hash": {
@@ -4443,7 +4733,7 @@
                 "description": "The header portion of the block.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/JsonBlockHeader"
+                    "$ref": "#/components/schemas/BlockHeader"
                   }
                 ]
               },
@@ -4451,21 +4741,13 @@
                 "description": "The body portion of the block.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/JsonBlockBody"
+                    "$ref": "#/components/schemas/BlockBodyV1"
                   }
                 ]
-              },
-              "proofs": {
-                "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonProof"
-                }
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonBlockBody": {
+          "BlockBodyV1": {
             "description": "The body portion of a block.",
             "type": "object",
             "required": [
@@ -4496,10 +4778,101 @@
                   "$ref": "#/components/schemas/DeployHash"
                 }
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "JsonProof": {
+          "BlockV2": {
+            "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
+            "type": "object",
+            "required": [
+              "body",
+              "hash",
+              "header"
+            ],
+            "properties": {
+              "hash": {
+                "description": "The block hash identifying this block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHash"
+                  }
+                ]
+              },
+              "header": {
+                "description": "The header portion of the block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockHeader"
+                  }
+                ]
+              },
+              "body": {
+                "description": "The body portion of the block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockBodyV2"
+                  }
+                ]
+              }
+            }
+          },
+          "BlockBodyV2": {
+            "description": "The body portion of a block.",
+            "type": "object",
+            "required": [
+              "deploy_hashes",
+              "past_finality_signatures",
+              "proposer",
+              "transfer_hashes"
+            ],
+            "properties": {
+              "proposer": {
+                "description": "The public key of the validator which proposed the block.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "deploy_hashes": {
+                "description": "The deploy hashes of the non-transfer deploys within the block.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeployHash"
+                }
+              },
+              "transfer_hashes": {
+                "description": "The deploy hashes of the transfers within the block.",
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DeployHash"
+                }
+              },
+              "past_finality_signatures": {
+                "description": "The past finality signatures.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PastFinalitySignatures"
+                  }
+                ]
+              }
+            }
+          },
+          "PastFinalitySignatures": {
+            "description": "TODO[RC]: This is a placeholder and should be replaced with the real `PastFinalitySignatures` structure which is being implemented on the separate branch for the Zug consensus rewards. Also, the target file location may be different.",
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint8",
+              "minimum": 0.0
+            }
+          },
+          "Array_of_BlockProof": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockProof"
+            }
+          },
+          "BlockProof": {
             "description": "A validator's public key paired with a corresponding signature of a given block hash.",
             "type": "object",
             "required": [
@@ -4523,8 +4896,7 @@
                   }
                 ]
               }
-            },
-            "additionalProperties": false
+            }
           },
           "EraSummary": {
             "description": "The summary of an era",

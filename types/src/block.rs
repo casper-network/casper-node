@@ -36,10 +36,7 @@ pub use era_report::EraReport;
 pub use finality_signature::FinalitySignature;
 pub use finality_signature_id::FinalitySignatureId;
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use json_compatibility::{
-    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
-    JsonValidatorWeight,
-};
+pub use json_compatibility::JsonBlockWithSignatures;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
 pub use versioned_block::VersionedBlock;
 

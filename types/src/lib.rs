@@ -84,11 +84,9 @@ pub use block::{
     FinalitySignature, FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
     VersionedBlock, VersionedBlockBody,
 };
+
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use block::{
-    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
-    JsonValidatorWeight,
-};
+pub use block::JsonBlockWithSignatures;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{

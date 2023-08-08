@@ -1,8 +1,11 @@
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
+use once_cell::sync::Lazy;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +15,9 @@ use crate::{
     ProtocolVersion, Timestamp, VersionedBlockBody,
 };
 
-use super::{block_v1::BlockV1, block_v2::BlockV2};
+use super::{block_v1::BlockV1, block_v2::BlockV2, json_compatibility::JsonBlockWithSignatures};
+
+static VERSIONED_BLOCK: Lazy<VersionedBlock> = Lazy::new(|| BlockV2::example().into());
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
@@ -21,14 +26,17 @@ pub const BLOCK_V1_TAG: u8 = 0;
 /// Tag for block body v2.
 pub const BLOCK_V2_TAG: u8 = 1;
 
-/// A block. It encapsulates different variants of the `BlockVx`.
+/// A versioned block after execution.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum VersionedBlock {
     /// The legacy, initial version of the block.
+    #[serde(rename = "Version1")]
     V1(BlockV1),
     /// The version 2 of the block.
+    #[serde(rename = "Version2")]
     V2(BlockV2),
 }
 
@@ -167,6 +175,12 @@ impl VersionedBlock {
             VersionedBlock::V2(v2) => v2.header.state_root_hash(),
         }
     }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    pub fn example() -> &'static Self {
+        &VERSIONED_BLOCK
+    }
 }
 
 impl Display for VersionedBlock {
@@ -220,14 +234,14 @@ impl FromBytes for VersionedBlock {
     }
 }
 
-impl From<&Block> for VersionedBlock {
-    fn from(block: &Block) -> Self {
+impl From<&BlockV2> for VersionedBlock {
+    fn from(block: &BlockV2) -> Self {
         VersionedBlock::V2(block.clone())
     }
 }
 
-impl From<Block> for VersionedBlock {
-    fn from(block: Block) -> Self {
+impl From<BlockV2> for VersionedBlock {
+    fn from(block: BlockV2) -> Self {
         VersionedBlock::V2(block)
     }
 }
@@ -241,6 +255,12 @@ impl From<&BlockV1> for VersionedBlock {
 impl From<BlockV1> for VersionedBlock {
     fn from(block: BlockV1) -> Self {
         VersionedBlock::V1(block)
+    }
+}
+
+impl From<JsonBlockWithSignatures> for VersionedBlock {
+    fn from(block_with_signatures: JsonBlockWithSignatures) -> Self {
+        block_with_signatures.block
     }
 }
 

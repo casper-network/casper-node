@@ -346,7 +346,7 @@ where
                             .map(|header| *header.state_root_hash())
                             .unwrap_or_default();
                         let status_feed = StatusFeed::new(
-                            last_added_block.map(|block| block.into()),
+                            last_added_block,
                             peers,
                             ChainspecInfo::new(network_name, next_upgrade),
                             consensus_status,
