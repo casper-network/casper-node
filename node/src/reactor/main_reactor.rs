@@ -18,7 +18,7 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
@@ -562,19 +562,25 @@ impl reactor::Reactor for MainReactor {
                 _gossiped_block_id,
             )) => Effects::new(),
             MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
-                let versioned_block = &*block;
-                let block: Block = versioned_block.into();
-                reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator::Event::ReceivedBlock {
-                            block: Arc::new(block),
-                            sender: peer,
-                        },
-                    ),
-                )
+                let versioned_block = (*block).clone();
+                // The block accumulator shouldn't concern itself with historical blocks that are
+                // being fetched. If the versioned block is not convertible to the
+                // current version it means that it is surely a historical block.
+                if let Ok(block) = versioned_block.try_into() {
+                    reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ReceivedBlock {
+                                block: Arc::new(block),
+                                sender: peer,
+                            },
+                        ),
+                    )
+                } else {
+                    Effects::new()
+                }
             }
 
             MainEvent::FinalitySignatureIncoming(incoming) => {

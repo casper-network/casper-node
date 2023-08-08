@@ -1,9 +1,12 @@
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::collections::BTreeMap;
 use alloc::{boxed::Box, vec::Vec};
-use core::fmt::{self, Display, Formatter};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use core::iter;
+use core::{
+    convert::TryFrom,
+    fmt::{self, Display, Formatter},
+};
 use once_cell::sync::Lazy;
 
 #[cfg(feature = "datasize")]
@@ -476,20 +479,13 @@ impl FromBytes for BlockV2 {
     }
 }
 
-impl From<VersionedBlock> for BlockV2 {
-    fn from(value: VersionedBlock) -> Self {
-        match value {
-            VersionedBlock::V1(_) => todo!(),
-            VersionedBlock::V2(v2) => v2,
-        }
-    }
-}
+impl TryFrom<VersionedBlock> for BlockV2 {
+    type Error = String;
 
-impl From<&VersionedBlock> for BlockV2 {
-    fn from(value: &VersionedBlock) -> Self {
+    fn try_from(value: VersionedBlock) -> Result<BlockV2, String> {
         match value {
-            VersionedBlock::V1(_) => todo!(),
-            VersionedBlock::V2(v2) => v2.clone(),
+            VersionedBlock::V2(v2) => Ok(v2),
+            _ => Err("Could not convert VersionedBlock to BlockV2".to_string()),
         }
     }
 }

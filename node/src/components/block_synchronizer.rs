@@ -30,7 +30,7 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
 use casper_types::{
-    BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
+    BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, Deploy, Digest, FinalitySignature,
     FinalitySignatureId, Timestamp, VersionedBlock,
 };
 
@@ -478,14 +478,19 @@ impl BlockSynchronizer {
                             .then(move |maybe_execution_results| async move {
                                 match maybe_execution_results {
                                     Some(execution_results) => {
-                                        // TODO[RC] .into(), becasue we want to avoid polluting
+                                        // TODO[RC] .try_into(), becasue we want to avoid polluting
                                         // `MetaBlock` with `VersionedBlock`, but maybe we'd have to
-                                        let meta_block = MetaBlock::new(
-                                            Arc::new((*block).into()),
-                                            execution_results,
-                                            MetaBlockState::new_after_historical_sync(),
-                                        );
-                                        effect_builder.announce_meta_block(meta_block).await
+                                        match <VersionedBlock as std::convert::TryInto<BlockV2>>::try_into(*block) {
+                                            Ok(block) => {
+                                                let meta_block = MetaBlock::new(
+                                                    Arc::new(block),
+                                                    execution_results,
+                                                    MetaBlockState::new_after_historical_sync(),
+                                                );
+                                                effect_builder.announce_meta_block(meta_block).await
+                                            }
+                                            Err(_) => todo!(),
+                                        }
                                     }
                                     None => {
                                         error!(
