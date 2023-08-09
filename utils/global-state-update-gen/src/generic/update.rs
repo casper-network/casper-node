@@ -3,9 +3,7 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 #[cfg(test)]
-use casper_types::{
-    account::AccountHash, system::auction::Bid, AddressableEntity, CLValue, PublicKey, URef, U512,
-};
+use casper_types::{account::AccountHash, AddressableEntity, CLValue, PublicKey, URef, U512};
 use casper_types::{Key, StoredValue};
 
 #[cfg(test)]

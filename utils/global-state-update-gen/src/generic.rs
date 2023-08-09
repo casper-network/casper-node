@@ -445,7 +445,7 @@ fn create_or_update_bid<T: StateReader>(
                 .get(delegator.delegator_public_key())
             {
                 None => {
-                    // todo!() this is a remove; the global state updated does not
+                    // todo!() this is a remove; the global state update tool does not
                     // yet support prune so in the meantime, setting the amount
                     // to 0.
                     Delegator::empty(

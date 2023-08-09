@@ -4,7 +4,8 @@ use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash,Digest, KeyTag, ProtocolVersion,
+    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, KeyTag,
+    ProtocolVersion,
 };
 
 use crate::{

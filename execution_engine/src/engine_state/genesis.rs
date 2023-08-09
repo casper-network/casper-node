@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    account::AccountHash,
     addressable_entity::{ActionThresholds, NamedKeys},
     package::{
         ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
