@@ -275,14 +275,6 @@ where
             }
         }
 
-        let vm_result = match result {
-            Ok(result) => Ok(()),
-            Err(error) => match error.downcast::<VMError>() {
-                Ok(vm_error) => Err(vm_error),
-                Err(vm_error) => todo!("handle {vm_error:?}"),
-            },
-        };
-
         // NOTE: We don't need to dealloc after calling an export, since the instance will likely.
         // not be reused when calling an export. We'll revisit this most likely
         //     .exported_runtime()
@@ -291,7 +283,13 @@ where
         //     .call(&mut self.store, arg_ptr, data_size.try_into().unwrap())
         //     .map_err(|error| handle_runtime_error(error, &mut self.store, &self.instance))?;
 
-        Ok(())
+        match result {
+            Ok(result) => Ok(()),
+            Err(error) => match error.downcast::<HostError>() {
+                Ok(host_error) => Err(VMError::Host(host_error)),
+                Err(vm_error) => todo!("handle {vm_error:?}"),
+            },
+        }
     }
 
     pub(crate) fn from_wasm_bytes(
