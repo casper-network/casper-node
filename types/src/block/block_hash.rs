@@ -1,9 +1,10 @@
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
-use once_cell::sync::Lazy;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
@@ -19,6 +20,7 @@ use crate::{
     Digest,
 };
 
+#[cfg(feature = "json-schema")]
 static BLOCK_HASH: Lazy<BlockHash> =
     Lazy::new(|| BlockHash::new(Digest::from([7; BlockHash::LENGTH])));
 
@@ -54,6 +56,7 @@ impl BlockHash {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &BLOCK_HASH
     }

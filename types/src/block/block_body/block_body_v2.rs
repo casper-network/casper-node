@@ -9,18 +9,16 @@ use once_cell::sync::OnceCell;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     past_finality_signatures::PastFinalitySignatures,
     DeployHash, Digest, PublicKey,
 };
 
+/// The body portion of a block. Version 2.
 #[derive(Clone, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[schemars(description = "The body portion of a block.")]
-/// The body portion of a block.
 pub struct BlockBodyV2 {
     /// The public key of the validator which proposed the block.
     pub(super) proposer: PublicKey,

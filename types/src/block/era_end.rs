@@ -8,7 +8,9 @@ use once_cell::sync::Lazy;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use super::EraReport;
 #[cfg(feature = "json-schema")]
@@ -48,10 +50,6 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[schemars(
-    description = "Information related to the end of an era, and validator weights for the \
-    following era."
-)]
 pub struct EraEnd {
     /// Equivocation, reward and validator inactivity information.
     pub(super) era_report: EraReport<PublicKey>,
@@ -134,6 +132,7 @@ impl KeyValueLabels for NextEraValidatorLabels {
     const VALUE: &'static str = "weight";
 }
 
+#[cfg(feature = "json-schema")]
 impl KeyValueJsonSchema for NextEraValidatorLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ValidatorWeight");
     const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> = Some(

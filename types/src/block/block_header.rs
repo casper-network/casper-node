@@ -1,9 +1,10 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::{self, Display, Formatter};
-use once_cell::sync::Lazy;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
 #[cfg(feature = "json-schema")]
@@ -21,6 +22,7 @@ use crate::{
 #[cfg(feature = "std")]
 use crate::{ActivationPoint, ProtocolConfig};
 
+#[cfg(feature = "json-schema")]
 static BLOCK_HEADER: Lazy<BlockHeader> = Lazy::new(|| {
     let parent_hash = BlockHash::new(Digest::from([7; Digest::LENGTH]));
     let state_root_hash = Digest::from([8; Digest::LENGTH]);
@@ -48,12 +50,11 @@ static BLOCK_HEADER: Lazy<BlockHeader> = Lazy::new(|| {
     )
 });
 
-/// The header portion of a [`Block`].
+/// The header portion of a block.
 #[derive(Clone, Eq, Debug)]
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[schemars(description = "The header portion of a block.")]
 pub struct BlockHeader {
     /// The parent block's hash.
     pub(super) parent_hash: BlockHash,
@@ -231,6 +232,7 @@ impl BlockHeader {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &BLOCK_HEADER
     }

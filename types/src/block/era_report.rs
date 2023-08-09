@@ -2,7 +2,6 @@ use alloc::{collections::BTreeMap, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 #[cfg(any(feature = "testing", test))]
 use core::iter;
-use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -13,6 +12,9 @@ use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
@@ -52,7 +54,10 @@ static ERA_REPORT: Lazy<EraReport<PublicKey>> = Lazy::new(|| {
     serialize = "VID: Ord + Serialize",
     deserialize = "VID: Ord + Deserialize<'de>",
 ))]
-#[schemars(description = "Equivocation, reward and validator inactivity information.")]
+#[cfg_attr(
+    feature = "json-schema",
+    schemars(description = "Equivocation, reward and validator inactivity information.")
+)]
 pub struct EraReport<VID> {
     /// The set of equivocators.
     pub(super) equivocators: Vec<VID>,
@@ -223,6 +228,7 @@ impl KeyValueLabels for EraRewardsLabels {
     const VALUE: &'static str = "amount";
 }
 
+#[cfg(feature = "json-schema")]
 impl KeyValueJsonSchema for EraRewardsLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("EraReward");
     const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> = Some(

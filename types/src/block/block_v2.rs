@@ -7,10 +7,10 @@ use core::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
 };
-use once_cell::sync::Lazy;
-
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
@@ -24,13 +24,14 @@ use rand::Rng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
-    ProtocolVersion, PublicKey, SecretKey, Timestamp,
+    ProtocolVersion, PublicKey, Timestamp,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, EraReport, U512};
 
-use super::{Block, BlockBodyV2};
+use super::{Block, BlockBodyV2, BlockConversionError};
 
+#[cfg(feature = "json-schema")]
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let parent_hash = BlockHash::new(Digest::from([7; Digest::LENGTH]));
     let parent_seed = Digest::from([9; Digest::LENGTH]);
@@ -41,7 +42,7 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let era_id = EraId::from(1);
     let height = 10;
     let protocol_version = ProtocolVersion::V1_0_0;
-    let secret_key = SecretKey::example();
+    let secret_key = crate::SecretKey::example();
     let proposer = PublicKey::from(secret_key);
     let deploy_hashes = vec![DeployHash::new(Digest::from([20; Digest::LENGTH]))];
     let transfer_hashes = vec![DeployHash::new(Digest::from([21; Digest::LENGTH]))];
@@ -61,16 +62,12 @@ static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     )
 });
 
-/// A block after execution, with the resulting post-state-hash. This is the core component of the
-/// Casper linear blockchain. Version 2.
+/// A block after execution, with the resulting global state root hash. This is the core component
+/// of the Casper linear blockchain. Version 2.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[schemars(
-    description = "A block after execution, with the resulting global state root hash. This is \
-    the core component of the Casper linear blockchain. Version 2."
-)]
 pub struct BlockV2 {
     /// The block hash identifying this block.
     pub(super) hash: BlockHash,
@@ -251,6 +248,7 @@ impl BlockV2 {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &BLOCK_V2
     }
@@ -480,12 +478,14 @@ impl FromBytes for BlockV2 {
 }
 
 impl TryFrom<Block> for BlockV2 {
-    type Error = String;
+    type Error = BlockConversionError;
 
-    fn try_from(value: Block) -> Result<BlockV2, String> {
+    fn try_from(value: Block) -> Result<BlockV2, BlockConversionError> {
         match value {
             Block::V2(v2) => Ok(v2),
-            _ => Err("Could not convert Block to BlockV2".to_string()),
+            _ => Err(BlockConversionError::DifferentVersion {
+                expected_version: 2,
+            }),
         }
     }
 }

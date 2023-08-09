@@ -12,14 +12,15 @@ mod finality_signature_id;
 mod json_compatibility;
 mod signed_block_header;
 
-use alloc::boxed::Box;
+use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
-use once_cell::sync::Lazy;
 #[cfg(feature = "std")]
 use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
@@ -117,6 +118,27 @@ impl StdError for BlockValidationError {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum BlockConversionError {
+    DifferentVersion { expected_version: u8 },
+}
+
+#[cfg(feature = "std")]
+impl Display for BlockConversionError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BlockConversionError::DifferentVersion { expected_version } => {
+                write!(
+                    f,
+                    "Could not convert a block to the expected version {}",
+                    expected_version
+                )
+            }
+        }
+    }
+}
+
+#[cfg(feature = "json-schema")]
 static VERSIONED_BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
@@ -128,15 +150,24 @@ const BLOCK_V2_TAG: u8 = 1;
 
 /// A versioned block after execution.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
+#[cfg_attr(
+    any(feature = "std", feature = "json-schema", test),
+    derive(Serialize, Deserialize)
+)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum Block {
     /// The legacy, initial version of the block.
-    #[serde(rename = "Version1")]
+    #[cfg_attr(
+        any(feature = "std", feature = "json-schema", test),
+        serde(rename = "Version1")
+    )]
     V1(BlockV1),
     /// The version 2 of the block.
-    #[serde(rename = "Version2")]
+    #[cfg_attr(
+        any(feature = "std", feature = "json-schema", test),
+        serde(rename = "Version2")
+    )]
     V2(BlockV2),
 }
 
@@ -278,6 +309,7 @@ impl Block {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
         &VERSIONED_BLOCK
     }
@@ -358,6 +390,7 @@ impl From<BlockV1> for Block {
     }
 }
 
+#[cfg(all(feature = "std", feature = "json-schema"))]
 impl From<JsonBlockWithSignatures> for Block {
     fn from(block_with_signatures: JsonBlockWithSignatures) -> Self {
         block_with_signatures.block

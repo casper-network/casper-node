@@ -530,7 +530,7 @@
       "minimum": 0.0
     },
     "BlockBodyV1": {
-      "description": "The body portion of a block.",
+      "description": "The body portion of a block. Version 1.",
       "type": "object",
       "required": [
         "deploy_hashes",
@@ -606,7 +606,7 @@
       }
     },
     "BlockBodyV2": {
-      "description": "The body portion of a block.",
+      "description": "The body portion of a block. Version 2.",
       "type": "object",
       "required": [
         "deploy_hashes",

@@ -27,16 +27,12 @@ use crate::{
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, EraReport};
 
-/// A block after execution, with the resulting post-state-hash.  This is the core component of the
-/// Casper linear blockchain.
+/// A block after execution, with the resulting global state root hash. This is the core component
+/// of the Casper linear blockchain. Version 1.
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[derive(Clone, Eq, PartialEq, Debug)]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-#[schemars(
-    description = "A block after execution, with the resulting global state root hash. This is \
-    the core component of the Casper linear blockchain. Version 1."
-)]
 pub struct BlockV1 {
     /// The block hash identifying this block.
     pub(super) hash: BlockHash,
