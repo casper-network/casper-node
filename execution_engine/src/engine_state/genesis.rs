@@ -11,8 +11,11 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    account::{Account, AccountHash},
-    contracts::{ContractPackageStatus, ContractVersions, DisabledVersions, Groups, NamedKeys},
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, NamedKeys},
+    package::{
+        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
+    },
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -23,22 +26,22 @@ use casper_types::{
         },
         handle_payment,
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        standard_payment, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        standard_payment, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, CLValue, Chainspec, ChainspecRegistry, Contract, ContractHash, ContractPackage,
+    AccessRights, AddressableEntity, CLValue, Chainspec, ChainspecRegistry, ContractHash,
     ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
-    GenesisAccount, Key, Motes, Phase, ProtocolVersion, PublicKey, StoredValue, SystemConfig, URef,
-    WasmConfig, U512,
+    GenesisAccount, Key, Motes, Package, Phase, ProtocolVersion, PublicKey, StoredValue,
+    SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::{
-    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry},
+    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry, DEFAULT_ADDRESS},
     execution,
     execution::AddressGenerator,
     tracking_copy::TrackingCopy,
 };
 
-const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
+const NO_WASM: bool = true;
 
 /// Represents an outcome of a successful genesis run.
 #[derive(Debug)]
@@ -398,19 +401,6 @@ where
             Rc::new(RefCell::new(generator))
         };
 
-        let system_account_addr = PublicKey::System.to_account_hash();
-
-        let virtual_system_account = {
-            let named_keys = NamedKeys::new();
-            let purse = URef::new(Default::default(), AccessRights::READ_ADD_WRITE);
-            Account::create(system_account_addr, named_keys, purse)
-        };
-
-        let key = Key::Account(system_account_addr);
-        let value = { StoredValue::Account(virtual_system_account) };
-
-        tracking_copy.borrow_mut().write(key, value);
-
         GenesisInstaller {
             protocol_version,
             exec_config,
@@ -421,6 +411,20 @@ where
 
     pub(crate) fn finalize(self) -> ExecutionEffect {
         self.tracking_copy.borrow().effect()
+    }
+
+    fn setup_system_account(&mut self) -> Result<(), Box<GenesisError>> {
+        let system_account_addr = PublicKey::System.to_account_hash();
+
+        self.store_contract(
+            ContractPackageKind::Account(system_account_addr),
+            NO_WASM,
+            U512::zero(),
+            None,
+            None,
+        )?;
+
+        Ok(())
     }
 
     fn create_mint(&mut self) -> Result<Key, Box<GenesisError>> {
@@ -475,19 +479,18 @@ where
 
         let entry_points = mint::mint_entry_points();
 
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
-
-        let (_, mint_hash) = self.store_contract(access_key, named_keys, entry_points);
+        let contract_hash = self.store_system_contract(
+            named_keys,
+            entry_points,
+            ContractPackageKind::System(SystemContractType::Mint),
+        )?;
 
         {
             // Insert a partial registry into global state.
             // This allows for default values to be accessible when the remaining system contracts
             // call the `call_host_mint` function during their creation.
             let mut partial_registry = BTreeMap::<String, ContractHash>::new();
-            partial_registry.insert(MINT.to_string(), mint_hash);
+            partial_registry.insert(MINT.to_string(), contract_hash);
             partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
             let cl_registry = CLValue::from_t(partial_registry)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
@@ -512,16 +515,15 @@ where
 
         let entry_points = handle_payment::handle_payment_entry_points();
 
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
+        let contract_hash = self.store_system_contract(
+            named_keys,
+            entry_points,
+            ContractPackageKind::System(SystemContractType::HandlePayment),
+        )?;
 
-        let (_, handle_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
+        self.store_system_contract_registry(HANDLE_PAYMENT, contract_hash)?;
 
-        self.store_system_contract(HANDLE_PAYMENT, handle_payment_hash)?;
-
-        Ok(handle_payment_hash)
+        Ok(contract_hash)
     }
 
     fn create_auction(&self, total_supply_key: Key) -> Result<ContractHash, Box<GenesisError>> {
@@ -767,16 +769,15 @@ where
 
         let entry_points = auction::auction_entry_points();
 
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
+        let contract_hash = self.store_system_contract(
+            named_keys,
+            entry_points,
+            ContractPackageKind::System(SystemContractType::Auction),
+        )?;
 
-        let (_, auction_hash) = self.store_contract(access_key, named_keys, entry_points);
+        self.store_system_contract_registry(AUCTION, contract_hash)?;
 
-        self.store_system_contract(AUCTION, auction_hash)?;
-
-        Ok(auction_hash)
+        Ok(contract_hash)
     }
 
     fn create_standard_payment(&self) -> Result<ContractHash, Box<GenesisError>> {
@@ -784,16 +785,15 @@ where
 
         let entry_points = standard_payment::standard_payment_entry_points();
 
-        let access_key = self
-            .address_generator
-            .borrow_mut()
-            .new_uref(AccessRights::READ_ADD_WRITE);
+        let contract_hash = self.store_system_contract(
+            named_keys,
+            entry_points,
+            ContractPackageKind::System(SystemContractType::HandlePayment),
+        )?;
 
-        let (_, standard_payment_hash) = self.store_contract(access_key, named_keys, entry_points);
+        self.store_system_contract_registry(STANDARD_PAYMENT, contract_hash)?;
 
-        self.store_system_contract(STANDARD_PAYMENT, standard_payment_hash)?;
-
-        Ok(standard_payment_hash)
+        Ok(contract_hash)
     }
 
     fn create_accounts(&self, total_supply_key: Key) -> Result<(), Box<GenesisError>> {
@@ -807,19 +807,16 @@ where
         let mut total_supply = U512::zero();
 
         for account in accounts {
-            let account_hash = account.account_hash();
-            let main_purse = self.create_purse(account.balance().value())?;
+            let account_starting_balance = account.balance().value();
+            self.store_contract(
+                ContractPackageKind::Account(account.account_hash()),
+                NO_WASM,
+                account_starting_balance,
+                None,
+                None,
+            )?;
 
-            let key = Key::Account(account_hash);
-            let stored_value = StoredValue::Account(Account::create(
-                account_hash,
-                Default::default(),
-                main_purse,
-            ));
-
-            self.tracking_copy.borrow_mut().write(key, stored_value);
-
-            total_supply += account.balance().value();
+            total_supply += account_starting_balance;
         }
 
         self.tracking_copy.borrow_mut().write(
@@ -874,37 +871,86 @@ where
         Ok(purse_uref)
     }
 
-    fn store_contract(
+    fn store_system_contract(
         &self,
-        access_key: URef,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
-    ) -> (ContractPackageHash, ContractHash) {
+        contract_package_kind: ContractPackageKind,
+    ) -> Result<ContractHash, Box<GenesisError>> {
+        self.store_contract(
+            contract_package_kind,
+            NO_WASM,
+            U512::zero(),
+            Some(named_keys),
+            Some(entry_points),
+        )
+    }
+
+    fn store_contract(
+        &self,
+        contract_package_kind: ContractPackageKind,
+        no_wasm: bool,
+        starting_balance: U512,
+        maybe_named_keys: Option<NamedKeys>,
+        maybe_entry_points: Option<EntryPoints>,
+    ) -> Result<ContractHash, Box<GenesisError>> {
         let protocol_version = self.protocol_version;
-        let contract_wasm_hash =
-            ContractWasmHash::new(self.address_generator.borrow_mut().new_hash_address());
-        let contract_hash =
-            ContractHash::new(self.address_generator.borrow_mut().new_hash_address());
+        let contract_wasm_hash = if no_wasm {
+            ContractWasmHash::new(DEFAULT_ADDRESS)
+        } else {
+            ContractWasmHash::new(self.address_generator.borrow_mut().new_hash_address())
+        };
+        let contract_hash = if contract_package_kind.is_system_account() {
+            let entity_hash_addr = PublicKey::System.to_account_hash().value();
+            ContractHash::new(entity_hash_addr)
+        } else {
+            ContractHash::new(self.address_generator.borrow_mut().new_hash_address())
+        };
+
         let contract_package_hash =
             ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
-        let contract = Contract::new(
+        let main_purse = self.create_purse(starting_balance)?;
+        let associated_keys = contract_package_kind.associated_keys();
+        let maybe_account_hash = contract_package_kind.maybe_account_hash();
+        let named_keys = maybe_named_keys.unwrap_or_default();
+        let entry_points = match maybe_entry_points {
+            Some(entry_points) => entry_points,
+            None => {
+                if maybe_account_hash.is_some() {
+                    EntryPoints::new()
+                } else {
+                    EntryPoints::default()
+                }
+            }
+        };
+
+        let entity = AddressableEntity::new(
             contract_package_hash,
             contract_wasm_hash,
             named_keys,
             entry_points,
             protocol_version,
+            main_purse,
+            associated_keys,
+            ActionThresholds::default(),
         );
+
+        let access_key = self
+            .address_generator
+            .borrow_mut()
+            .new_uref(AccessRights::READ_ADD_WRITE);
 
         // Genesis contracts can be versioned contracts.
         let contract_package = {
-            let mut contract_package = ContractPackage::new(
+            let mut contract_package = Package::new(
                 access_key,
                 ContractVersions::default(),
                 DisabledVersions::default(),
                 Groups::default(),
                 ContractPackageStatus::default(),
+                contract_package_kind,
             );
             contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
             contract_package
@@ -916,16 +962,26 @@ where
         );
         self.tracking_copy
             .borrow_mut()
-            .write(contract_hash.into(), StoredValue::Contract(contract));
+            .write(contract_hash.into(), StoredValue::AddressableEntity(entity));
         self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
             StoredValue::ContractPackage(contract_package),
         );
+        if let Some(account_hash) = maybe_account_hash {
+            let contract_key: Key = contract_hash.into();
+            let contract_by_account = CLValue::from_t(contract_key)
+                .map_err(|error| GenesisError::CLValue(error.to_string()))?;
 
-        (contract_package_hash, contract_hash)
+            self.tracking_copy.borrow_mut().write(
+                Key::Account(account_hash),
+                StoredValue::CLValue(contract_by_account),
+            );
+        }
+
+        Ok(contract_hash)
     }
 
-    fn store_system_contract(
+    fn store_system_contract_registry(
         &self,
         contract_name: &str,
         contract_hash: ContractHash,
@@ -975,6 +1031,9 @@ where
         &mut self,
         chainspec_registry: ChainspecRegistry,
     ) -> Result<(), Box<GenesisError>> {
+        // Setup system account
+        self.setup_system_account()?;
+
         // Create mint
         let total_supply_key = self.create_mint()?;
 

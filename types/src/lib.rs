@@ -21,9 +21,11 @@
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
+extern crate core;
 
 mod access_rights;
 pub mod account;
+pub mod addressable_entity;
 pub mod api_error;
 mod block;
 mod block_time;
@@ -51,6 +53,7 @@ mod json_pretty_printer;
 mod key;
 mod motes;
 mod named_key;
+pub mod package;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -75,6 +78,11 @@ use once_cell::sync::Lazy;
 pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+};
+#[doc(inline)]
+pub use addressable_entity::{
+    AddressableEntity, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Parameter,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -119,12 +127,7 @@ pub use chainspec::{
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
-#[doc(inline)]
-pub use contracts::{
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
-    Parameter,
-};
+pub use contracts::Contract;
 pub use crypto::*;
 #[cfg(any(feature = "std", test))]
 pub(crate) use deploy::AccountAndSecretKey;
@@ -155,6 +158,7 @@ pub use key::{
 };
 pub use motes::Motes;
 pub use named_key::NamedKey;
+pub use package::{ContractPackageHash, ContractVersion, ContractVersionKey, Group, Package};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 #[doc(inline)]

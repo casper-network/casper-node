@@ -53,7 +53,7 @@ fn should_install_faucet_contract() {
         .commit();
 
     let installer_named_keys = builder
-        .get_expected_account(INSTALLER_ACCOUNT)
+        .get_expected_addressable_entity_by_account_hash(INSTALLER_ACCOUNT)
         .named_keys()
         .clone();
 
@@ -275,8 +275,11 @@ fn should_fund_new_account() {
         faucet_purse_balance_before - new_account_fund_amount
     );
 
-    let new_account_actual_purse_balance =
-        builder.get_purse_balance(builder.get_expected_account(new_account).main_purse());
+    let new_account_actual_purse_balance = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(new_account)
+            .main_purse(),
+    );
 
     assert_eq!(new_account_actual_purse_balance, new_account_fund_amount);
 }
@@ -323,7 +326,9 @@ fn should_fund_existing_account() {
         .expect_success()
         .commit();
 
-    let user_purse_uref = builder.get_expected_account(user_account).main_purse();
+    let user_purse_uref = builder
+        .get_expected_addressable_entity_by_account_hash(user_account)
+        .main_purse();
     let user_purse_balance_before = builder.get_purse_balance(user_purse_uref);
 
     builder
@@ -421,8 +426,11 @@ fn should_not_fund_once_exhausted() {
         .expect_success()
         .commit();
 
-    let user_main_purse_balance_before =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_before = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
 
     for i in 0..num_funds {
         let faucet_call_by_user = helper
@@ -436,8 +444,11 @@ fn should_not_fund_once_exhausted() {
         builder.exec(faucet_call_by_user).expect_success().commit();
     }
 
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_after = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
 
     let remaining_requests = get_remaining_requests(&builder, faucet_contract_hash);
     assert_eq!(remaining_requests, U512::zero());
@@ -451,8 +462,11 @@ fn should_not_fund_once_exhausted() {
         "users main purse balance must match expected amount after user faucet calls ({} != {}*{} [{}])", user_main_purse_balance_after, one_distribution, num_funds, one_distribution * num_funds,
     );
 
-    let user_main_purse_balance_before =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_before = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
 
     let faucet_call_by_user = helper
         .new_faucet_fund_request_builder()
@@ -464,8 +478,11 @@ fn should_not_fund_once_exhausted() {
 
     builder.exec(faucet_call_by_user).expect_success().commit();
 
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_after = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
     assert_eq!(
         user_main_purse_balance_before - user_main_purse_balance_after,
         U512::from(payment_amount),
@@ -480,8 +497,11 @@ fn should_not_fund_once_exhausted() {
     );
     assert_eq!(last_distribution_time, 0);
 
-    let user_main_purse_balance_before =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_before = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
 
     let faucet_call_by_user = helper
         .new_faucet_fund_request_builder()
@@ -493,8 +513,11 @@ fn should_not_fund_once_exhausted() {
 
     builder.exec(faucet_call_by_user).expect_success().commit();
 
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_after = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
 
     let last_distribution_time = query_stored_value::<u64>(
         &mut builder,
@@ -612,8 +635,11 @@ fn should_allow_installer_to_fund_freely() {
     );
 
     // check the balance of the user's main purse
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_after = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
 
     assert_eq!(user_main_purse_balance_after, user_fund_amount * num_funds);
 }
@@ -711,7 +737,7 @@ fn should_allow_funding_by_an_authorized_account() {
         .commit();
 
     let installer_named_keys = builder
-        .get_expected_account(installer_account)
+        .get_expected_addressable_entity_by_account_hash(installer_account)
         .named_keys()
         .clone();
 
@@ -796,8 +822,11 @@ fn should_allow_funding_by_an_authorized_account() {
         .expect_success()
         .commit();
 
-    let user_main_purse_balance_after =
-        builder.get_purse_balance(builder.get_expected_account(user_account).main_purse());
+    let user_main_purse_balance_after = builder.get_purse_balance(
+        builder
+            .get_expected_addressable_entity_by_account_hash(user_account)
+            .main_purse(),
+    );
     assert_eq!(user_main_purse_balance_after, user_fund_amount);
 
     // A user cannot fund themselves if there is an authorized account.
@@ -840,9 +869,9 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 75_226_865_930;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 75_252_695_930;
     const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 579_464_060;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 3_040_141_320;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 3_174_331_320;
     const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 3_242_199_690;
 
     let installer_account = AccountHash::new([1u8; 32]);
@@ -880,6 +909,8 @@ fn faucet_costs() {
         .commit();
 
     let faucet_install_cost = builder.last_exec_gas_cost();
+    println!("Install cost: {}", faucet_install_cost.value().as_u64());
+
     assert_eq!(
         faucet_install_cost.value().as_u64(),
         EXPECTED_FAUCET_INSTALL_COST

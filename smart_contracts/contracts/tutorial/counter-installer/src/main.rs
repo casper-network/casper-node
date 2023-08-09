@@ -16,8 +16,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
+    addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
     api_error::ApiError,
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
     CLType, CLValue, Key, URef,
 };
 

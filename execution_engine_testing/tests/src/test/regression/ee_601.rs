@@ -36,9 +36,12 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
     let transforms = builder.get_execution_journals();
     let transform: AdditiveMap<Key, Transform> = transforms[0].clone().into();
 
-    let add_keys = if let Some(Transform::AddKeys(keys)) =
-        transform.get(&Key::Account(*DEFAULT_ACCOUNT_ADDR))
-    {
+    let contract_key: Key = builder
+        .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract hash associated with default account")
+        .into();
+
+    let add_keys = if let Some(Transform::AddKeys(keys)) = transform.get(&contract_key) {
         keys
     } else {
         panic!(

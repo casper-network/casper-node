@@ -4,10 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{
-    account::{AccountHash, Weight},
-    runtime_args, U512,
-};
+use casper_types::{account::AccountHash, addressable_entity::Weight, runtime_args, U512};
 
 const CONTRACT_ADD_UPDATE_ASSOCIATED_KEY: &str = "add_update_associated_key.wasm";
 const CONTRACT_REMOVE_ASSOCIATED_KEY: &str = "remove_associated_key.wasm";
@@ -39,19 +36,19 @@ fn should_manage_associated_key() {
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
-        .expect_success()
         .commit();
+
+    builder.exec(exec_request_1).expect_success().commit();
 
     builder.exec(exec_request_2).expect_success().commit();
 
     let genesis_key = *DEFAULT_ACCOUNT_ADDR;
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let gen_weight = account_1
+    let gen_weight = contract_1
         .associated_keys()
         .get(&genesis_key)
         .expect("weight");
@@ -68,11 +65,11 @@ fn should_manage_associated_key() {
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let new_weight = account_1.associated_keys().get(&genesis_key);
+    let new_weight = contract_1.associated_keys().get(&genesis_key);
 
     assert_eq!(new_weight, None, "key should be removed");
 

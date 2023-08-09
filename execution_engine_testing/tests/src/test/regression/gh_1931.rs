@@ -22,7 +22,7 @@ fn should_query_contract_package() {
     builder.exec(install_request).expect_success().commit();
 
     let contract_package_hash = builder
-        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .named_keys()
         .clone()
         .get(CONTRACT_PACKAGE_NAMED_KEY)

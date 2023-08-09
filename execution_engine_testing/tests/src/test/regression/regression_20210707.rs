@@ -7,10 +7,8 @@ use casper_execution_engine::{
     execution::Error as ExecError,
 };
 use casper_types::{
-    account::{Account, AccountHash},
-    runtime_args,
-    system::mint,
-    AccessRights, ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
+    ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -67,8 +65,8 @@ fn transfer(sender: AccountHash, target: AccountHash, amount: u64) -> ExecuteReq
     .build()
 }
 
-fn get_account_contract_hash(account: &Account) -> ContractHash {
-    account
+fn get_account_contract_hash(contract: &AddressableEntity) -> ContractHash {
+    contract
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .cloned()
@@ -105,11 +103,11 @@ fn should_transfer_funds_from_contract_to_new_account() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
     let contract_hash = get_account_contract_hash(&account);
 
-    assert!(builder.get_account(*BOB_ADDR).is_none());
+    assert!(builder.get_entity_by_account_hash(*BOB_ADDR).is_none());
 
     let call_request = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
@@ -150,7 +148,7 @@ fn should_transfer_funds_from_contract_to_existing_account() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
     let contract_hash = get_account_contract_hash(&account);
 
@@ -186,7 +184,7 @@ fn should_not_transfer_funds_from_forged_purse_to_account_native_transfer() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request).commit().expect_success();
 
-    let take_from = builder.get_expected_account(*ALICE_ADDR);
+    let take_from = builder.get_expected_addressable_entity_by_account_hash(*ALICE_ADDR);
     let alice_main_purse = take_from.main_purse();
 
     let transfer_request = {
@@ -233,9 +231,9 @@ fn should_not_transfer_funds_from_forged_purse_to_owned_purse() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let bob = builder.get_expected_account(*BOB_ADDR);
+    let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
     let contract_hash = get_account_contract_hash(&account);
@@ -276,9 +274,9 @@ fn should_not_transfer_funds_into_bob_purse() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request_1).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let bob = builder.get_expected_account(*BOB_ADDR);
+    let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
     let contract_hash = get_account_contract_hash(&account);
@@ -319,7 +317,7 @@ fn should_not_transfer_from_hardcoded_purse() {
     builder.exec(store_request).commit().expect_success();
     builder.exec(fund_request_1).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
     let contract_hash = get_account_contract_hash(&account);
 
@@ -365,9 +363,9 @@ fn should_not_refund_to_bob_and_charge_alice() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let bob = builder.get_expected_account(*BOB_ADDR);
+    let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
     let contract_hash = get_account_contract_hash(&account);
@@ -421,9 +419,9 @@ fn should_not_charge_alice_for_execution() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
-    let bob = builder.get_expected_account(*BOB_ADDR);
+    let bob = builder.get_expected_addressable_entity_by_account_hash(*BOB_ADDR);
     let bob_main_purse = bob.main_purse();
 
     let contract_hash = get_account_contract_hash(&account);
@@ -477,7 +475,7 @@ fn should_not_charge_for_execution_from_hardcoded_purse() {
     builder.exec(fund_request_1).commit().expect_success();
     builder.exec(fund_request_2).commit().expect_success();
 
-    let account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let account = builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
 
     let contract_hash = get_account_contract_hash(&account);
 

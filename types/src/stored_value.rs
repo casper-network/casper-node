@@ -15,9 +15,10 @@ use serde_bytes::ByteBuf;
 use crate::{
     account::Account,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::ContractPackage,
+    contracts::Contract,
+    package::Package,
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, Contract, ContractWasm, DeployInfo, Transfer,
+    AddressableEntity, CLValue, ContractWasm, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
 
@@ -35,6 +36,7 @@ enum Tag {
     Bid = 8,
     Withdraw = 9,
     Unbonding = 10,
+    AddressableEntity = 11,
 }
 
 #[allow(clippy::large_enum_variant)]
@@ -50,8 +52,8 @@ pub enum StoredValue {
     ContractWasm(ContractWasm),
     /// Variant that stores [`Contract`].
     Contract(Contract),
-    /// Variant that stores [`ContractPackage`].
-    ContractPackage(ContractPackage),
+    /// Variant that stores [`Package`].
+    ContractPackage(Package),
     /// Variant that stores [`Transfer`].
     Transfer(Transfer),
     /// Variant that stores [`DeployInfo`].
@@ -64,6 +66,8 @@ pub enum StoredValue {
     Withdraw(Vec<WithdrawPurse>),
     /// Variant that stores unbonding information.
     Unbonding(Vec<UnbondingPurse>),
+    /// Variant that stores [`AddressableEntity`].
+    AddressableEntity(AddressableEntity),
 }
 
 impl StoredValue {
@@ -83,10 +87,10 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`Contract`] if this is a `Contract` variant.
-    pub fn as_contract(&self) -> Option<&Contract> {
+    /// Returns a wrapped [`AddressableEntity`] if this is a `AddressableEntity` variant.
+    pub fn as_addressable_entity(&self) -> Option<&AddressableEntity> {
         match self {
-            StoredValue::Contract(contract) => Some(contract),
+            StoredValue::AddressableEntity(entity) => Some(entity),
             _ => None,
         }
     }
@@ -99,8 +103,8 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`ContractPackage`] if this is a `ContractPackage` variant.
-    pub fn as_contract_package(&self) -> Option<&ContractPackage> {
+    /// Returns a wrapped [`Package`] if this is a `ContractPackage` variant.
+    pub fn as_contract_package(&self) -> Option<&Package> {
         match self {
             StoredValue::ContractPackage(contract_package) => Some(contract_package),
             _ => None,
@@ -163,6 +167,7 @@ impl StoredValue {
             StoredValue::Bid(_) => "Bid".to_string(),
             StoredValue::Withdraw(_) => "Withdraw".to_string(),
             StoredValue::Unbonding(_) => "Unbonding".to_string(),
+            StoredValue::AddressableEntity(_) => "AddressableEntity".to_string(),
         }
     }
 
@@ -179,6 +184,7 @@ impl StoredValue {
             StoredValue::Bid(_) => Tag::Bid,
             StoredValue::Withdraw(_) => Tag::Withdraw,
             StoredValue::Unbonding(_) => Tag::Unbonding,
+            StoredValue::AddressableEntity(_) => Tag::AddressableEntity,
         }
     }
 }
@@ -193,18 +199,26 @@ impl From<Account> for StoredValue {
         StoredValue::Account(value)
     }
 }
+
 impl From<ContractWasm> for StoredValue {
     fn from(value: ContractWasm) -> StoredValue {
         StoredValue::ContractWasm(value)
     }
 }
+
 impl From<Contract> for StoredValue {
-    fn from(value: Contract) -> StoredValue {
+    fn from(value: Contract) -> Self {
         StoredValue::Contract(value)
     }
 }
-impl From<ContractPackage> for StoredValue {
-    fn from(value: ContractPackage) -> StoredValue {
+
+impl From<AddressableEntity> for StoredValue {
+    fn from(value: AddressableEntity) -> StoredValue {
+        StoredValue::AddressableEntity(value)
+    }
+}
+impl From<Package> for StoredValue {
+    fn from(value: Package) -> StoredValue {
         StoredValue::ContractPackage(value)
     }
 }
@@ -256,7 +270,7 @@ impl TryFrom<StoredValue> for ContractWasm {
     }
 }
 
-impl TryFrom<StoredValue> for ContractPackage {
+impl TryFrom<StoredValue> for Package {
     type Error = TypeMismatch;
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
@@ -270,14 +284,14 @@ impl TryFrom<StoredValue> for ContractPackage {
     }
 }
 
-impl TryFrom<StoredValue> for Contract {
+impl TryFrom<StoredValue> for AddressableEntity {
     type Error = TypeMismatch;
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
         match stored_value {
-            StoredValue::Contract(contract) => Ok(contract),
+            StoredValue::AddressableEntity(contract) => Ok(contract),
             _ => Err(TypeMismatch::new(
-                "Contract".to_string(),
+                "AddressableEntity".to_string(),
                 stored_value.type_name(),
             )),
         }
@@ -341,6 +355,7 @@ impl ToBytes for StoredValue {
             StoredValue::Unbonding(unbonding_purses) => {
                 (Tag::Unbonding, unbonding_purses.to_bytes()?)
             }
+            StoredValue::AddressableEntity(entity) => (Tag::AddressableEntity, entity.to_bytes()?),
         };
         result.push(tag as u8);
         result.append(&mut serialized_data);
@@ -363,6 +378,7 @@ impl ToBytes for StoredValue {
                 StoredValue::Bid(bid) => bid.serialized_length(),
                 StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
+                StoredValue::AddressableEntity(entity) => entity.serialized_length(),
             }
     }
 
@@ -382,6 +398,7 @@ impl ToBytes for StoredValue {
             StoredValue::Bid(bid) => bid.write_bytes(writer)?,
             StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
+            StoredValue::AddressableEntity(entity) => entity.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -401,7 +418,7 @@ impl FromBytes for StoredValue {
                 })
             }
             tag if tag == Tag::ContractPackage as u8 => {
-                ContractPackage::from_bytes(remainder).map(|(contract_package, remainder)| {
+                Package::from_bytes(remainder).map(|(contract_package, remainder)| {
                     (StoredValue::ContractPackage(contract_package), remainder)
                 })
             }
@@ -425,6 +442,8 @@ impl FromBytes for StoredValue {
                     (StoredValue::Unbonding(unbonding_purses), remainder)
                 })
             }
+            tag if tag == Tag::AddressableEntity as u8 => AddressableEntity::from_bytes(remainder)
+                .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

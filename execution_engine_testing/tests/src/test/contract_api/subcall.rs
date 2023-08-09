@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
+    package::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
 };
 
 const ARG_TARGET: &str = "target_contract";
@@ -200,7 +200,7 @@ fn expensive_subcall_should_cost_more() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let expensive_calculation_contract_hash = account

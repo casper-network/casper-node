@@ -40,7 +40,7 @@ fn get_balance_should_work() {
     builder.exec(transfer_request).commit().expect_success();
 
     let alice_account = builder
-        .get_account(*ALICE_ADDR)
+        .get_entity_by_account_hash(*ALICE_ADDR)
         .expect("should have Alice's account");
 
     let alice_main_purse = alice_account.main_purse();
@@ -130,7 +130,7 @@ fn get_balance_using_public_key_should_work() {
     builder.exec(transfer_request).commit().expect_success();
 
     let alice_account = builder
-        .get_account(*ALICE_ADDR)
+        .get_entity_by_account_hash(*ALICE_ADDR)
         .expect("should have Alice's account");
 
     let alice_main_purse = alice_account.main_purse();

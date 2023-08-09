@@ -12,9 +12,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    account::{AccountHash, ActionType, Weight},
+    account::AccountHash,
+    addressable_entity::{ActionType, NamedKeys, Weight},
     bytesrepr::Bytes,
-    contracts::NamedKeys,
     runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
     EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, U512,
 };

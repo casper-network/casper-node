@@ -54,7 +54,7 @@ fn should_charge_non_main_purse() {
 
     // get account_1
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     // get purse
     let purse_key = account_1.named_keys()[TEST_PURSE_NAME];

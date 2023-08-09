@@ -1,13 +1,13 @@
 use prometheus::Registry;
 use rand::Rng;
 
-use casper_types::{testing::TestRng, Block, EraId, ProtocolVersion, TimeDiff};
+use casper_types::{testing::TestRng, EraId, TimeDiff};
 
 use super::*;
 use crate::{
     effect::announcements::DeployBufferAnnouncement::{self, DeploysExpired},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::FinalizedBlock,
+    types::{FinalizedBlock, TestBlockBuilder},
     utils,
 };
 
@@ -154,15 +154,12 @@ fn register_block_with_valid_deploys() {
     let era_id = EraId::new(rng.gen_range(0..6));
     let height = era_id.value() * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
-    let deploy_hashes_iter = deploys.iter().map(Deploy::hash).copied();
-    let block = Block::random_with_specifics(
-        &mut rng,
-        era_id,
-        height,
-        ProtocolVersion::default(),
-        is_switch,
-        deploy_hashes_iter,
-    );
+    let block = TestBlockBuilder::new()
+        .era(era_id)
+        .height(height)
+        .switch_block(is_switch)
+        .deploys(deploys.iter())
+        .build(&mut rng);
 
     deploy_buffer.register_block(&block);
     assert_container_sizes(&deploy_buffer, deploys.len(), deploys.len(), 0);
@@ -340,14 +337,14 @@ fn register_deploys_and_blocks() {
     let era = rng.gen_range(0..6);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
-    let block = Block::random_with_specifics(
-        &mut rng,
-        EraId::new(era),
-        height,
-        ProtocolVersion::default(),
-        is_switch,
-        block_deploys.iter().map(|deploy| *deploy.hash()),
-    );
+
+    let block = TestBlockBuilder::new()
+        .era(era)
+        .height(height)
+        .switch_block(is_switch)
+        .deploys(block_deploys.iter())
+        .build(&mut rng);
+
     deploy_buffer.register_block(&block);
     assert_container_sizes(
         &deploy_buffer,
@@ -494,16 +491,12 @@ async fn expire_deploys_and_check_announcement() {
 
     // include the last expired deploy in a block and register it
     let era = rng.gen_range(0..6);
-    let height = era * 10 + rng.gen_range(0..10);
-    let is_switch = rng.gen_bool(0.1);
-    let block = Block::random_with_specifics(
-        &mut rng,
-        EraId::new(era),
-        height,
-        ProtocolVersion::default(),
-        is_switch,
-        expired_deploys.last().map(|deploy| *deploy.hash()),
-    );
+    let block = TestBlockBuilder::new()
+        .era(era)
+        .height(era * 10 + rng.gen_range(0..10))
+        .deploys(expired_deploys.last())
+        .build(&mut rng);
+
     deploy_buffer.register_block(&block);
     assert_container_sizes(&deploy_buffer, expired_deploys.len(), 1, 0);
 
