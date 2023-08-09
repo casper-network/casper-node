@@ -12,7 +12,7 @@ use casper_types::{
     package::{
         ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
-    system::auction::{BidAddr, BidKind, SeigniorageRecipientsSnapshot, UnbondingPurse},
+    system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
     EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
@@ -292,42 +292,65 @@ impl<T: StateReader> StateTracker<T> {
         }
     }
 
+    fn existing_bid(&mut self, bid_kind: &BidKind, existing_bids: Vec<BidKind>) -> Option<BidKind> {
+        match bid_kind.clone() {
+            BidKind::Unified(bid) => existing_bids
+                .unified_bid(bid.validator_public_key())
+                .map(|existing_bid| BidKind::Unified(Box::new(existing_bid))),
+            BidKind::Validator(validator_bid) => existing_bids
+                .validator_bid(validator_bid.validator_public_key())
+                .map(|existing_validator| BidKind::Validator(Box::new(existing_validator))),
+            BidKind::Delegator(delegator_bid) => {
+                // this one is a little tricky due to legacy issues.
+                match existing_bids.delegator_by_public_keys(
+                    delegator_bid.validator_public_key(),
+                    delegator_bid.delegator_public_key(),
+                ) {
+                    Some(existing_delegator) => {
+                        Some(BidKind::Delegator(Box::new(existing_delegator)))
+                    }
+                    None => {
+                        if let Some(existing_bid) =
+                            existing_bids.unified_bid(delegator_bid.validator_public_key())
+                        {
+                            existing_bid
+                                .delegators()
+                                .get(delegator_bid.delegator_public_key())
+                                .map(|existing_delegator| {
+                                    BidKind::Delegator(Box::new(existing_delegator.clone()))
+                                })
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Sets the bid for the given account.
     pub fn set_bid(&mut self, bid_kind: BidKind, slash_instead_of_unbonding: bool) {
+        let new_stake = bid_kind.staked_amount();
+        let bonding_purse = bid_kind.bonding_purse();
         let bids = self.get_bids();
 
-        let maybe_existing_bid = bids
-            .iter()
-            .find(|x| match x {
-                BidKind::Unified(b) => b.validator_public_key() == &bid_kind.validator_public_key(),
-                BidKind::Validator(v) => {
-                    v.validator_public_key() == &bid_kind.validator_public_key()
-                }
-                BidKind::Delegator(d) => {
-                    d.validator_public_key() == &bid_kind.validator_public_key()
-                        && Some(d.delegator_public_key())
-                            == bid_kind.delegator_public_key().as_ref()
-                }
-            })
-            .cloned();
-
-        let new_stake = bid_kind.staked_amount();
+        let maybe_existing_bid = self.existing_bid(&bid_kind, bids);
 
         let previous_stake = match maybe_existing_bid {
             None => U512::zero(),
             Some(existing_bid) => {
                 //let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
                 let previous_stake = existing_bid.staked_amount();
-                if existing_bid.bonding_purse() != bid_kind.bonding_purse() {
+                if existing_bid.bonding_purse() != bonding_purse {
                     self.set_purse_balance(existing_bid.bonding_purse(), U512::zero());
-                    self.set_purse_balance(bid_kind.bonding_purse(), previous_stake);
+                    self.set_purse_balance(bonding_purse, previous_stake);
                 }
                 previous_stake
             }
         };
 
         // we called `get_bids` above, so `staking` will be `Some`
-        self.staking.as_mut().unwrap().push(bid_kind.clone());
+        self.staking.as_mut().unwrap().upsert(bid_kind.clone());
 
         // Replace the bid (overwrite the previous bid, if any):
         self.write_bid(bid_kind.clone());

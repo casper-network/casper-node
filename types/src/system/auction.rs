@@ -80,19 +80,57 @@ pub type WithdrawPurses = BTreeMap<AccountHash, Vec<WithdrawPurse>>;
 /// Aggregated representation of validator and associated delegator bids.
 pub type Staking = BTreeMap<PublicKey, (ValidatorBid, BTreeMap<PublicKey, Delegator>)>;
 
+const UNIFIED_TAG: u8 = 0;
+const VALIDATOR_TAG: u8 = 1;
+const DELEGATOR_TAG: u8 = 2;
+
 /// Serialization tag for BidAddr variants.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
+#[derive(
+    Debug, Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize,
+)]
 #[repr(u8)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum BidAddrTag {
     /// BidAddr for legacy unified bid.
-    Unified = 0,
+    Unified = UNIFIED_TAG,
     /// BidAddr for validator bid.
     #[default]
-    Validator = 1,
+    Validator = VALIDATOR_TAG,
     /// BidAddr for delegator bid.
-    Delegator = 2,
+    Delegator = DELEGATOR_TAG,
+}
+
+impl Display for BidAddrTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        let tag = match self {
+            BidAddrTag::Unified => UNIFIED_TAG,
+            BidAddrTag::Validator => VALIDATOR_TAG,
+            BidAddrTag::Delegator => DELEGATOR_TAG,
+        };
+        write!(f, "{}", base16::encode_lower(&[tag]))
+    }
+}
+
+impl BidAddrTag {
+    /// The length in bytes of a [`BidAddrTag`].
+    pub const BID_ADDR_TAG_LENGTH: usize = 1;
+
+    /// Attempts to map `BidAddrTag` from a u8.
+    pub fn try_from_u8(value: u8) -> Option<Self> {
+        // TryFrom requires std, so doing this instead.
+        if value == UNIFIED_TAG {
+            return Some(BidAddrTag::Unified);
+        }
+        if value == VALIDATOR_TAG {
+            return Some(BidAddrTag::Validator);
+        }
+        if value == DELEGATOR_TAG {
+            return Some(BidAddrTag::Delegator);
+        }
+
+        None
+    }
 }
 
 /// Bid Address
@@ -103,10 +141,12 @@ pub struct BidAddr(pub AccountHash, pub Option<AccountHash>, BidAddrTag);
 
 impl BidAddr {
     /// The length in bytes of a [`BidAddr`] for a validator bid.
-    pub const VALIDATOR_BID_ADDR_LENGTH: usize = ACCOUNT_HASH_LENGTH;
+    pub const VALIDATOR_BID_ADDR_LENGTH: usize =
+        ACCOUNT_HASH_LENGTH + BidAddrTag::BID_ADDR_TAG_LENGTH;
 
     /// The length in bytes of a [`BidAddr`] for a delegator bid.
-    pub const DELEGATOR_BID_ADDR_LENGTH: usize = ACCOUNT_HASH_LENGTH * 2;
+    pub const DELEGATOR_BID_ADDR_LENGTH: usize =
+        (ACCOUNT_HASH_LENGTH * 2) + BidAddrTag::BID_ADDR_TAG_LENGTH;
 
     /// Constructs a new [`BidAddr`] instance from a validator's [`AccountHash`].
     pub const fn new_validator_addr(validator: [u8; ACCOUNT_HASH_LENGTH]) -> Self {
@@ -125,6 +165,12 @@ impl BidAddr {
         )
     }
 
+    #[allow(missing_docs)]
+    pub const fn legacy(validator: [u8; ACCOUNT_HASH_LENGTH]) -> Self {
+        let account_hash = AccountHash::new(validator);
+        BidAddr(account_hash, None, BidAddrTag::Unified)
+    }
+
     /// Create a new instance of a [`BidAddr`].
     pub fn new_from_public_keys(
         validator: &PublicKey,
@@ -139,11 +185,6 @@ impl BidAddr {
         } else {
             BidAddr(AccountHash::from(validator), None, BidAddrTag::Validator)
         }
-    }
-
-    #[allow(missing_docs)]
-    pub fn legacy(account_hash: AccountHash) -> Self {
-        BidAddr(account_hash, None, BidAddrTag::Unified)
     }
 
     /// Returns the common prefix of all delegators to the cited validator.
@@ -259,9 +300,15 @@ impl From<PublicKey> for BidAddr {
 
 impl Display for BidAddr {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self.1 {
-            Some(delegator) => write!(f, "{}{}", self.0, delegator),
-            None => write!(f, "{}", self.0),
+        let tag = self.tag();
+        match tag {
+            BidAddrTag::Unified => {
+                write!(f, "{}", self.0)
+            }
+            BidAddrTag::Validator | BidAddrTag::Delegator => match self.1 {
+                Some(delegator) => write!(f, "{}{}{}", tag, self.0, delegator),
+                None => write!(f, "{}{}", tag, self.0),
+            },
         }
     }
 }
@@ -283,6 +330,7 @@ impl Distribution<BidAddr> for Standard {
 
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 enum BidKindTag {
     Unified = 0,
     Validator = 1,
@@ -481,6 +529,9 @@ impl FromBytes for BidKind {
 /// Utils for working with a vector of BidKind.
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub trait BidsExt {
+    /// Returns Bid matching public_key, if present.
+    fn unified_bid(&self, public_key: &PublicKey) -> Option<Bid>;
+
     /// Returns ValidatorBid matching public_key, if present.
     fn validator_bid(&self, public_key: &PublicKey) -> Option<ValidatorBid>;
 
@@ -505,10 +556,24 @@ pub trait BidsExt {
 
     /// Creates a map of Validator public keys to associated Delegator public keys.
     fn public_key_map(&self) -> BTreeMap<PublicKey, Vec<PublicKey>>;
+
+    /// Inserts if bid_kind does not exist, otherwise replaces.
+    fn upsert(&mut self, bid_kind: BidKind);
 }
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 impl BidsExt for Vec<BidKind> {
+    fn unified_bid(&self, public_key: &PublicKey) -> Option<Bid> {
+        if let BidKind::Unified(bid) = self
+            .iter()
+            .find(|x| x.is_validator() && &x.validator_public_key() == public_key)?
+        {
+            Some(*bid.clone())
+        } else {
+            None
+        }
+    }
+
     fn validator_bid(&self, public_key: &PublicKey) -> Option<ValidatorBid> {
         if let BidKind::Validator(validator_bid) = self
             .iter()
@@ -627,6 +692,35 @@ impl BidsExt for Vec<BidKind> {
             }
         }
         ret
+    }
+
+    fn upsert(&mut self, bid_kind: BidKind) {
+        let maybe_index = match bid_kind {
+            BidKind::Unified(_) | BidKind::Validator(_) => self
+                .iter()
+                .find_position(|x| {
+                    x.validator_public_key() == bid_kind.validator_public_key()
+                        && x.tag() == bid_kind.tag()
+                })
+                .map(|(idx, _)| idx),
+            BidKind::Delegator(_) => self
+                .iter()
+                .find_position(|x| {
+                    x.is_delegator()
+                        && x.validator_public_key() == bid_kind.validator_public_key()
+                        && x.delegator_public_key() == bid_kind.delegator_public_key()
+                })
+                .map(|(idx, _)| idx),
+        };
+
+        match maybe_index {
+            Some(index) => {
+                self.insert(index, bid_kind);
+            }
+            None => {
+                self.push(bid_kind);
+            }
+        }
     }
 }
 

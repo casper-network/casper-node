@@ -99,7 +99,7 @@ fn update_auction_state<T: StateReader>(
     slash_instead_of_unbonding: bool,
 ) -> Option<Vec<ValidatorInfo>> {
     // Read the old SeigniorageRecipientsSnapshot
-    let (validators_key, old_snapshot) = state.read_snapshot();
+    let (snapshot_key, old_snapshot) = state.read_snapshot();
 
     // Create a new snapshot based on the old one and the supplied validators.
     let new_snapshot = if only_listed_validators {
@@ -118,7 +118,7 @@ fn update_auction_state<T: StateReader>(
 
     // Save the write to the snapshot key.
     state.write_entry(
-        validators_key,
+        snapshot_key,
         StoredValue::from(CLValue::from_t(new_snapshot.clone()).unwrap()),
     );
 
@@ -380,92 +380,130 @@ fn find_large_bids<T: StateReader>(
 fn create_or_update_bid<T: StateReader>(
     state: &mut StateTracker<T>,
     validator_public_key: &PublicKey,
-    recipient: &SeigniorageRecipient,
+    updated_recipient: &SeigniorageRecipient,
     slash_instead_of_unbonding: bool,
 ) {
-    let unchanged_bid = |bid: &ValidatorBid, delegators: &Vec<Delegator>| {
-        let bid_delegators: BTreeMap<_, _> = delegators
-            .iter()
-            .map(|delegator| {
-                (
-                    delegator.validator_public_key().clone(),
-                    delegator.staked_amount(),
-                )
-            })
-            .collect();
-        &bid_delegators == recipient.delegator_stake() && bid.staked_amount() == *recipient.stake()
-    };
-
     let existing_bids = state.get_bids();
 
-    if let Some(existing_bid) = existing_bids.validator_bid(validator_public_key) {
-        println!("existing bid {} {:?}", validator_public_key, existing_bid);
+    let maybe_existing_recipient = existing_bids
+        .iter()
+        .find(|x| {
+            (x.is_unified() || x.is_validator())
+                && &x.validator_public_key() == validator_public_key
+        })
+        .map(|existing_bid| match existing_bid {
+            BidKind::Unified(bid) => {
+                let delegator_stake = bid
+                    .delegators()
+                    .iter()
+                    .map(|(k, d)| (k.clone(), d.staked_amount()))
+                    .collect();
+                (
+                    bid.bonding_purse(),
+                    SeigniorageRecipient::new(
+                        *bid.staked_amount(),
+                        *bid.delegation_rate(),
+                        delegator_stake,
+                    ),
+                )
+            }
+            BidKind::Validator(validator_bid) => {
+                let delegator_stake =
+                    match existing_bids.delegators_by_validator_public_key(validator_public_key) {
+                        None => BTreeMap::new(),
+                        Some(delegators) => delegators
+                            .iter()
+                            .map(|d| (d.delegator_public_key().clone(), d.staked_amount()))
+                            .collect(),
+                    };
+
+                (
+                    validator_bid.bonding_purse(),
+                    SeigniorageRecipient::new(
+                        validator_bid.staked_amount(),
+                        *validator_bid.delegation_rate(),
+                        delegator_stake,
+                    ),
+                )
+            }
+            _ => unreachable!(),
+        });
+
+    // existing bid
+    if let Some((bonding_purse, existing_recipient)) = maybe_existing_recipient {
+        if existing_recipient == *updated_recipient {
+            return; // noop
+        }
+
         let delegators = existing_bids
             .delegators_by_validator_public_key(validator_public_key)
             .unwrap_or_default();
 
-        if unchanged_bid(&existing_bid, &delegators) {
-            return;
-        }
-
-        // get rid of removed delegators
         for delegator in delegators {
-            if !recipient
+            let delegator_bid = match updated_recipient
                 .delegator_stake()
-                .contains_key(delegator.delegator_public_key())
-            {
-                let zeroed = Delegator::empty(
-                    delegator.validator_public_key().clone(),
-                    delegator.delegator_public_key().clone(),
-                    *delegator.bonding_purse(),
-                );
-                state.set_bid(
-                    BidKind::Delegator(Box::new(zeroed)),
-                    slash_instead_of_unbonding,
-                );
-            }
-        }
-
-        for (delegator_pub_key, delegator_stake) in recipient.delegator_stake() {
-            let delegator_bid = match existing_bids
-                .delegator_by_public_keys(validator_public_key, delegator_pub_key)
+                .get(delegator.delegator_public_key())
             {
                 None => {
-                    let delegator_bonding_purse = state.create_purse(*delegator_stake);
-                    Delegator::unlocked(
-                        delegator_pub_key.clone(),
-                        *delegator_stake,
-                        delegator_bonding_purse,
-                        validator_public_key.clone(),
-                    )
-                }
-                Some(delegator) => {
-                    if delegator.staked_amount() == *delegator_stake {
-                        continue;
-                    }
-                    Delegator::unlocked(
-                        delegator_pub_key.clone(),
-                        *delegator_stake,
+                    // todo!() this is a remove; the global state updated does not
+                    // yet support prune so in the meantime, setting the amount
+                    // to 0.
+                    Delegator::empty(
+                        delegator.validator_public_key().clone(),
+                        delegator.delegator_public_key().clone(),
                         *delegator.bonding_purse(),
-                        validator_public_key.clone(),
                     )
                 }
+                Some(updated_delegator_stake) => Delegator::unlocked(
+                    delegator.delegator_public_key().clone(),
+                    *updated_delegator_stake,
+                    *delegator.bonding_purse(),
+                    validator_public_key.clone(),
+                ),
             };
+            if delegator.staked_amount() == delegator_bid.staked_amount() {
+                continue; // effectively noop
+            }
             state.set_bid(
                 BidKind::Delegator(Box::new(delegator_bid)),
                 slash_instead_of_unbonding,
             );
         }
 
-        if existing_bid.staked_amount() == *recipient.stake() {
+        for (delegator_pub_key, delegator_stake) in updated_recipient.delegator_stake() {
+            if existing_recipient
+                .delegator_stake()
+                .contains_key(delegator_pub_key)
+            {
+                // we handled this scenario above
+                continue;
+            }
+            // this is a entirely new delegator
+            let delegator_bonding_purse = state.create_purse(*delegator_stake);
+            let delegator_bid = Delegator::unlocked(
+                delegator_pub_key.clone(),
+                *delegator_stake,
+                delegator_bonding_purse,
+                validator_public_key.clone(),
+            );
+
+            state.set_bid(
+                BidKind::Delegator(Box::new(delegator_bid)),
+                slash_instead_of_unbonding,
+            );
+        }
+
+        if *existing_recipient.stake() == *updated_recipient.stake() {
+            // if the delegators changed, do the above, but if the validator's
+            // personal stake is unchanged their bid doesn't need to be modified.
             return;
         }
 
         let updated_bid = ValidatorBid::unlocked(
             validator_public_key.clone(),
-            *existing_bid.bonding_purse(),
-            *recipient.stake(),
-            *recipient.delegation_rate(),
+            *bonding_purse,
+            *updated_recipient.stake(),
+            *updated_recipient.delegation_rate(),
         );
 
         state.set_bid(
@@ -475,12 +513,13 @@ fn create_or_update_bid<T: StateReader>(
         return;
     }
 
-    let stake = *recipient.stake();
+    // new bid
+    let stake = *updated_recipient.stake();
     if stake == U512::zero() {
         return;
     }
 
-    for (delegator_pub_key, delegator_stake) in recipient.delegator_stake() {
+    for (delegator_pub_key, delegator_stake) in updated_recipient.delegator_stake() {
         let delegator_bonding_purse = state.create_purse(*delegator_stake);
         let delegator_bid = Delegator::unlocked(
             delegator_pub_key.clone(),
@@ -500,7 +539,7 @@ fn create_or_update_bid<T: StateReader>(
         validator_public_key.clone(),
         bonding_purse,
         stake,
-        *recipient.delegation_rate(),
+        *updated_recipient.delegation_rate(),
     );
     state.set_bid(
         BidKind::Validator(Box::new(validator_bid)),
