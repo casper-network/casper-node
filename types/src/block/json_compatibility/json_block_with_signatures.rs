@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
-use crate::{crypto, BlockSignatures, BlockV2, PublicKey, SecretKey, Signature, VersionedBlock};
+use crate::{crypto, Block, BlockSignatures, BlockV2, PublicKey, SecretKey, Signature};
 
 static JSON_SIGNED_BLOCK: Lazy<JsonBlockWithSignatures> = Lazy::new(|| {
     let block = BlockV2::example().clone();
@@ -28,7 +28,7 @@ static JSON_SIGNED_BLOCK: Lazy<JsonBlockWithSignatures> = Lazy::new(|| {
 #[serde(deny_unknown_fields)]
 pub struct JsonBlockWithSignatures {
     /// The block.
-    pub block: VersionedBlock,
+    pub block: Block,
     /// The proofs of the block, i.e. a collection of validators' signatures of the block hash.
     #[serde(with = "BTreeMapToArray::<PublicKey, Signature, BlockProofLabels>")]
     pub proofs: BTreeMap<PublicKey, Signature>,
@@ -36,7 +36,7 @@ pub struct JsonBlockWithSignatures {
 
 impl JsonBlockWithSignatures {
     /// Constructs a new `JsonBlock`.
-    pub fn new(block: VersionedBlock, maybe_signatures: Option<BlockSignatures>) -> Self {
+    pub fn new(block: Block, maybe_signatures: Option<BlockSignatures>) -> Self {
         let proofs = maybe_signatures
             .map(|signatures| signatures.proofs)
             .unwrap_or_default();
@@ -75,17 +75,17 @@ mod tests {
     #[test]
     fn block_to_and_from_json_block_with_signatures() {
         let rng = &mut TestRng::new();
-        let block: VersionedBlock = BlockV2::random(rng).into();
+        let block: Block = BlockV2::random(rng).into();
         let empty_signatures = BlockSignatures::new(*block.hash(), block.era_id());
         let json_block = JsonBlockWithSignatures::new(block.clone(), Some(empty_signatures));
-        let recovered_block = VersionedBlock::from(json_block);
+        let recovered_block = Block::from(json_block);
         assert_eq!(block, recovered_block);
     }
 
     #[test]
     fn json_block_roundtrip() {
         let rng = &mut TestRng::new();
-        let block: VersionedBlock = BlockV2::random(rng).into();
+        let block: Block = BlockV2::random(rng).into();
         let json_string = serde_json::to_string_pretty(&block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(block, decoded);

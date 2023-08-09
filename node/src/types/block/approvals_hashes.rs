@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr, ApprovalsHash, DeployId, Digest, Key, StoredValue, VersionedBlock};
+use casper_types::{bytesrepr, ApprovalsHash, Block, DeployId, Digest, Key, StoredValue};
 
 use super::BlockHash;
 use crate::{
@@ -51,7 +51,7 @@ impl ApprovalsHashes {
         }
     }
 
-    fn verify(&self, block: &VersionedBlock) -> Result<(), ApprovalsHashesValidationError> {
+    fn verify(&self, block: &Block) -> Result<(), ApprovalsHashesValidationError> {
         if *self.merkle_proof_approvals.key() != Key::ChecksumRegistry {
             return Err(ApprovalsHashesValidationError::InvalidKeyType);
         }
@@ -94,7 +94,7 @@ impl ApprovalsHashes {
 
     pub(crate) fn deploy_ids<'a>(
         &'a self,
-        block: &'a VersionedBlock,
+        block: &'a Block,
     ) -> impl Iterator<Item = DeployId> + 'a {
         block
             .deploy_and_transfer_hashes()
@@ -114,7 +114,7 @@ impl ApprovalsHashes {
 impl FetchItem for ApprovalsHashes {
     type Id = BlockHash;
     type ValidationError = ApprovalsHashesValidationError;
-    type ValidationMetadata = VersionedBlock;
+    type ValidationMetadata = Block;
 
     const TAG: Tag = Tag::ApprovalsHashes;
 
@@ -122,7 +122,7 @@ impl FetchItem for ApprovalsHashes {
         self.block_hash
     }
 
-    fn validate(&self, block: &VersionedBlock) -> Result<(), Self::ValidationError> {
+    fn validate(&self, block: &Block) -> Result<(), Self::ValidationError> {
         self.is_verified.get_or_init(|| self.verify(block)).clone()
     }
 }

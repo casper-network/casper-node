@@ -25,9 +25,9 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash, BlockHeader,
-    BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId, Digest,
-    DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef, VersionedBlock,
+    BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId,
+    Digest, DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use super::GossipTarget;
@@ -264,7 +264,7 @@ pub(crate) enum StorageRequest {
     /// Store given block.
     PutBlock {
         /// Block to be stored.
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
@@ -272,7 +272,7 @@ pub(crate) enum StorageRequest {
     /// Store given versioned block.
     PutVersionedBlock {
         /// Block to be stored.
-        block: Arc<VersionedBlock>,
+        block: Arc<Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
@@ -286,7 +286,7 @@ pub(crate) enum StorageRequest {
     /// Store the block and approvals hashes.
     PutExecutedBlock {
         /// Block to be stored.
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
@@ -298,7 +298,7 @@ pub(crate) enum StorageRequest {
         block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
-        responder: Responder<Option<Block>>,
+        responder: Responder<Option<BlockV2>>,
     },
     /// Retrieve versioned block with given hash.
     GetVersionedBlock {
@@ -306,7 +306,7 @@ pub(crate) enum StorageRequest {
         block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
-        responder: Responder<Option<VersionedBlock>>,
+        responder: Responder<Option<Block>>,
     },
     IsBlockStored {
         block_hash: BlockHash,
@@ -323,7 +323,7 @@ pub(crate) enum StorageRequest {
     /// Retrieve highest complete block.
     GetHighestCompleteBlock {
         /// Responder.
-        responder: Responder<Option<VersionedBlock>>,
+        responder: Responder<Option<Block>>,
     },
     /// Retrieve highest complete block header.
     GetHighestCompleteBlockHeader {

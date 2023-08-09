@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    Deploy, DeployHash, EraId, ExecutionEffect, FinalitySignature, PublicKey, Timestamp,
-    VersionedBlock, U512,
+    Block, Deploy, DeployHash, EraId, ExecutionEffect, FinalitySignature, PublicKey, Timestamp,
+    U512,
 };
 
 use crate::{
@@ -404,7 +404,7 @@ impl Display for BlockAccumulatorAnnouncement {
 /// A block which wasn't previously stored on this node has been fetched and stored.
 #[derive(Debug, Serialize)]
 pub(crate) struct FetchedNewBlockAnnouncement {
-    pub(crate) block: Arc<VersionedBlock>,
+    pub(crate) block: Arc<Block>,
     pub(crate) peer: NodeId,
 }
 

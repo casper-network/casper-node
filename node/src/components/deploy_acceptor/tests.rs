@@ -24,7 +24,7 @@ use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     testing::TestRng,
-    Block, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
+    BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -634,7 +634,7 @@ impl reactor::Reactor for Reactor {
 }
 
 fn put_block_to_storage_and_mark_complete(
-    block: Arc<Block>,
+    block: Arc<BlockV2>,
     result_sender: Sender<bool>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
@@ -692,7 +692,7 @@ fn inject_balance_check_for_peer(
     rng: &mut TestRng,
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
-    let block_header = Box::new(Block::random(rng).header().clone());
+    let block_header = Box::new(BlockV2::random(rng).header().clone());
     |effect_builder: EffectBuilder<Event>| {
         let event_metadata = Box::new(EventMetadata::new(deploy, source, Some(responder)));
         effect_builder
@@ -729,7 +729,7 @@ async fn run_deploy_acceptor_without_timeout(
     .await
     .unwrap();
 
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(BlockV2::random(&mut rng));
     // Create a channel to assert that the block was successfully injected into storage.
     let (result_sender, result_receiver) = oneshot::channel();
 

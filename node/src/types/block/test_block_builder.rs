@@ -3,8 +3,8 @@ use std::{collections::BTreeMap, iter};
 use rand::Rng;
 
 use casper_types::{
-    testing::TestRng, Block, BlockHash, BlockV1, BlockV2, Deploy, DeployHash, Digest, EraEnd,
-    EraId, EraReport, ProtocolVersion, PublicKey, Timestamp, U512,
+    testing::TestRng, BlockHash, BlockV1, BlockV2, Deploy, DeployHash, Digest, EraEnd, EraId,
+    EraReport, ProtocolVersion, PublicKey, Timestamp, U512,
 };
 
 pub(crate) struct TestBlockBuilder {
@@ -175,7 +175,7 @@ impl TestBlockBuilder {
         }
     }
 
-    pub(crate) fn build(self, rng: &mut TestRng) -> Block {
+    pub(crate) fn build(self, rng: &mut TestRng) -> BlockV2 {
         let BlockParameters {
             parent_hash,
             parent_seed,
@@ -191,7 +191,7 @@ impl TestBlockBuilder {
             transfer_hashes,
         } = self.generate_block_params(rng);
 
-        Block::new(
+        BlockV2::new(
             parent_hash,
             parent_seed,
             state_root_hash,

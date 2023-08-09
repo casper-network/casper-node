@@ -121,9 +121,10 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     account::Account, bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash,
-    BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage, Deploy, DeployHash,
-    DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult, FinalitySignature,
-    FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, VersionedBlock, U512,
+    BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Contract, ContractPackage, Deploy,
+    DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult,
+    FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    U512,
 };
 
 use crate::{
@@ -1058,7 +1059,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.
-    pub(crate) async fn put_block_to_storage(self, block: Arc<Block>) -> bool
+    pub(crate) async fn put_block_to_storage(self, block: Arc<BlockV2>) -> bool
     where
         REv: From<StorageRequest>,
     {
@@ -1070,7 +1071,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given, versioned block into the linear block store.
-    pub(crate) async fn put_versioned_block_to_storage(self, block: Arc<VersionedBlock>) -> bool
+    pub(crate) async fn put_versioned_block_to_storage(self, block: Arc<Block>) -> bool
     where
         REv: From<StorageRequest>,
     {
@@ -1102,7 +1103,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts the given block and approvals hashes into the linear block store.
     pub(crate) async fn put_executed_block_to_storage(
         self,
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> bool
@@ -1122,7 +1123,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block from the linear block store.
-    pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<Block>
+    pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<BlockV2>
     where
         REv: From<StorageRequest>,
     {
@@ -1140,7 +1141,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn get_versioned_block_from_storage(
         self,
         block_hash: BlockHash,
-    ) -> Option<VersionedBlock>
+    ) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
@@ -1349,7 +1350,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Requests the highest complete block.
-    pub(crate) async fn get_highest_complete_block_from_storage(self) -> Option<VersionedBlock>
+    pub(crate) async fn get_highest_complete_block_from_storage(self) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
@@ -2139,7 +2140,7 @@ impl<REv> EffectBuilder<REv> {
 
     /// Announce that a block which wasn't previously stored on this node has been fetched and
     /// stored.
-    pub(crate) async fn announce_fetched_new_block(self, block: Arc<VersionedBlock>, peer: NodeId)
+    pub(crate) async fn announce_fetched_new_block(self, block: Arc<Block>, peer: NodeId)
     where
         REv: From<FetchedNewBlockAnnouncement>,
     {

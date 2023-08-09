@@ -1,9 +1,7 @@
 use datasize::DataSize;
 use derive_more::Display;
 
-use casper_types::{
-    BlockHash, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey, VersionedBlock,
-};
+use casper_types::{Block, BlockHash, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey};
 
 use crate::types::{BlockExecutionResultsOrChunkId, FinalizedBlock};
 
@@ -22,7 +20,7 @@ pub(crate) enum NeedNext {
     #[display(fmt = "need next for {}: block body", _0)]
     BlockBody(BlockHash),
     #[display(fmt = "need next for {}: approvals hashes ({})", _0, _1)]
-    ApprovalsHashes(BlockHash, Box<VersionedBlock>),
+    ApprovalsHashes(BlockHash, Box<Block>),
     #[display(
         fmt = "need next for {}: finality signatures at {} ({} validators)",
         _0,

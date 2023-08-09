@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::{self, QueryResult};
 use casper_types::{
-    BlockHash, BlockHeader, Digest, DigestError, JsonBlockWithSignatures, Key, ProtocolVersion,
-    Transfer, VersionedBlock,
+    Block, BlockHash, BlockHeader, Digest, DigestError, JsonBlockWithSignatures, Key,
+    ProtocolVersion, Transfer,
 };
 
 use super::{
@@ -544,11 +544,11 @@ pub(super) async fn get_signed_block<REv: ReactorEventT>(
 /// to the old variant if the former executes correctly but fails to find the value.
 async fn get_era_summary<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
-    block: &VersionedBlock,
+    block: &Block,
 ) -> Result<EraSummary, Error> {
     async fn handle_query_result<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
-        block: &VersionedBlock,
+        block: &Block,
         result: Result<QueryResult, engine_state::Error>,
     ) -> Result<EraSummary, Error> {
         let (value, proofs) =

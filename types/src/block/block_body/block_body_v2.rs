@@ -20,6 +20,7 @@ use crate::{
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[schemars(description = "The body portion of a block.")]
+/// The body portion of a block.
 pub struct BlockBodyV2 {
     /// The public key of the validator which proposed the block.
     pub(super) proposer: PublicKey,

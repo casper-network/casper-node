@@ -11,7 +11,7 @@ use derive_more::From;
 use serde::Serialize;
 use tracing::{info, trace};
 
-use casper_types::Block;
+use casper_types::BlockV2;
 
 use crate::{
     effect::{
@@ -27,7 +27,7 @@ use super::{diagnostics_port::StopAtSpec, Component};
 #[derive(DataSize, Debug, From, Serialize)]
 pub(crate) enum Event {
     /// An announcement that a block has been completed.
-    CompletedBlock(Arc<Block>),
+    CompletedBlock(Arc<BlockV2>),
     /// A request to trigger a shutdown.
     #[from]
     SetNodeStopRequest(SetNodeStopRequest),

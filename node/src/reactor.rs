@@ -62,9 +62,7 @@ use tracing_futures::Instrument;
 
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{
-    BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, VersionedBlock,
-};
+use casper_types::{Block, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature};
 
 #[cfg(target_os = "linux")]
 use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
@@ -992,7 +990,7 @@ where
     R: Reactor,
     <R as Reactor>::Event: From<deploy_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
-        + From<fetcher::Event<VersionedBlock>>
+        + From<fetcher::Event<Block>>
         + From<fetcher::Event<BlockHeader>>
         + From<fetcher::Event<BlockExecutionResultsOrChunk>>
         + From<fetcher::Event<LegacyDeploy>>
@@ -1018,13 +1016,9 @@ where
             sender,
             serialized_item,
         ),
-        NetResponse::Block(ref serialized_item) => handle_fetch_response::<R, VersionedBlock>(
-            reactor,
-            effect_builder,
-            rng,
-            sender,
-            serialized_item,
-        ),
+        NetResponse::Block(ref serialized_item) => {
+            handle_fetch_response::<R, Block>(reactor, effect_builder, rng, sender, serialized_item)
+        }
         NetResponse::BlockHeader(ref serialized_item) => handle_fetch_response::<R, BlockHeader>(
             reactor,
             effect_builder,

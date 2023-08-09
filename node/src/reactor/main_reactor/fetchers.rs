@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use prometheus::Registry;
 
-use casper_types::{BlockHeader, Deploy, FinalitySignature, VersionedBlock};
+use casper_types::{Block, BlockHeader, Deploy, FinalitySignature};
 
 use crate::{
     components::{fetcher, fetcher::Fetcher, Component},
@@ -16,7 +16,7 @@ use crate::{
 #[derive(DataSize, Debug)]
 pub(super) struct Fetchers {
     sync_leap_fetcher: Fetcher<SyncLeap>,
-    block_fetcher: Fetcher<VersionedBlock>,
+    block_fetcher: Fetcher<Block>,
     block_header_by_hash_fetcher: Fetcher<BlockHeader>,
     approvals_hashes_fetcher: Fetcher<ApprovalsHashes>,
     finality_signature_fetcher: Fetcher<FinalitySignature>,

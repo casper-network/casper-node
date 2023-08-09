@@ -92,7 +92,7 @@ pub(crate) type FinalitySignatureIncoming = MessageIncoming<FinalitySignature>;
 pub(crate) enum NetRequest {
     Deploy(Vec<u8>),
     LegacyDeploy(Vec<u8>),
-    VersionedBlock(Vec<u8>),
+    Block(Vec<u8>),
     BlockHeader(Vec<u8>),
     FinalitySignature(Vec<u8>),
     SyncLeap(Vec<u8>),
@@ -105,7 +105,7 @@ impl Display for NetRequest {
         match self {
             NetRequest::Deploy(_) => f.write_str("request for deploy"),
             NetRequest::LegacyDeploy(_) => f.write_str("request for legacy deploy"),
-            NetRequest::VersionedBlock(_) => f.write_str("request for block"),
+            NetRequest::Block(_) => f.write_str("request for block"),
             NetRequest::BlockHeader(_) => f.write_str("request for block header"),
             NetRequest::FinalitySignature(_) => {
                 f.write_str("request for gossiped finality signature")
@@ -125,7 +125,7 @@ impl NetRequest {
         let id = match self {
             NetRequest::Deploy(ref id)
             | NetRequest::LegacyDeploy(ref id)
-            | NetRequest::VersionedBlock(ref id)
+            | NetRequest::Block(ref id)
             | NetRequest::BlockHeader(ref id)
             | NetRequest::FinalitySignature(ref id)
             | NetRequest::SyncLeap(ref id)
@@ -144,7 +144,7 @@ impl NetRequest {
         match self {
             NetRequest::Deploy(_) => Tag::Deploy,
             NetRequest::LegacyDeploy(_) => Tag::LegacyDeploy,
-            NetRequest::VersionedBlock(_) => Tag::VersionedBlock,
+            NetRequest::Block(_) => Tag::Block,
             NetRequest::BlockHeader(_) => Tag::BlockHeader,
             NetRequest::FinalitySignature(_) => Tag::FinalitySignature,
             NetRequest::SyncLeap(_) => Tag::SyncLeap,
@@ -226,7 +226,7 @@ mod tests {
         let inner_id = b"example".to_vec();
 
         let a = NetRequest::Deploy(inner_id.clone());
-        let b = NetRequest::VersionedBlock(inner_id);
+        let b = NetRequest::Block(inner_id);
 
         assert_ne!(a.unique_id(), b.unique_id());
     }

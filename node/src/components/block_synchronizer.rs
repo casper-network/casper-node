@@ -30,8 +30,8 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
 use casper_types::{
-    BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, Deploy, Digest, FinalitySignature,
-    FinalitySignatureId, Timestamp, VersionedBlock,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, Deploy, Digest,
+    FinalitySignature, FinalitySignatureId, Timestamp,
 };
 
 use super::network::blocklist::BlocklistJustification;
@@ -111,7 +111,7 @@ const COMPONENT_NAME: &str = "block_synchronizer";
 pub(crate) trait ReactorEvent:
     From<FetcherRequest<ApprovalsHashes>>
     + From<NetworkInfoRequest>
-    + From<FetcherRequest<VersionedBlock>>
+    + From<FetcherRequest<Block>>
     + From<FetcherRequest<BlockHeader>>
     + From<FetcherRequest<LegacyDeploy>>
     + From<FetcherRequest<Deploy>>
@@ -136,7 +136,7 @@ pub(crate) trait ReactorEvent:
 impl<REv> ReactorEvent for REv where
     REv: From<FetcherRequest<ApprovalsHashes>>
         + From<NetworkInfoRequest>
-        + From<FetcherRequest<VersionedBlock>>
+        + From<FetcherRequest<Block>>
         + From<FetcherRequest<BlockHeader>>
         + From<FetcherRequest<LegacyDeploy>>
         + From<FetcherRequest<Deploy>>
@@ -479,8 +479,10 @@ impl BlockSynchronizer {
                                 match maybe_execution_results {
                                     Some(execution_results) => {
                                         // TODO[RC] .try_into(), becasue we want to avoid polluting
-                                        // `MetaBlock` with `VersionedBlock`, but maybe we'd have to
-                                        match <VersionedBlock as std::convert::TryInto<BlockV2>>::try_into(*block) {
+                                        // `MetaBlock` with `NewBlock`, but maybe we'd have to
+                                        match <Block as std::convert::TryInto<BlockV2>>::try_into(
+                                            *block,
+                                        ) {
                                             Ok(block) => {
                                                 let meta_block = MetaBlock::new(
                                                     Arc::new(block),
@@ -540,7 +542,7 @@ impl BlockSynchronizer {
         rng: &mut NodeRng,
     ) -> Effects<Event>
     where
-        REv: ReactorEvent + From<FetcherRequest<VersionedBlock>> + From<MarkBlockCompletedRequest>,
+        REv: ReactorEvent + From<FetcherRequest<Block>> + From<MarkBlockCompletedRequest>,
     {
         let latch_reset_interval = self.config.latch_reset_interval;
         let need_next_interval = self.config.need_next_interval.into();
@@ -586,11 +588,7 @@ impl BlockSynchronizer {
                     builder.latch_by(peers.len());
                     results.extend(peers.into_iter().flat_map(|node_id| {
                         effect_builder
-                            .fetch::<VersionedBlock>(
-                                block_hash,
-                                node_id,
-                                Box::new(EmptyValidationMetadata),
-                            )
+                            .fetch::<Block>(block_hash, node_id, Box::new(EmptyValidationMetadata))
                             .event(Event::BlockFetched)
                     }))
                 }
@@ -834,13 +832,10 @@ impl BlockSynchronizer {
         }
     }
 
-    fn block_fetched(
-        &mut self,
-        result: Result<FetchedData<VersionedBlock>, FetcherError<VersionedBlock>>,
-    ) {
+    fn block_fetched(&mut self, result: Result<FetchedData<Block>, FetcherError<Block>>) {
         let (block_hash, maybe_block, maybe_peer_id): (
             BlockHash,
-            Option<Box<VersionedBlock>>,
+            Option<Box<Block>>,
             Option<NodeId>,
         ) = match result {
             Ok(FetchedData::FromPeer { item, peer }) => {
@@ -1311,7 +1306,7 @@ impl BlockSynchronizer {
 
 impl<REv> InitializedComponent<REv> for BlockSynchronizer
 where
-    REv: ReactorEvent + From<FetcherRequest<VersionedBlock>>,
+    REv: ReactorEvent + From<FetcherRequest<Block>>,
 {
     fn state(&self) -> &ComponentState {
         &self.state

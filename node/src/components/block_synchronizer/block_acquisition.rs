@@ -8,8 +8,8 @@ use derive_more::Display;
 use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
-    BlockHash, BlockHeader, Deploy, DeployHash, DeployId, Digest, FinalitySignature,
-    ProtocolVersion, PublicKey, VersionedBlock,
+    Block, BlockHash, BlockHeader, Deploy, DeployHash, DeployId, Digest, FinalitySignature,
+    ProtocolVersion, PublicKey,
 };
 
 use crate::{
@@ -93,22 +93,22 @@ pub(super) enum BlockAcquisitionState {
     Initialized(BlockHash, SignatureAcquisition),
     HaveBlockHeader(Box<BlockHeader>, SignatureAcquisition),
     HaveWeakFinalitySignatures(Box<BlockHeader>, SignatureAcquisition),
-    HaveBlock(Box<VersionedBlock>, SignatureAcquisition, DeployAcquisition),
+    HaveBlock(Box<Block>, SignatureAcquisition, DeployAcquisition),
     HaveGlobalState(
-        Box<VersionedBlock>,
+        Box<Block>,
         SignatureAcquisition,
         DeployAcquisition,
         ExecutionResultsAcquisition,
     ),
     HaveAllExecutionResults(
-        Box<VersionedBlock>,
+        Box<Block>,
         SignatureAcquisition,
         DeployAcquisition,
         ExecutionResultsChecksum,
     ),
-    HaveApprovalsHashes(Box<VersionedBlock>, SignatureAcquisition, DeployAcquisition),
-    HaveAllDeploys(Box<VersionedBlock>, SignatureAcquisition),
-    HaveStrictFinalitySignatures(Box<VersionedBlock>, SignatureAcquisition),
+    HaveApprovalsHashes(Box<Block>, SignatureAcquisition, DeployAcquisition),
+    HaveAllDeploys(Box<Block>, SignatureAcquisition),
+    HaveStrictFinalitySignatures(Box<Block>, SignatureAcquisition),
     // We keep the `Block` as well as the `FinalizedBlock` because the
     // block is necessary to reach the `Complete` state and the finalized
     // block is used to enqueue for execution. While the block would surely
@@ -119,12 +119,12 @@ pub(super) enum BlockAcquisitionState {
     // with execution are strictly forward sync states. Until a refactor splits
     // the `Complete` states for the historical and forward cases, we need to
     // keep the block around.
-    HaveFinalizedBlock(Box<VersionedBlock>, Box<FinalizedBlock>, Vec<Deploy>, bool),
+    HaveFinalizedBlock(Box<Block>, Box<FinalizedBlock>, Vec<Deploy>, bool),
     // The `Complete` state needs the block itself in order to produce a meta
     // block announcement in the historical sync flow. In the forward sync,
     // only the block hash and height are necessary. Therefore, we retain the
     // block fully in this state.
-    Complete(Box<VersionedBlock>),
+    Complete(Box<Block>),
     Failed(BlockHash, Option<u64>),
 }
 
@@ -220,7 +220,7 @@ impl BlockAcquisitionState {
         }
     }
 
-    pub(crate) fn maybe_block(&self) -> Option<Box<VersionedBlock>> {
+    pub(crate) fn maybe_block(&self) -> Option<Box<Block>> {
         match self {
             BlockAcquisitionState::Initialized(..)
             | BlockAcquisitionState::Failed(..)
@@ -560,7 +560,7 @@ impl BlockAcquisitionState {
     /// Register the block body for this block.
     pub(super) fn register_block(
         &mut self,
-        block: VersionedBlock,
+        block: Block,
         need_execution_state: bool,
     ) -> Result<Option<Acceptance>, BlockAcquisitionError> {
         let new_state = match self {

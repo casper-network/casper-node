@@ -72,10 +72,10 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    ApprovalsHash, Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
-    BlockSignatures, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionResult,
-    FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader, TimeDiff, Timestamp,
-    Transfer, Transform, VersionedBlock, VersionedBlockBody,
+    ApprovalsHash, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
+    BlockHeader, BlockSignatures, BlockV2, Deploy, DeployHash, DeployHeader, DeployId, Digest,
+    EraId, ExecutionResult, FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader,
+    TimeDiff, Timestamp, Transfer, Transform,
 };
 
 use crate::{
@@ -714,8 +714,8 @@ impl Storage {
                     fetch_response,
                 )?)
             }
-            NetRequest::VersionedBlock(ref serialized_id) => {
-                let id = decode_item_id::<VersionedBlock>(serialized_id)?;
+            NetRequest::Block(ref serialized_id) => {
+                let id = decode_item_id::<Block>(serialized_id)?;
                 let opt_item = self
                     .read_versioned_block(&id)
                     .map_err(FatalStorageError::from)?;
@@ -1002,7 +1002,7 @@ impl Storage {
             } => {
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let block: VersionedBlock =
+                let block: Block =
                     if let Some(block) = self.get_single_versioned_block(&mut txn, &block_hash)? {
                         block
                     } else {
@@ -1066,7 +1066,7 @@ impl Storage {
 
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let versioned_block: VersionedBlock = {
+                let versioned_block: Block = {
                     if let Some(versioned_block) =
                         self.get_block_by_height(&mut txn, block_height)?
                     {
@@ -1297,7 +1297,7 @@ impl Storage {
     }
 
     /// Retrieves a block by hash.
-    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<BlockV2>, FatalStorageError> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
@@ -1305,7 +1305,7 @@ impl Storage {
     pub fn read_versioned_block(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         self.get_single_versioned_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
@@ -1335,7 +1335,7 @@ impl Storage {
     }
 
     /// Gets the highest block.
-    pub fn read_highest_block(&self) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    pub fn read_highest_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         self.get_highest_block(&mut txn)
     }
@@ -1357,9 +1357,7 @@ impl Storage {
     }
 
     /// Retrieves the highest complete block from the storage, if one exists.
-    pub(crate) fn read_highest_complete_block(
-        &self,
-    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    pub(crate) fn read_highest_complete_block(&self) -> Result<Option<Block>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -1377,7 +1375,7 @@ impl Storage {
     /// the highest contiguous segment starting at the highest switch block which it does hold.
     pub(crate) fn read_blocks_for_replay_protection(
         &self,
-    ) -> Result<Vec<VersionedBlock>, FatalStorageError> {
+    ) -> Result<Vec<Block>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -1609,10 +1607,7 @@ impl Storage {
     }
 
     /// Retrieves single block by height by looking it up in the index and returning it.
-    pub fn read_block_by_height(
-        &self,
-        height: u64,
-    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    pub fn read_block_by_height(&self, height: u64) -> Result<Option<Block>, FatalStorageError> {
         self.get_block_by_height(&mut self.env.begin_ro_txn()?, height)
     }
 
@@ -1650,7 +1645,7 @@ impl Storage {
     fn read_block_and_finalized_deploys_by_hash(
         &self,
         block_hash: BlockHash,
-    ) -> Result<Option<(Block, Vec<Deploy>)>, FatalStorageError> {
+    ) -> Result<Option<(BlockV2, Vec<Deploy>)>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
         let block = match self.get_single_block(&mut txn, &block_hash)? {
             Some(block) => block,
@@ -1677,7 +1672,7 @@ impl Storage {
         &self,
         txn: &mut RoTransaction,
         height: u64,
-    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         self.block_height_index
             .get(&height)
             .and_then(|block_hash| self.get_single_versioned_block(txn, block_hash).transpose())
@@ -1736,7 +1731,7 @@ impl Storage {
     fn get_highest_block(
         &self,
         txn: &mut RoTransaction,
-    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         self.block_height_index
             .keys()
             .last()
@@ -1800,7 +1795,7 @@ impl Storage {
     fn get_highest_complete_block(
         &self,
         txn: &mut RoTransaction,
-    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         let highest_complete_block_height = match self.highest_complete_block_height() {
             Some(height) => height,
             None => {
@@ -1827,9 +1822,9 @@ impl Storage {
         &self,
         txn: &mut RoTransaction,
         predicate: F,
-    ) -> Result<Vec<VersionedBlock>, FatalStorageError>
+    ) -> Result<Vec<Block>, FatalStorageError>
     where
-        F: Fn(&VersionedBlock) -> bool,
+        F: Fn(&Block) -> bool,
     {
         let mut blocks = Vec::new();
         for sequence in self.completed_blocks.sequences().iter().rev() {
@@ -2039,7 +2034,7 @@ impl Storage {
         &self,
         txn: &mut RoTransaction,
         block_hash: &BlockHash,
-    ) -> Result<Option<Block>, FatalStorageError> {
+    ) -> Result<Option<BlockV2>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => {
@@ -2064,7 +2059,7 @@ impl Storage {
                 return Ok(None);
             }
         };
-        let block = Block::new_from_header_and_body(block_header, block_body);
+        let block = BlockV2::new_from_header_and_body(block_header, block_body);
         Ok(Some(block))
     }
 
@@ -2073,7 +2068,7 @@ impl Storage {
         &self,
         txn: &mut RoTransaction,
         block_hash: &BlockHash,
-    ) -> Result<Option<VersionedBlock>, FatalStorageError> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => {
@@ -2101,7 +2096,7 @@ impl Storage {
                 return Ok(None);
             }
         };
-        let block = VersionedBlock::new_from_header_and_versioned_body(block_header, block_body)?;
+        let block = Block::new_from_header_and_versioned_body(block_header, block_body)?;
         Ok(Some(block))
     }
 
@@ -2767,7 +2762,7 @@ impl Storage {
         &self,
         txn: &mut RoTransaction,
         era_id: EraId,
-    ) -> Result<Option<Block>, FatalStorageError> {
+    ) -> Result<Option<BlockV2>, FatalStorageError> {
         self.switch_block_era_id_index
             .get(&era_id)
             .and_then(|block_hash| self.get_single_block(txn, block_hash).transpose())
@@ -2782,7 +2777,7 @@ impl Storage {
     pub(crate) fn transactional_get_switch_block_by_era_id(
         &self,
         switch_block_era_num: u64,
-    ) -> Result<Option<Block>, FatalStorageError> {
+    ) -> Result<Option<BlockV2>, FatalStorageError> {
         let mut txn = self
             .env
             .begin_ro_txn()
@@ -2875,12 +2870,12 @@ fn get_body_for_block_header(
     txn: &mut RoTransaction,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<BlockBody>, LmdbExtError> {
+) -> Result<Option<BlockBodyV2>, LmdbExtError> {
     Ok(
         get_versioned_body_for_block_header(txn, block_body_hash, block_body_dbs)?.and_then(
             |body| match body {
-                VersionedBlockBody::V1(_) => None,
-                VersionedBlockBody::V2(inner) => Some(inner),
+                BlockBody::V1(_) => None,
+                BlockBody::V2(inner) => Some(inner),
             },
         ),
     )
@@ -2891,8 +2886,8 @@ fn get_versioned_body_for_block_header(
     txn: &mut RoTransaction,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<VersionedBlockBody>, LmdbExtError> {
-    let maybe_block_body: Option<VersionedBlockBody> =
+) -> Result<Option<BlockBody>, LmdbExtError> {
+    let maybe_block_body: Option<BlockBody> =
         txn.get_value(block_body_dbs.current, block_body_hash)?;
     Ok(if maybe_block_body.is_none() {
         let maybe_legacy_block_body: Option<BlockBodyV1> =

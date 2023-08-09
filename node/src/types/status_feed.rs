@@ -12,8 +12,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, BlockHash, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    VersionedBlock,
+    ActivationPoint, Block, BlockHash, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff,
+    Timestamp,
 };
 
 use crate::{
@@ -45,7 +45,7 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let mut peers = BTreeMap::new();
     peers.insert(*node_id, socket_addr.to_string());
     let status_feed = StatusFeed {
-        last_added_block: Some(VersionedBlock::example().clone()),
+        last_added_block: Some(Block::example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
         our_public_signing_key: Some(PublicKey::example().clone()),
@@ -88,7 +88,7 @@ impl ChainspecInfo {
 #[derive(Debug, Serialize)]
 pub struct StatusFeed {
     /// The last block added to the chain.
-    pub last_added_block: Option<VersionedBlock>,
+    pub last_added_block: Option<Block>,
     /// The peer nodes which are connected to this node.
     pub peers: BTreeMap<NodeId, String>,
     /// The chainspec info for this node.
@@ -116,7 +116,7 @@ pub struct StatusFeed {
 impl StatusFeed {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        last_added_block: Option<VersionedBlock>,
+        last_added_block: Option<Block>,
         peers: BTreeMap<NodeId, String>,
         chainspec_info: ChainspecInfo,
         consensus_status: Option<(PublicKey, Option<TimeDiff>)>,
@@ -160,11 +160,11 @@ pub struct MinimalBlockInfo {
     creator: PublicKey,
 }
 
-impl From<VersionedBlock> for MinimalBlockInfo {
-    fn from(versioned_block: VersionedBlock) -> Self {
+impl From<Block> for MinimalBlockInfo {
+    fn from(versioned_block: Block) -> Self {
         let proposer = match &versioned_block {
-            VersionedBlock::V1(block) => block.proposer().clone(),
-            VersionedBlock::V2(block) => block.proposer().clone(),
+            Block::V1(block) => block.proposer().clone(),
+            Block::V2(block) => block.proposer().clone(),
         };
 
         MinimalBlockInfo {

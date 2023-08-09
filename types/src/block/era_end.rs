@@ -147,12 +147,12 @@ impl KeyValueJsonSchema for NextEraValidatorLabels {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, Block};
+    use crate::{testing::TestRng, BlockV2};
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = Block::random_switch_block(rng);
+        let block = BlockV2::random_switch_block(rng);
         bytesrepr::test_serialization_roundtrip(block.era_end().unwrap());
     }
 }

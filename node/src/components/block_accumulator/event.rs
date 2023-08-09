@@ -5,7 +5,7 @@ use std::{
 
 use derive_more::From;
 
-use casper_types::{Block, BlockHash, BlockSignatures, EraId, FinalitySignature};
+use casper_types::{BlockHash, BlockSignatures, BlockV2, EraId, FinalitySignature};
 
 use crate::{
     effect::requests::BlockAccumulatorRequest,
@@ -22,7 +22,7 @@ pub(crate) enum Event {
         sender: NodeId,
     },
     ReceivedBlock {
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         sender: NodeId,
     },
     CreatedFinalitySignature {

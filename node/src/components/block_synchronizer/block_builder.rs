@@ -12,9 +12,8 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, Digest, EraId,
+    Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, Digest, EraId,
     FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
-    VersionedBlock,
 };
 
 use super::{
@@ -199,7 +198,7 @@ impl BlockBuilder {
         self.block_hash
     }
 
-    pub(super) fn maybe_block(&self) -> Option<Box<VersionedBlock>> {
+    pub(super) fn maybe_block(&self) -> Option<Box<Block>> {
         self.acquisition_state.maybe_block()
     }
 
@@ -476,7 +475,7 @@ impl BlockBuilder {
 
     pub(super) fn register_block(
         &mut self,
-        block: VersionedBlock,
+        block: Block,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let acceptance = self

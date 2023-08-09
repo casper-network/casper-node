@@ -26,7 +26,7 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockHash, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature, PublicKey,
+    BlockHash, BlockV2, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature, PublicKey,
     TimeDiff, Timestamp, U512,
 };
 
@@ -155,7 +155,7 @@ pub(crate) struct MainReactor {
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
     deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
-    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
+    block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
         Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
 
@@ -1107,7 +1107,7 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
+        let block_gossiper = Gossiper::<{ BlockV2::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
             registry,

@@ -127,7 +127,7 @@ mod tests {
     use once_cell::sync::Lazy;
 
     use casper_types::{
-        bytesrepr::FromBytes, ActivationPoint, Block, BrTableCost, ChainspecRawBytes,
+        bytesrepr::FromBytes, ActivationPoint, BlockV2, BrTableCost, ChainspecRawBytes,
         ControlFlowCosts, CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig,
         HostFunction, HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion,
         StorageCosts, StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
@@ -432,7 +432,7 @@ mod tests {
         };
 
         let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, past_version, true, None);
+            BlockV2::random_with_specifics(&mut rng, previous_era, 100, past_version, true, None);
         assert!(
             block
                 .header()
@@ -442,15 +442,21 @@ mod tests {
 
         //
         let block =
-            Block::random_with_specifics(&mut rng, upgrade_era, 100, past_version, true, None);
+            BlockV2::random_with_specifics(&mut rng, upgrade_era, 100, past_version, true, None);
         assert!(
             !block
                 .header()
                 .is_last_block_before_activation(&protocol_config),
             "Not the activation point: wrong era."
         );
-        let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, current_version, true, None);
+        let block = BlockV2::random_with_specifics(
+            &mut rng,
+            previous_era,
+            100,
+            current_version,
+            true,
+            None,
+        );
         assert!(
             !block
                 .header()
@@ -459,7 +465,7 @@ mod tests {
         );
 
         let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, future_version, true, None);
+            BlockV2::random_with_specifics(&mut rng, previous_era, 100, future_version, true, None);
         assert!(
             !block
                 .header()
@@ -468,7 +474,7 @@ mod tests {
         );
 
         let block =
-            Block::random_with_specifics(&mut rng, previous_era, 100, past_version, false, None);
+            BlockV2::random_with_specifics(&mut rng, previous_era, 100, past_version, false, None);
         assert!(
             !block
                 .header()

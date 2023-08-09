@@ -1,7 +1,7 @@
 use prometheus::Registry;
 use rand::Rng;
 
-use casper_types::{testing::TestRng, Block, EraId, ProtocolVersion, TimeDiff};
+use casper_types::{testing::TestRng, BlockV2, EraId, ProtocolVersion, TimeDiff};
 
 use super::*;
 use crate::{
@@ -155,7 +155,7 @@ fn register_block_with_valid_deploys() {
     let height = era_id.value() * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
     let deploy_hashes_iter = deploys.iter().map(Deploy::hash).copied();
-    let block = Block::random_with_specifics(
+    let block = BlockV2::random_with_specifics(
         &mut rng,
         era_id,
         height,
@@ -340,7 +340,7 @@ fn register_deploys_and_blocks() {
     let era = rng.gen_range(0..6);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
-    let block = Block::random_with_specifics(
+    let block = BlockV2::random_with_specifics(
         &mut rng,
         EraId::new(era),
         height,
@@ -496,7 +496,7 @@ async fn expire_deploys_and_check_announcement() {
     let era = rng.gen_range(0..6);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
-    let block = Block::random_with_specifics(
+    let block = BlockV2::random_with_specifics(
         &mut rng,
         EraId::new(era),
         height,

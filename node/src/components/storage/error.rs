@@ -4,8 +4,8 @@ use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
-    bytesrepr, crypto, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, VersionedBlockBody,
+    bytesrepr, crypto, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
+    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId,
 };
 
 use super::lmdb_ext::LmdbExtError;
@@ -99,7 +99,7 @@ pub enum FatalStorageError {
         /// The block body hash.
         block_body_hash: Digest,
         /// The block body.
-        block_body: Box<VersionedBlockBody>,
+        block_body: Box<BlockBody>,
     },
     /// Could not verify finality signatures for block.
     #[error("{0} in signature verification. Database is corrupted.")]

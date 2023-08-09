@@ -2,9 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use lmdb::{Database, RwTransaction, Transaction};
 
-use casper_types::{
-    Block, BlockBodyV1, DeployHash, Digest, ExecutionResult, VersionedBlock, VersionedBlockBody,
-};
+use casper_types::{Block, BlockBody, BlockBodyV1, BlockV2, DeployHash, Digest, ExecutionResult};
 use tracing::error;
 
 use crate::types::ApprovalsHashes;
@@ -31,13 +29,13 @@ impl Storage {
     ///     put_block_to_storage --> StorageRequest::PutBlock
     ///     StorageRequest::PutBlock --> B["write_block<br>(current version)"]
     ///     B --> write_validated_block
-    ///     write_validated_block --> C[convert into VersionedBlockBody]
+    ///     write_validated_block --> C[convert into BlockBody]
     ///     C --> put_single_versioned_block_body
     ///     put_single_versioned_block_body --> write_block_header
     ///     write_block_header --> D[update indices]
     ///     D --> End
     /// ```
-    pub fn write_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
+    pub fn write_block(&mut self, block: &BlockV2) -> Result<bool, FatalStorageError> {
         block.verify()?;
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
@@ -74,10 +72,7 @@ impl Storage {
     ///     write_block_header --> C[update indices]
     ///     C --> End
     /// ```
-    pub fn write_versioned_block(
-        &mut self,
-        block: &VersionedBlock,
-    ) -> Result<bool, FatalStorageError> {
+    pub fn write_versioned_block(&mut self, block: &Block) -> Result<bool, FatalStorageError> {
         block.verify()?;
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
@@ -104,7 +99,7 @@ impl Storage {
     ///     put_executed_block_to_storage --> StorageRequest::PutExecutedBlock
     ///     StorageRequest::PutExecutedBlock --> put_executed_block
     ///     put_executed_block --> B["write_validated_block<br>(current version)"]
-    ///     B --> C[convert into VersionedBlockBody]
+    ///     B --> C[convert into BlockBody]
     ///     C --> put_single_versioned_block_body
     ///     put_single_versioned_block_body --> write_block_header
     ///     write_block_header --> D[update indices]
@@ -113,12 +108,12 @@ impl Storage {
     fn write_validated_block(
         &mut self,
         txn: &mut RwTransaction,
-        block: &Block,
+        block: &BlockV2,
     ) -> Result<bool, FatalStorageError> {
         {
             let block_body_hash = block.body_hash();
             let block_body = block.body();
-            let versioned_block_body: VersionedBlockBody = block_body.into();
+            let versioned_block_body: BlockBody = block_body.into();
             if !Self::put_single_versioned_block_body(
                 txn,
                 block_body_hash,
@@ -162,12 +157,12 @@ impl Storage {
     fn write_validated_versioned_block(
         &mut self,
         txn: &mut RwTransaction,
-        block: &VersionedBlock,
+        block: &Block,
     ) -> Result<bool, FatalStorageError> {
         {
             let block_body_hash = block.header().body_hash();
             match block {
-                VersionedBlock::V1(v1) => {
+                Block::V1(v1) => {
                     let block_body = v1.body();
                     if !Self::put_single_legacy_block_body(
                         txn,
@@ -179,7 +174,7 @@ impl Storage {
                         return Ok(false);
                     }
                 }
-                VersionedBlock::V2(_) => {
+                Block::V2(_) => {
                     let block_body = block.body();
                     if !Self::put_single_versioned_block_body(
                         txn,
@@ -237,17 +232,17 @@ impl Storage {
     fn put_single_versioned_block_body(
         txn: &mut RwTransaction,
         block_body_hash: &Digest,
-        versioned_block_body: &VersionedBlockBody,
+        versioned_block_body: &BlockBody,
         db: Database,
     ) -> Result<bool, LmdbExtError> {
-        debug_assert!(!matches!(versioned_block_body, VersionedBlockBody::V1(_)));
+        debug_assert!(!matches!(versioned_block_body, BlockBody::V1(_)));
         txn.put_value(db, block_body_hash, versioned_block_body, true)
             .map_err(Into::into)
     }
 
     pub(crate) fn put_executed_block(
         &mut self,
-        block: &Block,
+        block: &BlockV2,
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {

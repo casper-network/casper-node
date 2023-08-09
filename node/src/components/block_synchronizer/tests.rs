@@ -14,7 +14,7 @@ use rand::{seq::IteratorRandom, Rng};
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, Block, CLValue, Chainspec, DeployId, EraId, Key,
+    testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, DeployId, EraId, Key,
     LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef,
     U512,
 };
@@ -41,7 +41,7 @@ const STRICT_FINALITY_REQUIRED_VERSION: ProtocolVersion = ProtocolVersion::from_
 #[derive(Debug, From)]
 enum MockReactorEvent {
     MarkBlockCompletedRequest(MarkBlockCompletedRequest),
-    BlockFetcherRequest(FetcherRequest<VersionedBlock>),
+    BlockFetcherRequest(FetcherRequest<Block>),
     BlockHeaderFetcherRequest(FetcherRequest<BlockHeader>),
     LegacyDeployFetcherRequest(FetcherRequest<LegacyDeploy>),
     DeployFetcherRequest(FetcherRequest<Deploy>),
@@ -101,7 +101,7 @@ impl MockReactor {
 }
 
 struct TestEnv {
-    block: Block,
+    block: BlockV2,
     validator_keys: Vec<Arc<SecretKey>>,
     peers: Vec<NodeId>,
 }
@@ -109,7 +109,7 @@ struct TestEnv {
 // Utility struct used to generate common test artifacts
 impl TestEnv {
     // Replaces the test block with the one provided as parameter
-    fn with_block(self, block: Block) -> Self {
+    fn with_block(self, block: BlockV2) -> Self {
         Self {
             block,
             validator_keys: self.validator_keys,
@@ -117,7 +117,7 @@ impl TestEnv {
         }
     }
 
-    fn block(&self) -> &Block {
+    fn block(&self) -> &BlockV2 {
         &self.block
     }
 
@@ -173,7 +173,7 @@ impl TestEnv {
     }
 }
 
-fn check_sync_global_state_event(event: MockReactorEvent, block: &Block) {
+fn check_sync_global_state_event(event: MockReactorEvent, block: &BlockV2) {
     assert!(matches!(
         event,
         MockReactorEvent::SyncGlobalStateRequest { .. }
@@ -204,7 +204,7 @@ async fn need_next(
 
 fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
     builder: &mut BlockBuilder,
-    block: &Block,
+    block: &BlockV2,
     validator_keys_iter: I,
 ) {
     for secret_key in validator_keys_iter {
@@ -716,7 +716,7 @@ fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
     assert!(!block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Trying to register a different block should replace the old one
-    let new_block = Block::random(&mut rng);
+    let new_block = BlockV2::random(&mut rng);
     assert!(block_synchronizer.register_block_by_hash(*new_block.hash(), false));
     assert_eq!(
         block_synchronizer.forward.unwrap().block_hash(),
@@ -1439,7 +1439,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(VersionedBlock::V2(block.clone())),
+            item: Box::new(Block::V2(block.clone())),
             peer: peers[0],
         })),
     );
@@ -2145,7 +2145,7 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Registering block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
+    assert!(block_synchronizer.register_block_by_hash(*BlockV2::random(&mut rng).hash(), true));
 
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
@@ -2154,7 +2154,7 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_none());
 
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
+    assert!(block_synchronizer.register_block_by_hash(*BlockV2::random(&mut rng).hash(), true));
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
 

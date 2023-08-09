@@ -4666,7 +4666,7 @@
                 "description": "The block.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/VersionedBlock"
+                    "$ref": "#/components/schemas/Block"
                   }
                 ]
               },
@@ -4681,7 +4681,7 @@
             },
             "additionalProperties": false
           },
-          "VersionedBlock": {
+          "Block": {
             "description": "A versioned block after execution.",
             "oneOf": [
               {

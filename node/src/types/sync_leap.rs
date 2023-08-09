@@ -440,9 +440,9 @@ mod tests {
     use rand::Rng;
 
     use casper_types::{
-        crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures,
-        DeployHash, EraEnd, EraId, EraReport, FinalitySignature, GlobalStateUpdate, ProtocolConfig,
-        ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, Timestamp, U512,
+        crypto, testing::TestRng, ActivationPoint, BlockHash, BlockHeader, BlockSignatures,
+        BlockV2, DeployHash, EraEnd, EraId, EraReport, FinalitySignature, GlobalStateUpdate,
+        ProtocolConfig, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, Timestamp, U512,
     };
 
     use super::SyncLeap;
@@ -456,12 +456,12 @@ mod tests {
         utils::BlockSignatureError,
     };
 
-    fn random_block_at_height(rng: &mut TestRng, height: u64) -> Block {
+    fn random_block_at_height(rng: &mut TestRng, height: u64) -> BlockV2 {
         let era_id = EraId::random(rng);
         let protocol_version = ProtocolVersion::default();
         let is_switch = rng.gen();
 
-        Block::random_with_specifics(
+        BlockV2::random_with_specifics(
             rng,
             era_id,
             height,
@@ -476,10 +476,10 @@ mod tests {
         height: u64,
         era_id: EraId,
         protocol_version: ProtocolVersion,
-    ) -> Block {
+    ) -> BlockV2 {
         let is_switch = true;
 
-        Block::random_with_specifics(
+        BlockV2::random_with_specifics(
             rng,
             era_id,
             height,
@@ -491,7 +491,7 @@ mod tests {
 
     fn make_signed_block_header_from_height(
         height: usize,
-        test_chain: &[Block],
+        test_chain: &[BlockV2],
         validators: &[ValidatorSpec],
         add_proofs: bool,
     ) -> SignedBlockHeader {
@@ -525,7 +525,7 @@ mod tests {
 
     fn make_test_sync_leap_with_chain(
         validators: &[ValidatorSpec],
-        test_chain: &[Block],
+        test_chain: &[BlockV2],
         query: usize,
         trusted_ancestor_headers: &[usize],
         signed_block_headers: &[usize],
@@ -719,7 +719,7 @@ mod tests {
             trusted_block_header: block.take_header(),
             trusted_ancestor_headers: Default::default(),
             signed_block_headers: iter::repeat_with(|| {
-                let block = Block::random(&mut rng);
+                let block = BlockV2::random(&mut rng);
                 let hash = block.hash();
                 SignedBlockHeader::new(
                     block.header().clone(),
@@ -744,7 +744,7 @@ mod tests {
             trusted_block_header: block.take_header(),
             trusted_ancestor_headers: Default::default(),
             signed_block_headers: iter::repeat_with(|| {
-                let block = Block::random(&mut rng);
+                let block = BlockV2::random(&mut rng);
                 let hash = block.hash();
                 SignedBlockHeader::new(
                     block.header().clone(),
@@ -979,7 +979,7 @@ mod tests {
 
         // Add single orphaned block. Signatures are cloned from a legit block to avoid bailing on
         // the signature validation check.
-        let orphaned_block = Block::random(&mut rng);
+        let orphaned_block = BlockV2::random(&mut rng);
         let orphaned_signed_block_header = SignedBlockHeader::new(
             orphaned_block.header().clone(),
             sync_leap
@@ -1153,15 +1153,15 @@ mod tests {
     fn should_return_headers() {
         let mut rng = TestRng::new();
 
-        let trusted_block = Block::random_non_switch_block(&mut rng);
+        let trusted_block = BlockV2::random_non_switch_block(&mut rng);
 
-        let trusted_ancestor_1 = Block::random_switch_block(&mut rng);
-        let trusted_ancestor_2 = Block::random_non_switch_block(&mut rng);
-        let trusted_ancestor_3 = Block::random_non_switch_block(&mut rng);
+        let trusted_ancestor_1 = BlockV2::random_switch_block(&mut rng);
+        let trusted_ancestor_2 = BlockV2::random_non_switch_block(&mut rng);
+        let trusted_ancestor_3 = BlockV2::random_non_switch_block(&mut rng);
 
-        let signed_block_1 = Block::random_switch_block(&mut rng);
-        let signed_block_2 = Block::random_switch_block(&mut rng);
-        let signed_block_3 = Block::random_non_switch_block(&mut rng);
+        let signed_block_1 = BlockV2::random_switch_block(&mut rng);
+        let signed_block_2 = BlockV2::random_switch_block(&mut rng);
+        let signed_block_3 = BlockV2::random_non_switch_block(&mut rng);
         let signed_block_header_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);
         let signed_block_header_2 =
@@ -1207,15 +1207,15 @@ mod tests {
     fn should_return_switch_block_headers() {
         let mut rng = TestRng::new();
 
-        let trusted_block = Block::random_non_switch_block(&mut rng);
+        let trusted_block = BlockV2::random_non_switch_block(&mut rng);
 
-        let trusted_ancestor_1 = Block::random_switch_block(&mut rng);
-        let trusted_ancestor_2 = Block::random_non_switch_block(&mut rng);
-        let trusted_ancestor_3 = Block::random_non_switch_block(&mut rng);
+        let trusted_ancestor_1 = BlockV2::random_switch_block(&mut rng);
+        let trusted_ancestor_2 = BlockV2::random_non_switch_block(&mut rng);
+        let trusted_ancestor_3 = BlockV2::random_non_switch_block(&mut rng);
 
-        let signed_block_1 = Block::random_switch_block(&mut rng);
-        let signed_block_2 = Block::random_switch_block(&mut rng);
-        let signed_block_3 = Block::random_non_switch_block(&mut rng);
+        let signed_block_1 = BlockV2::random_switch_block(&mut rng);
+        let signed_block_2 = BlockV2::random_switch_block(&mut rng);
+        let signed_block_3 = BlockV2::random_non_switch_block(&mut rng);
         let signed_block_header_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);
         let signed_block_header_2 =
@@ -1253,7 +1253,7 @@ mod tests {
         assert_eq!(expected_headers, actual_headers);
 
         // Also test when the trusted block is a switch block.
-        let trusted_block = Block::random_switch_block(&mut rng);
+        let trusted_block = BlockV2::random_switch_block(&mut rng);
         let sync_leap = SyncLeap {
             trusted_ancestor_only: false,
             trusted_block_header: trusted_block.header().clone(),
@@ -1808,7 +1808,7 @@ mod tests {
     fn era_validator_weights_without_genesis_without_upgrade() {
         let mut rng = TestRng::new();
 
-        let trusted_block = Block::random_non_switch_block(&mut rng);
+        let trusted_block = BlockV2::random_non_switch_block(&mut rng);
 
         let version = ProtocolVersion::from_parts(1, 5, 0);
 
@@ -1858,7 +1858,7 @@ mod tests {
     fn era_validator_weights_without_genesis_with_switch_block_preceding_immediate_switch_block() {
         let mut rng = TestRng::new();
 
-        let trusted_block = Block::random_non_switch_block(&mut rng);
+        let trusted_block = BlockV2::random_non_switch_block(&mut rng);
 
         let version_1 = ProtocolVersion::from_parts(1, 4, 0);
         let version_2 = ProtocolVersion::from_parts(1, 5, 0);
@@ -1936,7 +1936,7 @@ mod tests {
     fn era_validator_weights_with_genesis_without_upgrade() {
         let mut rng = TestRng::new();
 
-        let trusted_block = Block::random_non_switch_block(&mut rng);
+        let trusted_block = BlockV2::random_non_switch_block(&mut rng);
 
         let version = ProtocolVersion::from_parts(1, 5, 0);
 
@@ -2051,7 +2051,7 @@ mod tests {
     // cause the 2nd and 4th blocks to be switch blocks. Validators for all eras are filled from
     // the `validators` parameter.
     pub(crate) struct TestChainSpec<'a> {
-        block: Block,
+        block: BlockV2,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
         upgrades_indices: Option<Vec<u64>>,
@@ -2065,7 +2065,7 @@ mod tests {
             upgrades_indices: Option<Vec<u64>>,
             validators: &'a [ValidatorSpec],
         ) -> Self {
-            let block = Block::random(test_rng);
+            let block = BlockV2::random(test_rng);
             Self {
                 block,
                 rng: test_rng,
@@ -2117,7 +2117,7 @@ mod tests {
     }
 
     pub(crate) struct TestBlockIterator<'a> {
-        block: Block,
+        block: BlockV2,
         protocol_version: ProtocolVersion,
         rng: &'a mut TestRng,
         switch_block_indices: Option<Vec<u64>>,
@@ -2128,7 +2128,7 @@ mod tests {
 
     impl<'a> TestBlockIterator<'a> {
         pub fn new(
-            block: Block,
+            block: BlockV2,
             rng: &'a mut TestRng,
             switch_block_indices: Option<Vec<u64>>,
             upgrades_indices: Option<Vec<u64>>,
@@ -2148,7 +2148,7 @@ mod tests {
     }
 
     impl<'a> Iterator for TestBlockIterator<'a> {
-        type Item = Block;
+        type Item = BlockV2;
 
         fn next(&mut self) -> Option<Self::Item> {
             let (is_successor_of_switch_block, is_upgrade, maybe_validators) = match &self
@@ -2230,7 +2230,7 @@ mod tests {
                 .take(count)
                 .collect();
 
-            let next = Block::new(
+            let next = BlockV2::new(
                 *self.block.hash(),
                 *self.block.accumulated_seed(),
                 *self.block.state_root_hash(),
@@ -2255,7 +2255,7 @@ mod tests {
         let mut rng = TestRng::new();
         let mut test_block = TestChainSpec::new(&mut rng, None, None, &[]);
         let mut block_batch = test_block.iter().take(100);
-        let mut parent_block: Block = block_batch.next().unwrap();
+        let mut parent_block: BlockV2 = block_batch.next().unwrap();
         for current_block in block_batch {
             assert_eq!(
                 current_block.height(),

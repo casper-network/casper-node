@@ -239,12 +239,12 @@ impl Display for FinalitySignature {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Block;
+    use crate::BlockV2;
 
     #[test]
     fn finality_signature() {
         let rng = &mut TestRng::new();
-        let block = Block::random(rng);
+        let block = BlockV2::random(rng);
         // Signature should be over both block hash and era id.
         let secret_key = SecretKey::random(rng);
         let public_key = PublicKey::from(&secret_key);

@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
-use super::Block;
+use super::BlockV2;
 use super::{BlockHash, EraEnd};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -374,12 +374,12 @@ impl FromBytes for BlockHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, Block};
+    use crate::{testing::TestRng, BlockV2};
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = Block::random(rng);
+        let block = BlockV2::random(rng);
         bytesrepr::test_serialization_roundtrip(block.header());
     }
 }

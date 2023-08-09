@@ -23,13 +23,13 @@ use rand::Rng;
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
+    BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
     ProtocolVersion, PublicKey, SecretKey, Timestamp,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, EraReport, U512};
 
-use super::{versioned_block::VersionedBlock, BlockBodyV2};
+use super::{Block, BlockBodyV2};
 
 static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
     let parent_hash = BlockHash::new(Digest::from([7; Digest::LENGTH]));
@@ -98,7 +98,7 @@ impl BlockV2 {
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
     ) -> Self {
-        let body = BlockBody::new(proposer, deploy_hashes, transfer_hashes);
+        let body = BlockBodyV2::new(proposer, deploy_hashes, transfer_hashes);
         let body_hash = body.hash();
         let accumulated_seed = Digest::hash_pair(parent_seed, [random_bit as u8]);
         let header = BlockHeader::new(
@@ -120,7 +120,7 @@ impl BlockV2 {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
-    pub fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
+    pub fn new_from_header_and_body(header: BlockHeader, body: BlockBodyV2) -> Self {
         let hash = header.block_hash();
         BlockV2 { hash, header, body }
     }
@@ -141,7 +141,7 @@ impl BlockV2 {
     }
 
     /// Returns the block's body.
-    pub fn body(&self) -> &BlockBody {
+    pub fn body(&self) -> &BlockBodyV2 {
         &self.body
     }
 
@@ -233,7 +233,7 @@ impl BlockV2 {
         let actual_block_header_hash = self.header().block_hash();
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
-                block: Box::new(VersionedBlock::V2(self.clone())),
+                block: Box::new(Block::V2(self.clone())),
                 actual_block_hash: actual_block_header_hash,
             });
         }
@@ -241,7 +241,7 @@ impl BlockV2 {
         let actual_block_body_hash = self.body.hash();
         if *self.header.body_hash() != actual_block_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
-                block: Box::new(VersionedBlock::V2(self.clone())),
+                block: Box::new(Block::V2(self.clone())),
                 actual_block_body_hash,
             });
         }
@@ -473,19 +473,19 @@ impl FromBytes for BlockV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
-        let (body, remainder) = BlockBody::from_bytes(remainder)?;
+        let (body, remainder) = BlockBodyV2::from_bytes(remainder)?;
         let block = BlockV2 { hash, header, body };
         Ok((block, remainder))
     }
 }
 
-impl TryFrom<VersionedBlock> for BlockV2 {
+impl TryFrom<Block> for BlockV2 {
     type Error = String;
 
-    fn try_from(value: VersionedBlock) -> Result<BlockV2, String> {
+    fn try_from(value: Block) -> Result<BlockV2, String> {
         match value {
-            VersionedBlock::V2(v2) => Ok(v2),
-            _ => Err("Could not convert VersionedBlock to BlockV2".to_string()),
+            Block::V2(v2) => Ok(v2),
+            _ => Err("Could not convert Block to BlockV2".to_string()),
         }
     }
 }
@@ -511,7 +511,7 @@ mod tests {
         block.hash = block.header.block_hash();
 
         let expected_error = BlockValidationError::UnexpectedBodyHash {
-            block: Box::new(VersionedBlock::V2(block.clone())),
+            block: Box::new(Block::V2(block.clone())),
             actual_block_body_hash: block.body.hash(),
         };
         assert_eq!(block.verify(), Err(expected_error));
@@ -526,7 +526,7 @@ mod tests {
         block.hash = bogus_block_hash;
 
         let expected_error = BlockValidationError::UnexpectedBlockHash {
-            block: Box::new(VersionedBlock::V2(block.clone())),
+            block: Box::new(Block::V2(block.clone())),
             actual_block_hash: block.header.block_hash(),
         };
         assert_eq!(block.verify(), Err(expected_error));
