@@ -70,7 +70,12 @@ pub(crate) fn casper_read<S: Storage>(
     key_ptr: u32,
     key_size: u32,
     info_ptr: u32,
+    cb_alloc: u32,
+    cb_ctx: u32,
 ) -> Result<i32, Outcome> {
+
+    // caller.
+
     let key = caller
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
@@ -78,7 +83,7 @@ pub(crate) fn casper_read<S: Storage>(
     match caller.context().storage.read(key_tag, &key) {
         Ok(Some(entry)) => {
             let out_ptr: u32 = caller
-                .alloc(entry.data.len())
+                .alloc(cb_alloc, entry.data.len(), cb_ctx)
                 .map_err(|error| Outcome::VM(error))?;
 
             let read_info = ReadInfo {

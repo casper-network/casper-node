@@ -9,7 +9,7 @@ use std::{
 use wasmer::{
     wasmparser::{Export, MemoryType},
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
-    Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, TypedFunction, Value,
+    Imports, Instance, Memory, MemoryView, Module, RuntimeError, Store, TypedFunction, Value, Table,
 };
 use wasmer_compiler_singlepass::Singlepass;
 use wasmer_middlewares::{
@@ -129,7 +129,25 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
             })
     }
 
-    fn alloc(&mut self, size: usize) -> Result<u32, Box<dyn std::error::Error>> {
+    fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> Result<u32, Box<dyn std::error::Error>> {
+        let (data, mut store) = self.env.data_and_store_mut();
+        let value = data.exported_runtime().exported_table.get(&mut store.as_store_mut(), idx).expect("has entry in the table"); // NOTE: better error handling - pass 0 as nullptr?
+        let funcref = value.funcref().expect("is funcref");
+        let valid_funcref = funcref.as_ref().expect("valid funcref");
+        // let typed_func: valid_funcref.typed(&mut store)
+        let alloc_callback: TypedFunction<(u32, u32), u32> = valid_funcref.typed(&mut store)?;
+
+        // match value {
+        //     Value::I32(_) => todo!(),
+        //     Value::I64(_) => todo!(),
+        //     Value::F32(_) => todo!(),
+        //     Value::F64(_) => todo!(),
+        //     Value::ExternRef(_) => todo!(),
+        //     Value::FuncRef(_) => todo!(),
+        //     Value::V128(_) => todo!(),
+        // }
+
+        // let func
         // let tref = self.env.data().instance.as_ref();
         // let instance = self
         //     .env
@@ -138,15 +156,12 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
         //     .upgrade()
         //     .expect("instance should be alive");
         // let alloc = self.env.data().exported_runtime().exported_alloc_func;
-        let (data, mut store) = self.env.data_and_store_mut();
-        let ptr = data
-            .exported_runtime()
-            .exported_alloc_func
-            .call(&mut store.as_store_mut(), size.try_into().unwrap())?;
-        // .map_err(|error| handle_runtime_error(error, &mut self.env.as_store_mut(), &tref))?;
+        // let (data, mut store) = self.env.data_and_store_mut();
+        // let ptr = data
+        //     .exported_runtime()
+        //     .exported_alloc_func
+        let ptr = alloc_callback.call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx)?;
         Ok(ptr)
-        // call_alloc(&tref, &mut self.env, size)
-        //     .map_err(|error| handle_runtime_error(error, &mut self.env, &tref))
     }
 }
 
@@ -176,6 +191,7 @@ pub(crate) struct ExportedRuntime {
     pub(crate) memory: Memory,
     pub(crate) exported_alloc_func: TypedFunction<u32, u32>,
     pub(crate) exported_dealloc_func: TypedFunction<(u32, u32), ()>,
+    pub(crate) exported_table: Table,
 }
 
 pub(crate) struct WasmerInstance<S: Storage> {
@@ -368,7 +384,9 @@ where
                      key_space: u64,
                      key_ptr: u32,
                      key_size: u32,
-                     info_ptr: u32|
+                     info_ptr: u32,
+                     cb_alloc: u32,
+                     cb_ctx: u32|
                      -> Result<i32, RuntimeError> {
                         let wasmer_caller = WasmerCaller { env };
                         match host::casper_read(
@@ -377,6 +395,8 @@ where
                             key_ptr,
                             key_size,
                             info_ptr,
+                            cb_alloc,
+                            cb_ctx,
                         ) {
                             Ok(result) => Ok(result),
                             Err(Outcome::VM(type_erased_runtime_error)) => {
@@ -432,8 +452,22 @@ where
             imports
         };
 
-        let instance =
-            Arc::new(Instance::new(&mut store, &module, &imports).expect("should instantiate"));
+        // TODO: Deal with "start" section that executes actual Wasm - test, measure gas, etc.
+
+        let instance = {
+            let instance = Instance::new(&mut store, &module, &imports)
+            .map_err(|error| BackendError::Instantiation(error.to_string()))?;
+
+            // We don't necessarily need atomic counter. Arc's purpose is to be able to retrieve a Weak reference to the instance to be able to invoke recursive calls to the wasm itself from within a host function implementation.
+
+            // instance.exports.get_table(name)
+
+            Arc::new(instance)
+        };
+
+        // TODO: get first export of type table as some compilers generate different names (i.e. rust __indirect_function_table, assemblyscript `table` etc). There's only one table allowed in a valid module.
+        let table = instance.exports.get_table("__indirect_function_table").map_err(|error| BackendError::Export(error.to_string()))?;
+
 
         let exported_alloc_func = instance
             .exports
@@ -456,6 +490,7 @@ where
                 memory: memory.clone(),
                 exported_alloc_func,
                 exported_dealloc_func,
+                exported_table: table.clone(),
             });
         }
 
