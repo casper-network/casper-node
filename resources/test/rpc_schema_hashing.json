@@ -2506,19 +2506,6 @@
                 ]
               },
               {
-                "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
-                "type": "object",
-                "required": [
-                  "Prune"
-                ],
-                "properties": {
-                  "Prune": {
-                    "$ref": "#/components/schemas/Key"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
                 "description": "Writes the given CLValue to global state.",
                 "type": "object",
                 "required": [
@@ -2591,7 +2578,7 @@
                 ],
                 "properties": {
                   "WriteBid": {
-                    "$ref": "#/components/schemas/BidKind"
+                    "$ref": "#/components/schemas/Bid"
                   }
                 },
                 "additionalProperties": false
@@ -2724,181 +2711,29 @@
                   }
                 },
                 "additionalProperties": false
-              }
-            ]
-          },
-          "Key": {
-            "description": "The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts) are indexed on the network.",
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": [
-                  "SystemContractRegistry",
-                  "EraSummary",
-                  "ChainspecRegistry",
-                  "ChecksumRegistry"
-                ]
               },
               {
-                "description": "A `Key` under which a user account is stored.",
+                "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
                 "type": "object",
                 "required": [
-                  "Account"
+                  "Prune"
                 ],
                 "properties": {
-                  "Account": {
-                    "$ref": "#/components/schemas/AccountHash"
+                  "Prune": {
+                    "$ref": "#/components/schemas/Key"
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "A `Key` under which a smart contract is stored and which is the pseudo-hash of the contract.",
+                "description": "Writes the given BidKind to global state.",
                 "type": "object",
                 "required": [
-                  "Hash"
+                  "WriteBidKind"
                 ],
                 "properties": {
-                  "Hash": {
-                    "type": "array",
-                    "items": {
-                      "type": "integer",
-                      "format": "uint8",
-                      "minimum": 0.0
-                    },
-                    "maxItems": 32,
-                    "minItems": 32
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` which is a [`URef`], under which most types of data can be stored.",
-                "type": "object",
-                "required": [
-                  "URef"
-                ],
-                "properties": {
-                  "URef": {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` under which we store a transfer.",
-                "type": "object",
-                "required": [
-                  "Transfer"
-                ],
-                "properties": {
-                  "Transfer": {
-                    "$ref": "#/components/schemas/TransferAddr"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` under which we store a deploy info.",
-                "type": "object",
-                "required": [
-                  "DeployInfo"
-                ],
-                "properties": {
-                  "DeployInfo": {
-                    "$ref": "#/components/schemas/DeployHash"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` under which we store an era info.",
-                "type": "object",
-                "required": [
-                  "EraInfo"
-                ],
-                "properties": {
-                  "EraInfo": {
-                    "$ref": "#/components/schemas/EraId"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` under which we store a purse balance.",
-                "type": "object",
-                "required": [
-                  "Balance"
-                ],
-                "properties": {
-                  "Balance": {
-                    "type": "array",
-                    "items": {
-                      "type": "integer",
-                      "format": "uint8",
-                      "minimum": 0.0
-                    },
-                    "maxItems": 32,
-                    "minItems": 32
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` under which we store bid information",
-                "type": "object",
-                "required": [
-                  "Bid"
-                ],
-                "properties": {
-                  "Bid": {
-                    "$ref": "#/components/schemas/BidAddr"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` under which we store withdraw information.",
-                "type": "object",
-                "required": [
-                  "Withdraw"
-                ],
-                "properties": {
-                  "Withdraw": {
-                    "$ref": "#/components/schemas/AccountHash"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.",
-                "type": "object",
-                "required": [
-                  "Dictionary"
-                ],
-                "properties": {
-                  "Dictionary": {
-                    "type": "array",
-                    "items": {
-                      "type": "integer",
-                      "format": "uint8",
-                      "minimum": 0.0
-                    },
-                    "maxItems": 32,
-                    "minItems": 32
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A `Key` under which we store unbond information.",
-                "type": "object",
-                "required": [
-                  "Unbond"
-                ],
-                "properties": {
-                  "Unbond": {
-                    "$ref": "#/components/schemas/AccountHash"
+                  "WriteBidKind": {
+                    "$ref": "#/components/schemas/BidKind"
                   }
                 },
                 "additionalProperties": false
@@ -2908,53 +2743,6 @@
           "AccountHash": {
             "description": "Hex-encoded account hash.",
             "type": "string"
-          },
-          "URef": {
-            "description": "Hex-encoded, formatted URef.",
-            "type": "string"
-          },
-          "TransferAddr": {
-            "description": "Hex-encoded transfer address.",
-            "type": "string"
-          },
-          "EraId": {
-            "description": "Era ID newtype.",
-            "type": "integer",
-            "format": "uint64",
-            "minimum": 0.0
-          },
-          "BidAddr": {
-            "description": "Bid Address",
-            "type": "array",
-            "items": [
-              {
-                "$ref": "#/components/schemas/AccountHash"
-              },
-              {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/AccountHash"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              {
-                "$ref": "#/components/schemas/BidAddrTag"
-              }
-            ],
-            "maxItems": 3,
-            "minItems": 3
-          },
-          "BidAddrTag": {
-            "description": "Serialization tag for BidAddr variants.",
-            "type": "string",
-            "enum": [
-              "Unified",
-              "Validator",
-              "Delegator"
-            ]
           },
           "DeployInfo": {
             "description": "Information relating to the given Deploy.",
@@ -3008,6 +2796,14 @@
               }
             },
             "additionalProperties": false
+          },
+          "TransferAddr": {
+            "description": "Hex-encoded transfer address.",
+            "type": "string"
+          },
+          "URef": {
+            "description": "Hex-encoded, formatted URef.",
+            "type": "string"
           },
           "U512": {
             "description": "Decimal representation of a 512-bit integer.",
@@ -3198,50 +2994,6 @@
             },
             "additionalProperties": false
           },
-          "BidKind": {
-            "description": "Auction bid variants.",
-            "anyOf": [
-              {
-                "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
-                "type": "object",
-                "required": [
-                  "Unified"
-                ],
-                "properties": {
-                  "Unified": {
-                    "$ref": "#/components/schemas/Bid"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A bid record containing only validator data.",
-                "type": "object",
-                "required": [
-                  "Validator"
-                ],
-                "properties": {
-                  "Validator": {
-                    "$ref": "#/components/schemas/ValidatorBid"
-                  }
-                },
-                "additionalProperties": false
-              },
-              {
-                "description": "A bid record containing only delegator data.",
-                "type": "object",
-                "required": [
-                  "Delegator"
-                ],
-                "properties": {
-                  "Delegator": {
-                    "$ref": "#/components/schemas/Delegator"
-                  }
-                },
-                "additionalProperties": false
-              }
-            ]
-          },
           "Bid": {
             "description": "An entry in the validator map.",
             "type": "object",
@@ -3369,65 +3121,6 @@
             },
             "additionalProperties": false
           },
-          "ValidatorBid": {
-            "description": "An entry in the validator map.",
-            "type": "object",
-            "required": [
-              "bonding_purse",
-              "delegation_rate",
-              "inactive",
-              "staked_amount",
-              "validator_public_key"
-            ],
-            "properties": {
-              "validator_public_key": {
-                "description": "Validator public key",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/PublicKey"
-                  }
-                ]
-              },
-              "bonding_purse": {
-                "description": "The purse that was used for bonding.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/URef"
-                  }
-                ]
-              },
-              "staked_amount": {
-                "description": "The amount of tokens staked by a validator (not including delegators).",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              },
-              "delegation_rate": {
-                "description": "Delegation rate",
-                "type": "integer",
-                "format": "uint8",
-                "minimum": 0.0
-              },
-              "vesting_schedule": {
-                "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/VestingSchedule"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "inactive": {
-                "description": "`true` if validator has been \"evicted\"",
-                "type": "boolean"
-              }
-            },
-            "additionalProperties": false
-          },
           "WithdrawPurse": {
             "description": "A withdraw purse, a legacy structure.",
             "type": "object",
@@ -3481,6 +3174,12 @@
               }
             },
             "additionalProperties": false
+          },
+          "EraId": {
+            "description": "Era ID newtype.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
           },
           "U128": {
             "description": "Decimal representation of a 128-bit integer.",
@@ -3570,6 +3269,320 @@
                     "type": "null"
                   }
                 ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "Key": {
+            "description": "The type under which data (e.g. [`CLValue`](crate::CLValue)s, smart contracts, user accounts) are indexed on the network.",
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SystemContractRegistry",
+                  "EraSummary",
+                  "ChainspecRegistry",
+                  "ChecksumRegistry"
+                ]
+              },
+              {
+                "description": "A `Key` under which a user account is stored.",
+                "type": "object",
+                "required": [
+                  "Account"
+                ],
+                "properties": {
+                  "Account": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which a smart contract is stored and which is the pseudo-hash of the contract.",
+                "type": "object",
+                "required": [
+                  "Hash"
+                ],
+                "properties": {
+                  "Hash": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "uint8",
+                      "minimum": 0.0
+                    },
+                    "maxItems": 32,
+                    "minItems": 32
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` which is a [`URef`], under which most types of data can be stored.",
+                "type": "object",
+                "required": [
+                  "URef"
+                ],
+                "properties": {
+                  "URef": {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store a transfer.",
+                "type": "object",
+                "required": [
+                  "Transfer"
+                ],
+                "properties": {
+                  "Transfer": {
+                    "$ref": "#/components/schemas/TransferAddr"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store a deploy info.",
+                "type": "object",
+                "required": [
+                  "DeployInfo"
+                ],
+                "properties": {
+                  "DeployInfo": {
+                    "$ref": "#/components/schemas/DeployHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store an era info.",
+                "type": "object",
+                "required": [
+                  "EraInfo"
+                ],
+                "properties": {
+                  "EraInfo": {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store a purse balance.",
+                "type": "object",
+                "required": [
+                  "Balance"
+                ],
+                "properties": {
+                  "Balance": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "uint8",
+                      "minimum": 0.0
+                    },
+                    "maxItems": 32,
+                    "minItems": 32
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store bid information",
+                "type": "object",
+                "required": [
+                  "Bid"
+                ],
+                "properties": {
+                  "Bid": {
+                    "$ref": "#/components/schemas/BidAddr"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store withdraw information.",
+                "type": "object",
+                "required": [
+                  "Withdraw"
+                ],
+                "properties": {
+                  "Withdraw": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` variant whose value is derived by hashing [`URef`]s address and arbitrary data.",
+                "type": "object",
+                "required": [
+                  "Dictionary"
+                ],
+                "properties": {
+                  "Dictionary": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer",
+                      "format": "uint8",
+                      "minimum": 0.0
+                    },
+                    "maxItems": 32,
+                    "minItems": 32
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A `Key` under which we store unbond information.",
+                "type": "object",
+                "required": [
+                  "Unbond"
+                ],
+                "properties": {
+                  "Unbond": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "BidAddr": {
+            "description": "Bid Address",
+            "type": "array",
+            "items": [
+              {
+                "$ref": "#/components/schemas/AccountHash"
+              },
+              {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "$ref": "#/components/schemas/BidAddrTag"
+              }
+            ],
+            "maxItems": 3,
+            "minItems": 3
+          },
+          "BidAddrTag": {
+            "description": "Serialization tag for BidAddr variants.",
+            "type": "string",
+            "enum": [
+              "Unified",
+              "Validator",
+              "Delegator"
+            ]
+          },
+          "BidKind": {
+            "description": "Auction bid variants.",
+            "anyOf": [
+              {
+                "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
+                "type": "object",
+                "required": [
+                  "Unified"
+                ],
+                "properties": {
+                  "Unified": {
+                    "$ref": "#/components/schemas/Bid"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A bid record containing only validator data.",
+                "type": "object",
+                "required": [
+                  "Validator"
+                ],
+                "properties": {
+                  "Validator": {
+                    "$ref": "#/components/schemas/ValidatorBid"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A bid record containing only delegator data.",
+                "type": "object",
+                "required": [
+                  "Delegator"
+                ],
+                "properties": {
+                  "Delegator": {
+                    "$ref": "#/components/schemas/Delegator"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "ValidatorBid": {
+            "description": "An entry in the validator map.",
+            "type": "object",
+            "required": [
+              "bonding_purse",
+              "delegation_rate",
+              "inactive",
+              "staked_amount",
+              "validator_public_key"
+            ],
+            "properties": {
+              "validator_public_key": {
+                "description": "Validator public key",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "bonding_purse": {
+                "description": "The purse that was used for bonding.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "staked_amount": {
+                "description": "The amount of tokens staked by a validator (not including delegators).",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              },
+              "delegation_rate": {
+                "description": "Delegation rate",
+                "type": "integer",
+                "format": "uint8",
+                "minimum": 0.0
+              },
+              "vesting_schedule": {
+                "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/VestingSchedule"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "inactive": {
+                "description": "`true` if validator has been \"evicted\"",
+                "type": "boolean"
               }
             },
             "additionalProperties": false

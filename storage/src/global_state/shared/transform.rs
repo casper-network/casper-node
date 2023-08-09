@@ -406,8 +406,8 @@ impl From<&Transform> for casper_types::Transform {
             Transform::Write(StoredValue::EraInfo(era_info)) => {
                 casper_types::Transform::WriteEraInfo(era_info.clone())
             }
-            Transform::Write(StoredValue::Bid(bid)) => {
-                casper_types::Transform::WriteBid(bid.clone())
+            Transform::Write(StoredValue::Bid(bid_kind)) => {
+                casper_types::Transform::WriteBidKind(bid_kind.clone())
             }
             Transform::Write(StoredValue::Withdraw(withdraw_purses)) => {
                 casper_types::Transform::WriteWithdraw(withdraw_purses.clone())

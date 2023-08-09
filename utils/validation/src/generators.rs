@@ -13,7 +13,7 @@ use casper_types::{
         ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
     },
     system::auction::{
-        BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse, ValidatorBid,
+        Bid, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse, ValidatorBid,
         WithdrawPurse,
     },
     AccessRights, AddressableEntity, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash,
@@ -123,10 +123,24 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         PublicKey::from(&delegator_secret_key),
         U512::from(1_000_000_000u64),
         URef::new([11; 32], AccessRights::READ_ADD_WRITE),
-        validator_public_key,
+        validator_public_key.clone(),
         u64::MAX,
     );
-    let delegator_bid_kind = BidKind::Delegator(Box::new(delegator_bid));
+    let delegator_bid_kind = BidKind::Delegator(Box::new(delegator_bid.clone()));
+
+    let unified_bid = {
+        let mut unified_bid = Bid::locked(
+            validator_public_key,
+            URef::new([10; 32], AccessRights::READ_ADD_WRITE),
+            U512::from(50_000_000_000u64),
+            100,
+            u64::MAX,
+        );
+        unified_bid
+            .delegators_mut()
+            .insert(delegator_bid.delegator_public_key().clone(), delegator_bid);
+        unified_bid
+    };
 
     let withdraw_purse_1 = WithdrawPurse::new(
         URef::new([10; 32], AccessRights::READ),
@@ -208,12 +222,21 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
 
         transform.insert(
             "WriteBid".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteBid(validator_bid_kind.clone()).into()])?,
+            ABITestCase::from_inputs(vec![Transform::WriteBid(Box::new(unified_bid)).into()])?,
         );
 
         transform.insert(
-            "WriteBid".to_string(),
-            ABITestCase::from_inputs(vec![Transform::WriteBid(delegator_bid_kind.clone()).into()])?,
+            "WriteBidKind".to_string(),
+            ABITestCase::from_inputs(vec![
+                Transform::WriteBidKind(validator_bid_kind.clone()).into()
+            ])?,
+        );
+
+        transform.insert(
+            "WriteBidKind".to_string(),
+            ABITestCase::from_inputs(vec![
+                Transform::WriteBidKind(delegator_bid_kind.clone()).into()
+            ])?,
         );
 
         transform.insert(

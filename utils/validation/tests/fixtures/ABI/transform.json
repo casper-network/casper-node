@@ -111,6 +111,51 @@
         "type": "Transform",
         "value": {
           "WriteBid": {
+            "validator_public_key": "01197f6b23e16C8532c6ABC838fAcD5eA789be0c76b2920334039bfa8b3d368D61",
+            "bonding_purse": "uref-0A0a0a0a0A0a0a0a0a0a0A0a0A0A0a0a0A0A0A0A0A0a0a0A0a0A0a0a0a0A0A0a-007",
+            "staked_amount": "50000000000",
+            "delegation_rate": 100,
+            "vesting_schedule": {
+              "initial_release_timestamp_millis": 18446744073709551615,
+              "locked_amounts": null
+            },
+            "delegators": {},
+            "inactive": false
+          }
+        }
+      }
+    ],
+    "output": "0901197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a070500743ba40b6401ffffffffffffffff000000000000"
+  },
+  "WriteValidatorBidKind": {
+    "input": [
+      {
+        "type": "Transform",
+        "value": {
+          "WriteBidKind": {
+            "Validator": {
+              "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+              "bonding_purse": "uref-0A0a0a0a0A0a0a0a0a0a0A0a0A0A0a0a0A0A0A0A0A0a0a0A0a0A0a0a0a0A0A0a-007",
+              "staked_amount": "50000000000",
+              "delegation_rate": 100,
+              "vesting_schedule": {
+                "initial_release_timestamp_millis": 18446744073709551615,
+                "locked_amounts": null
+              },
+              "inactive": false
+            }
+          }
+        }
+      }
+    ],
+    "output": "150101197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a070500743ba40b6401ffffffffffffffff0000"
+  },
+  "WriteDelegatorBidKind": {
+    "input": [
+      {
+        "type": "Transform",
+        "value": {
+          "WriteBidKind": {
             "Delegator": {
               "bonding_purse": "uref-0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b-007",
               "delegator_public_key": "0202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f2",
@@ -125,7 +170,7 @@
         }
       }
     ],
-    "output": "09020202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f20400ca9a3b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0701197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d6101ffffffffffffffff00"
+    "output": "15020202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f20400ca9a3b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0701197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d6101ffffffffffffffff00"
   },
   "WriteCLValue": {
     "input": [
