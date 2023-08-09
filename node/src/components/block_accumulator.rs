@@ -161,8 +161,8 @@ impl BlockAccumulator {
             }
             None => {
                 if self.is_stale() {
-                    debug!(%block_hash, "BlockAccumulator: leap because stale gossip");
-                    SyncInstruction::Leap { block_hash }
+                    debug!(%block_hash, "BlockAccumulator: when not in Validate leap because stale gossip");
+                    SyncInstruction::LeapIntervalElapsed { block_hash }
                 } else {
                     SyncInstruction::CaughtUp { block_hash }
                 }

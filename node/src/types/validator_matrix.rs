@@ -287,6 +287,11 @@ impl ValidatorMatrix {
     pub(crate) fn eras(&self) -> Vec<EraId> {
         self.read_inner().keys().copied().collect_vec()
     }
+
+    #[cfg(test)]
+    pub(crate) fn purge_era_validators(&mut self, era_id: &EraId) {
+        self.inner.write().unwrap().remove(era_id);
+    }
 }
 
 impl Debug for ValidatorMatrix {

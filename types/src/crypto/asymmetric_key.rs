@@ -214,9 +214,9 @@ impl SecretKey {
 
     /// Constructs a new secp256k1 variant from a byte slice.
     pub fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(SecretKey::Secp256k1(Secp256k1SecretKey::from_bytes(
-            bytes.as_ref(),
-        )?))
+        Ok(SecretKey::Secp256k1(
+            Secp256k1SecretKey::from_slice(bytes.as_ref()).map_err(|_| Error::SignatureError)?,
+        ))
     }
 
     fn variant_name(&self) -> &str {
@@ -559,7 +559,7 @@ impl PublicKey {
                         der.oid(&EC_PUBLIC_KEY_OBJECT_IDENTIFIER)?;
                         der.oid(&SECP256K1_OBJECT_IDENTIFIER)
                     })?;
-                    der.bit_string(0, &public_key.to_bytes())
+                    der.bit_string(0, public_key.to_encoded_point(true).as_ref())
                 })?;
                 Ok(encoded)
             }
@@ -682,9 +682,10 @@ impl AsymmetricType<'_> for PublicKey {
     }
 
     fn secp256k1_from_bytes<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        Ok(PublicKey::Secp256k1(Secp256k1PublicKey::from_sec1_bytes(
-            bytes.as_ref(),
-        )?))
+        Ok(PublicKey::Secp256k1(
+            Secp256k1PublicKey::from_sec1_bytes(bytes.as_ref())
+                .map_err(|_| Error::SignatureError)?,
+        ))
     }
 }
 
@@ -703,7 +704,7 @@ impl From<&PublicKey> for Vec<u8> {
         match public_key {
             PublicKey::System => Vec::new(),
             PublicKey::Ed25519(key) => key.to_bytes().into(),
-            PublicKey::Secp256k1(key) => key.to_bytes().into(),
+            PublicKey::Secp256k1(key) => key.to_encoded_point(true).as_ref().into(),
         }
     }
 }
@@ -777,21 +778,7 @@ impl Tagged<u8> for PublicKey {
 impl ToBytes for PublicKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            PublicKey::System => {
-                buffer.insert(0, SYSTEM_TAG);
-            }
-            PublicKey::Ed25519(public_key) => {
-                buffer.insert(0, ED25519_TAG);
-                let ed25519_bytes = public_key.as_bytes();
-                buffer.extend_from_slice(ed25519_bytes);
-            }
-            PublicKey::Secp256k1(public_key) => {
-                buffer.insert(0, SECP256K1_TAG);
-                let secp256k1_bytes = public_key.to_bytes();
-                buffer.extend_from_slice(&secp256k1_bytes);
-            }
-        }
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -807,13 +794,13 @@ impl ToBytes for PublicKey {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             PublicKey::System => writer.push(SYSTEM_TAG),
-            PublicKey::Ed25519(pk) => {
+            PublicKey::Ed25519(public_key) => {
                 writer.push(ED25519_TAG);
-                writer.extend_from_slice(pk.as_bytes());
+                writer.extend_from_slice(public_key.as_bytes());
             }
-            PublicKey::Secp256k1(pk) => {
+            PublicKey::Secp256k1(public_key) => {
                 writer.push(SECP256K1_TAG);
-                writer.extend_from_slice(&pk.to_bytes());
+                writer.extend_from_slice(public_key.to_encoded_point(true).as_ref());
             }
         }
         Ok(())
@@ -1030,21 +1017,7 @@ impl Tagged<u8> for Signature {
 impl ToBytes for Signature {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        match self {
-            Signature::System => {
-                buffer.insert(0, SYSTEM_TAG);
-            }
-            Signature::Ed25519(signature) => {
-                buffer.insert(0, ED25519_TAG);
-                let ed5519_bytes = signature.to_bytes();
-                buffer.extend(&ed5519_bytes);
-            }
-            Signature::Secp256k1(signature) => {
-                buffer.insert(0, SECP256K1_TAG);
-                let secp256k1_bytes = signature.as_ref();
-                buffer.extend_from_slice(secp256k1_bytes);
-            }
-        }
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -1062,13 +1035,13 @@ impl ToBytes for Signature {
             Signature::System => {
                 writer.push(SYSTEM_TAG);
             }
-            Signature::Ed25519(ed25519_signature) => {
+            Signature::Ed25519(signature) => {
                 writer.push(ED25519_TAG);
-                writer.extend(&ed25519_signature.to_bytes());
+                writer.extend(signature.as_bytes());
             }
             Signature::Secp256k1(signature) => {
                 writer.push(SECP256K1_TAG);
-                writer.extend_from_slice(signature.as_ref());
+                writer.extend_from_slice(&signature.to_bytes());
             }
         }
         Ok(())
@@ -1116,7 +1089,7 @@ impl From<&Signature> for Vec<u8> {
         match signature {
             Signature::System => Vec::new(),
             Signature::Ed25519(signature) => signature.to_bytes().into(),
-            Signature::Secp256k1(signature) => signature.as_ref().into(),
+            Signature::Secp256k1(signature) => (*signature.to_bytes()).into(),
         }
     }
 }

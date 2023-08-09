@@ -23,14 +23,13 @@ use tower::ServiceBuilder;
 use tracing::info;
 use warp::Filter;
 
-use casper_json_rpc::{Error, Params, RequestHandlers, RequestHandlersBuilder, ReservedErrorCode};
+use casper_json_rpc::{
+    CorsOrigin, Error, Params, RequestHandlers, RequestHandlersBuilder, ReservedErrorCode,
+};
 use casper_types::ProtocolVersion;
 
 use super::{ReactorEventT, RpcRequest};
-use crate::{
-    effect::EffectBuilder,
-    utils::{Fuse, ObservableFuse},
-};
+use crate::{effect::EffectBuilder, utils::ObservableFuse};
 pub use common::ErrorData;
 use docs::DocExample;
 pub use error_code::ErrorCode;
@@ -262,6 +261,7 @@ pub(super) async fn run(
     max_body_bytes: u32,
     api_path: &'static str,
     server_name: &'static str,
+    cors_header: Option<CorsOrigin>,
 ) {
     let make_svc = hyper::service::make_service_fn(move |_| {
         let service_routes = casper_json_rpc::route(
@@ -269,6 +269,7 @@ pub(super) async fn run(
             max_body_bytes,
             handlers.clone(),
             ALLOW_UNKNOWN_FIELDS_IN_JSON_RPC_REQUEST,
+            cors_header.as_ref(),
         );
 
         // Supports content negotiation for gzip responses. This is an interim fix until
@@ -292,7 +293,6 @@ pub(super) async fn run(
     let server_with_shutdown = server.with_graceful_shutdown(shutdown_fuse.clone().wait_owned());
 
     let _ = tokio::spawn(server_with_shutdown).await;
-    shutdown_fuse.set();
     info!("{} server shut down", server_name);
 }
 

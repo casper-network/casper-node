@@ -27,6 +27,7 @@ mod tests;
 
 use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
+use casper_json_rpc::{box_reply, CorsOrigin};
 use datasize::DataSize;
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tracing::{error, info, warn};
@@ -123,20 +124,22 @@ impl EventStreamServer {
 
         let shutdown_fuse = ObservableFuse::new();
 
-        let (listening_address, server_with_shutdown) =
-            warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
-                .try_bind_with_graceful_shutdown(
-                    required_address,
-                    shutdown_fuse.clone().wait_owned(),
-                )
-                .map_err(|error| ListeningError::Listen {
-                    address: required_address,
-                    error: Box::new(error),
-                })?;
-
-        info!(address=%listening_address, "started event stream server");
-
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
+
+        let sse_filter = match CorsOrigin::from_str(&self.config.cors_origin) {
+            Some(cors_origin) => sse_filter
+                .with(cors_origin.to_cors_builder().build())
+                .map(box_reply)
+                .boxed(),
+            None => sse_filter.map(box_reply).boxed(),
+        };
+
+        let (listening_address, server_with_shutdown) = warp::serve(sse_filter)
+            .try_bind_with_graceful_shutdown(required_address, shutdown_fuse.clone().wait_owned())
+            .map_err(|error| ListeningError::Listen {
+                address: required_address,
+                error: Box::new(error),
+            })?;
 
         tokio::spawn(http_server::run(
             self.config.clone(),
@@ -147,6 +150,8 @@ impl EventStreamServer {
             event_broadcaster,
             new_subscriber_info_receiver,
         ));
+
+        info!(address=%listening_address, "started event stream server");
 
         let event_indexer = EventIndexer::new(self.storage_path.clone());
 

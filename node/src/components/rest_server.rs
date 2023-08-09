@@ -31,6 +31,7 @@ use std::net::SocketAddr;
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
+use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::Component;
@@ -328,12 +329,14 @@ where
         let shutdown_fuse = ObservableFuse::new();
 
         let builder = utils::start_listening(&cfg.address)?;
+
         let server_join_handle = Some(tokio::spawn(http_server::run(
             builder,
             effect_builder,
             self.api_version,
             shutdown_fuse.clone(),
             cfg.qps_limit,
+            CorsOrigin::from_str(&cfg.cors_origin),
         )));
 
         let node_startup_instant = self.node_startup_instant;
