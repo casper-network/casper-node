@@ -336,7 +336,7 @@ where
             self.api_version,
             shutdown_fuse.clone(),
             cfg.qps_limit,
-            CorsOrigin::from_str(&cfg.cors_origin),
+            CorsOrigin::parse_str(&cfg.cors_origin),
         )));
 
         let node_startup_instant = self.node_startup_instant;

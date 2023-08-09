@@ -126,7 +126,7 @@ impl EventStreamServer {
 
         let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
 
-        let sse_filter = match CorsOrigin::from_str(&self.config.cors_origin) {
+        let sse_filter = match CorsOrigin::parse_str(&self.config.cors_origin) {
             Some(cors_origin) => sse_filter
                 .with(cors_origin.to_cors_builder().build())
                 .map(box_reply)

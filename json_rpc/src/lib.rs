@@ -122,7 +122,7 @@ impl CorsOrigin {
     /// * `"*"`: [`CorsOrigin::Any`].
     /// * otherwise, returns `CorsOrigin::Specified(raw)`.
     #[inline]
-    pub fn from_str<T: ToString + AsRef<str>>(raw: T) -> Option<Self> {
+    pub fn parse_str<T: ToString + AsRef<str>>(raw: T) -> Option<Self> {
         match raw.as_ref() {
             "" => None,
             "*" => Some(CorsOrigin::Any),

@@ -2223,12 +2223,12 @@ where
                 (delay, era_id)
             };
 
-            for key in withdraw_keys {
+            for key in &withdraw_keys {
                 // Transform only those withdraw purses that are still to be
                 // processed in the unbonding queue.
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
-                    .read(correlation_id, &key)
+                    .read(correlation_id, key)
                     .map_err(|_| Error::FailedToGetWithdrawKeys)?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
