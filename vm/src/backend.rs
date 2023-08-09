@@ -1,15 +1,18 @@
 pub(crate) mod wasmer;
-use thiserror::Error;
 use std::{marker::PhantomData, ops::Deref};
+use thiserror::Error;
 
 use crate::{storage::Storage, Error as VMError};
 
 #[derive(Debug)]
-pub struct GasSummary {}
+pub struct GasUsage {
+    pub(crate) gas_limit: u64,
+    pub(crate) remaining_points: u64,
+    // pub(crate) external_operations: u64, i.e. alloc/dealloc
+}
 
 /// Container that holds all relevant modules necessary to process an execution request.
 pub struct Context<S: Storage> {
-    pub initial_gas_limit: u64,
     pub storage: S,
 }
 
@@ -27,7 +30,10 @@ pub(crate) trait Caller<S: Storage> {
     }
     fn memory_read_into(&self, offset: u32, output: &mut [u8]) -> Result<(), VMError>;
     fn memory_write(&self, offset: u32, data: &[u8]) -> Result<(), VMError>;
-    fn alloc(&mut self, size: usize) -> Result<u32, VMError>;
+    /// Allocates memory inside the Wasm VM by calling an export.
+    ///
+    /// Error is a type-erased error coming from the VM itself.
+    fn alloc(&mut self, size: usize) -> Result<u32, Box<dyn std::error::Error>>;
 }
 
 #[derive(Debug, Error)]
@@ -37,12 +43,14 @@ pub enum Error {
     // OutOfGas,
     // Trap(String),
     #[error("Compile error: {0}")]
-    CompileError(String),
+    Compile(String),
+    #[error("Memory instantiation error: {0}")]
+    Memory(String),
 }
 
 // struct Payload
 
 pub trait WasmInstance<S: Storage> {
-    fn call_export(&mut self, name: &str, args: &[&[u8]]) -> (Result<(), VMError>, GasSummary);
+    fn call_export(&mut self, name: &str, args: &[&[u8]]) -> (Result<(), VMError>, GasUsage);
     fn teardown(self) -> Context<S>;
 }

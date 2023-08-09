@@ -7,7 +7,7 @@ use bytes::Bytes;
 use vm::{
     backend::{Context, WasmInstance},
     storage::{self, Entry, Storage},
-    ExecuteRequest, VM,
+    ConfigBuilder, ExecuteRequest, VM,
 };
 
 // use super::*;
@@ -58,8 +58,56 @@ impl Storage for MockStorage {
     }
 }
 
+#[ignore]
+#[test]
+fn trying_to_find_panic_points() {
+    for gas_limit in 1000..2000 {
+        // dbg!(&gas_limit);
+        let mut vm = VM::new();
+        let execute_request = ExecuteRequest {
+            wasm_bytes: Bytes::from_static(TEST_CONTRACT_WASM),
+        };
+
+        let storage = MockStorage::default();
+
+        const MEMORY_LIMIT: u32 = 17;
+
+        let config = ConfigBuilder::new()
+            .with_gas_limit(gas_limit)
+            .with_memory_limit(MEMORY_LIMIT)
+            .build();
+
+        let mock_context = Context { storage };
+
+        let retrieved_context = {
+            let mut instance = vm
+                .prepare(execute_request, mock_context, config)
+                .expect("should prepare");
+
+            let args = &[
+                b"hello".as_slice(),
+                b"world but longer".as_slice(),
+                b"another argument",
+            ];
+
+            eprintln!("gas_limit={gas_limit}");
+            let (result, gas_summary) = instance.call_export("call", args);
+            // dbg!(&result, gas_summary);
+            eprintln!("{result:?} {gas_summary:?}");
+
+            instance.teardown()
+        };
+
+        // dbg!(&res);
+        dbg!(&retrieved_context.storage);
+        // retrieved_context.storage
+    }
+}
+
 #[test]
 fn smoke() {
+    // for gas_limit in 1000..2000 {
+    // dbg!(&gas_limit);
     let mut vm = VM::new();
     let execute_request = ExecuteRequest {
         wasm_bytes: Bytes::from_static(TEST_CONTRACT_WASM),
@@ -67,16 +115,19 @@ fn smoke() {
 
     let storage = MockStorage::default();
 
-    const GAS_LIMIT: u64 = 5;
+    const GAS_LIMIT: u64 = 1_000_000;
+    const MEMORY_LIMIT: u32 = 17;
 
-    let mock_context = Context {
-        storage,
-        initial_gas_limit: GAS_LIMIT,
-    };
+    let config = ConfigBuilder::new()
+        .with_gas_limit(GAS_LIMIT)
+        .with_memory_limit(MEMORY_LIMIT)
+        .build();
+
+    let mock_context = Context { storage };
 
     let retrieved_context = {
         let mut instance = vm
-            .prepare(execute_request, mock_context)
+            .prepare(execute_request, mock_context, config)
             .expect("should prepare");
 
         let args = &[
@@ -85,8 +136,10 @@ fn smoke() {
             b"another argument",
         ];
 
+        eprintln!("gas_limit={GAS_LIMIT}");
         let (result, gas_summary) = instance.call_export("call", args);
-        dbg!(&result, gas_summary);
+        // dbg!(&result, gas_summary);
+        eprintln!("{result:?} {gas_summary:?}");
 
         instance.teardown()
     };

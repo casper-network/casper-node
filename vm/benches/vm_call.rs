@@ -76,7 +76,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         b.iter(|| {
             let args = &[b"hello".as_slice(), b"world but longer".as_slice()];
-            let (result, gas_summary) = instance.call_export("call", args);
+            let (result, gas_summary) = instance.execute_call("call", args);
         });
 
         instance.teardown();

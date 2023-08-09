@@ -4,7 +4,14 @@ use std::mem;
 use bytes::{BufMut, BytesMut};
 use wasmer::WasmPtr;
 
-use crate::{backend::Caller, storage::Storage};
+use crate::{backend::Caller, storage::Storage, Error as VMError, HostError};
+
+pub(crate) enum Outcome {
+    /// Propagate VM error (i.e. after recursively calling into exports inside wasm).
+    VM(Box<dyn std::error::Error>),
+    /// A host error, i.e. a revert.
+    Host(HostError),
+}
 
 /// Write value under a key.
 pub(crate) fn casper_write<S: Storage>(
@@ -63,14 +70,16 @@ pub(crate) fn casper_read<S: Storage>(
     key_ptr: u32,
     key_size: u32,
     info_ptr: u32,
-) -> i32 {
+) -> Result<i32, Outcome> {
     let key = caller
         .memory_read(key_ptr, key_size.try_into().unwrap())
         .expect("should read key bytes");
 
     match caller.context().storage.read(key_tag, &key) {
         Ok(Some(entry)) => {
-            let out_ptr: u32 = caller.alloc(entry.data.len());
+            let out_ptr: u32 = caller
+                .alloc(entry.data.len())
+                .map_err(|error| Outcome::VM(error))?;
 
             let read_info = ReadInfo {
                 data: out_ptr,
@@ -87,10 +96,10 @@ pub(crate) fn casper_read<S: Storage>(
             caller.memory_write(out_ptr, &entry.data).unwrap();
 
             // out_ptr
-            0
+            Ok(0)
         }
-        Ok(None) => 1,
-        Err(_) => i32::MAX, // TODO: error handling
+        Ok(None) => Ok(1),
+        Err(_) => Ok(i32::MAX), // TODO: error handling
     }
 }
 

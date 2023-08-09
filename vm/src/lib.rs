@@ -4,7 +4,7 @@ pub mod storage;
 
 use bytes::Bytes;
 
-use backend::{wasmer::WasmerInstance, Context, Error as BackendError, GasSummary, WasmInstance};
+use backend::{wasmer::WasmerInstance, Context, Error as BackendError, GasUsage, WasmInstance};
 use storage::Storage;
 use thiserror::Error;
 
@@ -29,6 +29,15 @@ pub enum HostError {
 }
 
 #[derive(Debug, Error)]
+pub enum Resolver {
+    #[error("export {name} not found.")]
+    Export { name: String },
+    /// Trying to call a function pointer by index.
+    #[error("function pointer {index} not found.")]
+    Table { index: u32 },
+}
+
+#[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum Error {
     #[error("Host error: {0}")]
@@ -41,8 +50,47 @@ pub enum Error {
     /// extract memory access errors, trap codes, and unify error reporting.
     #[error("Error executing Wasm: {message}")]
     Runtime { message: String },
-    #[error("{message}")]
-    Export { message: String },
+    #[error("Error resolving a function: {0}")]
+    Resolver(Resolver),
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct Config {
+    pub(crate) gas_limit: u64,
+    pub(crate) memory_limit: u32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ConfigBuilder {
+    gas_limit: Option<u64>,
+    /// Memory limit in pages.
+    memory_limit: Option<u32>,
+}
+
+impl ConfigBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_gas_limit(mut self, gas_limit: u64) -> Self {
+        self.gas_limit = Some(gas_limit);
+        self
+    }
+
+    /// Memory limit denominated in pages.
+    pub fn with_memory_limit(mut self, memory_limit: u32) -> Self {
+        self.memory_limit = Some(memory_limit);
+        self
+    }
+
+    pub fn build(self) -> Config {
+        let gas_limit = self.gas_limit.expect("Required field");
+        let memory_limit = self.memory_limit.expect("Required field");
+        Config {
+            gas_limit,
+            memory_limit,
+        }
+    }
 }
 
 impl VM {
@@ -50,9 +98,10 @@ impl VM {
         &mut self,
         execute_request: ExecuteRequest,
         context: Context<S>,
+        config: Config,
     ) -> Result<impl WasmInstance<S>, BackendError> {
         let ExecuteRequest { wasm_bytes } = execute_request;
-        let instance = WasmerInstance::from_wasm_bytes(&wasm_bytes, context)?;
+        let instance = WasmerInstance::from_wasm_bytes(&wasm_bytes, context, config)?;
         Ok(instance)
     }
 
