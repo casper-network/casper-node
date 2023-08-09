@@ -100,7 +100,7 @@ impl Executor {
             spending_limit,
         );
 
-        let mut runtime = Runtime::new(self.config, context);
+        let mut runtime = Runtime::new(self.config.clone(), context);
 
         let result = match execution_kind {
             ExecutionKind::Module(module_bytes) => {
@@ -190,7 +190,7 @@ impl Executor {
 
         // Standard payment is executed in the calling account's context; the stack already
         // captures that.
-        let mut runtime = Runtime::new(self.config, runtime_context);
+        let mut runtime = Runtime::new(self.config.clone(), runtime_context);
 
         match runtime.call_host_standard_payment(stack) {
             Ok(()) => ExecutionResult::Success {
@@ -266,7 +266,8 @@ impl Executor {
                 *mint_hash
             }
             DirectSystemContractCall::FinalizePayment
-            | DirectSystemContractCall::GetPaymentPurse => {
+            | DirectSystemContractCall::GetPaymentPurse
+            | DirectSystemContractCall::DistributeAccumulatedFees => {
                 let handle_payment_hash = system_contract_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
@@ -305,7 +306,7 @@ impl Executor {
             remaining_spending_limit,
         );
 
-        let mut runtime = Runtime::new(self.config, runtime_context);
+        let mut runtime = Runtime::new(self.config.clone(), runtime_context);
 
         // DO NOT alter this logic to call a system contract directly (such as via mint_internal,
         // etc). Doing so would bypass necessary context based security checks in some use cases. It
@@ -386,7 +387,7 @@ impl Executor {
             protocol_version,
             correlation_id,
             phase,
-            self.config,
+            self.config.clone(),
             transfers,
             remaining_spending_limit,
         )
@@ -407,8 +408,10 @@ pub(crate) enum DirectSystemContractCall {
     CreatePurse,
     /// Calls mint's `transfer` entry point.
     Transfer,
-    /// Calls handle payment's `
+    /// Calls handle payment's `get_payment_purse` entry point.
     GetPaymentPurse,
+    /// Calls handle payment's `distribute_accumulated_fees` entry point.
+    DistributeAccumulatedFees,
 }
 
 impl DirectSystemContractCall {
@@ -421,6 +424,9 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
+            DirectSystemContractCall::DistributeAccumulatedFees => {
+                handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES
+            }
         }
     }
 }

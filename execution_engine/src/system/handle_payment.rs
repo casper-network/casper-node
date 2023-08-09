@@ -1,15 +1,17 @@
 mod internal;
 pub(crate) mod mint_provider;
 pub(crate) mod runtime_provider;
+pub(crate) mod storage_provider;
 
 use casper_types::{account::AccountHash, system::handle_payment::Error, AccessRights, URef, U512};
 
 use crate::system::handle_payment::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
+    storage_provider::StorageProvider,
 };
 
 /// Handle payment functionality implementation.
-pub trait HandlePayment: MintProvider + RuntimeProvider + Sized {
+pub trait HandlePayment: MintProvider + RuntimeProvider + StorageProvider + Sized {
     /// Get payment purse.
     fn get_payment_purse(&self) -> Result<URef, Error> {
         let purse = internal::get_payment_purse(self)?;
@@ -39,5 +41,10 @@ pub trait HandlePayment: MintProvider + RuntimeProvider + Sized {
         target: URef,
     ) -> Result<(), Error> {
         internal::finalize_payment(self, amount_spent, account, target)
+    }
+
+    /// Distribute fees from an accumulation purse.
+    fn distribute_accumulated_fees(&mut self) -> Result<(), Error> {
+        internal::distribute_accumulated_fees(self)
     }
 }

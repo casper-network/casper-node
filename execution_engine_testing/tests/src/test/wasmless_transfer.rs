@@ -2,28 +2,21 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
         engine_state::{
-            engine_config::{
-                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+            engine_config::DEFAULT_MAX_ASSOCIATED_KEYS, EngineConfigBuilder, Error as CoreError,
+            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
         },
         execution::Error as ExecError,
     },
-    shared::{
-        system_config::{
-            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
-            DEFAULT_WASMLESS_TRANSFER_COST,
-        },
-        wasm_config::WasmConfig,
+    shared::system_config::{
+        auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
+        mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
+        DEFAULT_WASMLESS_TRANSFER_COST,
     },
 };
 use casper_types::{
@@ -996,17 +989,10 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        WasmConfig::default(),
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_system_config(new_system_config)
+        .build();
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
@@ -1030,7 +1016,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 

@@ -81,7 +81,8 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     // When trying to send too much coins the balance is left unchanged
     assert_eq!(
         final_balance,
-        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - *DEFAULT_PAYMENT,
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - *DEFAULT_PAYMENT
+            + builder.calculate_refund_amount(*DEFAULT_PAYMENT),
         "final balance incorrect"
     );
 

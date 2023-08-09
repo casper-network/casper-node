@@ -103,6 +103,9 @@ pub enum Error {
     /// Failed to put a trie node into global state because some of its children were missing.
     #[error("Failed to put a trie into global state because some of its children were missing")]
     MissingTrieNodeChildren(Vec<Digest>),
+    /// Failed to retrieve accumulation purse from handle payment system contract.
+    #[error("Failed to retrieve accumulation purse from the handle payment contract")]
+    FailedToRetrieveAccumulationPurse,
 }
 
 impl Error {

@@ -540,9 +540,11 @@ impl<T: Clone + Eq + Hash + Display> GossipTable<T> {
 mod tests {
     use std::{collections::BTreeSet, iter, str::FromStr};
 
+    use casper_types::testing::TestRng;
+
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, TimeDiff};
+    use casper_types::TimeDiff;
 
     use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION, *};
     use crate::{logging, utils::DisplayIter};

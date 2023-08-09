@@ -29,6 +29,9 @@ pub trait RuntimeProvider {
 
     /// Returns vesting schedule period.
     fn vesting_schedule_period_millis(&self) -> u64;
+
+    /// Check if auction bids are allowed.
+    fn allow_auction_bids(&self) -> bool;
 }
 
 /// Provides functionality of a contract storage.
