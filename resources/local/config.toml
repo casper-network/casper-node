@@ -301,6 +301,13 @@ qps_limit = 100
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 2_621_440
 
+# Specifies which origin will be reported as allowed by RPC server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
+
 
 # ========================================================================
 # Configuration options for the speculative execution JSON-RPC HTTP server
@@ -327,6 +334,13 @@ qps_limit = 1
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 2_621_440
 
+# Specifies which origin will be reported as allowed by speculative execution server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
+
 
 # ==============================================
 # Configuration options for the REST HTTP server
@@ -347,6 +361,13 @@ address = '0.0.0.0:8888'
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 100
+
+# Specifies which origin will be reported as allowed by REST server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
 
 
 # ==========================================================
@@ -371,6 +392,12 @@ event_stream_buffer_length = 5000
 # The maximum number of subscribers across all event streams the server will permit at any one time.
 max_concurrent_subscribers = 100
 
+# Specifies which origin will be reported as allowed by event stream server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
 
 # ===============================================
 # Configuration options for the storage component

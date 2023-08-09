@@ -6,6 +6,7 @@ use tower::builder::ServiceBuilder;
 use tracing::{info, warn};
 use warp::Filter;
 
+use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::{filters, ReactorEventT};
@@ -21,6 +22,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     shutdown_fuse: ObservableFuse,
     qps_limit: u64,
+    cors_origin: Option<CorsOrigin>,
 ) {
     // REST filters.
     let rest_status = filters::create_status_filter(effect_builder, api_version);
@@ -30,14 +32,21 @@ pub(super) async fn run<REv: ReactorEventT>(
         filters::create_validator_changes_filter(effect_builder, api_version);
     let rest_chainspec_filter = filters::create_chainspec_filter(effect_builder, api_version);
 
-    let service = warp::service(
-        rest_status
-            .or(rest_metrics)
-            .or(rest_open_rpc)
-            .or(rest_validator_changes)
-            .or(rest_chainspec_filter)
-            .with(warp::cors().allow_any_origin()),
-    );
+    let base_filter = rest_status
+        .or(rest_metrics)
+        .or(rest_open_rpc)
+        .or(rest_validator_changes)
+        .or(rest_chainspec_filter);
+
+    let filter = match cors_origin {
+        Some(cors_origin) => base_filter
+            .with(cors_origin.to_cors_builder().build())
+            .map(casper_json_rpc::box_reply)
+            .boxed(),
+        None => base_filter.map(casper_json_rpc::box_reply).boxed(),
+    };
+
+    let service = warp::service(filter);
 
     // Start the server, passing a fuse to allow the server to be shut down gracefully.
     let make_svc =

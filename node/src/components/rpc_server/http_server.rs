@@ -1,6 +1,6 @@
 use hyper::server::{conn::AddrIncoming, Builder};
 
-use casper_json_rpc::RequestHandlersBuilder;
+use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
 use casper_types::ProtocolVersion;
 
 use super::{
@@ -33,6 +33,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     qps_limit: u64,
     max_body_bytes: u32,
+    cors_origin: Option<CorsOrigin>,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
     PutDeploy::register_as_handler(effect_builder, api_version, &mut handlers);
@@ -64,6 +65,7 @@ pub(super) async fn run<REv: ReactorEventT>(
         max_body_bytes,
         RPC_API_PATH,
         RPC_API_SERVER_NAME,
+        cors_origin,
     )
-    .await;
+    .await
 }

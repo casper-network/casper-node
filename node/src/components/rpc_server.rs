@@ -20,6 +20,7 @@ mod speculative_exec_server;
 
 use std::{fmt::Debug, time::Instant};
 
+use casper_json_rpc::CorsOrigin;
 use datasize::DataSize;
 use futures::join;
 use tracing::{error, info, warn};
@@ -453,6 +454,7 @@ where
                 self.api_version,
                 cfg.qps_limit,
                 cfg.max_body_bytes,
+                CorsOrigin::from_str(&cfg.cors_origin),
             ));
             Some(())
         } else {
@@ -467,6 +469,7 @@ where
             self.api_version,
             cfg.qps_limit,
             cfg.max_body_bytes,
+            CorsOrigin::from_str(&cfg.cors_origin),
         ));
 
         Ok(Effects::new())

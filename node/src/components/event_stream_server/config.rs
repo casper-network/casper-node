@@ -12,6 +12,9 @@ const DEFAULT_EVENT_STREAM_BUFFER_LENGTH: u32 = 5000;
 /// Default maximum number of subscribers.
 const DEFAULT_MAX_CONCURRENT_SUBSCRIBERS: u32 = 100;
 
+/// Default CORS origin.
+const DEFAULT_CORS_ORIGIN: &str = "";
+
 /// SSE HTTP server configuration.
 #[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
@@ -28,6 +31,9 @@ pub struct Config {
 
     /// Default maximum number of subscribers across all event streams permitted at any one time.
     pub max_concurrent_subscribers: u32,
+
+    /// CORS origin.
+    pub cors_origin: String,
 }
 
 impl Config {
@@ -38,6 +44,7 @@ impl Config {
             address: DEFAULT_ADDRESS.to_string(),
             event_stream_buffer_length: DEFAULT_EVENT_STREAM_BUFFER_LENGTH,
             max_concurrent_subscribers: DEFAULT_MAX_CONCURRENT_SUBSCRIBERS,
+            cors_origin: DEFAULT_CORS_ORIGIN.to_string(),
         }
     }
 }
