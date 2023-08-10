@@ -299,9 +299,23 @@ fn weak_finality_threshold(n: usize) -> usize {
     n / 3 + 1
 }
 
+/// Returns the number of validators that need a signature for a strict finality of 2/3.
+fn strict_finality_threshold(n: usize) -> usize {
+    n * 2 / 3 + 1
+}
+
 fn latch_inner_check(builder: Option<&BlockBuilder>, expected: bool, msg: &str) {
     assert_eq!(
         builder.expect("builder should exist").latched(),
+        expected,
+        "{}",
+        msg
+    );
+}
+
+fn latch_count_check(builder: Option<&BlockBuilder>, expected: u8, msg: &str) {
+    assert_eq!(
+        builder.expect("builder should exist").latch_count(),
         expected,
         "{}",
         msg
@@ -3208,5 +3222,480 @@ async fn historical_sync_legacy_block_any_finality() {
 
     for event in events {
         assert_matches!(event, MockReactorEvent::MarkBlockCompletedRequest(_));
+    }
+}
+
+#[tokio::test]
+async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let deploys = [Deploy::random(&mut rng)];
+    let test_env = TestEnv::random(&mut rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .deploys(deploys.iter())
+            .build(&mut rng),
+    );
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
+
+    // Register block for fwd sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
+    assert!(block_synchronizer.forward.is_some());
+
+    // Start syncing.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::Request(BlockSynchronizerRequest::NeedNext),
+        );
+        assert_eq!(effects.len(), 1);
+
+        // First, the synchronizer should get peers.
+        let events = mock_reactor.process_effects(effects).await;
+        assert_matches!(
+            events[0],
+            MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
+                block_hash,
+                ..
+            }) if block_hash == *block.hash()
+        );
+
+        latch_inner_check(
+            block_synchronizer.forward.as_ref(),
+            true,
+            "should be latched waiting for peers",
+        );
+    }
+
+    // Register peers. This would make the synchronizer ask for the block header.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::AccumulatedPeers(*block.hash(), Some(peers.clone())),
+        );
+        let events = mock_reactor.process_effects(effects).await;
+
+        let mut peers_asked = Vec::new();
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::BlockHeaderFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) if peers.contains(&peer) && id == *block.hash() => {
+                    peers_asked.push(peer);
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no block header was received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Simulate successful fetch of the block header.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone().take_header()),
+                peer: peers_asked[0],
+            })),
+        );
+        let events = mock_reactor.process_effects(effects).await;
+
+        let expected_latch_count = events.len() as u8; // number of finality sig fetches.
+
+        // Check what signatures were requested
+        let mut sigs_requested = Vec::new();
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) => {
+                    assert_eq!(id.block_hash, *block.hash());
+                    assert_eq!(id.era_id, block.header().era_id());
+                    sigs_requested.push((peer, id.public_key));
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            format!(
+                "Latch count should be {} since no finality sigs were received.",
+                expected_latch_count
+            )
+            .as_str(),
+        );
+
+        // Receive a late response with the block header.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone().take_header()),
+                peer: peers_asked[1],
+            })),
+        );
+
+        assert_eq!(effects.len(), 0);
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            format!(
+                "Latch count should be {} since no finality sigs were received.",
+                expected_latch_count
+            )
+            .as_str(),
+        );
+    }
+
+    // Register finality sigs. This would make the synchronizer switch to have weak finality and
+    // continue asking for the block body.
+    {
+        let mut generated_effects = Effects::new();
+        for secret_key in validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len()))
+        {
+            // Register a finality signature
+            let signature = FinalitySignature::create(
+                *block.hash(),
+                block.header().era_id(),
+                secret_key.as_ref(),
+                PublicKey::from(secret_key.as_ref()),
+            );
+            assert!(signature.is_verified().is_ok());
+            let effects = block_synchronizer.handle_event(
+                mock_reactor.effect_builder(),
+                &mut rng,
+                Event::FinalitySignatureFetched(Ok(FetchedData::FromPeer {
+                    item: Box::new(signature),
+                    peer: peers[2],
+                })),
+            );
+            generated_effects.extend(effects);
+        }
+
+        let events = mock_reactor
+            .process_effects(
+                generated_effects
+                    .into_iter()
+                    .rev()
+                    .take(MAX_SIMULTANEOUS_PEERS as usize),
+            )
+            .await;
+
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::BlockFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) => {
+                    assert!(peers.contains(&peer));
+                    assert_eq!(id, *block.hash());
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no block was received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Receive some more finality signatures to check if the latch decrements.
+        let mut generated_effects = Effects::new();
+        for secret_key in validators_secret_keys
+            .iter()
+            .skip(weak_finality_threshold(validators_secret_keys.len()))
+            .take(2)
+        {
+            // Register a finality signature
+            let signature = FinalitySignature::create(
+                *block.hash(),
+                block.header().era_id(),
+                secret_key.as_ref(),
+                PublicKey::from(secret_key.as_ref()),
+            );
+            assert!(signature.is_verified().is_ok());
+            let effects = block_synchronizer.handle_event(
+                mock_reactor.effect_builder(),
+                &mut rng,
+                Event::FinalitySignatureFetched(Ok(FetchedData::FromPeer {
+                    item: Box::new(signature),
+                    peer: peers[2],
+                })),
+            );
+            generated_effects.extend(effects);
+        }
+
+        assert_eq!(generated_effects.len(), 0);
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no block was received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+    }
+
+    // Register a block response. This would make the synchronizer switch to HaveBlock and continue
+    // asking for the approvals hashes.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone()),
+                peer: peers[0],
+            })),
+        );
+        let events = mock_reactor.process_effects(effects).await;
+
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) if peers.contains(&peer) && id == *block.hash()
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no approval hashes were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Receive another response with the block. This is the second response out of the 5 we sent
+        // out earlier.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone()),
+                peer: peers[1],
+            })),
+        );
+        assert_eq!(effects.len(), 0);
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no approval hashes were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+    }
+
+    // Register approvals hashes. This would make the synchronizer switch to HaveApprovalsHashes and
+    // continue asking for the deploys.
+    {
+        let approvals_hashes = ApprovalsHashes::new(
+            block.hash(),
+            deploys
+                .iter()
+                .map(|deploy| deploy.approvals_hash().unwrap())
+                .collect(),
+            dummy_merkle_proof(),
+        );
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::ApprovalsHashesFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(approvals_hashes.clone()),
+                peer: peers[0],
+            })),
+        );
+        assert_eq!(effects.len(), MAX_SIMULTANEOUS_PEERS as usize);
+        for event in mock_reactor.process_effects(effects).await {
+            assert_matches!(
+                event,
+                MockReactorEvent::DeployFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) => {
+                    assert!(peers.contains(&peer));
+                    assert_eq!(id, DeployId::new(
+                        *deploys[0].hash(),
+                        approvals_hashes.approvals_hashes()[0],
+                    ));
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no deploys were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Receive a late response with the approvals hashes.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::ApprovalsHashesFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(approvals_hashes.clone()),
+                peer: peers[1],
+            })),
+        );
+
+        assert_eq!(effects.len(), 0);
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no deploys were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+    }
+
+    // Receive a deploy. This would make the synchonizer switch to HaveAllDeploys and continue
+    // asking for more finality signatures in order to reach strict finality.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::DeployFetched {
+                block_hash: *block.hash(),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploys[0].clone())))),
+            },
+        );
+        let events = mock_reactor.process_effects(effects).await;
+        let expected_latch_count = events.len() as u8;
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            format!(
+                "Latch count should be {} since no new signatures were received.",
+                expected_latch_count
+            )
+            .as_str(),
+        );
+
+        // Since it's the single deploy in the block, the next step is to get the rest of the
+        // finality signatures to get strict finality.
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                    id,
+                    ..
+                }) => {
+                    assert_eq!(id.block_hash, *block.hash());
+                    assert_eq!(id.era_id, block.header().era_id());
+                }
+            );
+        }
+
+        // Receive a late deploy response.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::DeployFetched {
+                block_hash: *block.hash(),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploys[0].clone())))),
+            },
+        );
+
+        assert_eq!(effects.len(), 0);
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            "Latch should not have changed since we did not receive a new signature yet.",
+        );
+    }
+
+    // Receive the rest of the the missing signatures to get strict finality. This would switch the
+    // state to HaveStrictFinality and continue to request to make the block executable.
+    {
+        let mut generated_effects = Effects::new();
+        for secret_key in validators_secret_keys.iter().rev().take(
+            strict_finality_threshold(validators_secret_keys.len())
+                - weak_finality_threshold(validators_secret_keys.len()),
+        ) {
+            // Register a finality signature
+            let signature = FinalitySignature::create(
+                *block.hash(),
+                block.header().era_id(),
+                secret_key.as_ref(),
+                PublicKey::from(secret_key.as_ref()),
+            );
+            assert!(signature.is_verified().is_ok());
+            let effects = block_synchronizer.handle_event(
+                mock_reactor.effect_builder(),
+                &mut rng,
+                Event::FinalitySignatureFetched(Ok(FetchedData::FromPeer {
+                    item: Box::new(signature),
+                    peer: peers[2],
+                })),
+            );
+            generated_effects.extend(effects);
+        }
+
+        // Once strict finality is achieved, the synchronizer will try to make the block executable.
+        let events = mock_reactor
+            .process_effects(generated_effects.into_iter().rev().take(1))
+            .await;
+
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::MakeBlockExecutableRequest(MakeBlockExecutableRequest {
+                    block_hash,
+                    ..
+                }) if block_hash == *block.hash()
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            1,
+            "Latch count should still be MAX_SIMULTANEOUS_PEERS since no FinalizedBlock was received.",
+        );
     }
 }
