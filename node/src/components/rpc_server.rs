@@ -454,7 +454,7 @@ where
                 self.api_version,
                 cfg.qps_limit,
                 cfg.max_body_bytes,
-                CorsOrigin::from_str(&cfg.cors_origin),
+                CorsOrigin::parse_str(&cfg.cors_origin),
             ));
             Some(())
         } else {
@@ -469,7 +469,7 @@ where
             self.api_version,
             cfg.qps_limit,
             cfg.max_body_bytes,
-            CorsOrigin::from_str(&cfg.cors_origin),
+            CorsOrigin::parse_str(&cfg.cors_origin),
         ));
 
         Ok(Effects::new())

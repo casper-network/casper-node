@@ -1,3 +1,5 @@
+#![allow(clippy::arithmetic_side_effects)]
+
 mod vertex;
 
 pub(crate) use crate::components::consensus::highway_core::state::Params;

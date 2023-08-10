@@ -1,3 +1,4 @@
+#![allow(clippy::arithmetic_side_effects)]
 //! # The Zug consensus protocol.
 //!
 //! This protocol requires that at most _f_ out of _n > 3 f_ validators (by weight) are faulty. It

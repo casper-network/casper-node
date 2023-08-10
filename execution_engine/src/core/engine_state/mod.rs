@@ -485,7 +485,7 @@ where
 
         match self
             .state
-            .delete_keys(correlation_id, state_root_hash, keys_to_delete)
+            .prune_keys(correlation_id, state_root_hash, keys_to_delete)
         {
             Ok(DeleteResult::Deleted(post_state_hash)) => {
                 Ok(PruneResult::Success { post_state_hash })
@@ -2223,12 +2223,12 @@ where
                 (delay, era_id)
             };
 
-            for key in withdraw_keys {
+            for key in &withdraw_keys {
                 // Transform only those withdraw purses that are still to be
                 // processed in the unbonding queue.
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
-                    .read(correlation_id, &key)
+                    .read(correlation_id, key)
                     .map_err(|_| Error::FailedToGetWithdrawKeys)?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
@@ -2263,6 +2263,11 @@ where
             }
         }
 
+        // Post-migration clean up
+
+        for withdraw_key in withdraw_keys {
+            tracking_copy.borrow_mut().prune(withdraw_key);
+        }
         Ok(())
     }
 

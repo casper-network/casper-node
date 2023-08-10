@@ -72,19 +72,14 @@ impl LoggingConfig {
 /// Logging output format.
 ///
 /// Defaults to "text"".
-#[derive(DataSize, Debug, Deserialize, Serialize)]
+#[derive(DataSize, Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum LoggingFormat {
     /// Text format.
+    #[default]
     Text,
     /// JSON format.
     Json,
-}
-
-impl Default for LoggingFormat {
-    fn default() -> Self {
-        LoggingFormat::Text
-    }
 }
 
 /// This is used to implement tracing's `FormatEvent` so that we can customize the way tracing

@@ -2,9 +2,10 @@
 //!
 //! This module is typically only used by the protocol implementation (see
 //! [`protocol`](crate::protocol)), but may be of interested to those writing low level tooling.
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 use bytemuck::{Pod, Zeroable};
+use hex_fmt::HexFmt;
 use thiserror::Error;
 
 use crate::{ChannelId, Id};
@@ -16,6 +17,12 @@ use crate::{ChannelId, Id};
 #[derive(Copy, Clone, Eq, PartialEq, Pod, Zeroable)]
 #[repr(transparent)]
 pub struct Header([u8; Header::SIZE]);
+
+impl Display for Header {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", HexFmt(&self.0))
+    }
+}
 
 impl Debug for Header {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
