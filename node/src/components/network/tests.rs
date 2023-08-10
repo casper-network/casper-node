@@ -160,10 +160,6 @@ impl Payload for Message {
         }
     }
 
-    fn incoming_resource_estimate(&self, _weights: &super::EstimatorWeights) -> u32 {
-        0
-    }
-
     fn get_channel(&self) -> super::Channel {
         super::Channel::Network
     }

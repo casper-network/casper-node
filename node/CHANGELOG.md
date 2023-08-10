@@ -20,7 +20,8 @@ All notable changes to this project will be documented in this file.  The format
 * The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
 * The underlying network protocol has been changed, now supports multiplexing for better latency and proper backpressuring across nodes.
 
-
+### Removed
+* There is no more weighted rate limiting on incoming traffic, instead the nodes dynamically adjusts allowed rates from peers based on available resources. This resulted in the removal of the `estimator_weights` configuration option and the `accumulated_incoming_limiter_delay` metric.
 
 ## 1.5.2
 

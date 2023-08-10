@@ -102,8 +102,7 @@ pub(crate) use self::{
     identity::Identity,
     insights::NetworkInsights,
     message::{
-        generate_largest_serialized_message, Channel, EstimatorWeights, FromIncoming, Message,
-        MessageKind, Payload,
+        generate_largest_serialized_message, Channel, FromIncoming, Message, MessageKind, Payload,
     },
     transport::Ticket,
 };
@@ -203,12 +202,6 @@ where
     #[data_size(skip)]
     outgoing_limiter: Limiter,
 
-    /// The limiter for incoming resource usage.
-    ///
-    /// This is not incoming bandwidth but an independent resource estimate.
-    #[data_size(skip)]
-    incoming_limiter: Limiter,
-
     /// The era that is considered the active era by the network component.
     active_era: EraId,
 
@@ -249,15 +242,6 @@ where
                 .inner()
                 .clone(),
             validator_matrix.clone(),
-        );
-
-        let incoming_limiter = Limiter::new(
-            cfg.max_incoming_message_rate_non_validators,
-            net_metrics
-                .accumulated_incoming_limiter_delay
-                .inner()
-                .clone(),
-            validator_matrix,
         );
 
         let outgoing_manager = OutgoingManager::with_metrics(
@@ -312,7 +296,6 @@ where
             connection_symmetries: HashMap::new(),
             net_metrics,
             outgoing_limiter,
-            incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
@@ -662,8 +645,6 @@ where
                     tasks::multi_channel_message_receiver(
                         self.context.clone(),
                         rpc_server,
-                        self.incoming_limiter
-                            .create_handle(peer_id, peer_consensus_public_key),
                         self.shutdown_fuse.inner().clone(),
                         peer_id,
                         span.clone(),

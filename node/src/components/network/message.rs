@@ -4,7 +4,6 @@ use std::{
     sync::Arc,
 };
 
-use datasize::DataSize;
 use futures::future::BoxFuture;
 use juliet::ChannelId;
 use serde::{
@@ -86,43 +85,6 @@ impl<P: Payload> Message<P> {
         match self {
             Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => false,
             Message::Payload(payload) => payload.is_low_priority(),
-        }
-    }
-
-    /// Returns the incoming resource estimate of the payload.
-    #[inline]
-    pub(super) fn payload_incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
-        match self {
-            Message::Handshake { .. } => 0,
-            // Ping and Pong have a hardcoded weights. Since every ping will result in a pong being
-            // sent as a reply, it has a higher weight.
-            Message::Ping { .. } => 2,
-            Message::Pong { .. } => 1,
-            Message::Payload(payload) => payload.incoming_resource_estimate(weights),
-        }
-    }
-
-    /// Attempts to create a demand-event from this message.
-    ///
-    /// Succeeds if the outer message contains a payload that can be converted into a demand.
-    #[allow(dead_code)] // TODO: Readd if necessary for backpressure.
-    pub(super) fn try_into_demand<REv>(
-        self,
-        effect_builder: EffectBuilder<REv>,
-        sender: NodeId,
-    ) -> Result<(REv, BoxFuture<'static, Option<P>>), Box<Self>>
-    where
-        REv: FromIncoming<P> + Send,
-    {
-        match self {
-            Message::Handshake { .. } | Message::Ping { .. } | Message::Pong { .. } => {
-                Err(self.into())
-            }
-            Message::Payload(payload) => {
-                // Note: For now, the wrapping/unwrap of the payload is a bit unfortunate here.
-                REv::try_demand_from_incoming(effect_builder, sender, payload)
-                    .map_err(|err| Message::Payload(err).into())
-            }
         }
     }
 
@@ -412,9 +374,6 @@ pub(crate) trait Payload:
     /// Classifies the payload based on its contents.
     fn message_kind(&self) -> MessageKind;
 
-    /// The penalty for resource usage of a message to be applied when processed as incoming.
-    fn incoming_resource_estimate(&self, _weights: &EstimatorWeights) -> u32;
-
     /// Determines if the payload should be considered low priority.
     fn is_low_priority(&self) -> bool {
         false
@@ -446,38 +405,6 @@ pub(crate) trait FromIncoming<P> {
     {
         Err(payload)
     }
-}
-/// A generic configuration for payload weights.
-///
-/// Implementors of `Payload` are free to interpret this as they see fit.
-///
-/// The default implementation sets all weights to zero.
-#[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
-pub struct EstimatorWeights {
-    pub consensus: u32,
-    pub block_gossip: u32,
-    pub deploy_gossip: u32,
-    pub finality_signature_gossip: u32,
-    pub address_gossip: u32,
-    pub finality_signature_broadcasts: u32,
-    pub deploy_requests: u32,
-    pub deploy_responses: u32,
-    pub legacy_deploy_requests: u32,
-    pub legacy_deploy_responses: u32,
-    pub block_requests: u32,
-    pub block_responses: u32,
-    pub block_header_requests: u32,
-    pub block_header_responses: u32,
-    pub trie_requests: u32,
-    pub trie_responses: u32,
-    pub finality_signature_requests: u32,
-    pub finality_signature_responses: u32,
-    pub sync_leap_requests: u32,
-    pub sync_leap_responses: u32,
-    pub approvals_hashes_requests: u32,
-    pub approvals_hashes_responses: u32,
-    pub execution_results_requests: u32,
-    pub execution_results_responses: u32,
 }
 
 mod specimen_support {

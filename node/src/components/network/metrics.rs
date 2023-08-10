@@ -118,8 +118,6 @@ pub(super) struct Metrics {
 
     /// Total time spent delaying outgoing traffic to non-validators due to limiter, in seconds.
     pub(super) accumulated_outgoing_limiter_delay: RegisteredMetric<Counter>,
-    /// Total time spent delaying incoming traffic from non-validators due to limiter, in seconds.
-    pub(super) accumulated_incoming_limiter_delay: RegisteredMetric<Counter>,
 }
 
 impl Metrics {
@@ -336,10 +334,6 @@ impl Metrics {
             "accumulated_outgoing_limiter_delay",
             "seconds spent delaying outgoing traffic to non-validators due to limiter, in seconds",
         )?;
-        let accumulated_incoming_limiter_delay = registry.new_counter(
-            "accumulated_incoming_limiter_delay",
-            "seconds spent delaying incoming traffic from non-validators due to limiter, in seconds."
-        )?;
 
         Ok(Metrics {
             broadcast_requests,
@@ -394,7 +388,6 @@ impl Metrics {
             requests_for_trie_accepted,
             requests_for_trie_finished,
             accumulated_outgoing_limiter_delay,
-            accumulated_incoming_limiter_delay,
         })
     }
 

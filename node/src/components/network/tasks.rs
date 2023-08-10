@@ -33,10 +33,8 @@ use super::{
     connection_id::ConnectionId,
     error::{ConnectionError, MessageReceiverError, MessageSenderError},
     event::{IncomingConnection, OutgoingConnection},
-    limiter::LimiterHandle,
     message::NodeKeyPair,
-    Channel, EstimatorWeights, Event, FromIncoming, Identity, Message, Metrics, Payload, RpcServer,
-    Transport,
+    Channel, Event, FromIncoming, Identity, Message, Metrics, Payload, RpcServer, Transport,
 };
 
 use crate::{
@@ -188,8 +186,6 @@ where
     public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
     pub(super) handshake_timeout: TimeDiff,
-    /// Weights to estimate payloads with.
-    payload_weights: EstimatorWeights,
     /// The protocol version at which (or under) tarpitting is enabled.
     tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
@@ -235,7 +231,6 @@ impl<REv> NetworkContext<REv> {
             chain_info,
             node_key_pair,
             handshake_timeout: cfg.handshake_timeout,
-            payload_weights: cfg.estimator_weights.clone(),
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
@@ -470,7 +465,6 @@ pub(super) async fn server<P, REv>(
 pub(super) async fn multi_channel_message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
     mut rpc_server: RpcServer,
-    limiter: LimiterHandle,
     shutdown: ObservableFuse,
     peer_id: NodeId,
     span: Span,
@@ -524,14 +518,6 @@ where
             .map_err(MessageReceiverError::DeserializationError)?;
 
         trace!(%msg, %channel, "message received");
-
-        // TODO: Limiting on top of backpressuring is suboptimal - a better approach is to priorize
-        //       incoming message requests. This is also problematic since the IO loop needs to keep
-        //       on running.
-
-        limiter
-            .request_allowance(msg.payload_incoming_resource_estimate(&context.payload_weights))
-            .await;
 
         // Ensure the peer did not try to sneak in a message on a different channel.
         // TODO: Verify we still need this.
