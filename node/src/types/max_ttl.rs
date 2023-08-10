@@ -17,9 +17,9 @@ impl MaxTtl {
         self.0
     }
 
-    /// Determine if two timestamps are more than max_ttl apart.
-    pub fn ttl_elapsed(&self, higher: Timestamp, lower: Timestamp) -> bool {
-        lower < higher.saturating_sub(self.0)
+    /// If rearview is earlier than (vantage - ttl duration), ttl has elapsed.
+    pub fn ttl_elapsed(&self, vantage: Timestamp, rearview: Timestamp) -> bool {
+        rearview < vantage.saturating_sub(self.0)
     }
 
     /// Determine if orphaned block header is older than ttl requires.
