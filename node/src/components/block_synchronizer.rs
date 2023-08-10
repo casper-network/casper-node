@@ -807,7 +807,11 @@ impl BlockSynchronizer {
         };
 
         let validator_matrix = &self.validator_matrix.clone();
-        if let Some(builder) = self.get_builder(block_hash, true) {
+        if let Some(builder) = self.get_builder(block_hash, false) {
+            if builder.waiting_for_block_header() {
+                builder.latch_decrement();
+            }
+
             match maybe_block_header {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
@@ -851,7 +855,11 @@ impl BlockSynchronizer {
             }
         };
 
-        if let Some(builder) = self.get_builder(block_hash, true) {
+        if let Some(builder) = self.get_builder(block_hash, false) {
+            if builder.waiting_for_block() {
+                builder.latch_decrement();
+            }
+
             match maybe_block {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
@@ -895,7 +903,11 @@ impl BlockSynchronizer {
             }
         };
 
-        if let Some(builder) = self.get_builder(block_hash, true) {
+        if let Some(builder) = self.get_builder(block_hash, false) {
+            if builder.waiting_for_approvals_hashes() {
+                builder.latch_decrement();
+            }
+
             match maybe_approvals_hashes {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
@@ -936,7 +948,11 @@ impl BlockSynchronizer {
             }
         };
 
-        if let Some(builder) = self.get_builder(id.block_hash, true) {
+        if let Some(builder) = self.get_builder(id.block_hash, false) {
+            if builder.waiting_for_signatures() {
+                builder.latch_decrement();
+            }
+
             match maybe_finality_signature {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
@@ -1198,7 +1214,11 @@ impl BlockSynchronizer {
             FetchedData::FromStorage { item } => (item, None),
         };
 
-        if let Some(builder) = self.get_builder(block_hash, true) {
+        if let Some(builder) = self.get_builder(block_hash, false) {
+            if builder.waiting_for_deploys() {
+                builder.latch_decrement();
+            }
+
             if let Err(error) = builder.register_deploy(deploy.fetch_id(), maybe_peer) {
                 error!(%block_hash, %error, "BlockSynchronizer: failed to apply deploy");
             }

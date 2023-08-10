@@ -231,6 +231,11 @@ impl BlockBuilder {
         self.latch.count() > 0
     }
 
+    #[cfg(test)]
+    pub fn latch_count(&self) -> u8 {
+        self.latch.count()
+    }
+
     pub(super) fn check_latch(&mut self, interval: TimeDiff) -> bool {
         self.latch.check_latch(interval, Timestamp::now())
     }
@@ -456,6 +461,23 @@ impl BlockBuilder {
         }
     }
 
+    pub(super) fn waiting_for_block_header(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::Initialized(..) => true,
+            BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
+    }
+
     pub(super) fn register_block_header(
         &mut self,
         block_header: BlockHeader,
@@ -472,6 +494,23 @@ impl BlockBuilder {
         Ok(())
     }
 
+    pub(super) fn waiting_for_block(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::HaveWeakFinalitySignatures(..) => true,
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
+    }
+
     pub(super) fn register_block(
         &mut self,
         block: &Block,
@@ -481,6 +520,29 @@ impl BlockBuilder {
             .acquisition_state
             .register_block(block, self.should_fetch_execution_state);
         self.handle_acceptance(maybe_peer, acceptance)
+    }
+
+    pub(super) fn waiting_for_approvals_hashes(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::HaveBlock(..) if !self.should_fetch_execution_state => true,
+            BlockAcquisitionState::HaveAllExecutionResults(..)
+                if self.should_fetch_execution_state =>
+            {
+                true
+            }
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
     }
 
     pub(super) fn register_approvals_hashes(
@@ -516,6 +578,11 @@ impl BlockBuilder {
                 Err(Error::BlockAcquisition(error))
             }
         }
+    }
+
+    pub(super) fn waiting_for_signatures(&self) -> bool {
+        self.acquisition_state
+            .actively_acquiring_signatures(self.should_fetch_execution_state)
     }
 
     pub(super) fn register_finality_signature(
@@ -658,6 +725,34 @@ impl BlockBuilder {
         }
         self.touch();
         Ok(())
+    }
+
+    pub(super) fn waiting_for_deploys(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::HaveApprovalsHashes(_, _, deploys) => {
+                deploys.needs_deploy().is_some()
+            }
+            BlockAcquisitionState::HaveAllExecutionResults(_, _, deploys, checksum)
+                if self.should_fetch_execution_state =>
+            {
+                if !checksum.is_checkable() {
+                    deploys.needs_deploy().is_some()
+                } else {
+                    false
+                }
+            }
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
     }
 
     pub(super) fn register_deploy(
