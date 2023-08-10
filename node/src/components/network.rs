@@ -42,16 +42,16 @@ mod symmetry;
 pub(crate) mod tasks;
 #[cfg(test)]
 mod tests;
+mod transport;
 
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
-    io,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    sync::{Arc, Mutex},
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -61,17 +61,8 @@ use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
-use muxink::{
-    backpressured::{BackpressuredSink, BackpressuredSinkError, BackpressuredStream, Ticket},
-    demux::{Demultiplexer, DemultiplexerError, DemultiplexerHandle},
-    fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
-    framing::{fixed_size::FixedSize, length_delimited::LengthDelimited},
-    io::{FrameReader, FrameWriter},
-    little_endian::{DecodeError, LittleEndian},
-    mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerError, MultiplexerHandle},
-    ImmediateFrameU64,
-};
 
+use juliet::rpc::{JulietRpcClient, JulietRpcServer, RpcBuilder};
 use prometheus::Registry;
 use rand::{
     seq::{IteratorRandom, SliceRandom},
@@ -86,7 +77,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_util::compat::Compat;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use casper_types::{EraId, PublicKey, SecretKey};
@@ -94,7 +84,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    error::{ConnectionError, MessageReaderError},
+    error::{ConnectionError, MessageReceiverError},
     event::{IncomingConnection, OutgoingConnection},
     health::{HealthConfig, TaggedTimestamp},
     limiter::Limiter,
@@ -102,7 +92,7 @@ use self::{
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::{EncodedMessage, NetworkContext},
+    tasks::NetworkContext,
 };
 pub(crate) use self::{
     config::Config,
@@ -115,6 +105,7 @@ pub(crate) use self::{
         generate_largest_serialized_message, Channel, EstimatorWeights, FromIncoming, Message,
         MessageKind, Payload,
     },
+    transport::Ticket,
 };
 use crate::{
     components::{gossiper::GossipItem, Component, ComponentState, InitializedComponent},
@@ -150,12 +141,6 @@ const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 /// Interval during which to perform outgoing manager housekeeping.
 const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 
-/// The size of a single message fragment sent over the wire.
-const MESSAGE_FRAGMENT_SIZE: usize = 4096;
-
-/// How many bytes of ACKs to read in one go.
-const ACK_BUFFER_SIZE: usize = 1024;
-
 /// How often to send a ping down a healthy connection.
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -170,14 +155,10 @@ const PING_TIMEOUT: Duration = Duration::from_secs(6);
 /// How many pings to send before giving up and dropping the connection.
 const PING_RETRIES: u16 = 5;
 
-/// How many items to buffer before backpressuring.
-// TODO: This should probably be configurable on a per-channel basis.
-const BACKPRESSURE_WINDOW_SIZE: u64 = 20;
-
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    senders: [UnboundedSender<EncodedMessage>; Channel::COUNT],
+    rpc_client: JulietRpcClient<{ Channel::COUNT }>,
     peer_addr: SocketAddr,
 }
 
@@ -209,6 +190,10 @@ where
     /// Join handle for the server thread.
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
+
+    /// Builder for new node-to-node RPC instances.
+    #[data_size(skip)]
+    rpc_builder: RpcBuilder<{ Channel::COUNT }>,
 
     /// Networking metrics.
     #[data_size(skip)]
@@ -305,12 +290,18 @@ where
             None => None,
         };
 
+        let chain_info = chain_info_source.into();
+        let rpc_builder = transport::create_rpc_builder(
+            chain_info.maximum_net_message_size,
+            cfg.max_in_flight_demands,
+        );
+
         let context = Arc::new(NetworkContext::new(
             cfg.clone(),
             our_identity,
             keylog,
             node_key_pair.map(NodeKeyPair::new),
-            chain_info_source.into(),
+            chain_info,
             &net_metrics,
         ));
 
@@ -327,6 +318,7 @@ where
             state: ComponentState::Uninitialized,
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
             server_join_handle: None,
+            rpc_builder,
             _payload: PhantomData,
         };
 
@@ -507,35 +499,65 @@ where
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             let channel = msg.get_channel();
-            let sender = &connection.senders[channel as usize];
+
             let payload = if let Some(payload) = serialize_network_message(&msg) {
                 payload
             } else {
+                // TODO: Note/log that serialization failed.
                 // The `AutoClosingResponder` will respond by itself.
                 return;
             };
             trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            let send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
-
-            if let Err(refused_message) =
-                sender.send(EncodedMessage::new(payload, opt_responder, send_token))
+            let guard = match connection
+                .rpc_client
+                .create_request(channel.into_channel_id())
+                .with_payload(payload)
+                .try_queue_for_sending()
             {
-                match deserialize_network_message::<P>(refused_message.0.payload()) {
-                    Ok(reconstructed_message) => {
-                        // We lost the connection, but that fact has not reached us as an event yet.
-                        debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, lost connection");
+                Ok(guard) => guard,
+                Err(builder) => {
+                    // We had to drop the message, since we hit the buffer limit.
+                    debug!(%channel, "node is sending at too high a rate, message dropped");
+
+                    let payload = builder.into_payload().unwrap_or_default();
+                    match deserialize_network_message::<P>(&payload) {
+                        Ok(reconstructed_message) => {
+                            debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
+                        }
+                        Err(err) => {
+                            error!(our_id=%self.context.our_id(),
+                                   %dest,
+                                   reconstruction_error=%err,
+                                   ?payload,
+                                   "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
+                            );
+                        }
                     }
-                    Err(err) => {
-                        error!(our_id=%self.context.our_id(),
-                               %dest,
-                               reconstruction_error=%err,
-                               payload=?refused_message.0.payload(),
-                               "dropped outgoing message, but also failed to reconstruct it"
-                        );
-                    }
+
+                    return;
+                }
+            };
+
+            // At this point, we could pass the guard to the original component to allow for
+            // backpressure to actually propagate. In the current version we are still going with
+            // the fire-and-forget model though, so simply check for an immediate error, then
+            // forget.
+            match guard.try_wait_for_response() {
+                Ok(Ok(_outcome)) => {
+                    // We got an incredibly quick round-trip, lucky us! Nothing to do.
+                }
+                Ok(Err(err)) => {
+                    debug!(%channel, %err, "failed to send message");
+                }
+                Err(guard) => {
+                    // Not done yet, forget.
+                    guard.forget();
                 }
             }
+
+            let _send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
+            // TODO: How to update self.net_metrics.queued_messages? Or simply remove metric?
         } else {
             // We are not connected, so the reconnection is likely already in progress.
             debug!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, no connection");
@@ -630,37 +652,16 @@ where
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
-                // TODO: Removal of `CountingTransport` here means some functionality has to be
-                // restored.
-
                 let (read_half, write_half) = tokio::io::split(transport);
 
-                // Setup a multiplexed delivery for ACKs (we use the send direction of the incoming
-                // connection for sending ACKs only).
-                let write_compat: Compat<WriteHalf<SslStream<TcpStream>>> =
-                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
-
-                let ack_writer: AckFrameWriter =
-                    FrameWriter::new(FixedSize::new(ACK_FRAME_SIZE), write_compat);
-                let ack_carrier = Multiplexer::new(ack_writer);
-
-                // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
-                // tokio built-in version instead). The compat layer fixes that.
-                let read_compat: Compat<ReadHalf<SslStream<TcpStream>>> =
-                    tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
-
-                let frame_reader: IncomingFrameReader =
-                    FrameReader::new(LengthDelimited, read_compat, MESSAGE_FRAGMENT_SIZE);
-
-                let carrier = Arc::new(Mutex::new(Demultiplexer::new(frame_reader)));
+                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
                 effects.extend(
                     tasks::multi_channel_message_receiver(
                         self.context.clone(),
-                        carrier,
-                        ack_carrier,
+                        rpc_server,
                         self.incoming_limiter
                             .create_handle(peer_id, peer_consensus_public_key),
                         self.shutdown_fuse.inner().clone(),
@@ -668,11 +669,17 @@ where
                         span.clone(),
                     )
                     .instrument(span)
-                    .event(move |result| Event::IncomingClosed {
-                        result,
-                        peer_id: Box::new(peer_id),
-                        peer_addr,
-                        span: boxed_span,
+                    .event(move |result| {
+                        // We keep the client around, even though we do not use it, since dropping
+                        // it will cause the connection to be closed from our end.
+                        drop(rpc_client);
+
+                        Event::IncomingClosed {
+                            result,
+                            peer_id: Box::new(peer_id),
+                            peer_addr,
+                            span: boxed_span,
+                        }
                     }),
                 );
 
@@ -683,7 +690,7 @@ where
 
     fn handle_incoming_closed(
         &mut self,
-        result: Result<(), MessageReaderError>,
+        result: Result<(), MessageReceiverError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
         span: Span,
@@ -814,9 +821,14 @@ where
             } => {
                 info!("new outgoing connection established");
 
-                let (senders, receivers) = unbounded_channels::<_, { Channel::COUNT }>();
+                let (read_half, write_half) = tokio::io::split(transport);
 
-                let handle = OutgoingHandle { senders, peer_addr };
+                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
+
+                let handle = OutgoingHandle {
+                    rpc_client,
+                    peer_addr,
+                };
 
                 let request = self
                     .outgoing_manager
@@ -839,36 +851,12 @@ where
                     self.connection_completed(peer_id);
                 }
 
-                // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
-                // tokio built-in version instead). The compat layer fixes that.
-
-                let (read_half, write_half) = tokio::io::split(transport);
-
-                let read_compat = tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
-
-                let ack_reader: AckFrameReader =
-                    FrameReader::new(FixedSize::new(ACK_FRAME_SIZE), read_compat, ACK_BUFFER_SIZE);
-                let ack_carrier = Arc::new(Mutex::new(Demultiplexer::new(ack_reader)));
-
-                let write_compat =
-                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
-                let carrier: OutgoingCarrier =
-                    Multiplexer::new(FrameWriter::new(LengthDelimited, write_compat));
-
-                effects.extend(
-                    tasks::encoded_message_sender(
-                        receivers,
-                        carrier,
-                        ack_carrier,
-                        self.outgoing_limiter
-                            .create_handle(peer_id, peer_consensus_public_key),
-                    )
-                    .instrument(span)
-                    .event(move |_| Event::OutgoingDropped {
+                effects.extend(tasks::rpc_sender_loop(rpc_server).instrument(span).event(
+                    move |_| Event::OutgoingDropped {
                         peer_id: Box::new(peer_id),
                         peer_addr,
-                    }),
-                );
+                    },
+                ));
 
                 effects
             }
@@ -1394,66 +1382,17 @@ fn unbounded_channels<T, const N: usize>() -> ([UnboundedSender<T>; N], [Unbound
 /// Transport type for base encrypted connections.
 type Transport = SslStream<TcpStream>;
 
-/// The writer for outgoing length-prefixed frames.
-type OutgoingFrameWriter = FrameWriter<
-    ChannelPrefixedFrame<SingleFragment>,
-    LengthDelimited,
-    Compat<WriteHalf<Transport>>,
+/// Transport-level RPC server.
+type RpcServer = JulietRpcServer<
+    { Channel::COUNT },
+    ReadHalf<SslStream<TcpStream>>,
+    WriteHalf<SslStream<TcpStream>>,
 >;
-
-/// The multiplexer to send fragments over an underlying frame writer.
-type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
-
-/// The error type associated with the primary sink implementation.
-type OutgoingChannelError =
-    BackpressuredSinkError<MultiplexerError<io::Error>, DecodeError<DemultiplexerError<io::Error>>>;
-
-/// An instance of a channel on an outgoing carrier.
-type OutgoingChannel = BackpressuredSink<
-    Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>,
-    IncomingAckChannel,
-    Bytes,
->;
-
-/// The reader for incoming length-prefixed frames.
-type IncomingFrameReader = FrameReader<LengthDelimited, Compat<ReadHalf<Transport>>>;
-
-/// The demultiplexer that seperates channels sent through the underlying frame reader.
-type IncomingCarrier = Demultiplexer<IncomingFrameReader>;
-
-/// An instance of a channel on an incoming carrier.
-type IncomingChannel = BackpressuredStream<
-    Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>,
-    OutgoingAckChannel,
-    Bytes,
->;
-
-/// Frame writer for ACKs, sent back over the incoming connection.
-type AckFrameWriter =
-    FrameWriter<ChannelPrefixedFrame<ImmediateFrameU64>, FixedSize, Compat<WriteHalf<Transport>>>;
-
-/// ACK frames are 9 bytes (channel prefix + `u64`).
-const ACK_FRAME_SIZE: usize = 9;
-
-/// Frame reader for ACKs, received through an outgoing connection.
-type AckFrameReader = FrameReader<FixedSize, Compat<ReadHalf<Transport>>>;
-
-/// Multiplexer sending ACKs for various channels over an `AckFrameWriter`.
-type OutgoingAckCarrier = Multiplexer<AckFrameWriter>;
-
-/// Outgoing ACK sink.
-type OutgoingAckChannel = LittleEndian<u64, MultiplexerHandle<AckFrameWriter>>;
-
-/// Demultiplexer receiving ACKs for various channels over an `AckFrameReader`.
-type IncomingAckCarrier = Demultiplexer<AckFrameReader>;
-
-/// Incoming ACK stream.
-type IncomingAckChannel = LittleEndian<u64, DemultiplexerHandle<AckFrameReader>>;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {
     bincode::options()
-        .with_no_limit() // We rely on `muxink` to impose limits.
+        .with_no_limit() // We rely on `juliet` to impose limits.
         .with_little_endian() // Default at the time of this writing, we are merely pinning it.
         .with_varint_encoding() // Same as above.
         .reject_trailing_bytes() // There is no reason for us not to reject trailing bytes.

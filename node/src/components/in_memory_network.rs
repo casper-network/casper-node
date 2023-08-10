@@ -285,14 +285,13 @@ use std::{
 };
 
 use casper_types::testing::TestRng;
-use muxink::backpressured::Ticket;
 use rand::seq::IteratorRandom;
 use serde::Serialize;
 use tokio::sync::mpsc::{self, error::SendError};
 use tracing::{debug, error, info, warn};
 
 use crate::{
-    components::Component,
+    components::{network::Ticket, Component},
     effect::{requests::NetworkRequest, EffectBuilder, EffectExt, Effects},
     logging,
     reactor::{EventQueueHandle, QueueKind},

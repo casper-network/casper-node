@@ -111,7 +111,7 @@ pub struct Config {
     /// The chance, expressed as a number between 0.0 and 1.0, of triggering the tarpit.
     pub tarpit_chance: f32,
     /// Maximum number of demands for objects that can be in-flight.
-    pub max_in_flight_demands: u32,
+    pub max_in_flight_demands: u16,
     /// Duration peers are kept on the block list, before being redeemed.
     pub blocklist_retain_duration: TimeDiff,
     /// Network identity configuration option.

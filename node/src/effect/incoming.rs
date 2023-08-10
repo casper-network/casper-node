@@ -8,11 +8,10 @@ use std::{
 };
 
 use datasize::DataSize;
-use muxink::backpressured::Ticket;
 use serde::Serialize;
 
 use crate::{
-    components::{consensus, fetcher::Tag, gossiper},
+    components::{consensus, fetcher::Tag, gossiper, network::Ticket},
     protocol::Message,
     types::{FinalitySignature, NodeId, TrieOrChunkIdDisplay},
 };

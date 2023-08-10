@@ -9,7 +9,6 @@ use derive_more::From;
 use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
-use muxink::backpressured::Ticket;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
@@ -18,7 +17,9 @@ use crate::{
         consensus,
         fetcher::{FetchItem, FetchResponse, Tag},
         gossiper,
-        network::{Channel, EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
+        network::{
+            Channel, EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload, Ticket,
+        },
     },
     effect::{
         incoming::{

@@ -12,7 +12,6 @@ use std::{
 
 use derive_more::From;
 use futures::FutureExt;
-use muxink::backpressured::Ticket;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
@@ -23,7 +22,7 @@ use casper_types::SecretKey;
 
 use super::{
     chain_info::ChainInfo, unbounded_channels, Config, Event as NetworkEvent, FromIncoming,
-    GossipedAddress, Identity, MessageKind, Network, Payload,
+    GossipedAddress, Identity, MessageKind, Network, Payload, Ticket,
 };
 use crate::{
     components::{

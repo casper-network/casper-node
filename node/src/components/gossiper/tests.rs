@@ -8,7 +8,6 @@ use std::{
 };
 
 use derive_more::{Display, From};
-use muxink::backpressured::Ticket;
 use prometheus::Registry;
 use rand::Rng;
 use reactor::ReactorEvent;
@@ -25,7 +24,7 @@ use crate::{
     components::{
         deploy_acceptor,
         in_memory_network::{self, InMemoryNetwork, NetworkController},
-        network::{GossipedAddress, Identity as NetworkIdentity},
+        network::{GossipedAddress, Identity as NetworkIdentity, Ticket},
         storage::{self, Storage},
     },
     effect::{

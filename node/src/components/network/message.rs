@@ -6,7 +6,7 @@ use std::{
 
 use datasize::DataSize;
 use futures::future::BoxFuture;
-use muxink::backpressured::Ticket;
+use juliet::ChannelId;
 use serde::{
     de::{DeserializeOwned, Error as SerdeError},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -18,7 +18,7 @@ use casper_hashing::Digest;
 use casper_types::testing::TestRng;
 use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
 
-use super::{connection_id::ConnectionId, health::Nonce, serialize_network_message};
+use super::{connection_id::ConnectionId, health::Nonce, serialize_network_message, Ticket};
 use crate::{
     effect::EffectBuilder,
     protocol,
@@ -393,6 +393,13 @@ pub enum Channel {
     Consensus = 5,
     /// Regular gossip announcements and responses (e.g. for deploys and blocks).
     BulkGossip = 6,
+}
+
+impl Channel {
+    #[inline(always)]
+    pub(crate) fn into_channel_id(self) -> ChannelId {
+        ChannelId::new(self as u8)
+    }
 }
 
 /// Network message payload.

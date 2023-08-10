@@ -653,6 +653,7 @@ dependencies = [
  "humantime",
  "hyper",
  "itertools 0.10.5",
+ "juliet",
  "libc",
  "linked-hash-map",
  "lmdb-rkv",
