@@ -21,6 +21,7 @@
 
 use std::{
     collections::HashMap,
+    fmt::{self, Display, Formatter},
     sync::{Arc, OnceLock},
     time::Duration,
 };
@@ -87,7 +88,7 @@ impl<const N: usize> RpcBuilder<N> {
 /// Juliet RPC client.
 ///
 /// The client is used to create new RPC calls through [`JulietRpcClient::create_request`].
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct JulietRpcClient<const N: usize> {
     new_request_sender: UnboundedSender<NewOutgoingRequest>,
     request_handle: RequestHandle<N>,
@@ -290,6 +291,11 @@ impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
 }
 
 impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
+    /// Recovers a payload from the request builder.
+    pub fn into_payload(self) -> Option<Bytes> {
+        self.payload
+    }
+
     /// Sets the payload for the request.
     ///
     /// By default, no payload is included.
@@ -523,7 +529,35 @@ pub struct IncomingRequest {
     handle: Option<Handle>,
 }
 
+impl Display for IncomingRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "IncomingRequest {{ channel: {}, id: {}, payload: ",
+            self.channel, self.id
+        )?;
+
+        if let Some(ref payload) = self.payload {
+            write!(f, "{} bytes }}", payload.len())
+        } else {
+            f.write_str("none>")
+        }
+    }
+}
+
 impl IncomingRequest {
+    /// Returns the [`ChannelId`] of the channel the request arrived on.
+    #[inline(always)]
+    pub const fn channel(&self) -> ChannelId {
+        self.channel
+    }
+
+    /// Returns the [`Id`] of the request.
+    #[inline(always)]
+    pub const fn id(&self) -> Id {
+        self.id
+    }
+
     /// Returns a reference to the payload, if any.
     #[inline(always)]
     pub const fn payload(&self) -> &Option<Bytes> {
