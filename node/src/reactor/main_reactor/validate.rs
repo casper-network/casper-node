@@ -154,7 +154,7 @@ impl MainReactor {
             if max_ttl.synced_to_ttl(
                 highest_switch_block_header.timestamp(),
                 &highest_orphaned_block_header,
-            )? {
+            ) {
                 debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
             } else {
                 info!(
