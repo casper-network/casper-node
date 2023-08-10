@@ -65,7 +65,7 @@ where
     }
 
     fn get_main_purse(&self) -> URef {
-        self.context.account().main_purse()
+        self.context.entity().main_purse()
     }
 }
 

@@ -12,7 +12,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{engine_state::Error, execution, runtime::PreprocessingError};
 use casper_types::{
     account::AccountHash,
-    contracts::DEFAULT_ENTRY_POINT_NAME,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     runtime_args,
     system::auction::{self, DelegationRate},
     Motes, PublicKey, RuntimeArgs, SecretKey, DEFAULT_ADD_BID_COST, DEFAULT_DELEGATE_COST, U512,

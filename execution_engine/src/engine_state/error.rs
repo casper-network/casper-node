@@ -3,7 +3,10 @@ use datasize::DataSize;
 use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
-use casper_types::{bytesrepr, system::mint, ApiError, Digest, ProtocolVersion};
+use casper_types::{
+    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest,
+    ProtocolVersion,
+};
 
 use crate::{
     engine_state::{genesis::GenesisError, upgrade::ProtocolUpgradeError},
@@ -99,6 +102,12 @@ pub enum Error {
     /// Failed to put a trie node into global state because some of its children were missing.
     #[error("Failed to put a trie into global state because some of its children were missing")]
     MissingTrieNodeChildren(Vec<Digest>),
+    /// Failed to retrieve contract record by a given account hash.
+    #[error("Failed to retrieve contract by account hash {0}")]
+    MissingContractByAccountHash(AccountHash),
+    /// Failed to retreive the entity's package
+    #[error("Failed to retreieve the entity package as {0}")]
+    MissingEntityPackage(ContractPackageHash),
 }
 
 impl Error {

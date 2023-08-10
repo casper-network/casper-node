@@ -14,8 +14,9 @@ use super::TransformError;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
+    addressable_entity::NamedKeys,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLType, CLTyped, CLValue, NamedKeys, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
+    CLType, CLTyped, CLValue, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
 /// Representation of a single transformation occurring during execution.
@@ -70,13 +71,12 @@ impl TransformKind {
             TransformKind::AddUInt256(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddUInt512(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddKeys(keys) => match stored_value {
-                StoredValue::Contract(mut contract) => {
-                    contract.named_keys_append(keys);
-                    Ok(StoredValue::Contract(contract))
+                StoredValue::AddressableEntity(mut entity) => {
+                    entity.named_keys_append(keys);
+                    Ok(StoredValue::AddressableEntity(entity))
                 }
-                StoredValue::Account(mut account) => {
-                    account.named_keys_append(keys);
-                    Ok(StoredValue::Account(account))
+                StoredValue::Account(_) | StoredValue::Contract(_) => {
+                    Err(TransformError::Deprecated)
                 }
                 StoredValue::CLValue(cl_value) => {
                     let expected = "Contract or Account".to_string();
@@ -322,16 +322,11 @@ mod tests {
 
     use num::{Bounded, Num};
 
-    use crate::{
-        account::{Account, AccountHash, ActionThresholds, AssociatedKeys},
-        bytesrepr::Bytes,
-        AccessRights, ContractWasm, Key, URef, U128, U256, U512,
-    };
+    use crate::{bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256, U512};
 
     use super::*;
 
     const ZERO_ARRAY: [u8; 32] = [0; 32];
-    const ZERO_PUBLIC_KEY: AccountHash = AccountHash::new(ZERO_ARRAY);
     const TEST_STR: &str = "a";
     const TEST_BOOL: bool = true;
 
@@ -456,14 +451,6 @@ mod tests {
         assert_yields_type_mismatch_error(contract);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
-        let account = StoredValue::Account(Account::new(
-            ZERO_PUBLIC_KEY,
-            NamedKeys::new(),
-            uref,
-            AssociatedKeys::default(),
-            ActionThresholds::default(),
-        ));
-        assert_yields_type_mismatch_error(account);
 
         let cl_bool =
             StoredValue::CLValue(CLValue::from_t(TEST_BOOL).expect("should create CLValue"));

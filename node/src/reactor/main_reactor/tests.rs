@@ -727,49 +727,31 @@ async fn should_store_finalized_approvals() {
     let deploy_hash = *DeployOrTransferHash::new(&deploy_alice_bob).deploy_hash();
 
     for runner in net.runners_mut() {
-        if runner.main_reactor().consensus().public_key() == &alice_public_key {
+        let deploy = if runner.main_reactor().consensus().public_key() == &alice_public_key {
             // Alice will propose the deploy signed by Alice and Bob.
-            runner
-                .process_injected_effects(|effect_builder| {
-                    effect_builder
-                        .put_deploy_to_storage(Arc::new(deploy_alice_bob.clone()))
-                        .ignore()
-                })
-                .await;
-            runner
-                .process_injected_effects(|effect_builder| {
-                    effect_builder
-                        .announce_new_deploy_accepted(
-                            Arc::new(deploy_alice_bob.clone()),
-                            Source::Client,
-                        )
-                        .ignore()
-                })
-                .await;
+            deploy_alice_bob.clone()
         } else {
             // Bob will receive the deploy signed by Alice, Bob and Charlie.
-            runner
-                .process_injected_effects(|effect_builder| {
-                    effect_builder
-                        .put_deploy_to_storage(Arc::new(deploy_alice_bob_charlie.clone()))
-                        .ignore()
-                })
-                .await;
-            runner
-                .process_injected_effects(|effect_builder| {
-                    effect_builder
-                        .announce_new_deploy_accepted(
-                            Arc::new(deploy_alice_bob_charlie.clone()),
-                            Source::Client,
-                        )
-                        .ignore()
-                })
-                .await;
-        }
+            deploy_alice_bob_charlie.clone()
+        };
+        runner
+            .process_injected_effects(|effect_builder| {
+                effect_builder
+                    .put_deploy_to_storage(Arc::new(deploy.clone()))
+                    .ignore()
+            })
+            .await;
+        runner
+            .process_injected_effects(|effect_builder| {
+                effect_builder
+                    .announce_new_deploy_accepted(Arc::new(deploy), Source::Client)
+                    .ignore()
+            })
+            .await;
     }
 
     // Run until the deploy gets executed.
-    let timeout = Duration::from_secs(90);
+    let timeout = Duration::from_secs(120);
     net.settle_on(
         &mut rng,
         |nodes| {

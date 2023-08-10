@@ -9,10 +9,7 @@ const UNKNOWN_ADDR: AccountHash = AccountHash::new([42u8; 32]);
 
 #[ignore]
 #[test]
-fn should_run_ee_532_get_uref_regression_test() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
-
+fn should_run_ee_532_non_existent_account_regression_test() {
     let exec_request = ExecuteRequestBuilder::standard(
         UNKNOWN_ADDR,
         CONTRACT_EE_532_REGRESSION,

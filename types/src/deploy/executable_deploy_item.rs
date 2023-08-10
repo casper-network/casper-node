@@ -19,12 +19,12 @@ use serde::{Deserialize, Serialize};
 use super::Deploy;
 use crate::{
     account::AccountHash,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME,
     bytesrepr::{self, Bytes, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    contracts::DEFAULT_ENTRY_POINT_NAME,
+    package::{ContractPackageHash, ContractVersion},
     runtime_args, serde_helpers,
     system::mint::ARG_AMOUNT,
-    ContractHash, ContractPackageHash, ContractVersion, Gas, Motes, Phase, PublicKey, RuntimeArgs,
-    URef, U512,
+    ContractHash, Gas, Motes, Phase, PublicKey, RuntimeArgs, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, CLValue};

@@ -2827,6 +2827,13 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Writes the addressable entity to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteAddressableEntity"
+                ]
               }
             ]
           },
@@ -3818,20 +3825,20 @@
                 "additionalProperties": false
               },
               {
-                "description": "A contract package.",
+                "description": "A `Package`.",
                 "type": "object",
                 "required": [
                   "ContractPackage"
                 ],
                 "properties": {
                   "ContractPackage": {
-                    "$ref": "#/components/schemas/ContractPackage"
+                    "$ref": "#/components/schemas/Package"
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "A transfer.",
+                "description": "A `Transfer`.",
                 "type": "object",
                 "required": [
                   "Transfer"
@@ -3913,6 +3920,19 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "An `AddressableEntity`.",
+                "type": "object",
+                "required": [
+                  "AddressableEntity"
+                ],
+                "properties": {
+                  "AddressableEntity": {
+                    "$ref": "#/components/schemas/AddressableEntity"
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
@@ -3961,7 +3981,7 @@
             }
           },
           "ContractPackageHash": {
-            "description": "The hex-encoded hash address of the contract package.",
+            "description": "The hex-encoded address of the contract package.",
             "type": "string"
           },
           "ContractWasmHash": {
@@ -4095,11 +4115,12 @@
             "description": "Casper Platform protocol version",
             "type": "string"
           },
-          "ContractPackage": {
+          "Package": {
             "description": "Contract definition, metadata, and security container.",
             "type": "object",
             "required": [
               "access_key",
+              "contract_package_kind",
               "disabled_versions",
               "groups",
               "lock_status",
@@ -4139,10 +4160,18 @@
                 ]
               },
               "lock_status": {
-                "description": "A flag that determines whether a contract is locked or not.",
+                "description": "A flag that determines whether a contract is locked",
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/ContractPackageStatus"
+                  }
+                ]
+              },
+              "contract_package_kind": {
+                "description": "The kind of package.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ContractPackageKind"
                   }
                 ]
               }
@@ -4200,7 +4229,7 @@
             }
           },
           "ContractHash": {
-            "description": "The hex-encoded hash address of the contract.",
+            "description": "The hex-encoded address of the addressable entity.",
             "type": "string"
           },
           "Array_of_NamedUserGroup": {
@@ -4250,6 +4279,124 @@
                 ]
               }
             ]
+          },
+          "ContractPackageKind": {
+            "description": "The type of contract package.",
+            "oneOf": [
+              {
+                "description": "Contract Packages associated with Wasm stored on chain.",
+                "type": "string",
+                "enum": [
+                  "Wasm"
+                ]
+              },
+              {
+                "description": "Contract Package associated with a native contract implementation.",
+                "type": "object",
+                "required": [
+                  "System"
+                ],
+                "properties": {
+                  "System": {
+                    "$ref": "#/components/schemas/SystemContractType"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Contract Package associated with an Account hash.",
+                "type": "object",
+                "required": [
+                  "Account"
+                ],
+                "properties": {
+                  "Account": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Contract Packages from the previous format.",
+                "type": "string",
+                "enum": [
+                  "Legacy"
+                ]
+              }
+            ]
+          },
+          "SystemContractType": {
+            "description": "System contract types.\n\nUsed by converting to a `u32` and passing as the `system_contract_index` argument of `ext_ffi::casper_get_system_contract()`.",
+            "oneOf": [
+              {
+                "description": "Mint contract.",
+                "type": "string",
+                "enum": [
+                  "Mint"
+                ]
+              },
+              {
+                "description": "Handle Payment contract.",
+                "type": "string",
+                "enum": [
+                  "HandlePayment"
+                ]
+              },
+              {
+                "description": "Standard Payment contract.",
+                "type": "string",
+                "enum": [
+                  "StandardPayment"
+                ]
+              },
+              {
+                "description": "Auction contract.",
+                "type": "string",
+                "enum": [
+                  "Auction"
+                ]
+              }
+            ]
+          },
+          "AddressableEntity": {
+            "description": "Methods and type signatures supported by a contract.",
+            "type": "object",
+            "required": [
+              "action_thresholds",
+              "associated_keys",
+              "contract_package_hash",
+              "contract_wasm_hash",
+              "entry_points",
+              "main_purse",
+              "named_keys",
+              "protocol_version"
+            ],
+            "properties": {
+              "contract_package_hash": {
+                "$ref": "#/components/schemas/ContractPackageHash"
+              },
+              "contract_wasm_hash": {
+                "$ref": "#/components/schemas/ContractWasmHash"
+              },
+              "named_keys": {
+                "$ref": "#/components/schemas/NamedKeys"
+              },
+              "entry_points": {
+                "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
+              },
+              "protocol_version": {
+                "$ref": "#/components/schemas/ProtocolVersion"
+              },
+              "main_purse": {
+                "$ref": "#/components/schemas/URef"
+              },
+              "associated_keys": {
+                "$ref": "#/components/schemas/AssociatedKeys"
+              },
+              "action_thresholds": {
+                "$ref": "#/components/schemas/ActionThresholds"
+              }
+            }
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",

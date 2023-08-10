@@ -12,8 +12,10 @@ use casper_contract::{
 
 use casper_types::{
     account::AccountHash,
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    CLType, CLTyped, NamedKeys, U512,
+    addressable_entity::{
+        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
+    },
+    CLType, CLTyped, U512,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "transfer";

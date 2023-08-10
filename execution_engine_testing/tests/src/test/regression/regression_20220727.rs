@@ -16,7 +16,7 @@ use casper_execution_engine::{
         DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
     },
 };
-use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
+use casper_types::{addressable_entity::DEFAULT_ENTRY_POINT_NAME, RuntimeArgs};
 
 use crate::wasm_utils;
 

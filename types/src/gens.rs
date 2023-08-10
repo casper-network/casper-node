@@ -13,21 +13,32 @@ use proptest::{
 };
 
 use crate::{
-    account::{gens::account_arb, AccountHash, Weight},
-    contracts::{ContractPackageStatus, ContractVersions, Groups, Parameters},
+    account::{self, AccountHash},
+    addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
+    package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
     system::auction::{
         gens::era_info_arb, Bid, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractVersionKey,
-    ContractWasm, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedArg, NamedKeys, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256,
-    U512,
+    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
+    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
-use crate::deploy_info::gens::{deploy_hash_arb, transfer_addr_arb};
+use crate::{
+    account::{
+        action_thresholds::gens::account_action_thresholds_arb,
+        associated_keys::gens::account_associated_keys_arb, Account,
+    },
+    addressable_entity::{
+        action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
+    },
+    contracts::Contract,
+    deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
+    package::ContractPackageKind,
+};
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
 pub fn u8_slice_32() -> impl Strategy<Value = [u8; 32]> {
@@ -113,6 +124,10 @@ pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
     any::<u8>().prop_map(Weight::new)
+}
+
+pub fn account_weight_arb() -> impl Strategy<Value = account::Weight> {
+    any::<u8>().prop_map(account::Weight::new)
 }
 
 pub fn sem_ver_arb() -> impl Strategy<Value = SemVer> {
@@ -313,6 +328,27 @@ pub fn entry_points_arb() -> impl Strategy<Value = EntryPoints> {
     collection::vec(entry_point_arb(), 1..10).prop_map(EntryPoints::from)
 }
 
+pub fn account_arb() -> impl Strategy<Value = Account> {
+    (
+        account_hash_arb(),
+        named_keys_arb(20),
+        uref_arb(),
+        account_associated_keys_arb(),
+        account_action_thresholds_arb(),
+    )
+        .prop_map(
+            |(account_hash, named_keys, main_purse, associated_keys, action_thresholds)| {
+                Account::new(
+                    account_hash,
+                    named_keys,
+                    main_purse,
+                    associated_keys,
+                    action_thresholds,
+                )
+            },
+        )
+}
+
 pub fn contract_arb() -> impl Strategy<Value = Contract> {
     (
         protocol_version_arb(),
@@ -335,6 +371,42 @@ pub fn contract_arb() -> impl Strategy<Value = Contract> {
                     named_keys,
                     entry_points,
                     protocol_version,
+                )
+            },
+        )
+}
+
+pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
+    (
+        protocol_version_arb(),
+        entry_points_arb(),
+        u8_slice_32(),
+        u8_slice_32(),
+        named_keys_arb(20),
+        uref_arb(),
+        associated_keys_arb(),
+        action_thresholds_arb(),
+    )
+        .prop_map(
+            |(
+                protocol_version,
+                entry_points,
+                contract_package_hash_arb,
+                contract_wasm_hash,
+                named_keys,
+                main_purse,
+                associated_keys,
+                action_thresholds,
+            )| {
+                AddressableEntity::new(
+                    contract_package_hash_arb.into(),
+                    contract_wasm_hash.into(),
+                    named_keys,
+                    entry_points,
+                    protocol_version,
+                    main_purse,
+                    associated_keys,
+                    action_thresholds,
                 )
             },
         )
@@ -367,7 +439,7 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
         .prop_map(Groups::from)
 }
 
-pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
+pub fn contract_package_arb() -> impl Strategy<Value = Package> {
     (
         uref_arb(),
         contract_versions_arb(),
@@ -375,12 +447,13 @@ pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
         groups_arb(),
     )
         .prop_map(|(access_key, versions, disabled_versions, groups)| {
-            ContractPackage::new(
+            Package::new(
                 access_key,
                 versions,
                 disabled_versions,
                 groups,
                 ContractPackageStatus::default(),
+                ContractPackageKind::default(),
             )
         })
 }
@@ -505,6 +578,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         account_arb().prop_map(StoredValue::Account),
         contract_wasm_arb().prop_map(StoredValue::ContractWasm),
         contract_arb().prop_map(StoredValue::Contract),
+        addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
         contract_package_arb().prop_map(StoredValue::ContractPackage),
         transfer_arb().prop_map(StoredValue::Transfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
@@ -528,5 +602,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Bid(_) => stored_value,
             StoredValue::Withdraw(_) => stored_value,
             StoredValue::Unbonding(_) => stored_value,
+            StoredValue::AddressableEntity(_) => stored_value,
         })
 }

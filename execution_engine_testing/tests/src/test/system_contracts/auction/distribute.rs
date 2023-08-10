@@ -2994,22 +2994,19 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
+        builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
+    builder
+        .distribute(
+            None,
+            ProtocolVersion::V1_0_0,
+            VALIDATOR_1.clone(),
+            5,
+            timestamp_millis,
+        )
+        .expect("must distribute");
 
     let validator_1_stake_before = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
@@ -3072,28 +3069,24 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     let initial_supply = builder.total_supply(None);
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
+        builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
+    builder
+        .distribute(
+            None,
+            new_protocol_version,
+            VALIDATOR_1.clone(),
+            10,
+            timestamp_millis,
+        )
+        .expect("must distribute");
 
     let new_round_seigniorage_rate = {
         let (numer, denom) = new_round_seigniorage_rate.into();
         Ratio::new(numer.into(), denom.into())
     };
-
-    builder.exec(distribute_request).commit().expect_success();
 
     let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
 

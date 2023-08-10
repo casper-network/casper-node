@@ -4,9 +4,7 @@ use std::collections::HashSet;
 
 #[cfg(test)]
 use casper_types::{
-    account::{Account, AccountHash},
-    system::auction::Bid,
-    CLValue, PublicKey, URef, U512,
+    account::AccountHash, system::auction::Bid, AddressableEntity, CLValue, PublicKey, URef, U512,
 };
 use casper_types::{Key, StoredValue};
 
@@ -48,12 +46,25 @@ impl Update {
         self.entries.len()
     }
 
-    pub(crate) fn get_written_account(&self, account: AccountHash) -> Account {
+    pub(crate) fn get_written_addressable_entity(
+        &self,
+        account_hash: AccountHash,
+    ) -> AddressableEntity {
+        let entity_key = self
+            .entries
+            .get(&Key::Account(account_hash))
+            .expect("must have Key for account hash")
+            .as_cl_value()
+            .expect("must have underlying cl value")
+            .to_owned()
+            .into_t::<Key>()
+            .expect("must convert to key");
+
         self.entries
-            .get(&Key::Account(account))
-            .expect("account should exist")
-            .as_account()
-            .expect("should be an account")
+            .get(&entity_key)
+            .expect("must have addressable entity")
+            .as_addressable_entity()
+            .expect("should be addressable entity")
             .clone()
     }
 

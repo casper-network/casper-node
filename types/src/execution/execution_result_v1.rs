@@ -79,6 +79,7 @@ enum TransformTag {
     AddKeys = 16,
     Failure = 17,
     WriteUnbonding = 18,
+    WriteAddressableEntity = 19,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -479,6 +480,8 @@ pub enum Transform {
     Failure(String),
     /// Writes the given Unbonding to global state.
     WriteUnbonding(Vec<UnbondingPurse>),
+    /// Writes the addressable entity to global state.
+    WriteAddressableEntity,
 }
 
 impl ToBytes for Transform {
@@ -552,6 +555,9 @@ impl ToBytes for Transform {
                 (TransformTag::WriteUnbonding as u8).write_bytes(writer)?;
                 value.write_bytes(writer)
             }
+            Transform::WriteAddressableEntity => {
+                (TransformTag::WriteAddressableEntity as u8).write_bytes(writer)
+            }
         }
     }
 
@@ -578,7 +584,8 @@ impl ToBytes for Transform {
             Transform::Identity
             | Transform::WriteContractWasm
             | Transform::WriteContract
-            | Transform::WriteContractPackage => 0,
+            | Transform::WriteContractPackage
+            | Transform::WriteAddressableEntity => 0,
             Transform::WriteBid(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
             Transform::WriteUnbonding(value) => value.serialized_length(),
@@ -603,6 +610,9 @@ impl FromBytes for Transform {
             TransformTag::WriteContractWasm => Ok((Transform::WriteContractWasm, remainder)),
             TransformTag::WriteContract => Ok((Transform::WriteContract, remainder)),
             TransformTag::WriteContractPackage => Ok((Transform::WriteContractPackage, remainder)),
+            TransformTag::WriteAddressableEntity => {
+                Ok((Transform::WriteAddressableEntity, remainder))
+            }
             TransformTag::WriteDeployInfo => {
                 let (deploy_info, remainder) = DeployInfo::from_bytes(remainder)?;
                 Ok((Transform::WriteDeployInfo(deploy_info), remainder))
@@ -688,6 +698,7 @@ impl Distribution<Transform> for Standard {
                 Transform::AddKeys(named_keys)
             }
             12 => Transform::Failure(rng.gen::<u64>().to_string()),
+            13 => Transform::WriteAddressableEntity,
             _ => unreachable!(),
         }
     }

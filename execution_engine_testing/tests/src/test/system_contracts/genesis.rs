@@ -76,15 +76,15 @@ fn should_run_genesis() {
     builder.run_genesis(&run_genesis_request);
 
     let system_account = builder
-        .get_account(PublicKey::System.to_account_hash())
+        .get_entity_by_account_hash(PublicKey::System.to_account_hash())
         .expect("system account should exist");
 
     let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("account 1 should exist");
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let system_account_balance_actual = builder.get_purse_balance(system_account.main_purse());
@@ -99,13 +99,13 @@ fn should_run_genesis() {
     let handle_payment_contract_hash = builder.get_handle_payment_contract_hash();
 
     let result = builder.query(None, mint_contract_hash.into(), &[]);
-    if let Ok(StoredValue::Contract(_)) = result {
+    if let Ok(StoredValue::AddressableEntity(_)) = result {
         // Contract exists at mint contract hash
     } else {
         panic!("contract not found at mint hash");
     }
 
-    if let Ok(StoredValue::Contract(_)) =
+    if let Ok(StoredValue::AddressableEntity(_)) =
         builder.query(None, handle_payment_contract_hash.into(), &[])
     {
         // Contract exists at handle payment contract hash

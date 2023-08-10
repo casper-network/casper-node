@@ -5,14 +5,15 @@ use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::AccountHash,
+    addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
-    contracts::{ContractPackageStatus, EntryPoints},
     crypto,
+    package::{ContractPackageKind, ContractPackageStatus},
     system::auction::EraInfo,
     ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
-    HostFunctionCost, Key, NamedKeys, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    U512, UREF_SERIALIZED_LENGTH,
+    HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
+    UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
@@ -30,7 +31,11 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let func = FunctionIndex::try_from(index).expect("unknown function index");
 
-        let host_function_costs = self.config.wasm_config().take_host_function_costs();
+        let host_function_costs = self
+            .context
+            .engine_config()
+            .wasm_config()
+            .take_host_function_costs();
 
         match func {
             FunctionIndex::ReadFuncIndex => {
@@ -529,8 +534,8 @@ where
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
                 let package_status = ContractPackageStatus::new(is_locked);
-                let (hash_addr, access_addr) =
-                    self.create_contract_package_at_hash(package_status)?;
+                let (hash_addr, access_addr) = self
+                    .create_contract_package_at_hash(package_status, ContractPackageKind::Wasm)?;
 
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;

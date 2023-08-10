@@ -23,9 +23,9 @@ use casper_execution_engine::engine_state::{BalanceResult, QueryResult, MAX_PAYM
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
+    addressable_entity::NamedKeys,
     testing::TestRng,
-    Block, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, NamedKeys, StoredValue, URef,
-    U512,
+    Block, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
 };
 
 use super::*;
@@ -527,7 +527,7 @@ impl reactor::Reactor for Reactor {
                                     | ContractPackageScenario::MissingContractVersion => {
                                         QueryResult::Success {
                                             value: Box::new(StoredValue::ContractPackage(
-                                                ContractPackage::default(),
+                                                Package::default(),
                                             )),
                                             proofs: vec![],
                                         }
@@ -542,7 +542,9 @@ impl reactor::Reactor for Reactor {
                                 ) => match contract_scenario {
                                     ContractScenario::Valid
                                     | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::Contract(Contract::default())),
+                                        value: Box::new(StoredValue::AddressableEntity(
+                                            AddressableEntity::default(),
+                                        )),
                                         proofs: vec![],
                                     },
                                     _ => QueryResult::ValueNotFound(String::new()),
@@ -559,7 +561,9 @@ impl reactor::Reactor for Reactor {
                                 match contract_scenario {
                                     ContractScenario::Valid
                                     | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::Contract(Contract::default())),
+                                        value: Box::new(StoredValue::AddressableEntity(
+                                            AddressableEntity::default(),
+                                        )),
                                         proofs: vec![],
                                     },
                                     ContractScenario::MissingContractAtHash
@@ -584,7 +588,7 @@ impl reactor::Reactor for Reactor {
                                 | ContractPackageScenario::MissingContractVersion => {
                                     QueryResult::Success {
                                         value: Box::new(StoredValue::ContractPackage(
-                                            ContractPackage::default(),
+                                            Package::default(),
                                         )),
                                         proofs: vec![],
                                     }

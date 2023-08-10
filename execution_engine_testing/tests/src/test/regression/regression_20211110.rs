@@ -59,7 +59,7 @@ fn regression_20211110() {
     funds = funds.checked_sub(INSTALL_COST).unwrap();
 
     let contract_hash = match builder
-        .get_expected_account(ACCOUNT_1_ADDR)
+        .get_expected_addressable_entity_by_account_hash(ACCOUNT_1_ADDR)
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .unwrap()

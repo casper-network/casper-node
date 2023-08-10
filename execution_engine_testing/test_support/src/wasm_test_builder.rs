@@ -41,9 +41,9 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
     bytesrepr::{self, FromBytes},
-    execution::{Effects, TransformKind},
+    execution::Effects,
     runtime_args,
     system::{
         auction::{
@@ -54,10 +54,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    UpgradeConfig, OS_PAGE_SIZE, U512,
+    MintCosts, Package, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -99,7 +99,7 @@ pub struct WasmTestBuilder<S> {
     /// first exec call, etc.
     effects: Vec<Effects>,
     /// Cached genesis account.
-    genesis_account: Option<Account>,
+    genesis_account: Option<ContractHash>,
     /// Genesis effects.
     genesis_effects: Option<Effects>,
     /// Scratch global state used for in-memory execution and commit optimization.
@@ -130,7 +130,7 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             effects: self.effects.clone(),
-            genesis_account: self.genesis_account.clone(),
+            genesis_account: self.genesis_account,
             genesis_effects: self.genesis_effects.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
@@ -548,18 +548,19 @@ where
 
         let empty_path: Vec<String> = vec![];
 
-        let genesis_account = effects
-            .transforms()
-            .iter()
-            .find(|&transform| transform.key() == &system_account)
-            .and_then(|transform| {
-                if let TransformKind::Write(StoredValue::Account(account)) = transform.kind() {
-                    Some(account.clone())
-                } else {
-                    None
+        let system_contract_by_account =
+            match self.query(Some(post_state_hash), system_account, &empty_path) {
+                Ok(StoredValue::CLValue(cl_value)) => {
+                    let contract_key =
+                        CLValue::into_t::<Key>(cl_value).expect("must convert to contract key");
+                    contract_key
+                        .into_hash()
+                        .map(ContractHash::new)
+                        .expect("must convert to contract hash")
                 }
-            })
-            .expect("Unable to get system account");
+                Ok(_) => panic!("Failed to get system contract by account hash"),
+                Err(err) => panic!("{}", err),
+            };
 
         self.system_contract_registry = match self.query(
             Some(post_state_hash),
@@ -577,7 +578,7 @@ where
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(genesis_account);
+        self.genesis_account = Some(system_contract_by_account);
         self.genesis_effects = Some(effects);
         self
     }
@@ -677,7 +678,7 @@ where
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
             .expect("must get mint stored value")
-            .as_contract()
+            .as_addressable_entity()
             .expect("must convert to mint contract")
             .clone();
 
@@ -917,7 +918,7 @@ where
     }
 
     /// Gets genesis account (if present)
-    pub fn get_genesis_account(&self) -> &Account {
+    pub fn get_genesis_account(&self) -> &ContractHash {
         self.genesis_account
             .as_ref()
             .expect("Unable to obtain genesis account. Please run genesis first.")
@@ -1023,7 +1024,7 @@ where
     }
 
     /// Returns the "handle payment" contract, panics if it can't be found.
-    pub fn get_handle_payment_contract(&self) -> Contract {
+    pub fn get_handle_payment_contract(&self) -> AddressableEntity {
         let handle_payment_contract: Key = self
             .get_system_contract_hash(HANDLE_PAYMENT)
             .cloned()
@@ -1061,30 +1062,71 @@ where
 
     /// Gets the purse balance of a proposer.
     pub fn get_proposer_purse_balance(&self) -> U512 {
-        let proposer_account = self
-            .get_account(*DEFAULT_PROPOSER_ADDR)
+        let proposer_contract = self
+            .get_entity_by_account_hash(*DEFAULT_PROPOSER_ADDR)
             .expect("proposer account should exist");
-        self.get_purse_balance(proposer_account.main_purse())
+        self.get_purse_balance(proposer_contract.main_purse())
     }
 
-    /// Queries for an `Account`.
-    pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
-        match self.query(None, Key::Account(account_hash), &[]) {
-            Ok(account_value) => match account_value {
-                StoredValue::Account(account) => Some(account),
-                _ => None,
-            },
-            Err(_) => None,
+    /// Gets the contract hash associated with a given account hash.
+    pub fn get_contract_hash_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<ContractHash> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_key =
+                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                Some(ContractHash::new(
+                    contract_key.into_hash().expect("must have hash addr"),
+                ))
+            }
+            Some(_) | None => None,
         }
     }
 
-    /// Queries for an `Account` and panics if it can't be found.
-    pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
-        self.get_account(account_hash).expect("account to exist")
+    /// Queries for an `Account`.
+    pub fn get_entity_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<AddressableEntity> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_key =
+                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                match self.query(None, contract_key, &[]) {
+                    Ok(StoredValue::AddressableEntity(contract)) => Some(contract),
+                    Ok(_) | Err(_) => None,
+                }
+            }
+            Some(_) | None => None,
+        }
     }
 
-    /// Queries for a contract by `ContractHash`.
-    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+    /// Queries for an `AddressableEntity` and panics if it can't be found.
+    pub fn get_expected_addressable_entity_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> AddressableEntity {
+        self.get_entity_by_account_hash(account_hash)
+            .expect("account to exist")
+    }
+
+    /// Queries for an addressable entity by `ContractHash`.
+    pub fn get_addressable_entity(&self, contract_hash: ContractHash) -> Option<AddressableEntity> {
+        let contract_value: StoredValue = self
+            .query(None, contract_hash.into(), &[])
+            .expect("should have contract value");
+
+        if let StoredValue::AddressableEntity(contract) = contract_value {
+            Some(contract)
+        } else {
+            None
+        }
+    }
+
+    /// Retrieve a Contract from global state.
+    pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
@@ -1113,7 +1155,7 @@ where
     pub fn get_contract_package(
         &self,
         contract_package_hash: ContractPackageHash,
-    ) -> Option<ContractPackage> {
+    ) -> Option<Package> {
         let contract_value: StoredValue = self
             .query(None, contract_package_hash.into(), &[])
             .expect("should have package value");
@@ -1308,7 +1350,7 @@ where
         T: FromBytes + CLTyped,
     {
         let contract = self
-            .get_contract(contract_hash)
+            .get_addressable_entity(contract_hash)
             .expect("should have contract");
         let key = contract
             .named_keys()
@@ -1354,7 +1396,7 @@ where
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_system_mint_hash(state_root_hash)
-            .expect("should have auction hash")
+            .expect("should have mint hash")
     }
 
     /// Gets the [`ContractHash`] of the system handle payment contract, panics if it can't be

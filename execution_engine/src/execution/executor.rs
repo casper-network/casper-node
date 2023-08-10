@@ -2,11 +2,13 @@ use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
+    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
+    package::ContractPackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    BlockTime, CLTyped, ContextAccessRights, DeployHash, EntryPointType, Gas, Key, NamedKeys,
-    Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
+    AddressableEntity, BlockTime, CLTyped, ContextAccessRights, ContractHash, DeployHash,
+    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
 use crate::{
@@ -43,10 +45,13 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        account: &Account,
+        contract_hash: ContractHash,
+        entity: &AddressableEntity,
+        package_kind: ContractPackageKind,
         named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
@@ -72,24 +77,26 @@ impl Executor {
         };
 
         let context = self.create_runtime_context(
-            EntryPointType::Session,
-            args.clone(),
             named_keys,
-            access_rights,
-            Key::from(account.account_hash()),
-            account,
+            entity,
+            Key::from(contract_hash),
             authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
+            access_rights,
+            package_kind,
+            account_hash,
             address_generator,
-            protocol_version,
             tracking_copy,
+            blocktime,
+            protocol_version,
+            deploy_hash,
             phase,
+            args.clone(),
+            gas_limit,
             spending_limit,
+            EntryPointType::Session,
         );
 
-        let mut runtime = Runtime::new(self.config, context);
+        let mut runtime = Runtime::new(context);
 
         let result = match execution_kind {
             ExecutionKind::Module(module_bytes) => {
@@ -102,7 +109,15 @@ impl Executor {
                 // These args are passed through here as they are required to construct the new
                 // `Runtime` during the contract's execution (i.e. inside
                 // `Runtime::execute_contract`).
-                runtime.call_contract_with_stack(contract_hash, &entry_point_name, args, stack)
+                match runtime.migrate_contract_and_contract_package(contract_hash) {
+                    Ok(()) => runtime.call_contract_with_stack(
+                        contract_hash,
+                        &entry_point_name,
+                        args,
+                        stack,
+                    ),
+                    Err(error) => Err(error),
+                }
             }
         };
 
@@ -127,10 +142,12 @@ impl Executor {
         &self,
         payment_args: RuntimeArgs,
         payment_base_key: Key,
-        account: &Account,
+        entity: &AddressableEntity,
+        package_kind: ContractPackageKind,
         payment_named_keys: &mut NamedKeys,
         access_rights: ContextAccessRights,
         authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         payment_gas_limit: Gas,
@@ -156,28 +173,30 @@ impl Executor {
         };
 
         let runtime_context = self.create_runtime_context(
-            EntryPointType::Session,
-            payment_args,
             payment_named_keys,
-            access_rights,
+            entity,
             payment_base_key,
-            account,
             authorization_keys,
-            blocktime,
-            deploy_hash,
-            payment_gas_limit,
+            access_rights,
+            package_kind,
+            account_hash,
             address_generator,
-            protocol_version,
             Rc::clone(&tracking_copy),
+            blocktime,
+            protocol_version,
+            deploy_hash,
             phase,
+            payment_args,
+            payment_gas_limit,
             spending_limit,
+            EntryPointType::Session,
         );
 
         let effects = tracking_copy.borrow().effects();
 
         // Standard payment is executed in the calling account's context; the stack already
         // captures that.
-        let mut runtime = Runtime::new(self.config, runtime_context);
+        let mut runtime = Runtime::new(runtime_context);
 
         match runtime.call_host_standard_payment(stack) {
             Ok(()) => ExecutionResult::Success {
@@ -201,8 +220,10 @@ impl Executor {
         &self,
         direct_system_contract_call: DirectSystemContractCall,
         runtime_args: RuntimeArgs,
-        account: &Account,
+        entity: &AddressableEntity,
+        package_kind: ContractPackageKind,
         authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
         blocktime: BlockTime,
         deploy_hash: DeployHash,
         gas_limit: Gas,
@@ -267,27 +288,29 @@ impl Executor {
 
         let mut named_keys = contract.named_keys().clone();
         let access_rights = contract.extract_access_rights(contract_hash);
-        let base_key = Key::from(contract_hash);
+        let entity_address = Key::from(contract_hash);
 
         let runtime_context = self.create_runtime_context(
-            EntryPointType::Contract,
-            runtime_args.clone(),
             &mut named_keys,
-            access_rights,
-            base_key,
-            account,
+            entity,
+            entity_address,
             authorization_keys,
-            blocktime,
-            deploy_hash,
-            gas_limit,
+            access_rights,
+            package_kind,
+            account_hash,
             address_generator,
-            protocol_version,
             tracking_copy,
+            blocktime,
+            protocol_version,
+            deploy_hash,
             phase,
+            runtime_args.clone(),
+            gas_limit,
             remaining_spending_limit,
+            EntryPointType::Contract,
         );
 
-        let mut runtime = Runtime::new(self.config, runtime_context);
+        let mut runtime = Runtime::new(runtime_context);
 
         // DO NOT alter this logic to call a system contract directly (such as via mint_internal,
         // etc). Doing so would bypass necessary context based security checks in some use cases. It
@@ -327,21 +350,23 @@ impl Executor {
     #[allow(clippy::too_many_arguments)]
     fn create_runtime_context<'a, R>(
         &self,
-        entry_point_type: EntryPointType,
-        runtime_args: RuntimeArgs,
         named_keys: &'a mut NamedKeys,
-        access_rights: ContextAccessRights,
-        base_key: Key,
-        account: &'a Account,
+        entity: &'a AddressableEntity,
+        entity_address: Key,
         authorization_keys: BTreeSet<AccountHash>,
-        blocktime: BlockTime,
-        deploy_hash: DeployHash,
-        gas_limit: Gas,
+        access_rights: ContextAccessRights,
+        package_kind: ContractPackageKind,
+        account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
-        protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        blocktime: BlockTime,
+        protocol_version: ProtocolVersion,
+        deploy_hash: DeployHash,
         phase: Phase,
+        runtime_args: RuntimeArgs,
+        gas_limit: Gas,
         remaining_spending_limit: U512,
+        entry_point_type: EntryPointType,
     ) -> RuntimeContext<'a, R>
     where
         R: StateReader<Key, StoredValue>,
@@ -351,24 +376,26 @@ impl Executor {
         let transfers = Vec::default();
 
         RuntimeContext::new(
-            tracking_copy,
-            entry_point_type,
             named_keys,
-            access_rights,
-            runtime_args,
+            entity,
+            entity_address,
             authorization_keys,
-            account,
-            base_key,
+            access_rights,
+            package_kind,
+            account_hash,
+            address_generator,
+            tracking_copy,
+            self.config,
             blocktime,
+            protocol_version,
             deploy_hash,
+            phase,
+            runtime_args,
             gas_limit,
             gas_counter,
-            address_generator,
-            protocol_version,
-            phase,
-            self.config,
             transfers,
             remaining_spending_limit,
+            entry_point_type,
         )
     }
 }

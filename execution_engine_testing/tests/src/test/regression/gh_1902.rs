@@ -8,13 +8,13 @@ use casper_execution_engine::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, ExecuteRequest,
 };
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
     runtime_args,
     system::{
         auction::{self, DelegationRate},
         mint, standard_payment,
     },
-    Gas, PublicKey, RuntimeArgs, SecretKey, U512,
+    AddressableEntity, Gas, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const BOND_AMOUNT: u64 = 42;
@@ -45,7 +45,7 @@ fn setup() -> LmdbWasmTestBuilder {
 fn exec_and_assert_costs(
     builder: &mut LmdbWasmTestBuilder,
     exec_request: ExecuteRequest,
-    caller: Account,
+    caller: AddressableEntity,
     expected_tokens_paid: U512,
     expected_payment_charge: U512,
     expected_gas_cost: Gas,
@@ -81,8 +81,10 @@ fn exec_and_assert_costs(
 fn should_not_charge_for_create_purse_in_first_time_bond() {
     let mut builder = setup();
 
-    let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
-    let account_1 = builder.get_account(*ACCOUNT_1_ADDR).unwrap();
+    let default_account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
+    let account_1 = builder.get_entity_by_account_hash(*ACCOUNT_1_ADDR).unwrap();
 
     let bond_amount = U512::from(BOND_AMOUNT);
     // This amount should be enough to make first time add_bid call.

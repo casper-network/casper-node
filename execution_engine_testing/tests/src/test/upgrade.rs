@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    contracts::{ContractVersion, CONTRACT_INITIAL_VERSION},
+    package::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args, CLValue, ContractPackageHash, RuntimeArgs, StoredValue,
 };
 
@@ -72,7 +72,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
     }
 
     let account_1 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     assert!(
@@ -115,7 +115,7 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
     }
 
     let account_1 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     assert!(
@@ -148,7 +148,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
     }
 
     let account_1 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     account_1
@@ -181,7 +181,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
     }
 
     let account_1 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     assert!(
@@ -228,7 +228,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
     }
 
     let account_1 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
     assert!(
@@ -262,7 +262,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
     }
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     assert!(
@@ -280,7 +280,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 
     // verify version before upgrade
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let version = *account
@@ -317,7 +317,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
 
     // version should change after upgrade
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let version = *account
@@ -361,7 +361,7 @@ fn should_support_extending_functionality() {
     }
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let stored_package_hash = account
@@ -400,7 +400,7 @@ fn should_support_extending_functionality() {
 
     // verify known uref actually exists prior to upgrade
     let contract = builder
-        .get_contract(stored_hash)
+        .get_addressable_entity(stored_hash)
         .expect("should have contract");
     assert!(
         contract.named_keys().contains(PURSE_1),
@@ -426,7 +426,7 @@ fn should_support_extending_functionality() {
 
     // verify uref still exists in named_keys after upgrade:
     let contract = builder
-        .get_contract(stored_hash)
+        .get_addressable_entity(stored_hash)
         .expect("should have contract");
 
     assert!(
@@ -436,7 +436,7 @@ fn should_support_extending_functionality() {
 
     // Get account again after upgrade to refresh named keys
     let account_2 = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     // Get contract again after upgrade
 
@@ -470,7 +470,7 @@ fn should_support_extending_functionality() {
 
     // verify known urefs no longer include removed purse
     let contract = builder
-        .get_contract(stored_hash_2)
+        .get_addressable_entity(stored_hash_2)
         .expect("should have contract");
 
     assert!(
@@ -504,7 +504,7 @@ fn should_maintain_named_keys_across_upgrade() {
     }
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let stored_hash = account
@@ -543,7 +543,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
         // verify known uref actually exists prior to upgrade
         let contract = builder
-            .get_contract(stored_hash.into())
+            .get_addressable_entity(stored_hash.into())
             .expect("should have contract");
         assert!(
             contract.named_keys().contains(purse_name),
@@ -570,7 +570,7 @@ fn should_maintain_named_keys_across_upgrade() {
 
     // verify all urefs still exist in named_keys after upgrade
     let contract = builder
-        .get_contract(stored_hash.into())
+        .get_addressable_entity(stored_hash.into())
         .expect("should have contract");
 
     for index in 0..TOTAL_PURSES {
@@ -608,7 +608,7 @@ fn should_fail_upgrade_for_locked_contract() {
     }
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let stored_package_hash: ContractPackageHash = account

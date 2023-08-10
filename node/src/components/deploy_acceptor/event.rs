@@ -6,9 +6,8 @@ use std::{
 use serde::Serialize;
 
 use casper_types::{
-    account::{Account, AccountHash},
-    BlockHeader, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    Deploy, Timestamp, U512,
+    account::AccountHash, AddressableEntity, BlockHeader, ContractHash, ContractPackageHash,
+    ContractVersion, Deploy, Package, StoredValue, Timestamp, U512,
 };
 
 use super::Source;
@@ -68,7 +67,15 @@ pub(crate) enum Event {
     GetAccountResult {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
-        maybe_account: Option<Account>,
+        account_hash: AccountHash,
+        maybe_account: Option<StoredValue>,
+        verification_start_timestamp: Timestamp,
+    },
+    GetEntityResult {
+        event_metadata: Box<EventMetadata>,
+        block_header: Box<BlockHeader>,
+        account_hash: AccountHash,
+        maybe_entity: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying the balance of the `Account` associated with the `Deploy`.
@@ -85,7 +92,7 @@ pub(crate) enum Event {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_hash: ContractHash,
-        maybe_contract: Option<Box<Contract>>,
+        maybe_contract: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     },
     /// The result of querying global state for a `ContractPackage` to verify the executable logic.
@@ -95,7 +102,7 @@ pub(crate) enum Event {
         is_payment: bool,
         contract_package_hash: ContractPackageHash,
         maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<Box<ContractPackage>>,
+        maybe_contract_package: Option<Box<Package>>,
         verification_start_timestamp: Timestamp,
     },
 }
@@ -155,6 +162,13 @@ impl Display for Event {
                 write!(
                     formatter,
                     "verifying account to validate deploy with hash {}",
+                    event_metadata.deploy.hash()
+                )
+            }
+            Event::GetEntityResult { event_metadata, .. } => {
+                write!(
+                    formatter,
+                    "verifying addressable entity to validate deploy with hash {}",
                     event_metadata.deploy.hash()
                 )
             }

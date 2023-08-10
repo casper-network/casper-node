@@ -6,15 +6,16 @@ use std::{
 };
 
 use casper_types::{
-    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    contracts::ContractPackageStatus,
+    package::{ContractPackageKind, ContractPackageStatus},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, ContractVersions, ContractWasmHash, DeployHash,
-    DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group, Groups, Key,
-    NamedKeys, Parameter, ProtocolVersion, PublicKey, SecretKey, Transfer, TransferAddr, URef,
-    KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
+    ContractVersions, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Group, Groups, Key, Package, Parameter, ProtocolVersion,
+    PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
+    U128, U256, U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -446,42 +447,6 @@ fn deserialize_u512(b: &mut Bencher) {
     b.iter(|| U512::from_bytes(black_box(&num_u512_bytes)))
 }
 
-fn sample_account(associated_keys_len: u8, named_keys_len: u8) -> Account {
-    let account_hash = AccountHash::default();
-    let named_keys: NamedKeys = sample_named_keys(named_keys_len);
-    let main_purse = URef::default();
-    let associated_keys = {
-        let mut tmp = AssociatedKeys::new(AccountHash::default(), Weight::new(1));
-        (1..associated_keys_len).for_each(|i| {
-            tmp.add_key(
-                AccountHash::new([i; casper_types::account::ACCOUNT_HASH_LENGTH]),
-                Weight::new(1),
-            )
-            .unwrap()
-        });
-        tmp
-    };
-    let action_thresholds = ActionThresholds::default();
-    Account::new(
-        account_hash,
-        named_keys,
-        main_purse,
-        associated_keys,
-        action_thresholds,
-    )
-}
-
-fn serialize_account(b: &mut Bencher) {
-    let account = sample_account(10, 10);
-    b.iter(|| ToBytes::to_bytes(black_box(&account)));
-}
-
-fn deserialize_account(b: &mut Bencher) {
-    let account = sample_account(10, 10);
-    let account_bytes = Account::to_bytes(&account).unwrap();
-    b.iter(|| Account::from_bytes(black_box(&account_bytes)).unwrap());
-}
-
 fn serialize_contract(b: &mut Bencher) {
     let contract = sample_contract(10, 10);
     b.iter(|| ToBytes::to_bytes(black_box(&contract)));
@@ -489,8 +454,8 @@ fn serialize_contract(b: &mut Bencher) {
 
 fn deserialize_contract(b: &mut Bencher) {
     let contract = sample_contract(10, 10);
-    let contract_bytes = Contract::to_bytes(&contract).unwrap();
-    b.iter(|| Contract::from_bytes(black_box(&contract_bytes)).unwrap());
+    let contract_bytes = AddressableEntity::to_bytes(&contract).unwrap();
+    b.iter(|| AddressableEntity::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
 fn sample_named_keys(len: u8) -> NamedKeys {
@@ -506,7 +471,7 @@ fn sample_named_keys(len: u8) -> NamedKeys {
     )
 }
 
-fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
+fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntity {
     let named_keys: NamedKeys = sample_named_keys(named_keys_len);
 
     let entry_points = {
@@ -528,12 +493,15 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> Contract {
         tmp
     };
 
-    casper_types::contracts::Contract::new(
+    casper_types::addressable_entity::AddressableEntity::new(
         ContractPackageHash::default(),
         ContractWasmHash::default(),
         named_keys,
         entry_points,
         ProtocolVersion::default(),
+        URef::default(),
+        AssociatedKeys::default(),
+        ActionThresholds::default(),
     )
 }
 
@@ -578,7 +546,7 @@ fn sample_contract_package(
     contract_versions_len: u8,
     disabled_versions_len: u8,
     groups_len: u8,
-) -> ContractPackage {
+) -> Package {
     let access_key = URef::default();
     let versions = ContractVersions::from(sample_map(
         contract_version_key_fn,
@@ -592,24 +560,25 @@ fn sample_contract_package(
         groups_len,
     ));
 
-    ContractPackage::new(
+    Package::new(
         access_key,
         versions,
         disabled_versions,
         groups,
         ContractPackageStatus::Locked,
+        ContractPackageKind::Wasm,
     )
 }
 
 fn serialize_contract_package(b: &mut Bencher) {
     let contract = sample_contract_package(5, 1, 5);
-    b.iter(|| ContractPackage::to_bytes(black_box(&contract)));
+    b.iter(|| Package::to_bytes(black_box(&contract)));
 }
 
 fn deserialize_contract_package(b: &mut Bencher) {
     let contract_package = sample_contract_package(5, 1, 5);
-    let contract_bytes = ContractPackage::to_bytes(&contract_package).unwrap();
-    b.iter(|| ContractPackage::from_bytes(black_box(&contract_bytes)).unwrap());
+    let contract_bytes = Package::to_bytes(&contract_package).unwrap();
+    b.iter(|| Package::from_bytes(black_box(&contract_bytes)).unwrap());
 }
 
 fn u32_to_pk(i: u32) -> PublicKey {
@@ -857,8 +826,8 @@ fn bytesrepr_bench(c: &mut Criterion) {
     c.bench_function("deserialize_u256", deserialize_u256);
     c.bench_function("serialize_u512", serialize_u512);
     c.bench_function("deserialize_u512", deserialize_u512);
-    c.bench_function("bytesrepr::serialize_account", serialize_account);
-    c.bench_function("bytesrepr::deserialize_account", deserialize_account);
+    // c.bench_function("bytesrepr::serialize_account", serialize_account);
+    // c.bench_function("bytesrepr::deserialize_account", deserialize_account);
     c.bench_function("bytesrepr::serialize_contract", serialize_contract);
     c.bench_function("bytesrepr::deserialize_contract", deserialize_contract);
     c.bench_function(

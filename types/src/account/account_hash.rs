@@ -13,8 +13,8 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use super::FromStrError;
 use crate::{
+    addressable_entity::FromStrError,
     bytesrepr::{Error, FromBytes, ToBytes},
     checksummed_hex, crypto, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };

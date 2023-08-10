@@ -1657,6 +1657,13 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Writes the addressable entity to global state.",
+          "type": "string",
+          "enum": [
+            "WriteAddressableEntity"
+          ]
         }
       ]
     },

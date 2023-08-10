@@ -27,6 +27,8 @@ pub enum TransformError {
     Serialization(bytesrepr::Error),
     /// Type mismatch error.
     TypeMismatch(StoredValueTypeMismatch),
+    /// Type no longer supported.
+    Deprecated,
 }
 
 impl Display for TransformError {
@@ -37,6 +39,9 @@ impl Display for TransformError {
             }
             TransformError::TypeMismatch(error) => {
                 write!(formatter, "{}", error)
+            }
+            TransformError::Deprecated => {
+                write!(formatter, "type no longer supported")
             }
         }
     }
@@ -73,6 +78,7 @@ impl ToBytes for TransformError {
                 (TransformErrorTag::TypeMismatch as u8).write_bytes(writer)?;
                 error.write_bytes(writer)
             }
+            TransformError::Deprecated => (TransformErrorTag::Deprecated as u8).write_bytes(writer),
         }
     }
 
@@ -87,6 +93,7 @@ impl ToBytes for TransformError {
             + match self {
                 TransformError::Serialization(error) => error.serialized_length(),
                 TransformError::TypeMismatch(error) => error.serialized_length(),
+                TransformError::Deprecated => 0,
             }
     }
 }
@@ -103,6 +110,9 @@ impl FromBytes for TransformError {
                 let (error, remainder) = StoredValueTypeMismatch::from_bytes(remainder)?;
                 Ok((TransformError::TypeMismatch(error), remainder))
             }
+            tag if tag == TransformErrorTag::Deprecated as u8 => {
+                Ok((TransformError::Deprecated, remainder))
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -113,7 +123,7 @@ impl StdError for TransformError {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             TransformError::Serialization(error) => Some(error),
-            TransformError::TypeMismatch(_) => None,
+            TransformError::TypeMismatch(_) | TransformError::Deprecated => None,
         }
     }
 }
@@ -122,4 +132,5 @@ impl StdError for TransformError {
 enum TransformErrorTag {
     Serialization = 0,
     TypeMismatch = 1,
+    Deprecated = 2,
 }

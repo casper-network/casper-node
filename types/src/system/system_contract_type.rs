@@ -1,12 +1,29 @@
 //! Home of system contract type enum.
 
-use alloc::string::{String, ToString};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{
     convert::TryFrom,
     fmt::{self, Display, Formatter},
 };
 
-use crate::{ApiError, EntryPoints};
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    ApiError, EntryPoints,
+};
+
+const MINT_TAG: u8 = 0;
+const HANDLE_PAYMENT_TAG: u8 = 1;
+const STANDARD_PAYMENT_TAG: u8 = 2;
+const AUCTION_TAG: u8 = 3;
 
 use super::{
     auction::auction_entry_points, handle_payment::handle_payment_entry_points,
@@ -17,9 +34,12 @@ use super::{
 ///
 /// Used by converting to a `u32` and passing as the `system_contract_index` argument of
 /// `ext_ffi::casper_get_system_contract()`.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum SystemContractType {
     /// Mint contract.
+    #[default]
     Mint,
     /// Handle Payment contract.
     HandlePayment,
@@ -27,6 +47,47 @@ pub enum SystemContractType {
     StandardPayment,
     /// Auction contract.
     Auction,
+}
+
+impl ToBytes for SystemContractType {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            SystemContractType::Mint => {
+                writer.push(MINT_TAG);
+            }
+            SystemContractType::HandlePayment => {
+                writer.push(HANDLE_PAYMENT_TAG);
+            }
+            SystemContractType::StandardPayment => {
+                writer.push(STANDARD_PAYMENT_TAG);
+            }
+            SystemContractType::Auction => writer.push(AUCTION_TAG),
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for SystemContractType {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (tag, remainder) = u8::from_bytes(bytes)?;
+        match tag {
+            MINT_TAG => Ok((SystemContractType::Mint, remainder)),
+            HANDLE_PAYMENT_TAG => Ok((SystemContractType::HandlePayment, remainder)),
+            STANDARD_PAYMENT_TAG => Ok((SystemContractType::StandardPayment, remainder)),
+            AUCTION_TAG => Ok((SystemContractType::Auction, remainder)),
+            _ => Err(Error::Formatting),
+        }
+    }
 }
 
 /// Name of mint system contract
