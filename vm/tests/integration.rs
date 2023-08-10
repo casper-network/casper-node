@@ -7,7 +7,7 @@ use bytes::Bytes;
 use vm::{
     backend::{Context, WasmInstance},
     storage::{self, Entry, Storage},
-    ExecuteRequest, VM, ConfigBuilder,
+    ConfigBuilder, ExecuteRequest, VM,
 };
 
 // use super::*;
@@ -70,15 +70,14 @@ fn trying_to_find_panic_points() {
 
         let storage = MockStorage::default();
 
-
         const MEMORY_LIMIT: u32 = 17;
 
-        let config = ConfigBuilder::new().with_gas_limit(gas_limit).with_memory_limit(MEMORY_LIMIT).build();
+        let config = ConfigBuilder::new()
+            .with_gas_limit(gas_limit)
+            .with_memory_limit(MEMORY_LIMIT)
+            .build();
 
-
-        let mock_context = Context {
-            storage,
-        };
+        let mock_context = Context { storage };
 
         let retrieved_context = {
             let mut instance = vm
@@ -119,11 +118,12 @@ fn smoke() {
     const GAS_LIMIT: u64 = 1_000_000;
     const MEMORY_LIMIT: u32 = 17;
 
-    let config = ConfigBuilder::new().with_gas_limit(GAS_LIMIT).with_memory_limit(MEMORY_LIMIT).build();
+    let config = ConfigBuilder::new()
+        .with_gas_limit(GAS_LIMIT)
+        .with_memory_limit(MEMORY_LIMIT)
+        .build();
 
-    let mock_context = Context {
-        storage,
-    };
+    let mock_context = Context { storage };
 
     let retrieved_context = {
         let mut instance = vm
@@ -143,7 +143,6 @@ fn smoke() {
 
         instance.teardown()
     };
-
 
     // dbg!(&res);
     dbg!(&retrieved_context.storage);

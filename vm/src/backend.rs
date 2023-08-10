@@ -33,7 +33,8 @@ pub(crate) trait Caller<S: Storage> {
     /// Allocates memory inside the Wasm VM by calling an export.
     ///
     /// Error is a type-erased error coming from the VM itself.
-    fn alloc(&mut self, idx: u32, size: usize, ctx: u32) -> Result<u32, Box<dyn std::error::Error>>;
+    fn alloc(&mut self, idx: u32, size: usize, ctx: u32)
+        -> Result<u32, Box<dyn std::error::Error>>;
 }
 
 #[derive(Debug, Error)]

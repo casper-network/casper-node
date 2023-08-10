@@ -73,7 +73,6 @@ pub(crate) fn casper_read<S: Storage>(
     cb_alloc: u32,
     cb_ctx: u32,
 ) -> Result<i32, Outcome> {
-
     // caller.
 
     let key = caller
