@@ -830,7 +830,7 @@ impl<REv> EffectBuilder<REv> {
             };
 
         self.event_queue
-            .schedule(reactor_event, QueueKind::NetworkIncoming)
+            .schedule(reactor_event, QueueKind::MessageIncoming)
             .await
     }
 

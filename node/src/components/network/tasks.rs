@@ -424,7 +424,7 @@ pub(super) async fn server<P, REv>(
                                         incoming: Box::new(incoming),
                                         span,
                                     },
-                                    QueueKind::NetworkIncoming,
+                                    QueueKind::MessageIncoming,
                                 )
                                 .await;
                         }
@@ -530,9 +530,9 @@ where
         }
 
         let queue_kind = if msg.is_low_priority() {
-            QueueKind::NetworkLowPriority
+            QueueKind::MessageLowPriority
         } else {
-            QueueKind::NetworkIncoming
+            QueueKind::MessageIncoming
         };
 
         context

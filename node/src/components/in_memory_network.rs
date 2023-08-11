@@ -612,7 +612,7 @@ async fn receiver_task<REv, P>(
         let announce: REv = REv::from_incoming(sender, payload, Ticket::create_dummy());
 
         event_queue
-            .schedule(announce, QueueKind::NetworkIncoming)
+            .schedule(announce, QueueKind::MessageIncoming)
             .await;
     }
 

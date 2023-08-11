@@ -16,12 +16,12 @@ use serde::Serialize;
 pub enum QueueKind {
     /// Control messages for the runtime itself.
     Control,
-    /// Network events that were initiated outside of this node.
+    /// Incoming message events that were initiated outside of this node.
     ///
-    /// Their load may vary and grouping them together in one queue aides DoS protection.
-    NetworkIncoming,
-    /// Network events that are low priority.
-    NetworkLowPriority,
+    /// Their load may vary and grouping them together in one queue aids DoS protection.
+    MessageIncoming,
+    /// Incoming messages that are low priority.
+    MessageLowPriority,
     /// Network events demand a resource directly.
     NetworkDemand,
     /// Network events that were initiated by the local node, such as outgoing messages.
@@ -61,8 +61,8 @@ impl Display for QueueKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let str_value = match self {
             QueueKind::Control => "Control",
-            QueueKind::NetworkIncoming => "NetworkIncoming",
-            QueueKind::NetworkLowPriority => "NetworkLowPriority",
+            QueueKind::MessageIncoming => "MessageIncoming",
+            QueueKind::MessageLowPriority => "MessageLowPriority",
             QueueKind::NetworkDemand => "NetworkDemand",
             QueueKind::Network => "Network",
             QueueKind::NetworkInfo => "NetworkInfo",
@@ -95,10 +95,10 @@ impl QueueKind {
     /// each event processing round.
     fn weight(self) -> NonZeroUsize {
         NonZeroUsize::new(match self {
-            QueueKind::NetworkLowPriority => 1,
+            QueueKind::MessageLowPriority => 1,
             QueueKind::NetworkInfo => 2,
             QueueKind::NetworkDemand => 2,
-            QueueKind::NetworkIncoming => 8,
+            QueueKind::MessageIncoming => 4,
             QueueKind::Network => 4,
             QueueKind::Regular => 4,
             QueueKind::Fetch => 4,
@@ -127,9 +127,9 @@ impl QueueKind {
     pub(crate) fn metrics_name(&self) -> &str {
         match self {
             QueueKind::Control => "control",
-            QueueKind::NetworkIncoming => "network_incoming",
+            QueueKind::MessageIncoming => "message_incoming",
             QueueKind::NetworkDemand => "network_demands",
-            QueueKind::NetworkLowPriority => "network_low_priority",
+            QueueKind::MessageLowPriority => "message_low_priority",
             QueueKind::Network => "network",
             QueueKind::NetworkInfo => "network_info",
             QueueKind::SyncGlobalState => "sync_global_state",
