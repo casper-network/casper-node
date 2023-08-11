@@ -54,10 +54,11 @@ pub enum Error {
     Resolver(Resolver),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Config {
     pub(crate) gas_limit: u64,
     pub(crate) memory_limit: u32,
+    pub(crate) input: Bytes,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -65,6 +66,8 @@ pub struct ConfigBuilder {
     gas_limit: Option<u64>,
     /// Memory limit in pages.
     memory_limit: Option<u32>,
+    /// Input data.
+    input: Option<Bytes>,
 }
 
 impl ConfigBuilder {
@@ -83,12 +86,20 @@ impl ConfigBuilder {
         self
     }
 
+    /// Pass input data.
+    pub fn with_input(mut self, input: Bytes) -> Self {
+        self.input = Some(input);
+        self
+    }
+
     pub fn build(self) -> Config {
         let gas_limit = self.gas_limit.expect("Required field");
         let memory_limit = self.memory_limit.expect("Required field");
+        let input = self.input.unwrap_or_default();
         Config {
             gas_limit,
             memory_limit,
+            input,
         }
     }
 }

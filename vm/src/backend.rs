@@ -2,7 +2,7 @@ pub(crate) mod wasmer;
 use std::{marker::PhantomData, ops::Deref};
 use thiserror::Error;
 
-use crate::{storage::Storage, Error as VMError};
+use crate::{storage::Storage, Config, Error as VMError};
 
 #[derive(Debug)]
 pub struct GasUsage {
@@ -22,6 +22,7 @@ pub struct Context<S: Storage> {
 /// instance, wasm linear memory access, etc.
 
 pub(crate) trait Caller<S: Storage> {
+    fn config(&self) -> &Config;
     fn context(&self) -> &Context<S>;
     fn memory_read(&self, offset: u32, size: usize) -> Result<Vec<u8>, VMError> {
         let mut vec = vec![0; size];
@@ -54,6 +55,6 @@ pub enum Error {
 // struct Payload
 
 pub trait WasmInstance<S: Storage> {
-    fn call_export(&mut self, name: &str, args: &[&[u8]]) -> (Result<(), VMError>, GasUsage);
+    fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage);
     fn teardown(self) -> Context<S>;
 }

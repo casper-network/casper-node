@@ -6,6 +6,7 @@ use wasmer::WasmPtr;
 
 use crate::{backend::Caller, storage::Storage, Error as VMError, HostError};
 
+#[derive(Debug)]
 pub(crate) enum Outcome {
     /// Propagate VM error (i.e. after recursively calling into exports inside wasm).
     VM(Box<dyn std::error::Error>),
@@ -110,4 +111,30 @@ pub(crate) fn casper_read<S: Storage>(
 /// Write value under a key.
 pub(crate) fn casper_revert(code: u32) -> i32 {
     todo!()
+}
+
+pub(crate) fn casper_copy_input<S: Storage>(
+    mut caller: impl Caller<S>,
+    cb_alloc: u32,
+    alloc_ctx: u32,
+) -> Result<u32, Outcome> {
+    let input = caller.config().input.clone();
+
+    let out_ptr: u32 = if cb_alloc != 0 {
+        caller
+            .alloc(cb_alloc, input.len(), alloc_ctx)
+            .map_err(|error| Outcome::VM(error))?
+    } else {
+        // treats alloc_ctx as data
+        alloc_ctx
+    };
+
+    if out_ptr == 0 {
+        Ok(out_ptr)
+    }
+    else {
+        caller.memory_write(out_ptr, &input).unwrap();
+        Ok(out_ptr + (input.len() as u32))
+    }
+
 }

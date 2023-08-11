@@ -37,6 +37,7 @@ pub(crate) struct WasmerModule {
 pub(crate) struct WasmerEngine {}
 
 struct WasmerEnv<S: Storage> {
+    config: Config,
     context: Context<S>,
     instance: Weak<Instance>,
     exported_runtime: Option<ExportedRuntime>,
@@ -173,13 +174,18 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
         let ptr = alloc_callback.call(&mut store.as_store_mut(), size.try_into().unwrap(), ctx)?;
         Ok(ptr)
     }
+
+    fn config(&self) -> &Config {
+        &self.env.data().config
+    }
 }
 
 impl<S: Storage> WasmerEnv<S> {}
 
 impl<S: Storage> WasmerEnv<S> {
-    fn new(context: Context<S>) -> Self {
+    fn new(config: Config, context: Context<S>) -> Self {
         Self {
+            config,
             context,
             // memory: None,
             instance: Weak::new(),
@@ -199,9 +205,8 @@ impl<S: Storage> WasmerEnv<S> {
 #[derive(Clone)]
 pub(crate) struct ExportedRuntime {
     pub(crate) memory: Memory,
-    pub(crate) exported_alloc_func: TypedFunction<u32, u32>,
-    pub(crate) exported_dealloc_func: TypedFunction<(u32, u32), ()>,
     pub(crate) exported_table: Table,
+    pub(crate) exported_call_func: TypedFunction<(), ()>,
 }
 
 pub(crate) struct WasmerInstance<S: Storage> {
@@ -222,73 +227,78 @@ where
     /// Calls into `alloc` function to inject a data structure containing all the arguments
     /// passed, together with a list of pointers pointing at each memory chunk to
     /// allow Wasm to easily retrieve the data.
-    pub(crate) fn inject_arguments(&mut self, args: &[&[u8]]) -> Result<Vec<Value>, VMError> {
-        // Allocate memory inside the VM and copy over each argument into the provided pointer.
-        let mut data_size: usize = args.iter().map(|arg| arg.len()).sum();
-        data_size += args.len() * mem::size_of::<Slice>();
+    // pub(crate) fn inject_arguments(&mut self, arguments: &[u8]) -> Result<Vec<Value>, VMError> {
+    //     // Allocate memory inside the VM and copy over each argument into the provided pointer.
+    //     let mut data_size: usize = args.iter().map(|arg| arg.len()).sum();
+    //     data_size += args.len() * mem::size_of::<Slice>();
 
-        let arg_ptr = self
-            .wasmer_env()
-            .exported_runtime()
-            .exported_alloc_func
-            .clone()
-            .call(&mut self.store, data_size.try_into().unwrap())
-            .map_err(|error| handle_runtime_error(error, &mut self.store, &self.instance))?;
-        let mut cur_ptr = arg_ptr;
-        let mut slices = Vec::new();
+    //     let arg_ptr = self
+    //         .wasmer_env()
+    //         .exported_runtime()
+    //         .exported_alloc_func
+    //         .clone()
+    //         .call(&mut self.store, data_size.try_into().unwrap())
+    //         .map_err(|error| handle_runtime_error(error, &mut self.store, &self.instance))?;
+    //     let mut cur_ptr = arg_ptr;
+    //     let mut slices = Vec::new();
 
-        for arg in args {
-            self.wasmer_env()
-                .exported_runtime()
-                .memory
-                .view(&self.store)
-                .write(cur_ptr as _, arg)
-                .map_err(|error| VMError::Runtime {
-                    message: error.to_string(),
-                })?;
-            slices.push(Slice {
-                ptr: cur_ptr,
-                size: arg.len() as _,
-            });
-            cur_ptr += arg.len() as u32;
-        }
-        let mut slices_ptr = cur_ptr;
-        let mut ptr = slices_ptr;
-        let mut slices_ptrs = Vec::new();
-        for slice in slices {
-            let slice_bytes: [u8; mem::size_of::<Slice>()] = unsafe { mem::transmute_copy(&slice) };
-            // dbg!(&slice_bytes.len());
-            self.wasmer_env()
-                .exported_runtime()
-                .memory
-                .view(&self.store)
-                .write(ptr as _, &slice_bytes)
-                .map_err(|error| VMError::Runtime {
-                    message: error.to_string(),
-                })?;
-            slices_ptrs.push(Value::I32(ptr as _));
-            ptr += slice_bytes.len() as u32;
-        }
-        Ok(slices_ptrs)
-    }
+    //     for arg in args {
+    //         self.wasmer_env()
+    //             .exported_runtime()
+    //             .memory
+    //             .view(&self.store)
+    //             .write(cur_ptr as _, arg)
+    //             .map_err(|error| VMError::Runtime {
+    //                 message: error.to_string(),
+    //             })?;
+    //         slices.push(Slice {
+    //             ptr: cur_ptr,
+    //             size: arg.len() as _,
+    //         });
+    //         cur_ptr += arg.len() as u32;
+    //     }
+    //     let mut slices_ptr = cur_ptr;
+    //     let mut ptr = slices_ptr;
+    //     let mut slices_ptrs = Vec::new();
+    //     for slice in slices {
+    //         let slice_bytes: [u8; mem::size_of::<Slice>()] = unsafe { mem::transmute_copy(&slice)
+    // };         // dbg!(&slice_bytes.len());
+    //         self.wasmer_env()
+    //             .exported_runtime()
+    //             .memory
+    //             .view(&self.store)
+    //             .write(ptr as _, &slice_bytes)
+    //             .map_err(|error| VMError::Runtime {
+    //                 message: error.to_string(),
+    //             })?;
+    //         slices_ptrs.push(Value::I32(ptr as _));
+    //         ptr += slice_bytes.len() as u32;
+    //     }
+    //     Ok(slices_ptrs)
+    // }
 
-    pub(crate) fn call_export(&mut self, name: &str, args: &[&[u8]]) -> Result<(), VMError> {
+    pub(crate) fn call_export(&mut self, name: &str) -> Result<(), VMError> {
         // TODO: Possible optimization is to use get_typed_function to optimize the call, rather
         // than using dynamic interface.
-        let slices_ptrs = self.inject_arguments(args)?;
+        // let slices_ptrs = self.inject_arguments(args)?;
 
-        let exported_function = self
-            .instance
-            .exports
-            // .get_typed_function::<(u64, u32), ()>(&self.store, name)
-            .get_function(name)
-            .map_err(|_error| {
-                VMError::Resolver(Resolver::Export {
-                    name: name.to_string(),
-                })
-            })?;
+        // let exported_function = self
+        //     .instance
+        //     .exports
+        //     // .get_typed_function::<(u64, u32), ()>(&self.store, name)
+        //     .get_function(name)
+        //     .map_err(|_error| {
+        //         VMError::Resolver(Resolver::Export {
+        //             name: name.to_string(),
+        //         })
+        //     })?;
 
-        let result = exported_function.call(&mut self.store, &slices_ptrs);
+        let result = self
+            .wasmer_env()
+            .exported_runtime()
+            .exported_call_func
+            .clone()
+            .call(&mut self.store.as_store_mut());
 
         let remaining_points_1 = metering::get_remaining_points(&mut self.store, &self.instance);
         dbg!(&remaining_points_1);
@@ -313,7 +323,9 @@ where
             Ok(result) => Ok(()),
             Err(error) => match error.downcast::<HostError>() {
                 Ok(host_error) => Err(VMError::Host(host_error)),
-                Err(vm_error) => todo!("handle {vm_error:?}"),
+                Err(vm_error) => Err(VMError::Runtime {
+                    message: vm_error.to_string(),
+                }),
             },
         }
     }
@@ -339,7 +351,7 @@ where
 
         let mut store = Store::new(engine);
 
-        let wasmer_env = WasmerEnv::new(context);
+        let wasmer_env = WasmerEnv::new(config.clone(), context);
         let function_env = FunctionEnv::new(&mut store, wasmer_env);
 
         let memory = Memory::new(
@@ -459,10 +471,42 @@ where
                 }),
             );
 
+            imports.define(
+                "env",
+                "casper_copy_input",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                     cb_alloc: u32,
+                     cb_ctx: u32|
+                     -> Result<u32, RuntimeError> {
+                        let wasmer_caller = WasmerCaller { env };
+                        let ret = host::casper_copy_input(wasmer_caller, cb_alloc, cb_ctx);
+                        dbg!(&ret);
+                        match ret {
+                            Ok(result) => Ok(result),
+                            Err(Outcome::VM(type_erased_runtime_error)) => {
+                                dbg!(&type_erased_runtime_error);
+                                let boxed_runtime_error: Box<RuntimeError> =
+                                    type_erased_runtime_error
+                                        .downcast()
+                                        .expect("Valid RuntimeError instance");
+                                Err(*boxed_runtime_error)
+                            }
+                            Err(Outcome::Host(host_error)) => {
+                                Err(RuntimeError::user(Box::new(host_error)))
+                            }
+                        }
+                    },
+                ),
+            );
+
             imports
         };
 
-        // TODO: Deal with "start" section that executes actual Wasm - test, measure gas, etc.
+        // TODO: Deal with "start" section that executes actual Wasm - test, measure gas, etc. ->
+        // Instance::new may fail with RuntimError
 
         let instance = {
             let instance = Instance::new(&mut store, &module, &imports)
@@ -484,13 +528,9 @@ where
             .get_table("__indirect_function_table")
             .map_err(|error| BackendError::Export(error.to_string()))?;
 
-        let exported_alloc_func = instance
+        let exported_call_func = instance
             .exports
-            .get_typed_function(&mut store, "alloc")
-            .map_err(|error| BackendError::Export(error.to_string()))?;
-        let exported_dealloc_func = instance
-            .exports
-            .get_typed_function(&mut store, "dealloc")
+            .get_typed_function(&mut store, "call")
             .map_err(|error| BackendError::Export(error.to_string()))?;
 
         // let memory = instance
@@ -503,9 +543,8 @@ where
             function_env_mut.instance = Arc::downgrade(&instance);
             function_env_mut.exported_runtime = Some(ExportedRuntime {
                 memory: memory.clone(),
-                exported_alloc_func,
-                exported_dealloc_func,
                 exported_table: table.clone(),
+                exported_call_func,
             });
         }
 
@@ -532,8 +571,8 @@ impl<S> WasmInstance<S> for WasmerInstance<S>
 where
     S: Storage + 'static,
 {
-    fn call_export(&mut self, name: &str, args: &[&[u8]]) -> (Result<(), VMError>, GasUsage) {
-        let vm_result = self.call_export(name, args);
+    fn call_export(&mut self, name: &str) -> (Result<(), VMError>, GasUsage) {
+        let vm_result = self.call_export(name);
         let remaining_points = metering::get_remaining_points(&mut self.store, &self.instance);
         match remaining_points {
             MeteringPoints::Remaining(remaining_points) => {

@@ -91,7 +91,7 @@ fn trying_to_find_panic_points() {
             ];
 
             eprintln!("gas_limit={gas_limit}");
-            let (result, gas_summary) = instance.call_export("call", args);
+            let (result, gas_summary) = instance.call_export("call");
             // dbg!(&result, gas_summary);
             eprintln!("{result:?} {gas_summary:?}");
 
@@ -118,9 +118,15 @@ fn smoke() {
     const GAS_LIMIT: u64 = 1_000_000;
     const MEMORY_LIMIT: u32 = 17;
 
+    // let input = b"This is a very long input data.".to_vec();
+    let input = borsh::to_vec(&("Hello, world!".to_string(), 123456789u32))
+        .map(Bytes::from)
+        .unwrap();
+
     let config = ConfigBuilder::new()
         .with_gas_limit(GAS_LIMIT)
         .with_memory_limit(MEMORY_LIMIT)
+        .with_input(input)
         .build();
 
     let mock_context = Context { storage };
@@ -130,14 +136,8 @@ fn smoke() {
             .prepare(execute_request, mock_context, config)
             .expect("should prepare");
 
-        let args = &[
-            b"hello".as_slice(),
-            b"world but longer".as_slice(),
-            b"another argument",
-        ];
-
         eprintln!("gas_limit={GAS_LIMIT}");
-        let (result, gas_summary) = instance.call_export("call", args);
+        let (result, gas_summary) = instance.call_export("call");
         // dbg!(&result, gas_summary);
         eprintln!("{result:?} {gas_summary:?}");
 
