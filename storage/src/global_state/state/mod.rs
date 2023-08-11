@@ -6,18 +6,18 @@ pub mod lmdb;
 /// Lmdb implementation of global state with cache.
 pub mod scratch;
 
-use std::{collections::HashMap, hash::BuildHasher};
+use std::collections::HashMap;
 
 use tracing::error;
 
-use casper_types::{bytesrepr, Digest, Key, StoredValue};
+use casper_types::{
+    bytesrepr,
+    execution::{Effects, Transform, TransformError, TransformKind},
+    Digest, Key, StoredValue,
+};
 
 pub use self::lmdb::make_temporary_global_state;
 use crate::global_state::{
-    shared::{
-        transform::{self, Transform},
-        AdditiveMap,
-    },
     transaction_source::{Transaction, TransactionSource},
     trie::{merkle_proof::TrieMerkleProof, Trie, TrieRaw},
     trie_store::{
@@ -60,7 +60,7 @@ pub enum CommitError {
     KeyNotFound(Key),
     /// Transform error.
     #[error(transparent)]
-    TransformError(transform::Error),
+    TransformError(TransformError),
     /// Trie not found while attempting to validate cache write.
     #[error("Trie not found in cache {0}")]
     TrieNotFoundInCache(Digest),
@@ -70,11 +70,7 @@ pub enum CommitError {
 pub trait CommitProvider: StateProvider {
     /// Applies changes and returns a new post state hash.
     /// block_hash is used for computing a deterministic and unique keys.
-    fn commit(
-        &self,
-        state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error>;
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error>;
 }
 
 /// A trait expressing operations over the trie.
@@ -145,18 +141,17 @@ where
 }
 
 /// Commit `effects` to the store.
-pub fn commit<'a, R, S, H, E>(
+pub fn commit<'a, R, S, E>(
     environment: &'a R,
     store: &S,
     prestate_hash: Digest,
-    effects: AdditiveMap<Key, Transform, H>,
+    effects: Effects,
 ) -> Result<Digest, E>
 where
     R: TransactionSource<'a, Handle = S::Handle>,
     S: TrieStore<Key, StoredValue>,
     S::Error: From<R::Error>,
     E: From<R::Error> + From<S::Error> + From<bytesrepr::Error> + From<CommitError>,
-    H: BuildHasher,
 {
     let mut txn = environment.create_read_write_txn()?;
     let mut state_root = prestate_hash;
@@ -167,37 +162,39 @@ where
         return Err(CommitError::RootNotFound(prestate_hash).into());
     };
 
-    for (key, transform) in effects.into_iter() {
+    for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
         let read_result = read::<_, _, _, _, E>(&txn, store, &state_root, &key)?;
 
-        let value = match (read_result, transform) {
-            (ReadResult::NotFound, Transform::Write(new_value)) => new_value,
-            (ReadResult::NotFound, transform) => {
+        let value = match (read_result, kind) {
+            (ReadResult::NotFound, TransformKind::Write(new_value)) => new_value,
+            (ReadResult::NotFound, transform_kind) => {
                 error!(
                     ?state_root,
                     ?key,
-                    ?transform,
+                    ?transform_kind,
                     "Key not found while attempting to apply transform"
                 );
                 return Err(CommitError::KeyNotFound(key).into());
             }
-            (ReadResult::Found(current_value), transform) => match transform.apply(current_value) {
-                Ok(updated_value) => updated_value,
-                Err(err) => {
-                    error!(
-                        ?state_root,
-                        ?key,
-                        ?err,
-                        "Key found, but could not apply transform"
-                    );
-                    return Err(CommitError::TransformError(err).into());
+            (ReadResult::Found(current_value), transform_kind) => {
+                match transform_kind.apply(current_value) {
+                    Ok(updated_value) => updated_value,
+                    Err(err) => {
+                        error!(
+                            ?state_root,
+                            ?key,
+                            ?err,
+                            "Key found, but could not apply transform"
+                        );
+                        return Err(CommitError::TransformError(err).into());
+                    }
                 }
-            },
-            (ReadResult::RootNotFound, transform) => {
+            }
+            (ReadResult::RootNotFound, transform_kind) => {
                 error!(
                     ?state_root,
                     ?key,
-                    ?transform,
+                    ?transform_kind,
                     "Failed to read state root while processing transform"
                 );
                 return Err(CommitError::ReadRootNotFound(state_root).into());

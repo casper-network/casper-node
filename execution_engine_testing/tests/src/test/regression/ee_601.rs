@@ -2,8 +2,9 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_storage::global_state::shared::{transform::Transform, AdditiveMap};
-use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, StoredValue};
+use casper_types::{
+    execution::TransformKind, runtime_args, CLValue, Key, RuntimeArgs, StoredValue,
+};
 
 const ARG_AMOUNT: &str = "amount";
 
@@ -33,40 +34,34 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request);
 
-    let transforms = builder.get_execution_journals();
-    let transform: AdditiveMap<Key, Transform> = transforms[0].clone().into();
-
     let contract_key: Key = builder
         .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract hash associated with default account")
         .into();
 
-    let add_keys = if let Some(Transform::AddKeys(keys)) = transform.get(&contract_key) {
-        keys
-    } else {
-        panic!(
-            "expected AddKeys transform for given key but received {:?}",
-            transforms[0]
-        );
+    let effects = &builder.get_effects()[0];
+    let mut add_keys_iter = effects
+        .transforms()
+        .iter()
+        .filter(|transform| transform.key() == &contract_key)
+        .map(|transform| transform.kind());
+    let payment_uref = match add_keys_iter.next().unwrap() {
+        TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-payment").unwrap(),
+        _ => panic!("should be an AddKeys transform"),
     };
-
-    let pay_uref = add_keys
-        .get("new_uref_result-payment")
-        .expect("payment uref should exist");
-
-    let session_uref = add_keys
-        .get("new_uref_result-session")
-        .expect("session uref should exist");
-
+    let session_uref = match add_keys_iter.next().unwrap() {
+        TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-session").unwrap(),
+        _ => panic!("should be an AddKeys transform"),
+    };
     assert_ne!(
-        pay_uref, session_uref,
+        payment_uref, session_uref,
         "payment and session code should not create same uref"
     );
 
     builder.commit();
 
     let payment_value: StoredValue = builder
-        .query(None, *pay_uref, &[])
+        .query(None, *payment_uref, &[])
         .expect("should find payment value");
 
     assert_eq!(

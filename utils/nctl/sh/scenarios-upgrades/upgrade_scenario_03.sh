@@ -366,7 +366,7 @@ function _step_14()
     echo "$AUCTION_INFO_FOR_HEX"
 }
 
-# Step 07: Assert USER_ID is NOT a delegatee
+# Step 15: Assert USER_ID is NOT a delegatee
 function _step_15()
 {
     local USER_ID=${1:-'7'}
@@ -376,7 +376,7 @@ function _step_15()
 
     USER_PATH=$(get_path_to_user "$USER_ID")
     HEX=$(cat "$USER_PATH"/public_key_hex | tr '[:upper:]' '[:lower:]')
-    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].public_key | ascii_downcase == $node_hex)')
+    AUCTION_INFO_FOR_HEX=$(nctl-view-chain-auction-info | jq --arg node_hex "$HEX" '.auction_state.bids[]| select(.bid.delegators[].delegator_public_key | ascii_downcase == $node_hex)')
 
     log_step_upgrades 15 "Asserting user-$USER_ID is NOT a delegatee"
 

@@ -2,7 +2,7 @@
 //! [`Proptest`](https://crates.io/crates/proptest).
 #![allow(missing_docs)]
 
-use alloc::{boxed::Box, string::String, vec};
+use alloc::{boxed::Box, collections::BTreeSet, string::String, vec};
 
 use proptest::{
     array, bits, bool,
@@ -13,13 +13,10 @@ use proptest::{
 };
 
 use crate::{
-    account,
-    account::AccountHash,
+    account::{self, AccountHash},
     addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
-    package::{
-        ContractPackageStatus, ContractVersionKey, ContractVersions, DisabledVersions, Groups,
-    },
+    package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
     system::auction::{
         gens::era_info_arb, Bid, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
@@ -61,8 +58,8 @@ pub fn u2_slice_32() -> impl Strategy<Value = [u8; 32]> {
     })
 }
 
-pub fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
-    collection::btree_map("\\PC*", key_arb(), depth)
+pub(crate) fn named_keys_arb(depth: usize) -> impl Strategy<Value = NamedKeys> {
+    collection::btree_map("\\PC*", key_arb(), depth).prop_map(NamedKeys::from)
 }
 
 pub fn access_rights_arb() -> impl Strategy<Value = AccessRights> {
@@ -430,14 +427,16 @@ pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
         u8_slice_32().prop_map(ContractHash::new),
         1..5,
     )
+    .prop_map(ContractVersions::from)
 }
 
-pub fn disabled_versions_arb() -> impl Strategy<Value = DisabledVersions> {
+pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
     collection::btree_set(contract_version_key_arb(), 0..5)
 }
 
 pub fn groups_arb() -> impl Strategy<Value = Groups> {
     collection::btree_map(group_arb(), collection::btree_set(uref_arb(), 1..10), 0..5)
+        .prop_map(Groups::from)
 }
 
 pub fn contract_package_arb() -> impl Strategy<Value = Package> {

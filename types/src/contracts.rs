@@ -1,25 +1,24 @@
 //! Data types for supporting contract headers feature.
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::vec::Vec;
-use core::fmt::Debug;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use serde::Serialize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    addressable_entity::NamedKeys,
+    addressable_entity::{EntryPoint, NamedKeys},
     bytesrepr::{self, FromBytes, ToBytes},
     contract_wasm::ContractWasmHash,
     package::ContractPackageHash,
-    EntryPoint, EntryPoints, ProtocolVersion,
+    EntryPoints, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Contract {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
@@ -133,5 +132,17 @@ impl FromBytes for Contract {
             },
             bytes,
         ))
+    }
+}
+
+impl Default for Contract {
+    fn default() -> Self {
+        Contract {
+            named_keys: NamedKeys::new(),
+            entry_points: EntryPoints::new_with_default_entry_point(),
+            contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
+            contract_package_hash: [0; KEY_HASH_LENGTH].into(),
+            protocol_version: ProtocolVersion::V1_0_0,
+        }
     }
 }

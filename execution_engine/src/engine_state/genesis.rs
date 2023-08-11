@@ -1,5 +1,10 @@
 //! Support for a genesis process.
-use std::{cell::RefCell, collections::BTreeMap, fmt, iter, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    fmt, iter,
+    rc::Rc,
+};
 
 use num::Zero;
 use num_rational::Ratio;
@@ -13,9 +18,8 @@ use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, NamedKeys},
-    package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-    },
+    execution::Effects,
+    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     system::{
         auction::{
             self, Bid, Bids, DelegationRate, Delegator, SeigniorageRecipient,
@@ -35,9 +39,8 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{execution_effect::ExecutionEffect, SystemContractRegistry, DEFAULT_ADDRESS},
-    execution,
-    execution::AddressGenerator,
+    engine_state::{SystemContractRegistry, DEFAULT_ADDRESS},
+    execution::{self, AddressGenerator},
     tracking_copy::TrackingCopy,
 };
 
@@ -49,16 +52,12 @@ pub struct GenesisSuccess {
     /// State hash after genesis is committed to the global state.
     pub post_state_hash: Digest,
     /// Effects of a successful genesis.
-    pub execution_effect: ExecutionEffect,
+    pub effects: Effects,
 }
 
 impl fmt::Display for GenesisSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Success: {} {:?}",
-            self.post_state_hash, self.execution_effect
-        )
+        write!(f, "Success: {} {:?}", self.post_state_hash, self.effects)
     }
 }
 
@@ -409,8 +408,8 @@ where
         }
     }
 
-    pub(crate) fn finalize(self) -> ExecutionEffect {
-        self.tracking_copy.borrow().effect()
+    pub(crate) fn finalize(self) -> Effects {
+        self.tracking_copy.borrow().effects()
     }
 
     fn setup_system_account(&mut self) -> Result<(), Box<GenesisError>> {
@@ -921,7 +920,7 @@ where
                 if maybe_account_hash.is_some() {
                     EntryPoints::new()
                 } else {
-                    EntryPoints::default()
+                    EntryPoints::new_with_default_entry_point()
                 }
             }
         };
@@ -946,8 +945,8 @@ where
         let contract_package = {
             let mut contract_package = Package::new(
                 access_key,
-                ContractVersions::default(),
-                DisabledVersions::default(),
+                ContractVersions::new(),
+                BTreeSet::default(),
                 Groups::default(),
                 ContractPackageStatus::default(),
                 contract_package_kind,

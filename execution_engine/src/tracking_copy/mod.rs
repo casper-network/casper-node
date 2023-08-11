@@ -10,29 +10,24 @@ mod tests;
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     convert::{From, TryInto},
-    iter,
 };
 
 use linked_hash_map::LinkedHashMap;
 use thiserror::Error;
 
-use casper_storage::global_state::{
-    shared::transform::{self, Transform},
-    state::StateReader,
-    trie::merkle_proof::TrieMerkleProof,
-};
+use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
+    addressable_entity::NamedKeys,
     bytesrepr::{self},
+    execution::{Effects, Transform, TransformError, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
 };
 
 pub use self::ext::TrackingCopyExt;
 use self::meter::{heap_meter::HeapSize, Meter};
-use crate::{
-    engine_state::{execution_effect::ExecutionEffect, EngineConfig, ExecutionJournal},
-    runtime_context::dictionary,
-};
+use super::engine_state::EngineConfig;
+use crate::runtime_context::dictionary;
 
 /// Result of a query on a `TrackingCopy`.
 #[derive(Debug)]
@@ -226,7 +221,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
-    journal: ExecutionJournal,
+    effects: Effects,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -241,7 +236,7 @@ pub enum AddResult {
     /// Serialization error.
     Serialization(bytesrepr::Error),
     /// Transform error.
-    Transform(transform::Error),
+    Transform(TransformError),
 }
 
 impl From<CLValueError> for AddResult {
@@ -262,11 +257,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub fn new(reader: R) -> TrackingCopy<R> {
         TrackingCopy {
             reader,
+            // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
-            /* TODO: Should `max_cache_size`
-             * be fraction of wasm memory
-             * limit? */
-            journal: Default::default(),
+            effects: Effects::new(),
         }
     }
 
@@ -325,7 +318,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub fn read(&mut self, key: &Key) -> Result<Option<StoredValue>, R::Error> {
         let normalized_key = key.normalize();
         if let Some(value) = self.get(&normalized_key)? {
-            self.journal.push((normalized_key, Transform::Identity));
+            self.effects
+                .push(Transform::new(normalized_key, TransformKind::Identity));
             Ok(Some(value))
         } else {
             Ok(None)
@@ -337,7 +331,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub fn write(&mut self, key: Key, value: StoredValue) {
         let normalized_key = key.normalize();
         self.cache.insert_write(normalized_key, value.clone());
-        self.journal.push((normalized_key, Transform::Write(value)));
+        let transform = Transform::new(normalized_key, TransformKind::Write(value));
+        self.effects.push(transform);
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.
@@ -359,34 +354,35 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             )))
         };
 
-        let transform = match value {
+        let transform_kind = match value {
             StoredValue::CLValue(cl_value) => match *cl_value.cl_type() {
                 CLType::I32 => match cl_value.into_t() {
-                    Ok(value) => Transform::AddInt32(value),
+                    Ok(value) => TransformKind::AddInt32(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U64 => match cl_value.into_t() {
-                    Ok(value) => Transform::AddUInt64(value),
+                    Ok(value) => TransformKind::AddUInt64(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U128 => match cl_value.into_t() {
-                    Ok(value) => Transform::AddUInt128(value),
+                    Ok(value) => TransformKind::AddUInt128(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U256 => match cl_value.into_t() {
-                    Ok(value) => Transform::AddUInt256(value),
+                    Ok(value) => TransformKind::AddUInt256(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 CLType::U512 => match cl_value.into_t() {
-                    Ok(value) => Transform::AddUInt512(value),
+                    Ok(value) => TransformKind::AddUInt512(value),
                     Err(error) => return Ok(AddResult::from(error)),
                 },
                 _ => {
                     if *cl_value.cl_type() == casper_types::named_key_type() {
                         match cl_value.into_t() {
-                            Ok(name_and_key) => {
-                                let map = iter::once(name_and_key).collect();
-                                Transform::AddKeys(map)
+                            Ok((name, key)) => {
+                                let mut named_keys = NamedKeys::new();
+                                named_keys.insert(name, key);
+                                TransformKind::AddKeys(named_keys)
                             }
                             Err(error) => return Ok(AddResult::from(error)),
                         }
@@ -398,28 +394,24 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             _ => return mismatch(),
         };
 
-        match transform.clone().apply(current_value) {
+        match transform_kind.clone().apply(current_value) {
             Ok(new_value) => {
                 self.cache.insert_write(normalized_key, new_value);
-                self.journal.push((normalized_key, transform));
+                self.effects
+                    .push(Transform::new(normalized_key, transform_kind));
                 Ok(AddResult::Success)
             }
-            Err(transform::Error::TypeMismatch(type_mismatch)) => {
+            Err(TransformError::TypeMismatch(type_mismatch)) => {
                 Ok(AddResult::TypeMismatch(type_mismatch))
             }
-            Err(transform::Error::Serialization(error)) => Ok(AddResult::Serialization(error)),
+            Err(TransformError::Serialization(error)) => Ok(AddResult::Serialization(error)),
             Err(transform_error) => Ok(AddResult::Transform(transform_error)),
         }
     }
 
-    /// Returns the execution effects cached by this instance.
-    pub fn effect(&self) -> ExecutionEffect {
-        ExecutionEffect::from(self.journal.clone())
-    }
-
-    /// Returns the journal of operations executed on this instance.
-    pub fn execution_journal(&self) -> ExecutionJournal {
-        self.journal.clone()
+    /// Returns a copy of the execution effects cached by this instance.
+    pub fn effects(&self) -> Effects {
+        self.effects.clone()
     }
 
     /// Calling `query()` avoids calling into `self.cache`, so this will not return any values
@@ -431,7 +423,6 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// values.
     pub fn query(
         &self,
-
         config: &EngineConfig,
         base_key: Key,
         path: &[String],

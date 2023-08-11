@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     convert::TryInto,
     iter::{self, FromIterator},
     rc::Rc,
@@ -9,10 +9,7 @@ use std::{
 use once_cell::sync::Lazy;
 use rand::RngCore;
 
-use casper_storage::global_state::{
-    shared::transform::Transform,
-    state::{self, lmdb::LmdbGlobalStateView, StateProvider},
-};
+use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
@@ -20,6 +17,7 @@ use casper_types::{
         SetThresholdFailure, Weight,
     },
     bytesrepr::ToBytes,
+    execution::TransformKind,
     package::ContractPackageKind,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
@@ -76,7 +74,7 @@ fn new_addressable_entity_with_purse(
         ContractPackageHash::default(),
         ContractWasmHash::default(),
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::new(purse, AccessRights::READ_ADD_WRITE),
         associated_keys,
@@ -220,6 +218,20 @@ where
     );
 
     functor(runtime_context)
+}
+
+#[track_caller]
+fn last_transform_kind_on_addressable_entity(
+    runtime_context: &RuntimeContext<LmdbGlobalStateView>,
+) -> TransformKind {
+    let key = runtime_context.entity_address;
+    runtime_context
+        .effects()
+        .transforms()
+        .iter()
+        .rev()
+        .find_map(|transform| (transform.key() == &key).then(|| transform.kind().clone()))
+        .unwrap()
 }
 
 #[test]
@@ -425,23 +437,16 @@ fn contract_key_addable_valid() {
     let updated_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         [0u8; 32].into(),
         [0u8; 32].into(),
-        iter::once((uref_name, uref_as_key)).collect(),
-        EntryPoints::default(),
+        NamedKeys::from(iter::once((uref_name, uref_as_key)).collect::<BTreeMap<_, _>>()),
+        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
         ActionThresholds::default(),
     ));
 
-    assert_eq!(
-        *tracking_copy
-            .borrow()
-            .effect()
-            .transforms
-            .get(&contract_key)
-            .unwrap(),
-        Transform::Write(updated_contract)
-    );
+    let read_contract = runtime_context.read_gs(&contract_key).unwrap();
+    assert_eq!(read_contract, Some(updated_contract));
 }
 
 #[test]
@@ -647,13 +652,9 @@ fn manage_associated_keys() {
             .add_associated_key(account_hash, weight)
             .expect("Unable to add key");
 
-        let effect = runtime_context.effect();
-        let transform = effect
-            .transforms
-            .get(&runtime_context.entity_address)
-            .unwrap();
-        let entity = match transform {
-            Transform::Write(StoredValue::AddressableEntity(entity)) => entity,
+        let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
+        let entity = match transform_kind {
+            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
         entity
@@ -666,16 +667,12 @@ fn manage_associated_keys() {
             .update_associated_key(account_hash, new_weight)
             .expect("Unable to update key");
 
-        let effect = runtime_context.effect();
-        let transform = effect
-            .transforms
-            .get(&runtime_context.entity_address)
-            .unwrap();
-        let account = match transform {
-            Transform::Write(StoredValue::AddressableEntity(account)) => account,
+        let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
+        let entity = match transform_kind {
+            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
-        let value = account
+        let value = entity
             .associated_keys()
             .get(&account_hash)
             .expect("Account hash wasn't added to associated keys");
@@ -688,17 +685,13 @@ fn manage_associated_keys() {
             .expect("Unable to remove key");
 
         // Verify
-        let effect = runtime_context.effect();
-        let transform = effect
-            .transforms
-            .get(&runtime_context.entity_address)
-            .unwrap();
-        let account = match transform {
-            Transform::Write(StoredValue::AddressableEntity(account)) => account,
+        let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
+        let entity = match transform_kind {
+            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
 
-        let actual = account.associated_keys().get(&account_hash);
+        let actual = entity.associated_keys().get(&account_hash);
 
         assert!(actual.is_none());
 
@@ -728,13 +721,9 @@ fn action_thresholds_management() {
             .set_action_threshold(ActionType::Deployment, Weight::new(252))
             .expect("Unable to set action threshold Deployment");
 
-        let effect = runtime_context.effect();
-        let transform = effect
-            .transforms
-            .get(&runtime_context.entity_address)
-            .unwrap();
-        let mutated_entity = match transform {
-            Transform::Write(StoredValue::AddressableEntity(entity)) => entity,
+        let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
+        let mutated_entity = match transform_kind {
+            TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
             _ => panic!("Invalid transform operation found"),
         };
 
@@ -865,7 +854,8 @@ fn remove_uref_works() {
     let uref_key = create_uref_as_key(&mut address_generator, AccessRights::READ);
     let account_hash = AccountHash::new([0u8; 32]);
     let contract_hash = ContractHash::new([1u8; 32]);
-    let mut named_keys: NamedKeys = iter::once((uref_name.clone(), uref_key)).collect();
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert(uref_name.clone(), uref_key);
     let (_, entity_key, addressable_entity) =
         new_addressable_entity(account_hash, contract_hash, named_keys.clone());
 
@@ -886,22 +876,18 @@ fn remove_uref_works() {
     // even if you remove the URef from the named keys.
     assert!(runtime_context.validate_key(&uref_key).is_ok());
     assert!(!runtime_context.named_keys_contains_key(&uref_name));
-    let effects = runtime_context.effect();
-    let transform = effects
-        .transforms
-        .get(&runtime_context.entity_address)
-        .unwrap();
-    let entity = match transform {
-        Transform::Write(StoredValue::AddressableEntity(entity)) => entity,
+    let transform_kind = last_transform_kind_on_addressable_entity(&runtime_context);
+    let entity = match transform_kind {
+        TransformKind::Write(StoredValue::AddressableEntity(entity)) => entity,
         _ => panic!("Invalid transform operation found"),
     };
-    assert!(!entity.named_keys().contains_key(&uref_name));
+    assert!(!entity.named_keys().contains(&uref_name));
     // The next time the account is used, the access right is gone for the removed
     // named key.
     let next_session_access_rights = entity.extract_access_rights(contract_hash);
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let (runtime_context, _tempdir) = new_runtime_context(
-        entity,
+        &entity,
         account_hash,
         entity_key,
         &mut named_keys,
@@ -1056,7 +1042,7 @@ fn should_meter_for_gas_storage_add() {
 
 #[test]
 fn associated_keys_add_full() {
-    let final_add_result = build_runtime_context_and_execute(Default::default(), |mut rc| {
+    let final_add_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
         let associated_keys_before = rc.entity().associated_keys().len();
 
         for count in 0..(rc.engine_config.max_associated_keys() as usize - associated_keys_before) {

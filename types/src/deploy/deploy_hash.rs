@@ -26,10 +26,10 @@ use crate::{
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(with = "String", description = "Hex-encoded deploy hash.")
+    schemars(description = "Hex-encoded deploy hash.")
 )]
 #[serde(deny_unknown_fields)]
-pub struct DeployHash(#[cfg_attr(feature = "json-schema", schemars(skip))] Digest);
+pub struct DeployHash(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] Digest);
 
 impl DeployHash {
     /// The number of bytes in a `DeployHash` digest.

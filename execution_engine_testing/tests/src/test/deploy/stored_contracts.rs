@@ -31,7 +31,8 @@ const TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME: &str = "transfer_purse_to_account
 // Currently Error enum that holds this variant is private and can't be used otherwise to compare
 // message
 const EXPECTED_ERROR_MESSAGE: &str = "IncompatibleProtocolMajorVersion { expected: 2, actual: 1 }";
-const EXPECTED_VERSION_ERROR_MESSAGE: &str = "InvalidContractVersion(ContractVersionKey(2, 1))";
+const EXPECTED_VERSION_ERROR_MESSAGE: &str =
+    "InvalidContractVersion(ContractVersionKey { protocol_version_major: 2, contract_version: 1 })";
 const EXPECTED_MISSING_ENTRY_POINT_MESSAGE: &str = "NoSuchMethod";
 
 const ARG_TARGET: &str = "target";
@@ -540,7 +541,7 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
     assert!(
         default_account
             .named_keys()
-            .contains_key(STORED_PAYMENT_CONTRACT_HASH_NAME),
+            .contains(STORED_PAYMENT_CONTRACT_HASH_NAME),
         "standard_payment should be present"
     );
 
@@ -707,7 +708,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
     assert!(
         default_account
             .named_keys()
-            .contains_key(DO_NOTHING_CONTRACT_HASH_NAME),
+            .contains(DO_NOTHING_CONTRACT_HASH_NAME),
         "do_nothing should be present in named keys"
     );
 
@@ -795,7 +796,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
     assert!(
         default_account
             .named_keys()
-            .contains_key(DO_NOTHING_CONTRACT_HASH_NAME),
+            .contains(DO_NOTHING_CONTRACT_HASH_NAME),
         "do_nothing should be present in named keys"
     );
 
@@ -850,7 +851,7 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
         .expect("should have exec error");
     assert!(
         error_message.contains(EXPECTED_VERSION_ERROR_MESSAGE),
-        "{:?}",
+        "{}",
         error_message
     );
 }

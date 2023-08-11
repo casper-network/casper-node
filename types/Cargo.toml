@@ -36,8 +36,9 @@ proptest = { version = "1.0.0", optional = true }
 proptest-derive = { version = "0.3.0", optional = true }
 rand = { version = "0.8.3", default-features = false, features = ["small_rng"] }
 rand_pcg = { version = "0.3.0", optional = true }
-schemars = { version = "=0.8.5", features = ["preserve_order"], optional = true }
+schemars = { version = "0.8.12", features = ["preserve_order"], optional = true }
 serde = { version = "1", default-features = false, features = ["alloc", "derive"] }
+serde-map-to-array = "1.1.0"
 serde_bytes = { version = "0.11.5", default-features = false, features = ["alloc"] }
 serde_json = { version = "1.0.59", default-features = false, features = ["alloc"] }
 strum = { version = "0.24", features = ["derive"], optional = true }
@@ -70,16 +71,17 @@ thiserror = "1"
 untrusted = "0.7.1"
 
 [features]
-json-schema = ["once_cell", "schemars"]
-std = ["base16/std", "derp", "getrandom/std", "humantime", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
-testing = ["proptest", "proptest-derive", "rand_pcg", "strum"]
+json-schema = ["once_cell", "schemars", "serde-map-to-array/json-schema"]
+std = ["base16/std", "derp", "getrandom/std", "humantime", "itertools/use_std", "libc", "once_cell", "pem", "serde_json/preserve_order", "thiserror", "untrusted"]
+testing = ["proptest", "proptest-derive", "rand/default", "rand_pcg", "strum"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
 
 [[bench]]
 name = "bytesrepr_bench"
 harness = false
+required-features = ["testing"]
 
 [package.metadata.docs.rs]
 all-features = true
-rustc-args = ["--cfg", "docsrs"]
+rustdoc-args = ["--cfg", "docsrs"]

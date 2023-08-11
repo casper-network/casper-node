@@ -4,13 +4,11 @@
 //! rewards.
 use std::vec::Vec;
 
-use casper_types::{bytesrepr, CLValueError, Digest, EraId, ProtocolVersion, PublicKey};
-
-use crate::{
-    engine_state::{Error, ExecutionJournal},
-    execution,
-    runtime::stack::RuntimeStackOverflow,
+use casper_types::{
+    bytesrepr, execution::Effects, CLValueError, Digest, EraId, ProtocolVersion, PublicKey,
 };
+
+use crate::{engine_state::Error, execution, runtime::stack::RuntimeStackOverflow};
 
 /// The definition of a slash item.
 #[derive(Debug, Clone)]
@@ -155,12 +153,10 @@ impl From<RuntimeStackOverflow> for StepError {
 }
 
 /// Represents a successfully executed step request.
-// TODO: Rename to something more general, as it is used both for the step and reward distribution
-// requests (see also StepError)
 #[derive(Debug)]
 pub struct StepSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Digest,
     /// Effects of executing a step request.
-    pub execution_journal: ExecutionJournal,
+    pub effects: Effects,
 }

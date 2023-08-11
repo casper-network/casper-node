@@ -156,8 +156,7 @@
               "type": "object",
               "required": [
                 "api_version",
-                "deploy",
-                "execution_results"
+                "deploy"
               ],
               "properties": {
                 "api_version": {
@@ -168,22 +167,23 @@
                   "description": "The deploy.",
                   "$ref": "#/components/schemas/Deploy"
                 },
-                "execution_results": {
-                  "description": "The map of block hash to execution result.",
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/JsonExecutionResult"
-                  }
-                },
                 "block_hash": {
-                  "description": "The hash of the block.",
                   "$ref": "#/components/schemas/BlockHash"
                 },
                 "block_height": {
-                  "description": "The height of the block.",
                   "type": "integer",
                   "format": "uint64",
                   "minimum": 0.0
+                },
+                "execution_result": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ExecutionResult"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               },
               "additionalProperties": false
@@ -256,44 +256,31 @@
                       }
                     ]
                   },
-                  "execution_results": [
-                    {
-                      "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
-                      "result": {
-                        "Success": {
-                          "effect": {
-                            "operations": [
-                              {
-                                "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
-                                "kind": "Write"
-                              },
-                              {
-                                "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                                "kind": "Read"
-                              }
-                            ],
-                            "transforms": [
-                              {
-                                "key": "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007",
-                                "transform": {
-                                  "AddUInt64": 8
-                                }
-                              },
-                              {
-                                "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
-                                "transform": "Identity"
-                              }
-                            ]
+                  "block_hash": "ca92fbeeb369f219189bad8f59bd2eca12ad569dcd36beed1d1c0e825d7ede28",
+                  "block_height": 10,
+                  "execution_result": {
+                    "Version2": {
+                      "Success": {
+                        "effects": [
+                          {
+                            "key": "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb",
+                            "kind": {
+                              "AddUInt64": 8
+                            }
                           },
-                          "transfers": [
-                            "transfer-5959595959595959595959595959595959595959595959595959595959595959",
-                            "transfer-8282828282828282828282828282828282828282828282828282828282828282"
-                          ],
-                          "cost": "123456"
-                        }
+                          {
+                            "key": "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+                            "kind": "Identity"
+                          }
+                        ],
+                        "transfers": [
+                          "transfer-5959595959595959595959595959595959595959595959595959595959595959",
+                          "transfer-8282828282828282828282828282828282828282828282828282828282828282"
+                        ],
+                        "cost": "123456"
                       }
                     }
-                  ]
+                  }
                 }
               }
             }
@@ -375,7 +362,12 @@
                   "api_version": "1.5.2",
                   "account": {
                     "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
-                    "named_keys": [],
+                    "named_keys": [
+                      {
+                        "name": "main_purse",
+                        "key": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
+                      }
+                    ],
                     "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
                     "associated_keys": [
                       {
@@ -490,15 +482,15 @@
             {
               "name": "key",
               "schema": {
-                "description": "`casper_types::Key` as formatted string.",
-                "type": "string"
+                "description": "The key under which to query.",
+                "$ref": "#/components/schemas/Key"
               },
               "required": true
             },
             {
               "name": "state_identifier",
               "schema": {
-                "description": "The identifier used for the query. If none is passed the tip of the chain will be used.",
+                "description": "The identifier used for the query. If not provided, the tip of the chain will be used.",
                 "anyOf": [
                   {
                     "$ref": "#/components/schemas/GlobalStateIdentifier"
@@ -623,7 +615,12 @@
                   "stored_value": {
                     "Account": {
                       "account_hash": "account-hash-e94daaff79c2ab8d9c31d9c3058d7d0a0dd31204a5638dc1451fa67b2e3fb88c",
-                      "named_keys": [],
+                      "named_keys": [
+                        {
+                          "name": "main_purse",
+                          "key": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007"
+                        }
+                      ],
                       "main_purse": "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
                       "associated_keys": [
                         {
@@ -1301,8 +1298,8 @@
             {
               "name": "key",
               "schema": {
-                "description": "`casper_types::Key` as formatted string.",
-                "type": "string"
+                "description": "The key under which to query.",
+                "$ref": "#/components/schemas/Key"
               },
               "required": true
             },
@@ -1608,9 +1605,14 @@
                       {
                         "public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
                         "bid": {
+                          "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
                           "bonding_purse": "uref-fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa-007",
                           "staked_amount": "10",
                           "delegation_rate": 0,
+                          "vesting_schedule": {
+                            "initial_release_timestamp_millis": 42,
+                            "locked_amounts": null
+                          },
                           "delegators": [],
                           "inactive": false
                         }
@@ -1740,14 +1742,6 @@
           },
           "DeployHash": {
             "description": "Hex-encoded deploy hash.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/Digest"
-              }
-            ]
-          },
-          "Digest": {
-            "description": "Hex-encoded hash digest.",
             "type": "string"
           },
           "DeployHeader": {
@@ -1808,9 +1802,13 @@
             "format": "uint64",
             "minimum": 0.0
           },
+          "Digest": {
+            "description": "Hex-encoded hash digest.",
+            "type": "string"
+          },
           "ExecutableDeployItem": {
             "description": "The executable component of a [`Deploy`].",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Executable specified as raw bytes that represent Wasm code and an instance of [`RuntimeArgs`].",
                 "type": "object",
@@ -2079,25 +2077,103 @@
           },
           "CLType": {
             "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
-            "anyOf": [
+            "oneOf": [
               {
+                "description": "`bool` primitive.",
                 "type": "string",
                 "enum": [
-                  "Bool",
-                  "I32",
-                  "I64",
-                  "U8",
-                  "U32",
-                  "U64",
-                  "U128",
-                  "U256",
-                  "U512",
-                  "Unit",
-                  "String",
-                  "Key",
-                  "URef",
-                  "PublicKey",
-                  "Any"
+                  "Bool"
+                ]
+              },
+              {
+                "description": "`i32` primitive.",
+                "type": "string",
+                "enum": [
+                  "I32"
+                ]
+              },
+              {
+                "description": "`i64` primitive.",
+                "type": "string",
+                "enum": [
+                  "I64"
+                ]
+              },
+              {
+                "description": "`u8` primitive.",
+                "type": "string",
+                "enum": [
+                  "U8"
+                ]
+              },
+              {
+                "description": "`u32` primitive.",
+                "type": "string",
+                "enum": [
+                  "U32"
+                ]
+              },
+              {
+                "description": "`u64` primitive.",
+                "type": "string",
+                "enum": [
+                  "U64"
+                ]
+              },
+              {
+                "description": "[`U128`] large unsigned integer type.",
+                "type": "string",
+                "enum": [
+                  "U128"
+                ]
+              },
+              {
+                "description": "[`U256`] large unsigned integer type.",
+                "type": "string",
+                "enum": [
+                  "U256"
+                ]
+              },
+              {
+                "description": "[`U512`] large unsigned integer type.",
+                "type": "string",
+                "enum": [
+                  "U512"
+                ]
+              },
+              {
+                "description": "`()` primitive.",
+                "type": "string",
+                "enum": [
+                  "Unit"
+                ]
+              },
+              {
+                "description": "`String` primitive.",
+                "type": "string",
+                "enum": [
+                  "String"
+                ]
+              },
+              {
+                "description": "[`Key`] system type.",
+                "type": "string",
+                "enum": [
+                  "Key"
+                ]
+              },
+              {
+                "description": "[`URef`] system type.",
+                "type": "string",
+                "enum": [
+                  "URef"
+                ]
+              },
+              {
+                "description": "[`PublicKey`](crate::PublicKey) system type.",
+                "type": "string",
+                "enum": [
+                  "PublicKey"
                 ]
               },
               {
@@ -2246,6 +2322,13 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Unspecified type.",
+                "type": "string",
+                "enum": [
+                  "Any"
+                ]
               }
             ]
           },
@@ -2270,44 +2353,44 @@
             "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
             "type": "string"
           },
-          "JsonExecutionResult": {
-            "description": "The execution result of a single deploy.",
-            "type": "object",
-            "required": [
-              "block_hash",
-              "result"
-            ],
-            "properties": {
-              "block_hash": {
-                "description": "The block hash.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/BlockHash"
-                  }
-                ]
-              },
-              "result": {
-                "description": "Execution result.",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/ExecutionResult"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": false
-          },
           "BlockHash": {
             "description": "Hex-encoded cryptographic hash of a block.",
-            "allOf": [
+            "type": "string"
+          },
+          "ExecutionResult": {
+            "description": "The versioned result of executing a single deploy.",
+            "oneOf": [
               {
-                "$ref": "#/components/schemas/Digest"
+                "description": "Version 1 of execution result type.",
+                "type": "object",
+                "required": [
+                  "Version1"
+                ],
+                "properties": {
+                  "Version1": {
+                    "$ref": "#/components/schemas/ExecutionResultV1"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Version 2 of execution result type.",
+                "type": "object",
+                "required": [
+                  "Version2"
+                ],
+                "properties": {
+                  "Version2": {
+                    "$ref": "#/components/schemas/ExecutionResultV2"
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
-          "ExecutionResult": {
+          "ExecutionResultV1": {
             "description": "The result of executing a single deploy.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "The result of a failed execution.",
                 "type": "object",
@@ -2404,7 +2487,7 @@
             ]
           },
           "ExecutionEffect": {
-            "description": "The journal of execution transforms from a single deploy.",
+            "description": "The sequence of execution transforms from a single deploy.",
             "type": "object",
             "required": [
               "operations",
@@ -2419,7 +2502,7 @@
                 }
               },
               "transforms": {
-                "description": "The journal of execution transforms.",
+                "description": "The sequence of execution transforms.",
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/TransformEntry"
@@ -2453,12 +2536,35 @@
           },
           "OpKind": {
             "description": "The type of operation performed while executing a deploy.",
-            "type": "string",
-            "enum": [
-              "Read",
-              "Write",
-              "Add",
-              "NoOp"
+            "oneOf": [
+              {
+                "description": "A read operation.",
+                "type": "string",
+                "enum": [
+                  "Read"
+                ]
+              },
+              {
+                "description": "A write operation.",
+                "type": "string",
+                "enum": [
+                  "Write"
+                ]
+              },
+              {
+                "description": "An addition.",
+                "type": "string",
+                "enum": [
+                  "Add"
+                ]
+              },
+              {
+                "description": "An operation which has no effect.",
+                "type": "string",
+                "enum": [
+                  "NoOp"
+                ]
+              }
             ]
           },
           "TransformEntry": {
@@ -2486,15 +2592,12 @@
           },
           "Transform": {
             "description": "The actual transformation performed while executing a deploy.",
-            "anyOf": [
+            "oneOf": [
               {
+                "description": "A transform having no effect.",
                 "type": "string",
                 "enum": [
-                  "Identity",
-                  "WriteContractWasm",
-                  "WriteContract",
-                  "WriteContractPackage",
-                  "WriteAddressableEntity"
+                  "Identity"
                 ]
               },
               {
@@ -2522,6 +2625,27 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Writes a smart contract as Wasm to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContractWasm"
+                ]
+              },
+              {
+                "description": "Writes a smart contract to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContract"
+                ]
+              },
+              {
+                "description": "Writes a smart contract package to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteContractPackage"
+                ]
               },
               {
                 "description": "Writes the given DeployInfo to global state.",
@@ -2703,11 +2827,18 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Writes the addressable entity to global state.",
+                "type": "string",
+                "enum": [
+                  "WriteAddressableEntity"
+                ]
               }
             ]
           },
           "AccountHash": {
-            "description": "Hex-encoded account hash.",
+            "description": "Account hash as a formatted string.",
             "type": "string"
           },
           "DeployInfo": {
@@ -2793,7 +2924,7 @@
           },
           "SeigniorageAllocation": {
             "description": "Information about a seigniorage allocation",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Info about a seigniorage allocation for a validator",
                 "type": "object",
@@ -2973,7 +3104,7 @@
             ],
             "properties": {
               "validator_public_key": {
-                "description": "Validator public key",
+                "description": "Validator public key.",
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/PublicKey"
@@ -2997,7 +3128,7 @@
                 ]
               },
               "delegation_rate": {
-                "description": "Delegation rate",
+                "description": "Delegation rate.",
                 "type": "integer",
                 "format": "uint8",
                 "minimum": 0.0
@@ -3014,14 +3145,15 @@
                 ]
               },
               "delegators": {
-                "description": "This validator's delegators, indexed by their public keys",
-                "type": "object",
-                "additionalProperties": {
-                  "$ref": "#/components/schemas/Delegator"
-                }
+                "description": "This validator's delegators, indexed by their public keys.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_PublicKeyAndDelegator"
+                  }
+                ]
               },
               "inactive": {
-                "description": "`true` if validator has been \"evicted\"",
+                "description": "`true` if validator has been \"evicted\".",
                 "type": "boolean"
               }
             },
@@ -3051,6 +3183,38 @@
               }
             },
             "additionalProperties": false
+          },
+          "Array_of_PublicKeyAndDelegator": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicKeyAndDelegator"
+            }
+          },
+          "PublicKeyAndDelegator": {
+            "description": "A delegator associated with the given validator.",
+            "type": "object",
+            "required": [
+              "delegator",
+              "delegator_public_key"
+            ],
+            "properties": {
+              "delegator_public_key": {
+                "description": "The public key of the delegator.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "delegator": {
+                "description": "The delegator details.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Delegator"
+                  }
+                ]
+              }
+            }
           },
           "Delegator": {
             "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
@@ -3156,7 +3320,7 @@
             "type": "string"
           },
           "NamedKey": {
-            "description": "A named key.",
+            "description": "A key with a name.",
             "type": "object",
             "required": [
               "key",
@@ -3239,9 +3403,114 @@
             },
             "additionalProperties": false
           },
+          "ExecutionResultV2": {
+            "description": "The result of executing a single deploy.",
+            "oneOf": [
+              {
+                "description": "The result of a failed execution.",
+                "type": "object",
+                "required": [
+                  "Failure"
+                ],
+                "properties": {
+                  "Failure": {
+                    "type": "object",
+                    "required": [
+                      "cost",
+                      "effects",
+                      "error_message",
+                      "transfers"
+                    ],
+                    "properties": {
+                      "effects": {
+                        "description": "The effects of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Effects"
+                          }
+                        ]
+                      },
+                      "transfers": {
+                        "description": "A record of transfers performed while executing the deploy.",
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/TransferAddr"
+                        }
+                      },
+                      "cost": {
+                        "description": "The cost in Motes of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ]
+                      },
+                      "error_message": {
+                        "description": "The error message associated with executing the deploy.",
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "The result of a successful execution.",
+                "type": "object",
+                "required": [
+                  "Success"
+                ],
+                "properties": {
+                  "Success": {
+                    "type": "object",
+                    "required": [
+                      "cost",
+                      "effects",
+                      "transfers"
+                    ],
+                    "properties": {
+                      "effects": {
+                        "description": "The effects of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Effects"
+                          }
+                        ]
+                      },
+                      "transfers": {
+                        "description": "A record of transfers performed while executing the deploy.",
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/TransferAddr"
+                        }
+                      },
+                      "cost": {
+                        "description": "The cost in Motes of executing the deploy.",
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/U512"
+                          }
+                        ]
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "Effects": {
+            "description": "A log of all transforms produced during execution.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Transform"
+            }
+          },
           "BlockIdentifier": {
             "description": "Identifier for possible ways to retrieve a block.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Identify and retrieve the block with its hash.",
                 "type": "object",
@@ -3273,7 +3542,7 @@
             ]
           },
           "Account": {
-            "description": "Structure representing a user's account, stored in global state.",
+            "description": "Represents an Account in the global state.",
             "type": "object",
             "required": [
               "account_hash",
@@ -3287,19 +3556,13 @@
                 "$ref": "#/components/schemas/AccountHash"
               },
               "named_keys": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NamedKey"
-                }
+                "$ref": "#/components/schemas/NamedKeys"
               },
               "main_purse": {
                 "$ref": "#/components/schemas/URef"
               },
               "associated_keys": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AssociatedKey"
-                }
+                "$ref": "#/components/schemas/AssociatedKeys"
               },
               "action_thresholds": {
                 "$ref": "#/components/schemas/ActionThresholds"
@@ -3307,7 +3570,40 @@
             },
             "additionalProperties": false
           },
+          "NamedKeys": {
+            "description": "A collection of named keys.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Array_of_NamedKey"
+              }
+            ]
+          },
+          "Array_of_NamedKey": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedKey"
+            }
+          },
+          "Key": {
+            "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+            "type": "string"
+          },
+          "AssociatedKeys": {
+            "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Array_of_AssociatedKey"
+              }
+            ]
+          },
+          "Array_of_AssociatedKey": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssociatedKey"
+            }
+          },
           "AssociatedKey": {
+            "description": "A weighted public key.",
             "type": "object",
             "required": [
               "account_hash",
@@ -3315,15 +3611,28 @@
             ],
             "properties": {
               "account_hash": {
-                "$ref": "#/components/schemas/AccountHash"
+                "description": "The account hash of the public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                ]
               },
               "weight": {
-                "type": "integer",
-                "format": "uint8",
-                "minimum": 0.0
+                "description": "The weight assigned to the public key.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Weight"
+                  }
+                ]
               }
-            },
-            "additionalProperties": false
+            }
+          },
+          "Weight": {
+            "description": "The weight associated with public keys in an account's associated keys.",
+            "type": "integer",
+            "format": "uint8",
+            "minimum": 0.0
           },
           "ActionThresholds": {
             "description": "Thresholds that have to be met when executing an action of a certain type.",
@@ -3334,21 +3643,26 @@
             ],
             "properties": {
               "deployment": {
-                "type": "integer",
-                "format": "uint8",
-                "minimum": 0.0
+                "description": "Threshold for deploy execution.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Weight"
+                  }
+                ]
               },
               "key_management": {
-                "type": "integer",
-                "format": "uint8",
-                "minimum": 0.0
+                "description": "Threshold for managing action threshold.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Weight"
+                  }
+                ]
               }
-            },
-            "additionalProperties": false
+            }
           },
           "DictionaryIdentifier": {
             "description": "Options for dictionary item lookups.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Lookup a dictionary item via an Account's named keys.",
                 "type": "object",
@@ -3456,10 +3770,10 @@
             ]
           },
           "StoredValue": {
-            "description": "Representation of a value stored in global state.\n\n`Account`, `Contract` and `ContractPackage` have their own `json_compatibility` representations (see their docs for further info).",
-            "anyOf": [
+            "description": "A value stored in Global State.",
+            "oneOf": [
               {
-                "description": "A CasperLabs value.",
+                "description": "A CLValue.",
                 "type": "object",
                 "required": [
                   "CLValue"
@@ -3485,20 +3799,20 @@
                 "additionalProperties": false
               },
               {
-                "description": "A contract's Wasm",
+                "description": "A contract Wasm.",
                 "type": "object",
                 "required": [
                   "ContractWasm"
                 ],
                 "properties": {
                   "ContractWasm": {
-                    "type": "string"
+                    "$ref": "#/components/schemas/ContractWasm"
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "Methods and type signatures supported by a contract.",
+                "description": "A contract.",
                 "type": "object",
                 "required": [
                   "Contract"
@@ -3511,20 +3825,20 @@
                 "additionalProperties": false
               },
               {
-                "description": "A contract definition, metadata, and security container.",
+                "description": "A `Package`.",
                 "type": "object",
                 "required": [
                   "ContractPackage"
                 ],
                 "properties": {
                   "ContractPackage": {
-                    "$ref": "#/components/schemas/ContractPackage"
+                    "$ref": "#/components/schemas/Package"
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "A record of a transfer",
+                "description": "A `Transfer`.",
                 "type": "object",
                 "required": [
                   "Transfer"
@@ -3537,7 +3851,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "A record of a deploy",
+                "description": "Info about a deploy.",
                 "type": "object",
                 "required": [
                   "DeployInfo"
@@ -3550,7 +3864,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Auction metadata",
+                "description": "Info about an era.",
                 "type": "object",
                 "required": [
                   "EraInfo"
@@ -3563,7 +3877,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "A bid",
+                "description": "A bid.",
                 "type": "object",
                 "required": [
                   "Bid"
@@ -3576,7 +3890,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "A withdraw",
+                "description": "Withdraw information.",
                 "type": "object",
                 "required": [
                   "Withdraw"
@@ -3592,7 +3906,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "A collection of unbonding purses",
+                "description": "Unbonding information.",
                 "type": "object",
                 "required": [
                   "Unbonding"
@@ -3608,7 +3922,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "An AddressableEntity.",
+                "description": "An `AddressableEntity`.",
                 "type": "object",
                 "required": [
                   "AddressableEntity"
@@ -3622,8 +3936,24 @@
               }
             ]
           },
+          "ContractWasm": {
+            "description": "A container for contract's WASM bytes.",
+            "type": "object",
+            "required": [
+              "bytes"
+            ],
+            "properties": {
+              "bytes": {
+                "$ref": "#/components/schemas/Bytes"
+              }
+            }
+          },
+          "Bytes": {
+            "description": "Hex-encoded bytes.",
+            "type": "string"
+          },
           "Contract": {
-            "description": "A contract struct that can be serialized as  JSON object.",
+            "description": "Methods and type signatures supported by a contract.",
             "type": "object",
             "required": [
               "contract_package_hash",
@@ -3640,30 +3970,48 @@
                 "$ref": "#/components/schemas/ContractWasmHash"
               },
               "named_keys": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NamedKey"
-                }
+                "$ref": "#/components/schemas/NamedKeys"
               },
               "entry_points": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/EntryPoint"
-                }
+                "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
               },
               "protocol_version": {
-                "type": "string"
+                "$ref": "#/components/schemas/ProtocolVersion"
               }
-            },
-            "additionalProperties": false
+            }
           },
           "ContractPackageHash": {
-            "description": "The hex-encoded hash address of the contract package",
+            "description": "The hex-encoded address of the contract package.",
             "type": "string"
           },
           "ContractWasmHash": {
             "description": "The hash address of the contract wasm",
             "type": "string"
+          },
+          "Array_of_NamedEntryPoint": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedEntryPoint"
+            }
+          },
+          "NamedEntryPoint": {
+            "type": "object",
+            "required": [
+              "entry_point",
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "entry_point": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/EntryPoint"
+                  }
+                ]
+              }
+            }
           },
           "EntryPoint": {
             "description": "Type signature of a method. Order of arguments matter since can be referenced by index as well as name.",
@@ -3714,8 +4062,9 @@
           },
           "EntryPointAccess": {
             "description": "Enum describing the possible access control options for a contract entry point (method).",
-            "anyOf": [
+            "oneOf": [
               {
+                "description": "Anyone can call this method (no access controls).",
                 "type": "string",
                 "enum": [
                   "Public"
@@ -3745,17 +4094,33 @@
           },
           "EntryPointType": {
             "description": "Context of method execution",
-            "type": "string",
-            "enum": [
-              "Session",
-              "Contract"
+            "oneOf": [
+              {
+                "description": "Runs as session code",
+                "type": "string",
+                "enum": [
+                  "Session"
+                ]
+              },
+              {
+                "description": "Runs within contract's context",
+                "type": "string",
+                "enum": [
+                  "Contract"
+                ]
+              }
             ]
           },
-          "ContractPackage": {
+          "ProtocolVersion": {
+            "description": "Casper Platform protocol version",
+            "type": "string"
+          },
+          "Package": {
             "description": "Contract definition, metadata, and security container.",
             "type": "object",
             "required": [
               "access_key",
+              "contract_package_kind",
               "disabled_versions",
               "groups",
               "lock_status",
@@ -3763,106 +4128,238 @@
             ],
             "properties": {
               "access_key": {
-                "$ref": "#/components/schemas/URef"
+                "description": "Key used to add or disable versions.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
               },
               "versions": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/ContractVersion"
-                }
+                "description": "All versions (enabled & disabled).",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_ContractVersionAndHash"
+                  }
+                ]
               },
               "disabled_versions": {
+                "description": "Collection of disabled contract versions. The runtime will not permit disabled contract versions to be executed.",
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/DisabledVersion"
-                }
+                  "$ref": "#/components/schemas/ContractVersionKey"
+                },
+                "uniqueItems": true
               },
               "groups": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Groups"
-                }
+                "description": "Mapping maintaining the set of URefs associated with each \"user group\". This can be used to control access to methods in a particular version of the contract. A method is callable by any context which \"knows\" any of the URefs associated with the method's user group.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_NamedUserGroup"
+                  }
+                ]
               },
               "lock_status": {
-                "$ref": "#/components/schemas/ContractPackageStatus"
+                "description": "A flag that determines whether a contract is locked",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ContractPackageStatus"
+                  }
+                ]
+              },
+              "contract_package_kind": {
+                "description": "The kind of package.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ContractPackageKind"
+                  }
+                ]
               }
-            },
-            "additionalProperties": false
+            }
           },
-          "ContractVersion": {
+          "Array_of_ContractVersionAndHash": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContractVersionAndHash"
+            }
+          },
+          "ContractVersionAndHash": {
             "type": "object",
             "required": [
               "contract_hash",
+              "contract_version_key"
+            ],
+            "properties": {
+              "contract_version_key": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ContractVersionKey"
+                  }
+                ]
+              },
+              "contract_hash": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/ContractHash"
+                  }
+                ]
+              }
+            }
+          },
+          "ContractVersionKey": {
+            "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
+            "type": "object",
+            "required": [
               "contract_version",
               "protocol_version_major"
             ],
             "properties": {
               "protocol_version_major": {
+                "description": "Major element of `ProtocolVersion` a `ContractVersion` is compatible with.",
                 "type": "integer",
                 "format": "uint32",
                 "minimum": 0.0
               },
               "contract_version": {
+                "description": "Automatically incremented value for a contract version within a major `ProtocolVersion`.",
                 "type": "integer",
                 "format": "uint32",
                 "minimum": 0.0
-              },
-              "contract_hash": {
-                "$ref": "#/components/schemas/ContractHash"
               }
             }
           },
           "ContractHash": {
-            "description": "The hex-encoded hash address of the contract",
+            "description": "The hex-encoded address of the addressable entity.",
             "type": "string"
           },
-          "DisabledVersion": {
-            "type": "object",
-            "required": [
-              "contract_version",
-              "protocol_version_major"
-            ],
-            "properties": {
-              "protocol_version_major": {
-                "type": "integer",
-                "format": "uint32",
-                "minimum": 0.0
-              },
-              "contract_version": {
-                "type": "integer",
-                "format": "uint32",
-                "minimum": 0.0
-              }
+          "Array_of_NamedUserGroup": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NamedUserGroup"
             }
           },
-          "Groups": {
+          "NamedUserGroup": {
             "type": "object",
             "required": [
-              "group",
-              "keys"
+              "group_name",
+              "group_users"
             ],
             "properties": {
-              "group": {
-                "type": "string"
+              "group_name": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Group"
+                  }
+                ]
               },
-              "keys": {
+              "group_users": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/URef"
-                }
+                },
+                "uniqueItems": true
               }
             }
           },
           "ContractPackageStatus": {
             "description": "A enum to determine the lock status of the contract package.",
-            "type": "string",
-            "enum": [
-              "Locked",
-              "Unlocked"
+            "oneOf": [
+              {
+                "description": "The package is locked and cannot be versioned.",
+                "type": "string",
+                "enum": [
+                  "Locked"
+                ]
+              },
+              {
+                "description": "The package is unlocked and can be versioned.",
+                "type": "string",
+                "enum": [
+                  "Unlocked"
+                ]
+              }
+            ]
+          },
+          "ContractPackageKind": {
+            "description": "The type of contract package.",
+            "oneOf": [
+              {
+                "description": "Contract Packages associated with Wasm stored on chain.",
+                "type": "string",
+                "enum": [
+                  "Wasm"
+                ]
+              },
+              {
+                "description": "Contract Package associated with a native contract implementation.",
+                "type": "object",
+                "required": [
+                  "System"
+                ],
+                "properties": {
+                  "System": {
+                    "$ref": "#/components/schemas/SystemContractType"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Contract Package associated with an Account hash.",
+                "type": "object",
+                "required": [
+                  "Account"
+                ],
+                "properties": {
+                  "Account": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Contract Packages from the previous format.",
+                "type": "string",
+                "enum": [
+                  "Legacy"
+                ]
+              }
+            ]
+          },
+          "SystemContractType": {
+            "description": "System contract types.\n\nUsed by converting to a `u32` and passing as the `system_contract_index` argument of `ext_ffi::casper_get_system_contract()`.",
+            "oneOf": [
+              {
+                "description": "Mint contract.",
+                "type": "string",
+                "enum": [
+                  "Mint"
+                ]
+              },
+              {
+                "description": "Handle Payment contract.",
+                "type": "string",
+                "enum": [
+                  "HandlePayment"
+                ]
+              },
+              {
+                "description": "Standard Payment contract.",
+                "type": "string",
+                "enum": [
+                  "StandardPayment"
+                ]
+              },
+              {
+                "description": "Auction contract.",
+                "type": "string",
+                "enum": [
+                  "Auction"
+                ]
+              }
             ]
           },
           "AddressableEntity": {
-            "description": "A contract struct that can be serialized as  JSON object.",
+            "description": "Methods and type signatures supported by a contract.",
             "type": "object",
             "required": [
               "action_thresholds",
@@ -3882,38 +4379,28 @@
                 "$ref": "#/components/schemas/ContractWasmHash"
               },
               "named_keys": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/NamedKey"
-                }
+                "$ref": "#/components/schemas/NamedKeys"
               },
               "entry_points": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/EntryPoint"
-                }
+                "$ref": "#/components/schemas/Array_of_NamedEntryPoint"
               },
               "protocol_version": {
-                "type": "string"
+                "$ref": "#/components/schemas/ProtocolVersion"
               },
               "main_purse": {
                 "$ref": "#/components/schemas/URef"
               },
               "associated_keys": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AssociatedKey"
-                }
+                "$ref": "#/components/schemas/AssociatedKeys"
               },
               "action_thresholds": {
                 "$ref": "#/components/schemas/ActionThresholds"
               }
-            },
-            "additionalProperties": false
+            }
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "Query using a block hash.",
                 "type": "object",
@@ -4163,13 +4650,9 @@
             },
             "additionalProperties": false
           },
-          "ProtocolVersion": {
-            "description": "Casper Platform protocol version",
-            "type": "string"
-          },
           "PurseIdentifier": {
             "description": "Identifier of a purse.",
-            "anyOf": [
+            "oneOf": [
               {
                 "description": "The main purse of the account identified by this public key.",
                 "type": "object",
@@ -4311,14 +4794,49 @@
           },
           "ReactorState": {
             "description": "The state of the reactor.",
-            "type": "string",
-            "enum": [
-              "Initialize",
-              "CatchUp",
-              "Upgrading",
-              "KeepUp",
-              "Validate",
-              "ShutdownForUpgrade"
+            "oneOf": [
+              {
+                "description": "Get all components and reactor state set up on start.",
+                "type": "string",
+                "enum": [
+                  "Initialize"
+                ]
+              },
+              {
+                "description": "Orient to the network and attempt to catch up to tip.",
+                "type": "string",
+                "enum": [
+                  "CatchUp"
+                ]
+              },
+              {
+                "description": "Running commit upgrade and creating immediate switch block.",
+                "type": "string",
+                "enum": [
+                  "Upgrading"
+                ]
+              },
+              {
+                "description": "Stay caught up with tip.",
+                "type": "string",
+                "enum": [
+                  "KeepUp"
+                ]
+              },
+              {
+                "description": "Node is currently caught up and is an active validator.",
+                "type": "string",
+                "enum": [
+                  "Validate"
+                ]
+              },
+              {
+                "description": "Node should be shut down for upgrade.",
+                "type": "string",
+                "enum": [
+                  "ShutdownForUpgrade"
+                ]
+              }
             ]
           },
           "AvailableBlockRange": {
@@ -4460,35 +4978,80 @@
           },
           "ValidatorChange": {
             "description": "A change to a validator's status between two eras.",
-            "type": "string",
-            "enum": [
-              "Added",
-              "Removed",
-              "Banned",
-              "CannotPropose",
-              "SeenAsFaulty"
+            "oneOf": [
+              {
+                "description": "The validator got newly added to the validator set.",
+                "type": "string",
+                "enum": [
+                  "Added"
+                ]
+              },
+              {
+                "description": "The validator was removed from the validator set.",
+                "type": "string",
+                "enum": [
+                  "Removed"
+                ]
+              },
+              {
+                "description": "The validator was banned from this era.",
+                "type": "string",
+                "enum": [
+                  "Banned"
+                ]
+              },
+              {
+                "description": "The validator was excluded from proposing new blocks in this era.",
+                "type": "string",
+                "enum": [
+                  "CannotPropose"
+                ]
+              },
+              {
+                "description": "We saw the validator misbehave in this era.",
+                "type": "string",
+                "enum": [
+                  "SeenAsFaulty"
+                ]
+              }
             ]
           },
           "ChainspecRawBytes": {
             "description": "The raw bytes of the chainspec.toml, genesis accounts.toml, and global_state.toml files.",
             "type": "object",
             "required": [
-              "chainspec_bytes",
-              "maybe_genesis_accounts_bytes",
-              "maybe_global_state_bytes"
+              "chainspec_bytes"
             ],
             "properties": {
               "chainspec_bytes": {
-                "description": "Hex-encoded raw bytes of the current chainspec.toml file.",
-                "type": "string"
+                "description": "Raw bytes of the current chainspec.toml file.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Bytes"
+                  }
+                ]
               },
               "maybe_genesis_accounts_bytes": {
-                "description": "Hex-encoded raw bytes of the current genesis accounts.toml file.",
-                "type": "string"
+                "description": "Raw bytes of the current genesis accounts.toml file.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Bytes"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               },
               "maybe_global_state_bytes": {
-                "description": "Hex-encoded raw bytes of the current global_state.toml file.",
-                "type": "string"
+                "description": "Raw bytes of the current global_state.toml file.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Bytes"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             }
           },
@@ -4679,11 +5242,12 @@
                 }
               },
               "bids": {
-                "description": "All bids contained within a vector.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonBids"
-                }
+                "description": "All bids.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Array_of_PublicKeyAndBid"
+                  }
+                ]
               }
             },
             "additionalProperties": false
@@ -4725,8 +5289,14 @@
             },
             "additionalProperties": false
           },
-          "JsonBids": {
-            "description": "A Json representation of a single bid.",
+          "Array_of_PublicKeyAndBid": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicKeyAndBid"
+            }
+          },
+          "PublicKeyAndBid": {
+            "description": "A bid associated with the given public key.",
             "type": "object",
             "required": [
               "bid",
@@ -4734,85 +5304,22 @@
             ],
             "properties": {
               "public_key": {
-                "$ref": "#/components/schemas/PublicKey"
+                "description": "The public key of the bidder.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
               },
               "bid": {
-                "$ref": "#/components/schemas/JsonBid"
-              }
-            },
-            "additionalProperties": false
-          },
-          "JsonBid": {
-            "description": "An entry in a founding validator map representing a bid.",
-            "type": "object",
-            "required": [
-              "bonding_purse",
-              "delegation_rate",
-              "delegators",
-              "inactive",
-              "staked_amount"
-            ],
-            "properties": {
-              "bonding_purse": {
-                "description": "The purse that was used for bonding.",
+                "description": "The bid details.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/URef"
+                    "$ref": "#/components/schemas/Bid"
                   }
                 ]
-              },
-              "staked_amount": {
-                "description": "The amount of tokens staked by a validator (not including delegators).",
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/U512"
-                  }
-                ]
-              },
-              "delegation_rate": {
-                "description": "The delegation rate.",
-                "type": "integer",
-                "format": "uint8",
-                "minimum": 0.0
-              },
-              "delegators": {
-                "description": "The delegators.",
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/JsonDelegator"
-                }
-              },
-              "inactive": {
-                "description": "Is this an inactive validator.",
-                "type": "boolean"
               }
-            },
-            "additionalProperties": false
-          },
-          "JsonDelegator": {
-            "description": "A delegator associated with the given validator.",
-            "type": "object",
-            "required": [
-              "bonding_purse",
-              "delegatee",
-              "public_key",
-              "staked_amount"
-            ],
-            "properties": {
-              "public_key": {
-                "$ref": "#/components/schemas/PublicKey"
-              },
-              "staked_amount": {
-                "$ref": "#/components/schemas/U512"
-              },
-              "bonding_purse": {
-                "$ref": "#/components/schemas/URef"
-              },
-              "delegatee": {
-                "$ref": "#/components/schemas/PublicKey"
-              }
-            },
-            "additionalProperties": false
+            }
           }
         }
       }

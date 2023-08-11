@@ -72,28 +72,40 @@ impl StateReader for LmdbWasmTestBuilder {
         // Find the hash of the mint contract.
         let mint_contract_hash = self.get_system_mint_hash();
 
-        let named_key = if let Some(entity) = self.get_addressable_entity(mint_contract_hash) {
-            entity.named_keys()[TOTAL_SUPPLY_KEY]
+        if let Some(entity) = self.get_addressable_entity(mint_contract_hash) {
+            entity
+                .named_keys()
+                .get(TOTAL_SUPPLY_KEY)
+                .copied()
+                .expect("total_supply should exist in mint named keys")
         } else {
             self.get_legacy_contract(mint_contract_hash)
                 .expect("mint should exist")
-                .named_keys()[TOTAL_SUPPLY_KEY]
-        };
-        named_key
+                .named_keys()
+                .get(TOTAL_SUPPLY_KEY)
+                .copied()
+                .expect("total_supply should exist in mint named keys")
+        }
     }
 
     fn get_seigniorage_recipients_key(&mut self) -> Key {
         // Find the hash of the auction contract.
         let auction_contract_hash = self.get_system_auction_hash();
 
-        let named_key = if let Some(entity) = self.get_addressable_entity(auction_contract_hash) {
-            entity.named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY]
+        if let Some(entity) = self.get_addressable_entity(auction_contract_hash) {
+            entity
+                .named_keys()
+                .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
+                .copied()
+                .expect("seigniorage_recipients_snapshot should exist in auction named keys")
         } else {
             self.get_legacy_contract(auction_contract_hash)
                 .expect("auction should exist")
-                .named_keys()[SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY]
-        };
-        named_key
+                .named_keys()
+                .get(SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY)
+                .copied()
+                .expect("seigniorage_recipients_snapshot should exist in auction named keys")
+        }
     }
 
     fn get_account(&mut self, account_hash: AccountHash) -> Option<AddressableEntity> {

@@ -1,8 +1,5 @@
 //! Home of RuntimeArgs for calling contracts
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]

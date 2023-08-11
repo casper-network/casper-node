@@ -30,8 +30,8 @@ use casper_types::{
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions,
-        DisabledVersions, Group, Groups, Package,
+        ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions, Group,
+        Groups, Package,
     },
     system::{
         self,
@@ -50,7 +50,7 @@ use crate::{
     engine_state::ACCOUNT_WASM_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
-    runtime_context::{self, RuntimeContext},
+    runtime_context::RuntimeContext,
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
         standard_payment::StandardPayment,
@@ -1541,9 +1541,9 @@ where
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
             access_key,
-            ContractVersions::default(),
-            DisabledVersions::default(),
-            Groups::default(),
+            ContractVersions::new(),
+            BTreeSet::new(),
+            Groups::new(),
             is_locked,
             contract_package_kind,
         );
@@ -1579,7 +1579,7 @@ where
         let new_group = Group::new(label);
 
         // Ensure group does not already exist
-        if groups.get(&new_group).is_some() {
+        if groups.contains(&new_group) {
             return Ok(Err(addressable_entity::Error::GroupAlreadyExists.into()));
         }
 
@@ -1589,9 +1589,8 @@ where
         }
 
         // Ensure there are not too many urefs
-        let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum::<usize>()
-            + (num_new_urefs as usize)
-            + existing_urefs.len();
+        let total_urefs: usize =
+            groups.total_urefs() + (num_new_urefs as usize) + existing_urefs.len();
         if total_urefs > addressable_entity::MAX_TOTAL_UREFS {
             let err = addressable_entity::Error::MaxTotalURefsExceeded;
             return Ok(Err(ApiError::ContractHeader(err as u8)));
@@ -1678,8 +1677,8 @@ where
             let previous_contract: AddressableEntity =
                 self.context.read_gs_typed(&previous_contract_hash.into())?;
 
-            let mut previous_named_keys = previous_contract.take_named_keys();
-            named_keys.append(&mut previous_named_keys);
+            let previous_named_keys = previous_contract.take_named_keys();
+            named_keys.append(previous_named_keys);
         }
 
         let (main_purse, associated_keys, action_thresholds) = match package.current_contract_hash()
@@ -1687,8 +1686,8 @@ where
             Some(previous_contract_hash) => {
                 let previous_contract: AddressableEntity =
                     self.context.read_gs_typed(&previous_contract_hash.into())?;
-                let mut previous_named_keys = previous_contract.named_keys().clone();
-                named_keys.append(&mut previous_named_keys);
+                let previous_named_keys = previous_contract.named_keys().clone();
+                named_keys.append(previous_named_keys);
                 (
                     previous_contract.main_purse(),
                     previous_contract.associated_keys().clone(),
@@ -2203,7 +2202,7 @@ where
                     ContractPackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
-                let named_keys = NamedKeys::default();
+                let named_keys = NamedKeys::new();
                 let entry_points = EntryPoints::new();
 
                 let contract = AddressableEntity::new(
@@ -2222,7 +2221,7 @@ where
                     let mut contract_package = Package::new(
                         access_key,
                         ContractVersions::default(),
-                        DisabledVersions::default(),
+                        BTreeSet::default(),
                         Groups::default(),
                         ContractPackageStatus::Locked,
                         ContractPackageKind::Account(target),
@@ -2616,14 +2615,45 @@ where
     }
 
     /// Enforce group access restrictions (if any) on attempts to call an `EntryPoint`.
+    ///
+    /// If `access` is a `Groups` variant, then this function returns:
+    ///   * `Error::InvalidContext` if there are no groups specified, as such an entry point is
+    ///     uncallable
+    ///   * `Error::InvalidContext` if none of the groups specified in `access` has a `URef` which
+    ///     is valid in this context
+    ///   * `Ok` otherwise
+    ///
+    /// If `access` is a `Public` variant, then the entry point is considered callable and `Ok` is
+    /// returned.
     fn validate_group_membership(
         &self,
         package: &Package,
         access: &EntryPointAccess,
     ) -> Result<(), Error> {
-        runtime_context::validate_group_membership(package, access, |uref| {
-            self.context.validate_uref(uref).is_ok()
-        })
+        if let EntryPointAccess::Groups(group_names) = access {
+            if group_names.is_empty() {
+                // Exits early in a special case of empty list of groups regardless of the group
+                // checking logic below it.
+                return Err(Error::InvalidContext);
+            }
+
+            let find_result = group_names.iter().find(|&group_name| {
+                package
+                    .groups()
+                    .get(group_name)
+                    .and_then(|urefs| {
+                        urefs
+                            .iter()
+                            .find(|&uref| self.context.validate_uref(uref).is_ok())
+                    })
+                    .is_some()
+            });
+
+            if find_result.is_none() {
+                return Err(Error::InvalidContext);
+            }
+        }
+        Ok(())
     }
 
     /// Remove a user group from access to a contract
@@ -2638,13 +2668,13 @@ where
         let groups = package.groups_mut();
 
         // Ensure group exists in groups
-        if groups.get(&group_to_remove).is_none() {
+        if !groups.contains(&group_to_remove) {
             return Ok(Err(addressable_entity::Error::GroupDoesNotExist.into()));
         }
 
         // Remove group if it is not referenced by at least one entry_point in active versions.
         let versions = package.versions();
-        for contract_hash in versions.values() {
+        for contract_hash in versions.contract_hashes() {
             let entry_points = {
                 let contract: AddressableEntity =
                     self.context.read_gs_typed(&Key::from(*contract_hash))?;
@@ -2690,9 +2720,7 @@ where
         let group_label = Group::new(label);
 
         // Ensure there are not too many urefs
-        let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum();
-
-        if total_urefs + 1 > addressable_entity::MAX_TOTAL_UREFS {
+        if groups.total_urefs() + 1 > addressable_entity::MAX_TOTAL_UREFS {
             return Ok(Err(addressable_entity::Error::MaxTotalURefsExceeded.into()));
         }
 

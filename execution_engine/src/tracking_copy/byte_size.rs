@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, mem};
+use std::mem;
 
 use casper_types::{account::Account, bytesrepr::ToBytes, ContractWasm, Key, StoredValue};
 
@@ -16,14 +16,6 @@ impl ByteSize for Key {
 impl ByteSize for String {
     fn byte_size(&self) -> usize {
         mem::size_of::<Self>() + self.heap_size()
-    }
-}
-
-impl<K: HeapSizeOf, V: HeapSizeOf> ByteSize for BTreeMap<K, V> {
-    fn byte_size(&self) -> usize {
-        mem::size_of::<BTreeMap<K, V>>()
-            + self.heap_size()
-            + self.len() * (mem::size_of::<K>() + mem::size_of::<V>())
     }
 }
 
@@ -66,7 +58,10 @@ impl HeapSizeOf for Key {
 // TODO: contract has other fields (re a bunch) that are not repr here...on purpose?
 impl HeapSizeOf for Account {
     fn heap_size(&self) -> usize {
-        self.named_keys().heap_size()
+        // NOTE: We're ignoring size of the tree's nodes.
+        self.named_keys()
+            .iter()
+            .fold(0, |sum, (k, v)| sum + k.heap_size() + v.heap_size())
     }
 }
 
@@ -74,14 +69,6 @@ impl HeapSizeOf for Account {
 impl HeapSizeOf for ContractWasm {
     fn heap_size(&self) -> usize {
         self.bytes().len()
-    }
-}
-
-// NOTE: We're ignoring size of the tree's nodes.
-impl<K: HeapSizeOf, V: HeapSizeOf> HeapSizeOf for BTreeMap<K, V> {
-    fn heap_size(&self) -> usize {
-        self.iter()
-            .fold(0, |sum, (k, v)| sum + k.heap_size() + v.heap_size())
     }
 }
 
@@ -100,10 +87,9 @@ impl HeapSizeOf for String {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeMap, mem};
+    use std::mem;
 
     use super::ByteSize;
-    use casper_types::Key;
 
     fn assert_byte_size<T: ByteSize>(el: T, expected: usize) {
         assert_eq!(el.byte_size(), expected)
@@ -112,19 +98,5 @@ mod tests {
     #[test]
     fn byte_size_of_string() {
         assert_byte_size("Hello".to_owned(), 5 + mem::size_of::<String>())
-    }
-
-    #[test]
-    fn byte_size_of_map() {
-        let v = vec![
-            (Key::Hash([1u8; 32]), "A".to_string()),
-            (Key::Hash([2u8; 32]), "B".to_string()),
-            (Key::Hash([3u8; 32]), "C".to_string()),
-            (Key::Hash([4u8; 32]), "D".to_string()),
-        ];
-        let it_size: usize = mem::size_of::<BTreeMap<Key, String>>()
-            + 4 * (mem::size_of::<Key>() + mem::size_of::<String>() + 1);
-        let map: BTreeMap<Key, String> = v.into_iter().collect();
-        assert_byte_size(map, it_size);
     }
 }
