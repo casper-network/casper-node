@@ -17,7 +17,7 @@ mod trie_accumulator;
 #[cfg(test)]
 mod tests;
 
-use std::{convert::TryFrom, sync::Arc};
+use std::sync::Arc;
 
 use datasize::DataSize;
 use either::Either;
@@ -30,8 +30,8 @@ use tracing::{debug, error, info, trace, warn};
 
 use casper_execution_engine::engine_state;
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, Chainspec, Deploy, Digest,
-    FinalitySignature, FinalitySignatureId, Timestamp,
+    Block, BlockHash, BlockHeader, BlockSignatures, Chainspec, Deploy, Digest, FinalitySignature,
+    FinalitySignatureId, Timestamp,
 };
 
 use super::network::blocklist::BlocklistJustification;
@@ -477,17 +477,14 @@ impl BlockSynchronizer {
                             .get_execution_results_from_storage(*block.hash())
                             .then(move |maybe_execution_results| async move {
                                 match maybe_execution_results {
-                                    Some(execution_results) => match BlockV2::try_from(*block) {
-                                        Ok(block) => {
-                                            let meta_block = MetaBlock::new(
-                                                Arc::new(block),
-                                                execution_results,
-                                                MetaBlockState::new_after_historical_sync(),
-                                            );
-                                            effect_builder.announce_meta_block(meta_block).await
-                                        }
-                                        Err(_) => todo!(),
-                                    },
+                                    Some(execution_results) => {
+                                        let meta_block = MetaBlock::new_historical(
+                                            Arc::new(*block),
+                                            execution_results,
+                                            MetaBlockState::new_after_historical_sync(),
+                                        );
+                                        effect_builder.announce_meta_block(meta_block).await;
+                                    }
                                     None => {
                                         error!(
                                             "should have execution results for {}",

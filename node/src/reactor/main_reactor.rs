@@ -26,8 +26,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    BlockHash, BlockV2, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature, PublicKey,
-    TimeDiff, Timestamp, U512,
+    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature,
+    PublicKey, TimeDiff, Timestamp, U512,
 };
 
 #[cfg(test)]
@@ -74,7 +74,7 @@ use crate::{
         main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
         EventQueueHandle, QueueKind,
     },
-    types::{MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix},
+    types::{ForwardMetaBlock, MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix},
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -1247,19 +1247,15 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-        MetaBlock {
-            block,
-            execution_results,
-            mut state,
-        }: MetaBlock,
+        mut meta_block: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
             "MetaBlock: handling meta block {} {} {:?}",
-            block.height(),
-            block.hash(),
-            state
+            meta_block.height(),
+            meta_block.hash(),
+            meta_block.state()
         );
-        if !state.is_stored() {
+        if !meta_block.state().is_stored() {
             return fatal!(
                 effect_builder,
                 "MetaBlock: block should be stored after execution or accumulation"
@@ -1269,156 +1265,208 @@ impl MainReactor {
 
         let mut effects = Effects::new();
 
-        if state.register_as_sent_to_deploy_buffer().was_updated() {
+        if meta_block
+            .mut_state()
+            .register_as_sent_to_deploy_buffer()
+            .was_updated()
+        {
             debug!(
                 "MetaBlock: notifying deploy buffer: {} {}",
-                block.height(),
-                block.hash(),
+                meta_block.height(),
+                meta_block.hash(),
             );
-            effects.extend(reactor::wrap_effects(
-                MainEvent::DeployBuffer,
-                self.deploy_buffer.handle_event(
-                    effect_builder,
-                    rng,
-                    deploy_buffer::Event::Block(Arc::clone(&block)),
-                ),
-            ));
-        }
 
-        if state.register_updated_validator_matrix().was_updated() {
-            if let Some(validator_weights) = block.header().next_era_validator_weights() {
-                let era_id = block.era_id();
-                let next_era_id = era_id.successor();
-                debug!(
-                    "MetaBlock: updating validator matrix: {} {} {} {}",
-                    block.height(),
-                    block.hash(),
-                    era_id,
-                    next_era_id
-                );
-                effects.extend(self.update_validator_weights(
-                    effect_builder,
-                    rng,
-                    next_era_id,
-                    validator_weights.clone(),
-                ));
+            match &meta_block {
+                MetaBlock::Forward(fwd_meta_block) => {
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::DeployBuffer,
+                        self.deploy_buffer.handle_event(
+                            effect_builder,
+                            rng,
+                            deploy_buffer::Event::Block(Arc::clone(&fwd_meta_block.block)),
+                        ),
+                    ));
+                }
+                MetaBlock::Historical(historical_meta_block) => {
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::DeployBuffer,
+                        self.deploy_buffer.handle_event(
+                            effect_builder,
+                            rng,
+                            deploy_buffer::Event::VersionedBlock(Arc::clone(
+                                &historical_meta_block.block,
+                            )),
+                        ),
+                    ));
+                }
             }
         }
 
-        // Validators gossip the block as soon as they deem it valid, but non-validators
-        // only gossip once the block is marked complete.
-        if let Some(true) = self
-            .validator_matrix
-            .is_self_validator_in_era(block.era_id())
-        {
-            debug!(
-                "MetaBlock: updating validator gossip state: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            self.update_meta_block_gossip_state(
-                effect_builder,
-                rng,
-                block.hash(),
-                block.gossip_target(),
-                &mut state,
-                &mut effects,
-            );
-        }
+        if let MetaBlock::Forward(forward_meta_block) = &meta_block {
+            let block = forward_meta_block.block.clone();
+            if meta_block
+                .mut_state()
+                .register_updated_validator_matrix()
+                .was_updated()
+            {
+                if let Some(validator_weights) = block.header().next_era_validator_weights() {
+                    let era_id = block.era_id();
+                    let next_era_id = era_id.successor();
+                    debug!(
+                        "MetaBlock: updating validator matrix: {} {} {} {}",
+                        block.height(),
+                        block.hash(),
+                        era_id,
+                        next_era_id
+                    );
+                    effects.extend(self.update_validator_weights(
+                        effect_builder,
+                        rng,
+                        next_era_id,
+                        validator_weights.clone(),
+                    ));
+                }
+            }
 
-        if !state.is_executed() {
-            debug!(
-                "MetaBlock: unexecuted block: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            // We've done as much as we can on a valid but un-executed block.
-            return effects;
-        }
-
-        if state.register_we_have_tried_to_sign().was_updated() {
-            // When this node is a validator in this era, sign and announce.
-            if let Some(finality_signature) = self
+            // Validators gossip the block as soon as they deem it valid, but non-validators
+            // only gossip once the block is marked complete.
+            if let Some(true) = self
                 .validator_matrix
-                .create_finality_signature(block.header())
+                .is_self_validator_in_era(block.era_id())
             {
                 debug!(
-                    %finality_signature,
-                    "MetaBlock: registering finality signature: {} {}",
+                    "MetaBlock: updating validator gossip state: {} {}",
                     block.height(),
                     block.hash(),
                 );
+                self.update_meta_block_gossip_state(
+                    effect_builder,
+                    rng,
+                    block.hash(),
+                    block.gossip_target(),
+                    meta_block.mut_state(),
+                    &mut effects,
+                );
+            }
 
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::Storage,
-                    effect_builder
-                        .put_finality_signature_to_storage(finality_signature.clone())
-                        .ignore(),
-                ));
+            if !meta_block.state().is_executed() {
+                debug!(
+                    "MetaBlock: unexecuted block: {} {}",
+                    block.height(),
+                    block.hash(),
+                );
+                // We've done as much as we can on a valid but un-executed block.
+                return effects;
+            }
 
+            if meta_block
+                .mut_state()
+                .register_we_have_tried_to_sign()
+                .was_updated()
+            {
+                // When this node is a validator in this era, sign and announce.
+                if let Some(finality_signature) = self
+                    .validator_matrix
+                    .create_finality_signature(block.header())
+                {
+                    debug!(
+                        %finality_signature,
+                        "MetaBlock: registering finality signature: {} {}",
+                        block.height(),
+                        block.hash(),
+                    );
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Storage,
+                        effect_builder
+                            .put_finality_signature_to_storage(finality_signature.clone())
+                            .ignore(),
+                    ));
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::CreatedFinalitySignature {
+                                finality_signature: Box::new(finality_signature.clone()),
+                            },
+                        ),
+                    ));
+
+                    let era_id = finality_signature.era_id();
+                    let payload = Message::FinalitySignature(Box::new(finality_signature));
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Network,
+                        effect_builder
+                            .broadcast_message_to_validators(payload, era_id)
+                            .ignore(),
+                    ));
+                }
+            }
+        }
+
+        if meta_block
+            .mut_state()
+            .register_as_consensus_notified()
+            .was_updated()
+        {
+            debug!(
+                "MetaBlock: notifying consensus: {} {}",
+                meta_block.height(),
+                meta_block.hash(),
+            );
+
+            match &meta_block {
+                MetaBlock::Forward(fwd_meta_block) => {
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Consensus,
+                        self.consensus.handle_event(
+                            effect_builder,
+                            rng,
+                            consensus::Event::BlockAdded {
+                                header: Box::new(fwd_meta_block.block.header().clone()),
+                                header_hash: *fwd_meta_block.block.hash(),
+                            },
+                        ),
+                    ));
+                }
+                MetaBlock::Historical(_historical_meta_block) => {
+                    todo!();
+                }
+            }
+        }
+
+        if let MetaBlock::Forward(forward_meta_block) = &meta_block {
+            let block = forward_meta_block.block.clone();
+
+            if meta_block
+                .mut_state()
+                .register_as_accumulator_notified()
+                .was_updated()
+            {
+                debug!(
+                    "MetaBlock: notifying accumulator: {} {}",
+                    block.height(),
+                    block.hash(),
+                );
+                let meta_block = ForwardMetaBlock {
+                    block,
+                    execution_results: meta_block.execution_results().clone(),
+                    state: *meta_block.state(),
+                };
                 effects.extend(reactor::wrap_effects(
                     MainEvent::BlockAccumulator,
                     self.block_accumulator.handle_event(
                         effect_builder,
                         rng,
-                        block_accumulator::Event::CreatedFinalitySignature {
-                            finality_signature: Box::new(finality_signature.clone()),
-                        },
+                        block_accumulator::Event::ExecutedBlock { meta_block },
                     ),
                 ));
-
-                let era_id = finality_signature.era_id();
-                let payload = Message::FinalitySignature(Box::new(finality_signature));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::Network,
-                    effect_builder
-                        .broadcast_message_to_validators(payload, era_id)
-                        .ignore(),
-                ));
+                // We've done as much as we can for now, we need to wait for the block
+                // accumulator to mark the block complete before proceeding further.
+                return effects;
             }
-        }
-
-        if state.register_as_consensus_notified().was_updated() {
-            debug!(
-                "MetaBlock: notifying consensus: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            effects.extend(reactor::wrap_effects(
-                MainEvent::Consensus,
-                self.consensus.handle_event(
-                    effect_builder,
-                    rng,
-                    consensus::Event::BlockAdded {
-                        header: Box::new(block.header().clone()),
-                        header_hash: *block.hash(),
-                    },
-                ),
-            ));
-        }
-
-        if state.register_as_accumulator_notified().was_updated() {
-            debug!(
-                "MetaBlock: notifying accumulator: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            let meta_block = MetaBlock {
-                block,
-                execution_results,
-                state,
-            };
-            effects.extend(reactor::wrap_effects(
-                MainEvent::BlockAccumulator,
-                self.block_accumulator.handle_event(
-                    effect_builder,
-                    rng,
-                    block_accumulator::Event::ExecutedBlock { meta_block },
-                ),
-            ));
-            // We've done as much as we can for now, we need to wait for the block
-            // accumulator to mark the block complete before proceeding further.
-            return effects;
         }
 
         // We *always* want to initialize the contract runtime with the highest complete block.
@@ -1427,62 +1475,74 @@ impl MainReactor {
         // This will allow the contract runtime to initialize properly (see
         // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
         // `KeepUp`.
-        if !state.is_marked_complete() {
+        if !meta_block.state().is_marked_complete() {
             error!(
-                block = %*block,
-                ?state,
+                block_hash = ?meta_block.hash(),
+                state = ?meta_block.state(),
                 "should be a complete block after passing to accumulator"
             );
         } else {
             debug!(
                 "MetaBlock: block is marked complete: {} {}",
-                block.height(),
-                block.hash(),
+                meta_block.height(),
+                meta_block.hash(),
             );
         }
 
-        debug!(
-            "MetaBlock: update gossip state: {} {}",
-            block.height(),
-            block.hash(),
-        );
-        self.update_meta_block_gossip_state(
-            effect_builder,
-            rng,
-            block.hash(),
-            block.gossip_target(),
-            &mut state,
-            &mut effects,
-        );
+        if let MetaBlock::Forward(forward_meta_block) = &meta_block {
+            let block = forward_meta_block.block.clone();
 
-        if state.register_as_synchronizer_notified().was_updated() {
             debug!(
-                "MetaBlock: notifying block synchronizer: {} {}",
+                "MetaBlock: update gossip state: {} {}",
                 block.height(),
                 block.hash(),
             );
-            effects.extend(reactor::wrap_effects(
-                MainEvent::BlockSynchronizer,
-                self.block_synchronizer.handle_event(
-                    effect_builder,
-                    rng,
-                    block_synchronizer::Event::MarkBlockExecuted(*block.hash()),
-                ),
-            ));
+            self.update_meta_block_gossip_state(
+                effect_builder,
+                rng,
+                block.hash(),
+                block.gossip_target(),
+                meta_block.mut_state(),
+                &mut effects,
+            );
+
+            if meta_block
+                .mut_state()
+                .register_as_synchronizer_notified()
+                .was_updated()
+            {
+                debug!(
+                    "MetaBlock: notifying block synchronizer: {} {}",
+                    block.height(),
+                    block.hash(),
+                );
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockSynchronizer,
+                    self.block_synchronizer.handle_event(
+                        effect_builder,
+                        rng,
+                        block_synchronizer::Event::MarkBlockExecuted(*block.hash()),
+                    ),
+                ));
+            }
         }
 
         debug_assert!(
-            state.verify_complete(),
+            meta_block.state().verify_complete(),
             "meta block {} at height {} has invalid state: {:?}",
-            block.hash(),
-            block.height(),
-            state
+            meta_block.hash(),
+            meta_block.height(),
+            meta_block.state()
         );
 
-        if state.register_all_actions_done().was_already_registered() {
+        if meta_block
+            .mut_state()
+            .register_all_actions_done()
+            .was_already_registered()
+        {
             error!(
-                block = %*block,
-                ?state,
+                block_hash = ?meta_block.hash(),
+                state = ?meta_block.state(),
                 "duplicate meta block announcement emitted"
             );
             return effects;
@@ -1490,23 +1550,28 @@ impl MainReactor {
 
         debug!(
             "MetaBlock: notifying event stream: {} {}",
-            block.height(),
-            block.hash(),
+            meta_block.height(),
+            meta_block.hash(),
         );
+        let versioned_block: Arc<Block> = match &meta_block {
+            MetaBlock::Forward(fwd_meta_block) => Arc::new((*fwd_meta_block.block).clone().into()),
+            MetaBlock::Historical(historical_meta_block) => historical_meta_block.block.clone(),
+        };
         effects.extend(reactor::wrap_effects(
             MainEvent::EventStreamServer,
             self.event_stream_server.handle_event(
                 effect_builder,
                 rng,
-                event_stream_server::Event::BlockAdded(Arc::clone(&block)),
+                event_stream_server::Event::BlockAdded(Arc::clone(&versioned_block)),
             ),
         ));
 
-        for (deploy_hash, deploy_header, execution_result) in execution_results {
+        for (deploy_hash, deploy_header, execution_result) in meta_block.execution_results().clone()
+        {
             let event = event_stream_server::Event::DeployProcessed {
                 deploy_hash,
                 deploy_header: Box::new(deploy_header),
-                block_hash: *block.hash(),
+                block_hash: meta_block.hash(),
                 execution_result: Box::new(execution_result),
             };
             effects.extend(reactor::wrap_effects(
@@ -1518,17 +1583,25 @@ impl MainReactor {
 
         debug!(
             "MetaBlock: notifying shutdown watcher: {} {}",
-            block.height(),
-            block.hash(),
+            meta_block.height(),
+            meta_block.hash(),
         );
-        effects.extend(reactor::wrap_effects(
-            MainEvent::ShutdownTrigger,
-            self.shutdown_trigger.handle_event(
-                effect_builder,
-                rng,
-                shutdown_trigger::Event::CompletedBlock(Arc::clone(&block)),
-            ),
-        ));
+        match &meta_block {
+            MetaBlock::Forward(fwd_meta_block) => {
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::ShutdownTrigger,
+                    self.shutdown_trigger.handle_event(
+                        effect_builder,
+                        rng,
+                        shutdown_trigger::Event::CompletedBlock(Arc::clone(&fwd_meta_block.block)),
+                    ),
+                ));
+            }
+            MetaBlock::Historical(_historical_meta_block) => {
+                todo!();
+            }
+        }
+
         effects
     }
 

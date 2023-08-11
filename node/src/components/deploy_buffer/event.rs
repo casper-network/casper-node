@@ -23,6 +23,7 @@ pub(crate) enum Event {
     StoredDeploy(DeployId, Option<Box<Deploy>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
     Block(Arc<BlockV2>),
+    VersionedBlock(Arc<Block>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
 }
@@ -59,6 +60,9 @@ impl Display for Event {
             }
             Event::Block(_) => {
                 write!(formatter, "block")
+            }
+            Event::VersionedBlock(_) => {
+                write!(formatter, "versioned block")
             }
             Event::Expire => {
                 write!(formatter, "expire deploys")

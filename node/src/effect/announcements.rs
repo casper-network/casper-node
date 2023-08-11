@@ -128,8 +128,8 @@ impl Display for MetaBlockAnnouncement {
         write!(
             f,
             "announcement for meta block {} at height {}",
-            self.0.block.hash(),
-            self.0.block.height(),
+            self.0.hash(),
+            self.0.height(),
         )
     }
 }

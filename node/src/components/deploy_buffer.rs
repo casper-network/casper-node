@@ -301,7 +301,7 @@ impl DeployBuffer {
     }
 
     /// When initializing the buffer, register past blocks in order to provide replay protection.
-    fn register_block_for_replay_protection_on_init(&mut self, block: &Block) {
+    fn register_versioned_block(&mut self, block: &Block) {
         let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block_for_replay_protection_on_init({}) timestamp finalized", block_height);
@@ -517,7 +517,7 @@ where
                 match event {
                     Event::Initialize(blocks) => {
                         for block in blocks {
-                            self.register_block_for_replay_protection_on_init(&block);
+                            self.register_versioned_block(&block);
                         }
                         <Self as InitializedComponent<MainEvent>>::set_state(
                             self,
@@ -533,6 +533,7 @@ where
                     | Event::StoredDeploy(_, _)
                     | Event::BlockProposed(_)
                     | Event::Block(_)
+                    | Event::VersionedBlock(_)
                     | Event::BlockFinalized(_)
                     | Event::Expire => {
                         warn!(
@@ -563,6 +564,10 @@ where
                 }
                 Event::Block(block) => {
                     self.register_block(&block);
+                    Effects::new()
+                }
+                Event::VersionedBlock(block) => {
+                    self.register_versioned_block(&block);
                     Effects::new()
                 }
                 Event::BlockProposed(proposed) => {
