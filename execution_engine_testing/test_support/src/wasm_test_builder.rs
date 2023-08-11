@@ -480,7 +480,7 @@ impl LmdbWasmTestBuilder {
             let journal = execution_result.execution_journal().clone();
             let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
             let _post_state_hash = cached_state
-                .apply_effect(
+                .commit_effects(
                     self.post_state_hash.expect("requires a post_state_hash"),
                     transforms,
                 )
@@ -766,7 +766,7 @@ where
     ) -> &mut Self {
         let post_state_hash = self
             .engine_state
-            .apply_effect(pre_state_hash, effects)
+            .commit_effects(pre_state_hash, effects)
             .expect("should commit");
         self.post_state_hash = Some(post_state_hash);
         self

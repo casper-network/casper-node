@@ -1855,7 +1855,7 @@ where
     }
 
     /// Records given auction info at a given era id
-    fn record_era_summary(&mut self, era_info: EraInfo) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), Error> {
         if self.context.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidContext);
         }

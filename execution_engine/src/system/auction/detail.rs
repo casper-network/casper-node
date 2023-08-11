@@ -89,7 +89,7 @@ where
             Key::Unbond(account_hash) => account_hash,
             _ => return Err(Error::InvalidKeyVariant),
         };
-        let unbonding_purses = provider.read_unbond(&account_hash)?;
+        let unbonding_purses = provider.read_unbonds(&account_hash)?;
         ret.insert(account_hash, unbonding_purses);
     }
 
@@ -104,7 +104,7 @@ where
     P: StorageProvider + RuntimeProvider + ?Sized,
 {
     for (account_hash, unbonding_purses) in unbonding_purses.into_iter() {
-        provider.write_unbond(account_hash, unbonding_purses)?;
+        provider.write_unbonds(account_hash, unbonding_purses)?;
     }
     Ok(())
 }
@@ -263,7 +263,7 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
     }
 
     let account_hash = AccountHash::from(&unbonder_public_key);
-    let mut unbonding_purses = provider.read_unbond(&account_hash)?;
+    let mut unbonding_purses = provider.read_unbonds(&account_hash)?;
     let era_of_creation = provider.read_era_id()?;
     let new_unbonding_purse = UnbondingPurse::new(
         bonding_purse,
@@ -274,13 +274,15 @@ pub(crate) fn create_unbonding_purse<P: Auction + ?Sized>(
         new_validator,
     );
     unbonding_purses.push(new_unbonding_purse);
-    provider.write_unbond(account_hash, unbonding_purses)?;
+    provider.write_unbonds(account_hash, unbonding_purses)?;
 
     Ok(())
 }
 
-/// Reinvests delegator reward by increasing its stake.
-pub fn reinvest_delegator_rewards<P>(
+/// Attempts to apply the delegator reward to the existing stake. If the reward recipient has
+/// completely unstaked, applies it to their unbond instead. In either case, returns
+/// the purse the amount should be applied to.
+pub fn distribute_delegator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
@@ -290,26 +292,60 @@ where
     P: RuntimeProvider + StorageProvider,
 {
     let mut delegator_payouts = Vec::new();
-    for (delegator_key, delegator_reward) in rewards {
+    for (delegator_public_key, delegator_reward) in rewards {
         let bid_key =
-            BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_key)).into();
+            BidAddr::new_from_public_keys(&validator_public_key, Some(&delegator_public_key))
+                .into();
 
-        // todo!("what should we do if there is no record to receive the rewards?");
-        // currently, if there is no delegator record, it will stop processing and ret an error
-        let mut delegator_bid = read_delegator_bid(provider, &bid_key)?;
-        let delegator_bonding_purse = *delegator_bid.bonding_purse();
         let delegator_reward_trunc = delegator_reward.to_integer();
-        delegator_bid.increase_stake(delegator_reward_trunc)?;
-        provider.write_bid(bid_key, BidKind::Delegator(delegator_bid))?;
+        let delegator_bonding_purse = match read_delegator_bid(provider, &bid_key) {
+            Ok(mut delegator_bid) => {
+                let purse = *delegator_bid.bonding_purse();
+                delegator_bid.increase_stake(delegator_reward_trunc)?;
+                provider.write_bid(bid_key, BidKind::Delegator(delegator_bid))?;
+                purse
+            }
+            Err(Error::DelegatorNotFound) => {
+                // check to see if there are unbond entries for this recipient
+                // (validator + delegator match), and if their are apply the amount
+                // to the unbond entry with the highest era.
+                let account_hash = delegator_public_key.to_account_hash();
+                match provider.read_unbonds(&account_hash) {
+                    Ok(mut unbonds) => {
+                        match unbonds
+                            .iter_mut()
+                            .filter(|x| x.validator_public_key() == &validator_public_key)
+                            .max_by(|x, y| x.era_of_creation().cmp(&y.era_of_creation()))
+                        {
+                            Some(unbond) => {
+                                let purse = *unbond.bonding_purse();
+                                let new_amount =
+                                    unbond.amount().saturating_add(delegator_reward_trunc);
+                                unbond.with_amount(new_amount);
+                                provider.write_unbonds(account_hash, unbonds)?;
+                                purse
+                            }
+                            None => {
+                                return Err(Error::DelegatorNotFound);
+                            }
+                        }
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+            Err(err) => {
+                return Err(err);
+            }
+        };
 
         delegator_payouts.push((
-            delegator_key.to_account_hash(),
+            delegator_public_key.to_account_hash(),
             delegator_reward_trunc,
             delegator_bonding_purse,
         ));
 
         let allocation = SeigniorageAllocation::delegator(
-            delegator_key,
+            delegator_public_key,
             validator_public_key.clone(),
             delegator_reward_trunc,
         );
@@ -320,8 +356,10 @@ where
     Ok(delegator_payouts)
 }
 
-/// Reinvests validator reward by increasing its stake and returns its bonding purse.
-pub fn reinvest_validator_reward<P>(
+/// Attempts to apply the validator reward to the existing stake. If the reward recipient has
+/// completely unstaked, applies it to their unbond instead. In either case, returns
+/// the purse the amount should be applied to.
+pub fn distribute_validator_rewards<P>(
     provider: &mut P,
     seigniorage_allocations: &mut Vec<SeigniorageAllocation>,
     validator_public_key: PublicKey,
@@ -330,11 +368,41 @@ pub fn reinvest_validator_reward<P>(
 where
     P: StorageProvider,
 {
-    let key = BidAddr::from(validator_public_key.clone()).into();
-    let mut validator_bid = read_validator_bid(provider, &key)?;
-    let bonding_purse = *validator_bid.bonding_purse();
-    validator_bid.increase_stake(amount)?;
-    provider.write_bid(key, BidKind::Validator(validator_bid))?;
+    let bid_key = BidAddr::from(validator_public_key.clone()).into();
+    let bonding_purse = match read_validator_bid(provider, &bid_key) {
+        Ok(mut validator_bid) => {
+            let purse = *validator_bid.bonding_purse();
+            validator_bid.increase_stake(amount)?;
+            provider.write_bid(bid_key, BidKind::Validator(validator_bid))?;
+            purse
+        }
+        Err(Error::ValidatorNotFound) => {
+            // check to see if there are unbond entries for this recipient, and if their are
+            // apply the amount to the unbond entry with the highest era.
+            let account_hash = validator_public_key.to_account_hash();
+            match provider.read_unbonds(&account_hash) {
+                Ok(mut unbonds) => {
+                    match unbonds
+                        .iter_mut()
+                        .max_by(|x, y| x.era_of_creation().cmp(&y.era_of_creation()))
+                    {
+                        Some(unbond) => {
+                            let purse = *unbond.bonding_purse();
+                            let new_amount = unbond.amount().saturating_add(amount);
+                            unbond.with_amount(new_amount);
+                            provider.write_unbonds(account_hash, unbonds)?;
+                            purse
+                        }
+                        None => {
+                            return Err(Error::ValidatorNotFound);
+                        }
+                    }
+                }
+                Err(err) => return Err(err),
+            }
+        }
+        Err(err) => return Err(err),
+    };
 
     let allocation = SeigniorageAllocation::validator(validator_public_key, amount);
     seigniorage_allocations.push(allocation);

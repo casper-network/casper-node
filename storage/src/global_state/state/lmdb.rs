@@ -261,7 +261,7 @@ impl StateProvider for LmdbGlobalState {
         Ok(missing_hashes)
     }
 
-    /// Delete keys.
+    /// Prune keys.
     fn prune_keys(
         &self,
         mut state_root_hash: Digest,

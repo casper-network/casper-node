@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use tracing::error;
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
@@ -9,7 +10,7 @@ use casper_types::{
         auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, CLValue, EraId, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
+    CLTyped, CLValue, Key, KeyTag, PublicKey, RuntimeArgs, StoredValue, URef,
     BLAKE2B_DIGEST_LENGTH, U512,
 };
 
@@ -44,13 +45,19 @@ where
             Ok(Some(StoredValue::CLValue(cl_value))) => {
                 Ok(Some(cl_value.into_t().map_err(|_| Error::CLValue)?))
             }
-            Ok(Some(_)) => Err(Error::Storage),
+            Ok(Some(_)) => {
+                error!("StorageProvider::read: unexpected StoredValue variant");
+                Err(Error::Storage)
+            }
             Ok(None) => Ok(None),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
             Err(execution::Error::GasLimit) => Err(Error::GasLimit),
-            Err(_) => Err(Error::Storage),
+            Err(err) => {
+                error!("StorageProvider::read: {:?}", err);
+                Err(Error::Storage)
+            }
         }
     }
 
@@ -58,42 +65,60 @@ where
         let cl_value = CLValue::from_t(value).map_err(|_| Error::CLValue)?;
         self.context
             .metered_write_gs(uref.into(), StoredValue::CLValue(cl_value))
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+            .map_err(|exec_error| {
+                error!("StorageProvider::write: {:?}", exec_error);
+                <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
+            })
     }
 
     fn read_bid(&mut self, key: &Key) -> Result<Option<BidKind>, Error> {
         match self.context.read_gs(key) {
             Ok(Some(StoredValue::Bid(bid_kind))) => Ok(Some(bid_kind)),
-            Ok(Some(_)) => Err(Error::Storage),
+            Ok(Some(_)) => {
+                error!("StorageProvider::read_bid: unexpected StoredValue variant");
+                Err(Error::Storage)
+            }
             Ok(None) => Ok(None),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
             Err(execution::Error::GasLimit) => Err(Error::GasLimit),
-            Err(_) => Err(Error::Storage),
+            Err(err) => {
+                error!("StorageProvider::read_bid: {:?}", err);
+                Err(Error::Storage)
+            }
         }
     }
 
     fn write_bid(&mut self, key: Key, bid_kind: BidKind) -> Result<(), Error> {
         self.context
             .metered_write_gs_unsafe(key, StoredValue::Bid(bid_kind))
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+            .map_err(|exec_error| {
+                error!("StorageProvider::write_bid: {:?}", exec_error);
+                <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
+            })
     }
 
-    fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
+    fn read_unbonds(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error> {
         match self.context.read_gs(&Key::Unbond(*account_hash)) {
             Ok(Some(StoredValue::Unbonding(unbonding_purses))) => Ok(unbonding_purses),
-            Ok(Some(_)) => Err(Error::Storage),
+            Ok(Some(_)) => {
+                error!("StorageProvider::read_unbonds: unexpected StoredValue variant");
+                Err(Error::Storage)
+            }
             Ok(None) => Ok(Vec::new()),
             Err(execution::Error::BytesRepr(_)) => Err(Error::Serialization),
             // NOTE: This extra condition is needed to correctly propagate GasLimit to the user. See
             // also [`Runtime::reverter`] and [`to_auction_error`]
             Err(execution::Error::GasLimit) => Err(Error::GasLimit),
-            Err(_) => Err(Error::Storage),
+            Err(err) => {
+                error!("StorageProvider::read_unbonds: {:?}", err);
+                Err(Error::Storage)
+            }
         }
     }
 
-    fn write_unbond(
+    fn write_unbonds(
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
@@ -105,12 +130,15 @@ where
         } else {
             self.context
                 .metered_write_gs_unsafe(unbond_key, StoredValue::Unbonding(unbonding_purses))
-                .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+                .map_err(|exec_error| {
+                    error!("StorageProvider::write_unbonds: {:?}", exec_error);
+                    <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
+                })
         }
     }
 
-    fn record_era_info(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error> {
-        Runtime::record_era_summary(self, era_summary)
+    fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), Error> {
+        Runtime::record_era_info(self, era_info)
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::RecordEraInfo))
     }
 
@@ -137,13 +165,19 @@ where
     }
 
     fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
-        self.context.get_keys(key_tag).map_err(|_| Error::Storage)
+        self.context.get_keys(key_tag).map_err(|err| {
+            error!("RuntimeProvider::get_keys: {:?}", err);
+            Error::Storage
+        })
     }
 
     fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
         self.context
             .get_keys_with_prefix(prefix)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))
+            .map_err(|exec_error| {
+                error!("RuntimeProvider::get_keys_by_prefix: {:?}", exec_error);
+                <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
+            })
     }
 
     fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error> {
@@ -151,7 +185,10 @@ where
         let keys = self
             .context
             .get_keys_with_prefix(&prefix)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+            .map_err(|exec_error| {
+                error!("RuntimeProvider::delegator_count {:?}", exec_error);
+                <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
+            })?;
         Ok(keys.len())
     }
 
@@ -177,7 +214,10 @@ where
         let maybe_value = self
             .context
             .read_gs_direct(&Key::Account(account_hash))
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+            .map_err(|exec_error| {
+                error!("MintProvider::unbond: {:?}", exec_error);
+                <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
+            })?;
 
         let contract_key: Key = match maybe_value {
             Some(StoredValue::CLValue(cl_value)) => {
@@ -191,7 +231,10 @@ where
         let maybe_value = self
             .context
             .read_gs_direct(&contract_key)
-            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+            .map_err(|exec_error| {
+                error!("MintProvider::unbond: {:?}", exec_error);
+                <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
+            })?;
 
         match maybe_value {
             Some(StoredValue::AddressableEntity(contract)) => {

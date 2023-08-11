@@ -95,6 +95,11 @@ impl UnbondingPurse {
     pub fn new_validator(&self) -> &Option<PublicKey> {
         &self.new_validator
     }
+
+    /// Sets amount to provided value.
+    pub fn with_amount(&mut self, amount: U512) {
+        self.amount = amount;
+    }
 }
 
 impl ToBytes for UnbondingPurse {

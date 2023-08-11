@@ -1056,7 +1056,7 @@ mod trie_chunking_tests {
         }
         let post_state_hash = contract_runtime
             .engine_state()
-            .apply_effect(empty_state_root, effects)
+            .commit_effects(empty_state_root, effects)
             .expect("applying effects to succeed");
         (contract_runtime, post_state_hash)
     }

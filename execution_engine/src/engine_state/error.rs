@@ -4,8 +4,8 @@ use thiserror::Error;
 
 use casper_storage::global_state::{self, state::CommitError};
 use casper_types::{
-    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, KeyTag,
-    ProtocolVersion,
+    account::AccountHash, bytesrepr, system::mint, ApiError, ContractPackageHash, Digest, Key,
+    KeyTag, ProtocolVersion,
 };
 
 use crate::{
@@ -108,6 +108,9 @@ pub enum Error {
     /// Failed to retreive the entity's package
     #[error("Failed to retreieve the entity package as {0}")]
     MissingEntityPackage(ContractPackageHash),
+    /// Failed to prune listed keys.
+    #[error("Pruning attempt failed.")]
+    FailedToPrune(Vec<Key>),
 }
 
 impl Error {

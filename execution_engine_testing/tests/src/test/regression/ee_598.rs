@@ -6,10 +6,8 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR,
 };
 use casper_types::{
-    account::AccountHash,
-    runtime_args,
-    system::auction::{self, DelegationRate},
-    ApiError, GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    account::AccountHash, runtime_args, system::auction::DelegationRate, GenesisAccount,
+    GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -33,7 +31,7 @@ static ACCOUNT_1_BOND: Lazy<U512> = Lazy::new(|| U512::from(25_000));
 
 #[ignore]
 #[test]
-fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
+fn should_handle_unbond_for_more_than_stake_as_full_unbond_of_stake_ee_598_regression() {
     let secret_key = SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let public_key = PublicKey::from(&secret_key);
     let accounts = {
@@ -52,7 +50,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
 
     let run_genesis_request = utils::create_run_genesis_request(accounts);
 
-    let exec_request_1 = ExecuteRequestBuilder::standard(
+    let seed_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_AUCTION_BIDDING,
         runtime_args! {
@@ -62,7 +60,7 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
         },
     )
     .build();
-    let exec_request_2 = {
+    let combined_bond_and_unbond_request = {
         let deploy = DeployItemBuilder::new()
             .with_address(*ACCOUNT_1_ADDR)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *ACCOUNT_1_FUND })
@@ -82,22 +80,10 @@ fn should_fail_unbonding_more_than_it_was_staked_ee_598_regression() {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&run_genesis_request);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder.exec(seed_request).expect_success().commit();
 
-    builder.exec(exec_request_2).commit();
-
-    let response = builder
-        .get_exec_result_owned(1)
-        .expect("should have a response");
-    let error_message = utils::get_error_message(response);
-
-    // Error::UnbondTooLarge,
-    assert!(
-        error_message.contains(&format!(
-            "{:?}",
-            ApiError::from(auction::Error::UnbondTooLarge)
-        )),
-        "{}",
-        error_message
-    );
+    builder
+        .exec(combined_bond_and_unbond_request)
+        .expect_success()
+        .commit();
 }

@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use tracing::error;
+use tracing::{debug, error};
 
 use casper_types::{Digest, Key, StoredValue};
 
@@ -66,11 +66,19 @@ impl Cache {
 
     /// Consumes self and returns only written values as values that were only read must be filtered
     /// out to prevent unnecessary writes.
-    fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
-        self.cached_values
+    fn into_dirty_writes(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
+        let keys_to_prune = self.pruned;
+        let stored_values: HashMap<Key, StoredValue> = self
+            .cached_values
             .into_iter()
             .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
-            .collect()
+            .collect();
+        debug!(
+            "Cache: into_dirty_writes: prune_count: {} store_count: {}",
+            keys_to_prune.len(),
+            stored_values.len()
+        );
+        (stored_values, keys_to_prune)
     }
 }
 
@@ -115,7 +123,7 @@ impl ScratchGlobalState {
     }
 
     /// Consume self and return inner cache.
-    pub fn into_inner(self) -> HashMap<Key, StoredValue> {
+    pub fn into_inner(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
         cache.into_dirty_writes()
     }
@@ -332,13 +340,13 @@ impl StateProvider for ScratchGlobalState {
     ) -> Result<PruneResult, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         for key in keys_to_delete {
-            let delete_result = prune::<Key, StoredValue, _, _, Self::Error>(
+            let prune_result = prune::<Key, StoredValue, _, _, Self::Error>(
                 &mut txn,
                 self.trie_store.deref(),
                 &state_root_hash,
                 key,
             );
-            match delete_result? {
+            match prune_result? {
                 PruneResult::Pruned(root) => {
                     state_root_hash = root;
                 }
@@ -497,7 +505,7 @@ pub(crate) mod tests {
 
         let all_keys = updated_checkout.keys_with_prefix(&[]).unwrap();
 
-        let stored_values = scratch.into_inner();
+        let (stored_values, _) = scratch.into_inner();
         assert_eq!(all_keys.len(), stored_values.len());
 
         for key in all_keys {

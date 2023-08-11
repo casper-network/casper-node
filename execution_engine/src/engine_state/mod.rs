@@ -21,6 +21,7 @@ pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
+use itertools::Itertools;
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -43,6 +44,7 @@ use casper_storage::{
             StateReader,
         },
         trie::{merkle_proof::TrieMerkleProof, TrieRaw},
+        trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
 };
 use casper_types::{
@@ -167,11 +169,26 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
     ) -> Result<Digest, Error> {
-        let stored_values = scratch_global_state.into_inner();
-        self.state
+        let (stored_values, keys_to_prune) = scratch_global_state.into_inner();
+
+        let post_state_hash = self
+            .state
             .state()
-            .put_stored_values(state_root_hash, stored_values)
-            .map_err(Into::into)
+            .put_stored_values(state_root_hash, stored_values)?;
+
+        if keys_to_prune.is_empty() {
+            return Ok(post_state_hash);
+        }
+
+        let prune_keys = keys_to_prune.iter().cloned().collect_vec();
+        match self.state.state().prune_keys(post_state_hash, &prune_keys) {
+            Ok(result) => match result {
+                GlobalStatePruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
+                GlobalStatePruneResult::DoesNotExist => Err(Error::FailedToPrune(prune_keys)),
+                GlobalStatePruneResult::RootNotFound => Err(Error::RootNotFound(post_state_hash)),
+            },
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
@@ -203,10 +220,25 @@ impl EngineState<LmdbGlobalState> {
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
     ) -> Result<Digest, Error> {
-        let stored_values = scratch_global_state.into_inner();
-        self.state
-            .put_stored_values(state_root_hash, stored_values)
-            .map_err(Into::into)
+        let (stored_values, keys_to_prune) = scratch_global_state.into_inner();
+        let post_state_hash = match self.state.put_stored_values(state_root_hash, stored_values) {
+            Ok(root_hash) => root_hash,
+            Err(err) => {
+                return Err(err.into());
+            }
+        };
+        if keys_to_prune.is_empty() {
+            return Ok(post_state_hash);
+        }
+        let prune_keys = keys_to_prune.iter().cloned().collect_vec();
+        match self.state.prune_keys(post_state_hash, &prune_keys) {
+            Ok(result) => match result {
+                GlobalStatePruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
+                GlobalStatePruneResult::DoesNotExist => Err(Error::FailedToPrune(prune_keys)),
+                GlobalStatePruneResult::RootNotFound => Err(Error::RootNotFound(post_state_hash)),
+            },
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
@@ -1999,13 +2031,12 @@ where
         Ok(ret)
     }
 
-    /// Apply effects of the execution.
+    /// Commit effects of the execution.
     ///
-    /// This is also referred to as "committing" the effects into the global state. This method has
-    /// to be run after an execution has been made to persists the effects of it.
+    /// This method has to be run after an execution has been made to persists the effects of it.
     ///
     /// Returns new state root hash.
-    pub fn apply_effect(
+    pub fn commit_effects(
         &self,
         pre_state_hash: Digest,
         effects: AdditiveMap<Key, Transform>,
@@ -2645,7 +2676,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId
-            | Error::MissingTrieNodeChildren(_) => false,
+            | Error::MissingTrieNodeChildren(_)
+            | Error::FailedToPrune(_) => false,
         },
         ExecutionResult::Success { .. } => false,
     }

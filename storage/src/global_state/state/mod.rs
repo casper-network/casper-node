@@ -8,7 +8,7 @@ pub mod scratch;
 
 use std::{collections::HashMap, hash::BuildHasher};
 
-use tracing::error;
+use tracing::{debug, error, warn};
 
 use casper_types::{bytesrepr, Digest, Key, StoredValue};
 
@@ -170,12 +170,21 @@ where
             (ReadResult::NotFound, Transform::Write(new_value)) => {
                 TransformInstruction::store(new_value)
             }
+            (ReadResult::NotFound, Transform::Prune(key)) => {
+                // effectively a noop.
+                debug!(
+                    ?state_root,
+                    ?key,
+                    "commit: attempt to prune nonexistent record; this may happen if a key is both added and pruned in the same commit."
+                );
+                continue;
+            }
             (ReadResult::NotFound, transform) => {
                 error!(
                     ?state_root,
                     ?key,
                     ?transform,
-                    "Key not found while attempting to apply transform"
+                    "commit: key not found while attempting to apply transform"
                 );
                 return Err(CommitError::KeyNotFound(key).into());
             }
@@ -186,7 +195,7 @@ where
                         ?state_root,
                         ?key,
                         ?err,
-                        "Key found, but could not apply transform"
+                        "commit: key found, but could not apply transform"
                     );
                     return Err(CommitError::TransformError(err).into());
                 }
@@ -196,7 +205,7 @@ where
                     ?state_root,
                     ?key,
                     ?transform,
-                    "Failed to read state root while processing transform"
+                    "commit: failed to read state root while processing transform"
                 );
                 return Err(CommitError::ReadRootNotFound(state_root).into());
             }
@@ -225,7 +234,9 @@ where
                     PruneResult::Pruned(root_hash) => {
                         state_root = root_hash;
                     }
-                    PruneResult::DoesNotExist => (),
+                    PruneResult::DoesNotExist => {
+                        warn!("commit: pruning attempt failed for {}", key);
+                    }
                     PruneResult::RootNotFound => {
                         error!(?state_root, ?key, "commit: root not found");
                         return Err(CommitError::WriteRootNotFound(state_root).into());
