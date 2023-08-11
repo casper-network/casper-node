@@ -4,7 +4,7 @@
 //! round-robin manner. This way, events are only competing for time within one queue, non-congested
 //! queues can always assume to be speedily processed.
 
-use std::{fmt::Display, num::NonZeroUsize};
+use std::num::NonZeroUsize;
 
 use enum_iterator::IntoEnumIterator;
 use serde::Serialize;
@@ -12,7 +12,19 @@ use serde::Serialize;
 /// Scheduling priority.
 ///
 /// Priorities are ordered from lowest to highest.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, IntoEnumIterator, PartialOrd, Ord, Serialize)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    strum::Display,
+    Eq,
+    PartialEq,
+    Hash,
+    IntoEnumIterator,
+    PartialOrd,
+    Ord,
+    Serialize,
+)]
 pub enum QueueKind {
     /// Control messages for the runtime itself.
     Control,
@@ -24,8 +36,6 @@ pub enum QueueKind {
     MessageLowPriority,
     /// Incoming messages from validators.
     MessageValidator,
-    /// Network events demand a resource directly.
-    NetworkDemand,
     /// Network events that were initiated by the local node, such as outgoing messages.
     Network,
     /// NetworkInfo events.
@@ -59,32 +69,6 @@ pub enum QueueKind {
     Api,
 }
 
-impl Display for QueueKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str_value = match self {
-            QueueKind::Control => "Control",
-            QueueKind::MessageIncoming => "MessageIncoming",
-            QueueKind::MessageLowPriority => "MessageLowPriority",
-            QueueKind::NetworkDemand => "NetworkDemand",
-            QueueKind::MessageValidator => "MessageValidator",
-            QueueKind::Network => "Network",
-            QueueKind::NetworkInfo => "NetworkInfo",
-            QueueKind::Fetch => "Fetch",
-            QueueKind::Regular => "Regular",
-            QueueKind::Gossip => "Gossip",
-            QueueKind::FromStorage => "FromStorage",
-            QueueKind::ToStorage => "ToStorage",
-            QueueKind::ContractRuntime => "ContractRuntime",
-            QueueKind::SyncGlobalState => "SyncGlobalState",
-            QueueKind::FinalitySignature => "FinalitySignature",
-            QueueKind::Consensus => "Consensus",
-            QueueKind::Validation => "Validation",
-            QueueKind::Api => "Api",
-        };
-        write!(f, "{}", str_value)
-    }
-}
-
 impl Default for QueueKind {
     fn default() -> Self {
         QueueKind::Regular
@@ -100,7 +84,6 @@ impl QueueKind {
         NonZeroUsize::new(match self {
             QueueKind::MessageLowPriority => 1,
             QueueKind::NetworkInfo => 2,
-            QueueKind::NetworkDemand => 2,
             QueueKind::MessageIncoming => 4,
             QueueKind::MessageValidator => 8,
             QueueKind::Network => 4,
@@ -132,7 +115,6 @@ impl QueueKind {
         match self {
             QueueKind::Control => "control",
             QueueKind::MessageIncoming => "message_incoming",
-            QueueKind::NetworkDemand => "network_demands",
             QueueKind::MessageLowPriority => "message_low_priority",
             QueueKind::MessageValidator => "message_validator",
             QueueKind::Network => "network",
