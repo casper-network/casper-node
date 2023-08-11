@@ -45,13 +45,16 @@ mod tests;
 mod transport;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
     time::{Duration, Instant},
 };
 
@@ -123,6 +126,8 @@ use crate::{
     NodeRng,
 };
 
+use super::ValidatorBoundComponent;
+
 const COMPONENT_NAME: &str = "network";
 
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
@@ -177,9 +182,16 @@ where
     cfg: Config,
     /// Read-only networking information shared across tasks.
     context: Arc<NetworkContext<REv>>,
+    /// A reference to the global validator matrix.
+    validator_matrix: ValidatorMatrix,
 
     /// Outgoing connections manager.
     outgoing_manager: OutgoingManager<OutgoingHandle, ConnectionError>,
+    /// Incoming validator map.
+    ///
+    /// Tracks which incoming connections are from validators. The atomic bool is shared with the
+    /// receiver tasks to determine queue position.
+    incoming_validator_status: HashMap<PublicKey, Weak<AtomicBool>>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
@@ -292,7 +304,9 @@ where
         let component = Network {
             cfg,
             context,
+            validator_matrix,
             outgoing_manager,
+            incoming_validator_status: Default::default(),
             connection_symmetries: HashMap::new(),
             net_metrics,
             outgoing_limiter,
@@ -477,7 +491,7 @@ where
         &self,
         dest: NodeId,
         msg: Arc<Message<P>>,
-        opt_responder: Option<AutoClosingResponder<()>>,
+        _opt_responder: Option<AutoClosingResponder<()>>, // TODO: Restore functionality or remove?
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
@@ -635,6 +649,38 @@ where
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
+                // If given a key, determine validator status.
+                let validator_status = peer_consensus_public_key.as_ref().map(|public_key| {
+                    let status = self
+                        .validator_matrix
+                        .is_active_or_upcoming_validator(public_key);
+
+                    // Find the shared `Arc` that holds the validator status for this specific key.
+                    match self.incoming_validator_status.entry((**public_key).clone()) {
+                        // TODO: Use `Arc` for public key-key.
+                        Entry::Occupied(mut occupied) => {
+                            match occupied.get().upgrade() {
+                                Some(arc) => {
+                                    arc.store(status, Ordering::Relaxed);
+                                    arc
+                                }
+                                None => {
+                                    // Failed to ugprade, the weak pointer is just a leftover that
+                                    // has not been cleaned up yet. We can replace it.
+                                    let arc = Arc::new(AtomicBool::new(status));
+                                    occupied.insert(Arc::downgrade(&arc));
+                                    arc
+                                }
+                            }
+                        }
+                        Entry::Vacant(vacant) => {
+                            let arc = Arc::new(AtomicBool::new(status));
+                            vacant.insert(Arc::downgrade(&arc));
+                            arc
+                        }
+                    }
+                });
+
                 let (read_half, write_half) = tokio::io::split(transport);
 
                 let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
@@ -642,8 +688,9 @@ where
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
                 effects.extend(
-                    tasks::multi_channel_message_receiver(
+                    tasks::message_receiver(
                         self.context.clone(),
+                        validator_status,
                         rpc_server,
                         self.shutdown_fuse.inner().clone(),
                         peer_id,
@@ -659,6 +706,7 @@ where
                             result,
                             peer_id: Box::new(peer_id),
                             peer_addr,
+                            peer_consensus_public_key,
                             span: boxed_span,
                         }
                     }),
@@ -674,6 +722,7 @@ where
         result: Result<(), MessageReceiverError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         span: Span,
     ) -> Effects<Event<P>> {
         span.in_scope(|| {
@@ -687,11 +736,19 @@ where
                 }
             }
 
-            // Update the connection symmetries.
-            self.connection_symmetries
+            // Update the connection symmetries and cleanup if necessary.
+            if !self
+                .connection_symmetries
                 .entry(*peer_id)
-                .or_default()
-                .remove_incoming(peer_addr, Instant::now());
+                .or_default() // Should never occur.
+                .remove_incoming(peer_addr, Instant::now())
+            {
+                if let Some(ref public_key) = peer_consensus_public_key {
+                    self.incoming_validator_status.remove(public_key);
+                }
+
+                self.connection_symmetries.remove(&peer_id);
+            }
 
             Effects::new()
         })
@@ -797,7 +854,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
-                peer_consensus_public_key,
+                peer_consensus_public_key: _, // TODO: Use for limiting or remove.
                 transport,
             } => {
                 info!("new outgoing connection established");
@@ -1220,8 +1277,15 @@ where
                     result,
                     peer_id,
                     peer_addr,
+                    peer_consensus_public_key,
                     span,
-                } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
+                } => self.handle_incoming_closed(
+                    result,
+                    peer_id,
+                    peer_addr,
+                    peer_consensus_public_key,
+                    *span,
+                ),
                 Event::OutgoingConnection { outgoing, span } => {
                     self.handle_outgoing_connection(*outgoing, span)
                 }
@@ -1337,6 +1401,43 @@ where
         );
 
         self.state = new_state;
+    }
+}
+
+impl<REv, P> ValidatorBoundComponent<REv> for Network<REv, P>
+where
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<BeginGossipRequest<GossipedAddress>>
+        + FromIncoming<P>
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>
+        + From<PeerBehaviorAnnouncement>,
+    P: Payload,
+{
+    fn handle_validators(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+    ) -> Effects<Self::Event> {
+        // If we receive an updated set of validators, recalculate validator status for every
+        // existing connection.
+
+        let active_validators = self.validator_matrix.active_or_upcoming_validators();
+
+        // Update the validator status for every connection.
+        for (public_key, status) in self.incoming_validator_status.iter_mut() {
+            // If there is only a `Weak` ref, we lost the connection to the validator, but the
+            // disconnection has not reached us yet.
+            status.upgrade().map(|arc| {
+                arc.store(
+                    active_validators.contains(public_key),
+                    std::sync::atomic::Ordering::Relaxed,
+                )
+            });
+        }
+
+        Effects::default()
     }
 }
 

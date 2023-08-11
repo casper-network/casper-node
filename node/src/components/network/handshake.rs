@@ -29,7 +29,7 @@ pub(super) struct HandshakeOutcome {
     /// Public address advertised by the peer.
     pub(super) public_addr: SocketAddr,
     /// The public key the peer is validating with, if any.
-    pub(super) peer_consensus_public_key: Option<PublicKey>,
+    pub(super) peer_consensus_public_key: Option<Box<PublicKey>>,
 }
 
 /// Reads a 32 byte big endian integer prefix, followed by an actual raw message.
@@ -222,7 +222,8 @@ where
                 cert.validate(connection_id)
                     .map_err(ConnectionError::InvalidConsensusCertificate)
             })
-            .transpose()?;
+            .transpose()?
+            .map(Box::new);
 
         let transport = read_half.unsplit(write_half);
 

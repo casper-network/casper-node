@@ -1247,6 +1247,10 @@ impl MainReactor {
             self.block_synchronizer
                 .handle_validators(effect_builder, rng),
         ));
+        effects.extend(reactor::wrap_effects(
+            MainEvent::Network,
+            self.net.handle_validators(effect_builder, rng),
+        ));
         effects
     }
 

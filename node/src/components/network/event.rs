@@ -59,6 +59,7 @@ where
         result: Result<(), MessageReceiverError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         #[serde(skip_serializing)]
         span: Box<Span>,
     },
@@ -189,7 +190,7 @@ pub(crate) enum IncomingConnection {
         /// Peer's [`NodeId`].
         peer_id: NodeId,
         /// The public key the peer is validating with, if any.
-        peer_consensus_public_key: Option<PublicKey>,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
         transport: Transport,
@@ -259,7 +260,7 @@ pub(crate) enum OutgoingConnection {
         /// Peer's [`NodeId`].
         peer_id: NodeId,
         /// The public key the peer is validating with, if any.
-        peer_consensus_public_key: Option<PublicKey>,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         /// Sink for outgoing messages.
         #[serde(skip)]
         transport: Transport,

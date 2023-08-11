@@ -4,7 +4,10 @@ use std::{
     fmt::Display,
     net::SocketAddr,
     pin::Pin,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
 };
 
 use futures::{
@@ -461,9 +464,10 @@ pub(super) async fn server<P, REv>(
     }
 }
 
-/// Multi-channel message receiver.
-pub(super) async fn multi_channel_message_receiver<REv, P>(
+/// Juliet-based message receiver.
+pub(super) async fn message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
+    validator_status: Option<Arc<AtomicBool>>,
     mut rpc_server: RpcServer,
     shutdown: ObservableFuse,
     peer_id: NodeId,
@@ -477,7 +481,6 @@ where
         + From<PeerBehaviorAnnouncement>
         + Send,
 {
-    // Core receival loop.
     loop {
         let next_item = rpc_server.next_request();
 
@@ -529,7 +532,13 @@ where
             });
         }
 
-        let queue_kind = if msg.is_low_priority() {
+        let queue_kind = if validator_status
+            .as_ref()
+            .map(|arc| arc.load(Ordering::Relaxed))
+            .unwrap_or_default()
+        {
+            QueueKind::MessageValidator
+        } else if msg.is_low_priority() {
             QueueKind::MessageLowPriority
         } else {
             QueueKind::MessageIncoming

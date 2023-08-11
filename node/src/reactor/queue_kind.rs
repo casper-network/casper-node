@@ -22,6 +22,8 @@ pub enum QueueKind {
     MessageIncoming,
     /// Incoming messages that are low priority.
     MessageLowPriority,
+    /// Incoming messages from validators.
+    MessageValidator,
     /// Network events demand a resource directly.
     NetworkDemand,
     /// Network events that were initiated by the local node, such as outgoing messages.
@@ -64,6 +66,7 @@ impl Display for QueueKind {
             QueueKind::MessageIncoming => "MessageIncoming",
             QueueKind::MessageLowPriority => "MessageLowPriority",
             QueueKind::NetworkDemand => "NetworkDemand",
+            QueueKind::MessageValidator => "MessageValidator",
             QueueKind::Network => "Network",
             QueueKind::NetworkInfo => "NetworkInfo",
             QueueKind::Fetch => "Fetch",
@@ -99,6 +102,7 @@ impl QueueKind {
             QueueKind::NetworkInfo => 2,
             QueueKind::NetworkDemand => 2,
             QueueKind::MessageIncoming => 4,
+            QueueKind::MessageValidator => 8,
             QueueKind::Network => 4,
             QueueKind::Regular => 4,
             QueueKind::Fetch => 4,
@@ -130,6 +134,7 @@ impl QueueKind {
             QueueKind::MessageIncoming => "message_incoming",
             QueueKind::NetworkDemand => "network_demands",
             QueueKind::MessageLowPriority => "message_low_priority",
+            QueueKind::MessageValidator => "message_validator",
             QueueKind::Network => "network",
             QueueKind::NetworkInfo => "network_info",
             QueueKind::SyncGlobalState => "sync_global_state",
