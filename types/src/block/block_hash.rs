@@ -12,6 +12,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
+use super::Block;
+#[cfg(doc)]
 use super::BlockV2;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
