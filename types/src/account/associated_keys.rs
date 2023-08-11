@@ -5,21 +5,30 @@ use alloc::{
     vec::Vec,
 };
 
-use core::convert::TryInto;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     account::{AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
-    bytesrepr::{self, Error, FromBytes, ToBytes},
+    bytesrepr::{self, FromBytes, ToBytes},
 };
 
-/// A mapping that represents the association of a [`Weight`] with an [`AccountHash`].
+/// A collection of weighted public keys (represented as account hashes) associated with an account.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct AssociatedKeys(BTreeMap<AccountHash, Weight>);
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+#[rustfmt::skip]
+pub struct AssociatedKeys(
+    #[serde(with = "BTreeMapToArray::<AccountHash, Weight, Labels>")]
+    BTreeMap<AccountHash, Weight>,
+);
 
 impl AssociatedKeys {
     /// Constructs a new AssociatedKeys.
@@ -29,7 +38,8 @@ impl AssociatedKeys {
         AssociatedKeys(bt)
     }
 
-    /// Adds new AssociatedKey to the set.
+    /// Adds a new AssociatedKey to the set.
+    ///
     /// Returns true if added successfully, false otherwise.
     pub fn add_key(&mut self, key: AccountHash, weight: Weight) -> Result<(), AddKeyFailure> {
         match self.0.entry(key) {
@@ -128,7 +138,7 @@ impl From<BTreeMap<AccountHash, Weight>> for AssociatedKeys {
 }
 
 impl ToBytes for AssociatedKeys {
-    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
 
@@ -137,25 +147,32 @@ impl ToBytes for AssociatedKeys {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        let length_32: u32 = self
-            .0
-            .len()
-            .try_into()
-            .map_err(|_| Error::NotRepresentable)?;
-        writer.extend_from_slice(&length_32.to_le_bytes());
-        for (key, weight) in self.0.iter() {
-            key.write_bytes(writer)?;
-            weight.write_bytes(writer)?;
-        }
-        Ok(())
+        self.0.write_bytes(writer)
     }
 }
 
 impl FromBytes for AssociatedKeys {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (associated_keys, rem) = FromBytes::from_bytes(bytes)?;
         Ok((AssociatedKeys(associated_keys), rem))
     }
+}
+
+struct Labels;
+
+impl KeyValueLabels for Labels {
+    const KEY: &'static str = "account_hash";
+    const VALUE: &'static str = "weight";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for Labels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("AssociatedKey");
+    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> = Some("A weighted public key.");
+    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> =
+        Some("The account hash of the public key.");
+    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> =
+        Some("The weight assigned to the public key.");
 }
 
 #[doc(hidden)]

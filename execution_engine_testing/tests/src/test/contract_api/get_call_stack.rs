@@ -353,8 +353,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 
 mod session {
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
-    use casper_storage::global_state::shared::transform::Transform;
-    use casper_types::{runtime_args, system::mint, Key, RuntimeArgs};
+    use casper_types::{execution::TransformKind, runtime_args, system::mint, Key, RuntimeArgs};
 
     use super::{
         approved_amount, AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
@@ -1040,12 +1039,12 @@ mod session {
 
             builder.exec(execute_request).commit().expect_success();
 
-            let transforms = builder.get_execution_journals().last().unwrap().clone();
+            let effects = builder.get_effects().last().unwrap().clone();
 
             assert!(
-                transforms.iter().any(|(key, transform)| key
+                effects.transforms().iter().any(|transform| transform.key()
                     == &Key::Hash(current_contract_package_hash)
-                    && transform == &Transform::Identity),
+                    && transform.kind() == &TransformKind::Identity),
                 "Missing `Identity` transform for a contract package being called."
             );
 
@@ -1197,13 +1196,12 @@ mod session {
 
             builder.exec(execute_request).commit().expect_success();
 
-            let transforms = builder.get_execution_journals().last().unwrap().clone();
+            let effects = builder.get_effects().last().unwrap().clone();
 
             assert!(
-                transforms
-                    .iter()
-                    .any(|(key, transform)| key == &Key::Hash(current_contract_hash)
-                        && transform == &Transform::Identity),
+                effects.transforms().iter().any(|transform| transform.key()
+                    == &Key::Hash(current_contract_hash)
+                    && transform.kind() == &TransformKind::Identity),
                 "Missing `Identity` transform for a contract being called."
             );
 

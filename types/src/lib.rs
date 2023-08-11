@@ -14,7 +14,7 @@
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    test(attr(deny(warnings)))
 )]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -43,7 +43,7 @@ mod deploy_info;
 mod digest;
 mod display_iter;
 mod era_id;
-mod execution_result;
+pub mod execution;
 #[cfg(any(feature = "std", test))]
 pub mod file_utils;
 mod gas;
@@ -52,7 +52,6 @@ pub mod gens;
 mod json_pretty_printer;
 mod key;
 mod motes;
-mod named_key;
 pub mod package;
 mod phase;
 mod protocol_version;
@@ -126,6 +125,7 @@ pub use chainspec::{
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
+#[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;
 pub use deploy::{
@@ -143,9 +143,6 @@ pub use digest::{
 };
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
-pub use execution_result::{
-    ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
-};
 pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
@@ -154,8 +151,10 @@ pub use key::{
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
-pub use named_key::NamedKey;
-pub use package::{ContractPackageHash, ContractVersion, ContractVersionKey, Group, Package};
+pub use package::{
+    ContractPackageHash, ContractVersion, ContractVersionKey, ContractVersions, Group, Groups,
+    Package,
+};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 #[doc(inline)]

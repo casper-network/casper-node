@@ -337,10 +337,12 @@ fn should_upgrade_only_validator_slots() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let validator_slot_key = builder
+    let validator_slot_key = *builder
         .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[VALIDATOR_SLOTS_KEY];
+        .named_keys()
+        .get(VALIDATOR_SLOTS_KEY)
+        .unwrap();
 
     let before_validator_slots: u32 = builder
         .query(None, validator_slot_key, &[])
@@ -392,10 +394,12 @@ fn should_upgrade_only_auction_delay() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let auction_delay_key = builder
+    let auction_delay_key = *builder
         .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[AUCTION_DELAY_KEY];
+        .named_keys()
+        .get(AUCTION_DELAY_KEY)
+        .unwrap();
 
     let before_auction_delay: u64 = builder
         .query(None, auction_delay_key, &[])
@@ -447,10 +451,12 @@ fn should_upgrade_only_locked_funds_period() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let locked_funds_period_key = builder
+    let locked_funds_period_key = *builder
         .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[LOCKED_FUNDS_PERIOD_KEY];
+        .named_keys()
+        .get(LOCKED_FUNDS_PERIOD_KEY)
+        .unwrap();
 
     let before_locked_funds_period_millis: u64 = builder
         .query(None, locked_funds_period_key, &[])
@@ -502,10 +508,12 @@ fn should_upgrade_only_round_seigniorage_rate() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let round_seigniorage_rate_key = builder
+    let round_seigniorage_rate_key = *builder
         .get_addressable_entity(builder.get_mint_contract_hash())
-        .expect("auction should exist")
-        .named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
+        .expect("mint should exist")
+        .named_keys()
+        .get(ROUND_SEIGNIORAGE_RATE_KEY)
+        .unwrap();
 
     let before_round_seigniorage_rate: Ratio<U512> = builder
         .query(None, round_seigniorage_rate_key, &[])
@@ -564,10 +572,12 @@ fn should_upgrade_only_unbonding_delay() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let unbonding_delay_key = builder
+    let unbonding_delay_key = *builder
         .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[UNBONDING_DELAY_KEY];
+        .named_keys()
+        .get(UNBONDING_DELAY_KEY)
+        .unwrap();
 
     let before_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
@@ -622,10 +632,12 @@ fn should_apply_global_state_upgrade() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     // We'll try writing directly to this key.
-    let unbonding_delay_key = builder
+    let unbonding_delay_key = *builder
         .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[UNBONDING_DELAY_KEY];
+        .named_keys()
+        .get(UNBONDING_DELAY_KEY)
+        .unwrap();
 
     let before_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])

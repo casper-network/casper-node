@@ -123,13 +123,13 @@ impl Executor {
 
         match result {
             Ok(_) => ExecutionResult::Success {
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
             Err(error) => ExecutionResult::Failure {
                 error: error.into(),
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
@@ -192,7 +192,7 @@ impl Executor {
             EntryPointType::Session,
         );
 
-        let execution_journal = tracking_copy.borrow().execution_journal();
+        let effects = tracking_copy.borrow().effects();
 
         // Standard payment is executed in the calling account's context; the stack already
         // captures that.
@@ -200,12 +200,12 @@ impl Executor {
 
         match runtime.call_host_standard_payment(stack) {
             Ok(()) => ExecutionResult::Success {
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
             Err(error) => ExecutionResult::Failure {
-                execution_journal,
+                effects,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
@@ -253,7 +253,7 @@ impl Executor {
 
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
-        let execution_journal = tracking_copy.borrow().execution_journal();
+        let effects = tracking_copy.borrow().effects();
 
         let entry_point_name = direct_system_contract_call.entry_point_name();
 
@@ -323,13 +323,13 @@ impl Executor {
         match result {
             Ok(value) => match value.into_t() {
                 Ok(ret) => ExecutionResult::Success {
-                    execution_journal: runtime.context().execution_journal(),
+                    effects: runtime.context().effects(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
-                    execution_journal,
+                    effects,
                     error: Error::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
@@ -337,7 +337,7 @@ impl Executor {
                 .take_without_ret(),
             },
             Err(error) => ExecutionResult::Failure {
-                execution_journal,
+                effects,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),

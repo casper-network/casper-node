@@ -119,10 +119,16 @@ fn regression_20220217_mint_by_hash_transfer_from_other_purse() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let purse_1 = account.named_keys()[PURSE_1]
+    let purse_1 = account
+        .named_keys()
+        .get(PURSE_1)
+        .unwrap()
         .into_uref()
         .expect("should have purse 1");
-    let purse_2 = account.named_keys()[PURSE_2]
+    let purse_2 = account
+        .named_keys()
+        .get(PURSE_2)
+        .unwrap()
         .into_uref()
         .expect("should have purse 2");
 
@@ -153,7 +159,10 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
     let account_1 = builder
         .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
-    let account_1_purse = account_1.named_keys()[ACCOUNT_1_PURSE]
+    let account_1_purse = account_1
+        .named_keys()
+        .get(ACCOUNT_1_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should have account main purse");
 
@@ -161,7 +170,10 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let purse_1 = default_account.named_keys()[PURSE_1]
+    let purse_1 = default_account
+        .named_keys()
+        .get(PURSE_1)
+        .unwrap()
         .into_uref()
         .expect("should have purse 1");
 
@@ -201,10 +213,16 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let purse_1 = account.named_keys()[PURSE_1]
+    let purse_1 = account
+        .named_keys()
+        .get(PURSE_1)
+        .unwrap()
         .into_uref()
         .expect("should have purse 1");
-    let purse_2 = account.named_keys()[PURSE_2]
+    let purse_2 = account
+        .named_keys()
+        .get(PURSE_2)
+        .unwrap()
         .into_uref()
         .expect("should have purse 2");
 

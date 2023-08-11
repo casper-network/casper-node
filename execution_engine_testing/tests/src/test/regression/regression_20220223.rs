@@ -244,7 +244,10 @@ fn should_fail_to_mint_transfer_over_the_limit() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    let test_purse_2 = default_account.named_keys()[TEST_PURSE]
+    let test_purse_2 = default_account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should have test purse 2");
 

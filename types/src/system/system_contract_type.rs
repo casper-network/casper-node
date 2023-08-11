@@ -11,11 +11,12 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use serde::Serialize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    bytesrepr,
-    bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     ApiError, EntryPoints,
 };
 
@@ -33,8 +34,9 @@ use super::{
 ///
 /// Used by converting to a `u32` and passing as the `system_contract_index` argument of
 /// `ext_ffi::casper_get_system_contract()`.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum SystemContractType {
     /// Mint contract.
     #[default]

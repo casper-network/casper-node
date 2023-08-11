@@ -57,7 +57,7 @@ fn should_charge_non_main_purse() {
         .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     // get purse
-    let purse_key = account_1.named_keys()[TEST_PURSE_NAME];
+    let purse_key = account_1.named_keys().get(TEST_PURSE_NAME).unwrap();
     let purse = purse_key.into_uref().expect("should have uref");
 
     let purse_starting_balance = builder.get_purse_balance(purse);

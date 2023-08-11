@@ -14,7 +14,7 @@ Usage
 To generate new fixtures with a generator run:
 
 ```
-$ cargo run -p casper-validation -- generate --output utils/validation/tests/fixtures
+cargo run -p casper-validation -- generate --output utils/validation/tests/fixtures
 ```
 
 **Important note**
@@ -24,5 +24,5 @@ Do not use this with day to day development - for example to fix an error in ser
 To validate the implementation using all the fixtures:
 
 ```
-$ cargo test -p casper-validation
+cargo test -p casper-validation
 ```

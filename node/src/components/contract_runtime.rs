@@ -63,10 +63,12 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
+#[cfg(test)]
+pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
+    BlockAndExecutionResults, EraValidatorsRequest, StepEffectsAndUpcomingEraValidators,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -757,7 +759,7 @@ impl ContractRuntime {
             block,
             approvals_hashes,
             execution_results,
-            maybe_step_effect_and_upcoming_era_validators,
+            maybe_step_effects_and_upcoming_era_validators,
         } = match run_intensive_task(move || {
             debug!("ContractRuntime: execute_finalized_block");
             execute_finalized_block(
@@ -805,13 +807,13 @@ impl ContractRuntime {
 
         let current_era_id = block.era_id();
 
-        if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_journal,
+        if let Some(StepEffectsAndUpcomingEraValidators {
+            step_effects,
             mut upcoming_era_validators,
-        }) = maybe_step_effect_and_upcoming_era_validators
+        }) = maybe_step_effects_and_upcoming_era_validators
         {
             effect_builder
-                .announce_commit_step_success(current_era_id, step_execution_journal)
+                .announce_commit_step_success(current_era_id, step_effects)
                 .await;
 
             if current_era_id.is_genesis() {
@@ -846,7 +848,6 @@ impl ContractRuntime {
             .cloned()
             .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
             .collect();
-
         if meta_block_state.register_as_stored().was_updated() {
             effect_builder
                 .put_executed_block_to_storage(
@@ -860,7 +861,11 @@ impl ContractRuntime {
                 .put_approvals_hashes_to_storage(approvals_hashes)
                 .await;
             effect_builder
-                .put_execution_results_to_storage(*block.hash(), execution_results_map)
+                .put_execution_results_to_storage(
+                    *block.hash(),
+                    block.height(),
+                    execution_results_map,
+                )
                 .await;
         }
         if meta_block_state
@@ -967,13 +972,15 @@ mod trie_chunking_tests {
     use tempfile::tempdir;
 
     use casper_storage::global_state::{
-        shared::{transform::Transform, AdditiveMap},
         state::StateProvider,
         trie::{Pointer, Trie},
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
-        Key, ProtocolVersion, StoredValue, SystemConfig, WasmConfig,
+        account::AccountHash,
+        bytesrepr,
+        execution::{Effects, Transform, TransformKind},
+        ActivationPoint, CLValue, ChunkWithProof, Digest, EraId, Key, ProtocolVersion, StoredValue,
+        SystemConfig, WasmConfig,
     };
 
     use super::ContractRuntimeError;
@@ -1050,13 +1057,13 @@ mod trie_chunking_tests {
         )
         .unwrap();
         let empty_state_root = contract_runtime.engine_state().get_state().empty_root();
-        let mut effects: AdditiveMap<Key, Transform> = AdditiveMap::new();
+        let mut effects = Effects::new();
         for TestPair(key, value) in test_pair {
-            assert!(effects.insert(key, Transform::Write(value)).is_none());
+            effects.push(Transform::new(key, TransformKind::Write(value)));
         }
         let post_state_hash = contract_runtime
             .engine_state()
-            .apply_effect(empty_state_root, effects)
+            .apply_effects(empty_state_root, effects)
             .expect("applying effects to succeed");
         (contract_runtime, post_state_hash)
     }

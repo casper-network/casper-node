@@ -1,8 +1,5 @@
 //! RPCs related to finding information about currently supported RPCs.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::{
@@ -460,7 +457,8 @@ impl RpcWithoutParams for ListRpcs {
 
 mod doc_example_impls {
     use casper_types::{
-        Deploy, EraEnd, EraReport, JsonBlock, JsonBlockHeader, PublicKey, Timestamp,
+        account::Account, Deploy, EraEnd, EraReport, JsonBlock, JsonBlockHeader, PublicKey,
+        Timestamp,
     };
 
     use super::DocExample;
@@ -480,6 +478,12 @@ mod doc_example_impls {
     impl DocExample for Deploy {
         fn doc_example() -> &'static Self {
             Deploy::example()
+        }
+    }
+
+    impl DocExample for Account {
+        fn doc_example() -> &'static Self {
+            Account::example()
         }
     }
 

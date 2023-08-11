@@ -820,15 +820,12 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::CommitStepSuccess {
-                    era_id,
-                    execution_effect,
-                },
+                ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
             ) => {
                 let reactor_event =
                     MainEvent::EventStreamServer(event_stream_server::Event::Step {
                         era_id,
-                        execution_effect,
+                        execution_effects: effects,
                     });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
