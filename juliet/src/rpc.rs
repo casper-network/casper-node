@@ -623,3 +623,96 @@ impl Drop for IncomingRequest {
         self.do_cancel();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
+
+    use crate::{
+        io::IoCoreBuilder, protocol::ProtocolBuilder, rpc::RpcBuilder, ChannelConfiguration,
+        ChannelId,
+    };
+
+    use super::{JulietRpcClient, JulietRpcServer};
+
+    fn setup_peers<const N: usize>(
+        builder: RpcBuilder<N>,
+    ) -> (
+        (
+            JulietRpcClient<N>,
+            JulietRpcServer<N, ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
+        ),
+        (
+            JulietRpcClient<N>,
+            JulietRpcServer<N, ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
+        ),
+    ) {
+        let (peer_a_pipe, peer_b_pipe) = tokio::io::duplex(64);
+        let peer_a = {
+            let (reader, writer) = tokio::io::split(peer_a_pipe);
+            builder.build(reader, writer)
+        };
+        let peer_b = {
+            let (reader, writer) = tokio::io::split(peer_b_pipe);
+            builder.build(reader, writer)
+        };
+        (peer_a, peer_b)
+    }
+
+    #[tokio::test]
+    async fn basic_smoke_test() {
+        let builder = RpcBuilder::new(IoCoreBuilder::new(
+            ProtocolBuilder::<2>::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_max_request_payload_size(1024)
+                    .with_max_response_payload_size(1024),
+            ),
+        ));
+
+        let (client, server) = setup_peers(builder);
+
+        // Spawn an echo-server.
+        tokio::spawn(async move {
+            let (rpc_client, mut rpc_server) = server;
+
+            while let Some(req) = rpc_server
+                .next_request()
+                .await
+                .expect("error receiving request")
+            {
+                println!("recieved {}", req);
+                let payload = req.payload().clone();
+                req.respond(payload);
+            }
+
+            drop(rpc_client);
+        });
+
+        let (rpc_client, mut rpc_server) = client;
+
+        // Run the background process for the client.
+        tokio::spawn(async move {
+            while let Some(inc) = rpc_server
+                .next_request()
+                .await
+                .expect("client rpc_server error")
+            {
+                panic!("did not expect to receive {:?} on client", inc);
+            }
+        });
+
+        let payload = Bytes::from(&b"foobar"[..]);
+
+        let response = rpc_client
+            .create_request(ChannelId::new(0))
+            .with_payload(payload.clone())
+            .queue_for_sending()
+            .await
+            .wait_for_response()
+            .await
+            .expect("request failed");
+
+        assert_eq!(response, Some(payload));
+    }
+}

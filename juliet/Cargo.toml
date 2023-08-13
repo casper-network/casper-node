@@ -17,7 +17,12 @@ tokio = { version = "1.29.1", features = [ "macros", "io-util", "sync" ] }
 tracing = { version = "0.1.37", optional = true }
 
 [dev-dependencies]
-tokio = { version = "1.29.1", features = [ "net", "rt-multi-thread", "time" ] }
+tokio = { version = "1.29.1", features = [
+  "macros",
+  "net",
+  "rt-multi-thread",
+  "time",
+] }
 proptest = "1.1.0"
 proptest-attr-macro = "1.0.0"
 proptest-derive = "0.3.0"
