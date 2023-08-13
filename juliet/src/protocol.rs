@@ -218,7 +218,7 @@ struct Channel {
     /// A set of request IDs from requests received that have not been answered with a response or
     /// cancellation yet.
     incoming_requests: HashSet<Id>,
-    /// A set of request IDs for requests made for which no response or cancellation has been
+    /// A set of request IDs of requests made, for which no response or cancellation has been
     /// received yet.
     outgoing_requests: HashSet<Id>,
     /// The multiframe receiver state machine.
@@ -397,20 +397,12 @@ macro_rules! log_frame {
             use tracing::trace;
             trace!(header=%$header, "received");
         }
-        #[cfg(not(feature = "tracing"))]
-        {
-            // tracing feature disabled, not logging frame
-        }
     };
     ($header:expr, $payload:expr) => {
         #[cfg(feature = "tracing")]
         {
             use tracing::trace;
             trace!(header=%$header, payload=%crate::util::PayloadFormat(&$payload), "received");
-        }
-        #[cfg(not(feature = "tracing"))]
-        {
-            // tracing feature disabled, not logging frame
         }
     };
 }
