@@ -34,12 +34,10 @@ pub(crate) mod main_reactor;
 mod queue_kind;
 
 use std::{
-    any,
     collections::HashMap,
     env,
     fmt::{Debug, Display},
     io::Write,
-    mem,
     num::NonZeroU64,
     str::FromStr,
     sync::{atomic::Ordering, Arc},
