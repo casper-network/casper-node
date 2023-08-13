@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(window.len(), auction_delay as usize + 1);
         assert_eq!(window.get(0), Some(&current_era));
         assert_eq!(
-            window.iter().rev().next(),
+            window.iter().next_back(),
             Some(&(current_era + auction_delay))
         );
     }

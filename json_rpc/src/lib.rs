@@ -122,7 +122,7 @@ impl CorsOrigin {
     /// * `"*"`: [`CorsOrigin::Any`].
     /// * otherwise, returns `CorsOrigin::Specified(raw)`.
     #[inline]
-    pub fn from_str<T: ToString + AsRef<str>>(raw: T) -> Option<Self> {
+    pub fn parse_str<T: ToString + AsRef<str>>(raw: T) -> Option<Self> {
         match raw.as_ref() {
             "" => None,
             "*" => Some(CorsOrigin::Any),
@@ -183,12 +183,12 @@ pub fn route<P: AsRef<str>>(
 ///
 /// ```rust
 /// use warp::{Filter, filters::BoxedFilter, http::Response, reply::Reply};
-///# use casper_json_rpc::box_reply;
+/// # use casper_json_rpc::box_reply;
 ///
 /// let filter: BoxedFilter<(Box<dyn Reply>,)> = warp::any()
 ///                .map(|| Response::builder().body("hello world"))
 ///                .map(box_reply).boxed();
-///# drop(filter);
+/// # drop(filter);
 /// ```
 #[inline(always)]
 pub fn box_reply<T: Reply + 'static>(reply: T) -> Box<dyn Reply> {

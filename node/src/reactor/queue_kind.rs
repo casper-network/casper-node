@@ -24,6 +24,7 @@ use serde::Serialize;
     PartialOrd,
     Ord,
     Serialize,
+    Default,
 )]
 pub enum QueueKind {
     /// Control messages for the runtime itself.
@@ -49,6 +50,7 @@ pub enum QueueKind {
     /// Events of unspecified priority.
     ///
     /// This is the default queue.
+    #[default]
     Regular,
     /// Gossiper events.
     Gossip,
@@ -67,12 +69,6 @@ pub enum QueueKind {
     /// Metric events take precedence over most other events since missing a request for metrics
     /// might cause the requester to assume that the node is down and forcefully restart it.
     Api,
-}
-
-impl Default for QueueKind {
-    fn default() -> Self {
-        QueueKind::Regular
-    }
 }
 
 impl QueueKind {

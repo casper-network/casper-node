@@ -131,10 +131,7 @@ async fn failed_fetch_retriggers_download_with_different_peer() {
     let (_, chunk_ids, _) = test_chunks_with_proof(1);
 
     // Create multiple peers
-    let peers: Vec<NodeId> = (0..2)
-        .into_iter()
-        .map(|_| NodeId::random(&mut rng))
-        .collect();
+    let peers: Vec<NodeId> = (0..2).map(|_| NodeId::random(&mut rng)).collect();
 
     let chunks = PartialChunks {
         peers: peers.clone(),

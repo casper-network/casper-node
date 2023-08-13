@@ -1254,7 +1254,7 @@
             "WriteContractWasm",
             "WriteContract",
             "WriteContractPackage",
-            "Delete"
+            "Prune"
           ]
         },
         {

@@ -562,7 +562,6 @@ mod tests {
         let mut era_validator_weights = vec![validator_matrix.validator_weights(0.into()).unwrap()];
         era_validator_weights.extend(
             (1..MAX_VALIDATOR_MATRIX_ENTRIES as u64)
-                .into_iter()
                 .map(EraId::from)
                 .map(empty_era_validator_weights),
         );
@@ -655,7 +654,6 @@ mod tests {
         let mut era_validator_weights = vec![validator_matrix.validator_weights(0.into()).unwrap()];
         era_validator_weights.extend(
             (1..=MAX_VALIDATOR_MATRIX_ENTRIES as u64)
-                .into_iter()
                 .map(EraId::from)
                 .map(empty_era_validator_weights),
         );
@@ -672,12 +670,7 @@ mod tests {
         }
 
         // Register eras [7, 8, 9].
-        era_validator_weights.extend(
-            (7..=9)
-                .into_iter()
-                .map(EraId::from)
-                .map(empty_era_validator_weights),
-        );
+        era_validator_weights.extend((7..=9).map(EraId::from).map(empty_era_validator_weights));
         for evw in era_validator_weights.iter().rev().take(3).cloned() {
             assert!(
                 validator_matrix.register_era_validator_weights(evw),

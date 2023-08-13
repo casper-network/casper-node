@@ -96,7 +96,7 @@ enum TransformTag {
     AddKeys = 16,
     Failure = 17,
     WriteUnbonding = 18,
-    Delete = 19,
+    Prune = 19,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -560,8 +560,8 @@ pub enum Transform {
     Failure(String),
     /// Writes the given Unbonding to global state.
     WriteUnbonding(Vec<UnbondingPurse>),
-    /// Deletes a key.
-    Delete,
+    /// Prunes a key.
+    Prune,
 }
 
 impl Transform {
@@ -586,7 +586,7 @@ impl Transform {
             Transform::AddKeys(_) => TransformTag::AddKeys,
             Transform::Failure(_) => TransformTag::Failure,
             Transform::WriteUnbonding(_) => TransformTag::WriteUnbonding,
-            Transform::Delete => TransformTag::Delete,
+            Transform::Prune => TransformTag::Prune,
         }
     }
 }
@@ -647,7 +647,7 @@ impl ToBytes for Transform {
             Transform::WriteUnbonding(value) => {
                 buffer.extend(value.to_bytes()?);
             }
-            Transform::Delete => {}
+            Transform::Prune => {}
         }
         Ok(buffer)
     }
@@ -673,7 +673,7 @@ impl ToBytes for Transform {
             Transform::WriteBid(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
             Transform::WriteUnbonding(value) => value.serialized_length(),
-            Transform::Delete => 0,
+            Transform::Prune => 0,
         };
         U8_SERIALIZED_LENGTH + body_len
     }
@@ -749,7 +749,7 @@ impl FromBytes for Transform {
                     <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
                 Ok((Transform::WriteUnbonding(unbonding_purses), remainder))
             }
-            TransformTag::Delete => Ok((Transform::Delete, remainder)),
+            TransformTag::Prune => Ok((Transform::Prune, remainder)),
         }
     }
 }
@@ -780,7 +780,7 @@ impl Distribution<Transform> for Standard {
                 Transform::AddKeys(named_keys)
             }
             12 => Transform::Failure(rng.gen::<u64>().to_string()),
-            13 => Transform::Delete,
+            13 => Transform::Prune,
             _ => unreachable!(),
         }
     }
