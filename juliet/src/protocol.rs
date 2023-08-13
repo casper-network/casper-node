@@ -312,7 +312,7 @@ impl Channel {
 
 /// A successful read from the peer.
 #[must_use]
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum CompletedRead {
     /// An error has been received.
     ///
@@ -755,6 +755,8 @@ impl<const N: usize> JulietProtocol<N> {
                         return err_msg(header, ErrorKind::FictitiousRequest);
                     } else {
                         log_frame!(header);
+
+                        buffer.advance(Header::SIZE);
                         return Success(CompletedRead::ReceivedResponse {
                             channel: header.channel(),
                             id: header.id(),
@@ -906,4 +908,62 @@ pub const fn payload_is_multi_frame(max_frame_size: MaxFrameSize, payload_len: u
 
     payload_len as u64 + Header::SIZE as u64 + (Varint32::encode(payload_len as u32)).len() as u64
         > max_frame_size.get() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::{Buf, Bytes, BytesMut};
+
+    use crate::{
+        header::{Header, Kind},
+        protocol::CompletedRead,
+        ChannelConfiguration, ChannelId, Id,
+    };
+
+    use super::{JulietProtocol, ProtocolBuilder};
+
+    #[test]
+    fn response_with_no_payload_is_cleared_from_buffer() {
+        let mut protocol: JulietProtocol<16> = ProtocolBuilder::with_default_channel_config(
+            ChannelConfiguration::new()
+                .with_max_request_payload_size(4096)
+                .with_max_response_payload_size(4096),
+        )
+        .build();
+
+        let channel = ChannelId::new(6);
+        let id = Id::new(1);
+
+        // Create the request to prime the protocol state machine for the incoming response.
+        let msg = protocol
+            .create_request(channel, Some(Bytes::from(&b"foobar"[..])))
+            .expect("can create request");
+
+        assert_eq!(msg.header().channel(), channel);
+        assert_eq!(msg.header().id(), id);
+
+        let mut response_raw =
+            BytesMut::from(&Header::new(Kind::Response, channel, id).as_ref()[..]);
+
+        assert_eq!(response_raw.remaining(), 4);
+
+        let outcome = protocol
+            .process_incoming(&mut response_raw)
+            .expect("should complete outcome");
+        assert_eq!(
+            outcome,
+            CompletedRead::ReceivedResponse {
+                channel: channel,
+                /// The ID of the request received.
+                id: id,
+                /// The response payload.
+                payload: None,
+            }
+        );
+
+        assert_eq!(response_raw.remaining(), 0);
+    }
+
+    // TODO: Additional tests checking buffer is advanced properly when receiving in
+    //       `process_incoming`.
 }
