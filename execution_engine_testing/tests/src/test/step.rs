@@ -104,7 +104,7 @@ fn should_step() {
         "bid amount should not be 0"
     );
 
-    builder.step(step_request).unwrap();
+    builder.step(step_request).expect("should step");
 
     let bids_after_slashing = builder.get_bids();
     assert!(bids_after_slashing.validator_bid(&ACCOUNT_1_PK).is_none());
@@ -157,7 +157,7 @@ fn should_adjust_total_supply() {
         .with_next_era_id(EraId::from(1))
         .build();
 
-    builder.step(step_request).unwrap();
+    builder.step(step_request).expect("should step");
 
     let maybe_post_state_hash = Some(builder.get_post_state_hash());
 

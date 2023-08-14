@@ -178,7 +178,7 @@ pub fn execute_finalized_block(
                 .map_err(BlockExecutionError::ChecksumRegistryToCLValue)?
                 .into(),
         ),
-    );
+    ));
     scratch_state.commit_effects(state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {

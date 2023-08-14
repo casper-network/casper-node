@@ -359,7 +359,7 @@ pub trait Auction:
     ///
     /// This can be only invoked through a system call.
     fn slash(&mut self, validator_public_keys: Vec<PublicKey>) -> Result<(), Error> {
-        fn unbonds(
+        fn slash_unbonds(
             validator_public_key: &PublicKey,
             unbonding_purses: Vec<UnbondingPurse>,
         ) -> (U512, Vec<UnbondingPurse>) {
@@ -410,7 +410,8 @@ pub trait Auction:
                         if unbonding_purses.is_empty() {
                             continue;
                         }
-                        let (burned, remaining) = unbonds(&validator_public_key, unbonding_purses);
+                        let (burned, remaining) =
+                            slash_unbonds(&validator_public_key, unbonding_purses);
                         burned_amount += burned;
                         self.write_unbonds(
                             AccountHash::from(&delegator_bid.delegator_public_key().clone()),
@@ -420,12 +421,13 @@ pub trait Auction:
                 }
             }
 
-            // Update unbonding entries for given validator
+            // Find any unbonding entries for given validator
             let unbonding_purses = self.read_unbonds(&AccountHash::from(&validator_public_key))?;
             if unbonding_purses.is_empty() {
                 continue;
             }
-            let (burned, remaining) = unbonds(&validator_public_key, unbonding_purses);
+            // get rid of any staked token in the unbonding queue
+            let (burned, remaining) = slash_unbonds(&validator_public_key, unbonding_purses);
             burned_amount += burned;
             self.write_unbonds(AccountHash::from(&validator_public_key.clone()), remaining)?;
         }

@@ -14,7 +14,7 @@ use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::{DelegationRate, Delegator, Error},
+    system::auction::{DelegationRate, Delegator, Error, ValidatorBid},
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
@@ -44,6 +44,22 @@ pub struct Bid {
 }
 
 impl Bid {
+    #[allow(missing_docs)]
+    pub fn from_non_unified(
+        validator_bid: ValidatorBid,
+        delegators: BTreeMap<PublicKey, Delegator>,
+    ) -> Self {
+        Self {
+            validator_public_key: validator_bid.validator_public_key().clone(),
+            bonding_purse: *validator_bid.bonding_purse(),
+            staked_amount: validator_bid.staked_amount(),
+            delegation_rate: *validator_bid.delegation_rate(),
+            vesting_schedule: validator_bid.vesting_schedule().cloned(),
+            delegators,
+            inactive: validator_bid.inactive(),
+        }
+    }
+
     /// Creates new instance of a bid with locked funds.
     pub fn locked(
         validator_public_key: PublicKey,

@@ -700,7 +700,7 @@ where
             initial_seigniorage_recipients_uref.into(),
         );
 
-        // store all delegator and validatorbids
+        // store all delegator and validator bids
         for (validator_public_key, (validator_bid, delegators)) in staked {
             for (delegator_public_key, delegator_bid) in delegators {
                 let delegator_bid_key = Key::Bid(BidAddr::new_from_public_keys(

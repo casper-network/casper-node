@@ -17,15 +17,6 @@
     ],
     "output": "062a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
   },
-  "Bid": {
-    "input": [
-      {
-        "type": "Key",
-        "value": "bid-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
-      }
-    ],
-    "output": "072a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
-  },
   "ChainspecRegistry": {
     "input": [
       {
@@ -133,5 +124,32 @@
       }
     ],
     "output": "082a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "WriteBid": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "bid-306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+      }
+    ],
+    "output": "07306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+  },
+  "WriteDelegatorBid": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "bid-02306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1b27960a454670985e9072683f779602413d6ebf738ba0dc4200534c57de17e12"
+      }
+    ],
+    "output": "0702306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1b27960a454670985e9072683f779602413d6ebf738ba0dc4200534c57de17e12"
+  },
+  "WriteValidatorBid": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "bid-01306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+      }
+    ],
+    "output": "0701306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
   }
 }

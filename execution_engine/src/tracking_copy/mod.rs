@@ -19,7 +19,7 @@ use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieM
 use casper_types::{
     addressable_entity::NamedKeys,
     bytesrepr::{self},
-    execution::{Effects, Transform, TransformError, TransformKind},
+    execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
     Tagged, U512,
 };
@@ -218,13 +218,35 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     }
 
     /// Gets the set of mutated keys in the cache by `KeyTag`.
-    pub fn get_key_tag_muts_cached(&mut self, key_tag: &KeyTag) -> Option<&BTreeSet<Key>> {
-        self.key_tag_muts_cached.get(key_tag)
+    pub fn get_key_tag_muts_cached(&mut self, key_tag: &KeyTag) -> Option<BTreeSet<Key>> {
+        let pruned = &self.prunes_cached;
+        if let Some(keys) = self.key_tag_muts_cached.get(key_tag) {
+            let mut ret = BTreeSet::new();
+            for key in keys {
+                if !pruned.contains(key) {
+                    ret.insert(*key);
+                }
+            }
+            Some(ret)
+        } else {
+            None
+        }
     }
 
     /// Gets the set of read keys in the cache by `KeyTag`.
-    pub fn get_key_tag_reads_cached(&mut self, key_tag: &KeyTag) -> Option<&BTreeSet<Key>> {
-        self.key_tag_reads_cached.get_refresh(key_tag).map(|v| &*v)
+    pub fn get_key_tag_reads_cached(&mut self, key_tag: &KeyTag) -> Option<BTreeSet<Key>> {
+        let pruned = &self.prunes_cached;
+        if let Some(keys) = self.key_tag_reads_cached.get(key_tag) {
+            let mut ret = BTreeSet::new();
+            for key in keys {
+                if !pruned.contains(key) {
+                    ret.insert(*key);
+                }
+            }
+            Some(ret)
+        } else {
+            None
+        }
     }
 }
 
@@ -317,7 +339,11 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             None => {
                 let key_tag = key_tag.to_owned();
                 let keys = self.reader.keys_with_prefix(&[key_tag as u8])?;
-                ret.extend(keys);
+                for key in keys {
+                    if !self.cache.prunes_cached.contains(&key) {
+                        ret.insert(key);
+                    }
+                }
                 self.cache.insert_key_tag_read(key_tag, ret.to_owned())
             }
         }
@@ -352,7 +378,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     pub(crate) fn prune(&mut self, key: Key) {
         let normalized_key = key.normalize();
         self.cache.insert_prune(normalized_key);
-        self.journal.push((normalized_key, Transform::Prune(key)));
+        self.effects
+            .push(Transform::new(normalized_key, TransformKind::Prune(key)));
     }
 
     /// Ok(None) represents missing key to which we want to "add" some value.
@@ -421,9 +448,10 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     .push(Transform::new(normalized_key, transform_kind));
                 Ok(AddResult::Success)
             }
-            Ok(TransformInstruction::Prune(_)) => {
+            Ok(TransformInstruction::Prune(key)) => {
                 self.cache.insert_prune(normalized_key);
-                self.journal.push((normalized_key, transform));
+                self.effects
+                    .push(Transform::new(normalized_key, TransformKind::Prune(key)));
                 Ok(AddResult::Success)
             }
             Err(TransformError::TypeMismatch(type_mismatch)) => {

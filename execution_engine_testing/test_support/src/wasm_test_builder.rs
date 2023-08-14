@@ -1487,11 +1487,11 @@ where
 
         if let Ok(PruneResult::Success {
             post_state_hash,
-            execution_journal,
+            effects,
         }) = &result
         {
             self.post_state_hash = Some(*post_state_hash);
-            self.transforms.push(execution_journal.clone());
+            self.effects.push(effects.clone());
         }
 
         self.prune_results.push(result);

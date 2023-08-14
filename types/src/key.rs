@@ -127,7 +127,6 @@ pub enum KeyTag {
 #[repr(C)]
 #[derive(PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum Key {
     /// A `Key` under which a user account is stored.
     Account(AccountHash),

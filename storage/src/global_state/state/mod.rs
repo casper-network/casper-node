@@ -12,7 +12,7 @@ use tracing::{debug, error, warn};
 
 use casper_types::{
     bytesrepr,
-    execution::{Effects, Transform, TransformError, TransformKind},
+    execution::{Effects, Transform, TransformError, TransformInstruction, TransformKind},
     Digest, Key, StoredValue,
 };
 
@@ -162,10 +162,15 @@ where
         let read_result = read::<_, _, _, _, E>(&txn, store, &state_root, &key)?;
 
         let instruction = match (read_result, kind) {
+            (_, TransformKind::Identity) => {
+                // effectively a noop.
+                debug!(?state_root, ?key, "commit: attempt to commit a read.");
+                continue;
+            }
             (ReadResult::NotFound, TransformKind::Write(new_value)) => {
                 TransformInstruction::store(new_value)
             }
-            (ReadResult::NotFound, Transform::Prune(key)) => {
+            (ReadResult::NotFound, TransformKind::Prune(key)) => {
                 // effectively a noop.
                 debug!(
                     ?state_root,

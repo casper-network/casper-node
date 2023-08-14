@@ -16,21 +16,26 @@ use crate::testing::TestRng;
 use crate::{
     addressable_entity::NamedKeys,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    CLType, CLTyped, CLValue, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
+    CLType, CLTyped, CLValue, Key, StoredValue, StoredValueTypeMismatch, U128, U256, U512,
 };
 
-#[derive(PartialEq, Eq, Debug, Clone, DataSize)]
+/// Taxonomy of Transform.
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum TransformInstruction {
+    /// Store a StoredValue.
     Store(StoredValue),
+    /// Prune a StoredValue by Key.
     Prune(Key),
 }
 
 impl TransformInstruction {
-    pub(crate) fn store(stored_value: StoredValue) -> Self {
+    /// Store instruction.
+    pub fn store(stored_value: StoredValue) -> Self {
         Self::Store(stored_value)
     }
 
-    pub(crate) fn prune(key: Key) -> Self {
+    /// Prune instruction.
+    pub fn prune(key: Key) -> Self {
         Self::Prune(key)
     }
 }
@@ -95,7 +100,7 @@ impl TransformKind {
         match self {
             TransformKind::Identity => Ok(store(stored_value)),
             TransformKind::Write(new_value) => Ok(store(new_value)),
-            Transform::Prune(key) => Ok(TransformInstruction::prune(key)),
+            TransformKind::Prune(key) => Ok(TransformInstruction::prune(key)),
             TransformKind::AddInt32(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddUInt64(to_add) => wrapping_addition(stored_value, to_add),
             TransformKind::AddUInt128(to_add) => wrapping_addition(stored_value, to_add),
@@ -162,7 +167,7 @@ impl TransformKind {
     /// Returns a random `TransformKind`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        match rng.gen_range(0..9) {
+        match rng.gen_range(0..10) {
             0 => TransformKind::Identity,
             1 => TransformKind::Write(StoredValue::CLValue(CLValue::from_t(true).unwrap())),
             2 => TransformKind::AddInt32(rng.gen()),
@@ -180,6 +185,7 @@ impl TransformKind {
             8 => TransformKind::Failure(TransformError::Serialization(
                 bytesrepr::Error::EarlyEndOfStream,
             )),
+            9 => TransformKind::Prune(rng.gen::<Key>()),
             _ => unreachable!(),
         }
     }
@@ -221,6 +227,10 @@ impl ToBytes for TransformKind {
                 (TransformTag::Failure as u8).write_bytes(writer)?;
                 error.write_bytes(writer)
             }
+            TransformKind::Prune(value) => {
+                (TransformTag::Prune as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
         }
     }
 
@@ -242,6 +252,7 @@ impl ToBytes for TransformKind {
                 TransformKind::AddUInt512(value) => value.serialized_length(),
                 TransformKind::AddKeys(named_keys) => named_keys.serialized_length(),
                 TransformKind::Failure(error) => error.serialized_length(),
+                TransformKind::Prune(value) => value.serialized_length(),
             }
     }
 }
@@ -283,6 +294,10 @@ impl FromBytes for TransformKind {
                 let (error, remainder) = TransformError::from_bytes(remainder)?;
                 Ok((TransformKind::Failure(error), remainder))
             }
+            tag if tag == TransformTag::Prune as u8 => {
+                let (key, remainder) = Key::from_bytes(remainder)?;
+                Ok((TransformKind::Prune(key), remainder))
+            }
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -290,7 +305,10 @@ impl FromBytes for TransformKind {
 
 /// Attempts a wrapping addition of `to_add` to `stored_value`, assuming `stored_value` is
 /// compatible with type `Y`.
-fn wrapping_addition<Y>(stored_value: StoredValue, to_add: Y) -> Result<StoredValue, TransformError>
+fn wrapping_addition<Y>(
+    stored_value: StoredValue,
+    to_add: Y,
+) -> Result<TransformInstruction, TransformError>
 where
     Y: AsPrimitive<i32>
         + AsPrimitive<i64>
@@ -315,22 +333,24 @@ where
         other => {
             let expected = format!("integral type compatible with {}", any::type_name::<Y>());
             let found = format!("{:?}", other);
-            Err(TransformError::from(StoredValueTypeMismatch::new(
-                expected, found,
-            )))
+            Err(StoredValueTypeMismatch::new(expected, found).into())
         }
     }
 }
 
 /// Attempts a wrapping addition of `to_add` to the value represented by `cl_value`.
-fn do_wrapping_addition<X, Y>(cl_value: CLValue, to_add: Y) -> Result<StoredValue, TransformError>
+fn do_wrapping_addition<X, Y>(
+    cl_value: CLValue,
+    to_add: Y,
+) -> Result<TransformInstruction, TransformError>
 where
     X: WrappingAdd + CLTyped + ToBytes + FromBytes + Copy + 'static,
     Y: AsPrimitive<X>,
 {
     let x: X = cl_value.into_t()?;
     let result = x.wrapping_add(&(to_add.as_()));
-    Ok(StoredValue::CLValue(CLValue::from_t(result)?))
+    let stored_value = StoredValue::CLValue(CLValue::from_t(result)?);
+    Ok(TransformInstruction::store(stored_value))
 }
 
 #[derive(Debug)]
@@ -345,6 +365,7 @@ enum TransformTag {
     AddUInt512 = 6,
     AddKeys = 7,
     Failure = 8,
+    Prune = 9,
 }
 
 #[cfg(test)]
@@ -792,7 +813,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        for _ in 0..10 {
+        for _ in 0..11 {
             let execution_result = TransformKind::random(rng);
             bytesrepr::test_serialization_roundtrip(&execution_result);
         }

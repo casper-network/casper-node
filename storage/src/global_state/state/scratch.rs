@@ -8,7 +8,7 @@ use std::{
 use tracing::{debug, error};
 
 use casper_types::{
-    execution::{Effects, Transform, TransformKind},
+    execution::{Effects, Transform, TransformInstruction, TransformKind},
     Digest, Key, StoredValue,
 };
 

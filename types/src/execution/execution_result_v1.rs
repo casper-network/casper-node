@@ -22,7 +22,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, DeployInfo, Key, NamedKey, Transfer, TransferAddr, U128, U256, U512,
+    CLValue, DeployInfo, Key, Transfer, TransferAddr, U128, U256, U512,
 };
 
 #[derive(FromPrimitive, ToPrimitive, Debug)]
@@ -571,12 +571,13 @@ impl ToBytes for Transform {
             Transform::WriteAddressableEntity => {
                 (TransformTag::WriteAddressableEntity as u8).write_bytes(writer)
             }
-            Transform::WriteAddressableEntity => {}
-            Transform::Prune(key) => {
-                buffer.extend(key.to_bytes()?);
+            Transform::Prune(value) => {
+                (TransformTag::Prune as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
-            Transform::WriteBidKind(bid_kind) => {
-                buffer.extend(bid_kind.to_bytes()?);
+            Transform::WriteBidKind(value) => {
+                (TransformTag::WriteBidKind as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
         }
     }

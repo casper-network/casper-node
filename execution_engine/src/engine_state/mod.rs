@@ -704,7 +704,7 @@ where
             // effectively a noop
             return Ok(PruneResult::Success {
                 post_state_hash: pre_state_hash,
-                execution_journal: ExecutionJournal::default(),
+                effects: Effects::default(),
             });
         }
 
@@ -712,17 +712,16 @@ where
             tracking_copy.borrow_mut().prune(*key)
         }
 
-        let execution_effect = tracking_copy.borrow().effect();
-        let execution_journal = tracking_copy.borrow().execution_journal();
+        let effects = tracking_copy.borrow().effects();
 
         let post_state_hash = self
             .state
-            .commit(pre_state_hash, execution_effect.transforms)
+            .commit(pre_state_hash, effects.clone())
             .map_err(Into::<execution::Error>::into)?;
 
         Ok(PruneResult::Success {
             post_state_hash,
-            execution_journal,
+            effects,
         })
     }
 
@@ -2057,7 +2056,7 @@ where
     pub fn commit_effects(
         &self,
         pre_state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
+        effects: Effects,
     ) -> Result<Digest, Error> {
         self.state
             .commit(pre_state_hash, effects)

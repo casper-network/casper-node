@@ -8,7 +8,8 @@ use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 use casper_types::{
     system::auction::{
-        BidKind, DelegationRate, Delegator, EraValidators, Staking, ValidatorBid, ValidatorBids,
+        Bid, BidKind, DelegationRate, Delegator, EraValidators, Staking, ValidatorBid,
+        ValidatorBids,
     },
     AccessRights, Digest, EraId, PublicKey, SecretKey, URef, U512,
 };
@@ -172,13 +173,10 @@ impl AuctionState {
             staking
         };
 
-        let mut json_bids: Vec<JsonBids> = Vec::new();
+        let mut bids: BTreeMap<PublicKey, Bid> = BTreeMap::new();
         for (public_key, (validator_bid, delegators)) in staking {
-            let json_bid = JsonBid::new(validator_bid, delegators);
-            json_bids.push(JsonBids {
-                public_key: public_key.clone(),
-                bid: json_bid,
-            });
+            let bid = Bid::from_non_unified(validator_bid, delegators);
+            bids.insert(public_key, bid);
         }
 
         AuctionState {

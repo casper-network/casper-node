@@ -17,6 +17,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
+use crate::storage::deploy_metadata_v1::DeployMetadataV1;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     system::auction::UnbondingPurse,
@@ -266,8 +267,12 @@ pub(super) fn deserialize<T: DeserializeOwned + 'static>(raw: &[u8]) -> Result<T
     match bincode::deserialize(raw) {
         Ok(value) => Ok(value),
         Err(err) => {
-            if TypeId::of::<crate::types::DeployMetadata>() == TypeId::of::<T>() {
-                warn!(?err, ?raw, "DeployMetadata: bincode deserialization failed");
+            if TypeId::of::<DeployMetadataV1>() == TypeId::of::<T>() {
+                warn!(
+                    ?err,
+                    ?raw,
+                    "DeployMetadataV1: bincode deserialization failed"
+                );
             } else {
                 warn!(?err, ?raw, "bincode deserialization failed");
             }
