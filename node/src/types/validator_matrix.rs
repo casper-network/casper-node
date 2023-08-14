@@ -217,10 +217,6 @@ impl ValidatorMatrix {
         self.finality_threshold_fraction
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.read_inner().is_empty()
-    }
-
     /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
     /// information for that era is missing.
     pub(crate) fn is_validator_in_era(

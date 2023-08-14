@@ -423,9 +423,9 @@ where
         for peer_id in self.outgoing_manager.connected_peers() {
             total_outgoing_manager_connected_peers += 1;
 
-            // TODO FIXME: This makes the broadcast global again to work around issues with the
-            //             validator matrix not being populated in time.
-            if true || self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
+            if !self.validator_matrix.has_era(&era_id)
+                || self.outgoing_limiter.is_validator_in_era(era_id, &peer_id)
+            {
                 total_connected_validators_in_era += 1;
                 self.send_message(peer_id, msg.clone(), None)
             }
