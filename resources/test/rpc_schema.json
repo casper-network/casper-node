@@ -4085,6 +4085,13 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Can't be accessed directly but are kept in the derived wasm bytes.",
+                "type": "string",
+                "enum": [
+                  "Abstract"
+                ]
               }
             ]
           },
@@ -4093,7 +4100,7 @@
             "type": "string"
           },
           "EntryPointType": {
-            "description": "Context of method execution",
+            "description": "Context of method execution\n\nMost significant bit represents version i.e. - 0b0 -> 0.x/1.x (session & contracts) - 0b1 -> 2.x and later (introduced installer, utility entry points)",
             "oneOf": [
               {
                 "description": "Runs as session code",
@@ -4107,6 +4114,20 @@
                 "type": "string",
                 "enum": [
                   "Contract"
+                ]
+              },
+              {
+                "description": "Pattern of entry point types introduced in 2.0.\n\nIf this bit is missing, that means given entry point type was defined in pre-2.0 world. Installer entry point.",
+                "type": "string",
+                "enum": [
+                  "Install"
+                ]
+              },
+              {
+                "description": "Normal entry point.",
+                "type": "string",
+                "enum": [
+                  "Normal"
                 ]
               }
             ]
