@@ -841,6 +841,16 @@ impl AddressableEntity {
         total_weight >= *self.action_thresholds().key_management()
     }
 
+    /// Checks whether the sum of the weights of all authorization keys is
+    /// greater or equal to upgrade management threshold.
+    pub fn can_upgrade_with(&self, authorization_keys: &BTreeSet<AccountHash>) -> bool {
+        let total_weight = self
+            .associated_keys
+            .calculate_keys_weight(authorization_keys);
+
+        total_weight >= *self.action_thresholds().upgrade_management()
+    }
+
     /// Adds new entry point
     pub fn add_entry_point<T: Into<String>>(&mut self, entry_point: EntryPoint) {
         self.entry_points.add_entry_point(entry_point);
@@ -1420,7 +1430,7 @@ mod tests {
             ProtocolVersion::V1_0_0,
             MAIN_PURSE,
             associated_keys,
-            ActionThresholds::new(Weight::new(1), Weight::new(1))
+            ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
         );
         let access_rights = contract.extract_access_rights(contract_hash);

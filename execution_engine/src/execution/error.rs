@@ -185,6 +185,9 @@ pub enum Error {
     /// Invalid Contract package kind.
     #[error("Invalid contract package kind: {0}")]
     InvalidContractPackageKind(ContractPackageKind),
+    /// Weight of all used associated keys does not meet entity's upgrade threshold.
+    #[error("Deployment authorization failure")]
+    UpgradeAuthorizationFailure,
 }
 
 impl From<PreprocessingError> for Error {

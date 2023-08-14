@@ -1675,10 +1675,14 @@ where
 
         // TODO: EE-1032 - Implement different ways of carrying on existing named keys
         if let Some(previous_contract_hash) = package.current_contract_hash() {
-            let previous_contract: AddressableEntity =
+            let previous_entity: AddressableEntity =
                 self.context.read_gs_typed(&previous_contract_hash.into())?;
 
-            let mut previous_named_keys = previous_contract.take_named_keys();
+            if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
+                return Err(Error::UpgradeAuthorizationFailure);
+            }
+
+            let mut previous_named_keys = previous_entity.take_named_keys();
             named_keys.append(&mut previous_named_keys);
         }
 
@@ -1697,7 +1701,7 @@ where
             }
             None => (
                 self.create_purse()?,
-                AssociatedKeys::default(),
+                AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
                 ActionThresholds::default(),
             ),
         };

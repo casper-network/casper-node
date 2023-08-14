@@ -767,15 +767,13 @@ where
             contract_package
         };
 
-        let contract_key: Key = contract_hash.into();
+        let entity_key: Key = contract_hash.into();
 
-        tracking_copy
-            .borrow_mut()
-            .write(contract_key, entity.into());
+        tracking_copy.borrow_mut().write(entity_key, entity.into());
         tracking_copy
             .borrow_mut()
             .write(contract_package_hash.into(), contract_package.into());
-        let contract_by_account = match CLValue::from_t(contract_key) {
+        let contract_by_account = match CLValue::from_t(entity_key) {
             Ok(cl_value) => cl_value,
             Err(_) => return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string())),
         };
@@ -2531,6 +2529,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::SetThresholdFailure(_)
                 | ExecError::SystemContract(_)
                 | ExecError::DeploymentAuthorizationFailure
+                | ExecError::UpgradeAuthorizationFailure
                 | ExecError::ExpectedReturnValue
                 | ExecError::UnexpectedReturnValue
                 | ExecError::InvalidContext

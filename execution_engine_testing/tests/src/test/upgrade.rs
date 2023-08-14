@@ -1,10 +1,15 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_execution_engine::engine_state;
+use casper_execution_engine::execution::Error;
+use casper_types::testing::TestRng;
 use casper_types::{
     package::{ContractVersion, CONTRACT_INITIAL_VERSION},
-    runtime_args, CLValue, ContractPackageHash, RuntimeArgs, StoredValue,
+    runtime_args,
+    system::mint,
+    CLValue, ContractHash, ContractPackageHash, PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -13,6 +18,7 @@ const DO_NOTHING_STORED_CALLER_CONTRACT_NAME: &str = "do_nothing_stored_caller";
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const DO_NOTHING_CONTRACT_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
+const RET_UREF_NAME: &str = "ret_uref";
 const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
 const UPGRADED_VERSION: ContractVersion = INITIAL_VERSION + 1;
 const PURSE_NAME_ARG_NAME: &str = "purse_name";
@@ -23,6 +29,7 @@ const PURSE_HOLDER_STORED_CALLER_CONTRACT_NAME: &str = "purse_holder_stored_call
 const PURSE_HOLDER_STORED_CONTRACT_NAME: &str = "purse_holder_stored";
 const PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME: &str = "purse_holder_stored_upgrader";
 const HASH_KEY_NAME: &str = "purse_holder";
+const ACCESS_KEY_NAME: &str = "purse_holder_access";
 const TOTAL_PURSES: usize = 3;
 const PURSE_NAME: &str = "purse_name";
 const ENTRY_POINT_NAME: &str = "entry_point";
@@ -641,4 +648,157 @@ fn should_fail_upgrade_for_locked_contract() {
 
         assert!(builder.exec(exec_request).is_error());
     }
+}
+
+#[ignore]
+#[test]
+fn should_only_allow_upgrade_based_on_action_threshold() {
+    const ACCESS_UREF: &str = "access_uref";
+    const SHARING_HASH_KEY_NAME: &str = "ret_uref_contract_hash";
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let mut rng = TestRng::new();
+    let entity_public_key = PublicKey::random(&mut rng);
+    let entity_account_hash = entity_public_key.to_account_hash();
+
+    let transfer_request = {
+        let transfer_args = runtime_args! {
+            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
+            mint::ARG_TARGET => entity_account_hash,
+            mint::ARG_ID => Option::<u64>::None,
+        };
+
+        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
+    };
+
+    builder.exec(transfer_request).expect_success().commit();
+
+    // store contract
+    {
+        let exec_request = {
+            let contract_name = format!("{}.wasm", PURSE_HOLDER_STORED_CONTRACT_NAME);
+            ExecuteRequestBuilder::standard(
+                *DEFAULT_ACCOUNT_ADDR,
+                &contract_name,
+                runtime_args! {
+                    ARG_IS_LOCKED => false,
+                },
+            )
+            .build()
+        };
+
+        builder.exec(exec_request).expect_success().commit();
+    }
+
+    let entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have account");
+
+    let access_uref = entity
+        .named_keys()
+        .get(ACCESS_KEY_NAME)
+        .expect("must have access URef")
+        .as_uref()
+        .expect("must convert to URef")
+        .clone();
+
+    let stored_package_hash: ContractPackageHash = entity
+        .named_keys()
+        .get(HASH_KEY_NAME)
+        .expect("should have stored package hash")
+        .into_hash()
+        .expect("should have hash")
+        .into();
+
+    let contract_package = builder
+        .get_contract_package(stored_package_hash)
+        .expect("should get package hash");
+
+    assert!(!contract_package.is_locked());
+
+    let session_name = format!("{}.wasm", RET_UREF_NAME);
+    let exec_request =
+        ExecuteRequestBuilder::standard(entity_account_hash, &session_name, runtime_args! {})
+            .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let other_entity = builder
+        .get_entity_by_account_hash(entity_account_hash)
+        .expect("should have account");
+
+    let uref_sharing_contract_hash = other_entity
+        .named_keys()
+        .get(SHARING_HASH_KEY_NAME)
+        .expect("must have named key entry")
+        .into_hash()
+        .map(ContractHash::new)
+        .expect("must convert to hash");
+
+    let put_access_uref = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        uref_sharing_contract_hash,
+        "put_uref",
+        runtime_args! {
+            ACCESS_UREF => access_uref
+        },
+    )
+    .build();
+
+    builder.exec(put_access_uref).expect_success().commit();
+
+    let insert_access_uref = ExecuteRequestBuilder::contract_call_by_hash(
+        entity_account_hash,
+        uref_sharing_contract_hash,
+        "insert_uref",
+        runtime_args! {
+            "contract_hash" => uref_sharing_contract_hash,
+            "name" => "purse_holder_access".to_string()
+        },
+    )
+    .build();
+
+    builder.exec(insert_access_uref).expect_success().commit();
+
+    let other_entity = builder
+        .get_entity_by_account_hash(entity_account_hash)
+        .expect("should have account");
+
+    assert!(other_entity
+        .named_keys()
+        .contains_key("purse_holder_access"));
+
+    let exec_request = {
+        let contract_name = format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME);
+        ExecuteRequestBuilder::standard(
+            entity_account_hash,
+            &contract_name,
+            runtime_args! {
+                ARG_CONTRACT_PACKAGE => stored_package_hash,
+            },
+        )
+        .build()
+    };
+
+    assert!(builder.exec(exec_request).is_error());
+
+    builder.assert_error(engine_state::Error::Exec(
+        Error::UpgradeAuthorizationFailure,
+    ));
+
+    let exec_request = {
+        let contract_name = format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME);
+        ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            &contract_name,
+            runtime_args! {
+                ARG_CONTRACT_PACKAGE => stored_package_hash,
+            },
+        )
+        .build()
+    };
+
+    builder.exec(exec_request).expect_success().commit();
 }
