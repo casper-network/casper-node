@@ -14,7 +14,7 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 /// Context of method execution
 ///
-/// First bit represents version i.e.
+/// Most significant bit represents version i.e.
 /// - 0b0 -> 0.x/1.x (session & contracts)
 /// - 0b1 -> 2.x and later (introduced installer, utility entry points)
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, FromPrimitive)]
@@ -31,7 +31,7 @@ pub enum EntryPointType {
     /// Installer entry point.
     Install = 0b10000000,
     /// Normal entry point.
-    Normal = 0b10000010,
+    Normal = 0b10000001,
 }
 
 impl EntryPointType {
