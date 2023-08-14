@@ -7,7 +7,7 @@ pub mod associated_keys;
 mod error;
 mod weight;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use alloc::{collections::BTreeSet, vec::Vec};
 use core::{
@@ -18,6 +18,10 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 
 pub use self::{
     account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
@@ -33,6 +37,30 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, AccessRights, ContextAccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
 };
+#[cfg(feature = "json-schema")]
+use crate::{PublicKey, SecretKey};
+
+#[cfg(feature = "json-schema")]
+static ACCOUNT: Lazy<Account> = Lazy::new(|| {
+    let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
+    let account_hash = PublicKey::from(&secret_key).to_account_hash();
+    let main_purse = URef::from_formatted_str(
+        "uref-09480c3248ef76b603d386f3f4f8a5f87f597d4eaffd475433f861af187ab5db-007",
+    )
+    .unwrap();
+    let mut named_keys = NamedKeys::new();
+    named_keys.insert("main_purse".to_string(), Key::URef(main_purse));
+    let weight = Weight::new(1);
+    let associated_keys = AssociatedKeys::new(account_hash, weight);
+    let action_thresholds = ActionThresholds::new(weight, weight).unwrap();
+    Account {
+        account_hash,
+        named_keys,
+        main_purse,
+        associated_keys,
+        action_thresholds,
+    }
+});
 
 /// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
@@ -178,8 +206,10 @@ impl TryFrom<i32> for UpdateKeyFailure {
 }
 
 /// Represents an Account in the global state.
-#[derive(PartialEq, Eq, Clone, Debug, Serialize)]
+#[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
 pub struct Account {
     account_hash: AccountHash,
     named_keys: NamedKeys,
@@ -227,14 +257,14 @@ impl Account {
     pub fn extract_access_rights(&self) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
-            .values()
+            .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
         ContextAccessRights::new(Key::from(self.account_hash), urefs_iter)
     }
 
     /// Appends named keys to an account's named_keys field.
-    pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
+    pub fn named_keys_append(&mut self, keys: NamedKeys) {
         self.named_keys.append(keys);
     }
 
@@ -243,9 +273,9 @@ impl Account {
         &self.named_keys
     }
 
-    /// Returns a mutable reference to named keys.
-    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
-        &mut self.named_keys
+    /// Removes the key under the given name from named keys.
+    pub fn remove_named_key(&mut self, name: &str) -> Option<Key> {
+        self.named_keys.remove(name)
     }
 
     /// Returns account hash.
@@ -398,6 +428,13 @@ impl Account {
             .calculate_keys_weight(authorization_keys);
 
         total_weight >= *self.action_thresholds().key_management()
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &ACCOUNT
     }
 }
 

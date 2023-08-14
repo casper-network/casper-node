@@ -1,26 +1,27 @@
-use std::{cell::Cell, iter, rc::Rc};
+use std::{cell::Cell, collections::BTreeMap, iter, rc::Rc};
 
 use assert_matches::assert_matches;
 use proptest::prelude::*;
 
 use casper_storage::global_state::{
-    shared::transform::Transform,
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
-    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    addressable_entity::{ActionThresholds, AssociatedKeys, ContractHash, NamedKeys, Weight},
+    execution::{Effects, Transform, TransformKind},
     gens::*,
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, Digest,
-    EntryPoints, HashAddr, Key, KeyTag, ProtocolVersion, StoredValue, URef, U256, U512,
+    package::ContractPackageHash,
+    AccessRights, AddressableEntity, CLValue, Digest, EntryPoints, HashAddr, Key, KeyTag,
+    ProtocolVersion, StoredValue, URef, U256, U512,
 };
 
 use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
 use crate::{
-    engine_state::{EngineConfig, ExecutionJournal, ACCOUNT_WASM_HASH},
+    engine_state::{EngineConfig, ACCOUNT_WASM_HASH},
     runtime_context::dictionary,
     tracking_copy::{self, ValidationError},
 };
@@ -70,13 +71,21 @@ impl StateReader<Key, StoredValue> for CountingDb {
     }
 }
 
+fn effects(transform_keys_and_kinds: Vec<(Key, TransformKind)>) -> Effects {
+    let mut effects = Effects::new();
+    for (key, kind) in transform_keys_and_kinds {
+        effects.push(Transform::new(key, kind));
+    }
+    effects
+}
+
 #[test]
 fn tracking_copy_new() {
     let counter = Rc::new(Cell::new(0));
     let db = CountingDb::new(counter);
     let tc = TrackingCopy::new(db);
 
-    assert!(tc.journal.is_empty());
+    assert!(tc.effects.is_empty());
 }
 
 #[test]
@@ -111,10 +120,7 @@ fn tracking_copy_read() {
     // value read correctly
     assert_eq!(value, zero);
     // Reading does produce an identity transform.
-    assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Identity)])
-    );
+    assert_eq!(tc.effects, effects(vec![(k, TransformKind::Identity)]));
 }
 
 #[test]
@@ -134,8 +140,8 @@ fn tracking_copy_write() {
     assert_eq!(db_value, 0);
     // Writing creates a write transform.
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Write(one.clone()))])
+        tc.effects,
+        effects(vec![(k, TransformKind::Write(one.clone()))])
     );
 
     // writing again should update the values
@@ -143,8 +149,11 @@ fn tracking_copy_write() {
     let db_value = counter.get();
     assert_eq!(db_value, 0);
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Write(one)), (k, Transform::Write(two))])
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::Write(one)),
+            (k, TransformKind::Write(two))
+        ])
     );
 }
 
@@ -162,17 +171,14 @@ fn tracking_copy_add_i32() {
     assert_matches!(add, Ok(_));
 
     // Adding creates an add transform.
-    assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::AddInt32(3))])
-    );
+    assert_eq!(tc.effects, effects(vec![(k, TransformKind::AddInt32(3))]));
 
     // adding again should update the values
     let add = tc.add(k, three);
     assert_matches!(add, Ok(_));
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::AddInt32(3)); 2])
+        tc.effects,
+        effects(vec![(k, TransformKind::AddInt32(3)); 2])
     );
 }
 
@@ -185,7 +191,7 @@ fn tracking_copy_add_named_key() {
         ContractPackageHash::new([3u8; 32]),
         *ACCOUNT_WASM_HASH,
         NamedKeys::new(),
-        EntryPoints::default(),
+        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         URef::new([0u8; 32], AccessRights::READ_ADD_WRITE),
         associated_keys,
@@ -208,16 +214,18 @@ fn tracking_copy_add_named_key() {
     // adding the wrong type should fail
     let failed_add = tc.add(k, StoredValue::CLValue(CLValue::from_t(3_i32).unwrap()));
     assert_matches!(failed_add, Ok(AddResult::TypeMismatch(_)));
-    assert!(tc.journal.is_empty());
+    assert!(tc.effects.is_empty());
 
     // adding correct type works
     let add = tc.add(k, named_key);
     assert_matches!(add, Ok(_));
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(
+        tc.effects,
+        effects(vec![(
             k,
-            Transform::AddKeys(iter::once((name1.clone(), u1)).collect())
+            TransformKind::AddKeys(NamedKeys::from(
+                iter::once((name1.clone(), u1)).collect::<BTreeMap<_, _>>()
+            ))
         )])
     );
 
@@ -226,10 +234,20 @@ fn tracking_copy_add_named_key() {
     let add = tc.add(k, other_named_key);
     assert_matches!(add, Ok(_));
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![
-            (k, Transform::AddKeys(iter::once((name1, u1)).collect())),
-            (k, Transform::AddKeys(iter::once((name2, u2)).collect()))
+        tc.effects,
+        effects(vec![
+            (
+                k,
+                TransformKind::AddKeys(NamedKeys::from(
+                    iter::once((name1, u1)).collect::<BTreeMap<_, _>>()
+                ))
+            ),
+            (
+                k,
+                TransformKind::AddKeys(NamedKeys::from(
+                    iter::once((name2, u2)).collect::<BTreeMap<_, _>>()
+                ))
+            )
         ])
     );
 }
@@ -246,8 +264,11 @@ fn tracking_copy_rw() {
     let _ = tc.read(&k);
     tc.write(k, value.clone());
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::Write(value))])
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::Identity),
+            (k, TransformKind::Write(value))
+        ])
     );
 }
 
@@ -263,8 +284,11 @@ fn tracking_copy_ra() {
     let _ = tc.read(&k);
     let _ = tc.add(k, value);
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![(k, Transform::Identity), (k, Transform::AddInt32(3))])
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::Identity),
+            (k, TransformKind::AddInt32(3))
+        ])
     );
 }
 
@@ -281,10 +305,10 @@ fn tracking_copy_aw() {
     let _ = tc.add(k, value);
     tc.write(k, write_value.clone());
     assert_eq!(
-        tc.journal,
-        ExecutionJournal::new(vec![
-            (k, Transform::AddInt32(3)),
-            (k, Transform::Write(write_value))
+        tc.effects,
+        effects(vec![
+            (k, TransformKind::AddInt32(3)),
+            (k, TransformKind::Write(write_value))
         ])
     );
 }
@@ -326,7 +350,7 @@ proptest! {
             [2; 32].into(),
             [3; 32].into(),
             named_keys,
-            EntryPoints::default(),
+            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
@@ -363,14 +387,14 @@ proptest! {
         pk in account_hash_arb(), // account hash
         address in account_hash_arb(), // address for account hash
     ) {
-            let named_keys = iter::once((name.clone(), k)).collect();
+        let named_keys = NamedKeys::from(iter::once((name.clone(), k)).collect::<BTreeMap<_, _>>());
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let account = AddressableEntity::new(
             ContractPackageHash::new([1u8;32]),
             *ACCOUNT_WASM_HASH,
             named_keys,
-            EntryPoints::default(),
+            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             purse,
             associated_keys,
@@ -419,7 +443,7 @@ proptest! {
             [2; 32].into(),
             [3; 32].into(),
             contract_named_keys,
-            EntryPoints::default(),
+            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
@@ -522,7 +546,7 @@ fn query_for_circular_references_should_fail() {
         [2; 32].into(),
         [3; 32].into(),
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
@@ -574,8 +598,8 @@ fn validate_query_proof_should_work() {
     let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([20; 32]),
         *ACCOUNT_WASM_HASH,
-        NamedKeys::default(),
-        EntryPoints::default(),
+        NamedKeys::new(),
+        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
@@ -594,7 +618,7 @@ fn validate_query_proof_should_work() {
         [2; 32].into(),
         [3; 32].into(),
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),
@@ -620,7 +644,7 @@ fn validate_query_proof_should_work() {
         ContractPackageHash::new([21; 32]),
         *ACCOUNT_WASM_HASH,
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         fake_purse,
         AssociatedKeys::new(account_hash, Weight::new(1)),
@@ -1030,7 +1054,7 @@ fn query_with_large_depth_with_fixed_path_should_fail() {
             val_to_hashaddr(PACKAGE_OFFSET + value).into(),
             val_to_hashaddr(WASM_OFFSET + value).into(),
             named_keys,
-            EntryPoints::default(),
+            EntryPoints::new(),
             ProtocolVersion::V1_0_0,
             URef::default(),
             AssociatedKeys::default(),
@@ -1092,7 +1116,7 @@ fn query_with_large_depth_with_urefs_should_fail() {
         val_to_hashaddr(PACKAGE_OFFSET).into(),
         val_to_hashaddr(WASM_OFFSET).into(),
         named_keys,
-        EntryPoints::default(),
+        EntryPoints::new(),
         ProtocolVersion::V1_0_0,
         URef::default(),
         AssociatedKeys::default(),

@@ -13,6 +13,8 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{
     de::{Error as SerdeError, SeqAccess, Visitor},
     Deserialize, Deserializer, Serialize, Serializer,
@@ -23,7 +25,12 @@ use crate::{checksummed_hex, CLType, CLTyped};
 
 /// A newtype wrapper for bytes that has efficient serialization routines.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Default, Hash)]
-pub struct Bytes(Vec<u8>);
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Hex-encoded array of bytes.")
+)]
+pub struct Bytes(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] Vec<u8>);
 
 impl Bytes {
     /// Constructs a new, empty vector of bytes.

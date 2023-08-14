@@ -436,7 +436,10 @@ fn should_record_wasm_transfers_with_subcall() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    let contract_hash = default_account.named_keys()[HASH_KEY_NAME]
+    let contract_hash = default_account
+        .named_keys()
+        .get(HASH_KEY_NAME)
+        .unwrap()
         .into_hash()
         .map(ContractHash::new)
         .expect("should have contract hash");
@@ -445,7 +448,10 @@ fn should_record_wasm_transfers_with_subcall() {
         .get_addressable_entity(contract_hash)
         .expect("should have stored contract");
 
-    let contract_purse = contract.named_keys()[PURSE_NAME]
+    let contract_purse = contract
+        .named_keys()
+        .get(PURSE_NAME)
+        .unwrap()
         .into_uref()
         .expect("should have purse");
 

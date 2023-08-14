@@ -1,8 +1,5 @@
 //! RPCs related to the block chain.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 mod era_summary;
 
 use std::{clone::Clone, num::ParseIntError, str};

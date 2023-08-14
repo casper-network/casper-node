@@ -268,7 +268,7 @@ impl Deploy {
 
     /// Returns `true` if the serialized size of the deploy is not greater than `max_deploy_size`.
     #[cfg(any(feature = "std", test))]
-    fn is_valid_size(&self, max_deploy_size: u32) -> Result<(), DeployExcessiveSizeError> {
+    pub fn is_valid_size(&self, max_deploy_size: u32) -> Result<(), DeployExcessiveSizeError> {
         let deploy_size = self.serialized_length();
         if deploy_size > max_deploy_size as usize {
             return Err(DeployExcessiveSizeError {

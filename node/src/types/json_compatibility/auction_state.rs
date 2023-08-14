@@ -1,12 +1,10 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::collections::{btree_map::Entry, BTreeMap};
 
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 use casper_types::{
     system::auction::{
@@ -97,64 +95,6 @@ pub struct JsonEraValidators {
     validator_weights: Vec<JsonValidatorWeights>,
 }
 
-/// A delegator associated with the given validator.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JsonDelegator {
-    public_key: PublicKey,
-    staked_amount: U512,
-    bonding_purse: URef,
-    delegatee: PublicKey,
-}
-
-/// An entry in a founding validator map representing a bid.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JsonBid {
-    /// The purse that was used for bonding.
-    bonding_purse: URef,
-    /// The amount of tokens staked by a validator (not including delegators).
-    staked_amount: U512,
-    /// The delegation rate.
-    delegation_rate: DelegationRate,
-    /// The delegators.
-    delegators: Vec<JsonDelegator>,
-    /// Is this an inactive validator.
-    inactive: bool,
-}
-
-impl JsonBid {
-    pub(crate) fn new(
-        validator_bid: ValidatorBid,
-        delegators: BTreeMap<PublicKey, Delegator>,
-    ) -> Self {
-        let mut json_delegators: Vec<JsonDelegator> = Vec::with_capacity(delegators.len());
-        for (public_key, delegator) in delegators.iter() {
-            json_delegators.push(JsonDelegator {
-                public_key: public_key.clone(),
-                staked_amount: delegator.staked_amount(),
-                bonding_purse: *delegator.bonding_purse(),
-                delegatee: delegator.validator_public_key().clone(),
-            });
-        }
-        JsonBid {
-            bonding_purse: *validator_bid.bonding_purse(),
-            staked_amount: validator_bid.staked_amount(),
-            delegation_rate: *validator_bid.delegation_rate(),
-            delegators: json_delegators,
-            inactive: validator_bid.inactive(),
-        }
-    }
-}
-
-/// A Json representation of a single bid.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct JsonBids {
-    public_key: PublicKey,
-    bid: JsonBid,
-}
-
 /// Data structure summarizing auction contract data.
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -165,8 +105,9 @@ pub struct AuctionState {
     pub block_height: u64,
     /// Era validators.
     pub era_validators: Vec<JsonEraValidators>,
-    /// All bids contained within a vector.
-    bids: Vec<JsonBids>,
+    /// All bids.
+    #[serde(with = "BTreeMapToArray::<PublicKey, Bid, BidLabels>")]
+    bids: BTreeMap<PublicKey, Bid>,
 }
 
 impl AuctionState {
@@ -244,7 +185,7 @@ impl AuctionState {
             state_root_hash,
             block_height,
             era_validators: json_era_validators,
-            bids: json_bids,
+            bids,
         }
     }
 }
@@ -265,4 +206,19 @@ impl DocExample for ValidatorBids {
     fn doc_example() -> &'static Self {
         &BIDS
     }
+}
+
+struct BidLabels;
+
+impl KeyValueLabels for BidLabels {
+    const KEY: &'static str = "public_key";
+    const VALUE: &'static str = "bid";
+}
+
+impl KeyValueJsonSchema for BidLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("PublicKeyAndBid");
+    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> =
+        Some("A bid associated with the given public key.");
+    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> = Some("The public key of the bidder.");
+    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The bid details.");
 }

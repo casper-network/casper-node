@@ -1,7 +1,5 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::vec::Vec;
+use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -243,6 +241,19 @@ impl FromBytes for Delegator {
             },
             bytes,
         ))
+    }
+}
+
+impl Display for Delegator {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "delegator {{ {} {} motes, bonding purse {}, validator {} }}",
+            self.delegator_public_key,
+            self.staked_amount,
+            self.bonding_purse,
+            self.validator_public_key
+        )
     }
 }
 

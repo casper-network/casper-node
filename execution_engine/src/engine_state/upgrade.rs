@@ -1,5 +1,5 @@
 //! Support for applying upgrades on the execution engine.
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 
 use thiserror::Error;
 
@@ -7,18 +7,15 @@ use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     bytesrepr::{self},
-    package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-    },
+    execution::Effects,
+    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     system::SystemContractType,
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
     Digest, EntryPoints, Key, Package, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use crate::{
-    engine_state::{execution_effect::ExecutionEffect, ACCOUNT_WASM_HASH},
-    execution::AddressGenerator,
-    tracking_copy::TrackingCopy,
+    engine_state::ACCOUNT_WASM_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
 };
 
 /// Represents a successfully executed upgrade.
@@ -27,16 +24,12 @@ pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Digest,
     /// Effects of executing an upgrade request.
-    pub execution_effect: ExecutionEffect,
+    pub effects: Effects,
 }
 
 impl fmt::Display for UpgradeSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Success: {} {:?}",
-            self.post_state_hash, self.execution_effect
-        )
+        write!(f, "Success: {} {:?}", self.post_state_hash, self.effects)
     }
 }
 
@@ -257,7 +250,7 @@ where
         let contract = AddressableEntity::new(
             contract_package_hash,
             contract_wasm_hash,
-            NamedKeys::default(),
+            NamedKeys::new(),
             EntryPoints::new(),
             self.new_protocol_version,
             main_purse,
@@ -271,7 +264,7 @@ where
             let mut contract_package = Package::new(
                 access_key,
                 ContractVersions::default(),
-                DisabledVersions::default(),
+                BTreeSet::default(),
                 Groups::default(),
                 ContractPackageStatus::default(),
                 ContractPackageKind::Account(account_hash),

@@ -1,11 +1,9 @@
-use std::convert::TryInto;
+use std::{collections::BTreeSet, convert::TryInto};
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     account::AccountHash,
-    package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-    },
+    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
     ContractWasmHash, EntryPoints, Key, Motes, Package, Phase, ProtocolVersion, StoredValue,
     StoredValueTypeMismatch, URef,
@@ -157,7 +155,7 @@ where
                     let mut contract_package = Package::new(
                         access_key,
                         ContractVersions::default(),
-                        DisabledVersions::default(),
+                        BTreeSet::default(),
                         Groups::default(),
                         ContractPackageStatus::Locked,
                         ContractPackageKind::Account(account_hash),

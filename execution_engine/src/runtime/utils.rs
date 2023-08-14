@@ -882,7 +882,7 @@ fn rewrite_urefs(cl_value: CLValue, mut func: impl FnMut(&mut URef)) -> Result<C
             }
             (CLType::String, CLType::Key) => {
                 let mut map: NamedKeys = cl_value.to_owned().into_t()?;
-                map.values_mut().filter_map(Key::as_uref_mut).for_each(func);
+                map.keys_mut().filter_map(Key::as_uref_mut).for_each(func);
                 CLValue::from_t(map)?
             }
             (CLType::PublicKey, CLType::Key) => {

@@ -799,7 +799,7 @@ async fn should_store_finalized_approvals() {
                 runner
                     .main_reactor()
                     .storage()
-                    .get_deploy_metadata_by_hash(&deploy_hash)
+                    .read_execution_result(&deploy_hash)
                     .is_some()
             })
         },

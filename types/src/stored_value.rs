@@ -9,8 +9,9 @@ use core::{convert::TryFrom, fmt::Debug};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
-use serde_bytes::ByteBuf;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     account::Account,
@@ -39,34 +40,35 @@ enum Tag {
     AddressableEntity = 11,
 }
 
+/// A value stored in Global State.
 #[allow(clippy::large_enum_variant)]
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-/// StoredValue represents all possible variants of values stored in Global State.
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum StoredValue {
-    /// Variant that stores [`CLValue`].
+    /// A CLValue.
     CLValue(CLValue),
-    /// Variant that stores [`Account`].
+    /// An account.
     Account(Account),
-    /// Variant that stores [`ContractWasm`].
+    /// A contract Wasm.
     ContractWasm(ContractWasm),
-    /// Variant that stores [`Contract`].
+    /// A contract.
     Contract(Contract),
-    /// Variant that stores [`Package`].
+    /// A `Package`.
     ContractPackage(Package),
-    /// Variant that stores [`Transfer`].
+    /// A `Transfer`.
     Transfer(Transfer),
-    /// Variant that stores [`DeployInfo`].
+    /// Info about a deploy.
     DeployInfo(DeployInfo),
-    /// Variant that stores [`EraInfo`].
+    /// Info about an era.
     EraInfo(EraInfo),
     /// Variant that stores [`BidKind`].
     Bid(BidKind),
     /// Variant that stores withdraw information.
     Withdraw(Vec<WithdrawPurse>),
-    /// Variant that stores unbonding information.
+    /// Unbonding information.
     Unbonding(Vec<UnbondingPurse>),
-    /// Variant that stores [`AddressableEntity`].
+    /// An `AddressableEntity`.
     AddressableEntity(AddressableEntity),
 }
 
@@ -375,30 +377,9 @@ impl TryFrom<StoredValue> for BidKind {
 
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        let (tag, mut serialized_data) = match self {
-            StoredValue::CLValue(cl_value) => (Tag::CLValue, cl_value.to_bytes()?),
-            StoredValue::Account(account) => (Tag::Account, account.to_bytes()?),
-            StoredValue::ContractWasm(contract_wasm) => {
-                (Tag::ContractWasm, contract_wasm.to_bytes()?)
-            }
-            StoredValue::Contract(contract_header) => (Tag::Contract, contract_header.to_bytes()?),
-            StoredValue::ContractPackage(contract_package) => {
-                (Tag::ContractPackage, contract_package.to_bytes()?)
-            }
-            StoredValue::Transfer(transfer) => (Tag::Transfer, transfer.to_bytes()?),
-            StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
-            StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
-            StoredValue::Bid(bid_kind) => (Tag::Bid, bid_kind.to_bytes()?),
-            StoredValue::Withdraw(withdraw_purses) => (Tag::Withdraw, withdraw_purses.to_bytes()?),
-            StoredValue::Unbonding(unbonding_purses) => {
-                (Tag::Unbonding, unbonding_purses.to_bytes()?)
-            }
-            StoredValue::AddressableEntity(entity) => (Tag::AddressableEntity, entity.to_bytes()?),
-        };
-        result.push(tag as u8);
-        result.append(&mut serialized_data);
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -446,7 +427,7 @@ impl ToBytes for StoredValue {
 
 impl FromBytes for StoredValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             tag if tag == Tag::CLValue as u8 => CLValue::from_bytes(remainder)
                 .map(|(cl_value, remainder)| (StoredValue::CLValue(cl_value), remainder)),
@@ -494,25 +475,6 @@ impl FromBytes for StoredValue {
                 .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
             _ => Err(Error::Formatting),
         }
-    }
-}
-
-impl Serialize for StoredValue {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // The JSON representation of a StoredValue is just its bytesrepr
-        // While this makes it harder to inspect, it makes deterministic representation simple.
-        let bytes = self
-            .to_bytes()
-            .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
-        ByteBuf::from(bytes).serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for StoredValue {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
-        bytesrepr::deserialize::<StoredValue>(bytes)
-            .map_err(|error| de::Error::custom(format!("{:?}", error)))
     }
 }
 

@@ -10,7 +10,9 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
-use casper_types::{bytesrepr, BlockHash, ChunkWithProof, DeployHash, Digest, ExecutionResult};
+use casper_types::{
+    bytesrepr, execution::ExecutionResult, BlockHash, ChunkWithProof, DeployHash, Digest,
+};
 
 use super::block_acquisition::Acceptance;
 use crate::types::{BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, ValueOrChunk};

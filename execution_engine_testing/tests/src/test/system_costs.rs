@@ -677,7 +677,10 @@ fn mint_transfer_has_expected_costs() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let purse_1 = default_account.named_keys()[NAMED_PURSE_NAME]
+    let purse_1 = default_account
+        .named_keys()
+        .get(NAMED_PURSE_NAME)
+        .unwrap()
         .into_uref()
         .expect("should have purse");
 

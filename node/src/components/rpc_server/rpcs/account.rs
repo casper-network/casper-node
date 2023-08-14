@@ -1,8 +1,5 @@
 //! RPCs related to accounts.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{str, sync::Arc};
 
 use async_trait::async_trait;

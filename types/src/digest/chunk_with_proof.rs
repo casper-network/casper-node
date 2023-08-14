@@ -18,11 +18,6 @@ use crate::bytesrepr::{self, Bytes, FromBytes, ToBytes};
 #[serde(deny_unknown_fields)]
 pub struct ChunkWithProof {
     proof: IndexedMerkleProof,
-
-    #[cfg_attr(
-        feature = "json-schema",
-        schemars(with = "String", description = "Hex-encoded bytes.")
-    )]
     chunk: Bytes,
 }
 

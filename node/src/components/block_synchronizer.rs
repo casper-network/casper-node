@@ -1159,8 +1159,23 @@ impl BlockSynchronizer {
                     {
                         Ok(Some(execution_results)) => {
                             debug!(%block_hash, "execution_results_fetched: putting execution results to storage");
+                            let block_height = match builder.block_height() {
+                                Some(height) => height,
+                                None => {
+                                    error!(
+                                        %block_hash,
+                                        "BlockSynchronizer: failed to apply execution results or \
+                                        chunk due to missing block height"
+                                    );
+                                    return Effects::new();
+                                }
+                            };
                             return effect_builder
-                                .put_execution_results_to_storage(block_hash, execution_results)
+                                .put_execution_results_to_storage(
+                                    block_hash,
+                                    block_height,
+                                    execution_results,
+                                )
                                 .event(move |()| Event::ExecutionResultsStored(block_hash));
                         }
                         Ok(None) => {

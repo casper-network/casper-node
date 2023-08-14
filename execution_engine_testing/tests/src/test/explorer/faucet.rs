@@ -910,8 +910,6 @@ fn faucet_costs() {
         .commit();
 
     let faucet_install_cost = builder.last_exec_gas_cost();
-    println!("Install cost: {}", faucet_install_cost.value().as_u64());
-
     assert_eq!(
         faucet_install_cost.value().as_u64(),
         EXPECTED_FAUCET_INSTALL_COST
@@ -945,10 +943,6 @@ fn faucet_costs() {
         .commit();
 
     let faucet_set_variables_cost = builder.last_exec_gas_cost();
-    assert_eq!(
-        faucet_set_variables_cost.value().as_u64(),
-        EXPECTED_FAUCET_SET_VARIABLES_COST
-    );
 
     let user_fund_amount = U512::from(10_000_000_000u64);
     let faucet_call_by_installer = {
@@ -973,10 +967,6 @@ fn faucet_costs() {
         .commit();
 
     let faucet_call_by_installer_cost = builder.last_exec_gas_cost();
-    assert_eq!(
-        faucet_call_by_installer_cost.value().as_u64(),
-        EXPECTED_FAUCET_CALL_BY_INSTALLER_COST
-    );
 
     let faucet_contract_hash = get_faucet_contract_hash(&builder, installer_account);
 
@@ -1002,8 +992,42 @@ fn faucet_costs() {
         .commit();
 
     let faucet_call_by_user_cost = builder.last_exec_gas_cost();
-    assert_eq!(
-        faucet_call_by_user_cost.value().as_u64(),
-        EXPECTED_FAUCET_CALL_BY_USER_COST
-    );
+
+    let mut costs_as_expected = true;
+    if faucet_install_cost.value().as_u64() != EXPECTED_FAUCET_INSTALL_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_install_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_INSTALL_COST,
+            faucet_install_cost.value().as_u64()
+        );
+    }
+
+    if faucet_set_variables_cost.value().as_u64() != EXPECTED_FAUCET_SET_VARIABLES_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_set_variables_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_SET_VARIABLES_COST,
+            faucet_set_variables_cost.value().as_u64()
+        );
+    }
+
+    if faucet_call_by_installer_cost.value().as_u64() != EXPECTED_FAUCET_CALL_BY_INSTALLER_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_call_by_installer_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_CALL_BY_INSTALLER_COST,
+            faucet_call_by_installer_cost.value().as_u64()
+        );
+    }
+
+    if faucet_call_by_user_cost.value().as_u64() != EXPECTED_FAUCET_CALL_BY_USER_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_call_by_user_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_CALL_BY_USER_COST,
+            faucet_call_by_user_cost.value().as_u64()
+        );
+    }
+    assert!(costs_as_expected);
 }

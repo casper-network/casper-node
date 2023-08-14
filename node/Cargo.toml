@@ -22,9 +22,9 @@ base16 = "0.2.1"
 base64 = "0.13.0"
 bincode = "1"
 bytes = "1.0.1"
-casper-storage = { version = "1.4.3", path = "../storage" }
 casper-execution-engine = { version = "5.0.0", path = "../execution_engine" }
 casper-json-rpc = { version = "1.0.0", path = "../json_rpc" }
+casper-storage = { version = "1.4.3", path = "../storage" }
 casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
@@ -60,9 +60,10 @@ rand = "0.8.3"
 rand_chacha = "0.3.0"
 regex = "1"
 rmp-serde = "0.14.4"
-schemars = { version = "=0.8.5", features = ["preserve_order", "impl_json_schema"] }
+schemars = { version = "0.8.12", features = ["preserve_order", "impl_json_schema"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde-big-array = "0.3.0"
+serde-map-to-array = "1.1.0"
 serde_bytes = "0.11.5"
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_repr = "0.1.6"

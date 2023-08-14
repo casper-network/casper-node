@@ -2,37 +2,14 @@
 
 use std::collections::VecDeque;
 
-use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
-    bytesrepr::FromBytes, CLTyped, CLValue, ExecutionEffect, Gas, Key, Motes, StoredValue,
-    TransferAddr,
+    bytesrepr::FromBytes,
+    execution::{Effects, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind},
+    CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
 use super::error;
-use crate::{engine_state::ExecutionJournal, execution::Error as ExecError};
-
-fn make_payment_error_effects(
-    max_payment_cost: Motes,
-    account_main_purse_balance: Motes,
-    account_main_purse_balance_key: Key,
-    proposer_main_purse_balance_key: Key,
-) -> Result<ExecutionJournal, error::Error> {
-    let new_balance = account_main_purse_balance
-        .checked_sub(max_payment_cost)
-        .ok_or(error::Error::InsufficientPayment)?;
-    let new_balance_value =
-        StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
-    Ok(ExecutionJournal::new(vec![
-        (
-            account_main_purse_balance_key.normalize(),
-            Transform::Write(new_balance_value),
-        ),
-        (
-            proposer_main_purse_balance_key.normalize(),
-            Transform::AddUInt512(max_payment_cost.value()),
-        ),
-    ]))
-}
+use crate::execution::Error as ExecError;
 
 /// Represents the result of an execution specified by
 /// [`crate::engine_state::ExecuteRequest`].
@@ -46,8 +23,8 @@ pub enum ExecutionResult {
         transfers: Vec<TransferAddr>,
         /// Gas consumed up to the point of the failure.
         cost: Gas,
-        /// Journal of execution.
-        execution_journal: ExecutionJournal,
+        /// Execution effects.
+        effects: Effects,
     },
     /// Execution was finished successfully
     Success {
@@ -55,19 +32,9 @@ pub enum ExecutionResult {
         transfers: Vec<TransferAddr>,
         /// Gas cost.
         cost: Gas,
-        /// Journal of execution.
-        execution_journal: ExecutionJournal,
+        /// Execution effects.
+        effects: Effects,
     },
-}
-
-impl Default for ExecutionResult {
-    fn default() -> Self {
-        ExecutionResult::Success {
-            execution_journal: Default::default(),
-            transfers: Default::default(),
-            cost: Default::default(),
-        }
-    }
 }
 
 /// A type alias that represents multiple execution results.
@@ -92,7 +59,7 @@ impl ExecutionResult {
             error,
             transfers: Vec::default(),
             cost: Gas::default(),
-            execution_journal: Default::default(),
+            effects: Effects::new(),
         }
     }
 
@@ -118,11 +85,9 @@ impl ExecutionResult {
     /// effects, and has a gas cost of 0.
     pub fn has_precondition_failure(&self) -> bool {
         match self {
-            ExecutionResult::Failure {
-                cost,
-                execution_journal,
-                ..
-            } => cost.value() == 0.into() && execution_journal.is_empty(),
+            ExecutionResult::Failure { cost, effects, .. } => {
+                cost.value() == 0.into() && effects.is_empty()
+            }
             ExecutionResult::Success { .. } => false,
         }
     }
@@ -143,15 +108,12 @@ impl ExecutionResult {
         }
     }
 
-    /// The journal of transforms regardless of variant.
-    pub fn execution_journal(&self) -> &ExecutionJournal {
+    /// The ordered execution effects regardless of variant.
+    pub fn effects(&self) -> &Effects {
         match self {
-            ExecutionResult::Failure {
-                execution_journal, ..
-            } => execution_journal,
-            ExecutionResult::Success {
-                execution_journal, ..
-            } => execution_journal,
+            ExecutionResult::Failure { effects, .. } | ExecutionResult::Success { effects, .. } => {
+                effects
+            }
         }
     }
 
@@ -164,22 +126,20 @@ impl ExecutionResult {
             ExecutionResult::Failure {
                 error,
                 transfers,
-                execution_journal,
+                effects,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
-                execution_journal,
+                effects,
             },
             ExecutionResult::Success {
-                transfers,
-                execution_journal,
-                ..
+                transfers, effects, ..
             } => ExecutionResult::Success {
                 transfers,
                 cost,
-                execution_journal,
+                effects,
             },
         }
     }
@@ -193,51 +153,47 @@ impl ExecutionResult {
             ExecutionResult::Failure {
                 error,
                 cost,
-                execution_journal,
+                effects,
                 ..
             } => ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
-                execution_journal,
+                effects,
             },
-            ExecutionResult::Success {
-                cost,
-                execution_journal,
-                ..
-            } => ExecutionResult::Success {
+            ExecutionResult::Success { cost, effects, .. } => ExecutionResult::Success {
                 transfers,
                 cost,
-                execution_journal,
+                effects,
             },
         }
     }
 
-    /// Returns a new execution result with an updated execution journal.
+    /// Returns a new execution result with updated execution effects.
     ///
     /// This method preserves the [`ExecutionResult`] variant and updates the
-    /// `execution_journal` field only.
-    pub fn with_journal(self, execution_journal: ExecutionJournal) -> Self {
+    /// `effects` field only.
+    pub fn with_effects(self, effects: Effects) -> Self {
         match self {
             ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
-                execution_journal: _,
+                effects: _,
             } => ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
-                execution_journal,
+                effects,
             },
             ExecutionResult::Success {
                 transfers,
                 cost,
-                execution_journal: _,
+                effects: _,
             } => ExecutionResult::Success {
                 transfers,
                 cost,
-                execution_journal,
+                effects,
             },
         }
     }
@@ -315,16 +271,24 @@ impl ExecutionResult {
         account_main_purse_balance_key: Key,
         proposer_main_purse_balance_key: Key,
     ) -> Result<ExecutionResult, error::Error> {
-        let execution_journal = make_payment_error_effects(
-            max_payment_cost,
-            account_main_purse_balance,
-            account_main_purse_balance_key,
-            proposer_main_purse_balance_key,
-        )?;
+        let new_balance = account_main_purse_balance
+            .checked_sub(max_payment_cost)
+            .ok_or(error::Error::InsufficientPayment)?;
+        let new_balance_value =
+            StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
+        let mut effects = Effects::new();
+        effects.push(Transform::new(
+            account_main_purse_balance_key.normalize(),
+            TransformKind::Write(new_balance_value),
+        ));
+        effects.push(Transform::new(
+            proposer_main_purse_balance_key.normalize(),
+            TransformKind::AddUInt512(max_payment_cost.value()),
+        ));
         let transfers = Vec::default();
         Ok(ExecutionResult::Failure {
             error,
-            execution_journal,
+            effects,
             transfers,
             cost: gas_cost,
         })
@@ -341,42 +305,15 @@ impl ExecutionResult {
     }
 }
 
-impl From<&ExecutionResult> for casper_types::ExecutionResult {
-    fn from(ee_execution_result: &ExecutionResult) -> Self {
-        match ee_execution_result {
+impl From<ExecutionResult> for TypesExecutionResult {
+    fn from(execution_result: ExecutionResult) -> Self {
+        match execution_result {
             ExecutionResult::Success {
                 transfers,
                 cost,
-                execution_journal,
-            } => casper_types::ExecutionResult::Success {
-                effect: execution_journal.into(),
-                transfers: transfers.clone(),
-                cost: cost.value(),
-            },
-            ExecutionResult::Failure {
-                error,
-                transfers,
-                cost,
-                execution_journal,
-            } => casper_types::ExecutionResult::Failure {
-                effect: execution_journal.into(),
-                transfers: transfers.clone(),
-                cost: cost.value(),
-                error_message: error.to_string(),
-            },
-        }
-    }
-}
-
-impl From<ExecutionResult> for casper_types::ExecutionResult {
-    fn from(ee_execution_result: ExecutionResult) -> Self {
-        match ee_execution_result {
-            ExecutionResult::Success {
-                transfers,
-                cost,
-                execution_journal,
-            } => casper_types::ExecutionResult::Success {
-                effect: ExecutionEffect::from(&execution_journal),
+                effects,
+            } => TypesExecutionResult::Success {
+                effects,
                 transfers,
                 cost: cost.value(),
             },
@@ -384,9 +321,9 @@ impl From<ExecutionResult> for casper_types::ExecutionResult {
                 error,
                 transfers,
                 cost,
-                execution_journal,
-            } => casper_types::ExecutionResult::Failure {
-                effect: ExecutionEffect::from(&execution_journal),
+                effects,
+            } => TypesExecutionResult::Failure {
+                effects,
                 transfers,
                 cost: cost.value(),
                 error_message: error.to_string(),
@@ -485,11 +422,9 @@ impl ExecutionResultBuilder {
         let mut transfers = self.transfers();
         let cost = self.total_cost();
 
-        let mut journal = match self.payment_execution_result {
+        let mut all_effects = match self.payment_execution_result {
             Some(result @ ExecutionResult::Failure { .. }) => return Ok(result),
-            Some(ExecutionResult::Success {
-                execution_journal, ..
-            }) => execution_journal,
+            Some(ExecutionResult::Success { effects, .. }) => effects,
             None => return Err(ExecutionResultBuilderError::MissingPaymentExecutionResult),
         };
 
@@ -499,15 +434,13 @@ impl ExecutionResultBuilder {
             Some(ExecutionResult::Failure {
                 error: session_error,
                 transfers: session_transfers,
-                execution_journal: _,
+                effects: _,
                 cost: _,
             }) => {
                 error = Some(session_error);
                 transfers = session_transfers;
             }
-            Some(ExecutionResult::Success {
-                execution_journal, ..
-            }) => journal.extend(execution_journal.into_iter()),
+            Some(ExecutionResult::Success { effects, .. }) => all_effects.append(effects),
             None => return Err(ExecutionResultBuilderError::MissingSessionExecutionResult),
         };
 
@@ -518,9 +451,7 @@ impl ExecutionResultBuilder {
                     error::Error::Finalization,
                 ));
             }
-            Some(ExecutionResult::Success {
-                execution_journal, ..
-            }) => journal.extend(execution_journal.into_iter()),
+            Some(ExecutionResult::Success { effects, .. }) => all_effects.append(effects),
             None => return Err(ExecutionResultBuilderError::MissingFinalizeExecutionResult),
         }
 
@@ -528,13 +459,13 @@ impl ExecutionResultBuilder {
             None => Ok(ExecutionResult::Success {
                 transfers,
                 cost,
-                execution_journal: journal,
+                effects: all_effects,
             }),
             Some(error) => Ok(ExecutionResult::Failure {
                 error,
                 transfers,
                 cost,
-                execution_journal: journal,
+                effects: all_effects,
             }),
         }
     }

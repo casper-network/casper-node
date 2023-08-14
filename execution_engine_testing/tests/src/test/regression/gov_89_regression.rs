@@ -11,8 +11,8 @@ use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::engine_state::{SlashItem, StepSuccess};
-use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
+    execution::TransformKind,
     system::auction::{
         BidsExt, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
@@ -105,8 +105,7 @@ fn should_not_create_any_purse() {
     );
 
     let StepSuccess {
-        execution_journal: journal_1,
-        ..
+        effects: effects_1, ..
     } = builder.step(step_request_1).expect("should execute step");
 
     let bids_after_slashing = builder.get_bids();
@@ -138,19 +137,19 @@ fn should_not_create_any_purse() {
         .build();
 
     let StepSuccess {
-        execution_journal: journal_2,
-        ..
+        effects: effects_2, ..
     } = builder.step(step_request_2).expect("should execute step");
 
     let cl_u512_zero = CLValue::from_t(U512::zero()).unwrap();
 
-    let balances_1: BTreeSet<Key> = journal_1
-        .into_iter()
-        .filter_map(|(key, transform)| match transform {
-            Transform::Write(StoredValue::CLValue(cl_value))
-                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
+    let balances_1: BTreeSet<Key> = effects_1
+        .transforms()
+        .iter()
+        .filter_map(|transform| match transform.kind() {
+            TransformKind::Write(StoredValue::CLValue(cl_value))
+                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
             {
-                Some(key)
+                Some(*transform.key())
             }
             _ => None,
         })
@@ -158,13 +157,14 @@ fn should_not_create_any_purse() {
 
     assert_eq!(balances_1.len(), 0, "distribute should not create purses");
 
-    let balances_2: BTreeSet<Key> = journal_2
-        .into_iter()
-        .filter_map(|(key, transform)| match transform {
-            Transform::Write(StoredValue::CLValue(cl_value))
-                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
+    let balances_2: BTreeSet<Key> = effects_2
+        .transforms()
+        .iter()
+        .filter_map(|transform| match transform.kind() {
+            TransformKind::Write(StoredValue::CLValue(cl_value))
+                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
             {
-                Some(key)
+                Some(*transform.key())
             }
             _ => None,
         })

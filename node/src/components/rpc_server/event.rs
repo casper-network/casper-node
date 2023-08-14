@@ -8,11 +8,11 @@ use derive_more::From;
 use casper_execution_engine::engine_state::{
     self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult,
 };
-use casper_types::{system::auction::EraValidators, BlockHash, Deploy, DeployHash, Transfer};
+use casper_types::{system::auction::EraValidators, BlockHash, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
-    types::{DeployMetadataExt, NodeId},
+    types::NodeId,
 };
 
 #[derive(Debug, From)]
@@ -36,11 +36,6 @@ pub(crate) enum Event {
     GetBidsResult {
         result: Result<GetBidsResult, engine_state::Error>,
         main_responder: Responder<Result<GetBidsResult, engine_state::Error>>,
-    },
-    GetDeployResult {
-        hash: DeployHash,
-        result: Option<Box<(Deploy, DeployMetadataExt)>>,
-        main_responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
     },
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,
@@ -75,9 +70,6 @@ impl Display for Event {
             }
             Event::GetBalanceResult { result, .. } => {
                 write!(formatter, "balance result: {:?}", result)
-            }
-            Event::GetDeployResult { hash, result, .. } => {
-                write!(formatter, "get deploy result for {}: {:?}", hash, result)
             }
             Event::GetPeersResult { peers, .. } => write!(formatter, "get peers: {}", peers.len()),
         }

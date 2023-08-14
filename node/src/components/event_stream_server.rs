@@ -319,10 +319,10 @@ where
                 Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
                 Event::Step {
                     era_id,
-                    execution_effect,
+                    execution_effects,
                 } => self.broadcast(SseData::Step {
                     era_id,
-                    execution_effect,
+                    execution_effects,
                 }),
             },
         }

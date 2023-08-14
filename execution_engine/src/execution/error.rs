@@ -3,10 +3,10 @@ use casper_storage::global_state;
 use parity_wasm::elements;
 use thiserror::Error;
 
-use casper_storage::global_state::shared::transform;
 use casper_types::{
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
+    execution::TransformError,
     package::ContractPackageKind,
     system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
@@ -178,7 +178,7 @@ pub enum Error {
     DisabledContract(ContractHash),
     /// Transform error.
     #[error(transparent)]
-    Transform(transform::Error),
+    Transform(TransformError),
     /// Invalid key
     #[error("Invalid key {0}")]
     UnexpectedKeyVariant(Key),
