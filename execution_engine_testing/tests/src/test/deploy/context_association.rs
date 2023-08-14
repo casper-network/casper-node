@@ -37,32 +37,42 @@ fn should_put_system_contract_hashes_to_account_context() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("account should exist");
 
     let named_keys = account.named_keys();
 
-    assert!(named_keys.contains_key(MINT), "should contain mint");
+    assert!(named_keys.contains(MINT), "should contain mint");
     assert!(
-        named_keys.contains_key(HANDLE_PAYMENT),
+        named_keys.contains(HANDLE_PAYMENT),
         "should contain handle payment"
     );
-    assert!(named_keys.contains_key(AUCTION), "should contain auction");
+    assert!(named_keys.contains(AUCTION), "should contain auction");
 
     assert_eq!(
-        named_keys[MINT].into_hash().expect("should be a hash"),
+        named_keys
+            .get(MINT)
+            .unwrap()
+            .into_hash()
+            .expect("should be a hash"),
         builder.get_mint_contract_hash().value(),
         "mint_contract_hash should match"
     );
     assert_eq!(
-        named_keys[HANDLE_PAYMENT]
+        named_keys
+            .get(HANDLE_PAYMENT)
+            .unwrap()
             .into_hash()
             .expect("should be a hash"),
         builder.get_handle_payment_contract_hash().value(),
         "handle_payment_contract_hash should match"
     );
     assert_eq!(
-        named_keys[AUCTION].into_hash().expect("should be a hash"),
+        named_keys
+            .get(AUCTION)
+            .unwrap()
+            .into_hash()
+            .expect("should be a hash"),
         builder.get_auction_contract_hash().value(),
         "auction_contract_hash should match"
     );

@@ -22,16 +22,15 @@ use casper_execution_engine::{
         execution_result::ExecutionResult,
         run_genesis_request::RunGenesisRequest,
         step::{StepRequest, StepSuccess},
-        BalanceResult, EngineConfig, EngineState, Error, ExecutionJournal, GenesisSuccess,
-        GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
-        SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+        BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
+        PruneConfig, PruneResult, QueryRequest, QueryResult, StepError, SystemContractRegistry,
+        UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
     execution,
 };
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
-        shared::{transform::Transform, AdditiveMap},
         state::{
             lmdb::LmdbGlobalState, scratch::ScratchGlobalState, CommitProvider, StateProvider,
             StateReader,
@@ -42,8 +41,9 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
     bytesrepr::{self, FromBytes},
+    execution::Effects,
     runtime_args,
     system::{
         auction::{
@@ -54,10 +54,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash,
+    AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    UpgradeConfig, OS_PAGE_SIZE, U512,
+    MintCosts, Package, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -86,25 +86,25 @@ pub type LmdbWasmTestBuilder = WasmTestBuilder<DataAccessLayer<LmdbGlobalState>>
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
-    /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
+    /// [`EngineState`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     engine_state: Rc<EngineState<S>>,
-    /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation
+    /// [`ExecutionResult`] is wrapped in [`Rc`] to work around a missing [`Clone`] implementation.
     exec_results: Vec<Vec<Rc<ExecutionResult>>>,
     upgrade_results: Vec<Result<UpgradeSuccess, engine_state::Error>>,
     prune_results: Vec<Result<PruneResult, engine_state::Error>>,
     genesis_hash: Option<Digest>,
     /// Post state hash.
     post_state_hash: Option<Digest>,
-    /// Cached transform maps after subsequent successful runs i.e. `transforms[0]` is for first
-    /// exec call etc.
-    transforms: Vec<ExecutionJournal>,
-    /// Cached genesis transforms
-    genesis_account: Option<Account>,
-    /// Genesis transforms
-    genesis_transforms: Option<AdditiveMap<Key, Transform>>,
+    /// Cached effects after successful runs i.e. `effects[0]` is the collection of effects for
+    /// first exec call, etc.
+    effects: Vec<Effects>,
+    /// Cached genesis account.
+    genesis_account: Option<ContractHash>,
+    /// Genesis effects.
+    genesis_effects: Option<Effects>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
-    /// System contract registry
+    /// System contract registry.
     system_contract_registry: Option<SystemContractRegistry>,
     /// Global state dir, for implementations that define one.
     global_state_dir: Option<PathBuf>,
@@ -129,9 +129,9 @@ impl<S> Clone for WasmTestBuilder<S> {
             prune_results: self.prune_results.clone(),
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
-            transforms: self.transforms.clone(),
-            genesis_account: self.genesis_account.clone(),
-            genesis_transforms: self.genesis_transforms.clone(),
+            effects: self.effects.clone(),
+            genesis_account: self.genesis_account,
+            genesis_effects: self.genesis_effects.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
@@ -185,7 +185,7 @@ impl LmdbWasmTestBuilder {
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
-            execution_effect: _,
+            effects: _,
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
@@ -241,9 +241,9 @@ impl LmdbWasmTestBuilder {
             prune_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: None,
-            transforms: Vec::new(),
+            effects: Vec::new(),
             genesis_account: None,
-            genesis_transforms: None,
+            genesis_effects: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
@@ -356,9 +356,9 @@ impl LmdbWasmTestBuilder {
             prune_results: Vec::new(),
             genesis_hash: None,
             post_state_hash: mode.post_state_hash(),
-            transforms: Vec::new(),
+            effects: Vec::new(),
             genesis_account: None,
-            genesis_transforms: None,
+            genesis_effects: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
@@ -477,17 +477,15 @@ impl LmdbWasmTestBuilder {
         // First execute the request against our scratch global state.
         let maybe_exec_results = cached_state.run_execute(exec_request);
         for execution_result in maybe_exec_results.unwrap() {
-            let journal = execution_result.execution_journal().clone();
-            let transforms: AdditiveMap<Key, Transform> = journal.clone().into();
             let _post_state_hash = cached_state
-                .apply_effect(
+                .apply_effects(
                     self.post_state_hash.expect("requires a post_state_hash"),
-                    transforms,
+                    execution_result.effects().clone(),
                 )
                 .expect("should commit");
 
             // Save transforms and execution results for WasmTestBuilder.
-            self.transforms.push(journal);
+            self.effects.push(execution_result.effects().clone());
             exec_results.push(Rc::new(execution_result))
         }
         self.exec_results.push(exec_results);
@@ -537,7 +535,7 @@ where
 
         let GenesisSuccess {
             post_state_hash,
-            execution_effect,
+            effects,
         } = self
             .engine_state
             .commit_genesis(
@@ -548,11 +546,21 @@ where
             )
             .expect("Unable to get genesis response");
 
-        let transforms = execution_effect.transforms;
         let empty_path: Vec<String> = vec![];
 
-        let genesis_account =
-            utils::get_account(&transforms, &system_account).expect("Unable to get system account");
+        let system_contract_by_account =
+            match self.query(Some(post_state_hash), system_account, &empty_path) {
+                Ok(StoredValue::CLValue(cl_value)) => {
+                    let contract_key =
+                        CLValue::into_t::<Key>(cl_value).expect("must convert to contract key");
+                    contract_key
+                        .into_hash()
+                        .map(ContractHash::new)
+                        .expect("must convert to contract hash")
+                }
+                Ok(_) => panic!("Failed to get system contract by account hash"),
+                Err(err) => panic!("{}", err),
+            };
 
         self.system_contract_registry = match self.query(
             Some(post_state_hash),
@@ -570,8 +578,8 @@ where
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(genesis_account);
-        self.genesis_transforms = Some(transforms);
+        self.genesis_account = Some(system_contract_by_account);
+        self.genesis_effects = Some(effects);
         self
     }
 
@@ -670,7 +678,7 @@ where
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
             .expect("must get mint stored value")
-            .as_contract()
+            .as_addressable_entity()
             .expect("must convert to mint contract")
             .clone();
 
@@ -722,11 +730,8 @@ where
         // Parse deploy results
         let execution_results = maybe_exec_results.as_ref().unwrap();
         // Cache transformations
-        self.transforms.extend(
-            execution_results
-                .iter()
-                .map(|res| res.execution_journal().clone()),
-        );
+        self.effects
+            .extend(execution_results.iter().map(|res| res.effects().clone()));
         self.exec_results.push(
             maybe_exec_results
                 .unwrap()
@@ -741,21 +746,17 @@ where
     pub fn commit(&mut self) -> &mut Self {
         let prestate_hash = self.post_state_hash.expect("Should have genesis hash");
 
-        let effects = self.transforms.last().cloned().unwrap_or_default();
+        let effects = self.effects.last().cloned().unwrap_or_default();
 
-        self.commit_transforms(prestate_hash, effects.into())
+        self.commit_transforms(prestate_hash, effects)
     }
 
     /// Runs a commit request, expects a successful response, and
     /// overwrites existing cached post state hash with a new one.
-    pub fn commit_transforms(
-        &mut self,
-        pre_state_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> &mut Self {
+    pub fn commit_transforms(&mut self, pre_state_hash: Digest, effects: Effects) -> &mut Self {
         let post_state_hash = self
             .engine_state
-            .apply_effect(pre_state_hash, effects)
+            .apply_effects(pre_state_hash, effects)
             .expect("should commit");
         self.post_state_hash = Some(post_state_hash);
         self
@@ -779,7 +780,7 @@ where
 
         if let Ok(UpgradeSuccess {
             post_state_hash,
-            execution_effect: _,
+            effects: _,
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
@@ -911,13 +912,13 @@ where
             .cloned()
     }
 
-    /// Gets `ExecutionJournal`s of all passed runs.
-    pub fn get_execution_journals(&self) -> Vec<ExecutionJournal> {
-        self.transforms.clone()
+    /// Gets `Effects` of all previous runs.
+    pub fn get_effects(&self) -> Vec<Effects> {
+        self.effects.clone()
     }
 
     /// Gets genesis account (if present)
-    pub fn get_genesis_account(&self) -> &Account {
+    pub fn get_genesis_account(&self) -> &ContractHash {
         self.genesis_account
             .as_ref()
             .expect("Unable to obtain genesis account. Please run genesis first.")
@@ -958,9 +959,9 @@ where
             .expect("Unable to obtain auction contract. Please run genesis first.")
     }
 
-    /// Returns genesis transforms, panics if there aren't any.
-    pub fn get_genesis_transforms(&self) -> &AdditiveMap<Key, Transform> {
-        self.genesis_transforms
+    /// Returns genesis effects, panics if there aren't any.
+    pub fn get_genesis_effects(&self) -> &Effects {
+        self.genesis_effects
             .as_ref()
             .expect("should have genesis transforms")
     }
@@ -1023,7 +1024,7 @@ where
     }
 
     /// Returns the "handle payment" contract, panics if it can't be found.
-    pub fn get_handle_payment_contract(&self) -> Contract {
+    pub fn get_handle_payment_contract(&self) -> AddressableEntity {
         let handle_payment_contract: Key = self
             .get_system_contract_hash(HANDLE_PAYMENT)
             .cloned()
@@ -1061,30 +1062,71 @@ where
 
     /// Gets the purse balance of a proposer.
     pub fn get_proposer_purse_balance(&self) -> U512 {
-        let proposer_account = self
-            .get_account(*DEFAULT_PROPOSER_ADDR)
+        let proposer_contract = self
+            .get_entity_by_account_hash(*DEFAULT_PROPOSER_ADDR)
             .expect("proposer account should exist");
-        self.get_purse_balance(proposer_account.main_purse())
+        self.get_purse_balance(proposer_contract.main_purse())
     }
 
-    /// Queries for an `Account`.
-    pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
-        match self.query(None, Key::Account(account_hash), &[]) {
-            Ok(account_value) => match account_value {
-                StoredValue::Account(account) => Some(account),
-                _ => None,
-            },
-            Err(_) => None,
+    /// Gets the contract hash associated with a given account hash.
+    pub fn get_contract_hash_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<ContractHash> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_key =
+                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                Some(ContractHash::new(
+                    contract_key.into_hash().expect("must have hash addr"),
+                ))
+            }
+            Some(_) | None => None,
         }
     }
 
-    /// Queries for an `Account` and panics if it can't be found.
-    pub fn get_expected_account(&self, account_hash: AccountHash) -> Account {
-        self.get_account(account_hash).expect("account to exist")
+    /// Queries for an `Account`.
+    pub fn get_entity_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> Option<AddressableEntity> {
+        match self.query(None, Key::Account(account_hash), &[]).ok() {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_key =
+                    CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
+                match self.query(None, contract_key, &[]) {
+                    Ok(StoredValue::AddressableEntity(contract)) => Some(contract),
+                    Ok(_) | Err(_) => None,
+                }
+            }
+            Some(_) | None => None,
+        }
     }
 
-    /// Queries for a contract by `ContractHash`.
-    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+    /// Queries for an `AddressableEntity` and panics if it can't be found.
+    pub fn get_expected_addressable_entity_by_account_hash(
+        &self,
+        account_hash: AccountHash,
+    ) -> AddressableEntity {
+        self.get_entity_by_account_hash(account_hash)
+            .expect("account to exist")
+    }
+
+    /// Queries for an addressable entity by `ContractHash`.
+    pub fn get_addressable_entity(&self, contract_hash: ContractHash) -> Option<AddressableEntity> {
+        let contract_value: StoredValue = self
+            .query(None, contract_hash.into(), &[])
+            .expect("should have contract value");
+
+        if let StoredValue::AddressableEntity(contract) = contract_value {
+            Some(contract)
+        } else {
+            None
+        }
+    }
+
+    /// Retrieve a Contract from global state.
+    pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
@@ -1113,7 +1155,7 @@ where
     pub fn get_contract_package(
         &self,
         contract_package_hash: ContractPackageHash,
-    ) -> Option<ContractPackage> {
+    ) -> Option<Package> {
         let contract_value: StoredValue = self
             .query(None, contract_package_hash.into(), &[])
             .expect("should have package value");
@@ -1308,7 +1350,7 @@ where
         T: FromBytes + CLTyped,
     {
         let contract = self
-            .get_contract(contract_hash)
+            .get_addressable_entity(contract_hash)
             .expect("should have contract");
         let key = contract
             .named_keys()
@@ -1354,7 +1396,7 @@ where
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
             .get_system_mint_hash(state_root_hash)
-            .expect("should have auction hash")
+            .expect("should have mint hash")
     }
 
     /// Gets the [`ContractHash`] of the system handle payment contract, panics if it can't be
@@ -1379,7 +1421,7 @@ where
     pub fn clear_results(&mut self) -> &mut Self {
         self.exec_results = Vec::new();
         self.upgrade_results = Vec::new();
-        self.transforms = Vec::new();
+        self.effects = Vec::new();
         self
     }
 
@@ -1476,19 +1518,6 @@ where
         }
 
         self
-    }
-
-    /// Gets the transform map that's cached between runs
-    #[deprecated(
-        since = "2.1.0",
-        note = "Use `get_execution_journals` that returns transforms in the order they were created."
-    )]
-    pub fn get_transforms(&self) -> Vec<AdditiveMap<Key, Transform>> {
-        self.transforms
-            .clone()
-            .into_iter()
-            .map(|journal| journal.into_iter().collect())
-            .collect()
     }
 
     /// Returns the results of all execs.

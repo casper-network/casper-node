@@ -4,9 +4,10 @@ use alloc::{collections::BTreeSet, string::String, vec, vec::Vec};
 use core::{convert::From, mem::MaybeUninit};
 
 use casper_types::{
+    addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
-    contracts::{ContractVersion, EntryPoints, NamedKeys},
+    package::ContractVersion,
     AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
     URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
 };

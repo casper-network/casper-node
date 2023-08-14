@@ -10,11 +10,11 @@ use rand::{
     Rng,
 };
 #[cfg(feature = "json-schema")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use super::FromStrError;
 use crate::{
+    addressable_entity::FromStrError,
     bytesrepr::{Error, FromBytes, ToBytes},
     checksummed_hex, crypto, CLType, CLTyped, PublicKey, BLAKE2B_DIGEST_LENGTH,
 };
@@ -29,7 +29,15 @@ pub const ACCOUNT_HASH_FORMATTED_STRING_PREFIX: &str = "account-hash-";
 /// the AccountHash, a hash of Public Key and Algorithm
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct AccountHash(pub [u8; ACCOUNT_HASH_LENGTH]);
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "Account hash as a formatted string.")
+)]
+pub struct AccountHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))]
+    pub  [u8; ACCOUNT_HASH_LENGTH],
+);
 
 impl AccountHash {
     /// Constructs a new `AccountHash` instance from the raw bytes of an Public Key Account Hash.
@@ -93,20 +101,6 @@ impl AccountHash {
         // Hash the preimage data using blake2b256 and return it.
         let digest = blake2b_hash_fn(preimage);
         Self::new(digest)
-    }
-}
-
-#[cfg(feature = "json-schema")]
-impl JsonSchema for AccountHash {
-    fn schema_name() -> String {
-        String::from("AccountHash")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded account hash.".to_string());
-        schema_object.into()
     }
 }
 

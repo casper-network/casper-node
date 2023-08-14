@@ -40,12 +40,12 @@ fn do_pass(pass: &str) -> (URef, URef) {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     (
-        get_uref(account.named_keys()["uref1"]),
-        get_uref(account.named_keys()["uref2"]),
+        get_uref(*account.named_keys().get("uref1").unwrap()),
+        get_uref(*account.named_keys().get("uref2").unwrap()),
     )
 }
 

@@ -1,28 +1,14 @@
-//! This file provides types to allow conversion from an EE `ExecutionResult` into a similar type
-//! which can be serialized to a valid binary or JSON representation.
-//!
-//! It is stored as metadata related to a given deploy, and made available to clients via the
-//! JSON-RPC API.
-
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
+//! Types for reporting results of execution pre `casper-node` v2.0.0.
 
 use core::convert::TryFrom;
 
-use alloc::{
-    boxed::Box,
-    format,
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::{boxed::Box, string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::{FromPrimitive, ToPrimitive};
 use num_derive::{FromPrimitive, ToPrimitive};
-#[cfg(feature = "json-schema")]
-use once_cell::sync::Lazy;
+#[cfg(any(feature = "testing", test))]
 use rand::{
     distributions::{Distribution, Standard},
     seq::SliceRandom,
@@ -32,13 +18,11 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(feature = "json-schema")]
-use crate::KEY_HASH_LENGTH;
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, DeployInfo, NamedKey, Transfer, TransferAddr, U128, U256, U512,
+    CLValue, DeployInfo, Transfer, TransferAddr, U128, U256, U512,
 };
 
 #[derive(FromPrimitive, ToPrimitive, Debug)]
@@ -95,6 +79,7 @@ enum TransformTag {
     AddKeys = 16,
     Failure = 17,
     WriteUnbonding = 18,
+    WriteAddressableEntity = 19,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -105,57 +90,12 @@ impl TryFrom<u8> for TransformTag {
     }
 }
 
-#[cfg(feature = "json-schema")]
-static EXECUTION_RESULT: Lazy<ExecutionResult> = Lazy::new(|| {
-    let operations = vec![
-        Operation {
-            key: "account-hash-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb"
-                .to_string(),
-            kind: OpKind::Write,
-        },
-        Operation {
-            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
-                .to_string(),
-            kind: OpKind::Read,
-        },
-    ];
-
-    let transforms = vec![
-        TransformEntry {
-            key: "uref-2c4a11c062a8a337bfc97e27fd66291caeb2c65865dcb5d3ef3759c4c97efecb-007"
-                .to_string(),
-            transform: Transform::AddUInt64(8u64),
-        },
-        TransformEntry {
-            key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1"
-                .to_string(),
-            transform: Transform::Identity,
-        },
-    ];
-
-    let effect = ExecutionEffect {
-        operations,
-        transforms,
-    };
-
-    let transfers = vec![
-        TransferAddr::new([89; KEY_HASH_LENGTH]),
-        TransferAddr::new([130; KEY_HASH_LENGTH]),
-    ];
-
-    ExecutionResult::Success {
-        effect,
-        transfers,
-        cost: U512::from(123_456),
-    }
-});
-
 /// The result of executing a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
-pub enum ExecutionResult {
+pub enum ExecutionResultV1 {
     /// The result of a failed execution.
     Failure {
         /// The effect of executing the deploy.
@@ -178,33 +118,9 @@ pub enum ExecutionResult {
     },
 }
 
-impl ExecutionResult {
-    // This method is not intended to be used by third party crates.
-    #[doc(hidden)]
-    #[cfg(feature = "json-schema")]
-    pub fn example() -> &'static Self {
-        &EXECUTION_RESULT
-    }
-
-    fn tag(&self) -> ExecutionResultTag {
-        match self {
-            ExecutionResult::Failure {
-                effect: _,
-                transfers: _,
-                cost: _,
-                error_message: _,
-            } => ExecutionResultTag::Failure,
-            ExecutionResult::Success {
-                effect: _,
-                transfers: _,
-                cost: _,
-            } => ExecutionResultTag::Success,
-        }
-    }
-}
-
-impl Distribution<ExecutionResult> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResult {
+#[cfg(any(feature = "testing", test))]
+impl Distribution<ExecutionResultV1> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResultV1 {
         let op_count = rng.gen_range(0..6);
         let mut operations = Vec::new();
         for _ in 0..op_count {
@@ -226,23 +142,26 @@ impl Distribution<ExecutionResult> for Standard {
             });
         }
 
-        let execution_effect = ExecutionEffect::new(transforms);
+        let execution_effect = ExecutionEffect {
+            operations,
+            transforms,
+        };
 
         let transfer_count = rng.gen_range(0..6);
-        let mut transfers = vec![];
+        let mut transfers = Vec::new();
         for _ in 0..transfer_count {
             transfers.push(TransferAddr::new(rng.gen()))
         }
 
         if rng.gen() {
-            ExecutionResult::Failure {
+            ExecutionResultV1::Failure {
                 effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
                 error_message: format!("Error message {}", rng.gen::<u64>()),
             }
         } else {
-            ExecutionResult::Success {
+            ExecutionResultV1::Success {
                 effect: execution_effect,
                 transfers,
                 cost: rng.gen::<u64>().into(),
@@ -251,57 +170,60 @@ impl Distribution<ExecutionResult> for Standard {
     }
 }
 
-// TODO[goral09]: Add `write_bytes` impl.
-impl ToBytes for ExecutionResult {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        let tag_byte = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
-        buffer.push(tag_byte);
+impl ToBytes for ExecutionResultV1 {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            ExecutionResult::Failure {
+            ExecutionResultV1::Failure {
                 effect,
                 transfers,
                 cost,
                 error_message,
             } => {
-                buffer.extend(effect.to_bytes()?);
-                buffer.extend(transfers.to_bytes()?);
-                buffer.extend(cost.to_bytes()?);
-                buffer.extend(error_message.to_bytes()?);
+                (ExecutionResultTag::Failure as u8).write_bytes(writer)?;
+                effect.write_bytes(writer)?;
+                transfers.write_bytes(writer)?;
+                cost.write_bytes(writer)?;
+                error_message.write_bytes(writer)
             }
-            ExecutionResult::Success {
+            ExecutionResultV1::Success {
                 effect,
                 transfers,
                 cost,
             } => {
-                buffer.extend(effect.to_bytes()?);
-                buffer.extend(transfers.to_bytes()?);
-                buffer.extend(cost.to_bytes()?);
+                (ExecutionResultTag::Success as u8).write_bytes(writer)?;
+                effect.write_bytes(writer)?;
+                transfers.write_bytes(writer)?;
+                cost.write_bytes(writer)
             }
         }
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ExecutionResult::Failure {
-                    effect: execution_effect,
+                ExecutionResultV1::Failure {
+                    effect,
                     transfers,
                     cost,
                     error_message,
                 } => {
-                    execution_effect.serialized_length()
+                    effect.serialized_length()
                         + transfers.serialized_length()
                         + cost.serialized_length()
                         + error_message.serialized_length()
                 }
-                ExecutionResult::Success {
-                    effect: execution_effect,
+                ExecutionResultV1::Success {
+                    effect,
                     transfers,
                     cost,
                 } => {
-                    execution_effect.serialized_length()
+                    effect.serialized_length()
                         + transfers.serialized_length()
                         + cost.serialized_length()
                 }
@@ -309,7 +231,7 @@ impl ToBytes for ExecutionResult {
     }
 }
 
-impl FromBytes for ExecutionResult {
+impl FromBytes for ExecutionResultV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match TryFrom::try_from(tag)? {
@@ -318,7 +240,7 @@ impl FromBytes for ExecutionResult {
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
-                let execution_result = ExecutionResult::Failure {
+                let execution_result = ExecutionResultV1::Failure {
                     effect,
                     transfers,
                     cost,
@@ -330,7 +252,7 @@ impl FromBytes for ExecutionResult {
                 let (execution_effect, remainder) = ExecutionEffect::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
-                let execution_result = ExecutionResult::Success {
+                let execution_result = ExecutionResultV1::Success {
                     effect: execution_effect,
                     transfers,
                     cost,
@@ -341,7 +263,7 @@ impl FromBytes for ExecutionResult {
     }
 }
 
-/// The journal of execution transforms from a single deploy.
+/// The sequence of execution transforms from a single deploy.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -349,26 +271,19 @@ impl FromBytes for ExecutionResult {
 pub struct ExecutionEffect {
     /// The resulting operations.
     pub operations: Vec<Operation>,
-    /// The journal of execution transforms.
+    /// The sequence of execution transforms.
     pub transforms: Vec<TransformEntry>,
 }
 
-impl ExecutionEffect {
-    /// Constructor for [`ExecutionEffect`].
-    pub fn new(transforms: Vec<TransformEntry>) -> Self {
-        Self {
-            transforms,
-            operations: Default::default(),
-        }
-    }
-}
-
-// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for ExecutionEffect {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.operations.write_bytes(writer)?;
+        self.transforms.write_bytes(writer)
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.operations.to_bytes()?);
-        buffer.extend(self.transforms.to_bytes()?);
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -381,11 +296,11 @@ impl FromBytes for ExecutionEffect {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (operations, remainder) = Vec::<Operation>::from_bytes(bytes)?;
         let (transforms, remainder) = Vec::<TransformEntry>::from_bytes(remainder)?;
-        let json_execution_journal = ExecutionEffect {
+        let json_effects = ExecutionEffect {
             operations,
             transforms,
         };
-        Ok((json_execution_journal, remainder))
+        Ok((json_effects, remainder))
     }
 }
 
@@ -401,12 +316,15 @@ pub struct Operation {
     pub kind: OpKind,
 }
 
-// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for Operation {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.key.write_bytes(writer)?;
+        self.kind.write_bytes(writer)
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.key.to_bytes()?);
-        buffer.extend(self.kind.to_bytes()?);
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -451,11 +369,16 @@ impl OpKind {
     }
 }
 
-// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for OpKind {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        let tag_byte = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
+        tag_byte.write_bytes(writer)
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
-        tag_bytes.to_bytes()
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -487,12 +410,15 @@ pub struct TransformEntry {
     pub transform: Transform,
 }
 
-// TODO[goral09]: Add `write_bytes`.
 impl ToBytes for TransformEntry {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.key.write_bytes(writer)?;
+        self.transform.write_bytes(writer)
+    }
+
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.key.to_bytes()?);
-        buffer.extend(self.transform.to_bytes()?);
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -554,91 +480,90 @@ pub enum Transform {
     Failure(String),
     /// Writes the given Unbonding to global state.
     WriteUnbonding(Vec<UnbondingPurse>),
+    /// Writes the addressable entity to global state.
+    WriteAddressableEntity,
 }
 
-impl Transform {
-    fn tag(&self) -> TransformTag {
-        match self {
-            Transform::Identity => TransformTag::Identity,
-            Transform::WriteCLValue(_) => TransformTag::WriteCLValue,
-            Transform::WriteAccount(_) => TransformTag::WriteAccount,
-            Transform::WriteContractWasm => TransformTag::WriteContractWasm,
-            Transform::WriteContract => TransformTag::WriteContract,
-            Transform::WriteContractPackage => TransformTag::WriteContractPackage,
-            Transform::WriteDeployInfo(_) => TransformTag::WriteDeployInfo,
-            Transform::WriteEraInfo(_) => TransformTag::WriteEraInfo,
-            Transform::WriteTransfer(_) => TransformTag::WriteTransfer,
-            Transform::WriteBid(_) => TransformTag::WriteBid,
-            Transform::WriteWithdraw(_) => TransformTag::WriteWithdraw,
-            Transform::AddInt32(_) => TransformTag::AddInt32,
-            Transform::AddUInt64(_) => TransformTag::AddUInt64,
-            Transform::AddUInt128(_) => TransformTag::AddUInt128,
-            Transform::AddUInt256(_) => TransformTag::AddUInt256,
-            Transform::AddUInt512(_) => TransformTag::AddUInt512,
-            Transform::AddKeys(_) => TransformTag::AddKeys,
-            Transform::Failure(_) => TransformTag::Failure,
-            Transform::WriteUnbonding(_) => TransformTag::WriteUnbonding,
-        }
-    }
-}
-
-// TODO[goral09]: Add `write_bytes` impl.
 impl ToBytes for Transform {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut buffer = bytesrepr::allocate_buffer(self)?;
-        let tag_bytes = self.tag().to_u8().ok_or(bytesrepr::Error::Formatting)?;
-        buffer.insert(0, tag_bytes);
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            Transform::Identity => {}
+            Transform::Identity => (TransformTag::Identity as u8).write_bytes(writer),
             Transform::WriteCLValue(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::WriteCLValue as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::WriteAccount(account_hash) => {
-                buffer.extend(account_hash.to_bytes()?);
+                (TransformTag::WriteAccount as u8).write_bytes(writer)?;
+                account_hash.write_bytes(writer)
             }
-            Transform::WriteContractWasm => {}
-            Transform::WriteContract => {}
-            Transform::WriteContractPackage => {}
+            Transform::WriteContractWasm => {
+                (TransformTag::WriteContractWasm as u8).write_bytes(writer)
+            }
+            Transform::WriteContract => (TransformTag::WriteContract as u8).write_bytes(writer),
+            Transform::WriteContractPackage => {
+                (TransformTag::WriteContractPackage as u8).write_bytes(writer)
+            }
             Transform::WriteDeployInfo(deploy_info) => {
-                buffer.extend(deploy_info.to_bytes()?);
+                (TransformTag::WriteDeployInfo as u8).write_bytes(writer)?;
+                deploy_info.write_bytes(writer)
             }
             Transform::WriteEraInfo(era_info) => {
-                buffer.extend(era_info.to_bytes()?);
+                (TransformTag::WriteEraInfo as u8).write_bytes(writer)?;
+                era_info.write_bytes(writer)
             }
             Transform::WriteTransfer(transfer) => {
-                buffer.extend(transfer.to_bytes()?);
+                (TransformTag::WriteTransfer as u8).write_bytes(writer)?;
+                transfer.write_bytes(writer)
             }
             Transform::WriteBid(bid) => {
-                buffer.extend(bid.to_bytes()?);
+                (TransformTag::WriteBid as u8).write_bytes(writer)?;
+                bid.write_bytes(writer)
             }
             Transform::WriteWithdraw(unbonding_purses) => {
-                buffer.extend(unbonding_purses.to_bytes()?);
+                (TransformTag::WriteWithdraw as u8).write_bytes(writer)?;
+                unbonding_purses.write_bytes(writer)
             }
             Transform::AddInt32(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::AddInt32 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::AddUInt64(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::AddUInt64 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::AddUInt128(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::AddUInt128 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::AddUInt256(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::AddUInt256 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::AddUInt512(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::AddUInt512 as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::AddKeys(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::AddKeys as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::Failure(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::Failure as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
             }
             Transform::WriteUnbonding(value) => {
-                buffer.extend(value.to_bytes()?);
+                (TransformTag::WriteUnbonding as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            Transform::WriteAddressableEntity => {
+                (TransformTag::WriteAddressableEntity as u8).write_bytes(writer)
             }
         }
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
         Ok(buffer)
     }
 
@@ -659,7 +584,8 @@ impl ToBytes for Transform {
             Transform::Identity
             | Transform::WriteContractWasm
             | Transform::WriteContract
-            | Transform::WriteContractPackage => 0,
+            | Transform::WriteContractPackage
+            | Transform::WriteAddressableEntity => 0,
             Transform::WriteBid(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
             Transform::WriteUnbonding(value) => value.serialized_length(),
@@ -684,6 +610,9 @@ impl FromBytes for Transform {
             TransformTag::WriteContractWasm => Ok((Transform::WriteContractWasm, remainder)),
             TransformTag::WriteContract => Ok((Transform::WriteContract, remainder)),
             TransformTag::WriteContractPackage => Ok((Transform::WriteContractPackage, remainder)),
+            TransformTag::WriteAddressableEntity => {
+                Ok((Transform::WriteAddressableEntity, remainder))
+            }
             TransformTag::WriteDeployInfo => {
                 let (deploy_info, remainder) = DeployInfo::from_bytes(remainder)?;
                 Ok((Transform::WriteDeployInfo(deploy_info), remainder))
@@ -742,6 +671,7 @@ impl FromBytes for Transform {
     }
 }
 
+#[cfg(any(feature = "testing", test))]
 impl Distribution<Transform> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transform {
         // TODO - include WriteDeployInfo and WriteTransfer as options
@@ -768,34 +698,66 @@ impl Distribution<Transform> for Standard {
                 Transform::AddKeys(named_keys)
             }
             12 => Transform::Failure(rng.gen::<u64>().to_string()),
+            13 => Transform::WriteAddressableEntity,
             _ => unreachable!(),
         }
     }
 }
 
+/// A key with a name.
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Default, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct NamedKey {
+    /// The name of the entry.
+    pub name: String,
+    /// The value of the entry: a casper `Key` type.
+    pub key: String,
+}
+
+impl ToBytes for NamedKey {
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.name.write_bytes(writer)?;
+        self.key.write_bytes(writer)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.name.serialized_length() + self.key.serialized_length()
+    }
+}
+
+impl FromBytes for NamedKey {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (name, remainder) = String::from_bytes(bytes)?;
+        let (key, remainder) = String::from_bytes(remainder)?;
+        let named_key = NamedKey { name, key };
+        Ok((named_key, remainder))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use rand::{rngs::SmallRng, Rng, SeedableRng};
-
     use super::*;
-
-    fn get_rng() -> SmallRng {
-        let mut seed = [0u8; 32];
-        getrandom::getrandom(seed.as_mut()).unwrap();
-        SmallRng::from_seed(seed)
-    }
+    use crate::testing::TestRng;
 
     #[test]
     fn bytesrepr_test_transform() {
-        let mut rng = get_rng();
+        let mut rng = TestRng::new();
         let transform: Transform = rng.gen();
         bytesrepr::test_serialization_roundtrip(&transform);
     }
 
     #[test]
     fn bytesrepr_test_execution_result() {
-        let mut rng = get_rng();
-        let execution_result: ExecutionResult = rng.gen();
+        let mut rng = TestRng::new();
+        let execution_result: ExecutionResultV1 = rng.gen();
         bytesrepr::test_serialization_roundtrip(&execution_result);
     }
 }

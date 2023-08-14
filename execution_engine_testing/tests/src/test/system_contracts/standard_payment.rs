@@ -11,10 +11,9 @@ use casper_execution_engine::{
     engine_state::{Error, MAX_PAYMENT},
     execution,
 };
-use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
-    account::AccountHash, runtime_args, system::handle_payment, ApiError, Gas, Key, Motes,
-    RuntimeArgs, U512,
+    account::AccountHash, execution::TransformKind, runtime_args, system::handle_payment, ApiError,
+    Gas, Key, Motes, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -66,11 +65,10 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
     );
 
     let expected_transfers_count = 0;
-    let transforms = builder.get_execution_journals();
-    let transform = &transforms[1];
+    let effects = &builder.get_effects()[1];
 
     assert_eq!(
-        transform.len(),
+        effects.transforms().len(),
         expected_transfers_count,
         "there should be no transforms if the account main purse has less than max payment"
     );
@@ -111,7 +109,7 @@ fn should_forward_payment_execution_runtime_error() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(*DEFAULT_ACCOUNT_ADDR)
+            .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -180,7 +178,7 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let modified_balance = builder.get_purse_balance(
         builder
-            .get_account(*DEFAULT_ACCOUNT_ADDR)
+            .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
             .expect("should have account")
             .main_purse(),
     );
@@ -288,7 +286,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
         .commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -356,7 +354,7 @@ fn should_correctly_charge_when_session_code_fails() {
     builder.exec(exec_request).commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -406,7 +404,7 @@ fn should_correctly_charge_when_session_code_succeeds() {
     builder.exec(exec_request).expect_success().commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
     let modified_balance: U512 = builder.get_purse_balance(default_account.main_purse());
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -534,9 +532,9 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .expect_success()
         .commit();
 
-    let transforms = builder.get_execution_journals();
-    let transforms_from_genesis = &transforms[1];
-    let transforms_from_account_1 = &transforms[2];
+    let effects = builder.get_effects();
+    let effects_from_genesis = &effects[1];
+    let effects_from_account_1 = &effects[2];
 
     // Retrieve the payment purse.
     let payment_purse = builder
@@ -547,27 +545,36 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
         .into_uref()
         .unwrap();
 
-    let transforms_from_genesis_map: HashMap<Key, Transform> =
-        transforms_from_genesis.clone().into_iter().collect();
-    let transforms_from_account_1_map: HashMap<Key, Transform> =
-        transforms_from_account_1.clone().into_iter().collect();
+    let transforms_from_genesis_map: HashMap<Key, TransformKind> = effects_from_genesis
+        .transforms()
+        .iter()
+        .map(|transform| (*transform.key(), transform.kind().clone()))
+        .collect();
+    let transforms_from_account_1_map: HashMap<Key, TransformKind> = effects_from_account_1
+        .transforms()
+        .iter()
+        .map(|transform| (*transform.key(), transform.kind().clone()))
+        .collect();
 
     // Confirm the two deploys have no overlapping writes except for the payment purse balance.
-    let common_write_keys = transforms_from_genesis.iter().filter_map(|(k, _)| {
-        if k != &Key::Balance(payment_purse.addr())
-            && matches!(
-                (
-                    transforms_from_genesis_map.get(k),
-                    transforms_from_account_1_map.get(k),
-                ),
-                (Some(Transform::Write(_)), Some(Transform::Write(_)))
-            )
-        {
-            Some(k)
-        } else {
-            None
-        }
-    });
+    let common_write_keys = effects_from_genesis
+        .transforms()
+        .iter()
+        .filter_map(|transform| {
+            if transform.key() != &Key::Balance(payment_purse.addr())
+                && matches!(
+                    (
+                        transforms_from_genesis_map.get(transform.key()),
+                        transforms_from_account_1_map.get(transform.key()),
+                    ),
+                    (Some(TransformKind::Write(_)), Some(TransformKind::Write(_)))
+                )
+            {
+                Some(*transform.key())
+            } else {
+                None
+            }
+        });
 
     assert_eq!(common_write_keys.count(), 0);
 }

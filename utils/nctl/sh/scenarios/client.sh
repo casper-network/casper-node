@@ -12,7 +12,7 @@ set -e
 #######################################
 
 function main() {
-    # DIRS 
+    # DIRS
     local TEMP_DIR
     local KEYGEN_DIR
     local ED25519_DIR
@@ -59,9 +59,10 @@ function main() {
     SIGNED_DEPLOY_FILE="$MAKE_DEPLOY_DIR/signed_deploy.json"
     FAUCET_HEX="$FAUCET_DIR/public_key_hex"
     FAUCET_PEM="$FAUCET_DIR/public_key.pem"
-    FAUCET_SK="$FAUCET_DIR/secret_key.pem"
+    FAUCET_SECRET_KEY="$FAUCET_DIR/secret_key.pem"
     ED25519_HEX="$ED25519_DIR/public_key_hex"
     ED25519_PEM="$ED25519_DIR/public_key.pem"
+    ED25519_SECRET_KEY="$ED25519_DIR/secret_key.pem"
     SECP256K1_HEX="$SECP256K1_DIR/public_key_hex"
     SECP256K1_PEM="SECP256K1_DIR/public_key.pem"
     DICT_WASM="$NCTL_CASPER_HOME/target/wasm32-unknown-unknown/release/nctl-dictionary.wasm"
@@ -150,11 +151,11 @@ function main() {
     # 27. Test make-deploy subcommand
     test_make_deploy "$ED25519_ACC_HASH" "$MAKE_DEPLOY_DIR" "$FAUCET_DIR"
     # 28. Test sign-deploy subcommand
-    test_sign_deploy "$MAKE_DEPLOY_FILE" "$SIGNED_DEPLOY_FILE" "$FAUCET_SK"
+    test_sign_deploy "$MAKE_DEPLOY_FILE" "$SIGNED_DEPLOY_FILE" "$ED25519_SECRET_KEY"
     # 29. Test send-deploy subcommand - retest: make/sign deploy
     test_send_deploy "$SIGNED_DEPLOY_FILE"
     # 30. Test put-deploy subcommand
-    test_put_deploy "$DICT_WASM" "$FAUCET_SK"
+    test_put_deploy "$DICT_WASM" "$FAUCET_SECRET_KEY"
     # 31. Test get-dictionary-item subcommand
     test_get_dictionary_item "$FAUCET_ACC_HASH"
     # 32. Test get-balance subcommand
@@ -229,36 +230,39 @@ function test_get_dictionary_item() {
 # casper-client sign-deploy
 # ... signs deploy
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_sign_deploy() {
     local INPUT_FILE=${1}
     local OUTPUT_FILE=${2}
     local SIGNER_KEY=${3}
+    local OUTPUT
     local SIGNER_1
     local SIGNER_2
 
     log_step "Testing Client Subcommand: sign-deploy"
 
-    $(get_path_to_client) sign-deploy \
+    OUTPUT=$($(get_path_to_client) sign-deploy \
         --input "$INPUT_FILE" \
-        --output "$OUTPUT_FILE" \
-        --secret-key "$SIGNER_KEY"
+        --secret-key "$SIGNER_KEY")
 
     # Test Valid JSON
-    if [ -f "$OUTPUT_FILE" ]; then
-        cat "$OUTPUT_FILE" | jq '.'
-    fi
+    echo "$OUTPUT" | jq '.'
 
-    SIGNER_1=$(jq -r '.approvals[0].signer' "$OUTPUT_FILE")
-    SIGNER_2=$(jq -r '.approvals[1].signer' "$OUTPUT_FILE")
+    SIGNER_1=$(echo "$OUTPUT" | jq -r '.approvals[0].signer')
+    SIGNER_2=$(echo "$OUTPUT" | jq -r '.approvals[1].signer')
 
-    # File is signed by make-deploy already so verify there's 2 matching
-    if [ "$SIGNER_1" = "$SIGNER_2" ]; then
-        log "... signers match! [expected]"
-    else
-        log "ERROR: Mismatched signers!"
+    if [ -z "$SIGNER_1" ] || [ "$SIGNER_1" == "null" ]; then
+        log "ERROR: Missing first signer!"
         exit 1
     fi
+
+    if [ -z "$SIGNER_2" ] || [ "$SIGNER_2" == "null" ]; then
+        log "ERROR: Missing second signer!"
+        exit 1
+    fi
+
+    log "... two signers found! [expected]"
+    cp "$INPUT_FILE" "$OUTPUT_FILE"
 }
 
 # casper-client put-deploy
@@ -296,7 +300,7 @@ function test_put_deploy() {
 # casper-client make-deploy
 # ... creates deploy
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_make_deploy() {
     local TRANSFER_TO=${1}
     local OUTPUT_PATH=${2}
@@ -430,7 +434,7 @@ function test_transfer() {
 
 # casper-client get-account
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 # ... compare alias output
 function test_get_account() {
     local PUBLIC_KEY=${1}
@@ -476,7 +480,7 @@ function test_get_account() {
 
 # casper-client query-balance
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_query_balance() {
     local BLOCK_HASH=${1}
     local TRANFER_TO_PUBLIC_KEY=${2}
@@ -504,7 +508,7 @@ function test_query_balance() {
 
 # casper-client query-global-state
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 # ... compare alias output
 function test_query_global_state() {
     local BLOCK_HASH=${1}
@@ -632,7 +636,7 @@ function test_get_era_info() {
 
 # casper-client list-deploys
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_list_deploys() {
     local BLOCK_HASH=${1}
     local DEPLOY_HASH=${2}
@@ -658,7 +662,7 @@ function test_list_deploys() {
 
 # casper-client get-block-transfers
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_get_block_transfers() {
     local BLOCK_HASH=${1}
     local DEPLOY_HASH=${2}
@@ -727,7 +731,7 @@ function test_get_block_by_hash() {
 
 # casper-client get-deploy
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_get_deploy() {
     local DEPLOY_HASH=${1}
     local OUTPUT
@@ -773,7 +777,7 @@ function test_send_deploy() {
 # casper-client make-transfer
 # ... sends deploy
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_make_transfer() {
     local TRANSFER_TO=${1}
     local OUTPUT_PATH=${2}
@@ -917,7 +921,7 @@ function test_get_chainspec() {
 # casper-client get-block
 # ... test tip, block 1
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_get_block() {
     local BLOCK_HEIGHT
     local OUTPUT
@@ -959,7 +963,7 @@ function test_get_block() {
 # casper-client get-state-root-hash
 # ... test tip, block 1
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_get_state_root_hash() {
     local BLOCK_HEIGHT
     local OUTPUT
@@ -1002,7 +1006,7 @@ function test_get_state_root_hash() {
 # casper-client get-auction-info
 # ... test tip, block 1
 # ... checks valid json with jq
-# ... verifys some data matches expected outcome
+# ... verifies some data matches expected outcome
 function test_get_auction_info() {
     local BLOCK_HEIGHT
     local OUTPUT
@@ -1135,7 +1139,7 @@ function test_keygen() {
 
 # casper-client generate-completion
 # ... generates completion for each shell
-# ... verifys completion file creation
+# ... verifies completion file creation
 function test_generate_completion() {
     local OUTPUT_PATH=${1}
     local SHELL_VALUES
@@ -1178,7 +1182,7 @@ function test_subcommand_help() {
             log "... testing: $subcommand --help"
             $(get_path_to_client) "$subcommand" --help #> /dev/null 2>&1
         fi
-    done 
+    done
 }
 
 #--------------------------------#
@@ -1207,7 +1211,7 @@ function get_block_containing_deploy_hash() {
 
     OUTPUT=$($(get_path_to_client) get-deploy \
         --node-address "$(get_node_address_rpc)" \
-        "$DEPLOY_HASH" | jq -r '.result.execution_results[].block_hash')
+        "$DEPLOY_HASH" | jq -r '.result.block_hash')
 
     # Check non-empty
     check_client_responded "$OUTPUT"
@@ -1349,7 +1353,7 @@ function compare_client_subcommand_count() {
     else
         log "ERROR: $COMP1 != $COMP2"
         log "... was a subcommand removed/added?"
-        exit 1 
+        exit 1
     fi
 }
 
@@ -1389,11 +1393,11 @@ function await_deploy_inclusion() {
         else
             GET_DEPLOY_OUTPUT=$($(get_path_to_client) get-deploy \
                 --node-address "$(get_node_address_rpc)" \
-                "$DEPLOY_HASH" | jq -r '.result.execution_results[].block_hash')
-            if [ -z "$GET_DEPLOY_OUTPUT" ]; then
+                "$DEPLOY_HASH" | jq -r '.result.block_hash')
+            if [ -z "$GET_DEPLOY_OUTPUT" ] || [ "$GET_DEPLOY_OUTPUT" == "null" ]; then
                 sleep 1
                 TIMEOUT=$((TIMEOUT-1))
-            else 
+            else
                 log "... $DEPLOY_HASH included!"
                 break
             fi

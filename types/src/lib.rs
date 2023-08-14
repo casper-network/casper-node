@@ -14,16 +14,18 @@
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    test(attr(deny(warnings)))
 )]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
+extern crate core;
 
 mod access_rights;
 pub mod account;
+pub mod addressable_entity;
 pub mod api_error;
 mod block;
 mod block_time;
@@ -41,7 +43,7 @@ mod deploy_info;
 mod digest;
 mod display_iter;
 mod era_id;
-mod execution_result;
+pub mod execution;
 #[cfg(any(feature = "std", test))]
 pub mod file_utils;
 mod gas;
@@ -50,7 +52,7 @@ pub mod gens;
 mod json_pretty_printer;
 mod key;
 mod motes;
-mod named_key;
+pub mod package;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -74,6 +76,11 @@ use once_cell::sync::Lazy;
 pub use crate::uint::{UIntParseError, U128, U256, U512};
 pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
+};
+#[doc(inline)]
+pub use addressable_entity::{
+    AddressableEntity, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Parameter,
 };
 #[doc(inline)]
 pub use api_error::ApiError;
@@ -119,11 +126,7 @@ pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
-pub use contracts::{
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
-    Parameter,
-};
+pub use contracts::Contract;
 pub use crypto::*;
 pub use deploy::{
     runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
@@ -140,9 +143,6 @@ pub use digest::{
 };
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
-pub use execution_result::{
-    ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
-};
 pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
@@ -151,7 +151,10 @@ pub use key::{
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
-pub use named_key::NamedKey;
+pub use package::{
+    ContractPackageHash, ContractVersion, ContractVersionKey, ContractVersions, Group, Groups,
+    Package,
+};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
 #[doc(inline)]

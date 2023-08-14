@@ -4,6 +4,8 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -14,6 +16,7 @@ use crate::{
 /// Thresholds that have to be met when executing an action of a certain type.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct ActionThresholds {
     /// Threshold for deploy execution.
     pub deployment: Weight,
@@ -140,7 +143,7 @@ pub mod gens {
 
     use super::ActionThresholds;
 
-    pub fn action_thresholds_arb() -> impl Strategy<Value = ActionThresholds> {
+    pub fn account_action_thresholds_arb() -> impl Strategy<Value = ActionThresholds> {
         Just(Default::default())
     }
 }

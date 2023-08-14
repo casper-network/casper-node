@@ -12,8 +12,9 @@ use datasize::DataSize;
 use tracing::{debug, error, trace, warn};
 
 use casper_types::{
-    Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash, DeployId, Digest, EraId,
-    FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    execution::ExecutionResult, Block, BlockHash, BlockHeader, BlockSignatures, Deploy, DeployHash,
+    DeployId, Digest, EraId, FinalitySignature, LegacyRequiredFinality, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp,
 };
 
 use super::{
@@ -567,7 +568,7 @@ impl BlockBuilder {
         &mut self,
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
-    ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, Error> {
+    ) -> Result<Option<HashMap<DeployHash, ExecutionResult>>, Error> {
         debug!(block_hash=%self.block_hash, "register_fetched_execution_results");
         match self.acquisition_state.register_execution_results_or_chunk(
             block_execution_results_or_chunk,

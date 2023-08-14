@@ -12,10 +12,13 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
-    generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Chainspec,
-    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionResult, FinalitySignature,
-    ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TimeDiff, URef, U512,
+    execution::{ExecutionResult, ExecutionResultV2},
+    generate_ed25519_keypair,
+    system::auction::UnbondingPurse,
+    testing::TestRng,
+    AccessRights, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, Chainspec,
+    ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, FinalitySignature, ProtocolVersion,
+    PublicKey, SecretKey, SignedBlockHeader, TimeDiff, URef, U512,
 };
 
 use super::{
@@ -35,8 +38,8 @@ use crate::{
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange,
-        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, LegacyDeploy,
-        SyncLeapIdentifier, TestBlockBuilder,
+        DeployExecutionInfo, DeployWithFinalizedApprovals, LegacyDeploy, SyncLeapIdentifier,
+        TestBlockBuilder,
     },
     utils::{Loadable, WithDir},
 };
@@ -340,24 +343,24 @@ fn get_naive_deploys(
         .collect()
 }
 
-/// Loads a deploy with associated metadata from the storage component.
+/// Loads a deploy with associated execution info from the storage component.
 ///
 /// Any potential finalized approvals are discarded.
-fn get_naive_deploy_and_metadata(
+fn get_naive_deploy_and_execution_info(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hash: DeployHash,
-) -> Option<(Deploy, DeployMetadataExt)> {
+) -> Option<(Deploy, Option<DeployExecutionInfo>)> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetDeployAndMetadata {
+        StorageRequest::GetDeployAndExecutionInfo {
             deploy_hash,
             responder,
         }
         .into()
     });
     assert!(harness.is_idle());
-    response.map(|(deploy_with_finalized_approvals, metadata)| {
-        (deploy_with_finalized_approvals.into_naive(), metadata)
+    response.map(|(deploy_with_finalized_approvals, exec_info)| {
+        (deploy_with_finalized_approvals.into_naive(), exec_info)
     })
 }
 
@@ -453,11 +456,13 @@ fn put_execution_results(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
+    block_height: u64,
     execution_results: HashMap<DeployHash, ExecutionResult>,
 ) {
     harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
             block_hash: Box::new(block_hash),
+            block_height,
             execution_results,
             responder,
         }
@@ -760,29 +765,38 @@ fn can_retrieve_store_and_load_deploys() {
     let response = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
     assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
 
-    // Finally try to get the metadata as well. Since we did not store any, we expect to get the
-    // block hash and height from the indices.
-    let (deploy_response, metadata_response) = harness
+    // Finally try to get the execution info as well. Since we did not store any, we expect to get
+    // the block hash and height from the indices.
+    let (deploy_response, exec_info_response) = harness
         .send_request(&mut storage, |responder| {
-            StorageRequest::GetDeployAndMetadata {
+            StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash: *deploy.hash(),
                 responder,
             }
             .into()
         })
-        .expect("no deploy with metadata returned");
+        .expect("no deploy with execution info returned");
 
     assert_eq!(deploy_response.into_naive(), *deploy);
-    match metadata_response {
-        DeployMetadataExt::Metadata(_) => {
-            panic!("We didn't store any metadata but we received it in the response.")
+    match exec_info_response {
+        Some(DeployExecutionInfo {
+            execution_result: Some(_),
+            ..
+        }) => {
+            panic!("We didn't store any execution info but we received it in the response.")
         }
-        DeployMetadataExt::BlockInfo(recv_block_hash_and_height) => {
-            assert_eq!(block_hash_and_height, recv_block_hash_and_height)
+        Some(DeployExecutionInfo {
+            block_hash,
+            block_height,
+            execution_result: None,
+        }) => {
+            assert_eq!(
+                block_hash_and_height,
+                BlockHashAndHeight::new(block_hash, block_height)
+            )
         }
-        DeployMetadataExt::Empty => panic!(
-            "We stored block info in the deploy hash index \
-                                            but we received nothing in the response."
+        None => panic!(
+            "We stored block info in the deploy hash index but we received nothing in the response."
         ),
     }
 
@@ -791,29 +805,22 @@ fn can_retrieve_store_and_load_deploys() {
 
     assert!(put_deploy(&mut harness, &mut storage, Arc::clone(&deploy)));
     // Don't insert to the deploy hash index. Since we have no execution results
-    // either, we should receive an empty metadata response.
-    let (deploy_response, metadata_response) = harness
+    // either, we should receive a `None` execution info response.
+    let (deploy_response, exec_info_response) = harness
         .send_request(&mut storage, |responder| {
-            StorageRequest::GetDeployAndMetadata {
+            StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash: *deploy.hash(),
                 responder,
             }
             .into()
         })
-        .expect("no deploy with metadata returned");
+        .expect("no deploy with execution info returned");
 
     assert_eq!(deploy_response.into_naive(), *deploy);
-    match metadata_response {
-        DeployMetadataExt::Metadata(_) => {
-            panic!("We didn't store any metadata but we received it in the response.")
-        }
-        DeployMetadataExt::BlockInfo(_) => {
-            panic!(
-                "We didn't store any block info in the index but we received it in the response."
-            )
-        }
-        DeployMetadataExt::Empty => { /* We didn't store execution results or block info */ }
-    }
+    assert!(
+        exec_info_response.is_none(),
+        "We didn't store any block info in the index but we received it in the response."
+    );
 }
 
 #[test]
@@ -843,85 +850,13 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
 }
 
 #[test]
-fn store_execution_results_for_two_blocks() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let deploy = Deploy::random(&mut harness.rng);
-
-    let block_hash_a = BlockHash::random(&mut harness.rng);
-    let block_hash_b = BlockHash::random(&mut harness.rng);
-
-    // Store the deploy.
-    put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
-
-    // Ensure deploy exists.
-    assert_eq!(
-        get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]),
-        vec![Some(deploy.clone())]
-    );
-
-    // Put first execution result.
-    let first_result: ExecutionResult = harness.rng.gen();
-    let mut first_results = HashMap::new();
-    first_results.insert(*deploy.hash(), first_result.clone());
-    put_execution_results(&mut harness, &mut storage, block_hash_a, first_results);
-
-    // Retrieve and check if correct.
-    let (first_deploy, first_metadata) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
-            .expect("missing on first attempt");
-    assert_eq!(first_deploy, deploy);
-    let mut expected_per_block_results = HashMap::new();
-    expected_per_block_results.insert(block_hash_a, first_result);
-    assert_eq!(
-        first_metadata,
-        DeployMetadata {
-            execution_results: expected_per_block_results.clone()
-        }
-    );
-
-    // Add second result for the same deploy, different block.
-    let second_result: ExecutionResult = harness.rng.gen();
-    let mut second_results = HashMap::new();
-    second_results.insert(*deploy.hash(), second_result.clone());
-    put_execution_results(&mut harness, &mut storage, block_hash_b, second_results);
-
-    // Retrieve the deploy again, should now contain both.
-    let (second_deploy, second_metadata) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
-            .expect("missing on second attempt");
-    assert_eq!(second_deploy, deploy);
-    expected_per_block_results.insert(block_hash_b, second_result);
-    assert_eq!(
-        second_metadata,
-        DeployMetadata {
-            execution_results: expected_per_block_results
-        }
-    );
-}
-
-#[test]
 fn store_random_execution_results() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    // We store results for two different blocks. Each block will have five deploys executed in it,
-    // with two of these deploys being shared by both blocks, while the remaining three are unique
-    // per block.
+    // We store results for two different blocks. Each block will have five deploys executed in it.
     let block_hash_a = BlockHash::random(&mut harness.rng);
     let block_hash_b = BlockHash::random(&mut harness.rng);
-
-    // Create the shared deploys.
-    let shared_deploys = vec![
-        Deploy::random(&mut harness.rng),
-        Deploy::random(&mut harness.rng),
-    ];
-
-    // Store shared deploys.
-    for deploy in &shared_deploys {
-        put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
-    }
 
     // We collect the expected result per deploy in parallel to adding them.
     let mut expected_outcome = HashMap::new();
@@ -929,53 +864,39 @@ fn store_random_execution_results() {
     fn setup_block(
         harness: &mut ComponentHarness<UnitTestEvent>,
         storage: &mut Storage,
-        expected_outcome: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
+        expected_outcome: &mut HashMap<DeployHash, DeployExecutionInfo>,
         block_hash: &BlockHash,
-        shared_deploys: &[Deploy],
+        block_height: u64,
     ) {
-        let unique_count = 3;
+        let deploy_count = 5;
 
         // Results for a single block.
         let mut block_results = HashMap::new();
 
-        // Add three unique deploys to block.
-        for _ in 0..unique_count {
+        // Add deploys to block.
+        for _ in 0..deploy_count {
             let deploy = Deploy::random(&mut harness.rng);
 
-            // Store unique deploy.
+            // Store deploy.
             put_deploy(harness, storage, Arc::new(deploy.clone()));
 
-            let execution_result: ExecutionResult = harness.rng.gen();
+            let execution_result =
+                ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+            let execution_info = DeployExecutionInfo {
+                block_hash: *block_hash,
+                block_height,
+                execution_result: Some(execution_result.clone()),
+            };
 
             // Insert deploy results for the unique block-deploy combination.
-            let mut map = HashMap::new();
-            map.insert(*block_hash, execution_result.clone());
-            expected_outcome.insert(*deploy.hash(), map);
+            expected_outcome.insert(*deploy.hash(), execution_info);
 
             // Add to our expected outcome.
             block_results.insert(*deploy.hash(), execution_result);
         }
 
-        // Insert the shared deploys as well.
-        for shared_deploy in shared_deploys {
-            let execution_result: ExecutionResult = harness.rng.gen();
-
-            // Insert the new result and ensure it is not present yet.
-            let result = block_results.insert(*shared_deploy.hash(), execution_result.clone());
-            assert!(result.is_none());
-
-            // Insert into expected outcome.
-            let deploy_expected = expected_outcome.entry(*shared_deploy.hash()).or_default();
-            let prev = deploy_expected.insert(*block_hash, execution_result.clone());
-            // Ensure we are not replacing something.
-            assert!(prev.is_none());
-        }
-
-        // We should have all results for our block collected for the input.
-        assert_eq!(block_results.len(), unique_count + shared_deploys.len());
-
         // Now we can submit the block's execution results.
-        put_execution_results(harness, storage, *block_hash, block_results);
+        put_execution_results(harness, storage, *block_hash, block_height, block_results);
     }
 
     setup_block(
@@ -983,7 +904,7 @@ fn store_random_execution_results() {
         &mut storage,
         &mut expected_outcome,
         &block_hash_a,
-        &shared_deploys,
+        1,
     );
 
     setup_block(
@@ -991,24 +912,18 @@ fn store_random_execution_results() {
         &mut storage,
         &mut expected_outcome,
         &block_hash_b,
-        &shared_deploys,
+        2,
     );
 
     // At this point, we are all set up and ready to receive results. Iterate over every deploy and
     // see if its execution-data-per-block matches our expectations.
-    for (deploy_hash, raw_meta) in expected_outcome.iter() {
-        let (deploy, metadata) =
-            get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy_hash)
+    for (deploy_hash, expected_exec_info) in expected_outcome.into_iter() {
+        let (deploy, maybe_exec_info) =
+            get_naive_deploy_and_execution_info(&mut harness, &mut storage, deploy_hash)
                 .expect("missing deploy");
 
-        assert_eq!(deploy_hash, deploy.hash());
-
-        assert_eq!(
-            metadata,
-            DeployMetadata {
-                execution_results: raw_meta.clone()
-            }
-        );
+        assert_eq!(deploy_hash, *deploy.hash());
+        assert_eq!(maybe_exec_info, Some(expected_exec_info));
     }
 }
 
@@ -1018,35 +933,51 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
-    let deploy_hash = DeployHash::random(&mut harness.rng);
+    let block_height = harness.rng.gen();
+    let deploy = Deploy::random(&mut harness.rng);
+    let deploy_hash = *deploy.hash();
+
+    put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
 
     let mut exec_result_1 = HashMap::new();
-    exec_result_1.insert(deploy_hash, harness.rng.gen());
+    exec_result_1.insert(
+        deploy_hash,
+        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
+    );
 
     let mut exec_result_2 = HashMap::new();
-    exec_result_2.insert(deploy_hash, harness.rng.gen());
+    let new_exec_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+    exec_result_2.insert(deploy_hash, new_exec_result.clone());
 
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result_1);
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block_hash,
+        block_height,
+        exec_result_1,
+    );
 
-    // Storing a second execution result for the same deploy on the same block should panic.
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result_2);
-}
+    // Storing a second execution result for the same deploy on the same block should overwrite the
+    // first.
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block_hash,
+        block_height,
+        exec_result_2,
+    );
 
-#[test]
-fn store_identical_execution_results() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
+    let (returned_deploy, returned_exec_info) =
+        get_naive_deploy_and_execution_info(&mut harness, &mut storage, deploy_hash)
+            .expect("missing deploy");
+    let expected_exec_info = Some(DeployExecutionInfo {
+        block_hash,
+        block_height,
+        execution_result: Some(new_exec_result),
+    });
 
-    let block_hash = BlockHash::random(&mut harness.rng);
-    let deploy_hash = DeployHash::random(&mut harness.rng);
-
-    let mut exec_result = HashMap::new();
-    exec_result.insert(deploy_hash, harness.rng.gen());
-
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
-
-    // We should be fine storing the exact same result twice.
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result);
+    assert_eq!(returned_deploy, deploy);
+    assert_eq!(returned_exec_info, expected_exec_info);
 }
 
 /// Example state used in storage.
@@ -1079,21 +1010,28 @@ fn test_legacy_interface() {
 }
 
 #[test]
-fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
+fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = TestBlockBuilder::new().build(&mut harness.rng);
-    let block_height = block.height();
-
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
-    let execution_result: ExecutionResult = harness.rng.gen();
+    let block = TestBlockBuilder::new()
+        .deploys(Some(&deploy))
+        .build(&mut harness.rng);
+    let block_height = block.height();
+    let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
     put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
     put_complete_block(&mut harness, &mut storage, Arc::new(block.clone()));
     let mut execution_results = HashMap::new();
     execution_results.insert(*deploy.hash(), execution_result.clone());
-    put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        *block.hash(),
+        block.height(),
+        execution_results,
+    );
     assert_eq!(
         get_block_at_height(&mut storage, block_height).expect("block not indexed properly"),
         block
@@ -1114,16 +1052,15 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
     assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
-    let (_, deploy_metadata_ext) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
+    let (_, maybe_exec_info) =
+        get_naive_deploy_and_execution_info(&mut harness, &mut storage, *deploy.hash())
             .expect("missing deploy we stored earlier");
 
-    let execution_results = match deploy_metadata_ext {
-        DeployMetadataExt::Metadata(metadata) => metadata.execution_results,
-        _ => panic!("Unexpected missing metadata."),
-    };
-    assert_eq!(execution_results.len(), 1);
-    assert_eq!(execution_results[block.hash()], execution_result);
+    let retrieved_execution_result = maybe_exec_info
+        .expect("should have execution info")
+        .execution_result
+        .expect("should have execution result");
+    assert_eq!(retrieved_execution_result, execution_result);
 
     assert_eq!(
         get_block_at_height(&mut storage, block_height).expect("block index was not restored"),
@@ -1179,9 +1116,13 @@ fn should_hard_reset() {
     // and so on.
     let mut deploys = vec![];
     let mut execution_results = vec![];
-    for (index, block_hash) in blocks.iter().map(|block| block.hash()).enumerate() {
+    for (index, (block_hash, block_height)) in blocks
+        .iter()
+        .map(|block| (block.hash(), block.height()))
+        .enumerate()
+    {
         let deploy = random_deploys.get(index).expect("should have deploys");
-        let execution_result: ExecutionResult = harness.rng.gen();
+        let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
         put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.hash(), execution_result);
@@ -1189,6 +1130,7 @@ fn should_hard_reset() {
             &mut harness,
             &mut storage,
             *block_hash,
+            block_height,
             exec_results.clone(),
         );
         deploys.push(deploy);
@@ -1234,15 +1176,17 @@ fn should_hard_reset() {
 
         // Check execution results in deleted blocks have been removed.
         for (index, deploy) in deploys.iter().enumerate() {
-            let (_, deploy_metadata_ext) =
-                get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash()).unwrap();
+            let (_, maybe_exec_info) =
+                get_naive_deploy_and_execution_info(&mut harness, &mut storage, *deploy.hash())
+                    .unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
-            match deploy_metadata_ext {
-                DeployMetadataExt::Metadata(_metadata) => assert!(should_have_exec_results),
-                DeployMetadataExt::BlockInfo(_block_hash_and_height) => {
-                    assert!(!should_have_exec_results)
+            match maybe_exec_info {
+                Some(DeployExecutionInfo {
+                    execution_result, ..
+                }) => {
+                    assert_eq!(should_have_exec_results, execution_result.is_some());
                 }
-                DeployMetadataExt::Empty => assert!(!should_have_exec_results),
+                None => assert!(!should_have_exec_results),
             };
         }
     };

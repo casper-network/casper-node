@@ -3,11 +3,13 @@ use casper_storage::global_state;
 use parity_wasm::elements;
 use thiserror::Error;
 
-use casper_storage::global_state::shared::transform;
 use casper_types::{
-    account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
-    bytesrepr, system, AccessRights, ApiError, CLType, CLValueError, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
+    addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
+    bytesrepr,
+    execution::TransformError,
+    package::ContractPackageKind,
+    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
+    ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -176,7 +178,13 @@ pub enum Error {
     DisabledContract(ContractHash),
     /// Transform error.
     #[error(transparent)]
-    Transform(transform::Error),
+    Transform(TransformError),
+    /// Invalid key
+    #[error("Invalid key {0}")]
+    UnexpectedKeyVariant(Key),
+    /// Invalid Contract package kind.
+    #[error("Invalid contract package kind: {0}")]
+    InvalidContractPackageKind(ContractPackageKind),
 }
 
 impl From<PreprocessingError> for Error {

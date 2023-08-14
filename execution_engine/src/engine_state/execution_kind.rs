@@ -1,13 +1,11 @@
 //! Units of execution.
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
 
 use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    bytesrepr::Bytes, contracts::NamedKeys, ContractHash, ContractPackage, ContractPackageHash,
-    ContractVersionKey, ExecutableDeployItem, Key, Phase, ProtocolVersion, StoredValue,
+    addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractPackageHash,
+    ContractVersionKey, ExecutableDeployItem, Key, Package, Phase, ProtocolVersion, StoredValue,
 };
 
 use crate::{
@@ -59,7 +57,7 @@ impl ExecutionKind {
         R::Error: Into<ExecError>,
     {
         let contract_hash: ContractHash;
-        let contract_package: ContractPackage;
+        let contract_package: Package;
 
         let is_payment_phase = phase == Phase::Payment;
 

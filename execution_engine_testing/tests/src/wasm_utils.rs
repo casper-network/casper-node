@@ -4,7 +4,7 @@ use std::{collections::BTreeSet, fmt::Write};
 use parity_wasm::builder;
 use walrus::Module;
 
-use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
+use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
 
 /// Creates minimal session code that does nothing
 pub fn do_nothing_bytes() -> Vec<u8> {

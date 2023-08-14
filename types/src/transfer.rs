@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,

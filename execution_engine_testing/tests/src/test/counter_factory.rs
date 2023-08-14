@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, ContractHash, RuntimeArgs, U512,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ContractHash, RuntimeArgs, U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -90,7 +90,7 @@ fn contract_factory_wasm_should_have_expected_exports() {
     let factory_contract = builder
         .query(None, contract_hash.into(), &[])
         .expect("should have contract")
-        .as_contract()
+        .as_addressable_entity()
         .cloned()
         .expect("should be contract");
 
@@ -144,7 +144,7 @@ fn should_install_and_use_factory_pattern() {
     builder.exec(exec_request_2).commit().expect_success();
 
     let counter_factory_contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have contract hash");
 
     let new_counter_1 = counter_factory_contract
@@ -155,7 +155,7 @@ fn should_install_and_use_factory_pattern() {
         .unwrap();
 
     let new_counter_1_contract = builder
-        .get_contract(new_counter_1)
+        .get_addressable_entity(new_counter_1)
         .expect("should have contract instance");
 
     let new_counter_2 = counter_factory_contract
@@ -166,7 +166,7 @@ fn should_install_and_use_factory_pattern() {
         .unwrap();
 
     let _new_counter_2_contract = builder
-        .get_contract(new_counter_2)
+        .get_addressable_entity(new_counter_2)
         .expect("should have contract instance");
 
     let counter_1_wasm = builder
@@ -219,9 +219,12 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
 
     builder.exec(exec_request).commit().expect_success();
 
-    let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+    let account_entity_hash = builder
+        .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
+    let account = builder
+        .get_addressable_entity(account_entity_hash)
+        .expect("should have entity for account");
     let contract_hash_key = account
         .named_keys()
         .get("factory_hash")

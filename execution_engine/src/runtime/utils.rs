@@ -4,7 +4,7 @@ use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
 
 use casper_types::{
-    contracts::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
+    addressable_entity::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
     RuntimeArgs, URef, URefAddr, WasmConfig, U128, U256, U512,
 };
 
@@ -882,7 +882,7 @@ fn rewrite_urefs(cl_value: CLValue, mut func: impl FnMut(&mut URef)) -> Result<C
             }
             (CLType::String, CLType::Key) => {
                 let mut map: NamedKeys = cl_value.to_owned().into_t()?;
-                map.values_mut().filter_map(Key::as_uref_mut).for_each(func);
+                map.keys_mut().filter_map(Key::as_uref_mut).for_each(func);
                 CLValue::from_t(map)?
             }
             (CLType::PublicKey, CLType::Key) => {

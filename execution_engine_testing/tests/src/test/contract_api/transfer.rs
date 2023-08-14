@@ -57,7 +57,7 @@ fn should_transfer_to_account() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
@@ -110,7 +110,7 @@ fn should_transfer_to_public_key() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
@@ -174,14 +174,17 @@ fn should_transfer_from_purse_to_public_key() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
     let default_account_purse = default_account.main_purse();
 
     // Check genesis account balance
     let initial_account_balance = builder.get_purse_balance(default_account_purse);
 
-    let test_purse = default_account.named_keys()[TEST_PURSE]
+    let test_purse = default_account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should have test purse");
 
@@ -240,7 +243,7 @@ fn should_transfer_from_account_to_account() {
     let builder = builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
@@ -274,7 +277,7 @@ fn should_transfer_from_account_to_account() {
 
     // Check account 1 balance
     let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1");
     let account_1_purse = account_1.main_purse();
     let account_1_balance = builder.get_purse_balance(account_1_purse);
@@ -298,7 +301,7 @@ fn should_transfer_from_account_to_account() {
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("should have account 2");
 
     let account_2_purse = account_2.main_purse();
@@ -330,7 +333,7 @@ fn should_transfer_to_existing_account() {
     let builder = builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let default_account_purse = default_account.main_purse();
@@ -356,7 +359,7 @@ fn should_transfer_to_existing_account() {
     // Exec transfer contract
 
     let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account");
 
     let account_1_purse = account_1.main_purse();
@@ -393,7 +396,7 @@ fn should_transfer_to_existing_account() {
     builder.exec(exec_request_2).expect_success().commit();
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("should get account");
 
     let account_2_purse = account_2.main_purse();
@@ -494,7 +497,7 @@ fn should_transfer_total_amount() {
     builder.exec(exec_request_2).commit().expect_success();
 
     let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_main_purse = account_1.main_purse();
     let account_1_balance = builder.get_purse_balance(account_1_main_purse);

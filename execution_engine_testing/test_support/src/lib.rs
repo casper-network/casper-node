@@ -4,12 +4,11 @@
 #![doc(
     html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
     html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    test(attr(deny(warnings)))
 )]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
-mod additive_map_diff;
 /// Utility methods for running the auction in a test or bench context.
 pub mod auction;
 mod chainspec_config;
@@ -38,9 +37,8 @@ use casper_types::{
     PublicKey, SecretKey, SystemConfig, WasmConfig, U512,
 };
 
-use crate::chainspec_config::PRODUCTION_PATH;
-pub use additive_map_diff::AdditiveMapDiff;
 pub use chainspec_config::ChainspecConfig;
+use chainspec_config::PRODUCTION_PATH;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;

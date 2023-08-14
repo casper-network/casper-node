@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account::Weight, runtime_args, RuntimeArgs};
+use casper_types::{addressable_entity::Weight, runtime_args, RuntimeArgs};
 
 const CONTRACT_EE_539_REGRESSION: &str = "ee_539_regression.wasm";
 const ARG_KEY_MANAGEMENT_THRESHOLD: &str = "key_management_threshold";

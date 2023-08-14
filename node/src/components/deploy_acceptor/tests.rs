@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::VecDeque,
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
     time::Duration,
@@ -23,6 +23,7 @@ use casper_execution_engine::engine_state::{BalanceResult, QueryResult, MAX_PAYM
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
+    addressable_entity::NamedKeys,
     testing::TestRng,
     Block, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
 };
@@ -391,7 +392,7 @@ fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Acc
     match test_scenario {
         TestScenario::FromPeerAccountWithInvalidAssociatedKeys
         | TestScenario::FromClientAccountWithInvalidAssociatedKeys => {
-            Account::create(AccountHash::default(), BTreeMap::new(), URef::default())
+            Account::create(AccountHash::default(), NamedKeys::new(), URef::default())
         }
         TestScenario::FromPeerAccountWithInsufficientWeight
         | TestScenario::FromClientAccountWithInsufficientWeight => {
@@ -400,13 +401,13 @@ fn create_account(account_hash: AccountHash, test_scenario: TestScenario) -> Acc
                     .expect("should create action threshold");
             Account::new(
                 account_hash,
-                BTreeMap::new(),
+                NamedKeys::new(),
                 URef::default(),
                 AssociatedKeys::new(account_hash, Weight::new(1)),
                 invalid_action_threshold,
             )
         }
-        _ => Account::create(account_hash, BTreeMap::new(), URef::default()),
+        _ => Account::create(account_hash, NamedKeys::new(), URef::default()),
     }
 }
 
@@ -526,7 +527,7 @@ impl reactor::Reactor for Reactor {
                                     | ContractPackageScenario::MissingContractVersion => {
                                         QueryResult::Success {
                                             value: Box::new(StoredValue::ContractPackage(
-                                                ContractPackage::default(),
+                                                Package::default(),
                                             )),
                                             proofs: vec![],
                                         }
@@ -541,7 +542,9 @@ impl reactor::Reactor for Reactor {
                                 ) => match contract_scenario {
                                     ContractScenario::Valid
                                     | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::Contract(Contract::default())),
+                                        value: Box::new(StoredValue::AddressableEntity(
+                                            AddressableEntity::default(),
+                                        )),
                                         proofs: vec![],
                                     },
                                     _ => QueryResult::ValueNotFound(String::new()),
@@ -558,7 +561,9 @@ impl reactor::Reactor for Reactor {
                                 match contract_scenario {
                                     ContractScenario::Valid
                                     | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::Contract(Contract::default())),
+                                        value: Box::new(StoredValue::AddressableEntity(
+                                            AddressableEntity::default(),
+                                        )),
                                         proofs: vec![],
                                     },
                                     ContractScenario::MissingContractAtHash
@@ -583,7 +588,7 @@ impl reactor::Reactor for Reactor {
                                 | ContractPackageScenario::MissingContractVersion => {
                                     QueryResult::Success {
                                         value: Box::new(StoredValue::ContractPackage(
-                                            ContractPackage::default(),
+                                            Package::default(),
                                         )),
                                         proofs: vec![],
                                     }

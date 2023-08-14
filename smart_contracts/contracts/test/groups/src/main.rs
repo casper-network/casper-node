@@ -11,10 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::{
-        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
-        CONTRACT_INITIAL_VERSION,
-    },
+    addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
+    package::CONTRACT_INITIAL_VERSION,
     runtime_args,
     system::{handle_payment, standard_payment},
     CLType, CLTyped, ContractPackageHash, Key, Parameter, RuntimeArgs, URef, U512,
