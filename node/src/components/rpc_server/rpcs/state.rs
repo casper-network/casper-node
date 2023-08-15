@@ -70,7 +70,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
-        public_key,
+        public_key: AccountIdentifier::PublicKey(public_key),
         block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
     }
 });
@@ -468,12 +468,22 @@ impl RpcWithOptionalParams for GetAuctionInfo {
     }
 }
 
+/// Identifier of an account.
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
+pub enum AccountIdentifier {
+    /// The public key of an account
+    PublicKey(PublicKey),
+    /// The account hash of an account
+    AccountHash(AccountHash),
+}
+
 /// Params for "state_get_account_info" RPC request
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetAccountInfoParams {
     /// The public key of the Account.
-    pub public_key: PublicKey,
+    pub public_key: AccountIdentifier,
     /// The block identifier.
     pub block_identifier: Option<BlockIdentifier>,
 }
@@ -530,7 +540,14 @@ impl RpcWithParams for GetAccountInfo {
 
         let state_root_hash = *block.header().state_root_hash();
         let base_key = {
-            let account_hash = params.public_key.to_account_hash();
+            let account_hash = match params.public_key{
+                AccountIdentifier::PublicKey(public_key) => {
+                    public_key.to_account_hash()
+                }
+                AccountIdentifier::AccountHash(account_hash) => {
+                    account_hash
+                }
+            };
             Key::Account(account_hash)
         };
         let (stored_value, merkle_proof) =
