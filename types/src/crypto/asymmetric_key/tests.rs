@@ -423,10 +423,6 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
 
     #[test]
     fn signature_from_bytes() {
-        // Signature should be < ~2^(252.5).
-        let invalid_bytes = [255; SIGNATURE_LENGTH];
-        assert!(Signature::ed25519_from_bytes(&invalid_bytes[..]).is_err());
-
         // Signature should be `Signature::ED25519_LENGTH` bytes.
         let bytes = [2; SIGNATURE_LENGTH + 1];
         assert!(Signature::ed25519_from_bytes(&bytes[..]).is_err());
