@@ -540,13 +540,9 @@ impl RpcWithParams for GetAccountInfo {
 
         let state_root_hash = *block.header().state_root_hash();
         let base_key = {
-            let account_hash = match params.public_key{
-                AccountIdentifier::PublicKey(public_key) => {
-                    public_key.to_account_hash()
-                }
-                AccountIdentifier::AccountHash(account_hash) => {
-                    account_hash
-                }
+            let account_hash = match params.public_key {
+                AccountIdentifier::PublicKey(public_key) => public_key.to_account_hash(),
+                AccountIdentifier::AccountHash(account_hash) => account_hash,
             };
             Key::Account(account_hash)
         };
