@@ -18,7 +18,7 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::ExecutionJournal;
+use super::Effects;
 #[cfg(feature = "json-schema")]
 use super::{Transform, TransformKind};
 #[cfg(any(feature = "testing", test))]
@@ -40,7 +40,7 @@ static EXECUTION_RESULT: Lazy<ExecutionResultV2> = Lazy::new(|| {
         "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
     )
     .unwrap();
-    let mut effects = ExecutionJournal::new();
+    let mut effects = Effects::new();
     effects.push(Transform::new(key1, TransformKind::AddUInt64(8u64)));
     effects.push(Transform::new(key2, TransformKind::Identity));
 
@@ -65,7 +65,7 @@ pub enum ExecutionResultV2 {
     /// The result of a failed execution.
     Failure {
         /// The effects of executing the deploy.
-        effects: ExecutionJournal,
+        effects: Effects,
         /// A record of transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost in Motes of executing the deploy.
@@ -76,7 +76,7 @@ pub enum ExecutionResultV2 {
     /// The result of a successful execution.
     Success {
         /// The effects of executing the deploy.
-        effects: ExecutionJournal,
+        effects: Effects,
         /// A record of transfers performed while executing the deploy.
         transfers: Vec<TransferAddr>,
         /// The cost in Motes of executing the deploy.
@@ -95,7 +95,7 @@ impl ExecutionResultV2 {
     /// Returns a random `ExecutionResultV2`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        let effects = ExecutionJournal::random(rng);
+        let effects = Effects::random(rng);
 
         let transfer_count = rng.gen_range(0..6);
         let mut transfers = vec![];
@@ -188,7 +188,7 @@ impl FromBytes for ExecutionResultV2 {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             RESULT_ERR_TAG => {
-                let (effects, remainder) = ExecutionJournal::from_bytes(remainder)?;
+                let (effects, remainder) = Effects::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let (error_message, remainder) = String::from_bytes(remainder)?;
@@ -201,7 +201,7 @@ impl FromBytes for ExecutionResultV2 {
                 Ok((execution_result, remainder))
             }
             RESULT_OK_TAG => {
-                let (effects, remainder) = ExecutionJournal::from_bytes(remainder)?;
+                let (effects, remainder) = Effects::from_bytes(remainder)?;
                 let (transfers, remainder) = Vec::<TransferAddr>::from_bytes(remainder)?;
                 let (cost, remainder) = U512::from_bytes(remainder)?;
                 let execution_result = ExecutionResultV2::Success {

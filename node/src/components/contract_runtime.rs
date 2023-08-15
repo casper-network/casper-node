@@ -978,7 +978,7 @@ mod trie_chunking_tests {
     use casper_types::{
         account::AccountHash,
         bytesrepr,
-        execution::{ExecutionJournal, Transform, TransformKind},
+        execution::{Effects, Transform, TransformKind},
         ActivationPoint, CLValue, ChunkWithProof, Digest, EraId, Key, ProtocolVersion, StoredValue,
         SystemConfig, WasmConfig,
     };
@@ -1057,7 +1057,7 @@ mod trie_chunking_tests {
         )
         .unwrap();
         let empty_state_root = contract_runtime.engine_state().get_state().empty_root();
-        let mut effects = ExecutionJournal::new();
+        let mut effects = Effects::new();
         for TestPair(key, value) in test_pair {
             effects.push(Transform::new(key, TransformKind::Write(value)));
         }

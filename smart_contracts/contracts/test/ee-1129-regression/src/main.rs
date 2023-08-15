@@ -7,7 +7,8 @@ use alloc::string::ToString;
 
 use casper_contract::contract_api::{runtime, storage, system};
 use casper_types::{
-    contracts::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints,
 };
 
 const ENTRY_POINT_NAME: &str = "create_purse";

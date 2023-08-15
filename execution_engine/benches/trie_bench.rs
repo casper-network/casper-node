@@ -4,21 +4,23 @@ use casper_storage::global_state::trie::{Pointer, PointerBlock, Trie};
 use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
-    CLValue, Digest, Key, StoredValue,
+    CLValue, ContractHash, Digest, Key, StoredValue,
 };
 
 fn serialize_trie_leaf(b: &mut Bencher) {
+    let contract_key: Key = ContractHash::new([42; 32]).into();
     let leaf = Trie::Leaf {
         key: Key::Account(AccountHash::new([0; 32])),
-        value: StoredValue::CLValue(CLValue::from_t(42_i32).unwrap()),
+        value: StoredValue::CLValue(CLValue::from_t(contract_key).unwrap()),
     };
     b.iter(|| ToBytes::to_bytes(black_box(&leaf)));
 }
 
 fn deserialize_trie_leaf(b: &mut Bencher) {
+    let contract_key: Key = ContractHash::new([42; 32]).into();
     let leaf = Trie::Leaf {
         key: Key::Account(AccountHash::new([0; 32])),
-        value: StoredValue::CLValue(CLValue::from_t(42_i32).unwrap()),
+        value: StoredValue::CLValue(CLValue::from_t(contract_key).unwrap()),
     };
     let leaf_bytes = leaf.to_bytes().unwrap();
     b.iter(|| Trie::<Key, StoredValue>::from_bytes(black_box(&leaf_bytes)));

@@ -8,9 +8,7 @@ const CONTRACT_EE_536_REGRESSION: &str = "ee_536_regression.wasm";
 
 #[ignore]
 #[test]
-fn should_run_ee_536_get_uref_regression_test() {
-    // This test runs a contract that's after every call extends the same key with
-    // more data
+fn should_run_ee_536_associated_account_management_regression() {
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_EE_536_REGRESSION,

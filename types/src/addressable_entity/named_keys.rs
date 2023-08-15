@@ -15,12 +15,14 @@ use crate::{
 };
 
 /// A collection of named keys.
-#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug)]
+#[derive(Clone, Eq, PartialEq, Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
+#[rustfmt::skip]
 pub struct NamedKeys(
-    #[serde(with = "BTreeMapToArray::<String, Key, Labels>")] BTreeMap<String, Key>,
+    #[serde(with = "BTreeMapToArray::<String, Key, Labels>")]
+    BTreeMap<String, Key>,
 );
 
 impl NamedKeys {
@@ -144,12 +146,29 @@ impl KeyValueJsonSchema for Labels {
         Some("The value of the entry: a casper `Key` type.");
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//
-//     #[test]
-//     fn should_be_backwards_compat() {
-//         unimplemented!()
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use rand::Rng;
+
+    use super::*;
+    use crate::testing::TestRng;
+
+    /// `NamedKeys` was previously (pre node v2.0.0) just an alias for `BTreeMap<String, Key>`.
+    /// Check if we serialize as the old form, that can deserialize to the new.
+    #[test]
+    fn should_be_backwards_compatible() {
+        let rng = &mut TestRng::new();
+        let mut named_keys = NamedKeys::new();
+        assert!(named_keys.insert("a".to_string(), rng.gen()).is_none());
+        assert!(named_keys.insert("bb".to_string(), rng.gen()).is_none());
+        assert!(named_keys.insert("ccc".to_string(), rng.gen()).is_none());
+
+        let serialized_old = bincode::serialize(&named_keys.0).unwrap();
+        let parsed_new = bincode::deserialize(&serialized_old).unwrap();
+        assert_eq!(named_keys, parsed_new);
+
+        let serialized_old = bytesrepr::serialize(&named_keys.0).unwrap();
+        let parsed_new = bytesrepr::deserialize(serialized_old).unwrap();
+        assert_eq!(named_keys, parsed_new);
+    }
+}

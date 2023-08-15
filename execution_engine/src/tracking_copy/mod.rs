@@ -17,10 +17,11 @@ use thiserror::Error;
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
+    addressable_entity::NamedKeys,
     bytesrepr::{self},
-    execution::{ExecutionJournal, Transform, TransformError, TransformKind},
-    CLType, CLValue, CLValueError, Digest, Key, KeyTag, NamedKeys, StoredValue,
-    StoredValueTypeMismatch, Tagged, U512,
+    execution::{Effects, Transform, TransformError, TransformKind},
+    CLType, CLValue, CLValueError, Digest, Key, KeyTag, StoredValue, StoredValueTypeMismatch,
+    Tagged, U512,
 };
 
 pub use self::ext::TrackingCopyExt;
@@ -220,7 +221,7 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
 pub struct TrackingCopy<R> {
     reader: R,
     cache: TrackingCopyCache<HeapSize>,
-    effects: ExecutionJournal,
+    effects: Effects,
 }
 
 /// Result of executing an "add" operation on a value in the state.
@@ -258,7 +259,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
             reader,
             // TODO: Should `max_cache_size` be a fraction of wasm memory limit?
             cache: TrackingCopyCache::new(1024 * 16, HeapSize),
-            effects: ExecutionJournal::new(),
+            effects: Effects::new(),
         }
     }
 
@@ -408,8 +409,8 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
         }
     }
 
-    /// Returns a copy of the execution journal cached by this instance.
-    pub fn effects(&self) -> ExecutionJournal {
+    /// Returns a copy of the execution effects cached by this instance.
+    pub fn effects(&self) -> Effects {
         self.effects.clone()
     }
 
@@ -481,6 +482,15 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
+                StoredValue::Contract(contract) => {
+                    let name = query.next_name();
+                    if let Some(key) = contract.named_keys().get(name) {
+                        query.navigate(*key);
+                    } else {
+                        let msg_prefix = format!("Name {} not found in Contract", name);
+                        return Ok(query.into_not_found_result(&msg_prefix));
+                    }
+                }
                 StoredValue::CLValue(cl_value) if cl_value.cl_type() == &CLType::Key => {
                     if let Ok(key) = cl_value.to_owned().into_t::<Key>() {
                         query.navigate(key);
@@ -496,9 +506,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     );
                     return Ok(query.into_not_found_result(&msg_prefix));
                 }
-                StoredValue::Contract(contract) => {
+                StoredValue::AddressableEntity(entity) => {
                     let name = query.next_name();
-                    if let Some(key) = contract.named_keys().get(name) {
+                    if let Some(key) = entity.named_keys().get(name) {
                         query.navigate(*key);
                     } else {
                         let msg_prefix = format!("Name {} not found in Contract", name);
@@ -632,6 +642,7 @@ pub fn validate_query_proof(
     }
 
     let mut proofs_iter = proofs.iter();
+    let mut path_components_iter = path.iter();
 
     // length check above means we are safe to unwrap here
     let first_proof = proofs_iter.next().unwrap();
@@ -646,11 +657,21 @@ pub fn validate_query_proof(
 
     let mut proof_value = first_proof.value();
 
-    for (proof, path_component) in proofs_iter.zip(path.iter()) {
+    for proof in proofs_iter {
         let named_keys = match proof_value {
             StoredValue::Account(account) => account.named_keys(),
             StoredValue::Contract(contract) => contract.named_keys(),
+            StoredValue::AddressableEntity(entity) => entity.named_keys(),
+            StoredValue::CLValue(_) => {
+                proof_value = proof.value();
+                continue;
+            }
             _ => return Err(ValidationError::PathCold),
+        };
+
+        let path_component = match path_components_iter.next() {
+            Some(path_component) => path_component,
+            None => return Err(ValidationError::PathCold),
         };
 
         let key = match named_keys.get(path_component) {

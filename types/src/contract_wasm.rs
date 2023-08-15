@@ -12,13 +12,12 @@ use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::{
-    account,
-    account::TryFromSliceForAccountHashError,
+    addressable_entity,
     bytesrepr::{Bytes, Error, FromBytes, ToBytes},
     checksummed_hex, uref, CLType, CLTyped, HashAddr,
 };
 
-const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
+const BYTE_CODE_MAX_DISPLAY_LEN: usize = 16;
 const KEY_HASH_LENGTH: usize = 32;
 const WASM_STRING_PREFIX: &str = "contract-wasm-";
 
@@ -31,9 +30,9 @@ pub struct TryFromSliceForContractHashError(());
 pub enum FromStrError {
     InvalidPrefix,
     Hex(base16::DecodeError),
-    Account(TryFromSliceForAccountHashError),
+    // Account(TryFromSliceForAccountHashError),
     Hash(TryFromSliceError),
-    AccountHash(account::FromStrError),
+    AccountHash(addressable_entity::FromAccountHashStrError),
     URef(uref::FromStrError),
 }
 
@@ -43,20 +42,14 @@ impl From<base16::DecodeError> for FromStrError {
     }
 }
 
-impl From<TryFromSliceForAccountHashError> for FromStrError {
-    fn from(error: TryFromSliceForAccountHashError) -> Self {
-        FromStrError::Account(error)
-    }
-}
-
 impl From<TryFromSliceError> for FromStrError {
     fn from(error: TryFromSliceError) -> Self {
         FromStrError::Hash(error)
     }
 }
 
-impl From<account::FromStrError> for FromStrError {
-    fn from(error: account::FromStrError) -> Self {
+impl From<addressable_entity::FromAccountHashStrError> for FromStrError {
+    fn from(error: addressable_entity::FromAccountHashStrError) -> Self {
         FromStrError::AccountHash(error)
     }
 }
@@ -72,7 +65,7 @@ impl Display for FromStrError {
         match self {
             FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
             FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
-            FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
+            // FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
             FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
             FromStrError::AccountHash(error) => {
                 write!(f, "account hash from string error: {:?}", error)
@@ -242,11 +235,11 @@ pub struct ContractWasm {
 
 impl Debug for ContractWasm {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if self.bytes.len() > CONTRACT_WASM_MAX_DISPLAY_LEN {
+        if self.bytes.len() > BYTE_CODE_MAX_DISPLAY_LEN {
             write!(
                 f,
                 "ContractWasm(0x{}...)",
-                base16::encode_lower(&self.bytes[..CONTRACT_WASM_MAX_DISPLAY_LEN])
+                base16::encode_lower(&self.bytes[..BYTE_CODE_MAX_DISPLAY_LEN])
             )
         } else {
             write!(f, "ContractWasm(0x{})", base16::encode_lower(&self.bytes))

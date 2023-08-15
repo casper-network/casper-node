@@ -4,9 +4,7 @@ use std::collections::VecDeque;
 
 use casper_types::{
     bytesrepr::FromBytes,
-    execution::{
-        ExecutionJournal, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind,
-    },
+    execution::{Effects, ExecutionResultV2 as TypesExecutionResult, Transform, TransformKind},
     CLTyped, CLValue, Gas, Key, Motes, StoredValue, TransferAddr,
 };
 
@@ -25,8 +23,8 @@ pub enum ExecutionResult {
         transfers: Vec<TransferAddr>,
         /// Gas consumed up to the point of the failure.
         cost: Gas,
-        /// Journal of execution.
-        effects: ExecutionJournal,
+        /// Execution effects.
+        effects: Effects,
     },
     /// Execution was finished successfully
     Success {
@@ -34,8 +32,8 @@ pub enum ExecutionResult {
         transfers: Vec<TransferAddr>,
         /// Gas cost.
         cost: Gas,
-        /// Journal of execution.
-        effects: ExecutionJournal,
+        /// Execution effects.
+        effects: Effects,
     },
 }
 
@@ -61,7 +59,7 @@ impl ExecutionResult {
             error,
             transfers: Vec::default(),
             cost: Gas::default(),
-            effects: ExecutionJournal::new(),
+            effects: Effects::new(),
         }
     }
 
@@ -111,7 +109,7 @@ impl ExecutionResult {
     }
 
     /// The ordered execution effects regardless of variant.
-    pub fn effects(&self) -> &ExecutionJournal {
+    pub fn effects(&self) -> &Effects {
         match self {
             ExecutionResult::Failure { effects, .. } | ExecutionResult::Success { effects, .. } => {
                 effects
@@ -175,7 +173,7 @@ impl ExecutionResult {
     ///
     /// This method preserves the [`ExecutionResult`] variant and updates the
     /// `effects` field only.
-    pub fn with_effects(self, effects: ExecutionJournal) -> Self {
+    pub fn with_effects(self, effects: Effects) -> Self {
         match self {
             ExecutionResult::Failure {
                 error,
@@ -278,7 +276,7 @@ impl ExecutionResult {
             .ok_or(error::Error::InsufficientPayment)?;
         let new_balance_value =
             StoredValue::CLValue(CLValue::from_t(new_balance.value()).map_err(ExecError::from)?);
-        let mut effects = ExecutionJournal::new();
+        let mut effects = Effects::new();
         effects.push(Transform::new(
             account_main_purse_balance_key.normalize(),
             TransformKind::Write(new_balance_value),

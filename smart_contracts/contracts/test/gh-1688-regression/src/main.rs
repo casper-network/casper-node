@@ -6,7 +6,8 @@ extern crate alloc;
 use alloc::string::ToString;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    contracts::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints,
 };
 
 const METHOD_PUT_KEY: &str = "put_key";

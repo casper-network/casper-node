@@ -309,63 +309,8 @@ impl Block {
         let era_id = EraId::random(rng);
         let height = rng.gen();
         let is_switch = rng.gen_bool(0.1);
+        let protocol_version = ProtocolVersion::default();
 
-        Block::random_with_specifics(
-            rng,
-            era_id,
-            height,
-            ProtocolVersion::default(),
-            is_switch,
-            None,
-        )
-    }
-
-    /// Returns a random switch block.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_switch_block(rng: &mut TestRng) -> Self {
-        let era_id = EraId::random(rng);
-        let height = rng.gen();
-
-        Block::random_with_specifics(
-            rng,
-            era_id,
-            height,
-            ProtocolVersion::default(),
-            true,
-            iter::empty(),
-        )
-    }
-
-    /// Returns a random non-switch block.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_non_switch_block(rng: &mut TestRng) -> Self {
-        let era_id = EraId::random(rng);
-        let height = rng.gen();
-
-        Block::random_with_specifics(
-            rng,
-            era_id,
-            height,
-            ProtocolVersion::default(),
-            false,
-            iter::empty(),
-        )
-    }
-
-    /// Returns a random block, but using the provided values.
-    ///
-    /// If `deploy_hashes_iter` is empty, a few random deploy hashes will be added to the
-    /// `deploy_hashes` and `transfer_hashes` fields of the body.  Otherwise, the provided deploy
-    /// hashes will populate the `deploy_hashes` field and `transfer_hashes` will be empty.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_with_specifics<I: IntoIterator<Item = DeployHash>>(
-        rng: &mut TestRng,
-        era_id: EraId,
-        height: u64,
-        protocol_version: ProtocolVersion,
-        is_switch: bool,
-        deploy_hashes_iter: I,
-    ) -> Self {
         let parent_hash = BlockHash::random(rng);
         let parent_seed = Digest::random(rng);
         let state_root_hash = Digest::random(rng);
@@ -379,18 +324,18 @@ impl Block {
         });
         let timestamp = Timestamp::now();
         let proposer = PublicKey::random(rng);
-        let mut deploy_hashes: Vec<DeployHash> = deploy_hashes_iter.into_iter().collect();
-        let mut transfer_hashes: Vec<DeployHash> = vec![];
-        if deploy_hashes.is_empty() {
+        let deploy_hashes = {
             let count = rng.gen_range(0..6);
-            deploy_hashes = iter::repeat_with(|| DeployHash::random(rng))
+            iter::repeat_with(|| DeployHash::random(rng))
                 .take(count)
-                .collect();
+                .collect()
+        };
+        let transfer_hashes = {
             let count = rng.gen_range(0..6);
-            transfer_hashes = iter::repeat_with(|| DeployHash::random(rng))
+            iter::repeat_with(|| DeployHash::random(rng))
                 .take(count)
-                .collect();
-        }
+                .collect()
+        };
 
         Block::new(
             parent_hash,
@@ -408,67 +353,14 @@ impl Block {
         )
     }
 
-    /// Returns a random block, but using the provided values.
-    ///
-    /// If `validator_weights` is `Some`, a switch block is created and includes the provided
-    /// weights in the era end's `next_era_validator_weights` field.
+    /// Makes the block invalid, for testing purpose.
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_with_specifics_and_parent_and_validator_weights(
-        rng: &mut TestRng,
-        era_id: EraId,
-        height: u64,
-        protocol_version: ProtocolVersion,
-        parent_hash: BlockHash,
-        validator_weights: Option<BTreeMap<PublicKey, U512>>,
-    ) -> Self {
-        let parent_seed = Digest::random(rng);
-        let state_root_hash = Digest::random(rng);
-        let random_bit = rng.gen();
-        let era_end = validator_weights.map(|weights| EraEnd::new(EraReport::random(rng), weights));
-        let timestamp = Timestamp::now();
-        let proposer = PublicKey::random(rng);
-        let count = rng.gen_range(0..6);
-        let deploy_hashes = iter::repeat_with(|| DeployHash::random(rng))
-            .take(count)
-            .collect();
-        let count = rng.gen_range(0..6);
-        let transfer_hashes = iter::repeat_with(|| DeployHash::random(rng))
-            .take(count)
-            .collect();
+    pub fn make_invalid(self, rng: &mut TestRng) -> Self {
+        let block = Block {
+            hash: BlockHash::random(rng),
+            ..self
+        };
 
-        Block::new(
-            parent_hash,
-            parent_seed,
-            state_root_hash,
-            random_bit,
-            era_end,
-            timestamp,
-            era_id,
-            height,
-            protocol_version,
-            proposer,
-            deploy_hashes,
-            transfer_hashes,
-        )
-    }
-
-    /// Returns a random block, but with the block hash generated randomly rather than derived by
-    /// hashing the correct input data, rendering the block invalid.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_invalid(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0..6);
-        let height = era * 10 + rng.gen_range(0..10);
-        let is_switch = rng.gen_bool(0.1);
-
-        let mut block = Block::random_with_specifics(
-            rng,
-            EraId::from(era),
-            height,
-            ProtocolVersion::V1_0_0,
-            is_switch,
-            None,
-        );
-        block.hash = BlockHash::random(rng);
         assert!(block.verify().is_err());
         block
     }

@@ -31,7 +31,7 @@ fn should_charge_for_user_error(
         Motes::from_gas(transfer_cost, WASMLESS_TRANSFER_FIXED_GAS_PRICE).expect("gas overflow");
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let main_purse = default_account.main_purse();
     let purse_balance_before = builder.get_purse_balance(main_purse);
@@ -151,7 +151,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
 
     let mut builder = setup();
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let main_purse = default_account.main_purse();
     let purse_balance_before = builder.get_purse_balance(main_purse);
@@ -205,7 +205,7 @@ fn should_charge_for_wasmless_transfer_missing_args() {
 fn should_charge_for_wasmless_transfer_invalid_purse() {
     let mut builder = setup();
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let main_purse = default_account.main_purse();
 

@@ -23,11 +23,11 @@ fn regression_20220217_transfer_mint_by_hash_from_main_purse() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let default_purse = default_account.main_purse();
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_purse = account_1.main_purse();
 
@@ -67,18 +67,18 @@ fn regression_20220217_transfer_mint_by_package_hash_from_main_purse() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let default_purse = default_account.main_purse();
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_purse = account_1.main_purse();
 
     let mint_hash = builder.get_mint_contract_hash();
 
     let mint = builder
-        .get_contract(mint_hash)
+        .get_addressable_entity(mint_hash)
         .expect("should have mint contract");
     let mint_package_hash = mint.contract_package_hash();
 
@@ -117,7 +117,7 @@ fn regression_20220217_mint_by_hash_transfer_from_other_purse() {
     let mut builder = setup();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let purse_1 = account
         .named_keys()
@@ -157,7 +157,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
     let mut builder = setup();
 
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_purse = account_1
         .named_keys()
@@ -167,7 +167,7 @@ fn regression_20220217_mint_by_hash_transfer_from_someones_purse() {
         .expect("should have account main purse");
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let purse_1 = default_account
@@ -211,7 +211,7 @@ fn regression_20220217_should_not_transfer_funds_on_unrelated_purses() {
     let mut builder = setup();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let purse_1 = account
         .named_keys()
@@ -313,11 +313,11 @@ fn regression_20220217_auction_add_bid_directly() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let default_purse = default_account.main_purse();
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_purse = account_1.main_purse();
 
@@ -357,11 +357,11 @@ fn regression_20220217_() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let default_purse = default_account.main_purse();
     let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
     let account_1_purse = account_1.main_purse();
 
@@ -404,7 +404,7 @@ fn mint_by_hash_transfer_should_fail_because_lack_of_target_uref_access() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let mint_hash = builder.get_mint_contract_hash();

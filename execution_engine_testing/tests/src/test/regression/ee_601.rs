@@ -34,11 +34,16 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         .exec(exec_request);
 
+    let contract_key: Key = builder
+        .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract hash associated with default account")
+        .into();
+
     let effects = &builder.get_effects()[0];
     let mut add_keys_iter = effects
         .transforms()
         .iter()
-        .filter(|transform| transform.key() == &Key::Account(*DEFAULT_ACCOUNT_ADDR))
+        .filter(|transform| transform.key() == &contract_key)
         .map(|transform| transform.kind());
     let payment_uref = match add_keys_iter.next().unwrap() {
         TransformKind::AddKeys(named_keys) => named_keys.get("new_uref_result-payment").unwrap(),

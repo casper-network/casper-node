@@ -453,6 +453,14 @@ impl<K, V> Trie<K, V> {
         }
     }
 
+    pub fn tag_type(&self) -> String {
+        match self {
+            Trie::Leaf { .. } => "Leaf".to_string(),
+            Trie::Node { .. } => "Node".to_string(),
+            Trie::Extension { .. } => "Extension".to_string(),
+        }
+    }
+
     /// Constructs a [`Trie::Leaf`] from a given key and value.
     pub fn leaf(key: K, value: V) -> Self {
         Trie::Leaf { key, value }

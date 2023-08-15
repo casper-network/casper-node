@@ -11,12 +11,11 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::{
-        EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, CONTRACT_INITIAL_VERSION,
-    },
+    addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
+    package::CONTRACT_INITIAL_VERSION,
     runtime_args,
     system::{handle_payment, standard_payment},
-    CLType, CLTyped, ContractPackageHash, Key, NamedKeys, Parameter, RuntimeArgs, URef, U512,
+    CLType, CLTyped, ContractPackageHash, Key, Parameter, RuntimeArgs, URef, U512,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

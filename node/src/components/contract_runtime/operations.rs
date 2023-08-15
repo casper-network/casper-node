@@ -17,7 +17,7 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
-    execution::{ExecutionJournal, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
+    execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
     Block, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport, Key, ProtocolVersion,
     PublicKey, U512,
 };
@@ -170,7 +170,7 @@ pub fn execute_finalized_block(
     let mut checksum_registry = ChecksumRegistry::new();
     checksum_registry.insert(APPROVALS_CHECKSUM_NAME, approvals_checksum);
     checksum_registry.insert(EXECUTION_RESULTS_CHECKSUM_NAME, execution_results_checksum);
-    let mut effects = ExecutionJournal::new();
+    let mut effects = Effects::new();
     effects.push(Transform::new(
         Key::ChecksumRegistry,
         TransformKind::Write(
@@ -399,7 +399,7 @@ fn commit_transforms<S>(
     engine_state: &EngineState<S>,
     metrics: Option<Arc<Metrics>>,
     state_root_hash: Digest,
-    effects: ExecutionJournal,
+    effects: Effects,
 ) -> Result<Digest, engine_state::Error>
 where
     S: StateProvider + CommitProvider,

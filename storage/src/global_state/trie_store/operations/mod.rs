@@ -81,19 +81,23 @@ where
                     assert!(index < RADIX, "key length must be < {}", RADIX);
                     pointer_block[index]
                 };
+
                 match maybe_pointer {
-                    Some(pointer) => match store.get(txn, pointer.hash())? {
-                        Some(next) => {
+                    Some(pointer) => match store.get(txn, pointer.hash()) {
+                        Ok(Some(next)) => {
                             depth += 1;
                             current = next;
                         }
-                        None => {
+                        Ok(None) => {
                             warn!(
                                 "No trie value at key: {:?} (reading from key: {:?})",
                                 pointer.hash(),
                                 key
                             );
                             return Ok(ReadResult::NotFound);
+                        }
+                        Err(error) => {
+                            return Err(error.into());
                         }
                     },
                     None => {
@@ -280,6 +284,7 @@ where
     })
 }
 
+#[derive(Debug)]
 struct TrieScan<K, V> {
     tip: Trie<K, V>,
     parents: Parents<K, V>,

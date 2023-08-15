@@ -39,13 +39,13 @@ fn should_insert_account_into_named_keys() {
 
     builder.exec(exec_request_2).expect_success().commit();
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
     assert!(
-        account_1.named_keys().contains(TEST_PURSE_NAME),
-        "account_1 named_keys should include test purse"
+        contract_1.named_keys().contains(TEST_PURSE_NAME),
+        "contract_1 named_keys should include test purse"
     );
 }
 
@@ -75,11 +75,11 @@ fn should_create_usable_purse() {
         .expect_success()
         .commit();
 
-    let account_1 = builder
-        .get_account(ACCOUNT_1_ADDR)
+    let contract_1 = builder
+        .get_entity_by_account_hash(ACCOUNT_1_ADDR)
         .expect("should have account");
 
-    let purse = account_1
+    let purse = contract_1
         .named_keys()
         .get(TEST_PURSE_NAME)
         .expect("should have known key")

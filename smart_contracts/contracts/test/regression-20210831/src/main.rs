@@ -11,11 +11,12 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
+    addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     runtime_args,
     system::auction::{self, DelegationRate},
     CLType, CLTyped, CLValue, ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Key, NamedKeys, Parameter, PublicKey, RuntimeArgs, U512,
+    EntryPoints, Key, Parameter, PublicKey, RuntimeArgs, U512,
 };
 
 const METHOD_ADD_BID_PROXY_CALL_1: &str = "add_bid_proxy_call_1";

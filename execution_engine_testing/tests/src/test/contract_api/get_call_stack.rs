@@ -6,7 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
-    account::Account, runtime_args, system::CallStackElement, CLValue, ContractHash,
+    runtime_args, system::CallStackElement, AddressableEntity, CLValue, ContractHash,
     ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
 };
 
@@ -101,7 +101,7 @@ trait AccountExt {
     fn get_hash(&self, key: &str) -> HashAddr;
 }
 
-impl AccountExt for Account {
+impl AccountExt for AddressableEntity {
     fn get_hash(&self, key: &str) -> HashAddr {
         self.named_keys()
             .get(key)
@@ -372,7 +372,9 @@ mod session {
     fn session_bytes_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -404,7 +406,9 @@ mod session {
     fn session_bytes_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -436,7 +440,9 @@ mod session {
     fn session_bytes_to_stored_versioned_contract_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -475,7 +481,9 @@ mod session {
     fn session_bytes_to_stored_contract_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -513,7 +521,9 @@ mod session {
     fn session_bytes_to_stored_versioned_session_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -553,7 +563,9 @@ mod session {
     fn session_bytes_to_stored_versioned_session_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -592,7 +604,9 @@ mod session {
     fn session_bytes_to_stored_session_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -630,7 +644,9 @@ mod session {
     fn session_bytes_to_stored_session_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -666,7 +682,9 @@ mod session {
     fn session_bytes_to_stored_versioned_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -698,7 +716,9 @@ mod session {
     fn session_bytes_to_stored_versioned_session_to_stored_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -737,7 +757,9 @@ mod session {
     fn session_bytes_to_stored_session_to_stored_versioned_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -775,7 +797,9 @@ mod session {
     fn session_bytes_to_stored_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -809,7 +833,9 @@ mod session {
     fn session_bytes_to_stored_versioned_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -845,7 +871,9 @@ mod session {
     fn session_bytes_to_stored_versioned_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -880,7 +908,9 @@ mod session {
     fn session_bytes_to_stored_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -914,7 +944,9 @@ mod session {
     fn session_bytes_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
@@ -947,7 +979,9 @@ mod session {
     fn stored_versioned_contract_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -982,7 +1016,9 @@ mod session {
     fn stored_versioned_contract_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -1026,7 +1062,9 @@ mod session {
     fn stored_versioned_contract_by_name_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1061,7 +1099,9 @@ mod session {
     fn stored_versioned_contract_by_hash_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1096,7 +1136,9 @@ mod session {
     fn stored_contract_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1131,7 +1173,9 @@ mod session {
     fn stored_contract_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1175,7 +1219,9 @@ mod session {
     fn stored_contract_by_name_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1209,7 +1255,9 @@ mod session {
     fn stored_contract_by_hash_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1245,7 +1293,9 @@ mod session {
     fn stored_versioned_contract_by_name_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -1275,7 +1325,9 @@ mod session {
     fn stored_versioned_contract_by_hash_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -1305,7 +1357,9 @@ mod session {
     fn stored_versioned_contract_by_name_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
@@ -1334,7 +1388,9 @@ mod session {
     fn stored_versioned_contract_by_hash_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1364,7 +1420,9 @@ mod session {
     fn stored_contract_by_name_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -1393,7 +1451,9 @@ mod session {
     fn stored_contract_by_hash_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1423,7 +1483,9 @@ mod session {
     fn stored_contract_by_name_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
@@ -1451,7 +1513,9 @@ mod session {
     fn stored_contract_by_hash_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
@@ -1480,7 +1544,9 @@ mod session {
     ) {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -1519,7 +1585,9 @@ mod session {
     ) {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1557,7 +1625,9 @@ mod session {
     ) {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1593,7 +1663,9 @@ mod session {
     fn stored_versioned_contract_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1628,7 +1700,9 @@ mod session {
     ) {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -1665,7 +1739,9 @@ mod session {
     fn stored_contract_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1701,7 +1777,9 @@ mod session {
     fn stored_contract_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1736,7 +1814,9 @@ mod session {
     fn stored_contract_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
@@ -1770,7 +1850,9 @@ mod session {
     fn stored_versioned_session_by_name_to_stored_versioned_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -1805,7 +1887,9 @@ mod session {
     fn stored_versioned_session_by_hash_to_stored_versioned_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -1840,7 +1924,9 @@ mod session {
     fn stored_versioned_session_by_name_to_stored_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1875,7 +1961,9 @@ mod session {
     fn stored_versioned_session_by_hash_to_stored_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1910,7 +1998,9 @@ mod session {
     fn stored_session_by_name_to_stored_versioned_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1945,7 +2035,9 @@ mod session {
     fn stored_session_by_hash_to_stored_versioned_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -1980,7 +2072,9 @@ mod session {
     fn stored_session_by_name_to_stored_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2014,7 +2108,9 @@ mod session {
     fn stored_session_by_hash_to_stored_session() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2048,7 +2144,9 @@ mod session {
     fn stored_versioned_session_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -2083,7 +2181,9 @@ mod session {
     fn stored_versioned_session_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -2118,7 +2218,9 @@ mod session {
     fn stored_versioned_session_by_name_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2153,7 +2255,9 @@ mod session {
     fn stored_versioned_session_by_hash_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2188,7 +2292,9 @@ mod session {
     fn stored_session_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2223,7 +2329,9 @@ mod session {
     fn stored_session_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2258,7 +2366,9 @@ mod session {
     fn stored_session_by_name_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2292,7 +2402,9 @@ mod session {
     fn stored_session_by_hash_to_stored_contract() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2329,7 +2441,9 @@ mod session {
     ) {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -2368,7 +2482,9 @@ mod session {
     {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2406,7 +2522,9 @@ mod session {
     {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2442,7 +2560,9 @@ mod session {
     fn stored_versioned_session_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2477,7 +2597,9 @@ mod session {
     {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -2514,7 +2636,9 @@ mod session {
     fn stored_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2550,7 +2674,9 @@ mod session {
     fn stored_session_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2585,7 +2711,9 @@ mod session {
     fn stored_session_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
@@ -2799,7 +2927,9 @@ mod payment {
     fn payment_bytes_to_stored_versioned_session_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -2822,7 +2952,9 @@ mod payment {
     fn payment_bytes_to_stored_versioned_session_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2844,7 +2976,9 @@ mod payment {
     fn payment_bytes_to_stored_session_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2870,7 +3004,9 @@ mod payment {
     fn payment_bytes_to_stored_contract_to_stored_session() {
         let call_depth = 5usize;
         let mut builder = super::setup();
-        let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+        let default_account = builder
+            .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+            .unwrap();
         let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
         let subcalls = vec![
@@ -2885,7 +3021,9 @@ mod payment {
     fn payment_bytes_to_stored_session_to_stored_contract_() {
         let call_depth = 5usize;
         let mut builder = super::setup();
-        let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+        let default_account = builder
+            .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+            .unwrap();
         let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
         let subcalls = vec![
@@ -2902,7 +3040,9 @@ mod payment {
     fn payment_bytes_to_stored_versioned_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -2925,7 +3065,9 @@ mod payment {
     fn payment_bytes_to_stored_versioned_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2947,7 +3089,9 @@ mod payment {
     fn payment_bytes_to_stored_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2970,7 +3114,9 @@ mod payment {
     fn payment_bytes_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![
@@ -2992,7 +3138,9 @@ mod payment {
     fn stored_versioned_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -3010,7 +3158,9 @@ mod payment {
     fn stored_versioned_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -3033,7 +3183,9 @@ mod payment {
     fn stored_versioned_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
@@ -3047,7 +3199,9 @@ mod payment {
     fn stored_versioned_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3067,7 +3221,9 @@ mod payment {
     fn stored_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -3085,7 +3241,9 @@ mod payment {
     fn stored_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3109,7 +3267,9 @@ mod payment {
     fn stored_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
@@ -3123,7 +3283,9 @@ mod payment {
     fn stored_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
@@ -3142,7 +3304,9 @@ mod payment {
     fn stored_versioned_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -3160,7 +3324,9 @@ mod payment {
     fn stored_versioned_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -3183,7 +3349,9 @@ mod payment {
     fn stored_versioned_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
@@ -3197,7 +3365,9 @@ mod payment {
     fn stored_versioned_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3217,7 +3387,9 @@ mod payment {
     fn stored_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
@@ -3235,7 +3407,9 @@ mod payment {
     fn stored_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3259,7 +3433,9 @@ mod payment {
     fn stored_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
@@ -3273,7 +3449,9 @@ mod payment {
     fn stored_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
@@ -3295,7 +3473,9 @@ mod payment {
     ) {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -3319,7 +3499,9 @@ mod payment {
     {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3347,7 +3529,9 @@ mod payment {
     {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3370,7 +3554,9 @@ mod payment {
     fn stored_versioned_payment_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3397,7 +3583,9 @@ mod payment {
     {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let mut subcalls =
@@ -3420,7 +3608,9 @@ mod payment {
     fn stored_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3447,7 +3637,9 @@ mod payment {
     fn stored_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3470,7 +3662,9 @@ mod payment {
     fn stored_payment_by_name_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
             let mut builder = super::setup();
-            let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+            let default_account = builder
+                .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+                .unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls = vec![

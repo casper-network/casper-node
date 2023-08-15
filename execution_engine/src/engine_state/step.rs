@@ -5,7 +5,7 @@
 use std::vec::Vec;
 
 use casper_types::{
-    bytesrepr, execution::ExecutionJournal, CLValueError, Digest, EraId, ProtocolVersion, PublicKey,
+    bytesrepr, execution::Effects, CLValueError, Digest, EraId, ProtocolVersion, PublicKey,
 };
 
 use crate::{engine_state::Error, execution, runtime::stack::RuntimeStackOverflow};
@@ -158,5 +158,5 @@ pub struct StepSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Digest,
     /// Effects of executing a step request.
-    pub effects: ExecutionJournal,
+    pub effects: Effects,
 }

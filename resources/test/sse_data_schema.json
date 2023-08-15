@@ -196,7 +196,7 @@
               "$ref": "#/definitions/EraId"
             },
             "execution_effects": {
-              "$ref": "#/definitions/ExecutionJournal"
+              "$ref": "#/definitions/Effects"
             }
           }
         }
@@ -1317,7 +1317,7 @@
       ]
     },
     "ExecutionEffect": {
-      "description": "The journal of execution transforms from a single deploy.",
+      "description": "The sequence of execution transforms from a single deploy.",
       "type": "object",
       "required": [
         "operations",
@@ -1332,7 +1332,7 @@
           }
         },
         "transforms": {
-          "description": "The journal of execution transforms.",
+          "description": "The sequence of execution transforms.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransformEntry"
@@ -1657,6 +1657,13 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Writes the addressable entity to global state.",
+          "type": "string",
+          "enum": [
+            "WriteAddressableEntity"
+          ]
         }
       ]
     },
@@ -2239,7 +2246,7 @@
                   "description": "The effects of executing the deploy.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/ExecutionJournal"
+                      "$ref": "#/definitions/Effects"
                     }
                   ]
                 },
@@ -2287,7 +2294,7 @@
                   "description": "The effects of executing the deploy.",
                   "allOf": [
                     {
-                      "$ref": "#/definitions/ExecutionJournal"
+                      "$ref": "#/definitions/Effects"
                     }
                   ]
                 },
@@ -2314,7 +2321,7 @@
         }
       ]
     },
-    "ExecutionJournal": {
+    "Effects": {
       "description": "A log of all transforms produced during execution.",
       "type": "array",
       "items": {

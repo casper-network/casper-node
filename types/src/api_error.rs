@@ -6,11 +6,11 @@ use core::{
 };
 
 use crate::{
-    account::{
-        AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, TryFromIntError,
+    addressable_entity::{
+        self, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, TryFromIntError,
         TryFromSliceForAccountHashError, UpdateKeyFailure,
     },
-    bytesrepr, contracts,
+    bytesrepr,
     system::{auction, handle_payment, mint},
     CLValueError,
 };
@@ -251,7 +251,7 @@ pub enum ApiError {
     /// ```
     MissingKey,
     /// Removing/updating the given associated [`AccountHash`](crate::account::AccountHash) would
-    /// cause the total [`Weight`](crate::account::Weight) of all remaining `AccountHash`s to
+    /// cause the total [`Weight`](addressable_entity::Weight) of all remaining `AccountHash`s to
     /// fall below one of the action thresholds for the given account.
     /// ```
     /// # use casper_types::ApiError;
@@ -359,7 +359,8 @@ pub enum ApiError {
     /// }
     /// ```
     AuctionError(u8),
-    /// Contract header errors. See [casper_types::contracts::Error](crate::contracts::Error).
+    /// Contract header errors. See
+    /// [casper_types::contracts::Error](crate::addressable_entity::Error).
     ///
     /// ```
     /// # use casper_types::ApiError;
@@ -460,8 +461,8 @@ impl From<CLValueError> for ApiError {
     }
 }
 
-impl From<contracts::Error> for ApiError {
-    fn from(error: contracts::Error) -> Self {
+impl From<addressable_entity::Error> for ApiError {
+    fn from(error: addressable_entity::Error) -> Self {
         ApiError::ContractHeader(error as u8)
     }
 }
@@ -660,7 +661,7 @@ impl Debug for ApiError {
             ApiError::ContractHeader(value) => write!(
                 f,
                 "ApiError::ContractHeader({:?})",
-                contracts::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
+                addressable_entity::Error::try_from(*value).map_err(|_err| fmt::Error::default())?
             )?,
             ApiError::Mint(value) => write!(
                 f,
@@ -748,7 +749,7 @@ mod tests {
             "ApiError::ContractHeader(PreviouslyUsedVersion) [64769]",
             &format!(
                 "{:?}",
-                ApiError::ContractHeader(contracts::Error::PreviouslyUsedVersion as u8)
+                ApiError::ContractHeader(addressable_entity::Error::PreviouslyUsedVersion as u8)
             )
         );
         assert_eq!(

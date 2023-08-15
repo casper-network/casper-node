@@ -120,13 +120,13 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    account::Account,
     bytesrepr::Bytes,
-    execution::{ExecutionJournal, ExecutionResultV2},
+    execution::{Effects as ExecutionEffects, ExecutionResultV2},
+    package::Package,
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Contract, ContractPackage,
-    Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature,
-    FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef, U512,
+    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Deploy,
+    DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
+    PublicKey, StoredValue, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -1006,7 +1006,7 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a committed Step success.
-    pub(crate) async fn announce_commit_step_success(self, era_id: EraId, effects: ExecutionJournal)
+    pub(crate) async fn announce_commit_step_success(self, era_id: EraId, effects: ExecutionEffects)
     where
         REv: From<ContractRuntimeAnnouncement>,
     {
@@ -1895,13 +1895,13 @@ impl<REv> EffectBuilder<REv> {
         self,
         state_root_hash: Digest,
         account_key: Key,
-    ) -> Option<Account>
+    ) -> Option<StoredValue>
     where
         REv: From<ContractRuntimeRequest>,
     {
         let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
+            Ok(QueryResult::Success { value, .. }) => Some(*value),
             Ok(_) | Err(_) => None,
         }
     }
@@ -1933,7 +1933,7 @@ impl<REv> EffectBuilder<REv> {
         state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<Box<Contract>>
+    ) -> Option<Box<AddressableEntity>>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1941,7 +1941,7 @@ impl<REv> EffectBuilder<REv> {
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
                 // TODO: Extending `StoredValue` with an `into_contract` would reduce cloning here.
-                value.as_contract().map(|c| Box::new(c.clone()))
+                value.as_addressable_entity().map(|c| Box::new(c.clone()))
             }
             Ok(_) | Err(_) => None,
         }
@@ -1953,7 +1953,7 @@ impl<REv> EffectBuilder<REv> {
         state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<Box<ContractPackage>>
+    ) -> Option<Box<Package>>
     where
         REv: From<ContractRuntimeRequest>,
     {

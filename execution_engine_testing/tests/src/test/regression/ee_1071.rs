@@ -25,7 +25,7 @@ fn should_run_ee_1071_regression() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash = (*account
@@ -45,13 +45,13 @@ fn should_run_ee_1071_regression() {
     .build();
 
     let contract_before = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
 
     builder.exec(exec_request_2).expect_success().commit();
 
     let contract_after = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have account");
     assert_ne!(
         contract_after, contract_before,

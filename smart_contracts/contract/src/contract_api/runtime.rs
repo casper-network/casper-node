@@ -5,13 +5,13 @@ use core::mem::MaybeUninit;
 
 use casper_types::{
     account::AccountHash,
+    addressable_entity::NamedKeys,
     api_error,
     bytesrepr::{self, FromBytes},
-    contracts::ContractVersion,
+    package::ContractVersion,
     system::CallStackElement,
-    ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, NamedKeys,
-    Phase, RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH,
-    PHASE_SERIALIZED_LENGTH,
+    ApiError, BlockTime, CLTyped, CLValue, ContractHash, ContractPackageHash, Key, Phase,
+    RuntimeArgs, URef, BLAKE2B_DIGEST_LENGTH, BLOCKTIME_SERIALIZED_LENGTH, PHASE_SERIALIZED_LENGTH,
 };
 
 use crate::{contract_api, ext_ffi, unwrap_or_revert::UnwrapOrRevert};

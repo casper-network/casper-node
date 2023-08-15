@@ -31,9 +31,11 @@ pub use self::{
     error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
+
 use crate::{
+    addressable_entity::NamedKeys,
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, AccessRights, ContextAccessRights, Key, NamedKeys, URef, BLAKE2B_DIGEST_LENGTH,
+    crypto, AccessRights, ContextAccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
 };
 #[cfg(feature = "json-schema")]
 use crate::{PublicKey, SecretKey};
@@ -59,6 +61,149 @@ static ACCOUNT: Lazy<Account> = Lazy::new(|| {
         action_thresholds,
     }
 });
+
+/// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[repr(i32)]
+#[non_exhaustive]
+pub enum AddKeyFailure {
+    /// There are already maximum [`AccountHash`]s associated with the given account.
+    MaxKeysLimit = 1,
+    /// The given [`AccountHash`] is already associated with the given account.
+    DuplicateKey = 2,
+    /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
+    /// given account.
+    PermissionDenied = 3,
+}
+
+impl Display for AddKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            AddKeyFailure::MaxKeysLimit => formatter.write_str(
+                "Unable to add new associated key because maximum amount of keys is reached",
+            ),
+            AddKeyFailure::DuplicateKey => formatter
+                .write_str("Unable to add new associated key because given key already exists"),
+            AddKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to add new associated key due to insufficient permissions"),
+        }
+    }
+}
+
+// This conversion is not intended to be used by third party crates.
+#[doc(hidden)]
+impl TryFrom<i32> for AddKeyFailure {
+    type Error = TryFromIntError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            d if d == AddKeyFailure::MaxKeysLimit as i32 => Ok(AddKeyFailure::MaxKeysLimit),
+            d if d == AddKeyFailure::DuplicateKey as i32 => Ok(AddKeyFailure::DuplicateKey),
+            d if d == AddKeyFailure::PermissionDenied as i32 => Ok(AddKeyFailure::PermissionDenied),
+            _ => Err(TryFromIntError(())),
+        }
+    }
+}
+
+/// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+#[repr(i32)]
+#[non_exhaustive]
+pub enum RemoveKeyFailure {
+    /// The given [`AccountHash`] is not associated with the given account.
+    MissingKey = 1,
+    /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
+    /// given account.
+    PermissionDenied = 2,
+    /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
+    /// `AccountHash`s to fall below one of the action thresholds for the given account.
+    ThresholdViolation = 3,
+}
+
+impl Display for RemoveKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            RemoveKeyFailure::MissingKey => {
+                formatter.write_str("Unable to remove a key that does not exist")
+            }
+            RemoveKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to remove associated key due to insufficient permissions"),
+            RemoveKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to remove a key which would violate action threshold constraints",
+            ),
+        }
+    }
+}
+
+// This conversion is not intended to be used by third party crates.
+#[doc(hidden)]
+impl TryFrom<i32> for RemoveKeyFailure {
+    type Error = TryFromIntError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            d if d == RemoveKeyFailure::MissingKey as i32 => Ok(RemoveKeyFailure::MissingKey),
+            d if d == RemoveKeyFailure::PermissionDenied as i32 => {
+                Ok(RemoveKeyFailure::PermissionDenied)
+            }
+            d if d == RemoveKeyFailure::ThresholdViolation as i32 => {
+                Ok(RemoveKeyFailure::ThresholdViolation)
+            }
+            _ => Err(TryFromIntError(())),
+        }
+    }
+}
+
+/// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
+/// associated keys map.
+#[derive(PartialEq, Eq, Debug, Copy, Clone)]
+#[repr(i32)]
+#[non_exhaustive]
+pub enum UpdateKeyFailure {
+    /// The given [`AccountHash`] is not associated with the given account.
+    MissingKey = 1,
+    /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
+    /// given account.
+    PermissionDenied = 2,
+    /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
+    /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
+    /// account.
+    ThresholdViolation = 3,
+}
+
+impl Display for UpdateKeyFailure {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        match self {
+            UpdateKeyFailure::MissingKey => formatter.write_str(
+                "Unable to update the value under an associated key that does not exist",
+            ),
+            UpdateKeyFailure::PermissionDenied => formatter
+                .write_str("Unable to update associated key due to insufficient permissions"),
+            UpdateKeyFailure::ThresholdViolation => formatter.write_str(
+                "Unable to update weight that would fall below any of action thresholds",
+            ),
+        }
+    }
+}
+
+// This conversion is not intended to be used by third party crates.
+#[doc(hidden)]
+impl TryFrom<i32> for UpdateKeyFailure {
+    type Error = TryFromIntError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            d if d == UpdateKeyFailure::MissingKey as i32 => Ok(UpdateKeyFailure::MissingKey),
+            d if d == UpdateKeyFailure::PermissionDenied as i32 => {
+                Ok(UpdateKeyFailure::PermissionDenied)
+            }
+            d if d == UpdateKeyFailure::ThresholdViolation as i32 => {
+                Ok(UpdateKeyFailure::ThresholdViolation)
+            }
+            _ => Err(TryFromIntError(())),
+        }
+    }
+}
 
 /// Represents an Account in the global state.
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
@@ -351,149 +496,6 @@ pub fn blake2b<T: AsRef<[u8]>>(data: T) -> [u8; BLAKE2B_DIGEST_LENGTH] {
     crypto::blake2b(data)
 }
 
-/// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum AddKeyFailure {
-    /// There are already maximum [`AccountHash`]s associated with the given account.
-    MaxKeysLimit = 1,
-    /// The given [`AccountHash`] is already associated with the given account.
-    DuplicateKey = 2,
-    /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
-    /// given account.
-    PermissionDenied = 3,
-}
-
-impl Display for AddKeyFailure {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            AddKeyFailure::MaxKeysLimit => formatter.write_str(
-                "Unable to add new associated key because maximum amount of keys is reached",
-            ),
-            AddKeyFailure::DuplicateKey => formatter
-                .write_str("Unable to add new associated key because given key already exists"),
-            AddKeyFailure::PermissionDenied => formatter
-                .write_str("Unable to add new associated key due to insufficient permissions"),
-        }
-    }
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<i32> for AddKeyFailure {
-    type Error = TryFromIntError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            d if d == AddKeyFailure::MaxKeysLimit as i32 => Ok(AddKeyFailure::MaxKeysLimit),
-            d if d == AddKeyFailure::DuplicateKey as i32 => Ok(AddKeyFailure::DuplicateKey),
-            d if d == AddKeyFailure::PermissionDenied as i32 => Ok(AddKeyFailure::PermissionDenied),
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
-
-/// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum RemoveKeyFailure {
-    /// The given [`AccountHash`] is not associated with the given account.
-    MissingKey = 1,
-    /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
-    /// given account.
-    PermissionDenied = 2,
-    /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
-    /// `AccountHash`s to fall below one of the action thresholds for the given account.
-    ThresholdViolation = 3,
-}
-
-impl Display for RemoveKeyFailure {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            RemoveKeyFailure::MissingKey => {
-                formatter.write_str("Unable to remove a key that does not exist")
-            }
-            RemoveKeyFailure::PermissionDenied => formatter
-                .write_str("Unable to remove associated key due to insufficient permissions"),
-            RemoveKeyFailure::ThresholdViolation => formatter.write_str(
-                "Unable to remove a key which would violate action threshold constraints",
-            ),
-        }
-    }
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<i32> for RemoveKeyFailure {
-    type Error = TryFromIntError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            d if d == RemoveKeyFailure::MissingKey as i32 => Ok(RemoveKeyFailure::MissingKey),
-            d if d == RemoveKeyFailure::PermissionDenied as i32 => {
-                Ok(RemoveKeyFailure::PermissionDenied)
-            }
-            d if d == RemoveKeyFailure::ThresholdViolation as i32 => {
-                Ok(RemoveKeyFailure::ThresholdViolation)
-            }
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
-
-/// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
-/// associated keys map.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum UpdateKeyFailure {
-    /// The given [`AccountHash`] is not associated with the given account.
-    MissingKey = 1,
-    /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
-    /// given account.
-    PermissionDenied = 2,
-    /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
-    /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
-    /// account.
-    ThresholdViolation = 3,
-}
-
-impl Display for UpdateKeyFailure {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            UpdateKeyFailure::MissingKey => formatter.write_str(
-                "Unable to update the value under an associated key that does not exist",
-            ),
-            UpdateKeyFailure::PermissionDenied => formatter
-                .write_str("Unable to update associated key due to insufficient permissions"),
-            UpdateKeyFailure::ThresholdViolation => formatter.write_str(
-                "Unable to update weight that would fall below any of action thresholds",
-            ),
-        }
-    }
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<i32> for UpdateKeyFailure {
-    type Error = TryFromIntError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            d if d == UpdateKeyFailure::MissingKey as i32 => Ok(UpdateKeyFailure::MissingKey),
-            d if d == UpdateKeyFailure::PermissionDenied as i32 => {
-                Ok(UpdateKeyFailure::PermissionDenied)
-            }
-            d if d == UpdateKeyFailure::ThresholdViolation as i32 => {
-                Ok(UpdateKeyFailure::ThresholdViolation)
-            }
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
-
 #[doc(hidden)]
 #[cfg(any(feature = "testing", feature = "gens", test))]
 pub mod gens {
@@ -501,8 +503,8 @@ pub mod gens {
 
     use crate::{
         account::{
-            action_thresholds::gens::action_thresholds_arb,
-            associated_keys::gens::associated_keys_arb, Account, Weight,
+            action_thresholds::gens::account_action_thresholds_arb,
+            associated_keys::gens::account_associated_keys_arb, Account, Weight,
         },
         gens::{account_hash_arb, named_keys_arb, uref_arb},
     };
@@ -512,8 +514,8 @@ pub mod gens {
             account_hash in account_hash_arb(),
             urefs in named_keys_arb(3),
             purse in uref_arb(),
-            thresholds in action_thresholds_arb(),
-            mut associated_keys in associated_keys_arb(),
+            thresholds in account_action_thresholds_arb(),
+            mut associated_keys in account_associated_keys_arb(),
         ) -> Account {
                 associated_keys.add_key(account_hash, Weight::new(1)).unwrap();
                 Account::new(
@@ -534,7 +536,8 @@ mod tests {
             Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
             SetThresholdFailure, UpdateKeyFailure, Weight,
         },
-        AccessRights, NamedKeys, URef,
+        addressable_entity::NamedKeys,
+        AccessRights, URef,
     };
     use std::{collections::BTreeSet, convert::TryFrom, iter::FromIterator, vec::Vec};
 
@@ -543,7 +546,10 @@ mod tests {
     #[test]
     fn account_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
-        let account_hash = AccountHash::try_from(&bytes[..]).expect("should create account hash");
+        let account_hash = AccountHash::try_from(&bytes[..]).expect(
+            "should create account
+hash",
+        );
         assert_eq!(&bytes, &account_hash.as_bytes());
     }
 

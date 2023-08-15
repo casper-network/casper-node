@@ -8,7 +8,7 @@ use std::{
 use tracing::error;
 
 use casper_types::{
-    execution::{ExecutionJournal, Transform, TransformKind},
+    execution::{Effects, Transform, TransformKind},
     Digest, Key, StoredValue,
 };
 
@@ -178,7 +178,7 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
 impl CommitProvider for ScratchGlobalState {
     /// State hash returned is the one provided, as we do not write to lmdb with this kind of global
     /// state. Note that the state hash is NOT used, and simply passed back to the caller.
-    fn commit(&self, state_hash: Digest, effects: ExecutionJournal) -> Result<Digest, Self::Error> {
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
         for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
             let value = match (cached_value, kind) {
@@ -326,7 +326,7 @@ pub(crate) mod tests {
 
     use casper_types::{
         account::AccountHash,
-        execution::{ExecutionJournal, Transform, TransformKind},
+        execution::{Effects, Transform, TransformKind},
         CLValue, Digest,
     };
 
@@ -373,8 +373,8 @@ pub(crate) mod tests {
         ]
     }
 
-    pub(crate) fn create_test_transforms() -> ExecutionJournal {
-        let mut effects = ExecutionJournal::new();
+    pub(crate) fn create_test_transforms() -> Effects {
+        let mut effects = Effects::new();
         let transform = Transform::new(
             Key::Account(AccountHash::new([3u8; 32])),
             TransformKind::Write(StoredValue::CLValue(CLValue::from_t("one").unwrap())),
@@ -444,7 +444,7 @@ pub(crate) mod tests {
         let scratch = state.create_scratch();
 
         let effects = {
-            let mut tmp = ExecutionJournal::new();
+            let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
                 let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
                 tmp.push(transform);
@@ -494,7 +494,7 @@ pub(crate) mod tests {
         let scratch = state.create_scratch();
 
         let effects = {
-            let mut tmp = ExecutionJournal::new();
+            let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
                 let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
                 tmp.push(transform);
@@ -535,7 +535,7 @@ pub(crate) mod tests {
         let scratch = state.create_scratch();
 
         let effects = {
-            let mut tmp = ExecutionJournal::new();
+            let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
                 let transform = Transform::new(*key, TransformKind::Write(value.to_owned()));
                 tmp.push(transform);

@@ -19,12 +19,12 @@ use crate::testing::TestRng;
 #[derive(Debug, Clone, Eq, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct ExecutionJournal(Vec<Transform>);
+pub struct Effects(Vec<Transform>);
 
-impl ExecutionJournal {
-    /// Constructs a new, empty `ExecutionJournal`.
+impl Effects {
+    /// Constructs a new, empty `Effects`.
     pub const fn new() -> Self {
-        ExecutionJournal(vec![])
+        Effects(vec![])
     }
 
     /// Returns a reference to the transforms.
@@ -57,19 +57,19 @@ impl ExecutionJournal {
         self.0
     }
 
-    /// Returns a random `ExecutionJournal`.
+    /// Returns a random `Effects`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
-        let mut execution_journal = ExecutionJournal::new();
+        let mut effects = Effects::new();
         let transform_count = rng.gen_range(0..6);
         for _ in 0..transform_count {
-            execution_journal.push(Transform::new(rng.gen(), TransformKind::random(rng)));
+            effects.push(Transform::new(rng.gen(), TransformKind::random(rng)));
         }
-        execution_journal
+        effects
     }
 }
 
-impl ToBytes for ExecutionJournal {
+impl ToBytes for Effects {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.0.write_bytes(writer)
     }
@@ -85,10 +85,10 @@ impl ToBytes for ExecutionJournal {
     }
 }
 
-impl FromBytes for ExecutionJournal {
+impl FromBytes for Effects {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (transforms, remainder) = Vec::<Transform>::from_bytes(bytes)?;
-        Ok((ExecutionJournal(transforms), remainder))
+        Ok((Effects(transforms), remainder))
     }
 }
 
@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let execution_journal = ExecutionJournal::random(rng);
-        bytesrepr::test_serialization_roundtrip(&execution_journal);
+        let effects = Effects::random(rng);
+        bytesrepr::test_serialization_roundtrip(&effects);
     }
 }

@@ -338,7 +338,7 @@ fn should_upgrade_only_validator_slots() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let validator_slot_key = *builder
-        .get_contract(builder.get_auction_contract_hash())
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
         .named_keys()
         .get(VALIDATOR_SLOTS_KEY)
@@ -395,7 +395,7 @@ fn should_upgrade_only_auction_delay() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let auction_delay_key = *builder
-        .get_contract(builder.get_auction_contract_hash())
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
         .named_keys()
         .get(AUCTION_DELAY_KEY)
@@ -452,7 +452,7 @@ fn should_upgrade_only_locked_funds_period() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let locked_funds_period_key = *builder
-        .get_contract(builder.get_auction_contract_hash())
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
         .named_keys()
         .get(LOCKED_FUNDS_PERIOD_KEY)
@@ -509,8 +509,8 @@ fn should_upgrade_only_round_seigniorage_rate() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let round_seigniorage_rate_key = *builder
-        .get_contract(builder.get_mint_contract_hash())
-        .expect("auction should exist")
+        .get_addressable_entity(builder.get_mint_contract_hash())
+        .expect("mint should exist")
         .named_keys()
         .get(ROUND_SEIGNIORAGE_RATE_KEY)
         .unwrap();
@@ -573,7 +573,7 @@ fn should_upgrade_only_unbonding_delay() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     let unbonding_delay_key = *builder
-        .get_contract(builder.get_auction_contract_hash())
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
         .named_keys()
         .get(UNBONDING_DELAY_KEY)
@@ -633,7 +633,7 @@ fn should_apply_global_state_upgrade() {
 
     // We'll try writing directly to this key.
     let unbonding_delay_key = *builder
-        .get_contract(builder.get_auction_contract_hash())
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
         .named_keys()
         .get(UNBONDING_DELAY_KEY)
@@ -750,7 +750,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     }
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     assert!(account.associated_keys().len() > DEFAULT_MAX_ASSOCIATED_KEYS as usize);

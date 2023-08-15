@@ -138,7 +138,9 @@ where
     }
 
     fn vesting_schedule_period_millis(&self) -> u64 {
-        self.config.vesting_schedule_period_millis()
+        self.context
+            .engine_config()
+            .vesting_schedule_period_millis()
     }
 }
 
@@ -154,12 +156,27 @@ where
             .context
             .read_gs_direct(&Key::Account(account_hash))
             .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+
+        let contract_key: Key = match maybe_value {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let contract_key: Key = cl_value.into_t().map_err(|_| Error::CLValue)?;
+                contract_key
+            }
+            Some(_cl_value) => return Err(Error::CLValue),
+            None => return Err(Error::InvalidPublicKey),
+        };
+
+        let maybe_value = self
+            .context
+            .read_gs_direct(&contract_key)
+            .map_err(|exec_error| <Option<Error>>::from(exec_error).unwrap_or(Error::Storage))?;
+
         match maybe_value {
-            Some(StoredValue::Account(account)) => {
+            Some(StoredValue::AddressableEntity(contract)) => {
                 self.mint_transfer_direct(
                     Some(account_hash),
                     *unbonding_purse.bonding_purse(),
-                    account.main_purse(),
+                    contract.main_purse(),
                     *unbonding_purse.amount(),
                     None,
                 )
@@ -184,7 +201,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        if !(self.context.account().main_purse().addr() == source.addr()
+        if !(self.context.entity().main_purse().addr() == source.addr()
             || self.context.get_caller() == PublicKey::System.to_account_hash())
         {
             return Err(Error::InvalidCaller);
@@ -299,7 +316,7 @@ where
         // "get_main_purse" won't work for security reasons. But since we're not running it as a
         // WASM contract, and purses are going to be removed anytime soon, we're making this
         // exception here.
-        Ok(Runtime::context(self).account().main_purse())
+        Ok(Runtime::context(self).entity().main_purse())
     }
 }
 

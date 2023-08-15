@@ -4,9 +4,10 @@ use parity_wasm::elements;
 use thiserror::Error;
 
 use casper_types::{
-    account::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
+    addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
     execution::TransformError,
+    package::ContractPackageKind,
     system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
 };
@@ -178,6 +179,12 @@ pub enum Error {
     /// Transform error.
     #[error(transparent)]
     Transform(TransformError),
+    /// Invalid key
+    #[error("Invalid key {0}")]
+    UnexpectedKeyVariant(Key),
+    /// Invalid Contract package kind.
+    #[error("Invalid contract package kind: {0}")]
+    InvalidContractPackageKind(ContractPackageKind),
 }
 
 impl From<PreprocessingError> for Error {

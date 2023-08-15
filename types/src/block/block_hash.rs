@@ -29,7 +29,11 @@ use crate::{
     schemars(description = "Hex-encoded cryptographic hash of a block.")
 )]
 #[serde(deny_unknown_fields)]
-pub struct BlockHash(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] Digest);
+#[rustfmt::skip]
+pub struct BlockHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))]
+    Digest
+);
 
 impl BlockHash {
     /// The number of bytes in a `BlockHash` digest.

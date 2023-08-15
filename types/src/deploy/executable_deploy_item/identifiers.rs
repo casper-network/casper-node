@@ -2,7 +2,10 @@ use alloc::string::String;
 
 #[cfg(doc)]
 use super::ExecutableDeployItem;
-use crate::{ContractHash, ContractPackageHash, ContractVersion};
+use crate::{
+    package::{ContractPackageHash, ContractVersion},
+    ContractHash,
+};
 
 /// Identifier for an [`ExecutableDeployItem`].
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]

@@ -16,7 +16,7 @@ use tokio::time;
 
 use casper_types::{
     generate_ed25519_keypair, testing::TestRng, ActivationPoint, Block, Chainspec,
-    ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, SemVer, Signature, U512,
+    ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
 };
 use reactor::ReactorEvent;
 
@@ -35,7 +35,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Reactor, Runner, TryCrankOutcome},
-    types::EraValidatorWeights,
+    types::{EraValidatorWeights, TestBlockBuilder},
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -181,7 +181,7 @@ impl Reactor for MockReactor {
             ProtocolVersion::from_parts(1, 0, 0),
             EraId::default(),
             "test",
-            chainspec.deploy_config.max_ttl,
+            chainspec.deploy_config.max_ttl.into(),
             chainspec.core_config.recent_era_count(),
             Some(registry),
             false,
@@ -377,7 +377,7 @@ fn upsert_acceptor() {
 #[test]
 fn acceptor_get_peers() {
     let mut rng = TestRng::new();
-    let block = Block::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     assert!(acceptor.peers().is_empty());
     let first_peer = NodeId::random(&mut rng);
@@ -392,7 +392,7 @@ fn acceptor_get_peers() {
 fn acceptor_register_finality_signature() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut meta_block = MetaBlock::new(block.clone(), vec![], MetaBlockState::new());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
@@ -535,12 +535,13 @@ fn acceptor_register_finality_signature() {
 fn acceptor_register_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create a finality signature with the wrong block hash.
-    let wrong_block = meta_block_with_default_state(Arc::new(Block::random(&mut rng)));
+    let wrong_block =
+        meta_block_with_default_state(Arc::new(TestBlockBuilder::new().build(&mut rng)));
     assert!(matches!(
         acceptor.register_block(wrong_block, None).unwrap_err(),
         Error::BlockHashMismatch {
@@ -551,7 +552,7 @@ fn acceptor_register_block() {
 
     {
         // Invalid block case.
-        let invalid_block = Arc::new(Block::random_invalid(&mut rng));
+        let invalid_block = Arc::new(TestBlockBuilder::new().build_invalid(&mut rng));
         let mut invalid_block_acceptor = BlockAcceptor::new(*invalid_block.hash(), vec![]);
         let invalid_meta_block = meta_block_with_default_state(invalid_block);
         let malicious_peer = NodeId::random(&mut rng);
@@ -612,7 +613,7 @@ fn acceptor_register_block() {
 fn acceptor_should_store_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
@@ -746,7 +747,7 @@ fn acceptor_should_correctly_bound_the_signatures() {
     let validator_slots = 2;
 
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     let first_peer = NodeId::random(&mut rng);
 
@@ -773,7 +774,7 @@ fn acceptor_signatures_bound_should_not_be_triggered_if_peers_are_different() {
     let validator_slots = 3;
 
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     let first_peer = NodeId::random(&mut rng);
     let second_peer = NodeId::random(&mut rng);
@@ -848,8 +849,11 @@ fn accumulator_should_leap() {
 
     // Create an acceptor to change the highest usable block height.
     {
-        let block =
-            Block::random_with_specifics(&mut rng, era_id, 1, ProtocolVersion::V1_0_0, false, None);
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(1)
+            .switch_block(false)
+            .build(&mut rng);
 
         block_accumulator
             .block_acceptors
@@ -864,14 +868,11 @@ fn accumulator_should_leap() {
     let block_height = attempt_execution_threshold;
     // Insert an acceptor within execution range
     {
-        let block = Block::random_with_specifics(
-            &mut rng,
-            era_id,
-            block_height,
-            ProtocolVersion::V1_0_0,
-            false,
-            None,
-        );
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(block_height)
+            .switch_block(false)
+            .build(&mut rng);
 
         block_accumulator
             .block_acceptors
@@ -888,14 +889,11 @@ fn accumulator_should_leap() {
     let centurion = 100;
     // Insert an upgrade boundary
     {
-        let block = Block::random_with_specifics(
-            &mut rng,
-            era_id,
-            centurion,
-            ProtocolVersion::new(SemVer::new(1, 1, 0)),
-            true,
-            None,
-        );
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(centurion)
+            .switch_block(true)
+            .build(&mut rng);
 
         block_accumulator
             .block_acceptors
@@ -1170,14 +1168,15 @@ fn accumulator_purge() {
         .contains_key(&peer_2));
 
     // Create a block just in range of block 3 to not qualify for a purge.
-    let in_range_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.era_id(),
-        block_3.height() - block_accumulator.attempt_execution_threshold,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let in_range_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() - block_accumulator.attempt_execution_threshold)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
+
     let in_range_block_sig = FinalitySignature::create(
         *in_range_block.hash(),
         in_range_block.era_id(),
@@ -1205,14 +1204,14 @@ fn accumulator_purge() {
     }
 
     // Create a block just out of range of block 3 to qualify for a purge.
-    let out_of_range_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.era_id(),
-        block_3.height() - block_accumulator.attempt_execution_threshold - 1,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let out_of_range_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() - block_accumulator.attempt_execution_threshold - 1)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
     let out_of_range_block_sig = FinalitySignature::create(
         *out_of_range_block.hash(),
         out_of_range_block.era_id(),
@@ -1286,14 +1285,14 @@ fn accumulator_purge() {
     }
 
     // Create a future block after block 3.
-    let future_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.era_id(),
-        block_3.height() + block_accumulator.attempt_execution_threshold,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let future_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() + block_accumulator.attempt_execution_threshold)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
     let future_block_sig = FinalitySignature::create(
         *future_block.hash(),
         future_block.era_id(),
@@ -1322,14 +1321,14 @@ fn accumulator_purge() {
 
     // Create a future block after block 3, but which will not have strict
     // finality.
-    let future_unsigned_block = Arc::new(Block::random_with_specifics(
-        &mut rng,
-        block_3.era_id(),
-        block_3.height() + block_accumulator.attempt_execution_threshold * 2,
-        block_3.protocol_version(),
-        false,
-        None,
-    ));
+    let future_unsigned_block = Arc::new(
+        TestBlockBuilder::new()
+            .era(block_3.era_id())
+            .height(block_3.height() + block_accumulator.attempt_execution_threshold * 2)
+            .protocol_version(block_3.protocol_version())
+            .switch_block(false)
+            .build(&mut rng),
+    );
     let future_unsigned_block_sig = FinalitySignature::create(
         *future_unsigned_block.hash(),
         future_unsigned_block.era_id(),
@@ -1417,15 +1416,13 @@ fn generate_next_block(rng: &mut TestRng, block: &Block) -> Block {
     } else {
         block.era_id()
     };
-    Block::random_with_specifics(
-        rng,
-        era_id,
-        // Safe because generated heights can't get to `u64::MAX`.
-        block.height() + 1,
-        block.protocol_version(),
-        false,
-        None,
-    )
+
+    TestBlockBuilder::new()
+        .era(era_id)
+        .height(block.height() + 1)
+        .protocol_version(block.protocol_version())
+        .switch_block(false)
+        .build(rng)
 }
 
 fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
@@ -1433,25 +1430,20 @@ fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
 
-    Block::random_with_specifics(
-        rng,
-        EraId::from(era),
-        height,
-        ProtocolVersion::V1_0_0,
-        is_switch,
-        None,
-    )
+    TestBlockBuilder::new()
+        .era(era)
+        .height(height)
+        .switch_block(is_switch)
+        .build(rng)
 }
 
 fn generate_older_block(rng: &mut TestRng, block: &Block, height_difference: u64) -> Block {
-    Block::random_with_specifics(
-        rng,
-        block.era_id().predecessor().unwrap_or_default(),
-        block.height() - height_difference,
-        block.protocol_version(),
-        false,
-        None,
-    )
+    TestBlockBuilder::new()
+        .era(block.era_id().predecessor().unwrap_or_default())
+        .height(block.height() - height_difference)
+        .protocol_version(block.protocol_version())
+        .switch_block(false)
+        .build(rng)
 }
 
 #[tokio::test]
@@ -1785,14 +1777,12 @@ async fn block_accumulator_reactor_flow() {
             .contains_key(older_block.hash()));
     }
 
-    let old_era_block = Block::random_with_specifics(
-        &mut rng,
-        block_1.era_id() - RECENT_ERA_INTERVAL - 1,
-        1,
-        ProtocolVersion::V1_0_0,
-        false,
-        None,
-    );
+    let old_era_block = TestBlockBuilder::new()
+        .era(block_1.era_id() - RECENT_ERA_INTERVAL - 1)
+        .height(1)
+        .switch_block(false)
+        .build(&mut rng);
+
     let old_era_signature = FinalitySignature::create(
         *old_era_block.hash(),
         old_era_block.era_id(),

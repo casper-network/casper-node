@@ -4,14 +4,17 @@ use std::{
 };
 
 use casper_types::{
-    account::{Account, AccountHash, ActionThresholds, AssociatedKeys, Weight},
-    contracts::{ContractPackageStatus, ContractVersions, Groups},
+    account::{
+        Account, AccountHash, ActionThresholds as AccountActionThresholds,
+        AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
+    },
+    addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
+    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups, Package},
     system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
-    AccessRights, CLType, CLTyped, CLValue, Contract, ContractHash, ContractPackage,
-    ContractPackageHash, ContractVersionKey, ContractWasm, ContractWasmHash, DeployHash,
-    DeployInfo, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key,
-    NamedKeys, Parameter, ProtocolVersion, PublicKey, SecretKey, StoredValue, Transfer,
-    TransferAddr, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
+    ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion, PublicKey,
+    SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -248,14 +251,14 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             named_keys
         };
 
-        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+        let associated_keys = AccountAssociatedKeys::new(account_hash, AccountWeight::new(1));
 
         let account = Account::new(
             account_hash,
             account_named_keys,
             URef::new([17; 32], AccessRights::WRITE),
             associated_keys,
-            ActionThresholds::new(Weight::new(1), Weight::new(1)).unwrap(),
+            AccountActionThresholds::new(AccountWeight::new(1), AccountWeight::new(1)).unwrap(),
         );
 
         stored_value.insert(
@@ -298,16 +301,19 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             entry_points
         };
 
-        let contract = Contract::new(
+        let entity = AddressableEntity::new(
             ContractPackageHash::new([100; 32]),
             ContractWasmHash::new([101; 32]),
             contract_named_keys,
             entry_points,
             ProtocolVersion::V1_0_0,
+            URef::default(),
+            AssociatedKeys::default(),
+            ActionThresholds::default(),
         );
         stored_value.insert(
-            "Contract".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Contract(contract).into()])?,
+            "AddressableEntity".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::AddressableEntity(entity).into()])?,
         );
 
         let mut active_versions = BTreeMap::new();
@@ -328,12 +334,13 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             BTreeSet::from_iter(vec![URef::new([55; 32], AccessRights::READ)]),
         );
 
-        let contract_package = ContractPackage::new(
+        let contract_package = Package::new(
             URef::new([39; 32], AccessRights::READ),
             active_versions,
             disabled_versions,
             groups,
             ContractPackageStatus::Locked,
+            ContractPackageKind::Wasm,
         );
 
         stored_value.insert(
