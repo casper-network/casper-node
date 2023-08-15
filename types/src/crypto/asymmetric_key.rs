@@ -57,6 +57,7 @@ use crate::{
     CLType, CLTyped, Tagged,
 };
 
+#[cfg(any(feature = "std", test))]
 #[cfg(not(any(feature = "sdk")))]
 use crate::file_utils::{read_file, write_file, write_private_file};
 
