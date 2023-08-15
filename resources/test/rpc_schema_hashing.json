@@ -307,7 +307,7 @@
               "name": "public_key",
               "schema": {
                 "description": "The public key of the Account.",
-                "$ref": "#/components/schemas/PublicKey"
+                "$ref": "#/components/schemas/AccountIdentifier"
               },
               "required": true
             },
@@ -360,7 +360,9 @@
               "params": [
                 {
                   "name": "public_key",
-                  "value": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                  "value": {
+                    "public_key": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
+                  }
                 },
                 {
                   "name": "block_identifier",
@@ -3245,6 +3247,37 @@
               }
             },
             "additionalProperties": false
+          },
+          "AccountIdentifier": {
+            "description": "Identifier of an account.",
+            "anyOf": [
+              {
+                "description": "The public key of an account",
+                "type": "object",
+                "required": [
+                  "public_key"
+                ],
+                "properties": {
+                  "public_key": {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "The account hash of an account",
+                "type": "object",
+                "required": [
+                  "account_hash"
+                ],
+                "properties": {
+                  "account_hash": {
+                    "$ref": "#/components/schemas/AccountHash"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
           },
           "BlockIdentifier": {
             "description": "Identifier for possible ways to retrieve a block.",
