@@ -26,6 +26,7 @@ pub const BLOCK_BODY_V2_TAG: u8 = 1;
 /// The versioned body portion of a block. It encapsulates different variants of the BlockBody
 /// struct.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(any(feature = "testing", test), derive(PartialEq))]
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum BlockBody {
     /// The legacy, initial version of the body portion of a block.
@@ -57,19 +58,6 @@ impl BlockBody {
         self.deploy_hashes()
             .iter()
             .chain(self.transfer_hashes().iter())
-    }
-}
-
-#[cfg(any(feature = "testing", test))]
-impl PartialEq for BlockBody {
-    fn eq(&self, other: &BlockBody) -> bool {
-        match (self, other) {
-            (BlockBody::V1(lhs), BlockBody::V1(rhs)) => lhs.eq(rhs),
-            (BlockBody::V2(lhs), BlockBody::V2(rhs)) => lhs.eq(rhs),
-            _ => {
-                panic!("BlockBody structs of different versions should not be compared")
-            }
-        }
     }
 }
 
