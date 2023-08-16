@@ -9,7 +9,6 @@ use derive_more::From;
 use fmt::Debug;
 use futures::{future::BoxFuture, FutureExt};
 use hex_fmt::HexFmt;
-use muxink::backpressured::Ticket;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
@@ -18,7 +17,7 @@ use crate::{
         consensus,
         fetcher::{FetchItem, FetchResponse, Tag},
         gossiper,
-        network::{Channel, EstimatorWeights, FromIncoming, GossipedAddress, MessageKind, Payload},
+        network::{Channel, FromIncoming, GossipedAddress, MessageKind, Payload, Ticket},
     },
     effect::{
         incoming::{
@@ -109,41 +108,6 @@ impl Payload for Message {
             Message::GetRequest { .. } => false,
             Message::GetResponse { .. } => false,
             Message::FinalitySignature(_) => false,
-        }
-    }
-
-    #[inline]
-    fn incoming_resource_estimate(&self, weights: &EstimatorWeights) -> u32 {
-        match self {
-            Message::Consensus(_) => weights.consensus,
-            Message::ConsensusRequest(_) => weights.consensus,
-            Message::BlockGossiper(_) => weights.block_gossip,
-            Message::DeployGossiper(_) => weights.deploy_gossip,
-            Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
-            Message::AddressGossiper(_) => weights.address_gossip,
-            Message::GetRequest { tag, .. } => match tag {
-                Tag::Deploy => weights.deploy_requests,
-                Tag::LegacyDeploy => weights.legacy_deploy_requests,
-                Tag::Block => weights.block_requests,
-                Tag::BlockHeader => weights.block_header_requests,
-                Tag::TrieOrChunk => weights.trie_requests,
-                Tag::FinalitySignature => weights.finality_signature_requests,
-                Tag::SyncLeap => weights.sync_leap_requests,
-                Tag::ApprovalsHashes => weights.approvals_hashes_requests,
-                Tag::BlockExecutionResults => weights.execution_results_requests,
-            },
-            Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy => weights.deploy_responses,
-                Tag::LegacyDeploy => weights.legacy_deploy_responses,
-                Tag::Block => weights.block_responses,
-                Tag::BlockHeader => weights.block_header_responses,
-                Tag::TrieOrChunk => weights.trie_responses,
-                Tag::FinalitySignature => weights.finality_signature_responses,
-                Tag::SyncLeap => weights.sync_leap_responses,
-                Tag::ApprovalsHashes => weights.approvals_hashes_responses,
-                Tag::BlockExecutionResults => weights.execution_results_responses,
-            },
-            Message::FinalitySignature(_) => weights.finality_signature_broadcasts,
         }
     }
 

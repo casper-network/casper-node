@@ -1,40 +1,30 @@
 //! Tasks run by the component.
 
 use std::{
-    convert::Infallible,
     fmt::Display,
     net::SocketAddr,
-    num::NonZeroUsize,
     pin::Pin,
-    sync::{Arc, Mutex, Weak},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
 };
 
-use bytes::Bytes;
 use futures::{
     future::{self, Either},
     pin_mut,
-    prelude::stream::SelectAll,
-    stream::FuturesUnordered,
-    Sink, SinkExt, StreamExt,
 };
 
-use muxink::{
-    backpressured::{BackpressuredSink, BackpressuredStream},
-    demux::Demultiplexer,
-    fragmented::{Defragmentizer, Fragmentizer},
-    little_endian::LittleEndian,
-};
 use openssl::{
     pkey::{PKey, Private},
     ssl::Ssl,
     x509::X509,
 };
 use serde::de::DeserializeOwned;
-use strum::{EnumCount, IntoEnumIterator};
-use tokio::{net::TcpStream, sync::mpsc::UnboundedReceiver};
+use tokio::net::TcpStream;
 use tokio_openssl::SslStream;
 use tracing::{
-    debug, error, error_span,
+    debug, error_span,
     field::{self, Empty},
     info, trace, warn, Instrument, Span,
 };
@@ -44,64 +34,24 @@ use casper_types::{ProtocolVersion, TimeDiff};
 use super::{
     chain_info::ChainInfo,
     connection_id::ConnectionId,
-    error::{ConnectionError, MessageReaderError},
+    error::{ConnectionError, MessageReceiverError, MessageSenderError},
     event::{IncomingConnection, OutgoingConnection},
-    limiter::LimiterHandle,
     message::NodeKeyPair,
-    Channel, EstimatorWeights, Event, FromIncoming, Identity, IncomingAckCarrier, IncomingCarrier,
-    IncomingChannel, Message, Metrics, OutgoingAckCarrier, OutgoingAckChannel, OutgoingCarrier,
-    OutgoingChannel, OutgoingChannelError, Payload, Transport, BACKPRESSURE_WINDOW_SIZE,
-    MESSAGE_FRAGMENT_SIZE,
+    Channel, Event, FromIncoming, Identity, Message, Metrics, Payload, RpcServer, Transport,
 };
 
 use crate::{
     components::network::{
         deserialize_network_message,
         handshake::{negotiate_handshake, HandshakeOutcome},
-        Config, IncomingAckChannel,
+        Config, Ticket,
     },
-    effect::{
-        announcements::PeerBehaviorAnnouncement, requests::NetworkRequest, AutoClosingResponder,
-    },
+    effect::{announcements::PeerBehaviorAnnouncement, requests::NetworkRequest},
     reactor::{EventQueueHandle, QueueKind},
     tls::{self, TlsCert, ValidationError},
     types::NodeId,
-    utils::{display_error, Fuse, LockedLineWriter, ObservableFuse, Peel, TokenizedCount},
+    utils::{display_error, LockedLineWriter, ObservableFuse, Peel},
 };
-
-/// An encoded network message, ready to be sent out.
-#[derive(Debug)]
-pub(super) struct EncodedMessage {
-    /// The encoded payload of the outgoing message.
-    payload: Bytes,
-    /// The responder to send the notification once the message has been flushed or dropped.
-    ///
-    /// If `None`, the sender is not interested in knowing.
-    send_finished: Option<AutoClosingResponder<()>>,
-    /// We track the number of messages still buffered in memory, the token ensures accurate
-    /// counts.
-    send_token: TokenizedCount,
-}
-
-impl EncodedMessage {
-    /// Creates a new encoded message.
-    pub(super) fn new(
-        payload: Bytes,
-        send_finished: Option<AutoClosingResponder<()>>,
-        send_token: TokenizedCount,
-    ) -> Self {
-        Self {
-            payload,
-            send_finished,
-            send_token,
-        }
-    }
-
-    /// Get the encoded message's payload.
-    pub(super) fn payload(&self) -> &Bytes {
-        &self.payload
-    }
-}
 
 /// Low-level TLS connection function.
 ///
@@ -239,8 +189,6 @@ where
     public_addr: Option<SocketAddr>,
     /// Timeout for handshake completion.
     pub(super) handshake_timeout: TimeDiff,
-    /// Weights to estimate payloads with.
-    payload_weights: EstimatorWeights,
     /// The protocol version at which (or under) tarpitting is enabled.
     tarpit_version_threshold: Option<ProtocolVersion>,
     /// If tarpitting is enabled, duration for which connections should be kept open.
@@ -286,7 +234,6 @@ impl<REv> NetworkContext<REv> {
             chain_info,
             node_key_pair,
             handshake_timeout: cfg.handshake_timeout,
-            payload_weights: cfg.estimator_weights.clone(),
             tarpit_version_threshold: cfg.tarpit_version_threshold,
             tarpit_duration: cfg.tarpit_duration,
             tarpit_chance: cfg.tarpit_chance,
@@ -480,7 +427,7 @@ pub(super) async fn server<P, REv>(
                                         incoming: Box::new(incoming),
                                         span,
                                     },
-                                    QueueKind::NetworkIncoming,
+                                    QueueKind::MessageIncoming,
                                 )
                                 .await;
                         }
@@ -517,16 +464,15 @@ pub(super) async fn server<P, REv>(
     }
 }
 
-/// Multi-channel message receiver.
-pub(super) async fn multi_channel_message_receiver<REv, P>(
+/// Juliet-based message receiver.
+pub(super) async fn message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    carrier: Arc<Mutex<IncomingCarrier>>,
-    ack_carrier: OutgoingAckCarrier,
-    limiter: LimiterHandle,
+    validator_status: Option<Arc<AtomicBool>>,
+    mut rpc_server: RpcServer,
     shutdown: ObservableFuse,
     peer_id: NodeId,
     span: Span,
-) -> Result<(), MessageReaderError>
+) -> Result<(), MessageReceiverError>
 where
     P: DeserializeOwned + Send + Display + Payload,
     REv: From<Event<P>>
@@ -535,78 +481,67 @@ where
         + From<PeerBehaviorAnnouncement>
         + Send,
 {
-    // We create a single select that returns items from all the streams.
-    let mut select = SelectAll::new();
-    for channel in Channel::iter() {
-        let demux_handle =
-            Demultiplexer::create_handle::<::std::io::Error>(carrier.clone(), channel as u8)
-                .expect("mutex poisoned");
-
-        let ack_sink: OutgoingAckChannel =
-            LittleEndian::new(ack_carrier.create_channel_handle(channel as u8));
-
-        let incoming: IncomingChannel = BackpressuredStream::new(
-            Defragmentizer::new(
-                context.chain_info.maximum_net_message_size as usize,
-                demux_handle,
-            ),
-            ack_sink,
-            BACKPRESSURE_WINDOW_SIZE,
-        );
-
-        select.push(incoming.map(move |frame| (channel, frame)));
-    }
-
-    // Core receival loop.
     loop {
-        let next_item = select.next();
+        let next_item = rpc_server.next_request();
+
+        // TODO: Get rid of shutdown fuse, we can drop the client instead?
         let wait_for_close_incoming = shutdown.wait();
+
         pin_mut!(next_item);
         pin_mut!(wait_for_close_incoming);
 
-        let (channel, (frame, ticket)) = match future::select(next_item, wait_for_close_incoming)
+        let request = match future::select(next_item, wait_for_close_incoming)
             .await
             .peel()
         {
-            Either::Left(Some((channel, result))) => {
-                (channel, result.map_err(MessageReaderError::ReceiveError)?)
+            Either::Left(outcome) => {
+                if let Some(request) = outcome? {
+                    request
+                } else {
+                    {
+                        // Remote closed the connection.
+                        return Ok(());
+                    }
+                }
             }
-            Either::Left(None) => {
-                // We ran out of channels. Should not happen with at least one channel defined.
-                error!("did not expect to run out of channels to read");
-
-                return Ok(());
-            }
-            Either::Right(_) => {
-                debug!("message reader shutdown requested");
+            Either::Right(()) => {
+                // We were asked to shut down.
                 return Ok(());
             }
         };
 
-        let msg: Message<P> = deserialize_network_message(&frame)
-            .map_err(MessageReaderError::DeserializationError)?;
+        let channel = Channel::from_repr(request.channel().get())
+            .ok_or_else(|| MessageReceiverError::InvalidChannel(request.channel().get()))?;
+        let payload = request
+            .payload()
+            .as_ref()
+            .ok_or_else(|| MessageReceiverError::EmptyRequest)?;
+
+        let msg: Message<P> = deserialize_network_message(payload)
+            .map_err(MessageReceiverError::DeserializationError)?;
 
         trace!(%msg, %channel, "message received");
-
-        // The limiter stops _all_ channels, as they share a resource pool anyway.
-        limiter
-            .request_allowance(msg.payload_incoming_resource_estimate(&context.payload_weights))
-            .await;
 
         // Ensure the peer did not try to sneak in a message on a different channel.
         // TODO: Verify we still need this.
         let msg_channel = msg.get_channel();
         if msg_channel != channel {
-            return Err(MessageReaderError::WrongChannel {
+            return Err(MessageReceiverError::WrongChannel {
                 got: msg_channel,
                 expected: channel,
             });
         }
 
-        let queue_kind = if msg.is_low_priority() {
-            QueueKind::NetworkLowPriority
+        let queue_kind = if validator_status
+            .as_ref()
+            .map(|arc| arc.load(Ordering::Relaxed))
+            .unwrap_or_default()
+        {
+            QueueKind::MessageValidator
+        } else if msg.is_low_priority() {
+            QueueKind::MessageLowPriority
         } else {
-            QueueKind::NetworkIncoming
+            QueueKind::MessageIncoming
         };
 
         context
@@ -617,7 +552,7 @@ where
                     peer_id: Box::new(peer_id),
                     msg: Box::new(msg),
                     span: span.clone(),
-                    ticket,
+                    ticket: Ticket::from_rpc_request(request),
                 },
                 queue_kind,
             )
@@ -625,128 +560,18 @@ where
     }
 }
 
-/// Multi-channel encoded message sender.
+/// RPC sender task.
 ///
-/// This tasks starts multiple message senders, each handling a single outgoing channel on the given
-/// carrier.
-///
-/// A channel sender will shut down if its receiving channel is closed or an error occurs. Once at
-/// least one channel sender has shut down for any reason, the others will be signaled to shut down
-/// as well.
-///
-/// This function only returns when all senders have been shut down.
-pub(super) async fn encoded_message_sender(
-    queues: [UnboundedReceiver<EncodedMessage>; Channel::COUNT],
-    carrier: OutgoingCarrier,
-    ack_carrier: Arc<Mutex<IncomingAckCarrier>>,
-    limiter: LimiterHandle,
-) -> Result<(), OutgoingChannelError> {
-    // TODO: Once the necessary methods are stabilized, setup const fns to initialize
-    // `MESSAGE_FRAGMENT_SIZE` as a `NonZeroUsize` directly.
-    let fragment_size = NonZeroUsize::new(MESSAGE_FRAGMENT_SIZE).unwrap();
-    let local_stop: ObservableFuse = ObservableFuse::new();
-
-    let mut boiler_room = FuturesUnordered::new();
-
-    for (channel, queue) in Channel::iter().zip(IntoIterator::into_iter(queues)) {
-        let mux_handle = carrier.create_channel_handle(channel as u8);
-
-        // Note: We use `Infallibe` here, since we do not care about the actual API.
-        // TODO: The `muxink` API could probably be improved here to not require an `E` parameter.
-        let ack_demux_handle =
-            Demultiplexer::create_handle::<Infallible>(ack_carrier.clone(), channel as u8)
-                .expect("handle creation should not fail");
-
-        let ack_stream: IncomingAckChannel = LittleEndian::new(ack_demux_handle);
-
-        let outgoing: OutgoingChannel = BackpressuredSink::new(
-            Fragmentizer::new(fragment_size, mux_handle),
-            ack_stream,
-            BACKPRESSURE_WINDOW_SIZE,
-        );
-
-        boiler_room.push(shovel_data(
-            channel,
-            queue,
-            outgoing,
-            local_stop.clone(),
-            limiter.clone(),
-        ));
-    }
-
-    // We track only the first result we receive from a sender, as subsequent errors may just be
-    // caused by the first one shutting down and are not the root cause.
-    let mut first_result = None;
-
-    while let Some(sender_outcome) = boiler_room.next().await {
-        debug!(outcome=?sender_outcome, "sender stopped");
-
-        if first_result.is_none() {
-            first_result = Some(sender_outcome);
-        }
-
-        // Signal all other senders stop as well.
-        local_stop.set();
-    }
-
-    // There are no more running senders left, so we can finish.
-    debug!("all senders finished");
-    first_result.unwrap_or(Ok(()))
-}
-
-/// Receives network messages from an async channel, encodes and forwards it into a suitable sink.
-///
-/// Will loop forever, until either told to stop through the `stop` flag, or a send error occurs.
-async fn shovel_data<S>(
-    channel: Channel,
-    mut source: UnboundedReceiver<EncodedMessage>,
-    mut dest: S,
-    stop: ObservableFuse,
-    limiter: LimiterHandle,
-) -> Result<(), <S as Sink<Bytes>>::Error>
-where
-    S: Sink<Bytes> + Unpin,
-{
-    trace!(%channel, "starting data shoveller for channel");
+/// While the sending connection does not receive any messages, it is still necessary to run the
+/// server portion in a loop to ensure outgoing messages are actually processed.
+pub(super) async fn rpc_sender_loop(mut rpc_server: RpcServer) -> Result<(), MessageSenderError> {
     loop {
-        let recv = source.recv();
-        pin_mut!(recv);
-        let stop_wait = stop.wait();
-        pin_mut!(stop_wait);
-
-        match future::select(recv, stop_wait).await.peel() {
-            Either::Left(Some(EncodedMessage {
-                payload: data,
-                send_finished,
-                send_token,
-            })) => {
-                let encoded_size = data.len();
-                let has_responder = send_finished.is_some();
-                trace!(%channel, encoded_size, has_responder, "attempting to send payload");
-                limiter.request_allowance(data.len() as u32).await;
-                // Note: It may be tempting to use `feed()` instead of `send()` when no responder
-                //       is present, since after all the sender is only guaranteed an eventual
-                //       attempt of delivery and we can save a flush this way. However this leads
-                //       to extreme delays and failing synthetical tests in the absence of other
-                //       traffic, so the extra flush is the lesser of two evils until we implement
-                //       and leverage a multi-message sending API.
-                dest.send(data).await?;
-                if let Some(responder) = send_finished {
-                    responder.respond(()).await;
-                }
-
-                trace!(%channel, encoded_size, has_responder, "finished sending payload");
-                // We only drop the token once the message is sent or at least buffered.
-                drop(send_token);
-            }
-            Either::Left(None) => {
-                trace!("sink closed");
-                return Ok(());
-            }
-            Either::Right(_) => {
-                trace!("received stop signal");
-                return Ok(());
-            }
+        if let Some(incoming_request) = rpc_server.next_request().await? {
+            return Err(MessageSenderError::UnexpectedIncomingRequest(
+                incoming_request,
+            ));
+        } else {
+            // Connection closed regularly.
         }
     }
 }

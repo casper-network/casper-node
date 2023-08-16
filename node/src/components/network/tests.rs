@@ -12,7 +12,6 @@ use std::{
 
 use derive_more::From;
 use futures::FutureExt;
-use muxink::backpressured::Ticket;
 use prometheus::Registry;
 use reactor::ReactorEvent;
 use serde::{Deserialize, Serialize};
@@ -23,7 +22,7 @@ use casper_types::SecretKey;
 
 use super::{
     chain_info::ChainInfo, unbounded_channels, Config, Event as NetworkEvent, FromIncoming,
-    GossipedAddress, Identity, MessageKind, Network, Payload,
+    GossipedAddress, Identity, MessageKind, Network, Payload, Ticket,
 };
 use crate::{
     components::{
@@ -159,10 +158,6 @@ impl Payload for Message {
         match self {
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
         }
-    }
-
-    fn incoming_resource_estimate(&self, _weights: &super::EstimatorWeights) -> u32 {
-        0
     }
 
     fn get_channel(&self) -> super::Channel {

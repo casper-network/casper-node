@@ -5,7 +5,6 @@ use std::{
 };
 
 use derive_more::From;
-use muxink::backpressured::Ticket;
 use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::Span;
@@ -13,8 +12,8 @@ use tracing::Span;
 use casper_types::PublicKey;
 
 use super::{
-    error::{ConnectionError, MessageReaderError},
-    GossipedAddress, Message, NodeId, Transport,
+    error::{ConnectionError, MessageReceiverError},
+    GossipedAddress, Message, NodeId, Ticket, Transport,
 };
 use crate::{
     effect::{
@@ -57,9 +56,10 @@ where
     /// Incoming connection closed.
     IncomingClosed {
         #[serde(skip_serializing)]
-        result: Result<(), MessageReaderError>,
+        result: Result<(), MessageReceiverError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         #[serde(skip_serializing)]
         span: Box<Span>,
     },
@@ -190,7 +190,7 @@ pub(crate) enum IncomingConnection {
         /// Peer's [`NodeId`].
         peer_id: NodeId,
         /// The public key the peer is validating with, if any.
-        peer_consensus_public_key: Option<PublicKey>,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         /// Stream of incoming messages. for incoming connections.
         #[serde(skip_serializing)]
         transport: Transport,
@@ -260,7 +260,7 @@ pub(crate) enum OutgoingConnection {
         /// Peer's [`NodeId`].
         peer_id: NodeId,
         /// The public key the peer is validating with, if any.
-        peer_consensus_public_key: Option<PublicKey>,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         /// Sink for outgoing messages.
         #[serde(skip)]
         transport: Transport,

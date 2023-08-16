@@ -201,13 +201,15 @@ impl LimiterHandle {
     pub(super) async fn request_allowance(&self, amount: u32) {
         // As a first step, determine the peer class by checking if our id is in the validator set.
 
-        if self.validator_matrix.is_empty() {
-            // It is likely that we have not been initialized, thus no node is getting the
-            // reserved resources. In this case, do not limit at all.
-            trace!("empty set of validators, not limiting resources at all");
+        // TODO FIXME: Re-add support for limiting?
+        return;
+        // if self.validator_matrix.is_empty() {
+        //     // It is likely that we have not been initialized, thus no node is getting the
+        //     // reserved resources. In this case, do not limit at all.
+        //     trace!("empty set of validators, not limiting resources at all");
 
-            return;
-        }
+        //     return;
+        // }
 
         let peer_class = if let Some(ref public_key) = self.consumer_id.consensus_key {
             if self

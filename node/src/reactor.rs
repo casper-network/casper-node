@@ -34,12 +34,10 @@ pub(crate) mod main_reactor;
 mod queue_kind;
 
 use std::{
-    any,
     collections::HashMap,
     env,
     fmt::{Debug, Display},
     io::Write,
-    mem,
     num::NonZeroU64,
     str::FromStr,
     sync::{atomic::Ordering, Arc},
@@ -478,18 +476,6 @@ where
         registry: &Registry,
     ) -> Result<Self, R::Error> {
         adjust_open_files_limit();
-
-        let event_size = mem::size_of::<R::Event>();
-
-        // Check if the event is of a reasonable size. This only emits a runtime warning at startup
-        // right now, since storage size of events is not an issue per se, but copying might be
-        // expensive if events get too large.
-        if event_size > 16 * mem::size_of::<usize>() {
-            warn!(
-                %event_size, type_name = ?any::type_name::<R::Event>(),
-                "large event size, consider reducing it or boxing"
-            );
-        }
 
         let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
         let is_shutting_down = SharedFuse::new();

@@ -108,7 +108,6 @@ use std::{
 
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
-use muxink::backpressured::Ticket;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
@@ -142,7 +141,7 @@ use crate::{
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
-        network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
+        network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights, Ticket},
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::SpeculativeExecutionState,
@@ -831,7 +830,7 @@ impl<REv> EffectBuilder<REv> {
             };
 
         self.event_queue
-            .schedule(reactor_event, QueueKind::NetworkIncoming)
+            .schedule(reactor_event, QueueKind::MessageIncoming)
             .await
     }
 

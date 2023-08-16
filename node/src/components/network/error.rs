@@ -1,10 +1,7 @@
 use std::{io, net::SocketAddr};
 
 use datasize::DataSize;
-use muxink::{
-    backpressured::BackpressuredStreamError, demux::DemultiplexerError,
-    fragmented::DefragmentizerError, mux::MultiplexerError,
-};
+use juliet::rpc::{IncomingRequest, RpcServerError};
 use openssl::{error::ErrorStack, ssl};
 use serde::Serialize;
 use thiserror::Error;
@@ -221,22 +218,22 @@ pub enum RawFrameIoError {
 
 /// An error produced by reading messages.
 #[derive(Debug, Error)]
-pub enum MessageReaderError {
-    /// The semaphore that limits trie demands was closed unexpectedly.
-    #[error("demand limiter semaphore closed unexpectedly")]
-    #[allow(dead_code)] // TODO: Re-add if necessary, if backpressure requires this still.
-    UnexpectedSemaphoreClose,
+pub enum MessageReceiverError {
     /// The message receival stack returned an error.
-    #[error("message receive error")]
-    ReceiveError(
-        BackpressuredStreamError<
-            DefragmentizerError<DemultiplexerError<io::Error>>,
-            MultiplexerError<io::Error>,
-        >,
-    ),
+    #[error(transparent)]
+    ReceiveError(#[from] RpcServerError),
+    /// Empty request sent.
+    ///
+    /// This should never happen with a well-behaved client, since the current protocol always
+    /// expects a request to carry a payload.
+    #[error("empty request")]
+    EmptyRequest,
     /// Error deserializing message.
     #[error("message deserialization error")]
     DeserializationError(bincode::Error),
+    /// Invalid channel.
+    #[error("invalid channel: {0}")]
+    InvalidChannel(u8),
     /// Wrong channel for received message.
     #[error("received a {got} message on channel {expected}")]
     WrongChannel {
@@ -245,4 +242,13 @@ pub enum MessageReaderError {
         /// The channel on which the message should have been sent.
         expected: Channel,
     },
+}
+
+/// Error produced by sending messages.
+#[derive(Debug, Error)]
+pub enum MessageSenderError {
+    #[error("received a request on a send-only channel: {0}")]
+    UnexpectedIncomingRequest(IncomingRequest),
+    #[error(transparent)]
+    JulietRpcServerError(#[from] RpcServerError),
 }

@@ -653,11 +653,11 @@ dependencies = [
  "humantime",
  "hyper",
  "itertools 0.10.5",
+ "juliet",
  "libc",
  "linked-hash-map",
  "lmdb-rkv",
  "log",
- "muxink",
  "num",
  "num-derive",
  "num-rational",
@@ -1285,8 +1285,7 @@ dependencies = [
 [[package]]
 name = "datasize"
 version = "0.2.14"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c88ad90721dc8e2ebe1430ac2f59c5bdcd74478baa68da26f30f33b0fe997f11"
+source = "git+https://github.com/casperlabs/datasize-rs?rev=2b980c05af5553522dde5f2751e5a0fd3347d881#2b980c05af5553522dde5f2751e5a0fd3347d881"
 dependencies = [
  "datasize_derive",
  "fake_instant",
@@ -3510,20 +3509,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "muxink"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "futures",
- "rand 0.8.5",
- "thiserror",
- "tokio",
- "tokio-stream",
- "tokio-util 0.7.7",
- "tracing",
-]
-
-[[package]]
 name = "named-dictionary-test"
 version = "0.1.0"
 dependencies = [
@@ -5486,7 +5471,6 @@ checksum = "5427d89453009325de0d8f342c9490009f76e999cb7672d77e46267448f7e6b2"
 dependencies = [
  "bytes",
  "futures-core",
- "futures-io",
  "futures-sink",
  "pin-project-lite",
  "tokio",

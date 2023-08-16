@@ -217,10 +217,6 @@ impl ValidatorMatrix {
         self.finality_threshold_fraction
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.read_inner().is_empty()
-    }
-
     /// Returns whether `pub_key` is the ID of a validator in this era, or `None` if the validator
     /// information for that era is missing.
     pub(crate) fn is_validator_in_era(
@@ -251,6 +247,9 @@ impl ValidatorMatrix {
     }
 
     /// Determine if the active validator is in a current or upcoming set of active validators.
+    ///
+    /// The set is not guaranteed to be minimal, as it will include validators up to `auction_delay
+    /// + 1` back eras from the highest era known.
     #[inline]
     pub(crate) fn is_active_or_upcoming_validator(&self, public_key: &PublicKey) -> bool {
         // This function is potentially expensive and could be memoized, with the cache being
@@ -260,6 +259,22 @@ impl ValidatorMatrix {
             .rev()
             .take(self.auction_delay as usize + 1)
             .any(|validator_weights| validator_weights.is_validator(public_key))
+    }
+
+    /// Return the set of active or upcoming validators.
+    ///
+    /// The set is not guaranteed to be minimal, as it will include validators up to `auction_delay
+    /// + 1` back eras from the highest era known.
+    #[inline]
+    pub(crate) fn active_or_upcoming_validators(&self) -> HashSet<PublicKey> {
+        self.read_inner()
+            .values()
+            .rev()
+            .take(self.auction_delay as usize + 1)
+            .map(|validator_weights| validator_weights.validator_public_keys())
+            .flatten()
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn create_finality_signature(

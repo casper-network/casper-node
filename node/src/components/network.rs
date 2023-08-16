@@ -42,16 +42,19 @@ mod symmetry;
 pub(crate) mod tasks;
 #[cfg(test)]
 mod tests;
+mod transport;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
-    io,
     marker::PhantomData,
     net::{SocketAddr, TcpListener},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Weak,
+    },
     time::{Duration, Instant},
 };
 
@@ -61,17 +64,8 @@ use bytes::Bytes;
 use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
-use muxink::{
-    backpressured::{BackpressuredSink, BackpressuredSinkError, BackpressuredStream, Ticket},
-    demux::{Demultiplexer, DemultiplexerError, DemultiplexerHandle},
-    fragmented::{Defragmentizer, Fragmentizer, SingleFragment},
-    framing::{fixed_size::FixedSize, length_delimited::LengthDelimited},
-    io::{FrameReader, FrameWriter},
-    little_endian::{DecodeError, LittleEndian},
-    mux::{ChannelPrefixedFrame, Multiplexer, MultiplexerError, MultiplexerHandle},
-    ImmediateFrameU64,
-};
 
+use juliet::rpc::{JulietRpcClient, JulietRpcServer, RpcBuilder};
 use prometheus::Registry;
 use rand::{
     seq::{IteratorRandom, SliceRandom},
@@ -86,7 +80,6 @@ use tokio::{
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
-use tokio_util::compat::Compat;
 use tracing::{debug, error, info, trace, warn, Instrument, Span};
 
 use casper_types::{EraId, PublicKey, SecretKey};
@@ -94,7 +87,7 @@ use casper_types::{EraId, PublicKey, SecretKey};
 use self::{
     blocklist::BlocklistJustification,
     chain_info::ChainInfo,
-    error::{ConnectionError, MessageReaderError},
+    error::{ConnectionError, MessageReceiverError},
     event::{IncomingConnection, OutgoingConnection},
     health::{HealthConfig, TaggedTimestamp},
     limiter::Limiter,
@@ -102,7 +95,7 @@ use self::{
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
     symmetry::ConnectionSymmetry,
-    tasks::{EncodedMessage, NetworkContext},
+    tasks::NetworkContext,
 };
 pub(crate) use self::{
     config::Config,
@@ -112,9 +105,9 @@ pub(crate) use self::{
     identity::Identity,
     insights::NetworkInsights,
     message::{
-        generate_largest_serialized_message, Channel, EstimatorWeights, FromIncoming, Message,
-        MessageKind, Payload,
+        generate_largest_serialized_message, Channel, FromIncoming, Message, MessageKind, Payload,
     },
+    transport::Ticket,
 };
 use crate::{
     components::{gossiper::GossipItem, Component, ComponentState, InitializedComponent},
@@ -133,6 +126,8 @@ use crate::{
     NodeRng,
 };
 
+use super::ValidatorBoundComponent;
+
 const COMPONENT_NAME: &str = "network";
 
 const MAX_METRICS_DROP_ATTEMPTS: usize = 25;
@@ -150,12 +145,6 @@ const BASE_RECONNECTION_TIMEOUT: Duration = Duration::from_secs(1);
 /// Interval during which to perform outgoing manager housekeeping.
 const OUTGOING_MANAGER_SWEEP_INTERVAL: Duration = Duration::from_secs(1);
 
-/// The size of a single message fragment sent over the wire.
-const MESSAGE_FRAGMENT_SIZE: usize = 4096;
-
-/// How many bytes of ACKs to read in one go.
-const ACK_BUFFER_SIZE: usize = 1024;
-
 /// How often to send a ping down a healthy connection.
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -170,14 +159,10 @@ const PING_TIMEOUT: Duration = Duration::from_secs(6);
 /// How many pings to send before giving up and dropping the connection.
 const PING_RETRIES: u16 = 5;
 
-/// How many items to buffer before backpressuring.
-// TODO: This should probably be configurable on a per-channel basis.
-const BACKPRESSURE_WINDOW_SIZE: u64 = 20;
-
 #[derive(Clone, DataSize, Debug)]
 pub(crate) struct OutgoingHandle {
     #[data_size(skip)] // Unfortunately, there is no way to inspect an `UnboundedSender`.
-    senders: [UnboundedSender<EncodedMessage>; Channel::COUNT],
+    rpc_client: JulietRpcClient<{ Channel::COUNT }>,
     peer_addr: SocketAddr,
 }
 
@@ -197,9 +182,16 @@ where
     cfg: Config,
     /// Read-only networking information shared across tasks.
     context: Arc<NetworkContext<REv>>,
+    /// A reference to the global validator matrix.
+    validator_matrix: ValidatorMatrix,
 
     /// Outgoing connections manager.
     outgoing_manager: OutgoingManager<OutgoingHandle, ConnectionError>,
+    /// Incoming validator map.
+    ///
+    /// Tracks which incoming connections are from validators. The atomic bool is shared with the
+    /// receiver tasks to determine queue position.
+    incoming_validator_status: HashMap<PublicKey, Weak<AtomicBool>>,
     /// Tracks whether a connection is symmetric or not.
     connection_symmetries: HashMap<NodeId, ConnectionSymmetry>,
 
@@ -210,6 +202,10 @@ where
     #[data_size(skip)]
     server_join_handle: Option<JoinHandle<()>>,
 
+    /// Builder for new node-to-node RPC instances.
+    #[data_size(skip)]
+    rpc_builder: RpcBuilder<{ Channel::COUNT }>,
+
     /// Networking metrics.
     #[data_size(skip)]
     net_metrics: Arc<Metrics>,
@@ -217,12 +213,6 @@ where
     /// The outgoing bandwidth limiter.
     #[data_size(skip)]
     outgoing_limiter: Limiter,
-
-    /// The limiter for incoming resource usage.
-    ///
-    /// This is not incoming bandwidth but an independent resource estimate.
-    #[data_size(skip)]
-    incoming_limiter: Limiter,
 
     /// The era that is considered the active era by the network component.
     active_era: EraId,
@@ -266,15 +256,6 @@ where
             validator_matrix.clone(),
         );
 
-        let incoming_limiter = Limiter::new(
-            cfg.max_incoming_message_rate_non_validators,
-            net_metrics
-                .accumulated_incoming_limiter_delay
-                .inner()
-                .clone(),
-            validator_matrix,
-        );
-
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {
                 retry_attempts: RECONNECTION_ATTEMPTS,
@@ -305,28 +286,36 @@ where
             None => None,
         };
 
+        let chain_info = chain_info_source.into();
+        let rpc_builder = transport::create_rpc_builder(
+            chain_info.maximum_net_message_size,
+            cfg.max_in_flight_demands,
+        );
+
         let context = Arc::new(NetworkContext::new(
             cfg.clone(),
             our_identity,
             keylog,
             node_key_pair.map(NodeKeyPair::new),
-            chain_info_source.into(),
+            chain_info,
             &net_metrics,
         ));
 
         let component = Network {
             cfg,
             context,
+            validator_matrix,
             outgoing_manager,
+            incoming_validator_status: Default::default(),
             connection_symmetries: HashMap::new(),
             net_metrics,
             outgoing_limiter,
-            incoming_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
             shutdown_fuse: DropSwitch::new(ObservableFuse::new()),
             server_join_handle: None,
+            rpc_builder,
             _payload: PhantomData,
         };
 
@@ -433,7 +422,10 @@ where
 
         for peer_id in self.outgoing_manager.connected_peers() {
             total_outgoing_manager_connected_peers += 1;
-            if self.outgoing_limiter.is_validator_in_era(era_id, &peer_id) {
+
+            if !self.validator_matrix.has_era(&era_id)
+                || self.outgoing_limiter.is_validator_in_era(era_id, &peer_id)
+            {
                 total_connected_validators_in_era += 1;
                 self.send_message(peer_id, msg.clone(), None)
             }
@@ -502,40 +494,70 @@ where
         &self,
         dest: NodeId,
         msg: Arc<Message<P>>,
-        opt_responder: Option<AutoClosingResponder<()>>,
+        _opt_responder: Option<AutoClosingResponder<()>>, // TODO: Restore functionality or remove?
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
             let channel = msg.get_channel();
-            let sender = &connection.senders[channel as usize];
+
             let payload = if let Some(payload) = serialize_network_message(&msg) {
                 payload
             } else {
+                // TODO: Note/log that serialization failed.
                 // The `AutoClosingResponder` will respond by itself.
                 return;
             };
             trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            let send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
-
-            if let Err(refused_message) =
-                sender.send(EncodedMessage::new(payload, opt_responder, send_token))
+            let guard = match connection
+                .rpc_client
+                .create_request(channel.into_channel_id())
+                .with_payload(payload)
+                .try_queue_for_sending()
             {
-                match deserialize_network_message::<P>(refused_message.0.payload()) {
-                    Ok(reconstructed_message) => {
-                        // We lost the connection, but that fact has not reached us as an event yet.
-                        debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, lost connection");
+                Ok(guard) => guard,
+                Err(builder) => {
+                    // We had to drop the message, since we hit the buffer limit.
+                    debug!(%channel, "node is sending at too high a rate, message dropped");
+
+                    let payload = builder.into_payload().unwrap_or_default();
+                    match deserialize_network_message::<P>(&payload) {
+                        Ok(reconstructed_message) => {
+                            debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
+                        }
+                        Err(err) => {
+                            error!(our_id=%self.context.our_id(),
+                                   %dest,
+                                   reconstruction_error=%err,
+                                   ?payload,
+                                   "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
+                            );
+                        }
                     }
-                    Err(err) => {
-                        error!(our_id=%self.context.our_id(),
-                               %dest,
-                               reconstruction_error=%err,
-                               payload=?refused_message.0.payload(),
-                               "dropped outgoing message, but also failed to reconstruct it"
-                        );
-                    }
+
+                    return;
+                }
+            };
+
+            // At this point, we could pass the guard to the original component to allow for
+            // backpressure to actually propagate. In the current version we are still going with
+            // the fire-and-forget model though, so simply check for an immediate error, then
+            // forget.
+            match guard.try_wait_for_response() {
+                Ok(Ok(_outcome)) => {
+                    // We got an incredibly quick round-trip, lucky us! Nothing to do.
+                }
+                Ok(Err(err)) => {
+                    debug!(%channel, %err, "failed to send message");
+                }
+                Err(guard) => {
+                    // Not done yet, forget.
+                    guard.forget();
                 }
             }
+
+            let _send_token = TokenizedCount::new(self.net_metrics.queued_messages.inner().clone());
+            // TODO: How to update self.net_metrics.queued_messages? Or simply remove metric?
         } else {
             // We are not connected, so the reconnection is likely already in progress.
             debug!(our_id=%self.context.our_id(), %dest, ?msg, "dropped outgoing message, no connection");
@@ -630,49 +652,66 @@ where
                     // connection after a peer has closed the corresponding incoming connection.
                 }
 
-                // TODO: Removal of `CountingTransport` here means some functionality has to be
-                // restored.
+                // If given a key, determine validator status.
+                let validator_status = peer_consensus_public_key.as_ref().map(|public_key| {
+                    let status = self
+                        .validator_matrix
+                        .is_active_or_upcoming_validator(public_key);
+
+                    // Find the shared `Arc` that holds the validator status for this specific key.
+                    match self.incoming_validator_status.entry((**public_key).clone()) {
+                        // TODO: Use `Arc` for public key-key.
+                        Entry::Occupied(mut occupied) => {
+                            match occupied.get().upgrade() {
+                                Some(arc) => {
+                                    arc.store(status, Ordering::Relaxed);
+                                    arc
+                                }
+                                None => {
+                                    // Failed to ugprade, the weak pointer is just a leftover that
+                                    // has not been cleaned up yet. We can replace it.
+                                    let arc = Arc::new(AtomicBool::new(status));
+                                    occupied.insert(Arc::downgrade(&arc));
+                                    arc
+                                }
+                            }
+                        }
+                        Entry::Vacant(vacant) => {
+                            let arc = Arc::new(AtomicBool::new(status));
+                            vacant.insert(Arc::downgrade(&arc));
+                            arc
+                        }
+                    }
+                });
 
                 let (read_half, write_half) = tokio::io::split(transport);
 
-                // Setup a multiplexed delivery for ACKs (we use the send direction of the incoming
-                // connection for sending ACKs only).
-                let write_compat: Compat<WriteHalf<SslStream<TcpStream>>> =
-                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
-
-                let ack_writer: AckFrameWriter =
-                    FrameWriter::new(FixedSize::new(ACK_FRAME_SIZE), write_compat);
-                let ack_carrier = Multiplexer::new(ack_writer);
-
-                // `rust-openssl` does not support the futures 0.3 `AsyncRead` trait (it uses the
-                // tokio built-in version instead). The compat layer fixes that.
-                let read_compat: Compat<ReadHalf<SslStream<TcpStream>>> =
-                    tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
-
-                let frame_reader: IncomingFrameReader =
-                    FrameReader::new(LengthDelimited, read_compat, MESSAGE_FRAGMENT_SIZE);
-
-                let carrier = Arc::new(Mutex::new(Demultiplexer::new(frame_reader)));
+                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
 
                 // Now we can start the message reader.
                 let boxed_span = Box::new(span.clone());
                 effects.extend(
-                    tasks::multi_channel_message_receiver(
+                    tasks::message_receiver(
                         self.context.clone(),
-                        carrier,
-                        ack_carrier,
-                        self.incoming_limiter
-                            .create_handle(peer_id, peer_consensus_public_key),
+                        validator_status,
+                        rpc_server,
                         self.shutdown_fuse.inner().clone(),
                         peer_id,
                         span.clone(),
                     )
                     .instrument(span)
-                    .event(move |result| Event::IncomingClosed {
-                        result,
-                        peer_id: Box::new(peer_id),
-                        peer_addr,
-                        span: boxed_span,
+                    .event(move |result| {
+                        // We keep the client around, even though we do not use it, since dropping
+                        // it will cause the connection to be closed from our end.
+                        drop(rpc_client);
+
+                        Event::IncomingClosed {
+                            result,
+                            peer_id: Box::new(peer_id),
+                            peer_addr,
+                            peer_consensus_public_key,
+                            span: boxed_span,
+                        }
                     }),
                 );
 
@@ -683,9 +722,10 @@ where
 
     fn handle_incoming_closed(
         &mut self,
-        result: Result<(), MessageReaderError>,
+        result: Result<(), MessageReceiverError>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
+        peer_consensus_public_key: Option<Box<PublicKey>>,
         span: Span,
     ) -> Effects<Event<P>> {
         span.in_scope(|| {
@@ -699,11 +739,19 @@ where
                 }
             }
 
-            // Update the connection symmetries.
-            self.connection_symmetries
+            // Update the connection symmetries and cleanup if necessary.
+            if !self
+                .connection_symmetries
                 .entry(*peer_id)
-                .or_default()
-                .remove_incoming(peer_addr, Instant::now());
+                .or_default() // Should never occur.
+                .remove_incoming(peer_addr, Instant::now())
+            {
+                if let Some(ref public_key) = peer_consensus_public_key {
+                    self.incoming_validator_status.remove(public_key);
+                }
+
+                self.connection_symmetries.remove(&peer_id);
+            }
 
             Effects::new()
         })
@@ -809,14 +857,19 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
-                peer_consensus_public_key,
+                peer_consensus_public_key: _, // TODO: Use for limiting or remove.
                 transport,
             } => {
                 info!("new outgoing connection established");
 
-                let (senders, receivers) = unbounded_channels::<_, { Channel::COUNT }>();
+                let (read_half, write_half) = tokio::io::split(transport);
 
-                let handle = OutgoingHandle { senders, peer_addr };
+                let (rpc_client, rpc_server) = self.rpc_builder.build(read_half, write_half);
+
+                let handle = OutgoingHandle {
+                    rpc_client,
+                    peer_addr,
+                };
 
                 let request = self
                     .outgoing_manager
@@ -839,36 +892,12 @@ where
                     self.connection_completed(peer_id);
                 }
 
-                // `rust-openssl` does not support the futures 0.3 `AsyncWrite` trait (it uses the
-                // tokio built-in version instead). The compat layer fixes that.
-
-                let (read_half, write_half) = tokio::io::split(transport);
-
-                let read_compat = tokio_util::compat::TokioAsyncReadCompatExt::compat(read_half);
-
-                let ack_reader: AckFrameReader =
-                    FrameReader::new(FixedSize::new(ACK_FRAME_SIZE), read_compat, ACK_BUFFER_SIZE);
-                let ack_carrier = Arc::new(Mutex::new(Demultiplexer::new(ack_reader)));
-
-                let write_compat =
-                    tokio_util::compat::TokioAsyncWriteCompatExt::compat_write(write_half);
-                let carrier: OutgoingCarrier =
-                    Multiplexer::new(FrameWriter::new(LengthDelimited, write_compat));
-
-                effects.extend(
-                    tasks::encoded_message_sender(
-                        receivers,
-                        carrier,
-                        ack_carrier,
-                        self.outgoing_limiter
-                            .create_handle(peer_id, peer_consensus_public_key),
-                    )
-                    .instrument(span)
-                    .event(move |_| Event::OutgoingDropped {
+                effects.extend(tasks::rpc_sender_loop(rpc_server).instrument(span).event(
+                    move |_| Event::OutgoingDropped {
                         peer_id: Box::new(peer_id),
                         peer_addr,
-                    }),
-                );
+                    },
+                ));
 
                 effects
             }
@@ -1251,8 +1280,15 @@ where
                     result,
                     peer_id,
                     peer_addr,
+                    peer_consensus_public_key,
                     span,
-                } => self.handle_incoming_closed(result, peer_id, peer_addr, *span),
+                } => self.handle_incoming_closed(
+                    result,
+                    peer_id,
+                    peer_addr,
+                    peer_consensus_public_key,
+                    *span,
+                ),
                 Event::OutgoingConnection { outgoing, span } => {
                     self.handle_outgoing_connection(*outgoing, span)
                 }
@@ -1371,6 +1407,43 @@ where
     }
 }
 
+impl<REv, P> ValidatorBoundComponent<REv> for Network<REv, P>
+where
+    REv: ReactorEvent
+        + From<Event<P>>
+        + From<BeginGossipRequest<GossipedAddress>>
+        + FromIncoming<P>
+        + From<StorageRequest>
+        + From<NetworkRequest<P>>
+        + From<PeerBehaviorAnnouncement>,
+    P: Payload,
+{
+    fn handle_validators(
+        &mut self,
+        _effect_builder: EffectBuilder<REv>,
+        _rng: &mut NodeRng,
+    ) -> Effects<Self::Event> {
+        // If we receive an updated set of validators, recalculate validator status for every
+        // existing connection.
+
+        let active_validators = self.validator_matrix.active_or_upcoming_validators();
+
+        // Update the validator status for every connection.
+        for (public_key, status) in self.incoming_validator_status.iter_mut() {
+            // If there is only a `Weak` ref, we lost the connection to the validator, but the
+            // disconnection has not reached us yet.
+            status.upgrade().map(|arc| {
+                arc.store(
+                    active_validators.contains(public_key),
+                    std::sync::atomic::Ordering::Relaxed,
+                )
+            });
+        }
+
+        Effects::default()
+    }
+}
+
 /// Setup a fixed amount of senders/receivers.
 fn unbounded_channels<T, const N: usize>() -> ([UnboundedSender<T>; N], [UnboundedReceiver<T>; N]) {
     // TODO: Improve this somehow to avoid the extra allocation required (turning a
@@ -1394,66 +1467,17 @@ fn unbounded_channels<T, const N: usize>() -> ([UnboundedSender<T>; N], [Unbound
 /// Transport type for base encrypted connections.
 type Transport = SslStream<TcpStream>;
 
-/// The writer for outgoing length-prefixed frames.
-type OutgoingFrameWriter = FrameWriter<
-    ChannelPrefixedFrame<SingleFragment>,
-    LengthDelimited,
-    Compat<WriteHalf<Transport>>,
+/// Transport-level RPC server.
+type RpcServer = JulietRpcServer<
+    { Channel::COUNT },
+    ReadHalf<SslStream<TcpStream>>,
+    WriteHalf<SslStream<TcpStream>>,
 >;
-
-/// The multiplexer to send fragments over an underlying frame writer.
-type OutgoingCarrier = Multiplexer<OutgoingFrameWriter>;
-
-/// The error type associated with the primary sink implementation.
-type OutgoingChannelError =
-    BackpressuredSinkError<MultiplexerError<io::Error>, DecodeError<DemultiplexerError<io::Error>>>;
-
-/// An instance of a channel on an outgoing carrier.
-type OutgoingChannel = BackpressuredSink<
-    Fragmentizer<MultiplexerHandle<OutgoingFrameWriter>, Bytes>,
-    IncomingAckChannel,
-    Bytes,
->;
-
-/// The reader for incoming length-prefixed frames.
-type IncomingFrameReader = FrameReader<LengthDelimited, Compat<ReadHalf<Transport>>>;
-
-/// The demultiplexer that seperates channels sent through the underlying frame reader.
-type IncomingCarrier = Demultiplexer<IncomingFrameReader>;
-
-/// An instance of a channel on an incoming carrier.
-type IncomingChannel = BackpressuredStream<
-    Defragmentizer<DemultiplexerHandle<IncomingFrameReader>>,
-    OutgoingAckChannel,
-    Bytes,
->;
-
-/// Frame writer for ACKs, sent back over the incoming connection.
-type AckFrameWriter =
-    FrameWriter<ChannelPrefixedFrame<ImmediateFrameU64>, FixedSize, Compat<WriteHalf<Transport>>>;
-
-/// ACK frames are 9 bytes (channel prefix + `u64`).
-const ACK_FRAME_SIZE: usize = 9;
-
-/// Frame reader for ACKs, received through an outgoing connection.
-type AckFrameReader = FrameReader<FixedSize, Compat<ReadHalf<Transport>>>;
-
-/// Multiplexer sending ACKs for various channels over an `AckFrameWriter`.
-type OutgoingAckCarrier = Multiplexer<AckFrameWriter>;
-
-/// Outgoing ACK sink.
-type OutgoingAckChannel = LittleEndian<u64, MultiplexerHandle<AckFrameWriter>>;
-
-/// Demultiplexer receiving ACKs for various channels over an `AckFrameReader`.
-type IncomingAckCarrier = Demultiplexer<AckFrameReader>;
-
-/// Incoming ACK stream.
-type IncomingAckChannel = LittleEndian<u64, DemultiplexerHandle<AckFrameReader>>;
 
 /// Setups bincode encoding used on the networking transport.
 fn bincode_config() -> impl Options {
     bincode::options()
-        .with_no_limit() // We rely on `muxink` to impose limits.
+        .with_no_limit() // We rely on `juliet` to impose limits.
         .with_little_endian() // Default at the time of this writing, we are merely pinning it.
         .with_varint_encoding() // Same as above.
         .reject_trailing_bytes() // There is no reason for us not to reject trailing bytes.

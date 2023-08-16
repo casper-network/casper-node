@@ -281,9 +281,18 @@ impl<const N: usize> IoCoreBuilder<N> {
     /// Creates a new builder for an [`IoCore`].
     #[inline]
     pub const fn new(protocol: ProtocolBuilder<N>) -> Self {
+        Self::with_default_buffer_size(protocol, 1)
+    }
+
+    /// Creates a new builder for an [`IoCore`], initializing all buffer sizes to the given default.
+    #[inline]
+    pub const fn with_default_buffer_size(
+        protocol: ProtocolBuilder<N>,
+        default_buffer_size: usize,
+    ) -> Self {
         Self {
             protocol,
-            buffer_size: [1; N],
+            buffer_size: [default_buffer_size; N],
         }
     }
 
