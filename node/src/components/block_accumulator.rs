@@ -691,7 +691,7 @@ impl BlockAccumulator {
                 // event will then re-trigger this flow and eventually mark it complete.
                 let cloned_signatures = block_signatures.clone();
                 effect_builder
-                    .put_block_to_storage(Arc::clone(&meta_block.block))
+                    .put_block_v2_to_storage(Arc::clone(&meta_block.block))
                     .then(move |_| effect_builder.put_signatures_to_storage(cloned_signatures))
                     .event(move |_| Event::Stored {
                         maybe_meta_block: Some(meta_block),

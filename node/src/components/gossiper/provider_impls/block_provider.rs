@@ -39,7 +39,7 @@ impl ItemProvider<BlockV2> for Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV
     ) -> Option<Box<BlockV2>> {
         // TODO: Make `get_block_from_storage` return a boxed block instead of boxing here.
         effect_builder
-            .get_block_from_storage(item_id)
+            .get_block_v2_from_storage(item_id)
             .await
             .map(Box::new)
     }

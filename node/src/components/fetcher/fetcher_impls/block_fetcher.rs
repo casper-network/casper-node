@@ -54,7 +54,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
     ) -> Option<Block> {
-        effect_builder.get_versioned_block_from_storage(id).await
+        effect_builder.get_block_from_storage(id).await
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
@@ -63,7 +63,7 @@ impl ItemFetcher<Block> for Fetcher<Block> {
     ) -> StoringState<'a, Block> {
         StoringState::Enqueued(
             effect_builder
-                .put_versioned_block_to_storage(Arc::new(item))
+                .put_block_to_storage(Arc::new(item))
                 .map(|_| ())
                 .boxed(),
         )

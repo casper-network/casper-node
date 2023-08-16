@@ -150,11 +150,11 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         let block_body_v1 = BlockV1::random(rng).body().clone();
-        let versioned_block_body = BlockBody::V1(block_body_v1);
-        bytesrepr::test_serialization_roundtrip(&versioned_block_body);
+        let block_body = BlockBody::V1(block_body_v1);
+        bytesrepr::test_serialization_roundtrip(&block_body);
 
         let block_body_v2 = BlockV2::random(rng).body().clone();
-        let versioned_block_body = BlockBody::V2(block_body_v2);
-        bytesrepr::test_serialization_roundtrip(&versioned_block_body);
+        let block_body = BlockBody::V2(block_body_v2);
+        bytesrepr::test_serialization_roundtrip(&block_body);
     }
 }

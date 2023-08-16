@@ -562,11 +562,10 @@ impl reactor::Reactor for MainReactor {
                 _gossiped_block_id,
             )) => Effects::new(),
             MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
-                let versioned_block = (*block).clone();
                 // The block accumulator shouldn't concern itself with historical blocks that are
-                // being fetched. If the versioned block is not convertible to the
-                // current version it means that it is surely a historical block.
-                if let Ok(block) = versioned_block.try_into() {
+                // being fetched. If the block is not convertible to the current version it means
+                // that it is surely a historical block.
+                if let Ok(block) = (*block).clone().try_into() {
                     reactor::wrap_effects(
                         MainEvent::BlockAccumulator,
                         self.block_accumulator.handle_event(

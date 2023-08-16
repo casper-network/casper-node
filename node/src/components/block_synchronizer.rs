@@ -17,7 +17,7 @@ mod trie_accumulator;
 #[cfg(test)]
 mod tests;
 
-use std::sync::Arc;
+use std::{convert::TryFrom, sync::Arc};
 
 use datasize::DataSize;
 use either::Either;
@@ -477,23 +477,17 @@ impl BlockSynchronizer {
                             .get_execution_results_from_storage(*block.hash())
                             .then(move |maybe_execution_results| async move {
                                 match maybe_execution_results {
-                                    Some(execution_results) => {
-                                        // TODO[RC] .try_into(), becasue we want to avoid polluting
-                                        // `MetaBlock` with `NewBlock`, but maybe we'd have to
-                                        match <Block as std::convert::TryInto<BlockV2>>::try_into(
-                                            *block,
-                                        ) {
-                                            Ok(block) => {
-                                                let meta_block = MetaBlock::new(
-                                                    Arc::new(block),
-                                                    execution_results,
-                                                    MetaBlockState::new_after_historical_sync(),
-                                                );
-                                                effect_builder.announce_meta_block(meta_block).await
-                                            }
-                                            Err(_) => todo!(),
+                                    Some(execution_results) => match BlockV2::try_from(*block) {
+                                        Ok(block) => {
+                                            let meta_block = MetaBlock::new(
+                                                Arc::new(block),
+                                                execution_results,
+                                                MetaBlockState::new_after_historical_sync(),
+                                            );
+                                            effect_builder.announce_meta_block(meta_block).await
                                         }
-                                    }
+                                        Err(_) => todo!(),
+                                    },
                                     None => {
                                         error!(
                                             "should have execution results for {}",
@@ -864,8 +858,8 @@ impl BlockSynchronizer {
                         builder.demote_peer(peer_id);
                     }
                 }
-                Some(versioned_block) => {
-                    if let Err(error) = builder.register_block(*versioned_block, maybe_peer_id) {
+                Some(block) => {
+                    if let Err(error) = builder.register_block(*block, maybe_peer_id) {
                         error!(%error, "BlockSynchronizer: failed to apply block");
                     }
                 }

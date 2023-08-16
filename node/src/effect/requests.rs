@@ -262,15 +262,15 @@ where
 /// A storage request.
 pub(crate) enum StorageRequest {
     /// Store given block.
-    PutBlock {
+    PutBlockV2 {
         /// Block to be stored.
         block: Arc<BlockV2>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
-    /// Store given versioned block.
-    PutVersionedBlock {
+    /// Store given block.
+    PutBlock {
         /// Block to be stored.
         block: Arc<Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
@@ -293,15 +293,15 @@ pub(crate) enum StorageRequest {
         responder: Responder<bool>,
     },
     /// Retrieve block with given hash.
-    GetBlock {
+    GetBlockV2 {
         /// Hash of block to be retrieved.
         block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
         responder: Responder<Option<BlockV2>>,
     },
-    /// Retrieve versioned block with given hash.
-    GetVersionedBlock {
+    /// Retrieve block with given hash.
+    GetBlock {
         /// Hash of block to be retrieved.
         block_hash: BlockHash,
         /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
@@ -517,8 +517,8 @@ pub(crate) enum StorageRequest {
 impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
-            StorageRequest::PutVersionedBlock { block, .. } => {
+            StorageRequest::PutBlockV2 { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutBlock { block, .. } => {
                 write!(formatter, "put versioned {}", block)
             }
             StorageRequest::PutApprovalsHashes {
@@ -526,11 +526,11 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "put {}", approvals_hashes)
             }
+            StorageRequest::GetBlockV2 { block_hash, .. } => {
+                write!(formatter, "get block v2 {}", block_hash)
+            }
             StorageRequest::GetBlock { block_hash, .. } => {
                 write!(formatter, "get block {}", block_hash)
-            }
-            StorageRequest::GetVersionedBlock { block_hash, .. } => {
-                write!(formatter, "get versioned block {}", block_hash)
             }
             StorageRequest::IsBlockStored { block_hash, .. } => {
                 write!(formatter, "is block {} stored", block_hash)

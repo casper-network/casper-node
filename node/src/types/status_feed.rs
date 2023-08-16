@@ -161,18 +161,18 @@ pub struct MinimalBlockInfo {
 }
 
 impl From<Block> for MinimalBlockInfo {
-    fn from(versioned_block: Block) -> Self {
-        let proposer = match &versioned_block {
-            Block::V1(block) => block.proposer().clone(),
-            Block::V2(block) => block.proposer().clone(),
+    fn from(block: Block) -> Self {
+        let proposer = match &block {
+            Block::V1(v1) => v1.proposer().clone(),
+            Block::V2(v2) => v2.proposer().clone(),
         };
 
         MinimalBlockInfo {
-            hash: *versioned_block.hash(),
-            timestamp: versioned_block.timestamp(),
-            era_id: versioned_block.era_id(),
-            height: versioned_block.height(),
-            state_root_hash: *versioned_block.state_root_hash(),
+            hash: *block.hash(),
+            timestamp: block.timestamp(),
+            era_id: block.era_id(),
+            height: block.height(),
+            state_root_hash: *block.state_root_hash(),
             creator: proposer,
         }
     }

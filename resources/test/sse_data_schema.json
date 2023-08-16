@@ -229,7 +229,7 @@
       "type": "string"
     },
     "Block": {
-      "description": "A versioned block after execution.",
+      "description": "A block after execution.",
       "oneOf": [
         {
           "description": "The legacy, initial version of the block.",

@@ -50,7 +50,7 @@ impl Storage {
     /// Inserts the relevant entries to the index.
     ///
     /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_versioned_block_body_to_deploy_index(
+    pub(crate) fn insert_block_body_to_deploy_index(
         deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
         block_hash: BlockHash,
         block_body: &BlockBody,
@@ -80,7 +80,7 @@ impl Storage {
     /// Inserts the relevant entries to the index.
     ///
     /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_block_body_to_deploy_index(
+    pub(crate) fn insert_block_body_v2_to_deploy_index(
         deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
         block_hash: BlockHash,
         block_body: &BlockBodyV2,

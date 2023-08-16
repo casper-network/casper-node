@@ -1059,24 +1059,24 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.
-    pub(crate) async fn put_block_to_storage(self, block: Arc<BlockV2>) -> bool
+    pub(crate) async fn put_block_v2_to_storage(self, block: Arc<BlockV2>) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::PutBlock { block, responder },
+            |responder| StorageRequest::PutBlockV2 { block, responder },
             QueueKind::ToStorage,
         )
         .await
     }
 
-    /// Puts the given, versioned block into the linear block store.
-    pub(crate) async fn put_versioned_block_to_storage(self, block: Arc<Block>) -> bool
+    /// Puts the given block into the linear block store.
+    pub(crate) async fn put_block_to_storage(self, block: Arc<Block>) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::PutVersionedBlock { block, responder },
+            |responder| StorageRequest::PutBlock { block, responder },
             QueueKind::ToStorage,
         )
         .await
@@ -1122,13 +1122,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested block from the linear block store.
-    pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<BlockV2>
+    /// Gets the requested block v2 from the linear block store.
+    pub(crate) async fn get_block_v2_from_storage(self, block_hash: BlockHash) -> Option<BlockV2>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlock {
+            |responder| StorageRequest::GetBlockV2 {
                 block_hash,
                 responder,
             },
@@ -1137,16 +1137,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested, versioned block from the linear block store.
-    pub(crate) async fn get_versioned_block_from_storage(
-        self,
-        block_hash: BlockHash,
-    ) -> Option<Block>
+    /// Gets the requested block from the linear block store.
+    pub(crate) async fn get_block_from_storage(self, block_hash: BlockHash) -> Option<Block>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetVersionedBlock {
+            |responder| StorageRequest::GetBlock {
                 block_hash,
                 responder,
             },

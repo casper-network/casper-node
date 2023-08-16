@@ -448,7 +448,7 @@ impl Storage {
             let (_, raw_val) = row?;
             let mut body_txn = env.begin_ro_txn()?;
             let block_header: BlockHeader = lmdb_ext::deserialize(raw_val)?;
-            let maybe_block_body = get_versioned_body_for_block_header(
+            let maybe_block_body = get_body_for_block_header(
                 &mut body_txn,
                 block_header.body_hash(),
                 &BlockBodyDatabases {
@@ -484,7 +484,7 @@ impl Storage {
             )?;
 
             if let Some(block_body) = maybe_block_body? {
-                Self::insert_versioned_block_body_to_deploy_index(
+                Self::insert_block_body_to_deploy_index(
                     &mut deploy_hash_index,
                     block_header.block_hash(),
                     &block_body,
@@ -716,9 +716,7 @@ impl Storage {
             }
             NetRequest::Block(ref serialized_id) => {
                 let id = decode_item_id::<Block>(serialized_id)?;
-                let opt_item = self
-                    .read_versioned_block(&id)
-                    .map_err(FatalStorageError::from)?;
+                let opt_item = self.read_block(&id).map_err(FatalStorageError::from)?;
                 let fetch_response = FetchResponse::from_opt(id, opt_item);
 
                 Ok(self.update_pool_and_send(
@@ -814,12 +812,12 @@ impl Storage {
         // The rationale is that long IO operations are very rare and cache misses frequent, so on
         // average the actual execution time will be very low.
         Ok(match req {
+            StorageRequest::PutBlockV2 { block, responder } => {
+                responder.respond(self.write_block_v2(&block)?).ignore()
+            }
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&block)?).ignore()
             }
-            StorageRequest::PutVersionedBlock { block, responder } => responder
-                .respond(self.write_versioned_block(&block)?)
-                .ignore(),
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes,
                 responder,
@@ -830,16 +828,14 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(result).ignore()
             }
+            StorageRequest::GetBlockV2 {
+                block_hash,
+                responder,
+            } => responder.respond(self.read_block_v2(&block_hash)?).ignore(),
             StorageRequest::GetBlock {
                 block_hash,
                 responder,
             } => responder.respond(self.read_block(&block_hash)?).ignore(),
-            StorageRequest::GetVersionedBlock {
-                block_hash,
-                responder,
-            } => responder
-                .respond(self.read_versioned_block(&block_hash)?)
-                .ignore(),
             StorageRequest::IsBlockStored {
                 block_hash,
                 responder,
@@ -1003,7 +999,7 @@ impl Storage {
                 let mut txn = self.env.begin_ro_txn()?;
 
                 let block: Block =
-                    if let Some(block) = self.get_single_versioned_block(&mut txn, &block_hash)? {
+                    if let Some(block) = self.get_single_block(&mut txn, &block_hash)? {
                         block
                     } else {
                         return Ok(responder.respond(None).ignore());
@@ -1066,24 +1062,22 @@ impl Storage {
 
                 let mut txn = self.env.begin_ro_txn()?;
 
-                let versioned_block: Block = {
-                    if let Some(versioned_block) =
-                        self.get_block_by_height(&mut txn, block_height)?
-                    {
-                        versioned_block
+                let block: Block = {
+                    if let Some(block) = self.get_block_by_height(&mut txn, block_height)? {
+                        block
                     } else {
                         return Ok(responder.respond(None).ignore());
                     }
                 };
 
-                let hash = versioned_block.hash();
+                let hash = block.hash();
                 let block_signatures = match self.get_block_signatures(&mut txn, hash)? {
                     Some(signatures) => signatures,
-                    None => BlockSignatures::new(*hash, versioned_block.era_id()),
+                    None => BlockSignatures::new(*hash, block.era_id()),
                 };
                 responder
                     .respond(Some(SignedBlock {
-                        block: versioned_block,
+                        block,
                         block_signatures,
                     }))
                     .ignore()
@@ -1296,17 +1290,17 @@ impl Storage {
         Ok(outcome)
     }
 
-    /// Retrieves a block by hash.
-    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<BlockV2>, FatalStorageError> {
-        self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
-    }
-
-    /// Retrieves a versioned block by hash.
-    pub fn read_versioned_block(
+    /// Retrieves a block v2 by hash.
+    pub fn read_block_v2(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<Block>, FatalStorageError> {
-        self.get_single_versioned_block(&mut self.env.begin_ro_txn()?, block_hash)
+    ) -> Result<Option<BlockV2>, FatalStorageError> {
+        self.get_single_block_v2(&mut self.env.begin_ro_txn()?, block_hash)
+    }
+
+    /// Retrieves a block by hash.
+    pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
+        self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
     /// Returns `true` if the given block's header and body are stored.
@@ -1647,7 +1641,7 @@ impl Storage {
         block_hash: BlockHash,
     ) -> Result<Option<(BlockV2, Vec<Deploy>)>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        let block = match self.get_single_block(&mut txn, &block_hash)? {
+        let block = match self.get_single_block_v2(&mut txn, &block_hash)? {
             Some(block) => block,
             None => {
                 debug!(
@@ -1675,7 +1669,7 @@ impl Storage {
     ) -> Result<Option<Block>, FatalStorageError> {
         self.block_height_index
             .get(&height)
-            .and_then(|block_hash| self.get_single_versioned_block(txn, block_hash).transpose())
+            .and_then(|block_hash| self.get_single_block(txn, block_hash).transpose())
             .transpose()
     }
 
@@ -1813,7 +1807,7 @@ impl Storage {
 
         // The `completed_blocks` contains blocks with sufficient finality signatures,
         // so we don't need to check the sufficiency again.
-        self.get_single_versioned_block(txn, highest_complete_block_hash)
+        self.get_single_block(txn, highest_complete_block_hash)
     }
 
     /// Returns a vector of blocks that satisfy the predicate, and one that doesn't (if one
@@ -2029,12 +2023,46 @@ impl Storage {
         Ok(maybe_block_header)
     }
 
+    /// Retrieves a single block v2 from storage.
+    fn get_single_block_v2(
+        &self,
+        txn: &mut RoTransaction,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BlockV2>, FatalStorageError> {
+        let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
+            Some(block_header) => block_header,
+            None => {
+                debug!(
+                    ?block_hash,
+                    "get_single_block_v2: missing block header for {}", block_hash
+                );
+                return Ok(None);
+            }
+        };
+
+        let maybe_block_body =
+            get_body_v2_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
+        let block_body = match maybe_block_body? {
+            Some(block_body) => block_body,
+            None => {
+                debug!(
+                    ?block_header,
+                    "get_single_block_v2: missing block body for {}",
+                    block_header.block_hash()
+                );
+                return Ok(None);
+            }
+        };
+        let block = BlockV2::new_from_header_and_body(block_header, block_body);
+        Ok(Some(block))
+    }
+
     /// Retrieves a single block from storage.
     fn get_single_block(
         &self,
         txn: &mut RoTransaction,
         block_hash: &BlockHash,
-    ) -> Result<Option<BlockV2>, FatalStorageError> {
+    ) -> Result<Option<Block>, FatalStorageError> {
         let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
             Some(block_header) => block_header,
             None => {
@@ -2059,44 +2087,7 @@ impl Storage {
                 return Ok(None);
             }
         };
-        let block = BlockV2::new_from_header_and_body(block_header, block_body);
-        Ok(Some(block))
-    }
-
-    /// Retrieves a single block from storage.
-    fn get_single_versioned_block(
-        &self,
-        txn: &mut RoTransaction,
-        block_hash: &BlockHash,
-    ) -> Result<Option<Block>, FatalStorageError> {
-        let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
-            Some(block_header) => block_header,
-            None => {
-                debug!(
-                    ?block_hash,
-                    "get_single_block: missing block header for {}", block_hash
-                );
-                return Ok(None);
-            }
-        };
-
-        let maybe_versioned_block_body = get_versioned_body_for_block_header(
-            txn,
-            block_header.body_hash(),
-            &self.block_body_dbs,
-        );
-        let block_body = match maybe_versioned_block_body? {
-            Some(block_body) => block_body,
-            None => {
-                debug!(
-                    ?block_header,
-                    "get_single_versioned_block: missing versioned block body for {}",
-                    block_header.block_hash()
-                );
-                return Ok(None);
-            }
-        };
-        let block = Block::new_from_header_and_versioned_body(block_header, block_body)?;
+        let block = Block::new_from_header_and_body(block_header, block_body)?;
         Ok(Some(block))
     }
 
@@ -2407,7 +2398,7 @@ impl Storage {
                             .env
                             .begin_ro_txn()
                             .expect("Could not start transaction for lmdb");
-                        if let Ok(Some(block)) = self.get_single_block(&mut txn, &block_hash) {
+                        if let Ok(Some(block)) = self.get_single_block_v2(&mut txn, &block_hash) {
                             HighestOrphanedBlockResult::Orphan(block.header().clone())
                         } else {
                             HighestOrphanedBlockResult::MissingHeader(block_hash)
@@ -2436,7 +2427,7 @@ impl Storage {
             None => return Ok(None),
         };
         let maybe_block_body =
-            get_body_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
+            get_body_v2_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
         let block_body = match maybe_block_body? {
             Some(block_body) => block_body,
             None => {
@@ -2765,7 +2756,7 @@ impl Storage {
     ) -> Result<Option<BlockV2>, FatalStorageError> {
         self.switch_block_era_id_index
             .get(&era_id)
-            .and_then(|block_hash| self.get_single_block(txn, block_hash).transpose())
+            .and_then(|block_hash| self.get_single_block_v2(txn, block_hash).transpose())
             .transpose()
     }
 
@@ -2865,14 +2856,14 @@ where
     Ok(())
 }
 
-/// Retrieves the block body for the given block header.
-fn get_body_for_block_header(
+/// Retrieves the block body v2 for the given block header.
+fn get_body_v2_for_block_header(
     txn: &mut RoTransaction,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,
 ) -> Result<Option<BlockBodyV2>, LmdbExtError> {
     Ok(
-        get_versioned_body_for_block_header(txn, block_body_hash, block_body_dbs)?.and_then(
+        get_body_for_block_header(txn, block_body_hash, block_body_dbs)?.and_then(
             |body| match body {
                 BlockBody::V1(_) => None,
                 BlockBody::V2(inner) => Some(inner),
@@ -2881,8 +2872,8 @@ fn get_body_for_block_header(
     )
 }
 
-/// Retrieves the versioned block body for the given block header.
-fn get_versioned_body_for_block_header(
+/// Retrieves the block body for the given block header.
+fn get_body_for_block_header(
     txn: &mut RoTransaction,
     block_body_hash: &Digest,
     block_body_dbs: &BlockBodyDatabases,

@@ -139,7 +139,7 @@ impl Display for BlockConversionError {
 }
 
 #[cfg(feature = "json-schema")]
-static VERSIONED_BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());
+static BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
@@ -148,7 +148,7 @@ const BLOCK_V1_TAG: u8 = 0;
 /// Tag for block body v2.
 const BLOCK_V2_TAG: u8 = 1;
 
-/// A versioned block after execution.
+/// A block after execution.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     any(feature = "std", feature = "json-schema", test),
@@ -174,12 +174,12 @@ pub enum Block {
 impl Block {
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
-    pub fn new_from_header_and_versioned_body(
+    pub fn new_from_header_and_body(
         header: BlockHeader,
-        versioned_block_body: BlockBody,
+        block_body: BlockBody,
     ) -> Result<Self, Box<BlockValidationError>> {
         let hash = header.block_hash();
-        let block = match versioned_block_body {
+        let block = match block_body {
             BlockBody::V1(v1) => Block::V1(BlockV1 {
                 hash,
                 header,
@@ -311,7 +311,7 @@ impl Block {
     #[doc(hidden)]
     #[cfg(feature = "json-schema")]
     pub fn example() -> &'static Self {
-        &VERSIONED_BLOCK
+        &BLOCK
     }
 }
 
@@ -407,11 +407,11 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         let block_v1 = BlockV1::random(rng);
-        let versioned_block = Block::V1(block_v1);
-        bytesrepr::test_serialization_roundtrip(&versioned_block);
+        let block = Block::V1(block_v1);
+        bytesrepr::test_serialization_roundtrip(&block);
 
         let block_v2 = BlockV2::random(rng);
-        let versioned_block = Block::V2(block_v2);
-        bytesrepr::test_serialization_roundtrip(&versioned_block);
+        let block = Block::V2(block_v2);
+        bytesrepr::test_serialization_roundtrip(&block);
     }
 }
