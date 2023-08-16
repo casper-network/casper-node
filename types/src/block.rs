@@ -9,7 +9,8 @@ mod era_end;
 mod era_report;
 mod finality_signature;
 mod finality_signature_id;
-mod json_compatibility;
+#[cfg(all(feature = "std", feature = "json-schema"))]
+mod json_block_with_signatures;
 mod signed_block_header;
 
 use alloc::{boxed::Box, vec::Vec};
@@ -44,7 +45,7 @@ pub use era_report::EraReport;
 pub use finality_signature::FinalitySignature;
 pub use finality_signature_id::FinalitySignatureId;
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use json_compatibility::JsonBlockWithSignatures;
+pub use json_block_with_signatures::JsonBlockWithSignatures;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
