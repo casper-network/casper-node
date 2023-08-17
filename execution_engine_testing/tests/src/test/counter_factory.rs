@@ -56,7 +56,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_2 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(&no_such_method_2, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
+        matches!(&no_such_method_2, Error::Exec(execution::Error::AbstractMethod(function_name)) if function_name == INCREASE_ENTRY_POINT),
         "{:?}",
         &no_such_method_2
     );
@@ -76,7 +76,7 @@ fn should_not_call_undefined_entrypoints_on_factory() {
     let no_such_method_3 = builder.get_error().expect("should have error");
 
     assert!(
-        matches!(&no_such_method_3, Error::Exec(execution::Error::NoSuchMethod(function_name)) if function_name == DECREASE_ENTRY_POINT),
+        matches!(&no_such_method_3, Error::Exec(execution::Error::AbstractMethod(function_name)) if function_name == DECREASE_ENTRY_POINT),
         "{:?}",
         &no_such_method_3
     );

@@ -21,8 +21,8 @@ pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
 bitflags! {
     /// A struct which behaves like a set of bitflags to define access rights associated with a
     /// [`URef`](crate::URef).
-    // #[derive(Debug, Copy, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
-   pub struct AccessRights: u8 {
+    #[cfg_attr(feature = "datasize", derive(DataSize))]
+    pub struct AccessRights: u8 {
         /// No permissions
         const NONE = 0;
         /// Permission to read the value under the associated `URef`.
@@ -39,17 +39,6 @@ bitflags! {
         const ADD_WRITE      = Self::ADD.bits()  | Self::WRITE.bits();
         /// Permission to read, add to, or write the value under the associated `URef`.
         const READ_ADD_WRITE = Self::READ.bits() | Self::ADD.bits() | Self::WRITE.bits();
-    }
-}
-
-#[cfg(feature = "datasize")]
-impl DataSize for AccessRights {
-    const IS_DYNAMIC: bool = u8::IS_DYNAMIC;
-
-    const STATIC_HEAP_SIZE: usize = u8::STATIC_HEAP_SIZE;
-
-    fn estimate_heap_size(&self) -> usize {
-        self.bits().estimate_heap_size()
     }
 }
 

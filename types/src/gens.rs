@@ -300,7 +300,6 @@ pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
         Just(EntryPointType::Session),
         Just(EntryPointType::Contract),
         Just(EntryPointType::Install),
-        Just(EntryPointType::Normal),
     ]
 }
 

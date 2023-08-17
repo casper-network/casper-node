@@ -128,6 +128,9 @@ pub enum Error {
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
+    /// Contract does
+    #[error("Error calling an abstract entry point: {}", _0)]
+    AbstractMethod(String),
     /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(PreprocessingError),

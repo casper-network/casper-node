@@ -200,7 +200,7 @@ fn assert_each_context_has_correct_call_stack_info(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract | EntryPointType::Install | EntryPointType::Normal => builder
+            EntryPointType::Contract | EntryPointType::Install => builder
                 .get_call_stack_from_contract_context(
                     &stored_call_stack_key,
                     current_contract_package_hash,
@@ -262,14 +262,14 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract => builder.get_call_stack_from_contract_context(
-                &stored_call_stack_key,
-                current_contract_package_hash,
-            ),
+            EntryPointType::Contract | EntryPointType::Install => builder
+                .get_call_stack_from_contract_context(
+                    &stored_call_stack_key,
+                    current_contract_package_hash,
+                ),
             EntryPointType::Session => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
-            _ => unreachable!(),
         };
         let (head, rest) = call_stack.split_at(usize::one());
         assert_eq!(

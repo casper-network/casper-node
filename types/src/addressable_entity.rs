@@ -1024,17 +1024,16 @@ pub enum EntryPointType {
     Session = 0b00000000,
     /// Runs within contract's context
     Contract = 0b00000001,
-    /// Pattern of entry point types introduced in 2.0.
-    ///
-    /// If this bit is missing, that means given entry point type was defined in pre-2.0 world.
     /// Installer entry point.
     Install = 0b10000000,
-    /// Normal entry point.
-    Normal = 0b10000001,
 }
 
 impl EntryPointType {
     /// Checks if entry point type is introduced before 2.0.
+    ///
+    /// This method checks if there is a bit pattern for entry point types introduced in 2.0.
+    ///
+    /// If this bit is missing, that means given entry point type was defined in pre-2.0 world.
     pub fn is_legacy_pattern(&self) -> bool {
         (*self as u8) & 0b10000000 == 0
     }

@@ -1075,13 +1075,16 @@ where
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
+            (EntryPointType::Install, EntryPointType::Session) => {
+                // Session code can't be called from Installer code for security reasons.
+                Err(Error::InvalidContext)
+            }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
                 Ok(self.context.get_entity_address())
             }
             (EntryPointType::Session, EntryPointType::Contract)
             | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
-
             _ => {
                 // Any other combination (installer, normal, etc.) is a contract context.
                 Ok(contract_hash.into())
@@ -1228,11 +1231,7 @@ where
                 self.context.entity().named_keys().clone(),
                 self.context.entity().extract_access_rights(contract_hash),
             ),
-            EntryPointType::Contract => (
-                contract.named_keys().clone(),
-                contract.extract_access_rights(contract_hash),
-            ),
-            EntryPointType::Install | EntryPointType::Normal => (
+            EntryPointType::Contract | EntryPointType::Install => (
                 contract.named_keys().clone(),
                 contract.extract_access_rights(contract_hash),
             ),
@@ -1255,12 +1254,10 @@ where
                     contract.contract_package_hash(),
                     contract_hash,
                 ),
-                EntryPointType::Install | EntryPointType::Normal => {
-                    CallStackElement::stored_contract(
-                        contract.contract_package_hash(),
-                        contract_hash,
-                    )
-                }
+                EntryPointType::Install => CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                ),
             };
             stack.push(call_stack_element)?;
 
@@ -2668,7 +2665,7 @@ where
 
                 Ok(())
             }
-            EntryPointAccess::Abstract => Err(Error::NoSuchMethod(name.to_string())),
+            EntryPointAccess::Abstract => Err(Error::AbstractMethod(name.to_string())),
         }
     }
 
