@@ -17,10 +17,15 @@ use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::storage::deploy_metadata_v1::DeployMetadataV1;
+use crate::{
+    storage::deploy_metadata_v1::DeployMetadataV1,
+    types::{ApprovalsHashes, FinalizedApprovals},
+};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    execution::ExecutionResult,
     system::auction::UnbondingPurse,
+    BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, Transfer,
 };
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
@@ -267,15 +272,33 @@ pub(super) fn deserialize<T: DeserializeOwned + 'static>(raw: &[u8]) -> Result<T
     match bincode::deserialize(raw) {
         Ok(value) => Ok(value),
         Err(err) => {
-            if TypeId::of::<DeployMetadataV1>() == TypeId::of::<T>() {
-                warn!(
-                    ?err,
-                    ?raw,
-                    "DeployMetadataV1: bincode deserialization failed"
-                );
-            } else {
-                warn!(?err, ?raw, "bincode deserialization failed");
-            }
+            // unfortunately, type_name is unstable
+            let type_name = {
+                if TypeId::of::<DeployMetadataV1>() == TypeId::of::<T>() {
+                    "DeployMetadataV1".to_string()
+                } else if TypeId::of::<BlockHeader>() == TypeId::of::<T>() {
+                    "BlockHeader".to_string()
+                } else if TypeId::of::<BlockBody>() == TypeId::of::<T>() {
+                    "BlockBody".to_string()
+                } else if TypeId::of::<BlockSignatures>() == TypeId::of::<T>() {
+                    "BlockSignatures".to_string()
+                } else if TypeId::of::<DeployHash>() == TypeId::of::<T>() {
+                    "DeployHash".to_string()
+                } else if TypeId::of::<Deploy>() == TypeId::of::<T>() {
+                    "Deploy".to_string()
+                } else if TypeId::of::<ApprovalsHashes>() == TypeId::of::<T>() {
+                    "ApprovalsHashes".to_string()
+                } else if TypeId::of::<FinalizedApprovals>() == TypeId::of::<T>() {
+                    "FinalizedApprovals".to_string()
+                } else if TypeId::of::<ExecutionResult>() == TypeId::of::<T>() {
+                    "ExecutionResult".to_string()
+                } else if TypeId::of::<Vec<Transfer>>() == TypeId::of::<T>() {
+                    "Transfers".to_string()
+                } else {
+                    format!("{:?}", TypeId::of::<T>())
+                }
+            };
+            warn!(?err, ?raw, "{}: bincode deserialization failed", type_name);
             Err(LmdbExtError::DataCorrupted(Box::new(err)))
         }
     }

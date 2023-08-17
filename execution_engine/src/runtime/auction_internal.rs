@@ -166,7 +166,7 @@ where
 
     fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error> {
         self.context.get_keys(key_tag).map_err(|err| {
-            error!("RuntimeProvider::get_keys: {:?}", err);
+            error!(%key_tag, "RuntimeProvider::get_keys: {:?}", err);
             Error::Storage
         })
     }

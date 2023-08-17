@@ -328,12 +328,16 @@ impl Distribution<BidAddr> for Standard {
     }
 }
 
+/// BidKindTag variants.
 #[allow(clippy::large_enum_variant)]
 #[repr(u8)]
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
-enum BidKindTag {
+pub enum BidKindTag {
+    /// Unified bid.
     Unified = 0,
+    /// Validator bid.
     Validator = 1,
+    /// Delegator bid.
     Delegator = 2,
 }
 
@@ -462,7 +466,8 @@ impl BidKind {
         }
     }
 
-    fn tag(&self) -> BidKindTag {
+    /// BidKindTag.
+    pub fn tag(&self) -> BidKindTag {
         match self {
             BidKind::Unified(_) => BidKindTag::Unified,
             BidKind::Validator(_) => BidKindTag::Validator,

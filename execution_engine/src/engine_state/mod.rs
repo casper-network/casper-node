@@ -173,7 +173,6 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
         if keys_to_prune.is_empty() {
             return Ok(post_state_hash);
         }
-
         let prune_keys = keys_to_prune.iter().cloned().collect_vec();
         match self.state.state().prune_keys(post_state_hash, &prune_keys) {
             Ok(result) => match result {

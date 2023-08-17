@@ -11,7 +11,8 @@ use core::{convert::TryFrom, fmt::Debug};
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
+use serde_bytes::ByteBuf;
 
 use crate::{
     account::Account,
@@ -42,7 +43,7 @@ enum Tag {
 
 /// A value stored in Global State.
 #[allow(clippy::large_enum_variant)]
-#[derive(Eq, PartialEq, Clone, Serialize, Deserialize, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum StoredValue {
@@ -475,6 +476,25 @@ impl FromBytes for StoredValue {
                 .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
             _ => Err(Error::Formatting),
         }
+    }
+}
+
+impl Serialize for StoredValue {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // The JSON representation of a StoredValue is just its bytesrepr
+        // While this makes it harder to inspect, it makes deterministic representation simple.
+        let bytes = self
+            .to_bytes()
+            .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
+        ByteBuf::from(bytes).serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for StoredValue {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+        bytesrepr::deserialize::<StoredValue>(bytes)
+            .map_err(|error| de::Error::custom(format!("{:?}", error)))
     }
 }
 

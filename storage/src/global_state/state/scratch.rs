@@ -73,7 +73,7 @@ impl Cache {
             .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
             .collect();
         debug!(
-            "Cache: into_dirty_writes: prune_count: {} store_count: {}",
+            "Cache::into_dirty_writes prune_count: {} store_count: {}",
             keys_to_prune.len(),
             stored_values.len()
         );

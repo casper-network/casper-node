@@ -130,7 +130,6 @@ pub struct TrackingCopyCache<M> {
     reads_cached: LinkedHashMap<Key, StoredValue>,
     muts_cached: HashMap<Key, StoredValue>,
     prunes_cached: HashSet<Key>,
-    key_tag_reads_cached: LinkedHashMap<KeyTag, BTreeSet<Key>>,
     key_tag_muts_cached: HashMap<KeyTag, BTreeSet<Key>>,
     meter: M,
 }
@@ -146,7 +145,6 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
             current_cache_size: 0,
             reads_cached: LinkedHashMap::new(),
             muts_cached: HashMap::new(),
-            key_tag_reads_cached: LinkedHashMap::new(),
             key_tag_muts_cached: HashMap::new(),
             prunes_cached: HashSet::new(),
             meter,
@@ -157,22 +155,6 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     pub fn insert_read(&mut self, key: Key, value: StoredValue) {
         let element_size = Meter::measure(&self.meter, &key, &value);
         self.reads_cached.insert(key, value);
-        self.current_cache_size += element_size;
-        while self.current_cache_size > self.max_cache_size {
-            match self.reads_cached.pop_front() {
-                Some((k, v)) => {
-                    let element_size = Meter::measure(&self.meter, &k, &v);
-                    self.current_cache_size -= element_size;
-                }
-                None => break,
-            }
-        }
-    }
-
-    /// Inserts a `KeyTag` value and the keys under this prefix into the key reads cache.
-    pub fn insert_key_tag_read(&mut self, key_tag: KeyTag, keys: BTreeSet<Key>) {
-        let element_size = Meter::measure_keys(&self.meter, &keys);
-        self.key_tag_reads_cached.insert(key_tag, keys);
         self.current_cache_size += element_size;
         while self.current_cache_size > self.max_cache_size {
             match self.reads_cached.pop_front() {
@@ -221,22 +203,6 @@ impl<M: Meter<Key, StoredValue>> TrackingCopyCache<M> {
     pub fn get_key_tag_muts_cached(&mut self, key_tag: &KeyTag) -> Option<BTreeSet<Key>> {
         let pruned = &self.prunes_cached;
         if let Some(keys) = self.key_tag_muts_cached.get(key_tag) {
-            let mut ret = BTreeSet::new();
-            for key in keys {
-                if !pruned.contains(key) {
-                    ret.insert(*key);
-                }
-            }
-            Some(ret)
-        } else {
-            None
-        }
-    }
-
-    /// Gets the set of read keys in the cache by `KeyTag`.
-    pub fn get_key_tag_reads_cached(&mut self, key_tag: &KeyTag) -> Option<BTreeSet<Key>> {
-        let pruned = &self.prunes_cached;
-        if let Some(keys) = self.key_tag_reads_cached.get(key_tag) {
             let mut ret = BTreeSet::new();
             for key in keys {
                 if !pruned.contains(key) {
@@ -334,21 +300,23 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
     /// Gets the set of keys in the state whose tag is `key_tag`.
     pub fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, R::Error> {
         let mut ret: BTreeSet<Key> = BTreeSet::new();
-        match self.cache.get_key_tag_reads_cached(key_tag) {
-            Some(keys) => ret.extend(keys),
-            None => {
-                let key_tag = key_tag.to_owned();
-                let keys = self.reader.keys_with_prefix(&[key_tag as u8])?;
-                for key in keys {
-                    if !self.cache.prunes_cached.contains(&key) {
-                        ret.insert(key);
-                    }
-                }
-                self.cache.insert_key_tag_read(key_tag, ret.to_owned())
+        let keys = self.reader.keys_with_prefix(&[*key_tag as u8])?;
+        let pruned = &self.cache.prunes_cached;
+        // don't include keys marked for pruning
+        for key in keys {
+            if pruned.contains(&key) {
+                continue;
             }
+            ret.insert(key);
         }
+        // there may be newly inserted keys which have not been committed yet
         if let Some(keys) = self.cache.get_key_tag_muts_cached(key_tag) {
-            ret.extend(keys)
+            for key in keys {
+                if ret.contains(&key) {
+                    continue;
+                }
+                ret.insert(key);
+            }
         }
         Ok(ret)
     }

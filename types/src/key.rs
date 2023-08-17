@@ -122,6 +122,28 @@ pub enum KeyTag {
     ChecksumRegistry = 14,
 }
 
+impl Display for KeyTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            KeyTag::Account => write!(f, "Account"),
+            KeyTag::Hash => write!(f, "Hash"),
+            KeyTag::URef => write!(f, "URef"),
+            KeyTag::Transfer => write!(f, "Transfer"),
+            KeyTag::DeployInfo => write!(f, "DeployInfo"),
+            KeyTag::EraInfo => write!(f, "EraInfo"),
+            KeyTag::Balance => write!(f, "Balance"),
+            KeyTag::Bid => write!(f, "Bid"),
+            KeyTag::Withdraw => write!(f, "Withdraw"),
+            KeyTag::Dictionary => write!(f, "Dictionary"),
+            KeyTag::SystemContractRegistry => write!(f, "SystemContractRegistry"),
+            KeyTag::EraSummary => write!(f, "EraSummary"),
+            KeyTag::Unbond => write!(f, "Unbond"),
+            KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
+            KeyTag::ChecksumRegistry => write!(f, "ChecksumRegistry"),
+        }
+    }
+}
+
 /// The key under which data (e.g. [`CLValue`]s, smart contracts, user accounts) are stored in
 /// global state.
 #[repr(C)]
@@ -995,7 +1017,7 @@ mod serde_helpers {
         DeployInfo(&'a DeployHash),
         EraInfo(&'a EraId),
         Balance(&'a URefAddr),
-        Bid(&'a BidAddr),
+        BidLegacy(&'a AccountHash),
         Withdraw(&'a AccountHash),
         Dictionary(&'a HashAddr),
         SystemContractRegistry,
@@ -1003,28 +1025,7 @@ mod serde_helpers {
         Unbond(&'a AccountHash),
         ChainspecRegistry,
         ChecksumRegistry,
-    }
-
-    impl<'a> From<&'a Key> for BinarySerHelper<'a> {
-        fn from(key: &'a Key) -> Self {
-            match key {
-                Key::Account(account_hash) => BinarySerHelper::Account(account_hash),
-                Key::Hash(hash_addr) => BinarySerHelper::Hash(hash_addr),
-                Key::URef(uref) => BinarySerHelper::URef(uref),
-                Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
-                Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
-                Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
-                Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
-                Key::Bid(bid_addr) => BinarySerHelper::Bid(bid_addr),
-                Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
-                Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
-                Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
-                Key::EraSummary => BinarySerHelper::EraSummary,
-                Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
-                Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
-                Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
-            }
-        }
+        Bid(&'a BidAddr),
     }
 
     #[derive(Deserialize)]
@@ -1037,7 +1038,7 @@ mod serde_helpers {
         DeployInfo(DeployHash),
         EraInfo(EraId),
         Balance(URefAddr),
-        Bid(BidAddr),
+        BidLegacy(AccountHash),
         Withdraw(AccountHash),
         Dictionary(DictionaryAddr),
         SystemContractRegistry,
@@ -1045,6 +1046,32 @@ mod serde_helpers {
         Unbond(AccountHash),
         ChainspecRegistry,
         ChecksumRegistry,
+        Bid(BidAddr),
+    }
+
+    impl<'a> From<&'a Key> for BinarySerHelper<'a> {
+        fn from(key: &'a Key) -> Self {
+            match key {
+                Key::Account(account_hash) => BinarySerHelper::Account(account_hash),
+                Key::Hash(hash_addr) => BinarySerHelper::Hash(hash_addr),
+                Key::URef(uref) => BinarySerHelper::URef(uref),
+                Key::Transfer(transfer_addr) => BinarySerHelper::Transfer(transfer_addr),
+                Key::DeployInfo(deploy_hash) => BinarySerHelper::DeployInfo(deploy_hash),
+                Key::EraInfo(era_id) => BinarySerHelper::EraInfo(era_id),
+                Key::Balance(uref_addr) => BinarySerHelper::Balance(uref_addr),
+                Key::Bid(bid_addr) => match bid_addr.tag() {
+                    BidAddrTag::Unified => BinarySerHelper::BidLegacy(&bid_addr.0),
+                    BidAddrTag::Validator | BidAddrTag::Delegator => BinarySerHelper::Bid(bid_addr),
+                },
+                Key::Withdraw(account_hash) => BinarySerHelper::Withdraw(account_hash),
+                Key::Dictionary(addr) => BinarySerHelper::Dictionary(addr),
+                Key::SystemContractRegistry => BinarySerHelper::SystemContractRegistry,
+                Key::EraSummary => BinarySerHelper::EraSummary,
+                Key::Unbond(account_hash) => BinarySerHelper::Unbond(account_hash),
+                Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
+                Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
+            }
+        }
     }
 
     impl From<BinaryDeserHelper> for Key {
@@ -1057,7 +1084,9 @@ mod serde_helpers {
                 BinaryDeserHelper::DeployInfo(deploy_hash) => Key::DeployInfo(deploy_hash),
                 BinaryDeserHelper::EraInfo(era_id) => Key::EraInfo(era_id),
                 BinaryDeserHelper::Balance(uref_addr) => Key::Balance(uref_addr),
-                BinaryDeserHelper::Bid(bid_addr) => Key::Bid(bid_addr),
+                BinaryDeserHelper::BidLegacy(account_hash) => {
+                    Key::Bid(BidAddr::legacy(account_hash.value()))
+                }
                 BinaryDeserHelper::Withdraw(account_hash) => Key::Withdraw(account_hash),
                 BinaryDeserHelper::Dictionary(addr) => Key::Dictionary(addr),
                 BinaryDeserHelper::SystemContractRegistry => Key::SystemContractRegistry,
@@ -1065,6 +1094,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Unbond(account_hash) => Key::Unbond(account_hash),
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
                 BinaryDeserHelper::ChecksumRegistry => Key::ChecksumRegistry,
+                BinaryDeserHelper::Bid(bid_addr) => Key::Bid(bid_addr),
             }
         }
     }
