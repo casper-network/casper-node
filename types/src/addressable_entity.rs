@@ -818,7 +818,7 @@ impl AddressableEntity {
         !authorization_keys.is_empty()
             && authorization_keys
                 .iter()
-                .all(|e| self.associated_keys.contains_key(e))
+                .any(|e| self.associated_keys.contains_key(e))
     }
 
     /// Checks whether the sum of the weights of all authorization keys is

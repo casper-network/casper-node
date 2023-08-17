@@ -981,7 +981,12 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_by_account_hash()?;
+        let entity_key = match self.entry_point_type {
+            EntryPointType::Contract => self.entity_address,
+            EntryPointType::Session => self.get_entity_address_by_account_hash()?,
+        };
+
+        // let entity_key = self.get_entity_address_by_account_hash()?;
 
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
@@ -1098,7 +1103,10 @@ where
         action_type: ActionType,
         threshold: Weight,
     ) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_by_account_hash()?;
+        let entity_key = match self.entry_point_type {
+            EntryPointType::Contract => self.entity_address,
+            EntryPointType::Session => self.get_entity_address_by_account_hash()?,
+        };
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations

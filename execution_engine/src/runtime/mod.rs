@@ -3043,6 +3043,16 @@ where
 
                 let entity_main_purse = self.create_purse()?;
 
+                let associated_keys = if self
+                    .context
+                    .validate_uref(*legacy_contract_package.access_key())
+                    .is_ok()
+                {
+                    AssociatedKeys::new(self.context.get_caller(), Weight::new(1))
+                } else {
+                    AssociatedKeys::default()
+                };
+
                 let updated_entity = AddressableEntity::new(
                     contract.contract_package_hash(),
                     contract.contract_wasm_hash(),
@@ -3050,7 +3060,7 @@ where
                     contract.entry_points().clone(),
                     self.context.protocol_version(),
                     entity_main_purse,
-                    AssociatedKeys::default(),
+                    associated_keys,
                     ActionThresholds::default(),
                 );
 

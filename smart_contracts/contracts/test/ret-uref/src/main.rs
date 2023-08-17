@@ -3,10 +3,14 @@
 
 extern crate alloc;
 
-use alloc::string::{String, ToString};
-use alloc::vec;
-use casper_contract::contract_api::{runtime, storage};
-use casper_contract::unwrap_or_revert::UnwrapOrRevert;
+use alloc::{
+    string::{String, ToString},
+    vec,
+};
+use casper_contract::{
+    contract_api::{runtime, storage},
+    unwrap_or_revert::UnwrapOrRevert,
+};
 use casper_types::{
     runtime_args, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
     Parameter, RuntimeArgs, URef,

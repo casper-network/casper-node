@@ -2,19 +2,25 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state;
-use casper_execution_engine::execution::Error;
-use casper_types::testing::TestRng;
+use casper_execution_engine::{engine_state, execution::Error};
+use casper_types::account::AccountHash;
+use casper_types::addressable_entity::{AssociatedKeys, Weight};
 use casper_types::{
     package::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
+    testing::TestRng,
     CLValue, ContractHash, ContractPackageHash, PublicKey, RuntimeArgs, StoredValue, U512,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
 const DO_NOTHING_STORED_UPGRADER_CONTRACT_NAME: &str = "do_nothing_stored_upgrader";
 const DO_NOTHING_STORED_CALLER_CONTRACT_NAME: &str = "do_nothing_stored_caller";
+const PURSE_HOLDER_STORED_CALLER_CONTRACT_NAME: &str = "purse_holder_stored_caller";
+const PURSE_HOLDER_STORED_CONTRACT_NAME: &str = "purse_holder_stored";
+const PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME: &str = "purse_holder_stored_upgrader";
+const UPGRADE_THRESHOLD_CONTRACT_NAME: &str = "upgrade_threshold.wasm";
+const UPGRADE_THRESHOLD_UPGRADER: &str = "upgrade_threshold_upgrader.wasm";
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const DO_NOTHING_CONTRACT_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
@@ -25,9 +31,7 @@ const PURSE_NAME_ARG_NAME: &str = "purse_name";
 const PURSE_1: &str = "purse_1";
 const METHOD_REMOVE: &str = "remove";
 const VERSION: &str = "version";
-const PURSE_HOLDER_STORED_CALLER_CONTRACT_NAME: &str = "purse_holder_stored_caller";
-const PURSE_HOLDER_STORED_CONTRACT_NAME: &str = "purse_holder_stored";
-const PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME: &str = "purse_holder_stored_upgrader";
+
 const HASH_KEY_NAME: &str = "purse_holder";
 const ACCESS_KEY_NAME: &str = "purse_holder_access";
 const TOTAL_PURSES: usize = 3;
@@ -727,7 +731,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
 
     let other_entity = builder
         .get_entity_by_account_hash(entity_account_hash)
-        .expect("should have account");
+        .expect("should have entity");
 
     let uref_sharing_contract_hash = other_entity
         .named_keys()
@@ -764,7 +768,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
 
     let other_entity = builder
         .get_entity_by_account_hash(entity_account_hash)
-        .expect("should have account");
+        .expect("should have entity");
 
     assert!(other_entity
         .named_keys()
@@ -801,4 +805,145 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
     };
 
     builder.exec(exec_request).expect_success().commit();
+}
+
+#[ignore]
+#[test]
+fn should_only_upgrade_if_threshold_is_met() {
+    const CONTRACT_HASH_NAME: &str = "contract_hash_name";
+    const PACKAGE_HASH_KEY_NAME: &str = "contract_package_hash";
+
+    const ENTRYPOINT_ADD_ASSOCIATED_KEY: &str = "add_associated_key";
+    const ENTRYPOINT_MANAGE_ACTION_THRESHOLD: &str = "manage_action_threshold";
+
+    const ARG_ENTITY_ACCOUNT_HASH: &str = "entity_account_hash";
+    const ARG_KEY_WEIGHT: &str = "key_weight";
+    const ARG_NEW_UPGRADE_THRESHOLD: &str = "new_threshold";
+    const ARG_CONTRACT_PACKAGE: &str = "contract_package_hash";
+
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let install_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        UPGRADE_THRESHOLD_CONTRACT_NAME,
+        runtime_args! {},
+    )
+    .build();
+
+    builder.exec(install_request).expect_success().commit();
+
+    let entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default addressable entity");
+
+    let upgrade_threshold_contract_hash = entity
+        .named_keys()
+        .get(CONTRACT_HASH_NAME)
+        .expect("must have named key entry for contract hash")
+        .into_hash()
+        .map(ContractHash::new)
+        .expect("must get contract hash");
+
+    let upgrade_threshold_package_hash = entity
+        .named_keys()
+        .get(PACKAGE_HASH_KEY_NAME)
+        .expect("must have named key entry for package hash")
+        .into_hash()
+        .map(ContractPackageHash::new)
+        .expect("must get package hash");
+
+    let upgrade_threshold_contract_entity = builder
+        .get_addressable_entity(upgrade_threshold_contract_hash)
+        .expect("must have upgrade threshold entity");
+
+    let actual_associated_keys = upgrade_threshold_contract_entity.associated_keys();
+    let mut expected_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
+    assert_eq!(&expected_associated_keys, actual_associated_keys);
+
+    let mut entity_account_hashes =
+        vec![AccountHash::new([10u8; 32]), AccountHash::new([11u8; 32])];
+
+    for entity_account_hash in &entity_account_hashes {
+        expected_associated_keys
+            .add_key(*entity_account_hash, Weight::new(1))
+            .expect("must add associated key");
+
+        let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
+            *DEFAULT_ACCOUNT_ADDR,
+            upgrade_threshold_contract_hash,
+            ENTRYPOINT_ADD_ASSOCIATED_KEY,
+            runtime_args! {
+                ARG_ENTITY_ACCOUNT_HASH => *entity_account_hash,
+                ARG_KEY_WEIGHT => 1u8
+            },
+        )
+        .build();
+
+        builder.exec(execute_request).expect_success().commit();
+    }
+
+    let update_upgrade_threshold_request = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        upgrade_threshold_contract_hash,
+        ENTRYPOINT_MANAGE_ACTION_THRESHOLD,
+        runtime_args! {
+            ARG_NEW_UPGRADE_THRESHOLD => 3u8
+        },
+    )
+    .build();
+
+    builder
+        .exec(update_upgrade_threshold_request)
+        .expect_success()
+        .commit();
+
+    let upgrade_threshold_contract_entity = builder
+        .get_addressable_entity(upgrade_threshold_contract_hash)
+        .expect("must have upgrade threshold entity");
+
+    let updated_associated_keys = upgrade_threshold_contract_entity.associated_keys();
+    assert_eq!(&expected_associated_keys, updated_associated_keys);
+
+    let updated_action_threshold = upgrade_threshold_contract_entity.action_thresholds();
+    assert_eq!(
+        updated_action_threshold.upgrade_management(),
+        &Weight::new(3u8)
+    );
+
+    let invalid_upgrade_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        UPGRADE_THRESHOLD_UPGRADER,
+        runtime_args! {
+            ARG_CONTRACT_PACKAGE => upgrade_threshold_package_hash
+        },
+    )
+    .build();
+
+    builder.exec(invalid_upgrade_request).expect_failure();
+
+    builder.assert_error(engine_state::Error::Exec(
+        Error::UpgradeAuthorizationFailure,
+    ));
+
+    let authorization_keys = {
+        entity_account_hashes.push(*DEFAULT_ACCOUNT_ADDR);
+        entity_account_hashes
+    };
+
+    let valid_upgrade_request = ExecuteRequestBuilder::with_authorization_keys(
+        *DEFAULT_ACCOUNT_ADDR,
+        UPGRADE_THRESHOLD_UPGRADER,
+        runtime_args! {
+            ARG_CONTRACT_PACKAGE => upgrade_threshold_package_hash
+        },
+        &authorization_keys,
+    )
+    .build();
+
+    builder
+        .exec(valid_upgrade_request)
+        .expect_success()
+        .commit();
 }

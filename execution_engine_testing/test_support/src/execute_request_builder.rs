@@ -216,6 +216,30 @@ impl ExecuteRequestBuilder {
 
         ExecuteRequestBuilder::from_deploy_item(deploy_item)
     }
+
+    /// Returns an [`ExecuteRequest`] with standard dependencies and a specified set of
+    /// associated keys.
+    pub fn with_authorization_keys(
+        account_hash: AccountHash,
+        session_file: &str,
+        session_args: RuntimeArgs,
+        authorization_keys: &[AccountHash],
+    ) -> Self {
+        let mut rng = rand::thread_rng();
+        let deploy_hash: [u8; 32] = rng.gen();
+
+        let deploy = DeployItemBuilder::new()
+            .with_address(account_hash)
+            .with_session_code(session_file, session_args)
+            .with_empty_payment_bytes(runtime_args! {
+                ARG_AMOUNT => *DEFAULT_PAYMENT
+            })
+            .with_authorization_keys(authorization_keys)
+            .with_deploy_hash(deploy_hash)
+            .build();
+
+        ExecuteRequestBuilder::new().push_deploy(deploy)
+    }
 }
 
 impl Default for ExecuteRequestBuilder {
