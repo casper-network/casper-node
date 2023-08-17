@@ -138,3 +138,49 @@ pub(crate) fn casper_copy_input<S: Storage>(
     }
 
 }
+
+#[repr(C)]
+struct EntryPoint {
+    name_ptr: u32,
+    name_len: u32,
+    fptr: u32,
+}
+
+pub(crate) fn casper_create<S: Storage>(
+    mut caller: impl Caller<S>,
+    code_ptr: u32,
+    code_len: u32,
+    entry_points_ptr: u32,
+    entry_points_len: u32,
+) -> Result<(), Outcome> {
+    todo!()
+    // let code = caller.memory_read(code_ptr, code_len.try_into().unwrap()).unwrap();
+
+    // let mut base =entry_points_ptr;
+    // for index in 0..entry_points_len {
+    //     let entry_point = caller.memory_read(base, mem::size_of::<EntryPoint>());
+    // }
+
+
+
+    // 1. execute code
+    // 2. invoke "call" export
+    // 3. "call"
+}
+
+pub(crate) fn casper_call<S:Storage>(
+    mut caller: impl Caller<S>,
+    address_ptr: u32,
+    address_len: u32,
+    value: u32,
+    entry_name: u32,
+    entry_len: u32,
+    input_ptr: u32,
+    input_len: u32,
+) -> Result<(), Outcome> {
+    
+    // todo!()
+
+    // caller.context().storage.read(key_tag, key)
+    // caller.context().system.call(address, value)
+}

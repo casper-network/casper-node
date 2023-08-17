@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, Mutex, Weak},
 };
 
+use bytes::Bytes;
 use wasmer::{
     wasmparser::{Export, MemoryType},
     AsStoreMut, AsStoreRef, CompilerConfig, Engine, Exports, Function, FunctionEnv, FunctionEnvMut,
@@ -455,19 +456,8 @@ where
             imports.define(
                 "env",
                 "casper_revert",
-                // Function::new_typed_with_env(
-                //     &mut store,
-                //     &function_env,
-                //     |_env: FunctionEnvMut<WasmerEnv<S>>,
-                //         code: u32|
-                //      -> i32 {
-                //         host::casper_revert( code)
-                //     },
-                // ),
                 Function::new_typed(&mut store, |code| -> Result<(), RuntimeError> {
-                    eprintln!("casper_revert({code})");
                     Err(RuntimeError::user(Box::new(HostError::Revert { code })))
-                    // host::casper_revert(code)
                 }),
             );
 
@@ -483,11 +473,9 @@ where
                      -> Result<u32, RuntimeError> {
                         let wasmer_caller = WasmerCaller { env };
                         let ret = host::casper_copy_input(wasmer_caller, cb_alloc, cb_ctx);
-                        dbg!(&ret);
                         match ret {
                             Ok(result) => Ok(result),
                             Err(Outcome::VM(type_erased_runtime_error)) => {
-                                dbg!(&type_erased_runtime_error);
                                 let boxed_runtime_error: Box<RuntimeError> =
                                     type_erased_runtime_error
                                         .downcast()
@@ -591,19 +579,6 @@ where
             }
         }
     }
-
-    // pub fn run_export<S: Storage + 'static>(
-    //     &mut self,
-    //     mut instance: impl WasmInstance<S>,
-    //     name: &str,
-    // ) -> (Result<(), Error>, GasSummary) {
-    //     let gas_summary = GasSummary {};
-
-    //     let result = instance.call_export0(name);
-    //     dbg!(&result);
-
-    //     (result, gas_summary)
-    // }
 
     /// Consume instance object and retrieve the [`Context`] object.
     fn teardown(self) -> Context<S> {

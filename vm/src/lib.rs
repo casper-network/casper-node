@@ -12,13 +12,9 @@ struct Arguments {
     bytes: Bytes,
 }
 
-/// VM execute request specifies execution context, the wasm bytes, and other necessary information
-/// to execute.
-pub struct ExecuteRequest {
-    /// Wasm module.
-    pub wasm_bytes: Bytes,
-}
 
+
+#[derive(Clone)]
 pub struct VM;
 
 #[derive(Debug, Error)]
@@ -107,12 +103,11 @@ impl ConfigBuilder {
 impl VM {
     pub fn prepare<S: Storage + 'static>(
         &mut self,
-        execute_request: ExecuteRequest,
+        wasm_bytes: &[u8],
         context: Context<S>,
         config: Config,
     ) -> Result<impl WasmInstance<S>, BackendError> {
-        let ExecuteRequest { wasm_bytes } = execute_request;
-        let instance = WasmerInstance::from_wasm_bytes(&wasm_bytes, context, config)?;
+        let instance = WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)?;
         Ok(instance)
     }
 
