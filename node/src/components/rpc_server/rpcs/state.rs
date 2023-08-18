@@ -483,7 +483,8 @@ pub enum AccountIdentifier {
 #[serde(deny_unknown_fields)]
 pub struct GetAccountInfoParams {
     /// The public key of the Account.
-    pub public_key: AccountIdentifier,
+    #[serde(alias = "public_key")]
+    pub account_identifier: AccountIdentifier,
     /// The block identifier.
     pub block_identifier: Option<BlockIdentifier>,
 }
