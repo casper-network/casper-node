@@ -7,7 +7,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{mint, standard_payment},
-    ContractHash, Key, RuntimeArgs, U512,
+    ContractHash, Key, U512,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";

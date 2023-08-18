@@ -8,7 +8,7 @@ use core::str::FromStr;
 use gh_1470_regression_call::{ARG_CONTRACT_HASH, ARG_CONTRACT_PACKAGE_HASH, ARG_TEST_METHOD};
 
 use casper_contract::{contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use casper_types::{runtime_args, ContractHash, ContractPackageHash, RuntimeArgs};
+use casper_types::{runtime_args, ContractHash, ContractPackageHash};
 
 use gh_1470_regression_call::TestMethod;
 

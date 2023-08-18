@@ -23,7 +23,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self},
-    GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
+    GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey,
     DEFAULT_DELEGATE_COST, U512,
 };
 

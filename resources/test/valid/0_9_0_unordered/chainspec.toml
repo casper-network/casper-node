@@ -30,6 +30,12 @@ consensus_protocol = 'Highway'
 maximum_round_length = '525seconds'
 reduced_reward_multiplier = [1, 5]
 
+[transactions]
+max_ttl = '18hours'
+max_transaction_size = 1_048_576
+block_max_approval_count = 2600
+max_args_length = 1024
+
 [deploys]
 max_payment_cost = '9'
 max_ttl = '10months'

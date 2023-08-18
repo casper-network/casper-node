@@ -8,7 +8,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, EraReport, ExecutableDeployItem,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, U512,
+    PublicKey, SecretKey, TimeDiff, U512,
 };
 
 use super::*;

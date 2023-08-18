@@ -2,7 +2,7 @@
 #![no_main]
 
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{runtime_args, system::auction, PublicKey, RuntimeArgs};
+use casper_types::{runtime_args, system::auction, PublicKey};
 
 const ARG_VALIDATOR_PUBLIC_KEY: &str = "validator_public_key";
 

@@ -56,8 +56,8 @@ use casper_types::{
     },
     AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Package, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    MintCosts, Package, ProtocolVersion, PublicKey, StoredValue, Transfer, TransferAddr, URef,
+    UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 

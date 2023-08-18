@@ -10,7 +10,7 @@ use casper_types::{
         self,
         auction::{self, DelegationRate},
     },
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const LARGE_DELEGATION_RATE: DelegationRate = 101;

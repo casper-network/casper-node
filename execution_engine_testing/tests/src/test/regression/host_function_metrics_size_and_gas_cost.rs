@@ -13,7 +13,7 @@ use casper_types::{
     bytesrepr::Bytes,
     runtime_args,
     system::standard_payment,
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const CONTRACT_HOST_FUNCTION_METRICS: &str = "host_function_metrics.wasm";

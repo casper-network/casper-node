@@ -40,8 +40,8 @@ use casper_types::{
             ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, SystemConfig, WasmConfig, U256, U512,
+    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey,
+    SystemConfig, WasmConfig, U256, U512,
 };
 
 use crate::{lmdb_fixture, test::system_contracts::auction::bids::engine_state::ExecConfig};
