@@ -41,11 +41,6 @@ function main()
     BIDDER_ACCOUNT_KEY=$(get_account_key "$NCTL_ACCOUNT_TYPE_NODE" "$BIDDER_ID" | tr '[:upper:]' '[:lower:]')
     log "getting main purse uref"
     BIDDER_MAIN_PURSE_UREF=$(get_main_purse_uref "$BIDDER_ACCOUNT_KEY" | tr '[:upper:]' '[:lower:]')
-#    if [ ! -z "BIDDER_MAIN_PURSE_UREF" ]; then
-#        log "failed to get main purse"
-#        log "... account key: $BIDDER_ACCOUNT_KEY"
-#        exit 1
-#    fi
 
     if [ "$QUIET" != "TRUE" ]; then
         log "dispatching deploy -> withdraw_bid.wasm"
