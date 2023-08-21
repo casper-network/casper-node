@@ -550,7 +550,6 @@ impl RpcWithParams for GetAccountInfo {
         let (stored_value, merkle_proof) =
             common::run_query_and_encode(effect_builder, state_root_hash, base_key, vec![]).await?;
 
-
         let account = if let StoredValue::Account(account) = stored_value {
             account
         } else {

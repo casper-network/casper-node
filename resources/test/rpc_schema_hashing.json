@@ -304,7 +304,7 @@
           "summary": "returns an Account from the network",
           "params": [
             {
-              "name": "public_key",
+              "name": "account_identifier",
               "schema": {
                 "description": "The public key of the Account.",
                 "$ref": "#/components/schemas/AccountIdentifier"
@@ -359,7 +359,7 @@
               "name": "state_get_account_info_example",
               "params": [
                 {
-                  "name": "public_key",
+                  "name": "account_identifier",
                   "value": "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
                 },
                 {
