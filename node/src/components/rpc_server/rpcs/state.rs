@@ -70,7 +70,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
-        public_key: AccountIdentifier::PublicKey(public_key),
+        account_identifier: AccountIdentifier::PublicKey(public_key),
         block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
     }
 });
@@ -541,7 +541,7 @@ impl RpcWithParams for GetAccountInfo {
 
         let state_root_hash = *block.header().state_root_hash();
         let base_key = {
-            let account_hash = match params.public_key {
+            let account_hash = match params.account_identifier {
                 AccountIdentifier::PublicKey(public_key) => public_key.to_account_hash(),
                 AccountIdentifier::AccountHash(account_hash) => account_hash,
             };
@@ -549,6 +549,7 @@ impl RpcWithParams for GetAccountInfo {
         };
         let (stored_value, merkle_proof) =
             common::run_query_and_encode(effect_builder, state_root_hash, base_key, vec![]).await?;
+
 
         let account = if let StoredValue::Account(account) = stored_value {
             account
