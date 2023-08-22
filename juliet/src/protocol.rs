@@ -923,7 +923,112 @@ mod tests {
     use super::{JulietProtocol, ProtocolBuilder};
 
     #[test]
+    fn max_frame_size_implemented_correctly() {
+        todo!("ensure methods on max frame size work as they should");
+    }
+
+    #[test]
+    fn request_id_generation_generates_unique_ids() {
+        todo!("ensure request ids generate unique IDs");
+    }
+
+    #[test]
+    fn allowed_to_send_throttles_when_appropriate() {
+        todo!("`allowed_to_send_request` should block/clear sending");
+    }
+
+    #[test]
+    fn is_at_max_incoming_requests_works() {
+        todo!("ensure `is_at_max_incoming_requests` is implemented correctly");
+    }
+
+    #[test]
+    fn cancellation_allowance_incrementation_works() {
+        todo!("ensure lower level cancellation allowance functions work");
+    }
+
+    #[test]
+    fn test_channel_lookups_work() {
+        todo!("ensure channel lookups work, may have to add additional examples if panicking");
+    }
+
+    #[test]
+    fn err_msg_works() {
+        todo!("the `err_msg` helper function should work");
+    }
+
+    #[test]
+    fn multi_frame_detection_works() {
+        todo!("ensure `payload_is_multi_frame` works")
+    }
+
+    #[test]
+    fn ensure_allowed_to_send_request_gates_correctly() {
+        todo!(
+            "`allowed_to_send_request` should allow the agreed upon number of in-flight requests"
+        );
+    }
+
+    #[test]
+    fn create_requests_with_correct_input_sets_state_accordingly() {
+        todo!("ensure that calling `create_requests` results in the expect state both with and without payload");
+    }
+
+    #[test]
+    fn create_requests_with_invalid_inputs_fails() {
+        todo!("wrong inputs for `create_requests` should cause errors");
+    }
+
+    #[test]
+    fn create_response_with_correct_input_clears_state_accordingly() {
+        todo!("should update internal state correctly")
+    }
+
+    #[test]
+    fn create_response_with_invalid_input_produces_errors() {
+        todo!("should update internal state correctly")
+    }
+
+    #[test]
+    fn custom_errors_should_end_protocol_processing_data() {
+        todo!("ensure that custom errors produce a message and end the processing of data")
+    }
+
+    #[test]
+    fn use_case_send_request_with_no_payload() {
+        todo!("simulate a working request that sends a single request with no payload, should produce appropriate events on receiving side, using transmissions inputs");
+    }
+
+    #[test]
+    fn model_based_single_roundtrip_test() {
+        todo!("model a single request interaction with various outcomes and test across various transmission stutter steps");
+    }
+
+    #[test]
+    fn error_codes_set_appropriately_on_request_reception() {
+        todo!("sending invalid requests should produce the appropriate errors")
+    }
+
+    #[test]
+    fn error_codes_set_appropriately_on_response_reception() {
+        todo!("sending invalid responses should produce the appropriate errors")
+    }
+
+    #[test]
+    fn exceeding_cancellation_allowance_triggers_error() {
+        todo!("should not be possible to exceed the cancellation allowance")
+    }
+
+    #[test]
+    fn cancelling_requests_clears_state_and_causes_dropping_of_outbound_replies() {
+        todo!("if a cancellation for a request is received, the outbound response should be cancelled, and a cancellation produced as well")
+    }
+
+    #[test]
     fn response_with_no_payload_is_cleared_from_buffer() {
+        // This test is fairly specific from a concrete bug. In general, buffer advancement is
+        // tested in other tests as one of many condition checks.
+
         let mut protocol: JulietProtocol<16> = ProtocolBuilder::with_default_channel_config(
             ChannelConfiguration::new()
                 .with_max_request_payload_size(4096)
@@ -963,7 +1068,4 @@ mod tests {
 
         assert_eq!(response_raw.remaining(), 0);
     }
-
-    // TODO: Additional tests checking buffer is advanced properly when receiving in
-    //       `process_incoming`.
 }
