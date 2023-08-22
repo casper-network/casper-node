@@ -6,6 +6,7 @@ use std::{
     rc::Rc,
 };
 
+use once_cell::sync::Lazy;
 use rand::RngCore;
 
 use casper_storage::global_state::state::{self, lmdb::LmdbGlobalStateView, StateProvider};
@@ -36,6 +37,8 @@ use crate::{
 const DEPLOY_HASH: [u8; 32] = [1u8; 32];
 const PHASE: Phase = Phase::Session;
 const GAS_LIMIT: u64 = 500_000_000_000_000u64;
+
+static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default);
 
 fn test_engine_config() -> EngineConfig {
     EngineConfig::default()
@@ -153,7 +156,7 @@ fn new_runtime_context<'a>(
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::new(RefCell::new(tracking_copy)),
-        *TEST_ENGINE_CONFIG,
+        TEST_ENGINE_CONFIG.clone(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
         DeployHash::from_raw([1u8; 32]),

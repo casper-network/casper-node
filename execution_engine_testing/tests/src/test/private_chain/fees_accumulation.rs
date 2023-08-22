@@ -1,15 +1,13 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::{
-    engine_config::FeeHandling, EngineConfigBuilder, RewardItem,
-};
+use casper_execution_engine::engine_state::{step::RewardItem, EngineConfigBuilder};
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    EraId, ProtocolVersion, RuntimeArgs, U512,
+    EraId, FeeHandling, ProtocolVersion, RuntimeArgs, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -35,7 +33,7 @@ static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
 #[ignore]
 #[test]
 fn default_genesis_config_should_not_have_rewards_purse() {
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let handle_payment = builder.get_handle_payment_contract_hash();
@@ -46,7 +44,7 @@ fn default_genesis_config_should_not_have_rewards_purse() {
     assert!(
         handle_payment_contract
             .named_keys()
-            .contains_key(ACCUMULATION_PURSE_KEY),
+            .contains(ACCUMULATION_PURSE_KEY),
         "Did not find rewards purse in handle payment's named keys {:?}",
         handle_payment_contract.named_keys()
     );
@@ -143,7 +141,10 @@ fn should_accumulate_deploy_fees() {
         .get_contract(handle_payment_hash)
         .expect("should have handle payment contract");
 
-    let rewards_purse = handle_payment_contract.named_keys()[ACCUMULATION_PURSE_KEY]
+    let rewards_purse = handle_payment_contract
+        .named_keys()
+        .get(ACCUMULATION_PURSE_KEY)
+        .unwrap()
         .into_uref()
         .expect("should be uref");
 
@@ -176,7 +177,10 @@ fn should_accumulate_deploy_fees() {
         "keys should not change before and after deploy has been processed",
     );
 
-    let rewards_purse = handle_payment_contract.named_keys()[ACCUMULATION_PURSE_KEY]
+    let rewards_purse = handle_payment_contract
+        .named_keys()
+        .get(ACCUMULATION_PURSE_KEY)
+        .unwrap()
         .into_uref()
         .expect("should be uref");
     let rewards_balance_after = builder.get_purse_balance(rewards_purse);
@@ -205,7 +209,10 @@ fn should_distribute_accumulated_fees_to_admins() {
     let handle_payment = builder
         .get_contract(handle_payment_hash)
         .expect("should have handle payment contract");
-    let accumulation_purse = handle_payment.named_keys()[ACCUMULATION_PURSE_KEY]
+    let accumulation_purse = handle_payment
+        .named_keys()
+        .get(ACCUMULATION_PURSE_KEY)
+        .unwrap()
         .as_uref()
         .cloned()
         .unwrap();
@@ -359,7 +366,10 @@ fn should_accumulate_fees_after_upgrade() {
         "keys should not change before and after deploy has been processed",
     );
 
-    let rewards_purse = handle_payment_contract.named_keys()[ACCUMULATION_PURSE_KEY]
+    let rewards_purse = handle_payment_contract
+        .named_keys()
+        .get(ACCUMULATION_PURSE_KEY)
+        .unwrap()
         .into_uref()
         .expect("should be uref");
     let rewards_balance_after = builder.get_purse_balance(rewards_purse);

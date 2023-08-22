@@ -7,7 +7,7 @@ use core::{
 // This error type is not intended to be used by third party crates.
 #[doc(hidden)]
 #[derive(Debug, Eq, PartialEq)]
-pub struct TryFromIntError(pub(super) ());
+pub struct TryFromIntError(pub ());
 
 /// Error returned when decoding an `AccountHash` from a formatted string.
 #[derive(Debug)]

@@ -98,13 +98,14 @@ pub use block::{
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
-    AccountConfig, AccountsConfig, ActivationPoint, AuctionCosts, BrTableCost, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName, ControlFlowCosts, CoreConfig,
-    DelegatorConfig, DeployConfig, GenesisAccount, GenesisValidator, GlobalStateUpdate,
-    GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
-    HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MintCosts,
-    NetworkConfig, OpcodeCosts, ProtocolConfig, StandardPaymentCosts, StorageCosts, SystemConfig,
-    TransactionConfig, UpgradeConfig, ValidatorConfig, WasmConfig,
+    AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
+    BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
+    ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
+    GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
+    HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
+    LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
+    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, UpgradeConfig,
+    ValidatorConfig, WasmConfig,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

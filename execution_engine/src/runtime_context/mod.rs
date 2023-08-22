@@ -16,7 +16,7 @@ use tracing::error;
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     addressable_entity::{
         ActionType, AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure,
         UpdateKeyFailure, Weight,
@@ -43,35 +43,32 @@ pub const RANDOM_BYTES_COUNT: usize = 32;
 
 /// Holds information specific to the deployed contract.
 pub struct RuntimeContext<'a, R> {
+    tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
     // Enables look up of specific uref based on human-readable name
     named_keys: &'a mut NamedKeys,
+    // Used to check uref is known before use (prevents forging urefs)
+    access_rights: ContextAccessRights,
+    args: RuntimeArgs,
+    authorization_keys: BTreeSet<AccountHash>,
+    blocktime: BlockTime,
+    deploy_hash: DeployHash,
+    gas_limit: Gas,
+    gas_counter: Gas,
+    address_generator: Rc<RefCell<AddressGenerator>>,
+    protocol_version: ProtocolVersion,
+    phase: Phase,
+    engine_config: EngineConfig,
+    //TODO: Will be removed along with stored session in later PR.
+    entry_point_type: EntryPointType,
+    transfers: Vec<TransferAddr>,
+    remaining_spending_limit: U512,
+
     // Original account/contract for read only tasks taken before execution
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
     entity_address: Key,
-    authorization_keys: BTreeSet<AccountHash>,
-    // Used to check uref is known before use (prevents forging urefs)
-    access_rights: ContextAccessRights,
     package_kind: ContractPackageKind,
     account_hash: AccountHash,
-
-    address_generator: Rc<RefCell<AddressGenerator>>,
-    tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
-    engine_config: EngineConfig,
-
-    blocktime: BlockTime,
-    protocol_version: ProtocolVersion,
-    deploy_hash: DeployHash,
-    phase: Phase,
-    args: RuntimeArgs,
-
-    gas_limit: Gas,
-    gas_counter: Gas,
-    remaining_spending_limit: U512,
-
-    transfers: Vec<TransferAddr>,
-    //TODO: Will be removed along with stored session in later PR.
-    entry_point_type: EntryPointType,
 }
 
 impl<'a, R> RuntimeContext<'a, R>
@@ -147,7 +144,7 @@ where
 
         let address_generator = self.address_generator.clone();
         let tracking_copy = self.state();
-        let engine_config = self.engine_config;
+        let engine_config = self.engine_config.clone();
 
         let blocktime = self.blocktime;
         let protocol_version = self.protocol_version;
@@ -210,8 +207,8 @@ where
     }
 
     /// Returns an instance of the engine config.
-    pub fn engine_config(&self) -> EngineConfig {
-        self.engine_config
+    pub fn engine_config(&self) -> &EngineConfig {
+        &self.engine_config
     }
 
     /// Returns the package kind associated with the current context.
@@ -575,6 +572,38 @@ where
                 .write(key, StoredValue::EraInfo(value));
         } else {
             panic!("Do not use this function for writing non-era-info keys")
+        }
+    }
+
+    /// Creates validated instance of `StoredValue` from `account`.
+    fn account_to_validated_value(&self, account: Account) -> Result<StoredValue, Error> {
+        let value = StoredValue::Account(account);
+        self.validate_value(&value)?;
+        Ok(value)
+    }
+
+    /// Write an account to the global state.
+    pub fn write_account(&mut self, key: Key, account: Account) -> Result<(), Error> {
+        if let Key::Account(_) = key {
+            self.validate_key(&key)?;
+            let account_value = self.account_to_validated_value(account)?;
+            self.metered_write_gs_unsafe(key, account_value)?;
+            Ok(())
+        } else {
+            panic!("Do not use this function for writing non-account keys")
+        }
+    }
+
+    /// Read an account from the global state.
+    pub fn read_account(&mut self, key: &Key) -> Result<Option<StoredValue>, Error> {
+        if let Key::Account(_) = key {
+            self.validate_key(key)?;
+            self.tracking_copy
+                .borrow_mut()
+                .read(key)
+                .map_err(Into::into)
+        } else {
+            panic!("Do not use this function for reading from non-account keys")
         }
     }
 
@@ -1083,10 +1112,10 @@ where
         let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        if entity.is_authorized_by_admin() {
-            account.set_action_threshold_unchecked(action_type, threshold)
+        if self.is_authorized_by_admin() {
+            entity.set_action_threshold_unchecked(action_type, threshold)
         } else {
-            account.set_action_threshold(action_type, threshold)
+            entity.set_action_threshold(action_type, threshold)
         }
         .map_err(Error::from)?;
 

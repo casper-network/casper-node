@@ -5,11 +5,10 @@ use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
 
 use casper_types::{
     addressable_entity::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
-    RuntimeArgs, URef, URefAddr, WasmConfig, U128, U256, U512,
+    RuntimeArgs, URef, URefAddr, U128, U256, U512,
 };
 
 use crate::{
-use crate::core::{
     engine_state::EngineConfig,
     execution::Error,
     resolvers::{self, memory_resolver::MemoryResolver},

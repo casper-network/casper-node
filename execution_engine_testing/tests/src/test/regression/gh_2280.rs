@@ -1,3 +1,4 @@
+use casper_execution_engine::engine_state::{EngineConfig, EngineConfigBuilder};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
@@ -5,22 +6,9 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{
-    engine_config::{
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
-};
-use casper_execution_engine::{
-    core::engine_state::{EngineConfig, EngineConfigBuilder, UpgradeConfig},
-    shared::{
-        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        system_config::{mint_costs::MintCosts, SystemConfig},
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
-    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+use casper_execution_engine::engine_state::engine_config::{
+    DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+    DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, ContractHash, EraId, Gas, HostFunction,

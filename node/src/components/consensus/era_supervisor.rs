@@ -1077,7 +1077,7 @@ impl EraSupervisor {
                         )
                     })
                     .collect();
-                if let Some(era_report) = era_report.as_ref() {
+                if let Some(era_report) = report.as_ref() {
                     info!(
                         inactive = %DisplayIter::new(era_report.inactive_validators()),
                         faulty = %DisplayIter::new(era_report.equivocators()),
@@ -1087,7 +1087,7 @@ impl EraSupervisor {
                 }
                 let finalized_block = FinalizedBlock::new(
                     proposed_block,
-                    era_report,
+                    report,
                     timestamp,
                     era_id,
                     era.start_height + relative_height,

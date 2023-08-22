@@ -22,39 +22,12 @@ use casper_execution_engine::{
         execution_result::ExecutionResult,
         run_genesis_request::RunGenesisRequest,
         step::{StepRequest, StepSuccess},
-        BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-        PruneConfig, PruneResult, QueryRequest, QueryResult, StepError, SystemContractRegistry,
-        UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
-    core::{
-        engine_state::{
-            self,
-            engine_config::RefundHandling,
-            era_validators::GetEraValidatorsRequest,
-            execute_request::ExecuteRequest,
-            execution_result::ExecutionResult,
-            run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepSuccess},
-            BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
-            GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, RewardItem,
-            StepError, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
-            DEFAULT_MAX_QUERY_DEPTH,
-        },
-        execution,
-    },
-    shared::{
-        additive_map::AdditiveMap,
-        execution_journal::ExecutionJournal,
-        logging::{self, Settings, Style},
-        newtypes::CorrelationId,
-        system_config::{
-            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts,
-        },
-        transform::Transform,
-        utils::OS_PAGE_SIZE,
+        BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
+        GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
+        SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
     execution,
-}};
+};
 use casper_storage::{
     data_access_layer::{BlockStore, DataAccessLayer},
     global_state::{
@@ -68,7 +41,7 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{self, FromBytes},
     execution::Effects,
     runtime_args,
@@ -83,11 +56,8 @@ use casper_types::{
     },
     AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Package, ProtocolVersion, PublicKey, StoredValue, Transfer, TransferAddr, URef,
-    UpgradeConfig, OS_PAGE_SIZE, U512,
-    CLTyped, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, ContractWasm,
-    DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, Motes, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
+    MintCosts, Motes, Package, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
+    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -134,8 +104,6 @@ pub struct WasmTestBuilder<S> {
     genesis_effects: Option<Effects>,
     /// Cached system account.
     system_account: Option<Account>,
-    /// Genesis transforms
-    genesis_transforms: Option<AdditiveMap<Key, Transform>>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry.
@@ -167,7 +135,6 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_account: self.genesis_account,
             genesis_effects: self.genesis_effects.clone(),
             system_account: None,
-            genesis_transforms: self.genesis_transforms.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
@@ -281,7 +248,6 @@ impl LmdbWasmTestBuilder {
             genesis_account: None,
             genesis_effects: None,
             system_account: None,
-            genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
@@ -394,9 +360,6 @@ impl LmdbWasmTestBuilder {
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
         WasmTestBuilder {
-        let engine_state = EngineState::new(global_state, engine_config);
-
-        let mut builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
@@ -406,18 +369,12 @@ impl LmdbWasmTestBuilder {
             effects: Vec::new(),
             genesis_account: None,
             genesis_effects: None,
-            system_account: None,
-            genesis_transforms: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
-        };
-
-        builder.system_contract_registry =
-            builder.query_system_contract_registry(Some(post_state_hash));
-
-        builder
+            system_account: None,
+        }
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -468,17 +425,21 @@ impl LmdbWasmTestBuilder {
             .vesting_schedule_period
             .millis();
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            vesting_schedule_period_millis,
-            chainspec_config.core_config.max_delegators_per_validator,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build();
 
         Self::new_temporary_with_config(engine_config)
     }
@@ -585,6 +546,8 @@ where
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
+        let system_account = Key::Account(PublicKey::System.to_account_hash());
+
         let GenesisSuccess {
             post_state_hash,
             effects,
@@ -614,9 +577,9 @@ where
                 Err(err) => panic!("{}", err),
             };
 
+        self.system_contract_registry = self.query_system_contract_registry(Some(post_state_hash));
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_transforms = Some(transforms);
         self.system_account = self.get_account(*SYSTEM_ADDR);
         self
     }
@@ -631,15 +594,9 @@ where
                     CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
                 Some(system_contract_registry)
             }
-            Ok(_) => panic!("Failed to get system registry"),
-            Err(err) => panic!("{}", err),
-        };
-
-        self.genesis_hash = Some(post_state_hash);
-        self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(system_contract_by_account);
-        self.genesis_effects = Some(effects);
-        self
+            Ok(_) => None,
+            Err(_) => None,
+        }
     }
 
     /// Queries state for a [`StoredValue`].
@@ -1136,6 +1093,17 @@ where
         self.get_purse_balance(proposer_contract.main_purse())
     }
 
+    /// Queries for an `Account`.
+    pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
+        match self.query(None, Key::Account(account_hash), &[]) {
+            Ok(account_value) => match account_value {
+                StoredValue::Account(account) => Some(account),
+                _ => None,
+            },
+            Err(_) => None,
+        }
+    }
+
     /// Gets the contract hash associated with a given account hash.
     pub fn get_contract_hash_by_account_hash(
         &self,
@@ -1195,6 +1163,19 @@ where
 
     /// Retrieve a Contract from global state.
     pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
+        let contract_value: StoredValue = self
+            .query(None, contract_hash.into(), &[])
+            .expect("should have contract value");
+
+        if let StoredValue::Contract(contract) = contract_value {
+            Some(contract)
+        } else {
+            None
+        }
+    }
+
+    /// Queries for a contract by `ContractHash`.
+    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");

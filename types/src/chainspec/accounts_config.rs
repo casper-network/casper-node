@@ -8,8 +8,7 @@ mod validator_config;
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use casper_execution_engine::core::engine_state::{genesis::AdministratorAccount, GenesisAccount};
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -18,7 +17,7 @@ use crate::{
 
 pub use account_config::AccountConfig;
 pub use delegator_config::DelegatorConfig;
-pub use genesis::{GenesisAccount, GenesisValidator};
+pub use genesis::{AdministratorAccount, GenesisAccount, GenesisValidator};
 pub use validator_config::ValidatorConfig;
 
 fn sorted_vec_deserializer<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
@@ -91,11 +90,12 @@ impl AccountsConfig {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
-        use casper_types::{Motes, U512};
         use rand::Rng;
+
+        use crate::{Motes, U512};
 
         let alpha = AccountConfig::random(rng);
         let accounts = vec![
@@ -171,9 +171,9 @@ impl From<AccountsConfig> for Vec<GenesisAccount> {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 mod tests {
-    use super::*;
+    use crate::{bytesrepr, testing::TestRng, AccountsConfig};
 
     #[test]
     fn serialization_roundtrip() {

@@ -15,7 +15,8 @@ use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
-    account::{AccountHash, AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure, Weight},
+    account::{AccountHash, Weight},
+    addressable_entity::{AddKeyFailure, RemoveKeyFailure, UpdateKeyFailure},
     bytesrepr::{self, FromBytes, ToBytes},
 };
 
@@ -208,7 +209,7 @@ mod tests {
     use std::{collections::BTreeSet, iter::FromIterator};
 
     use crate::{
-        account::{AccountHash, AddKeyFailure, Weight, ACCOUNT_HASH_LENGTH},
+        account::{AccountHash, Weight, ACCOUNT_HASH_LENGTH},
         bytesrepr,
     };
 

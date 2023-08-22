@@ -1848,6 +1848,7 @@ impl<C: Context + 'static> Zug<C> {
             });
             TerminalBlockData {
                 inactive_validators,
+                rewards: Default::default(),
             }
         });
         let finalized_block = FinalizedBlock {

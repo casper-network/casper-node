@@ -386,7 +386,7 @@ impl Executor {
             account_hash,
             address_generator,
             tracking_copy,
-            self.config,
+            self.config.clone(),
             blocktime,
             protocol_version,
             deploy_hash,
@@ -394,8 +394,8 @@ impl Executor {
             runtime_args,
             gas_limit,
             gas_counter,
-            address_generator,
-            protocol_version,
+            transfers,
+            remaining_spending_limit,
             entry_point_type,
         )
     }

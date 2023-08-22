@@ -1,8 +1,6 @@
 //! Support for runtime configuration of the execution engine - as an integral property of the
 //! `EngineState` instance.
-use casper_types::{SystemConfig, WasmConfig};
-mod fee_handling;
-mod refund_handling;
+use casper_types::{FeeHandling, RefundHandling, SystemConfig, WasmConfig};
 
 use std::collections::BTreeSet;
 
@@ -10,10 +8,6 @@ use num_rational::Ratio;
 use num_traits::One;
 
 use casper_types::{account::AccountHash, PublicKey};
-
-use crate::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
-
-pub use self::{fee_handling::FeeHandling, refund_handling::RefundHandling};
 
 /// Default value for a maximum query depth configuration option.
 pub const DEFAULT_MAX_QUERY_DEPTH: u64 = 5;

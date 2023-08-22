@@ -156,10 +156,6 @@ impl From<ContractVersionKey> for (ProtocolVersionMajor, ContractVersion) {
     }
 }
 
-/// Serialized length of `ContractVersionKey`.
-pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
-    U32_SERIALIZED_LENGTH + U32_SERIALIZED_LENGTH;
-
 impl ToBytes for ContractVersionKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -201,6 +197,10 @@ impl Display for ContractVersionKey {
     }
 }
 
+/// Serialized length of `ContractVersionKey`.
+pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
+    U32_SERIALIZED_LENGTH + U32_SERIALIZED_LENGTH;
+
 /// Collection of contract versions.
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -220,6 +220,11 @@ impl ContractVersions {
     /// Returns an iterator over the `ContractHash`s (i.e. the map's values).
     pub fn contract_hashes(&self) -> impl Iterator<Item = &ContractHash> {
         self.0.values()
+    }
+
+    /// Returns the `ContractHash` under the key
+    pub fn get(&self, key: &ContractVersionKey) -> Option<&ContractHash> {
+        self.0.get(key)
     }
 }
 
@@ -245,6 +250,13 @@ impl FromBytes for ContractVersions {
     }
 }
 
+#[cfg(any(feature = "testing", feature = "gens", test))]
+impl From<BTreeMap<ContractVersionKey, ContractHash>> for ContractVersions {
+    fn from(value: BTreeMap<ContractVersionKey, ContractHash>) -> Self {
+        ContractVersions(value)
+    }
+}
+
 struct ContractVersionLabels;
 
 impl KeyValueLabels for ContractVersionLabels {
@@ -256,14 +268,6 @@ impl KeyValueLabels for ContractVersionLabels {
 impl KeyValueJsonSchema for ContractVersionLabels {
     const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
 }
-
-#[cfg(any(feature = "testing", feature = "gens", test))]
-impl From<BTreeMap<ContractVersionKey, ContractHash>> for ContractVersions {
-    fn from(value: BTreeMap<ContractVersionKey, ContractHash>) -> Self {
-        ContractVersions(value)
-    }
-}
-
 /// Collection of named groups.
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -789,6 +793,18 @@ impl Package {
         }
     }
 
+    /// Enable the contract version corresponding to the given hash (if it exists).
+    pub fn enable_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+        let contract_version_key = self
+            .find_contract_version_key_by_hash(&contract_hash)
+            .copied()
+            .ok_or(Error::ContractNotFound)?;
+
+        self.disabled_versions.remove(&contract_version_key);
+
+        Ok(())
+    }
+
     /// Get the access key for this contract.
     pub fn access_key(&self) -> URef {
         self.access_key
@@ -1026,12 +1042,17 @@ impl FromBytes for Package {
 
 #[cfg(test)]
 mod tests {
+    use core::iter::FromIterator;
+
     use super::*;
     use crate::{
         addressable_entity::NamedKeys, AccessRights, ContractVersionKey, EntryPoint,
         EntryPointAccess, EntryPointType, Parameter, ProtocolVersion, URef,
     };
     use alloc::borrow::ToOwned;
+
+    const CONTRACT_HASH_V1: ContractHash = ContractHash::new([42; 32]);
+    const CONTRACT_HASH_V2: ContractHash = ContractHash::new([84; 32]);
 
     fn make_contract_package() -> Package {
         let mut contract_package = Package::new(
@@ -1138,14 +1159,41 @@ mod tests {
     }
 
     #[test]
-    fn should_disable_contract_version() {
+    fn should_disable_and_enable_contract_version() {
         const CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
+
         let mut contract_package = make_contract_package();
 
         assert!(
             !contract_package.is_contract_enabled(&CONTRACT_HASH),
             "nonexisting contract contract should return false"
         );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 2))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+
+        assert_eq!(
+            contract_package.versions(),
+            &ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2)
+            ])),
+        );
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2)
+            ])),
+        );
+
+        assert!(!contract_package.is_contract_enabled(&CONTRACT_HASH));
 
         assert_eq!(
             contract_package.disable_contract_version(CONTRACT_HASH),
@@ -1163,6 +1211,7 @@ mod tests {
             contract_package.is_version_enabled(next_version),
             "version should exist and be enabled"
         );
+        assert!(contract_package.is_contract_enabled(&CONTRACT_HASH));
 
         assert!(
             contract_package.is_contract_enabled(&CONTRACT_HASH),
@@ -1174,21 +1223,139 @@ mod tests {
             Ok(()),
             "should be able to disable version"
         );
+        assert!(!contract_package.is_contract_enabled(&CONTRACT_HASH));
 
         assert!(
             !contract_package.is_contract_enabled(&CONTRACT_HASH),
             "contract should be disabled"
         );
-
         assert_eq!(
             contract_package.lookup_contract_hash(next_version),
             None,
             "should not return disabled contract version"
         );
-
         assert!(
             !contract_package.is_version_enabled(next_version),
             "version should not be enabled"
+        );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 2))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+        assert_eq!(
+            contract_package.versions(),
+            &ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+                (next_version, CONTRACT_HASH),
+            ])),
+        );
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+            ])),
+        );
+        assert_eq!(
+            contract_package.disabled_versions(),
+            &BTreeSet::from_iter([next_version]),
+        );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 2))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+
+        assert_eq!(
+            contract_package.disable_contract_version(CONTRACT_HASH_V2),
+            Ok(()),
+            "should be able to disable version 2"
+        );
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([(
+                ContractVersionKey::new(1, 1),
+                CONTRACT_HASH_V1
+            ),])),
+        );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 1))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V1)
+        );
+
+        assert_eq!(
+            contract_package.disabled_versions(),
+            &BTreeSet::from_iter([next_version, ContractVersionKey::new(1, 2)]),
+        );
+
+        assert_eq!(contract_package.enable_version(CONTRACT_HASH_V2), Ok(()),);
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+            ])),
+        );
+
+        assert_eq!(
+            contract_package.disabled_versions(),
+            &BTreeSet::from_iter([next_version])
+        );
+
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+
+        assert_eq!(contract_package.enable_version(CONTRACT_HASH), Ok(()),);
+
+        assert_eq!(
+            contract_package.enable_version(CONTRACT_HASH),
+            Ok(()),
+            "enabling a contract twice should be a noop"
+        );
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+                (next_version, CONTRACT_HASH),
+            ])),
+        );
+
+        assert_eq!(contract_package.disabled_versions(), &BTreeSet::new(),);
+
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH)
+        );
+    }
+
+    #[test]
+    fn should_not_allow_to_enable_non_existing_version() {
+        let mut contract_package = make_contract_package();
+
+        assert_eq!(
+            contract_package.enable_version(ContractHash::default()),
+            Err(Error::ContractNotFound),
         );
     }
 

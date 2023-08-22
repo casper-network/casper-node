@@ -11,8 +11,6 @@ use casper_types::{
     system::auction::{
         Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageRecipients,
         ValidatorWeights, DELEGATION_RATE_DENOMINATOR,
-        Bid, DelegationRate, EraInfo, EraValidators, Error, SeigniorageAllocation,
-        SeigniorageRecipients, ValidatorWeights, BLOCK_REWARD, DELEGATION_RATE_DENOMINATOR,
     },
     ApiError, EraId, PublicKey, U512,
 };
@@ -105,7 +103,7 @@ pub trait Auction:
                 )
                 .map_err(|_| ApiError::from(Error::TransferToBidPurse))?
                 .map_err(|mint_error| {
-                    // Propagate mint contract's error that occured during execution of transfer
+                    // Propagate mint contract's error that occurred during execution of transfer
                     // entrypoint. This will improve UX in case of (for example)
                     // unapproved spending limit error.
                     ApiError::from(mint_error)
@@ -576,20 +574,6 @@ pub trait Auction:
             // TODO: error?
             continue;
         }*/
-        for (public_key, reward_factor) in reward_factors {
-            if reward_factor == 0 {
-                let allocation = SeigniorageAllocation::validator(public_key.clone(), U512::zero());
-                seigniorage_allocations.push(allocation);
-                continue;
-            }
-            let recipient = seigniorage_recipients
-                .get(&public_key)
-                .ok_or(Error::ValidatorNotFound)?;
-
-            let current_stake = recipient.total_stake().ok_or(Error::ArithmeticOverflow)?;
-            if current_stake.is_zero() {
-                continue;
-            }
 
         let total_reward: Ratio<U512> = Ratio::from(base_round_reward);
 

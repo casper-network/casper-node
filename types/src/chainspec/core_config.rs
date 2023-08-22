@@ -1,3 +1,4 @@
+use alloc::collections::BTreeSet;
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use num::rational::Ratio;
@@ -16,11 +17,13 @@ use serde::{
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    ProtocolVersion, TimeDiff,
+    ProtocolVersion, PublicKey, TimeDiff,
 };
 
+use super::{fee_handling::FeeHandling, refund_handling::RefundHandling};
+
 /// Configuration values associated with the core protocol.
-#[derive(Copy, Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
@@ -106,19 +109,19 @@ pub struct CoreConfig {
     /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
     /// `false`. Setting up this option makes sense only for private chains where validator set
     /// rotation is unnecessary.
-    pub(crate) allow_auction_bids: bool,
+    pub allow_auction_bids: bool,
     /// Allows unrestricted transfers between users.
-    pub(crate) allow_unrestricted_transfers: bool,
+    pub allow_unrestricted_transfers: bool,
     /// If set to false then consensus doesn't compute rewards and always uses 0.
-    pub(crate) compute_rewards: bool,
+    pub compute_rewards: bool,
     /// Administrative accounts are valid option for for a private chain only.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
-    pub(crate) administrators: BTreeSet<PublicKey>,
+    pub administrators: BTreeSet<PublicKey>,
     /// Refund handling.
     #[data_size(skip)]
-    pub(crate) refund_handling: RefundHandling,
+    pub refund_handling: RefundHandling,
     /// Fee handling.
-    pub(crate) fee_handling: FeeHandling,
+    pub fee_handling: FeeHandling,
 }
 
 impl CoreConfig {

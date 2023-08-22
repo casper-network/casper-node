@@ -7,9 +7,6 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::engine_state::{EngineConfig, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT};
-use casper_execution_engine::core::engine_state::{
-    RewardItem, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-};
 use casper_types::{
     runtime_args,
     system::{

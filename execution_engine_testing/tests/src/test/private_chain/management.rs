@@ -1,16 +1,15 @@
 use std::convert::TryFrom;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY,
+    DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_AUCTION_DELAY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
-        genesis::ExecConfigBuilder, EngineConfigBuilder, Error, ExecuteRequest, GenesisAccount,
-        RunGenesisRequest,
+        genesis::ExecConfigBuilder, EngineConfigBuilder, Error, ExecuteRequest, RunGenesisRequest,
     },
     execution,
 };
@@ -23,9 +22,10 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, Contract, ContractHash, ContractPackage, ContractPackageHash, Key,
-    RuntimeArgs, U512,
+    ApiError, CLType, CLValue, Contract, ContractHash, ContractPackageHash, GenesisAccount, Key,
+    Package, RuntimeArgs, U512,
 };
+use tempfile::TempDir;
 
 use crate::{
     test::private_chain::{
@@ -77,7 +77,8 @@ fn should_not_run_genesis_with_duplicated_administrator_accounts() {
         .with_administrative_accounts(PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone())
         .build();
 
-    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
+    let data_dir = TempDir::new().expect("should create temp dir");
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config);
 
     let duplicated_administrator_accounts = {
         let mut accounts = PRIVATE_CHAIN_DEFAULT_ACCOUNTS.clone();
@@ -477,7 +478,10 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .get_account(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
-    let stored_contract_key = account_1_genesis.named_keys()[DO_NOTHING_HASH_NAME];
+    let stored_contract_key = account_1_genesis
+        .named_keys()
+        .get(DO_NOTHING_HASH_NAME)
+        .unwrap();
     let stored_contract_hash = stored_contract_key
         .into_hash()
         .map(ContractHash::new)
@@ -485,7 +489,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
     let do_nothing_contract_package_key = {
         let stored_value = builder
-            .query(None, stored_contract_key, &[])
+            .query(None, *stored_contract_key, &[])
             .expect("should query");
         let contract = Contract::try_from(stored_value).expect("should be contract");
         Key::from(contract.contract_package_hash())
@@ -496,7 +500,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .map(ContractPackageHash::new)
         .expect("should be package hash");
 
-    let contract_package_before = ContractPackage::try_from(
+    let contract_package_before = Package::try_from(
         builder
             .query(None, do_nothing_contract_package_key, &[])
             .expect("should query"),
@@ -530,7 +534,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
     builder.exec(disable_request).expect_success().commit();
 
-    let contract_package_after_disable = ContractPackage::try_from(
+    let contract_package_after_disable = Package::try_from(
         builder
             .query(None, do_nothing_contract_package_key, &[])
             .expect("should query"),
@@ -670,7 +674,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .get_account(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
-    let stored_contract_key = account_1_genesis.named_keys()[TEST_PAYMENT_STORED_HASH_NAME];
+    let stored_contract_key = account_1_genesis
+        .named_keys()
+        .get(TEST_PAYMENT_STORED_HASH_NAME)
+        .unwrap();
     let stored_contract_hash = stored_contract_key
         .into_hash()
         .map(ContractHash::new)
@@ -678,7 +685,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
     let test_payment_stored_package_key = {
         let stored_value = builder
-            .query(None, stored_contract_key, &[])
+            .query(None, *stored_contract_key, &[])
             .expect("should query");
         let contract = Contract::try_from(stored_value).expect("should be contract");
         Key::from(contract.contract_package_hash())
@@ -689,7 +696,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .map(ContractPackageHash::new)
         .expect("should have contract package");
 
-    let contract_package_before = ContractPackage::try_from(
+    let contract_package_before = Package::try_from(
         builder
             .query(None, test_payment_stored_package_key, &[])
             .expect("should query"),
@@ -739,7 +746,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
     builder.exec(disable_request).expect_success().commit();
 
-    let contract_package_after_disable = ContractPackage::try_from(
+    let contract_package_after_disable = Package::try_from(
         builder
             .query(None, test_payment_stored_package_key, &[])
             .expect("should query"),

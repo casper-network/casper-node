@@ -1,14 +1,10 @@
 use casper_engine_test_support::{
     ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
-use casper_execution_engine::{
-    core::engine_state::engine_config::{FeeHandling, RefundHandling},
-    shared::{opcode_costs::DEFAULT_NOP_COST, system_config::DEFAULT_WASMLESS_TRANSFER_COST},
-};
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    RuntimeArgs, U512,
+    RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512, FeeHandling, RefundHandling, DEFAULT_NOP_COST,
 };
 use num_rational::Ratio;
 use num_traits::{One, Zero};

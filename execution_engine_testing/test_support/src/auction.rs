@@ -4,26 +4,15 @@ use lmdb::{Cursor, Transaction};
 use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::engine_state::{
-    self,
-    core::{
-        engine_state::{
-            self,
-            engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-            genesis::{ExecConfigBuilder, GenesisValidator},
-            run_genesis_request::RunGenesisRequest,
-            ChainspecRegistry, EngineState, ExecuteRequest, GenesisAccount, RewardItem,
-        },
-        execution,
+use casper_execution_engine::{
+    engine_state::{
+        self,
+        engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+        genesis::ExecConfigBuilder,
+        run_genesis_request::RunGenesisRequest,
+        EngineState, ExecuteRequest,
     },
     execution,
-    run_genesis_request::RunGenesisRequest,
-    shared::newtypes::CorrelationId,
-    storage::{
-        global_state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie},
-    },
-    EngineState, ExecConfig, ExecuteRequest,
 };
 use casper_storage::global_state::{
     state::{CommitProvider, StateProvider},

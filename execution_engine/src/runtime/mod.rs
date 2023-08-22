@@ -23,31 +23,27 @@ use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     addressable_entity::{
-        self, ActionThresholds, ActionType, AddressableEntity, AssociatedKeys, EntryPoint,
-        EntryPointAccess, EntryPoints, NamedKeys, Weight, DEFAULT_ENTRY_POINT_NAME,
-    account::{
-        Account, AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight,
+        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity, AssociatedKeys,
+        ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
+        Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions, Group,
-        Groups, Package,
-    },
+    package::{ContractPackageKind, ContractPackageStatus},
     system::{
         self,
         auction::{self, EraInfo},
         handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Gas,
-    GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter, Phase, PublicKey,
-    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractPackageHash,
+    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Gas,
+    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, Phase,
+    PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
-}};
+};
 
 use crate::{
     engine_state::ACCOUNT_WASM_HASH,
@@ -1212,7 +1208,11 @@ where
             }
         }
 
-        if !self.config.administrative_accounts().is_empty()
+        if !self
+            .context
+            .engine_config()
+            .administrative_accounts()
+            .is_empty()
             && !contract_package.is_contract_enabled(&contract_hash)
             && !self.context.is_system_contract(&contract_hash)?
         {
@@ -1364,7 +1364,7 @@ where
         let (instance, memory) = utils::instance_and_memory(
             module.clone(),
             protocol_version,
-            self.context.engine_config().wasm_config(),
+            &self.context.engine_config(),
         )?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
 
@@ -1810,15 +1810,14 @@ where
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
 
-        let mut contract_package: ContractPackage = self
-            .context
-            .get_validated_contract_package(contract_package_hash)?;
+        let mut contract_package: Package =
+            self.context.get_validated_package(contract_package_hash)?;
 
         if contract_package.is_locked() {
             return Err(Error::LockedContract(contract_package_hash));
         }
 
-        if let Err(err) = contract_package.enable_contract_version(contract_hash) {
+        if let Err(err) = contract_package.enable_version(contract_hash) {
             return Ok(Err(err.into()));
         }
 
@@ -1980,15 +1979,24 @@ where
     /// an admin to be able to manage its own keys. If the caller is not an administrator then the
     /// deploy has to be signed by an administrator.
     fn can_manage_keys(&self) -> bool {
-        if self.config.administrative_accounts().is_empty() {
+        if self
+            .context
+            .engine_config()
+            .administrative_accounts()
+            .is_empty()
+        {
             // Public chain
             return self
                 .context
-                .account()
+                .entity()
                 .can_manage_keys_with(self.context.authorization_keys());
         }
 
-        if self.config.is_administrator(&self.context.get_caller()) {
+        if self
+            .context
+            .engine_config()
+            .is_administrator(&self.context.get_caller())
+        {
             return true;
         }
 
@@ -2251,10 +2259,13 @@ where
 
         let target_key = Key::Account(target);
 
-        if !self.config.allow_unrestricted_transfers()
+        if !self.context.engine_config().allow_unrestricted_transfers()
             && self.context.get_caller() != PublicKey::System.to_account_hash()
-            && !self.config.is_administrator(&self.context.get_caller())
-            && !self.config.is_administrator(&target)
+            && !self
+                .context
+                .engine_config()
+                .is_administrator(&self.context.get_caller())
+            && !self.context.engine_config().is_administrator(&target)
         {
             return Err(Error::DisabledUnrestrictedTransfers);
         }
@@ -2365,15 +2376,13 @@ where
     /// been created by the mint contract (or are the genesis account's).
     fn transfer_to_existing_account(
         &mut self,
-        to: Option<&Account>,
+        to: Option<AccountHash>,
         source: URef,
         target: URef,
         amount: U512,
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let mint_contract_key = self.get_mint_contract()?;
-
-        let to = to.map(Account::account_hash);
 
         match self.mint_transfer(mint_contract_key, to, source, target, amount, id)? {
             Ok(()) => Ok(Ok(TransferredTo::ExistingAccount)),
@@ -2457,6 +2466,7 @@ where
                         .remove_access(uref_addr, newly_granted_access_rights)
                 }
                 transfer_result
+            }
             Some(StoredValue::Account(account)) => {
                 self.transfer_from_purse_to_account(source, &account, amount, id)
             }
@@ -2487,7 +2497,7 @@ where
 
         // If an account exists, transfer the amount to its purse
         let transfer_result = self.transfer_to_existing_account(
-            Some(target_account),
+            Some(target_account.account_hash()),
             source,
             target_uref,
             amount,

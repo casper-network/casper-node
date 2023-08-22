@@ -272,6 +272,20 @@ impl TryFrom<StoredValue> for ContractWasm {
     }
 }
 
+impl TryFrom<StoredValue> for Contract {
+    type Error = TypeMismatch;
+
+    fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
+        match stored_value {
+            StoredValue::Contract(contract) => Ok(contract),
+            _ => Err(TypeMismatch::new(
+                "Contract".to_string(),
+                stored_value.type_name(),
+            )),
+        }
+    }
+}
+
 impl TryFrom<StoredValue> for Package {
     type Error = TypeMismatch;
 

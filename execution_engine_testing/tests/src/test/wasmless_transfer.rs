@@ -5,33 +5,15 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    engine_state::{
-        engine_config::{
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    PRODUCTION_RUN_GENESIS_REQUEST,
-};
-use casper_execution_engine::{
-    core::{
-        engine_state::{
-            engine_config::DEFAULT_MAX_ASSOCIATED_KEYS, EngineConfigBuilder, Error as CoreError,
-            WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-        },
-        execution::Error as ExecError,
+use casper_execution_engine::engine_state::{
+    engine_config::{
+        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
+        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
     },
-    shared::system_config::{
-        auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-        mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
-        DEFAULT_WASMLESS_TRANSFER_COST,
-    },
-    execution::Error as ExecError,
+    EngineConfig, EngineConfigBuilder, Error as CoreError, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    WASMLESS_TRANSFER_FIXED_GAS_PRICE,
 };
+use casper_execution_engine::execution::Error as ExecError;
 use casper_types::{
     account::AccountHash,
     runtime_args,

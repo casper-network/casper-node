@@ -5,14 +5,13 @@ use tracing::error;
 use casper_types::{
     account::AccountHash,
     system::handle_payment::{Error, ACCUMULATION_PURSE_KEY, PAYMENT_PURSE_KEY, REFUND_PURSE_KEY},
-    Key, Phase, PublicKey, URef, U512,
+    FeeHandling, Key, Phase, PublicKey, RefundHandling, URef, U512,
 };
 
 use super::{
     mint_provider::MintProvider, runtime_provider::RuntimeProvider,
     storage_provider::StorageProvider,
 };
-use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
 
 /// Returns the purse for accepting payment for transactions.
 pub(crate) fn get_payment_purse<R: RuntimeProvider>(runtime_provider: &R) -> Result<URef, Error> {

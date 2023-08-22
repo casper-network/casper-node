@@ -61,10 +61,11 @@ use casper_types::{
     },
     AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash,
     ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
-    ExecutableDeployItem, Gas, Key, KeyTag, Motes, Package, Phase, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, Phase, ProtocolVersion,
+    PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
+use self::transfer::NewTransferTargetMode;
 pub use self::{
     balance::{BalanceRequest, BalanceResult},
     checksum_registry::ChecksumRegistry,
@@ -88,7 +89,6 @@ pub use self::{
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
 };
-use self::{engine_config::FeeHandling, transfer::NewTransferTargetMode};
 use crate::{
     engine_state::{
         execution_kind::ExecutionKind,
@@ -155,7 +155,7 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
     /// Provide a local cached-only version of engine-state.
     pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
         EngineState {
-            config: self.config,
+            config: self.config.clone(),
             state: self.state.state().create_scratch(),
         }
     }
@@ -368,17 +368,16 @@ where
 
         // Cycle through the system contracts and update
         // their metadata if there is a change in entry points.
-        let system_upgrader: SystemUpgrader<S> =
-            SystemUpgrader::new(new_protocol_version, tracking_copy.clone());
+        let system_upgrader: SystemUpgrader<S> = SystemUpgrader::new(
+            new_protocol_version,
+            current_protocol_version,
+            tracking_copy.clone(),
+        );
 
         system_upgrader.migrate_system_account(pre_state_hash)?;
 
         system_upgrader
-            .create_accumulation_purse_if_required(
-                correlation_id,
-                handle_payment_hash,
-                &self.config,
-            )
+            .create_accumulation_purse_if_required(handle_payment_hash, &self.config)
             .map_err(Error::ProtocolUpgrade)?;
 
         system_upgrader
@@ -744,7 +743,7 @@ where
 
         if !admin_set.is_empty() && admin_set.intersection(authorization_keys).next().is_some() {
             // Exit early if there's at least a single signature coming from an admin.
-            return Ok(account);
+            return Ok((entity_record, entity_hash));
         }
 
         // Authorize using provided authorization keys
@@ -995,7 +994,7 @@ where
         };
 
         let rewards_target_purse =
-            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
+            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
                 Ok(target_purse) => target_purse,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
@@ -1011,7 +1010,7 @@ where
             }
         };
 
-        let account_main_purse = account.main_purse();
+        let account_main_purse = entity.main_purse();
         let account_main_purse_balance_key = match tracking_copy
             .borrow_mut()
             .get_purse_balance_key(account_main_purse.into())
@@ -1056,7 +1055,7 @@ where
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
 
         let transfer_target_mode = match runtime_args_builder
-            .resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))
+            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))
         {
             Ok(transfer_target_mode) => transfer_target_mode,
             Err(error) => return Ok(make_charged_execution_failure(error)),
@@ -1097,11 +1096,12 @@ where
             }
         }
 
-        match runtime_args_builder.transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))
+        match runtime_args_builder
+            .resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))
         {
             Ok(mode) => match mode {
-                TransferTargetMode::Unknown | TransferTargetMode::PurseExists(_) => { /* noop */ }
-                TransferTargetMode::CreateAccount(public_key) => {
+                NewTransferTargetMode::PurseExists(_) => { /* noop */ }
+                NewTransferTargetMode::CreateAccount(public_key) => {
                     let create_purse_stack = self.get_new_system_call_stack();
                     let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                         .call_system_contract(
@@ -1142,6 +1142,10 @@ where
                         }
                     }
                 }
+                NewTransferTargetMode::ExistingAccount {
+                    target_account_hash,
+                    main_purse,
+                } => todo!(),
             },
             Err(error) => return Ok(make_charged_execution_failure(error)),
         }
@@ -1618,7 +1622,7 @@ where
 
         let purse_balance_key = match tracking_copy
             .borrow_mut()
-            .get_purse_balance_key(correlation_id, payment_purse_key)
+            .get_purse_balance_key(payment_purse_key)
         {
             Ok(key) => key,
             Err(error) => {
@@ -1817,7 +1821,7 @@ where
         };
 
         let rewards_target_purse =
-            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
+            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
                 Ok(target_purse) => target_purse,
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
@@ -2079,7 +2083,7 @@ where
 
     fn get_rewards_purse(
         &self,
-        correlation_id: CorrelationId,
+        protocol_version: ProtocolVersion,
         proposer: PublicKey,
         prestate_hash: Digest,
     ) -> Result<URef, Error> {
@@ -2092,10 +2096,12 @@ where
             FeeHandling::PayToProposer => {
                 // the proposer of the block this deploy is in receives the gas from this deploy
                 // execution
-                let proposer_account: Account = match tracking_copy
+                let proposer_account: AddressableEntity = match tracking_copy
                     .borrow_mut()
-                    .get_account(correlation_id, AccountHash::from(&proposer))
-                {
+                    .get_addressable_entity_by_account_hash(
+                        protocol_version,
+                        AccountHash::from(&proposer),
+                    ) {
                     Ok(account) => account,
                     Err(error) => return Err(error.into()),
                 };
@@ -2103,12 +2109,11 @@ where
                 Ok(proposer_account.main_purse())
             }
             FeeHandling::Accumulate => {
-                let handle_payment_hash =
-                    self.get_handle_payment_hash(correlation_id, prestate_hash)?;
+                let handle_payment_hash = self.get_handle_payment_hash(prestate_hash)?;
 
                 let handle_payment_contract = tracking_copy
                     .borrow_mut()
-                    .get_contract(correlation_id, handle_payment_hash)?;
+                    .get_contract(handle_payment_hash)?;
 
                 let accumulation_purse_uref = match handle_payment_contract
                     .named_keys()
@@ -2274,7 +2279,7 @@ where
         let mut runtime_args = RuntimeArgs::new();
         runtime_args.insert(ARG_VALIDATOR, proposer)?;
 
-        let executor = Executor::new(*self.config());
+        let executor = Executor::new(self.config().clone());
 
         let system_account_addr = PublicKey::System.to_account_hash();
 
@@ -2302,14 +2307,14 @@ where
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
             DirectSystemContractCall::DistributeAccumulatedFees,
             RuntimeArgs::default(),
-            &virtual_system_account,
-            ContractPackageKind::Account(virtual_system_account),
+            &virtual_system_contract_by_account,
+            ContractPackageKind::Account(system_account_hash),
             authorization_keys.clone(),
             system_account_hash,
             BlockTime::default(),
             deploy_hash,
             gas_limit,
-            step_request.protocol_version,
+            protocol_version,
             Rc::clone(&tracking_copy),
             Phase::Session,
             distribute_accumulated_fees_stack,
@@ -2319,45 +2324,6 @@ where
 
         if let Some(exec_error) = execution_result.take_error() {
             return Err(StepError::DistributeAccumulatedFeesError(exec_error));
-        }
-
-        let reward_factors = match step_request.reward_factors() {
-            Ok(reward_factors) => reward_factors,
-            Err(error) => {
-                error!(
-                    "failed to deserialize reward factors: {}",
-                    error.to_string()
-                );
-                return Err(StepError::BytesRepr(error));
-            }
-        };
-        let reward_args = RuntimeArgs::try_new(|args| {
-            args.insert(ARG_REWARD_FACTORS, reward_factors)?;
-            Ok(())
-        })?;
-
-        let distribute_rewards_stack = self.get_new_system_call_stack();
-
-        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
-            DirectSystemContractCall::DistributeRewards,
-            runtime_args,
-            &virtual_system_contract_by_account,
-            ContractPackageKind::Account(system_account_hash),
-            authorization_keys,
-            system_account_hash,
-            BlockTime::default(),
-            deploy_hash,
-            gas_limit,
-            protocol_version,
-            Rc::clone(&tracking_copy),
-            Phase::Session,
-            distribute_rewards_stack,
-            // There should be no tokens transferred during rewards distribution.
-            U512::zero(),
-        );
-
-        if let Some(exec_error) = execution_result.take_error() {
-            return Err(StepError::DistributeError(exec_error));
         }
 
         let effects = tracking_copy.borrow().effects();
@@ -2379,7 +2345,7 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
-        let executor = Executor::new(*self.config());
+        let executor = Executor::new(self.config().clone());
 
         let system_account_addr = PublicKey::System.to_account_hash();
 

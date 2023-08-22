@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
-use casper_types::{account::AccountHash, system::handle_payment::Error, BlockTime, Key, Phase};
-
-use crate::core::engine_state::engine_config::{FeeHandling, RefundHandling};
+use casper_types::{
+    account::AccountHash, system::handle_payment::Error, BlockTime, FeeHandling, Key, Phase,
+    RefundHandling,
+};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {

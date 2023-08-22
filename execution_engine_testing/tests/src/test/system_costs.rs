@@ -1,3 +1,4 @@
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 use num_traits::Zero;
 use once_cell::sync::Lazy;
 
@@ -5,37 +6,7 @@ use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder,
     DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
     DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT,
-    DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
-};
-use casper_execution_engine::engine_state::{
-    engine_config::{
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
-};
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
-        genesis::GenesisValidator,
-        EngineConfigBuilder, GenesisAccount,
-    },
-    shared::{
-        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
-        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
-        storage_costs::StorageCosts,
-        system_config::{
-            auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST},
-            handle_payment_costs::HandlePaymentCosts,
-            mint_costs::{MintCosts, DEFAULT_TRANSFER_COST},
-            standard_payment_costs::StandardPaymentCosts,
-            SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
-        },
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
-    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
 use casper_types::{
     runtime_args,

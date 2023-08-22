@@ -7,32 +7,25 @@ mod unrestricted_transfers;
 use std::collections::{BTreeMap, BTreeSet};
 
 use casper_engine_test_support::{
-    InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
+    LmdbWasmTestBuilder, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
     DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::{FeeHandling, RefundHandling},
-        genesis::{AdministratorAccount, ExecConfigBuilder, GenesisValidator},
-        EngineConfig, EngineConfigBuilder, ExecConfig, GenesisAccount, RunGenesisRequest,
-    },
-    shared::{
-        host_function_costs::{HostFunction, HostFunctionCosts},
-        opcode_costs::OpcodeCosts,
-        storage_costs::StorageCosts,
-        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
-    },
+use casper_execution_engine::engine_state::{
+    genesis::ExecConfigBuilder, EngineConfig, EngineConfigBuilder, ExecConfig, RunGenesisRequest,
 };
 use num_rational::Ratio;
 use once_cell::sync::Lazy;
 
 use casper_types::{
-    account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, Motes, PublicKey,
-    SecretKey, U512,
+    account::AccountHash, system::auction::DELEGATION_RATE_DENOMINATOR, AdministratorAccount,
+    FeeHandling, GenesisAccount, GenesisValidator, HostFunction, HostFunctionCosts, Motes,
+    OpcodeCosts, PublicKey, RefundHandling, SecretKey, StorageCosts, WasmConfig,
+    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
+use tempfile::TempDir;
 
 static VALIDATOR_1_SECRET_KEY: Lazy<SecretKey> =
     Lazy::new(|| SecretKey::secp256k1_from_bytes([244; 32]).unwrap());
@@ -175,19 +168,20 @@ fn custom_setup_genesis_only(
     allow_unrestricted_transfers: bool,
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
-) -> InMemoryWasmTestBuilder {
+) -> LmdbWasmTestBuilder {
     let engine_config = make_engine_config(
         allow_auction_bids,
         allow_unrestricted_transfers,
         refund_handling,
         fee_handling,
     );
-    let mut builder = InMemoryWasmTestBuilder::new_with_config(engine_config);
+    let data_dir = TempDir::new().expect("should create temp dir");
+    let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config);
     builder.run_genesis(&DEFAULT_PRIVATE_CHAIN_GENESIS);
     builder
 }
 
-fn setup_genesis_only() -> InMemoryWasmTestBuilder {
+fn setup_genesis_only() -> LmdbWasmTestBuilder {
     custom_setup_genesis_only(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
@@ -230,7 +224,7 @@ fn make_engine_config(
         .build()
 }
 
-fn private_chain_setup() -> InMemoryWasmTestBuilder {
+fn private_chain_setup() -> LmdbWasmTestBuilder {
     custom_setup_genesis_only(
         PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,

@@ -16,7 +16,7 @@ use casper_types::{
 };
 
 use crate::{
-    core::engine_state::SystemContractRegistry,
+    engine_state::SystemContractRegistry,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
         system_provider::SystemProvider,

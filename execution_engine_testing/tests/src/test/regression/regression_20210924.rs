@@ -13,7 +13,6 @@ use parity_wasm::{
     builder,
     elements::{Instruction, Instructions},
 };
-use casper_types::{runtime_args, Gas, RuntimeArgs, U512};
 
 use crate::wasm_utils;
 

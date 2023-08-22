@@ -20,19 +20,11 @@ use casper_execution_engine::{
             DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
             DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
             DEFAULT_STRICT_ARGUMENT_CHECKING, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    core::{
-        engine_state::{
-            self,
-            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            genesis::{ExecConfigBuilder, GenesisAccount, GenesisValidator},
-            run_genesis_request::RunGenesisRequest,
-            EngineConfigBuilder, Error, RewardItem,
         },
-        run_genesis_request::RunGenesisRequest,
-        EngineConfig, Error,
+        genesis::ExecConfigBuilder,
+        EngineConfigBuilder, Error, RunGenesisRequest,
     },
     execution,
-    storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
     self,

@@ -2,19 +2,13 @@ use casper_storage::global_state::state::StateReader;
 use std::collections::BTreeSet;
 
 use casper_types::{
-    account::AccountHash, system::handle_payment::Error, BlockTime, CLValue, Key, Phase,
-    StoredValue, TransferredTo, URef, U512,
+    account::AccountHash, system::handle_payment::Error, BlockTime, CLValue, FeeHandling, Key,
+    Phase, RefundHandling, StoredValue, TransferredTo, URef, U512,
 };
 
 use crate::{
     execution,
     runtime::Runtime,
-    core::{
-        engine_state::engine_config::{FeeHandling, RefundHandling},
-        execution,
-        runtime::Runtime,
-    },
-    storage::global_state::StateReader,
     system::handle_payment::{
         mint_provider::MintProvider, runtime_provider::RuntimeProvider,
         storage_provider::StorageProvider, HandlePayment,
@@ -127,15 +121,15 @@ where
     }
 
     fn refund_handling(&self) -> &RefundHandling {
-        self.config.refund_handling()
+        self.context.engine_config().refund_handling()
     }
 
     fn fee_handling(&self) -> FeeHandling {
-        self.config.fee_handling()
+        self.context.engine_config().fee_handling()
     }
 
     fn administrative_accounts(&self) -> &BTreeSet<AccountHash> {
-        self.config.administrative_accounts()
+        self.context.engine_config().administrative_accounts()
     }
 }
 

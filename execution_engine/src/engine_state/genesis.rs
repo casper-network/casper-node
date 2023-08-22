@@ -6,7 +6,6 @@ use std::{
     rc::Rc,
 };
 
-use datasize::DataSize;
 use itertools::Itertools;
 use num::Zero;
 use num_rational::Ratio;
@@ -18,8 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     addressable_entity::{ActionThresholds, NamedKeys},
+    bytesrepr::U8_SERIALIZED_LENGTH,
     execution::Effects,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     system::{
@@ -34,10 +34,10 @@ use casper_types::{
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, CLValue, Chainspec, ChainspecRegistry, ContractHash,
-    ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
-    GenesisAccount, Key, Motes, Package, Phase, ProtocolVersion, PublicKey, StoredValue,
-    SystemConfig, URef, WasmConfig, U512,
+    AccessRights, AddressableEntity, AdministratorAccount, CLValue, Chainspec, ChainspecRegistry,
+    ContractHash, ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
+    FeeHandling, GenesisAccount, Key, Motes, Package, Phase, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -46,13 +46,11 @@ use crate::{
     tracking_copy::TrackingCopy,
 };
 
-use super::engine_config::{
-    FeeHandling, RefundHandling, DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
-};
+use super::engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
+
 const NO_WASM: bool = true;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
-const DEFAULT_ADDRESS: [u8; 32] = [0; 32];
 
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
@@ -465,21 +463,25 @@ impl ExecConfigBuilder {
 
 impl From<&Chainspec> for ExecConfig {
     fn from(chainspec: &Chainspec) -> Self {
-        ExecConfig::new(
-            chainspec.network_config.accounts_config.clone().into(),
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.validator_slots,
-            chainspec.core_config.auction_delay,
-            chainspec.core_config.locked_funds_period.millis(),
-            chainspec.core_config.round_seigniorage_rate,
-            chainspec.core_config.unbonding_delay,
-            chainspec
-                .protocol_config
-                .activation_point
-                .genesis_timestamp()
-                .map_or(0, |timestamp| timestamp.millis()),
-        )
+        let genesis_timestamp_millis = chainspec
+            .protocol_config
+            .activation_point
+            .genesis_timestamp()
+            .map_or(0, |timestamp| timestamp.millis());
+
+        ExecConfigBuilder::default()
+            .with_accounts(chainspec.network_config.accounts_config.clone().into())
+            .with_wasm_config(chainspec.wasm_config)
+            .with_system_config(chainspec.system_costs_config)
+            .with_validator_slots(chainspec.core_config.validator_slots)
+            .with_auction_delay(chainspec.core_config.auction_delay)
+            .with_locked_funds_period_millis(chainspec.core_config.locked_funds_period.millis())
+            .with_round_seigniorage_rate(chainspec.core_config.round_seigniorage_rate)
+            .with_unbonding_delay(chainspec.core_config.unbonding_delay)
+            .with_genesis_timestamp_millis(genesis_timestamp_millis)
+            .with_refund_handling(chainspec.core_config.refund_handling)
+            .with_fee_handling(chainspec.core_config.fee_handling)
+            .build()
     }
 }
 
@@ -1002,7 +1004,7 @@ where
 
         if administrative_accounts.peek().is_some()
             && administrative_accounts
-                .duplicates_by(|admin| &admin.public_key)
+                .duplicates_by(|admin| admin.public_key())
                 .next()
                 .is_some()
         {
@@ -1014,6 +1016,24 @@ where
         let mut total_supply = U512::zero();
 
         for account in accounts {
+            let main_purse = match account {
+                GenesisAccount::System
+                    if self.exec_config.administrative_accounts().next().is_some() =>
+                {
+                    payment_purse_uref
+                }
+                _ => self.create_purse(account.balance().value())?,
+            };
+
+            let account_hash = account.account_hash();
+            let key = Key::Account(account_hash);
+            let stored_value = StoredValue::Account(Account::create(
+                account_hash,
+                Default::default(),
+                main_purse,
+            ));
+            self.tracking_copy.borrow_mut().write(key, stored_value);
+
             let account_starting_balance = account.balance().value();
             self.store_contract(
                 ContractPackageKind::Account(account.account_hash()),
@@ -1118,22 +1138,7 @@ where
             ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
-        let main_purse = match account {
-            GenesisAccount::System
-                if self.exec_config.administrative_accounts().next().is_some() =>
-            {
-                payment_purse_uref
-            }
-            _ => self.create_purse(account.balance().value())?,
-        };
-        let key = Key::Account(account_hash);
-        let stored_value = StoredValue::Account(Account::create(
-            account_hash,
-            Default::default(),
-            main_purse,
-        ));
-        self.tracking_copy.borrow_mut().write(key, stored_value);
-
+        let main_purse = self.create_purse(starting_balance)?;
         let associated_keys = contract_package_kind.associated_keys();
         let maybe_account_hash = contract_package_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();

@@ -3,7 +3,7 @@
 use num_rational::Ratio;
 use serde::{Deserialize, Serialize};
 
-use casper_types::bytesrepr::{self, FromBytes, ToBytes};
+use crate::bytesrepr::{self, ToBytes, FromBytes};
 
 const REFUND_HANDLING_REFUND_TAG: u8 = 0;
 const REFUND_HANDLING_BURN_TAG: u8 = 1;

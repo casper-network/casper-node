@@ -28,7 +28,7 @@ use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::engine_state::{
-    self, genesis::GenesisError, DeployItem, EngineConfig, EngineState, GenesisSuccess,
+    self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
     SystemContractRegistry, UpgradeSuccess,
 };
 use casper_storage::{
@@ -43,22 +43,7 @@ use casper_types::{
     ChainspecRegistry, Deploy, Digest, EraId, ProtocolVersion, SystemConfig, Timestamp,
     UpgradeConfig, WasmConfig,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        self,
-        engine_config::{FeeHandling, RefundHandling},
-        genesis::GenesisError,
-        ChainspecRegistry, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
-    },
-    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
-    storage::{
-        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
-        trie_store::lmdb::LmdbTrieStore,
-    },
-};
-use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, Timestamp};
+use casper_types::{FeeHandling, PublicKey, RefundHandling};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -648,17 +633,22 @@ impl ContractRuntime {
             }
         };
 
-        let engine_config = EngineConfig::new(
-            contract_runtime_config.max_query_depth_or_default(),
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            minimum_delegation_amount,
-            strict_argument_checking,
-            vesting_schedule_period_millis,
-            max_delegators_per_validator,
-            wasm_config,
-            system_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
+            .with_max_associated_keys(max_associated_keys)
+            .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
+            .with_minimum_delegation_amount(minimum_delegation_amount)
+            .with_strict_argument_checking(strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+            .with_max_delegators_per_validator(max_delegators_per_validator)
+            .with_wasm_config(wasm_config)
+            .with_system_config(system_config)
+            .with_administrative_accounts(administrative_accounts)
+            .with_allow_auction_bids(allow_auction_bids)
+            .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
+            .with_refund_handling(refund_handling)
+            .with_fee_handling(fee_handling)
+            .build();
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
 
@@ -989,34 +979,31 @@ impl ContractRuntime {
 
 #[cfg(test)]
 mod trie_chunking_tests {
-    use prometheus::Registry;
-    use tempfile::tempdir;
-
+    use casper_execution_engine::engine_state::engine_config::{
+        DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+    };
     use casper_storage::global_state::{
         state::StateProvider,
         trie::{Pointer, Trie},
-    use casper_execution_engine::{
-        core::engine_state::engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-        shared::{
-            additive_map::AdditiveMap, newtypes::CorrelationId, system_config::SystemConfig,
-            transform::Transform, wasm_config::WasmConfig,
-        },
-        storage::trie::{Pointer, Trie},
     };
     use casper_types::{
         account::AccountHash,
         bytesrepr,
-        execution::{Effects, Transform, TransformKind},
+        execution::{Transform, TransformKind},
         ActivationPoint, CLValue, ChunkWithProof, Digest, EraId, Key, ProtocolVersion, StoredValue,
         SystemConfig, WasmConfig,
     };
+    use prometheus::Registry;
+    use tempfile::tempdir;
 
-    use super::ContractRuntimeError;
     use crate::{
         components::fetcher::FetchResponse,
-        contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
+        contract_runtime::ContractRuntimeError,
+        effect::Effects,
         types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
+
+    use super::{Config as ContractRuntimeConfig, ContractRuntime};
 
     #[derive(Debug, Clone)]
     struct TestPair(Key, StoredValue);
@@ -1090,7 +1077,7 @@ mod trie_chunking_tests {
         )
         .unwrap();
         let empty_state_root = contract_runtime.engine_state().get_state().empty_root();
-        let mut effects = Effects::new();
+        let mut effects = casper_types::execution::Effects::new();
         for TestPair(key, value) in test_pair {
             effects.push(Transform::new(key, TransformKind::Write(value)));
         }

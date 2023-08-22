@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     StepRequestBuilder, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     DEFAULT_PROTOCOL_VERSION, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::core::engine_state::RewardItem;
+use casper_execution_engine::engine_state::step::RewardItem;
 use casper_types::{system::auction::SeigniorageAllocation, Key, U512};
 
 use crate::test::private_chain::{PRIVATE_CHAIN_GENESIS_VALIDATORS, VALIDATOR_1_PUBLIC_KEY};

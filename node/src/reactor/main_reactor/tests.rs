@@ -12,9 +12,9 @@ use casper_execution_engine::engine_state::GetBidsRequest;
 use casper_types::{
     system::auction::{Bids, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes,
-    Deploy, EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp,
-    ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, BlockHash, BlockHeader, Chainspec,
+    ChainspecRawBytes, Deploy, EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff,
+    Timestamp, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -38,12 +38,7 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeRng},
-    types::{
-        chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, BlockHash, BlockHeader, BlockPayload, Chainspec, ChainspecRawBytes,
-        Deploy, ExitCode, NodeId, NodeRng,
-    },
+    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeId, NodeRng},
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };

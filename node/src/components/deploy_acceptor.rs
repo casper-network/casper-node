@@ -16,9 +16,9 @@ use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{
     account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, BlockHash, BlockHeader,
     CLValue, Chainspec, ContractHash, ContractIdentifier, ContractPackageHash,
-    ContractPackageIdentifier, ContractVersion, ContractVersionKey, Deploy, DeployConfig,
-    DeployConfigurationFailure, Digest, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key,
-    Package, ProtocolVersion, StoredValue, Timestamp, U512,
+    ContractPackageIdentifier, ContractVersion, ContractVersionKey, CoreConfig, Deploy,
+    DeployConfig, DeployConfigurationFailure, Digest, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, Key, Package, ProtocolVersion, StoredValue, Timestamp, U512,
 };
 
 use crate::{
@@ -30,10 +30,6 @@ use crate::{
     },
     fatal,
     types::FinalizedApprovals,
-    types::{
-        chainspec::{CoreConfig, DeployConfig},
-        BlockHash, BlockHeader, Chainspec, Deploy, DeployConfigurationFailure, FinalizedApprovals,
-    },
     utils::Source,
     NodeRng,
 };
@@ -384,6 +380,32 @@ impl DeployAcceptor {
                     })
             }
             Some(StoredValue::Account(account)) => {
+                let authorization_keys = event_metadata
+                    .deploy
+                    .approvals()
+                    .iter()
+                    .map(|approval| approval.signer().to_account_hash())
+                    .collect();
+
+                let admin_set: BTreeSet<AccountHash> = {
+                    self.core_config
+                        .administrators
+                        .iter()
+                        .map(|public_key| public_key.to_account_hash())
+                        .collect()
+                };
+                if admin_set.intersection(&authorization_keys).next().is_some() {
+                    return effect_builder
+                        .check_purse_balance(*block_header.state_root_hash(), account.main_purse())
+                        .event(move |maybe_balance_value| Event::GetBalanceResult {
+                            event_metadata,
+                            maybe_balance_value,
+                            account_hash: account.account_hash(),
+                            verification_start_timestamp,
+                            block_header,
+                        });
+                }
+
                 let main_purse = account.main_purse();
                 let entity = account.into();
                 if let Err(deploy_parameter_failure) =
@@ -1076,25 +1098,6 @@ impl DeployAcceptor {
             .iter()
             .map(|approval| approval.signer().to_account_hash())
             .collect();
-
-            let admin_set: BTreeSet<AccountHash> = {
-                self.core_config
-                    .administrators
-                    .iter()
-                    .map(|public_key| public_key.to_account_hash())
-                    .collect()
-            };
-            if admin_set.intersection(&authorization_keys).next().is_some() {
-                return effect_builder
-                    .check_purse_balance(*block_header.state_root_hash(), account.main_purse())
-                    .event(move |maybe_balance_value| Event::GetBalanceResult {
-                        event_metadata,
-                        maybe_balance_value,
-                        account_hash: account.account_hash(),
-                        verification_start_timestamp,
-                        block_header,
-                    });
-            }
 
         if !addressable_entity.can_authorize(&authorization_keys) {
             debug!(?authorization_keys, "account authorization invalid");

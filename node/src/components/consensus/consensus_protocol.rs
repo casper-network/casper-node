@@ -1,5 +1,6 @@
 use std::{
     any::Any,
+    collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
     path::PathBuf,
 };
@@ -95,6 +96,8 @@ impl<C: Context> Display for ProposedBlock<C> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct TerminalBlockData<C: Context> {
+    /// The rewards for participating in consensus.
+    pub(crate) rewards: BTreeMap<C::ValidatorId, u64>,
     /// The list of validators that haven't produced any units.
     pub(crate) inactive_validators: Vec<C::ValidatorId>,
 }

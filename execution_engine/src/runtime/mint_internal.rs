@@ -8,9 +8,8 @@ use casper_types::{
 
 use super::Runtime;
 use crate::{
+    engine_state::SystemContractRegistry,
     execution,
-    core::{engine_state::SystemContractRegistry, execution},
-    storage::global_state::StateReader,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
         system_provider::SystemProvider, Mint,
@@ -71,11 +70,11 @@ where
     }
 
     fn is_administrator(&self, account_hash: &AccountHash) -> bool {
-        self.config.is_administrator(account_hash)
+        self.context.engine_config().is_administrator(account_hash)
     }
 
     fn allow_unrestricted_transfers(&self) -> bool {
-        self.config.allow_unrestricted_transfers()
+        self.context.engine_config().allow_unrestricted_transfers()
     }
 
     fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error> {

@@ -4,7 +4,7 @@ use casper_types::{
     Key, Phase, StoredValue, URef, U512,
 };
 
-use crate::core::{engine_state::SystemContractRegistry, execution};
+use crate::{engine_state::SystemContractRegistry, execution};
 
 /// Provider of runtime host functionality.
 pub trait RuntimeProvider {

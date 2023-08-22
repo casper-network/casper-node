@@ -115,6 +115,8 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
+    transfer_target_mode: TransferTargetMode,
+    to: Option<AccountHash>,
 }
 
 impl TransferRuntimeArgsBuilder {
@@ -124,6 +126,8 @@ impl TransferRuntimeArgsBuilder {
     pub fn new(imputed_runtime_args: RuntimeArgs) -> TransferRuntimeArgsBuilder {
         TransferRuntimeArgsBuilder {
             inner: imputed_runtime_args,
+            transfer_target_mode: TransferTargetMode::Unknown,
+            to: None,
         }
     }
 
@@ -273,7 +277,7 @@ impl TransferRuntimeArgsBuilder {
                     main_purse: main_purse_addable,
                 })
             }
-            Err(_) => Ok(TransferTargetMode::CreateAccount(account_hash)),
+            Err(_) => Ok(NewTransferTargetMode::CreateAccount(account_hash)),
         }
     }
 
@@ -330,7 +334,7 @@ impl TransferRuntimeArgsBuilder {
 
         let target_uref =
             match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
-                TransferTargetMode::PurseExists(uref) => uref,
+                NewTransferTargetMode::PurseExists(uref) => uref,
                 _ => {
                     return Err(Error::reverter(ApiError::Transfer));
                 }

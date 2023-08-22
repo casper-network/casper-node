@@ -144,7 +144,7 @@ where
     }
 
     fn allow_auction_bids(&self) -> bool {
-        self.config.allow_auction_bids()
+        self.context.engine_config().allow_auction_bids()
     }
 }
 

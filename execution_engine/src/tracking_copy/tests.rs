@@ -8,12 +8,8 @@ use casper_storage::global_state::{
     trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
-    account::{
-        Account, AccountHash, ActionThresholds, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH,
-    },
-    account::{AccountHash, ACCOUNT_HASH_LENGTH},
+    account::{Account, AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{ActionThresholds, AssociatedKeys, ContractHash, NamedKeys, Weight},
-    contracts::NamedKeys,
     execution::{Effects, Transform, TransformKind},
     gens::*,
     package::ContractPackageHash,
@@ -647,7 +643,7 @@ fn validate_query_proof_should_work() {
     let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([21; 32]),
         *ACCOUNT_WASM_HASH,
-        named_keys,
+        named_keys.clone(),
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         fake_purse,
@@ -656,12 +652,16 @@ fn validate_query_proof_should_work() {
     ));
 
     let main_account_value = StoredValue::CLValue(cl_value_2);
+    let associated_keys = casper_types::account::AssociatedKeys::new(
+        account_hash,
+        casper_types::account::Weight::new(1),
+    );
     let main_account_value = StoredValue::Account(Account::new(
         account_hash,
         named_keys,
         fake_purse,
         associated_keys,
-        ActionThresholds::default(),
+        casper_types::account::ActionThresholds::default(),
     ));
 
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));

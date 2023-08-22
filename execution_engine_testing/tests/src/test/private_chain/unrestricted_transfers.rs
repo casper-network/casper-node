@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
     SYSTEM_ADDR,
 };
-use casper_execution_engine::core::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     account::AccountHash,
     runtime_args,
@@ -160,7 +160,9 @@ fn should_disallow_transfer_to_own_purse_via_direct_mint_transfer_call() {
         .expect("should have account");
     let maybe_to: Option<AccountHash> = None;
     let source: URef = account.main_purse();
-    let target: URef = account.named_keys()[TEST_PURSE]
+    let target: URef = account
+        .named_keys()
+        .get(TEST_PURSE).unwrap()
         .into_uref()
         .expect("should be uref");
     let amount: U512 = U512::one();
@@ -220,7 +222,10 @@ fn should_allow_admin_to_transfer_to_own_purse_via_direct_mint_transfer_call() {
         .expect("should have account");
     let maybe_to: Option<AccountHash> = None;
     let source: URef = account.main_purse();
-    let target: URef = account.named_keys()[TEST_PURSE]
+    let target: URef = account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should be uref");
     let amount: U512 = U512::one();
@@ -322,7 +327,10 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
         .get_account(*ACCOUNT_1_ADDR)
         .expect("should have account");
     let source: URef = account.main_purse();
-    let target: URef = account.named_keys()[TEST_PURSE]
+    let target: URef = account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should be uref");
     let amount: U512 = U512::one();
@@ -373,7 +381,10 @@ fn should_allow_admin_to_transfer_to_own_purse_via_native_transfer() {
         .get_account(*DEFAULT_ADMIN_ACCOUNT_ADDR)
         .expect("should have account");
     let source: URef = account.main_purse();
-    let target: URef = account.named_keys()[TEST_PURSE]
+    let target: URef = account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should be uref");
     let amount: U512 = U512::one();
@@ -735,7 +746,10 @@ fn should_allow_custom_payment_by_paying_to_system_account() {
     let handle_payment_contract = builder
         .get_contract(builder.get_handle_payment_contract_hash())
         .unwrap();
-    let payment_purse_key = handle_payment_contract.named_keys()[handle_payment::PAYMENT_PURSE_KEY];
+    let payment_purse_key = handle_payment_contract
+        .named_keys()
+        .get(handle_payment::PAYMENT_PURSE_KEY)
+        .unwrap();
     let payment_purse_uref = payment_purse_key.into_uref().unwrap();
     assert_eq!(
         builder.get_purse_balance(payment_purse_uref),
@@ -779,7 +793,10 @@ fn should_allow_transfer_to_system_in_a_session_code() {
     let handle_payment_contract = builder
         .get_contract(builder.get_handle_payment_contract_hash())
         .unwrap();
-    let payment_purse_key = handle_payment_contract.named_keys()[handle_payment::PAYMENT_PURSE_KEY];
+    let payment_purse_key = handle_payment_contract
+        .named_keys()
+        .get(handle_payment::PAYMENT_PURSE_KEY)
+        .unwrap();
     let payment_purse_uref = payment_purse_key.into_uref().unwrap();
     assert_eq!(
         builder.get_purse_balance(payment_purse_uref),
@@ -814,7 +831,10 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
     let handle_payment_contract = builder
         .get_contract(builder.get_handle_payment_contract_hash())
         .unwrap();
-    let payment_purse_key = handle_payment_contract.named_keys()[handle_payment::PAYMENT_PURSE_KEY];
+    let payment_purse_key = handle_payment_contract
+        .named_keys()
+        .get(handle_payment::PAYMENT_PURSE_KEY)
+        .unwrap();
     let payment_purse_uref = payment_purse_key.into_uref().unwrap();
     assert_eq!(
         builder.get_purse_balance(payment_purse_uref),

@@ -11,10 +11,9 @@ use casper_execution_engine::{
     engine_state::{
         self,
         engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
-        EngineConfig, ExecConfig, RunGenesisRequest, DEFAULT_MAX_QUERY_DEPTH,
+        genesis::ExecConfigBuilder,
+        EngineConfig, EngineConfigBuilder, ExecConfig, RunGenesisRequest, DEFAULT_MAX_QUERY_DEPTH,
         DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        genesis::{ExecConfigBuilder, GenesisValidator},
-        EngineConfigBuilder, GenesisAccount, RunGenesisRequest,
     },
     execution,
 };

@@ -1,7 +1,6 @@
 #![cfg(test)]
 
 use std::{
-    collections::VecDeque,
     collections::{BTreeMap, BTreeSet, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
@@ -26,10 +25,8 @@ use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::NamedKeys,
     testing::TestRng,
-    Block, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, StoredValue, URef, U512,
-    contracts::NamedKeys,
-    testing::TestRng,
-    CLValue, EraId, PublicKey, SecretKey, StoredValue, URef, U512,
+    Block, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, PublicKey, SecretKey, StoredValue,
+    URef, U512,
 };
 
 use super::*;
@@ -430,6 +427,7 @@ impl TestScenario {
                     deploy_config: chainspec.deploy_config,
                     wasm_config: chainspec.wasm_config,
                     system_costs_config: chainspec.system_costs_config,
+                    transaction_config: chainspec.transaction_config,
                 };
 
                 chainspec.core_config.administrators.clear();
@@ -448,11 +446,9 @@ impl TestScenario {
 fn create_account(account_hash: AccountHash, test_scenario: &TestScenario) -> Account {
     match test_scenario {
         TestScenario::FromPeerAccountWithInvalidAssociatedKeys
-        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => Account::create(
-            AccountHash::default(),
-            NamedKeys::new(),
-            URef::default(),
-        ),
+        | TestScenario::FromClientAccountWithInvalidAssociatedKeys => {
+            Account::create(AccountHash::default(), NamedKeys::new(), URef::default())
+        }
         TestScenario::FromPeerAccountWithInsufficientWeight
         | TestScenario::FromClientAccountWithInsufficientWeight => {
             let invalid_action_threshold =
