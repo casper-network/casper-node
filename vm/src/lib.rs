@@ -12,8 +12,6 @@ struct Arguments {
     bytes: Bytes,
 }
 
-
-
 #[derive(Clone)]
 pub struct VM;
 
@@ -101,12 +99,13 @@ impl ConfigBuilder {
 }
 
 impl VM {
-    pub fn prepare<S: Storage + 'static>(
+    pub fn prepare<S: Storage + 'static, C: Into<Bytes>>(
         &mut self,
-        wasm_bytes: &[u8],
+        wasm_bytes: C,
         context: Context<S>,
         config: Config,
     ) -> Result<impl WasmInstance<S>, BackendError> {
+        let wasm_bytes: Bytes = wasm_bytes.into();
         let instance = WasmerInstance::from_wasm_bytes(wasm_bytes, context, config)?;
         Ok(instance)
     }

@@ -1,5 +1,6 @@
 pub(crate) mod wasmer;
-use std::{marker::PhantomData, ops::Deref};
+use bytes::Bytes;
+use std::{marker::PhantomData, ops::Deref, sync::Arc};
 use thiserror::Error;
 
 use crate::{storage::Storage, Config, Error as VMError};
@@ -24,6 +25,9 @@ pub struct Context<S: Storage> {
 pub(crate) trait Caller<S: Storage> {
     fn config(&self) -> &Config;
     fn context(&self) -> &Context<S>;
+    /// Returns currently running *unmodified* bytecode.
+    fn bytecode(&self) -> Bytes;
+
     fn memory_read(&self, offset: u32, size: usize) -> Result<Vec<u8>, VMError> {
         let mut vec = vec![0; size];
         self.memory_read_into(offset, &mut vec)?;

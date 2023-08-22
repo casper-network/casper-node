@@ -31,9 +31,9 @@ use self::metering_middleware::make_wasmer_metering_middleware;
 use super::{Caller, Context, Error as BackendError, GasUsage, WasmInstance};
 use crate::Error as VMError;
 
-pub(crate) struct WasmerModule {
-    module: Module,
-}
+// pub(crate) struct WasmerModule {
+//     module: Module,
+// }
 
 pub(crate) struct WasmerEngine {}
 
@@ -41,6 +41,7 @@ struct WasmerEnv<S: Storage> {
     config: Config,
     context: Context<S>,
     instance: Weak<Instance>,
+    bytecode: Bytes,
     exported_runtime: Option<ExportedRuntime>,
 }
 
@@ -179,18 +180,32 @@ impl<'a, S: Storage + 'static> Caller<S> for WasmerCaller<'a, S> {
     fn config(&self) -> &Config {
         &self.env.data().config
     }
+
+    fn bytecode(&self) -> Bytes {
+        self.env.data().bytecode.clone()
+        // let instance = self
+        //     .env
+        //     .data()
+        //     .instance
+        //     .upgrade()
+        //     .expect("instance should be alive");
+        // todo!()
+        // let weak: Weak<dyn WasmInstance<S>> = Arc::downgrade(&concrete);
+        // weak.upgrade().expect("fine")
+    }
 }
 
 impl<S: Storage> WasmerEnv<S> {}
 
 impl<S: Storage> WasmerEnv<S> {
-    fn new(config: Config, context: Context<S>) -> Self {
+    fn new(config: Config, context: Context<S>, code: Bytes) -> Self {
         Self {
             config,
             context,
             // memory: None,
             instance: Weak::new(),
             exported_runtime: None,
+            bytecode: code,
         }
     }
     pub(crate) fn exported_runtime(&self) -> &ExportedRuntime {
@@ -331,8 +346,8 @@ where
         }
     }
 
-    pub(crate) fn from_wasm_bytes(
-        wasm_bytes: &[u8],
+    pub(crate) fn from_wasm_bytes<C: Into<Bytes>>(
+        wasm_bytes: C,
         context: Context<S>,
         config: Config,
     ) -> Result<Self, BackendError> {
@@ -347,12 +362,14 @@ where
 
         let engine = Engine::from(engine);
 
-        let module = Module::new(&engine, wasm_bytes)
+        let wasm_bytes: Bytes = wasm_bytes.into();
+
+        let module = Module::new(&engine, &wasm_bytes)
             .map_err(|error| BackendError::Compile(error.to_string()))?;
 
         let mut store = Store::new(engine);
 
-        let wasmer_env = WasmerEnv::new(config.clone(), context);
+        let wasmer_env = WasmerEnv::new(config.clone(), context, wasm_bytes);
         let function_env = FunctionEnv::new(&mut store, wasmer_env);
 
         let memory = Memory::new(
@@ -490,6 +507,32 @@ where
                 ),
             );
 
+            imports.define(
+                "env",
+                "casper_create_contract",
+                Function::new_typed_with_env(
+                    &mut store,
+                    &function_env,
+                    |env: FunctionEnvMut<WasmerEnv<S>>,
+                     // casper_create_contract(code_ptr: *const u8, code_size: usize,
+                     // manifest_ptr: *mut Manifest, result_ptr: *mut CreateResult) -> i32;
+                     code_ptr: u32,
+                     code_size: u32,
+                     manifest_ptr: u32,
+                     result_ptr: u32|
+                     -> u32 {
+                        let wasmer_caller = WasmerCaller { env };
+                        host::casper_create_contract(
+                            wasmer_caller,
+                            code_ptr,
+                            code_size,
+                            manifest_ptr,
+                            result_ptr,
+                        )
+                    },
+                ),
+            );
+
             imports
         };
 
@@ -541,7 +584,6 @@ where
             env: function_env,
             store,
             config,
-            // exported_alloc_func,
         })
     }
 }

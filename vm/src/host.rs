@@ -1,10 +1,13 @@
 //! Implementation of all host functions.
 use std::mem;
 
-use bytes::{BufMut, BytesMut};
-use wasmer::WasmPtr;
+use bytes::Bytes;
 
-use crate::{backend::Caller, storage::Storage, Error as VMError, HostError};
+use crate::{
+    backend::Caller,
+    storage::{self, Entry, Storage},
+    Error as VMError, HostError,
+};
 
 #[derive(Debug)]
 pub(crate) enum Outcome {
@@ -131,44 +134,152 @@ pub(crate) fn casper_copy_input<S: Storage>(
 
     if out_ptr == 0 {
         Ok(out_ptr)
-    }
-    else {
+    } else {
         caller.memory_write(out_ptr, &input).unwrap();
         Ok(out_ptr + (input.len() as u32))
     }
-
 }
 
 #[repr(C)]
-struct EntryPoint {
-    name_ptr: u32,
-    name_len: u32,
-    fptr: u32,
+#[derive(Debug)]
+pub struct EntryPoint {
+    pub name_ptr: u32,
+    pub name_len: u32,
+
+    pub params_ptr: u32, // pointer of pointers (preferred 'static lifetime)
+    pub params_size: u32,
+
+    pub fptr: u32, // extern "C" fn(A1) -> (),
 }
 
-pub(crate) fn casper_create<S: Storage>(
+#[repr(C)]
+#[derive(Debug)]
+pub struct Manifest {
+    entry_points_ptr: u32,
+    entry_points_size: u32,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct Param {
+    pub name_ptr: u32,
+    pub name_len: u32,
+    pub ty: u32,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+
+pub struct CreateResult {
+    package_address: [u8; 32],
+    contract_address: [u8; 32],
+    version: u32,
+}
+
+pub(crate) fn casper_create_contract<S: Storage>(
     mut caller: impl Caller<S>,
     code_ptr: u32,
     code_len: u32,
-    entry_points_ptr: u32,
-    entry_points_len: u32,
-) -> Result<(), Outcome> {
-    todo!()
-    // let code = caller.memory_read(code_ptr, code_len.try_into().unwrap()).unwrap();
+    manifest_ptr: u32,
+    result_ptr: u32,
+) -> u32 {
+    let code = if code_ptr != 0 {
+        let code = caller
+            .memory_read(code_ptr, code_len as usize)
+            .map(Bytes::from)
+            .unwrap();
+        code
+    } else {
+        caller.bytecode()
+    };
 
-    // let mut base =entry_points_ptr;
-    // for index in 0..entry_points_len {
-    //     let entry_point = caller.memory_read(base, mem::size_of::<EntryPoint>());
-    // }
+    let manifest = caller
+        .memory_read(manifest_ptr, mem::size_of::<Manifest>())
+        .unwrap();
+    let bytes = manifest.as_slice();
+    let (head, manifest, _tail) = unsafe { bytes.align_to::<Manifest>() }; //*unsafe { bytes.as_ptr().cast::<*const Manifest>().read() };
+    let manifest = &manifest[0];
+    let entry_points_bytes = caller
+        .memory_read(
+            manifest.entry_points_ptr,
+            (manifest.entry_points_size as usize) * mem::size_of::<EntryPoint>(),
+        )
+        .unwrap();
+    let (head, entry_points, tail) = unsafe { entry_points_bytes.align_to::<EntryPoint>() };
 
+    let entrypoints = {
+        let mut vec = Vec::new();
 
+        for entry_point in entry_points {
+            let entry_point_name = caller
+                .memory_read(entry_point.name_ptr, entry_point.name_len as usize)
+                .unwrap();
+            // let entry_point_name = String::from_utf8(name).unwrap();
+            // println!()
 
-    // 1. execute code
-    // 2. invoke "call" export
-    // 3. "call"
+            let params_bytes = caller
+                .memory_read(
+                    entry_point.params_ptr,
+                    (entry_point.params_size as usize) * mem::size_of::<Param>(),
+                )
+                .unwrap();
+
+            let mut params_vec = Vec::new();
+            let (head, params, tail) = unsafe { params_bytes.align_to::<Param>() };
+            for param in params {
+                let name = caller
+                    .memory_read(param.name_ptr, param.name_len as usize)
+                    .unwrap();
+
+                params_vec.push(storage::Param {
+                    name: name.into(),
+                    ty: param.ty,
+                });
+            }
+
+            vec.push(storage::EntryPoint {
+                name: entry_point_name.into(),
+                params: params_vec,
+                function_index: entry_point.fptr,
+            })
+        }
+
+        // vec.push
+        vec
+    };
+
+    let manifest = storage::Manifest { entrypoints };
+
+    // caller.context().
+
+    let storage::CreateResult {
+        package_address,
+        contract_address,
+    } = caller
+        .context()
+        .storage
+        .create_contract(code, manifest)
+        .unwrap();
+
+    let create_result = CreateResult {
+        package_address,
+        contract_address,
+        version: 1,
+    };
+
+    dbg!(&create_result);
+
+    let create_result_bytes: [u8; mem::size_of::<CreateResult>()] =
+        unsafe { mem::transmute_copy(&create_result) };
+
+    caller
+        .memory_write(result_ptr, &create_result_bytes)
+        .unwrap();
+
+    0
 }
 
-pub(crate) fn casper_call<S:Storage>(
+pub(crate) fn casper_call<S: Storage>(
     mut caller: impl Caller<S>,
     address_ptr: u32,
     address_len: u32,
@@ -178,9 +289,10 @@ pub(crate) fn casper_call<S:Storage>(
     input_ptr: u32,
     input_len: u32,
 ) -> Result<(), Outcome> {
-    
+    todo!()
     // todo!()
 
     // caller.context().storage.read(key_tag, key)
     // caller.context().system.call(address, value)
+    // transfer(address)
 }

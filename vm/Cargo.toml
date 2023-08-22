@@ -17,6 +17,9 @@ thiserror = "1.0.44"
 criterion = "0.5.1"
 borsh = "0.10.3"
 
+blake2 = "0.10.6"
+rand = "0.8.5"
+digest = "0.10.7"
 [[bench]]
 name = "vm_call"
 harness = false
