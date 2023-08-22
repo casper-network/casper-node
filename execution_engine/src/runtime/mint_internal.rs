@@ -9,6 +9,8 @@ use casper_types::{
 use super::Runtime;
 use crate::{
     execution,
+    core::{engine_state::SystemContractRegistry, execution},
+    storage::global_state::StateReader,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
         system_provider::SystemProvider, Mint,
@@ -66,6 +68,29 @@ where
 
     fn get_main_purse(&self) -> URef {
         self.context.entity().main_purse()
+    }
+
+    fn is_administrator(&self, account_hash: &AccountHash) -> bool {
+        self.config.is_administrator(account_hash)
+    }
+
+    fn allow_unrestricted_transfers(&self) -> bool {
+        self.config.allow_unrestricted_transfers()
+    }
+
+    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error> {
+        self.context.system_contract_registry()
+    }
+
+    fn is_called_from_standard_payment(&self) -> bool {
+        self.context.phase() == Phase::Payment && self.module.is_none()
+    }
+
+    fn read_account(
+        &mut self,
+        account_hash: &AccountHash,
+    ) -> Result<Option<StoredValue>, execution::Error> {
+        self.context.read_account(&Key::Account(*account_hash))
     }
 }
 

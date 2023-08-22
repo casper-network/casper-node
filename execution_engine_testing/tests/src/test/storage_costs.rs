@@ -11,6 +11,18 @@ use casper_execution_engine::engine_state::{
     engine_config::{
         DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+};
+#[cfg(not(feature = "use-as-wasm"))]
+use casper_execution_engine::shared::system_config::auction_costs::DEFAULT_ADD_BID_COST;
+use casper_execution_engine::{
+    core::engine_state::EngineConfigBuilder,
+    shared::{
+        host_function_costs::{HostFunction, HostFunctionCosts},
+        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
+        storage_costs::StorageCosts,
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
     EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
@@ -138,6 +150,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
     random_bytes: HostFunction::fixed(0),
+    enable_contract_version: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(
@@ -172,19 +185,11 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        *STORAGE_COSTS_ONLY,
-        SystemConfig::default(),
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(*STORAGE_COSTS_ONLY)
+        .build();
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     builder
 }

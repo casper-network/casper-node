@@ -355,22 +355,22 @@ mod tests {
 
     #[tokio::test]
     async fn inactive_validator_limited() {
-        let mut rng = crate::new_rng();
+        let rng = &mut crate::new_rng();
 
         // We insert one unrelated active validator to avoid triggering the automatic disabling of
         // the limiter in case there are no active validators.
         let validator_matrix =
-            ValidatorMatrix::new_with_validator(Arc::new(SecretKey::random(&mut rng)));
-        let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
-
-        // Try with non-validators or unknown nodes.
-        let handles = vec![
-            limiter.create_handle(NodeId::random(&mut rng), Some(PublicKey::random(&mut rng))),
-            limiter.create_handle(NodeId::random(&mut rng), None),
+            ValidatorMatrix::new_with_validator(Arc::new(SecretKey::random(rng)));
+        let peers = [
+            (NodeId::random(rng), Some(PublicKey::random(rng))),
+            (NodeId::random(rng), None),
         ];
 
-        for handle in handles {
+        let limiter = Limiter::new(1_000, new_wait_time_sec(), validator_matrix);
+
+        for (peer, maybe_public_key) in peers {
             let start = Instant::now();
+            let handle = limiter.create_handle(peer, maybe_public_key);
 
             // Send 9_0001 bytes, we expect this to take roughly 15 seconds.
             handle.request_allowance(1000).await;
@@ -381,8 +381,16 @@ mod tests {
             handle.request_allowance(1).await;
             let elapsed = start.elapsed();
 
-            assert!(elapsed >= Duration::from_secs(9), "flip");
-            assert!(elapsed <= Duration::from_secs(10), "flop");
+            assert!(
+                elapsed >= Duration::from_secs(9),
+                "{}s",
+                elapsed.as_secs_f64()
+            );
+            assert!(
+                elapsed <= Duration::from_secs(10),
+                "{}s",
+                elapsed.as_secs_f64()
+            );
         }
     }
 

@@ -8,8 +8,12 @@ use casper_storage::global_state::{
     trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
+    account::{
+        Account, AccountHash, ActionThresholds, AssociatedKeys, Weight, ACCOUNT_HASH_LENGTH,
+    },
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{ActionThresholds, AssociatedKeys, ContractHash, NamedKeys, Weight},
+    contracts::NamedKeys,
     execution::{Effects, Transform, TransformKind},
     gens::*,
     package::ContractPackageHash,
@@ -638,8 +642,8 @@ fn validate_query_proof_should_work() {
 
     let main_contract_hash = ContractHash::new([81; 32]);
     let main_contract_key: Key = main_contract_hash.into();
-    let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
 
+    let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
     let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([21; 32]),
         *ACCOUNT_WASM_HASH,
@@ -652,6 +656,15 @@ fn validate_query_proof_should_work() {
     ));
 
     let main_account_value = StoredValue::CLValue(cl_value_2);
+    let main_account_value = StoredValue::Account(Account::new(
+        account_hash,
+        named_keys,
+        fake_purse,
+        associated_keys,
+        ActionThresholds::default(),
+    ));
+
+    let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let main_account_key = Key::Account(account_hash);
 
     // random value for proof injection attack

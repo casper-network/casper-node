@@ -142,6 +142,10 @@ where
             .engine_config()
             .vesting_schedule_period_millis()
     }
+
+    fn allow_auction_bids(&self) -> bool {
+        self.config.allow_auction_bids()
+    }
 }
 
 impl<'a, R> MintProvider for Runtime<'a, R>

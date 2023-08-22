@@ -10,7 +10,7 @@ mod types;
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     path::Path,
@@ -43,6 +43,22 @@ use casper_types::{
     ChainspecRegistry, Deploy, Digest, EraId, ProtocolVersion, SystemConfig, Timestamp,
     UpgradeConfig, WasmConfig,
 };
+use casper_execution_engine::{
+    core::engine_state::{
+        self,
+        engine_config::{FeeHandling, RefundHandling},
+        genesis::GenesisError,
+        ChainspecRegistry, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
+        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+    },
+    shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
+    storage::{
+        global_state::lmdb::LmdbGlobalState, transaction_source::lmdb::LmdbEnvironment,
+        trie_store::lmdb::LmdbTrieStore,
+    },
+};
+use casper_hashing::Digest;
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, Timestamp};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -594,6 +610,11 @@ impl ContractRuntime {
         vesting_schedule_period_millis: u64,
         max_delegators_per_validator: Option<u32>,
         registry: &Registry,
+        administrative_accounts: BTreeSet<PublicKey>,
+        allow_auction_bids: bool,
+        allow_unrestricted_transfers: bool,
+        refund_handling: RefundHandling,
+        fee_handling: FeeHandling,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -974,6 +995,13 @@ mod trie_chunking_tests {
     use casper_storage::global_state::{
         state::StateProvider,
         trie::{Pointer, Trie},
+    use casper_execution_engine::{
+        core::engine_state::engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+        shared::{
+            additive_map::AdditiveMap, newtypes::CorrelationId, system_config::SystemConfig,
+            transform::Transform, wasm_config::WasmConfig,
+        },
+        storage::trie::{Pointer, Trie},
     };
     use casper_types::{
         account::AccountHash,
@@ -1054,6 +1082,11 @@ mod trie_chunking_tests {
             1,
             None,
             &Registry::default(),
+            Default::default(),
+            true,
+            true,
+            DEFAULT_REFUND_HANDLING,
+            DEFAULT_FEE_HANDLING,
         )
         .unwrap();
         let empty_state_root = contract_runtime.engine_state().get_state().empty_root();

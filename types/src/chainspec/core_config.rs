@@ -103,6 +103,22 @@ pub struct CoreConfig {
 
     /// Lookback interval indicating which past block we are looking at to reward.
     pub rewards_lag: u64,
+    /// Auction entrypoints such as "add_bid" or "delegate" are disabled if this flag is set to
+    /// `false`. Setting up this option makes sense only for private chains where validator set
+    /// rotation is unnecessary.
+    pub(crate) allow_auction_bids: bool,
+    /// Allows unrestricted transfers between users.
+    pub(crate) allow_unrestricted_transfers: bool,
+    /// If set to false then consensus doesn't compute rewards and always uses 0.
+    pub(crate) compute_rewards: bool,
+    /// Administrative accounts are valid option for for a private chain only.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub(crate) administrators: BTreeSet<PublicKey>,
+    /// Refund handling.
+    #[data_size(skip)]
+    pub(crate) refund_handling: RefundHandling,
+    /// Fee handling.
+    pub(crate) fee_handling: FeeHandling,
 }
 
 impl CoreConfig {
@@ -143,6 +159,23 @@ impl CoreConfig {
         let finders_fee = Ratio::new(rng.gen_range(1..100), 100);
         let finality_signature_proportion = Ratio::new(rng.gen_range(1..100), 100);
         let rewards_lag = rng.gen_range(1..10);
+        let allow_auction_bids = rng.gen();
+        let allow_unrestricted_transfers = rng.gen();
+        let compute_rewards = rng.gen();
+        let administrators = (0..rng.gen_range(0..=10u32))
+            .map(|_| PublicKey::random(rng))
+            .collect();
+        let refund_handling = {
+            let numer = rng.gen_range(0..=100);
+            let refund_ratio = Ratio::new(numer, 100);
+            RefundHandling::Refund { refund_ratio }
+        };
+
+        let fee_handling = if rng.gen() {
+            FeeHandling::PayToProposer
+        } else {
+            FeeHandling::Accumulate
+        };
 
         CoreConfig {
             era_duration,
@@ -168,6 +201,12 @@ impl CoreConfig {
             finders_fee,
             finality_signature_proportion,
             rewards_lag,
+            allow_auction_bids,
+            administrators,
+            allow_unrestricted_transfers,
+            compute_rewards,
+            refund_handling,
+            fee_handling,
         }
     }
 }
@@ -201,6 +240,12 @@ impl ToBytes for CoreConfig {
         buffer.extend(self.finders_fee.to_bytes()?);
         buffer.extend(self.finality_signature_proportion.to_bytes()?);
         buffer.extend(self.rewards_lag.to_bytes()?);
+        buffer.extend(self.allow_auction_bids.to_bytes()?);
+        buffer.extend(self.allow_unrestricted_transfers.to_bytes()?);
+        buffer.extend(self.compute_rewards.to_bytes()?);
+        buffer.extend(self.administrators.to_bytes()?);
+        buffer.extend(self.refund_handling.to_bytes()?);
+        buffer.extend(self.fee_handling.to_bytes()?);
         Ok(buffer)
     }
 
@@ -230,6 +275,12 @@ impl ToBytes for CoreConfig {
             + self.finders_fee.serialized_length()
             + self.finality_signature_proportion.serialized_length()
             + self.rewards_lag.serialized_length()
+            + self.allow_auction_bids.serialized_length()
+            + self.allow_unrestricted_transfers.serialized_length()
+            + self.compute_rewards.serialized_length()
+            + self.administrators.serialized_length()
+            + self.refund_handling.serialized_length()
+            + self.fee_handling.serialized_length()
     }
 }
 
@@ -259,6 +310,12 @@ impl FromBytes for CoreConfig {
         let (finders_fee, remainder) = Ratio::from_bytes(remainder)?;
         let (finality_signature_proportion, remainder) = Ratio::from_bytes(remainder)?;
         let (rewards_lag, remainder) = u64::from_bytes(remainder)?;
+        let (allow_auction_bids, remainder) = FromBytes::from_bytes(remainder)?;
+        let (allow_unrestricted_transfers, remainder) = FromBytes::from_bytes(remainder)?;
+        let (compute_rewards, remainder) = bool::from_bytes(remainder)?;
+        let (administrative_accounts, remainder) = FromBytes::from_bytes(remainder)?;
+        let (refund_handling, remainder) = FromBytes::from_bytes(remainder)?;
+        let (fee_handling, remainder) = FromBytes::from_bytes(remainder)?;
         let config = CoreConfig {
             era_duration,
             minimum_era_height,
@@ -283,6 +340,12 @@ impl FromBytes for CoreConfig {
             finders_fee,
             finality_signature_proportion,
             rewards_lag,
+            allow_auction_bids,
+            allow_unrestricted_transfers,
+            compute_rewards,
+            administrators: administrative_accounts,
+            refund_handling,
+            fee_handling,
         };
         Ok((config, remainder))
     }

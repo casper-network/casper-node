@@ -11,6 +11,29 @@ use casper_execution_engine::engine_state::{
     engine_config::{
         DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
         DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
+    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+};
+use casper_execution_engine::{
+    core::engine_state::{
+        engine_config::{DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MINIMUM_DELEGATION_AMOUNT},
+        genesis::GenesisValidator,
+        EngineConfigBuilder, GenesisAccount,
+    },
+    shared::{
+        host_function_costs::{Cost, HostFunction, HostFunctionCosts},
+        opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts},
+        storage_costs::StorageCosts,
+        system_config::{
+            auction_costs::{AuctionCosts, DEFAULT_ADD_BID_COST},
+            handle_payment_costs::HandlePaymentCosts,
+            mint_costs::{MintCosts, DEFAULT_TRANSFER_COST},
+            standard_payment_costs::StandardPaymentCosts,
+            SystemConfig, DEFAULT_WASMLESS_TRANSFER_COST,
+        },
+        wasm_config::{WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY},
     },
     EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
 };
@@ -193,17 +216,10 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        WasmConfig::default(),
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_system_config(new_system_config)
+        .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
@@ -216,7 +232,7 @@ fn upgraded_add_bid_and_withdraw_bid_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -491,17 +507,10 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        WasmConfig::default(),
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_system_config(new_system_config)
+        .build();
 
     let mut builder = LmdbWasmTestBuilder::default();
     let accounts = {
@@ -540,7 +549,7 @@ fn upgraded_delegate_and_undelegate_have_expected_costs() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let system_contract_hashes_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -986,6 +995,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         print: HostFunction::fixed(0),
         blake2b: HostFunction::fixed(0),
         random_bytes: HostFunction::fixed(0),
+        enable_contract_version: HostFunction::fixed(0),
     };
 
     let new_wasm_config = WasmConfig::new(
@@ -1011,17 +1021,11 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        new_wasm_config,
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_wasm_config(new_wasm_config)
+        .with_system_config(new_system_config)
+        .build();
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -1031,7 +1035,7 @@ fn should_verify_wasm_add_bid_wasm_cost_is_not_recursive() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)

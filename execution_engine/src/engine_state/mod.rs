@@ -55,7 +55,7 @@ use casper_types::{
             ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
-        handle_payment,
+        handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
@@ -69,7 +69,10 @@ pub use self::{
     balance::{BalanceRequest, BalanceResult},
     checksum_registry::ChecksumRegistry,
     deploy_item::DeployItem,
-    engine_config::{EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT},
+    engine_config::{
+        EngineConfig, EngineConfigBuilder, DEFAULT_MAX_QUERY_DEPTH,
+        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    },
     era_validators::{GetEraValidatorsError, GetEraValidatorsRequest},
     error::Error,
     execute_request::ExecuteRequest,
@@ -85,6 +88,7 @@ pub use self::{
     transfer::{TransferArgs, TransferRuntimeArgsBuilder, TransferTargetMode},
     upgrade::UpgradeSuccess,
 };
+use self::{engine_config::FeeHandling, transfer::NewTransferTargetMode};
 use crate::{
     engine_state::{
         execution_kind::ExecutionKind,
@@ -187,7 +191,7 @@ impl EngineState<LmdbGlobalState> {
     /// Provide a local cached-only version of engine-state.
     pub fn get_scratch_engine_state(&self) -> EngineState<ScratchGlobalState> {
         EngineState {
-            config: self.config,
+            config: self.config.clone(),
             state: self.state.create_scratch(),
         }
     }
@@ -368,6 +372,14 @@ where
             SystemUpgrader::new(new_protocol_version, tracking_copy.clone());
 
         system_upgrader.migrate_system_account(pre_state_hash)?;
+
+        system_upgrader
+            .create_accumulation_purse_if_required(
+                correlation_id,
+                handle_payment_hash,
+                &self.config,
+            )
+            .map_err(Error::ProtocolUpgrade)?;
 
         system_upgrader
             .refresh_system_contracts(
@@ -668,7 +680,7 @@ where
     ///
     /// Return execution results which contains results from each deploy ran.
     pub fn run_execute(&self, mut exec_request: ExecuteRequest) -> Result<ExecutionResults, Error> {
-        let executor = Executor::new(*self.config());
+        let executor = Executor::new(self.config().clone());
 
         let deploys = exec_request.take_deploys();
         let mut results = ExecutionResults::with_capacity(deploys.len());
@@ -727,6 +739,13 @@ where
                 return Err(error.into());
             }
         };
+
+        let admin_set = self.config().administrative_accounts();
+
+        if !admin_set.is_empty() && admin_set.intersection(authorization_keys).next().is_some() {
+            // Exit early if there's at least a single signature coming from an admin.
+            return Ok(account);
+        }
 
         // Authorize using provided authorization keys
         if !entity_record.can_authorize(authorization_keys) {
@@ -890,16 +909,7 @@ where
             Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
         };
 
-        let base_key = Key::Account(deploy_item.address);
-
-        let account_hash = match base_key.into_account() {
-            Some(account_addr) => account_addr,
-            None => {
-                return Ok(ExecutionResult::precondition_failure(
-                    error::Error::Authorization,
-                ));
-            }
-        };
+        let account_hash = deploy_item.address;
 
         let authorization_keys = deploy_item.authorization_keys;
 
@@ -926,7 +936,6 @@ where
             Ok(package_kind) => package_kind,
             Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
         };
-
         let proposer_addr = proposer.to_account_hash();
 
         let proposer_contract = match tracking_copy
@@ -935,6 +944,14 @@ where
         {
             Ok(contract) => contract,
             Err(error) => return Ok(ExecutionResult::precondition_failure(Error::Exec(error))),
+        };
+
+        let system_account = match tracking_copy
+            .borrow_mut()
+            .read_account(PublicKey::System.to_account_hash())
+        {
+            Ok(account) => account,
+            Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
         };
 
         let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
@@ -977,9 +994,14 @@ where
             }
         };
 
+        let rewards_target_purse =
+            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
+                Ok(target_purse) => target_purse,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            };
+
         let proposer_main_purse_balance_key = {
             let proposer_main_purse = proposer_contract.main_purse();
-
             match tracking_copy
                 .borrow_mut()
                 .get_purse_balance_key(proposer_main_purse.into())
@@ -989,10 +1011,7 @@ where
             }
         };
 
-        let proposer_purse = proposer_contract.main_purse();
-
-        let account_main_purse = entity.main_purse();
-
+        let account_main_purse = account.main_purse();
         let account_main_purse_balance_key = match tracking_copy
             .borrow_mut()
             .get_purse_balance_key(account_main_purse.into())
@@ -1035,6 +1054,48 @@ where
 
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
+
+        let transfer_target_mode = match runtime_args_builder
+            .resolve_transfer_target_mode(correlation_id, Rc::clone(&tracking_copy))
+        {
+            Ok(transfer_target_mode) => transfer_target_mode,
+            Err(error) => return Ok(make_charged_execution_failure(error)),
+        };
+
+        // At this point we know target refers to either a purse on an existing account or an
+        // account which has to be created.
+
+        if !self.config.allow_unrestricted_transfers()
+            && !self.config.is_administrator(&account_hash)
+        {
+            // We need to make sure that source or target has to be admin.
+            match transfer_target_mode {
+                NewTransferTargetMode::ExistingAccount {
+                    target_account_hash,
+                    ..
+                }
+                | NewTransferTargetMode::CreateAccount(target_account_hash) => {
+                    let is_target_system_account =
+                        target_account_hash == PublicKey::System.to_account_hash();
+                    let is_target_administrator =
+                        self.config.is_administrator(&target_account_hash);
+                    if !(is_target_system_account || is_target_administrator) {
+                        // Transferring from normal account to a purse doesn't work.
+                        return Ok(make_charged_execution_failure(
+                            execution::Error::DisabledUnrestrictedTransfers.into(),
+                        ));
+                    }
+                }
+                NewTransferTargetMode::PurseExists(_) => {
+                    // We don't know who is the target and we can't simply reverse search
+                    // account/contract that owns it. We also can't know if purse is owned exactly
+                    // by one entity in the system.
+                    return Ok(make_charged_execution_failure(
+                        execution::Error::DisabledUnrestrictedTransfers.into(),
+                    ));
+                }
+            }
+        }
 
         match runtime_args_builder.transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))
         {
@@ -1084,7 +1145,6 @@ where
             },
             Err(error) => return Ok(make_charged_execution_failure(error)),
         }
-
         let transfer_args = match runtime_args_builder.build(
             &entity,
             protocol_version,
@@ -1306,7 +1366,7 @@ where
                 let maybe_runtime_args = RuntimeArgs::try_new(|args| {
                     args.insert(handle_payment::ARG_AMOUNT, finalize_cost_motes.value())?;
                     args.insert(handle_payment::ARG_ACCOUNT, account)?;
-                    args.insert(handle_payment::ARG_TARGET, proposer_purse)?;
+                    args.insert(handle_payment::ARG_TARGET, rewards_target_purse)?;
                     Ok(())
                 });
 
@@ -1329,10 +1389,11 @@ where
             };
 
             let tc = tracking_copy.borrow();
+
             let finalization_tc = Rc::new(RefCell::new(tc.fork()));
 
             let finalize_payment_stack = self.get_new_system_call_stack();
-            handle_payment_access_rights.extend(&[payment_uref, proposer_purse]);
+            handle_payment_access_rights.extend(&[payment_uref, rewards_target_purse]);
 
             let (_ret, finalize_result): (Option<()>, ExecutionResult) = executor
                 .call_system_contract(
@@ -1520,6 +1581,51 @@ where
                 PublicKey::System.to_account_hash(),
             )?;
 
+        // Get handle payment system contract details
+        // payment_code_spec_6: system contract validity
+        let system_contract_registry = tracking_copy.borrow_mut().get_system_contracts()?;
+
+        let handle_payment_contract_hash = system_contract_registry
+            .get(HANDLE_PAYMENT)
+            .ok_or_else(|| {
+                error!("Missing system handle payment contract hash");
+                Error::MissingSystemContractHash(HANDLE_PAYMENT.to_string())
+            })?;
+
+        let handle_payment_contract = match tracking_copy
+            .borrow_mut()
+            .get_contract(*handle_payment_contract_hash)
+        {
+            Ok(contract) => contract,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
+        // Get payment purse Key from handle payment contract
+        // payment_code_spec_6: system contract validity
+        let payment_purse_key = match handle_payment_contract
+            .named_keys()
+            .get(handle_payment::PAYMENT_PURSE_KEY)
+        {
+            Some(key) => *key,
+            None => return Ok(ExecutionResult::precondition_failure(Error::Deploy)),
+        };
+
+        let payment_purse_uref = payment_purse_key
+            .into_uref()
+            .ok_or(Error::InvalidKeyVariant)?;
+
+        let purse_balance_key = match tracking_copy
+            .borrow_mut()
+            .get_purse_balance_key(correlation_id, payment_purse_key)
+        {
+            Ok(key) => key,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
@@ -1704,6 +1810,26 @@ where
                 .get_purse_balance(purse_balance_key)
             {
                 Ok(balance) => balance,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
+        let rewards_target_purse =
+            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
+                Ok(target_purse) => target_purse,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            };
+
+        let proposer_main_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(rewards_target_purse.into())
+            {
+                Ok(key) => key,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(error.into()));
                 }
@@ -1910,12 +2036,7 @@ where
 
             let mut handle_payment_access_rights =
                 handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
-            handle_payment_access_rights.extend(&[
-                payment_purse_key
-                    .into_uref()
-                    .ok_or(Error::InvalidKeyVariant)?,
-                proposer_purse,
-            ]);
+            handle_payment_access_rights.extend(&[payment_purse_uref, rewards_target_purse]);
 
             let gas_limit = Gas::new(U512::MAX);
 
@@ -1954,6 +2075,59 @@ where
         // payment_code_spec_6: return properly combined set of transforms and
         // appropriate error
         Ok(ret)
+    }
+
+    fn get_rewards_purse(
+        &self,
+        correlation_id: CorrelationId,
+        proposer: PublicKey,
+        prestate_hash: Digest,
+    ) -> Result<URef, Error> {
+        let tracking_copy = match self.tracking_copy(prestate_hash) {
+            Err(error) => return Err(error),
+            Ok(None) => return Err(Error::RootNotFound(prestate_hash)),
+            Ok(Some(tracking_copy)) => Rc::new(RefCell::new(tracking_copy)),
+        };
+        match self.config.fee_handling() {
+            FeeHandling::PayToProposer => {
+                // the proposer of the block this deploy is in receives the gas from this deploy
+                // execution
+                let proposer_account: Account = match tracking_copy
+                    .borrow_mut()
+                    .get_account(correlation_id, AccountHash::from(&proposer))
+                {
+                    Ok(account) => account,
+                    Err(error) => return Err(error.into()),
+                };
+
+                Ok(proposer_account.main_purse())
+            }
+            FeeHandling::Accumulate => {
+                let handle_payment_hash =
+                    self.get_handle_payment_hash(correlation_id, prestate_hash)?;
+
+                let handle_payment_contract = tracking_copy
+                    .borrow_mut()
+                    .get_contract(correlation_id, handle_payment_hash)?;
+
+                let accumulation_purse_uref = match handle_payment_contract
+                    .named_keys()
+                    .get(ACCUMULATION_PURSE_KEY)
+                {
+                    Some(Key::URef(accumulation_purse)) => accumulation_purse,
+                    Some(_) | None => {
+                        error!(
+                            "fee handling is configured to accumulate but handle payment does not \
+                            have accumulation purse"
+                        );
+                        return Err(Error::FailedToRetrieveAccumulationPurse);
+                    }
+                };
+
+                Ok(*accumulation_purse_uref)
+            }
+            FeeHandling::Burn => Ok(URef::default()),
+        }
     }
 
     /// Apply effects of the execution.
@@ -2110,7 +2284,7 @@ where
 
         let authorization_keys = {
             let mut ret = BTreeSet::new();
-            ret.insert(system_account_addr);
+            ret.insert(PublicKey::System.to_account_hash());
             ret
         };
 
@@ -2123,8 +2297,46 @@ where
             DeployHash::new(Digest::hash(&bytes))
         };
 
-        let distribute_rewards_stack = self.get_new_system_call_stack();
+        let distribute_accumulated_fees_stack = self.get_new_system_call_stack();
         let system_account_hash = PublicKey::System.to_account_hash();
+        let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
+            DirectSystemContractCall::DistributeAccumulatedFees,
+            RuntimeArgs::default(),
+            &virtual_system_account,
+            ContractPackageKind::Account(virtual_system_account),
+            authorization_keys.clone(),
+            system_account_hash,
+            BlockTime::default(),
+            deploy_hash,
+            gas_limit,
+            step_request.protocol_version,
+            Rc::clone(&tracking_copy),
+            Phase::Session,
+            distribute_accumulated_fees_stack,
+            // There should be no tokens transferred during rewards distribution.
+            U512::zero(),
+        );
+
+        if let Some(exec_error) = execution_result.take_error() {
+            return Err(StepError::DistributeAccumulatedFeesError(exec_error));
+        }
+
+        let reward_factors = match step_request.reward_factors() {
+            Ok(reward_factors) => reward_factors,
+            Err(error) => {
+                error!(
+                    "failed to deserialize reward factors: {}",
+                    error.to_string()
+                );
+                return Err(StepError::BytesRepr(error));
+            }
+        };
+        let reward_args = RuntimeArgs::try_new(|args| {
+            args.insert(ARG_REWARD_FACTORS, reward_factors)?;
+            Ok(())
+        })?;
+
+        let distribute_rewards_stack = self.get_new_system_call_stack();
 
         let (_, execution_result): (Option<()>, ExecutionResult) = executor.call_system_contract(
             DirectSystemContractCall::DistributeRewards,
@@ -2569,6 +2781,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidContractPackageKind(_)
                 | ExecError::Transform(_) => false,
+                ExecError::DisabledUnrestrictedTransfers => false,
             },
             Error::WasmPreprocessing(_) => true,
             Error::WasmSerialization(_) => true,
@@ -2598,7 +2811,8 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId
-            | Error::MissingTrieNodeChildren(_) => false,
+            | Error::MissingTrieNodeChildren(_)
+            | Error::FailedToRetrieveAccumulationPurse => false,
         },
         ExecutionResult::Success { .. } => false,
     }

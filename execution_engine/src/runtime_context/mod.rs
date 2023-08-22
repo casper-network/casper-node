@@ -1050,6 +1050,14 @@ where
         Ok(())
     }
 
+    pub(crate) fn is_authorized_by_admin(&self) -> bool {
+        self.engine_config
+            .administrative_accounts()
+            .intersection(&self.authorization_keys)
+            .next()
+            .is_some()
+    }
+
     /// Set threshold of an associated key.
     pub(crate) fn set_action_threshold(
         &mut self,
@@ -1075,9 +1083,12 @@ where
         let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
 
         // Exit early in case of error without updating global state
-        entity
-            .set_action_threshold(action_type, threshold)
-            .map_err(Error::from)?;
+        if entity.is_authorized_by_admin() {
+            account.set_action_threshold_unchecked(action_type, threshold)
+        } else {
+            account.set_action_threshold(action_type, threshold)
+        }
+        .map_err(Error::from)?;
 
         let entity_value = self.addressable_entity_to_validated_value(entity)?;
 
@@ -1124,7 +1135,9 @@ where
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
         let contract_package: Package = self.read_gs_typed(&Key::from(package_hash))?;
-        self.validate_uref(&contract_package.access_key())?;
+        if !self.is_authorized_by_admin() {
+            self.validate_uref(&contract_package.access_key())?;
+        }
         Ok(contract_package)
     }
 
