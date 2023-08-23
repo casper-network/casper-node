@@ -35,6 +35,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "std", test))]
 use tracing::{debug, warn};
 
+#[cfg(any(feature = "std", test))]
+use super::AccountAndSecretKey;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::bytesrepr::Bytes;
 
@@ -59,8 +61,6 @@ use crate::{
 use crate::{testing::TestRng, MAX_PAYMENT_AMOUNT};
 pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
-#[cfg(any(feature = "std", test))]
-pub(crate) use deploy_builder::AccountAndSecretKey;
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
 pub use deploy_footprint::DeployFootprint;
