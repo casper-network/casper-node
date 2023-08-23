@@ -1112,9 +1112,9 @@ async fn settle_execution(
                             error_message,
                             cost,
                             ..
-                        } => failure_condition(key.clone(), error_message, cost),
+                        } => failure_condition(key, error_message, cost),
                         ExecutionResultV2::Success { effects, .. } => {
-                            success_condition(key.clone(), effects)
+                            success_condition(key, effects)
                         }
                     },
                     Some(_) => panic!("unexpected execution result variant"),
