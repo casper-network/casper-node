@@ -808,14 +808,14 @@ impl BlockSynchronizer {
 
         let validator_matrix = &self.validator_matrix.clone();
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if builder.waiting_for_block_header() {
-                builder.latch_decrement();
-            }
-
             match maybe_block_header {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
                         builder.demote_peer(peer_id);
+                    }
+
+                    if builder.waiting_for_block_header() {
+                        builder.latch_decrement();
                     }
                 }
                 Some(block_header) => {
@@ -856,14 +856,14 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if builder.waiting_for_block() {
-                builder.latch_decrement();
-            }
-
             match maybe_block {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
                         builder.demote_peer(peer_id);
+                    }
+
+                    if builder.waiting_for_block() {
+                        builder.latch_decrement();
                     }
                 }
                 Some(block) => {
@@ -904,14 +904,14 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if builder.waiting_for_approvals_hashes() {
-                builder.latch_decrement();
-            }
-
             match maybe_approvals_hashes {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
                         builder.demote_peer(peer_id);
+                    }
+
+                    if builder.waiting_for_approvals_hashes() {
+                        builder.latch_decrement();
                     }
                 }
                 Some(approvals_hashes) => {
@@ -949,14 +949,16 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = self.get_builder(id.block_hash, false) {
-            if builder.waiting_for_signatures() {
-                builder.latch_decrement();
-            }
-
             match maybe_finality_signature {
                 None => {
                     if let Some(peer_id) = maybe_peer_id {
                         builder.demote_peer(peer_id);
+                    }
+
+                    // Failed to fetch a finality sig. Decrement the latch if we were actually
+                    // waiting for signatures.
+                    if builder.waiting_for_signatures() {
+                        builder.latch_decrement();
                     }
                 }
                 Some(finality_signature) => {
@@ -1157,12 +1159,14 @@ impl BlockSynchronizer {
                 debug!(%block_hash, "BlockSynchronizer: not currently synchronizing block");
                 return Effects::new();
             }
-            builder.latch_decrement();
             match maybe_value_or_chunk {
                 None => {
                     debug!(%block_hash, "execution_results_fetched: No maybe_value_or_chunk");
                     if let Some(peer_id) = maybe_peer_id {
                         builder.demote_peer(peer_id);
+                    }
+                    if builder.waiting_for_execution_results() {
+                        builder.latch_decrement();
                     }
                 }
                 Some(value_or_chunk) => {
@@ -1215,10 +1219,6 @@ impl BlockSynchronizer {
         };
 
         if let Some(builder) = self.get_builder(block_hash, false) {
-            if builder.waiting_for_deploys() {
-                builder.latch_decrement();
-            }
-
             if let Err(error) = builder.register_deploy(deploy.fetch_id(), maybe_peer) {
                 error!(%block_hash, %error, "BlockSynchronizer: failed to apply deploy");
             }
@@ -1589,9 +1589,21 @@ impl<REv: ReactorEvent> Component<REv> for BlockSynchronizer {
                             self.deploy_fetched(block_hash, fetched_deploy)
                         }
                         Either::Left(Err(error)) => {
+                            if let Some(builder) = self.get_builder(block_hash, false) {
+                                if builder.waiting_for_deploys() {
+                                    builder.latch_decrement();
+                                }
+                            }
+
                             debug!(%error, "BlockSynchronizer: failed to fetch legacy deploy");
                         }
                         Either::Right(Err(error)) => {
+                            if let Some(builder) = self.get_builder(block_hash, false) {
+                                if builder.waiting_for_deploys() {
+                                    builder.latch_decrement();
+                                }
+                            }
+
                             debug!(%error, "BlockSynchronizer: failed to fetch deploy");
                         }
                     };

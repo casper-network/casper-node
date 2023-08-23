@@ -25,38 +25,38 @@ fn handle_acceptance() {
 
     // Builder acceptance for needed signature from ourselves.
     assert!(builder
-        .handle_acceptance(None, Ok(Some(Acceptance::NeededIt)))
+        .handle_acceptance(None, Ok(Some(Acceptance::NeededIt)), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for existent signature from ourselves.
     assert!(builder
-        .handle_acceptance(None, Ok(Some(Acceptance::HadIt)))
+        .handle_acceptance(None, Ok(Some(Acceptance::HadIt)), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for no signature from ourselves.
-    assert!(builder.handle_acceptance(None, Ok(None)).is_ok());
+    assert!(builder.handle_acceptance(None, Ok(None), true).is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for no signature from a peer.
     // Peer shouldn't be registered.
     assert!(builder
-        .handle_acceptance(Some(honest_peer), Ok(None))
+        .handle_acceptance(Some(honest_peer), Ok(None), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for existent signature from a peer.
     // Peer shouldn't be registered.
     assert!(builder
-        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::HadIt)))
+        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::HadIt)), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for needed signature from a peer.
     // Peer should be registered as honest.
     assert!(builder
-        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::NeededIt)))
+        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::NeededIt)), true)
         .is_ok());
     assert!(builder
         .peer_list()
@@ -65,7 +65,11 @@ fn handle_acceptance() {
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for error on signature handling from ourselves.
     assert!(builder
-        .handle_acceptance(None, Err(BlockAcquisitionError::InvalidStateTransition))
+        .handle_acceptance(
+            None,
+            Err(BlockAcquisitionError::InvalidStateTransition),
+            true
+        )
         .is_err());
     assert!(builder
         .peer_list()
@@ -77,7 +81,8 @@ fn handle_acceptance() {
     assert!(builder
         .handle_acceptance(
             Some(dishonest_peer),
-            Err(BlockAcquisitionError::InvalidStateTransition)
+            Err(BlockAcquisitionError::InvalidStateTransition),
+            true
         )
         .is_err());
     assert!(builder
