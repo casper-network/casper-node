@@ -1311,16 +1311,11 @@ mod tests {
     }
 
     /// A simplified setup for testing back and forth between two peers.
-    ///
-    /// Note that the terms "client" and "server" are used loosely here, as they are equal peers.
-    /// Designating one as the client (typically the one sending the first message) and the other
-    /// one as the server helps tracking these though, as it is less easily confused than "peer_a"
-    /// and "peer_b".
     struct TestingSetup {
-        /// The "client"'s protocol state.
-        client: JulietProtocol<4>,
-        /// The "server"'s protocol state.
-        server: JulietProtocol<4>,
+        /// Alice's protocol state.
+        alice: JulietProtocol<4>,
+        /// Bob's protocol state.
+        bob: JulietProtocol<4>,
         /// The channel communication is sent across for these tests.
         common_channel: ChannelId,
         /// Maximum frame size in test environment.
@@ -1328,11 +1323,15 @@ mod tests {
     }
 
     /// Peer selection.
+    ///
+    /// Used to select a target when interacting with the test environment.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 
     enum Peer {
-        Client,
-        Server,
+        /// Alice.
+        Alice,
+        /// Bob, aka "not Alice".
+        Bob,
     }
 
     impl Not for Peer {
@@ -1340,13 +1339,13 @@ mod tests {
 
         fn not(self) -> Self::Output {
             match self {
-                Client => Server,
-                Server => Client,
+                Alice => Bob,
+                Bob => Alice,
             }
         }
     }
 
-    use Peer::{Client, Server};
+    use Peer::{Alice, Bob};
 
     impl TestingSetup {
         /// Instantiates a new testing setup.
@@ -1361,26 +1360,27 @@ mod tests {
             .max_frame_size(max_frame_size.get());
             let common_channel = ChannelId(2);
 
-            let server = pb.build();
-            let client = pb.build();
+            let alice = pb.build();
+            let bob = pb.build();
 
             TestingSetup {
-                client,
-                server,
+                alice,
+                bob,
                 common_channel,
                 max_frame_size,
             }
         }
 
+        /// Retrieves a handle to the protocol state of the given peer.
         #[inline]
-        fn get_peer_mut(&mut self, target: Peer) -> &mut JulietProtocol<4> {
-            match target {
-                Client => &mut self.client,
-                Server => &mut self.server,
+        fn get_peer_mut(&mut self, peer: Peer) -> &mut JulietProtocol<4> {
+            match peer {
+                Alice => &mut self.alice,
+                Bob => &mut self.bob,
             }
         }
 
-        /// Take `msg` and send it to `dest`.
+        /// Take `msg` and send it to peer `dest`.
         ///
         /// Will check that the message is fully processed and removed on [`Outcome::Success`].
         fn recv_on(
@@ -1399,38 +1399,41 @@ mod tests {
                 })
         }
 
-        /// Make the client create a new request, return the outcome of the server's reception.
+        /// Creates a new request on peer `origin`, the sends it to the other peer.
+        ///
+        /// Returns the outcome of the other peer's reception.
         fn create_and_send_request(
             &mut self,
-            from: Peer,
+            origin: Peer,
             payload: Option<Bytes>,
         ) -> Result<CompletedRead, OutgoingMessage> {
             let channel = self.common_channel;
             let msg = self
-                .get_peer_mut(from)
+                .get_peer_mut(origin)
                 .create_request(channel, payload)
                 .expect("should be able to create request");
 
-            self.recv_on(!from, msg)
+            self.recv_on(!origin, msg)
         }
 
-        /// Make the server create a new response, return the outcome of the client's reception.
+        /// Creates a new response on peer `origin`, the sends it to the other peer.
         ///
-        /// If no response was scheduled for sending, returns `None`.
+        /// Returns the outcome of the other peer's reception. If no response was scheduled for
+        /// sending, returns `None`.
         fn create_and_send_response(
             &mut self,
-            from: Peer,
+            origin: Peer,
             id: Id,
             payload: Option<Bytes>,
         ) -> Option<Result<CompletedRead, OutgoingMessage>> {
             let channel = self.common_channel;
 
             let msg = self
-                .get_peer_mut(from)
+                .get_peer_mut(origin)
                 .create_response(channel, id, payload)
                 .expect("should be able to create response")?;
 
-            Some(self.recv_on(!from, msg))
+            Some(self.recv_on(!origin, msg))
         }
     }
 
@@ -1439,12 +1442,12 @@ mod tests {
         let mut env = TestingSetup::new();
 
         let expected_id = Id::new(1);
-        let server_completed_read = env
-            .create_and_send_request(Client, None)
-            .expect("server should accept request");
+        let bob_completed_read = env
+            .create_and_send_request(Alice, None)
+            .expect("bob should accept request");
 
         assert_matches::assert_matches!(
-            server_completed_read,
+            bob_completed_read,
             CompletedRead::NewRequest {
                 channel,
                 id,
@@ -1457,13 +1460,13 @@ mod tests {
         );
 
         // Return a response.
-        let client_completed_read = env
-            .create_and_send_response(Server, expected_id, None)
+        let alice_completed_read = env
+            .create_and_send_response(Bob, expected_id, None)
             .expect("did not expect response to be dropped")
-            .expect("shoult not fail to process response on client");
+            .expect("should not fail to process response on alice");
 
         assert_matches::assert_matches!(
-            client_completed_read,
+            alice_completed_read,
             CompletedRead::ReceivedResponse {
                 channel,
                 id,
