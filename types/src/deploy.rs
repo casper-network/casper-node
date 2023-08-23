@@ -48,8 +48,9 @@ use crate::{
 #[cfg(any(feature = "std", test))]
 use crate::{
     system::auction::{
-        ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY,
-        ARG_VALIDATOR, METHOD_DELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+        ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_NEW_VALIDATOR,
+        ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE,
+        METHOD_REDELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
     },
     system::mint::ARG_AMOUNT,
     DeployConfig, U512,
@@ -1043,6 +1044,47 @@ impl Deploy {
         let session = ExecutableDeployItem::StoredContractByHash {
             hash: auction_contract_hash,
             entry_point: METHOD_UNDELEGATE.to_string(),
+            args,
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            1,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            AccountAndSecretKey::Account(delegator_public_key),
+        )
+    }
+
+    /// Creates an redelegate deploy, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    #[allow(clippy::too_many_arguments)]
+    pub fn redelegate(
+        chain_name: String,
+        auction_contract_hash: ContractHash,
+        validator_public_key: PublicKey,
+        delegator_public_key: PublicKey,
+        redelegate_validator_public_key: PublicKey,
+        amount: U512,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+        let args = runtime_args! {
+            ARG_DELEGATOR => delegator_public_key.clone(),
+            ARG_VALIDATOR => validator_public_key,
+            ARG_NEW_VALIDATOR => redelegate_validator_public_key,
+            ARG_AUCTION_AMOUNT => amount,
+        };
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: auction_contract_hash,
+            entry_point: METHOD_REDELEGATE.to_string(),
             args,
         };
 

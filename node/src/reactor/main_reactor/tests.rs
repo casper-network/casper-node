@@ -16,7 +16,7 @@ use casper_types::{
     execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind},
     system::auction::{BidAddr, BidKind, BidsExt, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, BlockHeader, CLValue, Chainspec,
+    AccountConfig, AccountsConfig, ActivationPoint, Block, BlockHeader, CLValue, Chainspec,
     ChainspecRawBytes, ContractHash, Deploy, DeployHash, EraId, Key, Motes, ProtocolVersion,
     PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, ValidatorConfig, U512,
 };
@@ -972,10 +972,22 @@ fn simple_test_chain(
     chain.chainspec_mut().core_config.locked_funds_period = TimeDiff::default();
     chain.chainspec_mut().core_config.vesting_schedule_period = TimeDiff::default();
     chain.chainspec_mut().core_config.minimum_delegation_amount = 0;
+    chain.chainspec_mut().core_config.unbonding_delay = 1;
     chain
 }
 
-fn get_system_contract_hash(
+fn get_highest_block_or_fail(
+    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
+) -> Block {
+    runner
+        .main_reactor()
+        .storage
+        .read_highest_block()
+        .expect("should not have have storage error")
+        .expect("should have block")
+}
+
+fn get_system_contract_hash_or_fail(
     net: &TestingNetwork<FilterReactor<MainReactor>>,
     public_key: &PublicKey,
     system_contract_name: String,
@@ -986,12 +998,7 @@ fn get_system_contract_hash(
         .find(|(_, x)| x.main_reactor().consensus.public_key() == public_key)
         .expect("should have alice runner");
 
-    let highest_block = runner
-        .main_reactor()
-        .storage
-        .read_highest_block()
-        .expect("should have have storage error")
-        .expect("should have block");
+    let highest_block = get_highest_block_or_fail(runner);
 
     let state_hash = highest_block.state_root_hash();
     // we need the native auction addr so we can directly call it w/o wasm
@@ -1003,11 +1010,11 @@ fn get_system_contract_hash(
         .engine_state()
         .get_state()
         .checkout(*state_hash)
-        .unwrap()
-        .unwrap()
+        .expect("should checkout")
+        .expect("should have view")
         .read(&Key::SystemContractRegistry)
-        .unwrap()
-        .unwrap();
+        .expect("should not have gs storage error")
+        .expect("should have stored value");
 
     let system_contract_registry: SystemContractRegistry = match maybe_registry {
         StoredValue::CLValue(cl_value) => CLValue::into_t(cl_value).unwrap(),
@@ -1031,12 +1038,7 @@ fn check_bid_existence_at_tip(
         .find(|(_, x)| x.main_reactor().consensus.public_key() == validator_public_key)
         .expect("should have runner");
 
-    let highest_block = runner
-        .main_reactor()
-        .storage
-        .read_highest_block()
-        .expect("should not have have storage error")
-        .expect("should have block");
+    let highest_block = get_highest_block_or_fail(runner);
 
     let state_hash = highest_block.state_root_hash();
 
@@ -1053,7 +1055,7 @@ fn check_bid_existence_at_tip(
         }) {
             None => {
                 if should_exist {
-                    panic!("should have bid");
+                    panic!("should have bid era: {}", highest_block.era_id());
                 }
             }
             Some(bid) => {
@@ -1184,7 +1186,7 @@ async fn run_withdraw_bid_network() {
     settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
     let (deploy_hash, deploy) = {
-        let auction_hash = get_system_contract_hash(
+        let auction_hash = get_system_contract_hash_or_fail(
             &net,
             &alice_public_key,
             casper_types::system::AUCTION.to_string(),
@@ -1290,7 +1292,7 @@ async fn run_undelegate_bid_network() {
     settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
     let auction_hash =
-        get_system_contract_hash(&net, &alice.1, casper_types::system::AUCTION.to_string());
+        get_system_contract_hash_or_fail(&net, &alice.1, casper_types::system::AUCTION.to_string());
 
     // have alice delegate to bob
     // note, in the real world validators usually don't also delegate to other validators
@@ -1401,4 +1403,187 @@ async fn run_undelegate_bid_network() {
     check_bid_existence_at_tip(&net, &alice.1, None, true);
     check_bid_existence_at_tip(&net, &bob.1, None, true);
     check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
+}
+
+#[tokio::test]
+async fn run_redelegate_bid_network() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+    let mut era_id = EraId::new(0);
+    let era_timeout = Duration::from_secs(90);
+    let execution_timeout = Duration::from_secs(120);
+    let deploy_ttl = TimeDiff::from_seconds(60);
+    let alice = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(200_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+    let bob = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(300_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+    let charlie = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(300_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+
+    let (mut net, chain_name) = {
+        let named_validators = vec![alice.clone(), bob.clone(), charlie.clone()];
+
+        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
+
+        let chain_name = chain.chainspec.network_config.name.clone();
+
+        (
+            chain
+                .create_initialized_network(&mut rng)
+                .await
+                .expect("network initialization failed"),
+            chain_name,
+        )
+    };
+
+    // genesis
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    // making sure our post genesis assumptions are correct
+    check_bid_existence_at_tip(&net, &alice.1, None, true);
+    check_bid_existence_at_tip(&net, &bob.1, None, true);
+    check_bid_existence_at_tip(&net, &charlie.1, None, true);
+    // alice should not have a delegation bid record for bob or charlie (yet)
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), false);
+
+    /* Now that the preamble is behind us, lets get some work done */
+
+    // crank the network forward
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    let auction_hash =
+        get_system_contract_hash_or_fail(&net, &alice.1, casper_types::system::AUCTION.to_string());
+
+    // have alice delegate to bob
+    let alice_delegation_amount = U512::from(50_000_000_000u64);
+    let (deploy_hash, deploy) = {
+        // create & sign deploy to delegate from alice to bob
+        let mut delegate = Deploy::delegate(
+            chain_name.clone(),
+            auction_hash,
+            bob.1.clone(),
+            alice.1.clone(),
+            alice_delegation_amount,
+            Timestamp::now(),
+            deploy_ttl,
+        );
+        // sign the deploy (single sig in this scenario)
+        delegate.sign(&alice.0);
+        // we'll need the deploy_hash later to check results
+        let deploy_hash = *DeployOrTransferHash::new(&delegate).deploy_hash();
+        (deploy_hash, delegate)
+    };
+    settle_deploy(&mut net, deploy).await;
+
+    let bid_key = Key::Bid(BidAddr::new_from_public_keys(
+        &bob.1.clone(),
+        Some(&alice.1.clone()),
+    ));
+
+    settle_execution(
+        &mut net,
+        &mut rng,
+        bid_key,
+        deploy_hash,
+        execution_timeout,
+        |key, effects| {
+            let _ = effects
+                .transforms()
+                .iter()
+                .find(|x| match x.kind() {
+                    TransformKind::Write(StoredValue::Bid(bid_kind)) => {
+                        Key::Bid(BidAddr::new_from_public_keys(
+                            &bid_kind.validator_public_key(),
+                            bid_kind.delegator_public_key().as_ref(),
+                        )) == key
+                    }
+                    _ => false,
+                })
+                .expect("should have a write record for delegate bid");
+            true
+        },
+        |key, error_message, cost| {
+            panic!("{:?} deploy failed: {} cost: {}", key, error_message, cost);
+        },
+    )
+    .await;
+
+    // alice should now have a delegation bid record for bob
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), true);
+
+    let (deploy_hash, deploy) = {
+        // create & sign deploy to undelegate alice from bob and delegate to charlie
+        let mut redelegate = Deploy::redelegate(
+            chain_name,
+            auction_hash,
+            bob.1.clone(),
+            alice.1.clone(),
+            charlie.1.clone(),
+            alice_delegation_amount,
+            Timestamp::now(),
+            deploy_ttl,
+        );
+        // sign the deploy (single sig in this scenario)
+        redelegate.sign(&alice.0);
+        // we'll need the deploy_hash later to check results
+        let deploy_hash = *DeployOrTransferHash::new(&redelegate).deploy_hash();
+        (deploy_hash, redelegate)
+    };
+    settle_deploy(&mut net, deploy).await;
+
+    settle_execution(
+        &mut net,
+        &mut rng,
+        bid_key,
+        deploy_hash,
+        execution_timeout,
+        |key, effects| {
+            let _ = effects
+                .transforms()
+                .iter()
+                .find(|x| match x.kind() {
+                    TransformKind::Prune(prune_key) => prune_key == &key,
+                    _ => false,
+                })
+                .expect("should have a prune record for undelegated bid");
+            true
+        },
+        |key, error_message, cost| {
+            panic!("{:?} deploy failed: {} cost: {}", key, error_message, cost);
+        },
+    )
+    .await;
+
+    // original delegation bid should be removed
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
+    // redelegate doesn't occur until after unbonding delay elapses
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), false);
+
+    // crank the network forward to run out the unbonding delay
+    // first, close out the era the redelegate was processed in
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+    // the undelegate is in the unbonding queue
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), false);
+    // unbonding delay is 1 on this test network, so step 1 more era
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    // making sure the validator records are still present
+    check_bid_existence_at_tip(&net, &alice.1, None, true);
+    check_bid_existence_at_tip(&net, &bob.1, None, true);
+    // redelegated bid exists
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), true);
 }
