@@ -19,7 +19,6 @@ use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{ActionThresholds, NamedKeys},
-    bytesrepr::U8_SERIALIZED_LENGTH,
     execution::Effects,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     system::{
@@ -49,8 +48,6 @@ use crate::{
 use super::engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING};
 
 const NO_WASM: bool = true;
-
-const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;

@@ -2257,8 +2257,6 @@ where
     ) -> Result<TransferResult, Error> {
         let mint_contract_hash = self.get_mint_contract()?;
 
-        let target_key = Key::Account(target);
-
         if !self.context.engine_config().allow_unrestricted_transfers()
             && self.context.get_caller() != PublicKey::System.to_account_hash()
             && !self

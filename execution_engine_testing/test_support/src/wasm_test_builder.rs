@@ -41,7 +41,7 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
     bytesrepr::{self, FromBytes},
     execution::Effects,
     runtime_args,
@@ -98,12 +98,10 @@ pub struct WasmTestBuilder<S> {
     /// Cached effects after successful runs i.e. `effects[0]` is the collection of effects for
     /// first exec call, etc.
     effects: Vec<Effects>,
-    /// Cached genesis account.
-    genesis_account: Option<ContractHash>,
     /// Genesis effects.
     genesis_effects: Option<Effects>,
     /// Cached system account.
-    system_account: Option<Account>,
+    system_account: Option<AddressableEntity>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry.
@@ -132,9 +130,8 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             effects: self.effects.clone(),
-            genesis_account: self.genesis_account,
             genesis_effects: self.genesis_effects.clone(),
-            system_account: None,
+            system_account: self.system_account.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
@@ -245,9 +242,8 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             effects: Vec::new(),
-            genesis_account: None,
-            genesis_effects: None,
             system_account: None,
+            genesis_effects: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir),
@@ -367,13 +363,12 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: mode.post_state_hash(),
             effects: Vec::new(),
-            genesis_account: None,
             genesis_effects: None,
+            system_account: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
-            system_account: None,
         }
     }
 
@@ -546,8 +541,6 @@ where
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let system_account = Key::Account(PublicKey::System.to_account_hash());
-
         let GenesisSuccess {
             post_state_hash,
             effects,
@@ -563,24 +556,24 @@ where
 
         let empty_path: Vec<String> = vec![];
 
-        let system_contract_by_account =
-            match self.query(Some(post_state_hash), system_account, &empty_path) {
-                Ok(StoredValue::CLValue(cl_value)) => {
-                    let contract_key =
-                        CLValue::into_t::<Key>(cl_value).expect("must convert to contract key");
-                    contract_key
-                        .into_hash()
-                        .map(ContractHash::new)
-                        .expect("must convert to contract hash")
-                }
-                Ok(_) => panic!("Failed to get system contract by account hash"),
-                Err(err) => panic!("{}", err),
-            };
+        self.system_contract_registry = match self.query(
+            Some(post_state_hash),
+            Key::SystemContractRegistry,
+            &empty_path,
+        ) {
+            Ok(StoredValue::CLValue(cl_registry)) => {
+                let system_contract_registry =
+                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                Some(system_contract_registry)
+            }
+            Ok(_) => panic!("Failed to get system registry"),
+            Err(err) => panic!("{}", err),
+        };
 
-        self.system_contract_registry = self.query_system_contract_registry(Some(post_state_hash));
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.system_account = self.get_account(*SYSTEM_ADDR);
+        self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
+        self.genesis_effects = Some(effects);
         self
     }
 
@@ -943,8 +936,8 @@ where
     }
 
     /// Gets genesis account (if present)
-    pub fn get_genesis_account(&self) -> &ContractHash {
-        self.genesis_account
+    pub fn get_genesis_account(&self) -> &AddressableEntity {
+        self.system_account
             .as_ref()
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
@@ -1091,17 +1084,6 @@ where
             .get_entity_by_account_hash(*DEFAULT_PROPOSER_ADDR)
             .expect("proposer account should exist");
         self.get_purse_balance(proposer_contract.main_purse())
-    }
-
-    /// Queries for an `Account`.
-    pub fn get_account(&self, account_hash: AccountHash) -> Option<Account> {
-        match self.query(None, Key::Account(account_hash), &[]) {
-            Ok(account_value) => match account_value {
-                StoredValue::Account(account) => Some(account),
-                _ => None,
-            },
-            Err(_) => None,
-        }
     }
 
     /// Gets the contract hash associated with a given account hash.

@@ -115,8 +115,6 @@ impl TryFrom<TransferArgs> for RuntimeArgs {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TransferRuntimeArgsBuilder {
     inner: RuntimeArgs,
-    transfer_target_mode: TransferTargetMode,
-    to: Option<AccountHash>,
 }
 
 impl TransferRuntimeArgsBuilder {
@@ -126,8 +124,6 @@ impl TransferRuntimeArgsBuilder {
     pub fn new(imputed_runtime_args: RuntimeArgs) -> TransferRuntimeArgsBuilder {
         TransferRuntimeArgsBuilder {
             inner: imputed_runtime_args,
-            transfer_target_mode: TransferTargetMode::Unknown,
-            to: None,
         }
     }
 
@@ -263,8 +259,6 @@ impl TransferRuntimeArgsBuilder {
             None => return Err(Error::reverter(ApiError::MissingArgument)),
         };
 
-        self.to = Some(account_hash);
-
         match tracking_copy
             .borrow_mut()
             .get_addressable_entity_by_account_hash(protocol_version, account_hash)
@@ -330,23 +324,13 @@ impl TransferRuntimeArgsBuilder {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        let to = self.to;
-
-        let target_uref =
-            match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
-                NewTransferTargetMode::PurseExists(uref) => uref,
-                _ => {
-                    return Err(Error::reverter(ApiError::Transfer));
-                }
-            };
-
-        let target_uref =
+        let (to, target_uref) =
             match self.resolve_transfer_target_mode(protocol_version, Rc::clone(&tracking_copy))? {
                 NewTransferTargetMode::ExistingAccount {
                     main_purse: purse_uref,
                     target_account_hash: target_account,
-                } => purse_uref,
-                NewTransferTargetMode::PurseExists(purse_uref) => purse_uref,
+                } => (Some(target_account), purse_uref),
+                NewTransferTargetMode::PurseExists(purse_uref) => (None, purse_uref),
                 NewTransferTargetMode::CreateAccount(_) => {
                     // Method "build()" is called after `resolve_transfer_target_mode` is first called
                     // and handled by creating a new account. Calling `resolve_transfer_target_mode`
