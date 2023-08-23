@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use casper_types::{
     bytesrepr::Bytes, file_utils, AccountsConfig, ActivationPoint, Chainspec, ChainspecRawBytes,
     CoreConfig, DeployConfig, GlobalStateUpdate, GlobalStateUpdateConfig, HighwayConfig,
-    NetworkConfig, ProtocolConfig, ProtocolVersion, SystemConfig, TransactionConfig, WasmConfig,
+    NetworkConfig, ProtocolConfig, ProtocolVersion, SystemConfig, TransactionV1Config, WasmConfig,
 };
 
 use crate::utils::{
@@ -75,7 +75,7 @@ pub(super) struct TomlChainspec {
     protocol: TomlProtocol,
     network: TomlNetwork,
     core: CoreConfig,
-    transactions: TransactionConfig,
+    transactions: TransactionV1Config,
     deploys: DeployConfig,
     highway: HighwayConfig,
     wasm: WasmConfig,
@@ -94,7 +94,7 @@ impl From<&Chainspec> for TomlChainspec {
             maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
         };
         let core = chainspec.core_config;
-        let transactions = chainspec.transaction_config;
+        let transactions = chainspec.transaction_v1_config;
         let deploys = chainspec.deploy_config;
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
@@ -157,7 +157,7 @@ pub(super) fn parse_toml<P: AsRef<Path>>(
         protocol_config,
         network_config,
         core_config: toml_chainspec.core,
-        transaction_config: toml_chainspec.transactions,
+        transaction_v1_config: toml_chainspec.transactions,
         deploy_config: toml_chainspec.deploys,
         highway_config: toml_chainspec.highway,
         wasm_config: toml_chainspec.wasm,

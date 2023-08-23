@@ -11,7 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
-use super::Transaction;
+use super::TransactionV1;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -26,17 +26,17 @@ const STORED_CONTRACT_BY_NAME_TAG: u8 = 1;
 const STORED_VERSIONED_CONTRACT_BY_HASH_TAG: u8 = 2;
 const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 3;
 
-/// A [`Transaction`] targeting a stored contract.
+/// A [`TransactionV1`] targeting a stored contract.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "A Transaction targeting a stored contract.")
+    schemars(description = "A TransactionV1 targeting a stored contract.")
 )]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
-pub enum DirectCall {
+pub enum DirectCallV1 {
     /// Stored contract referenced by its hash.
     StoredContractByHash {
         /// Contract hash.
@@ -80,41 +80,41 @@ pub enum DirectCall {
     },
 }
 
-impl DirectCall {
-    /// Returns a new `DirectCall::StoredContractByHash`.
+impl DirectCallV1 {
+    /// Returns a new `DirectCallV1::StoredContractByHash`.
     pub fn new_stored_contract_by_hash(
         hash: ContractHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
-        DirectCall::StoredContractByHash {
+        DirectCallV1::StoredContractByHash {
             hash,
             entry_point,
             args,
         }
     }
 
-    /// Returns a new `DirectCall::StoredContractByName`.
+    /// Returns a new `DirectCallV1::StoredContractByName`.
     pub fn new_stored_contract_by_name(
         name: String,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
-        DirectCall::StoredContractByName {
+        DirectCallV1::StoredContractByName {
             name,
             entry_point,
             args,
         }
     }
 
-    /// Returns a new `DirectCall::StoredVersionedContractByHash`.
+    /// Returns a new `DirectCallV1::StoredVersionedContractByHash`.
     pub fn new_stored_versioned_contract_by_hash(
         hash: ContractPackageHash,
         version: Option<ContractVersion>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
-        DirectCall::StoredVersionedContractByHash {
+        DirectCallV1::StoredVersionedContractByHash {
             hash,
             version,
             entry_point,
@@ -122,14 +122,14 @@ impl DirectCall {
         }
     }
 
-    /// Returns a new `DirectCall::StoredVersionedContractByName`.
+    /// Returns a new `DirectCallV1::StoredVersionedContractByName`.
     pub fn new_stored_versioned_contract_by_name(
         name: String,
         version: Option<ContractVersion>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
-        DirectCall::StoredVersionedContractByName {
+        DirectCallV1::StoredVersionedContractByName {
             name,
             version,
             entry_point,
@@ -140,20 +140,22 @@ impl DirectCall {
     /// Returns the entry point name.
     pub fn entry_point_name(&self) -> &str {
         match self {
-            DirectCall::StoredVersionedContractByName { entry_point, .. }
-            | DirectCall::StoredVersionedContractByHash { entry_point, .. }
-            | DirectCall::StoredContractByHash { entry_point, .. }
-            | DirectCall::StoredContractByName { entry_point, .. } => entry_point,
+            DirectCallV1::StoredVersionedContractByName { entry_point, .. }
+            | DirectCallV1::StoredVersionedContractByHash { entry_point, .. }
+            | DirectCallV1::StoredContractByHash { entry_point, .. }
+            | DirectCallV1::StoredContractByName { entry_point, .. } => entry_point,
         }
     }
 
     /// Returns the identifier of the contract, if present.
     pub fn contract_identifier(&self) -> Option<ContractIdentifier> {
         match self {
-            DirectCall::StoredVersionedContractByHash { .. }
-            | DirectCall::StoredVersionedContractByName { .. } => None,
-            DirectCall::StoredContractByHash { hash, .. } => Some(ContractIdentifier::Hash(*hash)),
-            DirectCall::StoredContractByName { name, .. } => {
+            DirectCallV1::StoredVersionedContractByHash { .. }
+            | DirectCallV1::StoredVersionedContractByName { .. } => None,
+            DirectCallV1::StoredContractByHash { hash, .. } => {
+                Some(ContractIdentifier::Hash(*hash))
+            }
+            DirectCallV1::StoredContractByName { name, .. } => {
                 Some(ContractIdentifier::Name(name.clone()))
             }
         }
@@ -162,16 +164,15 @@ impl DirectCall {
     /// Returns the identifier of the contract package, if present.
     pub fn contract_package_identifier(&self) -> Option<ContractPackageIdentifier> {
         match self {
-            DirectCall::StoredContractByHash { .. } | DirectCall::StoredContractByName { .. } => {
-                None
-            }
-            DirectCall::StoredVersionedContractByHash { hash, version, .. } => {
+            DirectCallV1::StoredContractByHash { .. }
+            | DirectCallV1::StoredContractByName { .. } => None,
+            DirectCallV1::StoredVersionedContractByHash { hash, version, .. } => {
                 Some(ContractPackageIdentifier::Hash {
                     contract_package_hash: *hash,
                     version: *version,
                 })
             }
-            DirectCall::StoredVersionedContractByName { name, version, .. } => {
+            DirectCallV1::StoredVersionedContractByName { name, version, .. } => {
                 Some(ContractPackageIdentifier::Name {
                     name: name.clone(),
                     version: *version,
@@ -183,10 +184,10 @@ impl DirectCall {
     /// Returns the runtime arguments.
     pub fn args(&self) -> &RuntimeArgs {
         match self {
-            DirectCall::StoredContractByHash { args, .. }
-            | DirectCall::StoredContractByName { args, .. }
-            | DirectCall::StoredVersionedContractByHash { args, .. }
-            | DirectCall::StoredVersionedContractByName { args, .. } => args,
+            DirectCallV1::StoredContractByHash { args, .. }
+            | DirectCallV1::StoredContractByName { args, .. }
+            | DirectCallV1::StoredVersionedContractByHash { args, .. }
+            | DirectCallV1::StoredVersionedContractByName { args, .. } => args,
         }
     }
 
@@ -197,29 +198,29 @@ impl DirectCall {
         Gas::from_motes(Motes::new(motes), conv_rate)
     }
 
-    /// Returns a random `DirectCall`.
+    /// Returns a random `DirectCallV1`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         let entry_point = rng.random_string(1..21);
         let args = RuntimeArgs::random(rng);
         match rng.gen_range(0..4) {
-            0 => DirectCall::StoredContractByHash {
+            0 => DirectCallV1::StoredContractByHash {
                 hash: ContractHash::new(rng.gen()),
                 entry_point,
                 args,
             },
-            1 => DirectCall::StoredContractByName {
+            1 => DirectCallV1::StoredContractByName {
                 name: rng.random_string(1..21),
                 entry_point,
                 args,
             },
-            2 => DirectCall::StoredVersionedContractByHash {
+            2 => DirectCallV1::StoredVersionedContractByHash {
                 hash: ContractPackageHash::new(rng.gen()),
                 version: rng.gen(),
                 entry_point,
                 args,
             },
-            3 => DirectCall::StoredVersionedContractByName {
+            3 => DirectCallV1::StoredVersionedContractByName {
                 name: rng.random_string(1..21),
                 version: rng.gen(),
                 entry_point,
@@ -230,10 +231,10 @@ impl DirectCall {
     }
 }
 
-impl Display for DirectCall {
+impl Display for DirectCallV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            DirectCall::StoredContractByHash {
+            DirectCallV1::StoredContractByHash {
                 hash, entry_point, ..
             } => write!(
                 formatter,
@@ -241,14 +242,14 @@ impl Display for DirectCall {
                 HexFmt(hash),
                 entry_point,
             ),
-            DirectCall::StoredContractByName {
+            DirectCallV1::StoredContractByName {
                 name, entry_point, ..
             } => write!(
                 formatter,
                 "stored-contract-by-name: {}, entry-point: {}",
                 name, entry_point,
             ),
-            DirectCall::StoredVersionedContractByHash {
+            DirectCallV1::StoredVersionedContractByHash {
                 hash,
                 version: Some(ver),
                 entry_point,
@@ -260,7 +261,7 @@ impl Display for DirectCall {
                 ver,
                 entry_point,
             ),
-            DirectCall::StoredVersionedContractByHash {
+            DirectCallV1::StoredVersionedContractByHash {
                 hash, entry_point, ..
             } => write!(
                 formatter,
@@ -268,7 +269,7 @@ impl Display for DirectCall {
                 HexFmt(hash),
                 entry_point,
             ),
-            DirectCall::StoredVersionedContractByName {
+            DirectCallV1::StoredVersionedContractByName {
                 name,
                 version: Some(ver),
                 entry_point,
@@ -278,7 +279,7 @@ impl Display for DirectCall {
                 "stored-versioned-contract: {}, version: {}, entry-point: {}",
                 name, ver, entry_point,
             ),
-            DirectCall::StoredVersionedContractByName {
+            DirectCallV1::StoredVersionedContractByName {
                 name, entry_point, ..
             } => write!(
                 formatter,
@@ -289,10 +290,10 @@ impl Display for DirectCall {
     }
 }
 
-impl Debug for DirectCall {
+impl Debug for DirectCallV1 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DirectCall::StoredContractByHash {
+            DirectCallV1::StoredContractByHash {
                 hash,
                 entry_point,
                 args,
@@ -302,7 +303,7 @@ impl Debug for DirectCall {
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
-            DirectCall::StoredContractByName {
+            DirectCallV1::StoredContractByName {
                 name,
                 entry_point,
                 args,
@@ -312,7 +313,7 @@ impl Debug for DirectCall {
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
-            DirectCall::StoredVersionedContractByHash {
+            DirectCallV1::StoredVersionedContractByHash {
                 hash,
                 version,
                 entry_point,
@@ -324,7 +325,7 @@ impl Debug for DirectCall {
                 .field("entry_point", &entry_point)
                 .field("args", args)
                 .finish(),
-            DirectCall::StoredVersionedContractByName {
+            DirectCallV1::StoredVersionedContractByName {
                 name,
                 version,
                 entry_point,
@@ -340,10 +341,10 @@ impl Debug for DirectCall {
     }
 }
 
-impl ToBytes for DirectCall {
+impl ToBytes for DirectCallV1 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            DirectCall::StoredContractByHash {
+            DirectCallV1::StoredContractByHash {
                 hash,
                 entry_point,
                 args,
@@ -353,7 +354,7 @@ impl ToBytes for DirectCall {
                 entry_point.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
-            DirectCall::StoredContractByName {
+            DirectCallV1::StoredContractByName {
                 name,
                 entry_point,
                 args,
@@ -363,7 +364,7 @@ impl ToBytes for DirectCall {
                 entry_point.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
-            DirectCall::StoredVersionedContractByHash {
+            DirectCallV1::StoredVersionedContractByHash {
                 hash,
                 version,
                 entry_point,
@@ -375,7 +376,7 @@ impl ToBytes for DirectCall {
                 entry_point.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
-            DirectCall::StoredVersionedContractByName {
+            DirectCallV1::StoredVersionedContractByName {
                 name,
                 version,
                 entry_point,
@@ -399,7 +400,7 @@ impl ToBytes for DirectCall {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                DirectCall::StoredContractByHash {
+                DirectCallV1::StoredContractByHash {
                     hash,
                     entry_point,
                     args,
@@ -408,7 +409,7 @@ impl ToBytes for DirectCall {
                         + entry_point.serialized_length()
                         + args.serialized_length()
                 }
-                DirectCall::StoredContractByName {
+                DirectCallV1::StoredContractByName {
                     name,
                     entry_point,
                     args,
@@ -417,7 +418,7 @@ impl ToBytes for DirectCall {
                         + entry_point.serialized_length()
                         + args.serialized_length()
                 }
-                DirectCall::StoredVersionedContractByHash {
+                DirectCallV1::StoredVersionedContractByHash {
                     hash,
                     version,
                     entry_point,
@@ -428,7 +429,7 @@ impl ToBytes for DirectCall {
                         + entry_point.serialized_length()
                         + args.serialized_length()
                 }
-                DirectCall::StoredVersionedContractByName {
+                DirectCallV1::StoredVersionedContractByName {
                     name,
                     version,
                     entry_point,
@@ -443,7 +444,7 @@ impl ToBytes for DirectCall {
     }
 }
 
-impl FromBytes for DirectCall {
+impl FromBytes for DirectCallV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
@@ -452,7 +453,7 @@ impl FromBytes for DirectCall {
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((
-                    DirectCall::StoredContractByHash {
+                    DirectCallV1::StoredContractByHash {
                         hash,
                         entry_point,
                         args,
@@ -465,7 +466,7 @@ impl FromBytes for DirectCall {
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((
-                    DirectCall::StoredContractByName {
+                    DirectCallV1::StoredContractByName {
                         name,
                         entry_point,
                         args,
@@ -479,7 +480,7 @@ impl FromBytes for DirectCall {
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((
-                    DirectCall::StoredVersionedContractByHash {
+                    DirectCallV1::StoredVersionedContractByHash {
                         hash,
                         version,
                         entry_point,
@@ -494,7 +495,7 @@ impl FromBytes for DirectCall {
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((
-                    DirectCall::StoredVersionedContractByName {
+                    DirectCallV1::StoredVersionedContractByName {
                         name,
                         version,
                         entry_point,
@@ -516,7 +517,7 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
-            bytesrepr::test_serialization_roundtrip(&DirectCall::random(rng));
+            bytesrepr::test_serialization_roundtrip(&DirectCallV1::random(rng));
         }
     }
 }
