@@ -3,7 +3,7 @@ mod error;
 
 use super::{Deploy, DeployHash, ExecutableDeployItem, TransferTarget};
 use crate::{PublicKey, SecretKey, TimeDiff, Timestamp, URef, U512};
-pub(super) use account_and_secret_key::AccountAndSecretKey;
+pub(crate) use account_and_secret_key::AccountAndSecretKey;
 pub use error::DeployBuilderError;
 
 /// A builder for constructing a [`Deploy`].

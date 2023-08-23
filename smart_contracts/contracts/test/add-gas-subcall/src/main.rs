@@ -10,7 +10,7 @@ use casper_contract::contract_api::{runtime, storage};
 
 use casper_types::{
     runtime_args, ApiError, CLType, ContractHash, ContractVersion, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Key, Parameter, RuntimeArgs,
+    EntryPointType, EntryPoints, Key, Parameter,
 };
 
 const SUBCALL_NAME: &str = "add_gas";

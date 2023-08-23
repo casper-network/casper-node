@@ -7,7 +7,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, runtime_args, system::mint, RuntimeArgs, URef, U512};
+use casper_types::{account::AccountHash, runtime_args, system::mint, URef, U512};
 
 fn call_mint_transfer(
     to: Option<AccountHash>,

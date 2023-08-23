@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::auction::DelegationRate, GenesisAccount,
-    GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const ARG_AMOUNT: &str = "amount";

@@ -12,7 +12,7 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     package::CONTRACT_INITIAL_VERSION,
-    runtime_args, CLType, ContractHash, ContractPackageHash, ContractVersion, Key, RuntimeArgs,
+    runtime_args, CLType, ContractHash, ContractPackageHash, ContractVersion, Key,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";

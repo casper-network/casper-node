@@ -12,7 +12,7 @@ use casper_types::{
         auction::ARG_AMOUNT,
         mint::{self, ARG_TARGET},
     },
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";

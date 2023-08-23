@@ -4438,7 +4438,7 @@
             }
           },
           "Bytes": {
-            "description": "Hex-encoded array of bytes.",
+            "description": "Hex-encoded bytes.",
             "type": "string"
           },
           "Contract": {

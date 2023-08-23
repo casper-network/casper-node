@@ -17,7 +17,7 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

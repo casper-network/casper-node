@@ -15,7 +15,7 @@ use casper_types::{
         BidsExt, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
     },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

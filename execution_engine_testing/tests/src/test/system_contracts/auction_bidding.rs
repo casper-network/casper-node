@@ -20,7 +20,7 @@ use casper_types::{
         mint,
     },
     ApiError, EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey,
-    RuntimeArgs, SecretKey, U512,
+    SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

@@ -4,10 +4,14 @@ use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "testing", test))]
+use rand::{Rng, RngCore};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+#[cfg(any(feature = "testing", test))]
+use crate::{bytesrepr::Bytes, testing::TestRng};
 use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes},
     CLType, CLTyped, CLValue, CLValueError, U512,
@@ -167,6 +171,25 @@ impl RuntimeArgs {
             _ => Ok(U512::zero()),
         }
     }
+
+    /// Returns a random `RuntimeArgs`.
+    #[cfg(any(feature = "testing", test))]
+    pub fn random(rng: &mut TestRng) -> Self {
+        fn random_bytes(rng: &mut TestRng) -> Bytes {
+            let mut buffer = vec![0u8; rng.gen_range(0..100)];
+            rng.fill_bytes(buffer.as_mut());
+            Bytes::from(buffer)
+        }
+
+        let count = rng.gen_range(0..6);
+        let mut args = RuntimeArgs::new();
+        for _ in 0..count {
+            let key = rng.random_string(1..21);
+            let value = random_bytes(rng);
+            let _ = args.insert(key, value);
+        }
+        args
+    }
 }
 
 impl From<Vec<NamedArg>> for RuntimeArgs {
@@ -215,7 +238,7 @@ impl FromBytes for RuntimeArgs {
 ///
 /// # Example usage
 /// ```
-/// use casper_types::{RuntimeArgs, runtime_args};
+/// use casper_types::runtime_args;
 /// let _named_args = runtime_args! {
 ///   "foo" => 42,
 ///   "bar" => "Hello, world!"
@@ -223,11 +246,11 @@ impl FromBytes for RuntimeArgs {
 /// ```
 #[macro_export]
 macro_rules! runtime_args {
-    () => (RuntimeArgs::new());
+    () => ($crate::RuntimeArgs::new());
     ( $($key:expr => $value:expr,)+ ) => (runtime_args!($($key => $value),+));
     ( $($key:expr => $value:expr),* ) => {
         {
-            let mut named_args = RuntimeArgs::new();
+            let mut named_args = $crate::RuntimeArgs::new();
             $(
                 named_args.insert($key, $value).unwrap();
             )*

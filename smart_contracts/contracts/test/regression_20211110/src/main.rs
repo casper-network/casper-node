@@ -7,7 +7,7 @@ extern crate alloc;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     runtime_args, CLType, CLTyped, ContractHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, RuntimeArgs,
+    EntryPoints, Parameter,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";

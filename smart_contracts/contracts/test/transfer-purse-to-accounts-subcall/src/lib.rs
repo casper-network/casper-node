@@ -8,7 +8,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, URef, U512};
+use casper_types::{account::AccountHash, runtime_args, Key, URef, U512};
 
 const ENTRYPOINT: &str = "transfer";
 const ARG_SOURCE: &str = "source";

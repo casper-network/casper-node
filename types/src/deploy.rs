@@ -59,7 +59,7 @@ use crate::{testing::TestRng, MAX_PAYMENT_AMOUNT};
 pub use approval::Approval;
 pub use approvals_hash::ApprovalsHash;
 #[cfg(any(feature = "std", test))]
-use deploy_builder::AccountAndSecretKey;
+pub(crate) use deploy_builder::AccountAndSecretKey;
 #[cfg(any(feature = "std", test))]
 pub use deploy_builder::{DeployBuilder, DeployBuilderError};
 pub use deploy_footprint::DeployFootprint;

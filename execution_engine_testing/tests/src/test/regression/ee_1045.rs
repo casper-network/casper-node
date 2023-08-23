@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 use casper_types::{
     runtime_args,
     system::auction::{DelegationRate, ARG_VALIDATOR_PUBLIC_KEYS, INITIAL_ERA_ID, METHOD_SLASH},
-    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
 

@@ -20,7 +20,7 @@ use casper_types::{
         ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
         METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
