@@ -37,12 +37,23 @@ use tracing::{debug, warn};
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::bytesrepr::Bytes;
+
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+use crate::ContractHash;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
 };
+
 #[cfg(any(feature = "std", test))]
-use crate::{system::mint::ARG_AMOUNT, DeployConfig, U512};
+use crate::{
+    system::auction::{
+        ARG_AMOUNT as ARG_AUCTION_AMOUNT, ARG_DELEGATOR, ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY,
+        ARG_VALIDATOR, METHOD_DELEGATE, METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
+    },
+    system::mint::ARG_AMOUNT,
+    DeployConfig, U512,
+};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, MAX_PAYMENT_AMOUNT};
 pub use approval::Approval;
@@ -932,6 +943,118 @@ impl Deploy {
             session,
             &secret_key,
             None,
+        )
+    }
+
+    /// Creates a withdraw bid deploy, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn withdraw_bid(
+        chain_name: String,
+        auction_contract_hash: ContractHash,
+        public_key: PublicKey,
+        amount: U512,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+        let args = runtime_args! {
+            ARG_AUCTION_AMOUNT => amount,
+            ARG_AUCTION_PUBLIC_KEY => public_key.clone(),
+        };
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: auction_contract_hash,
+            entry_point: METHOD_WITHDRAW_BID.to_string(),
+            args,
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            1,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            AccountAndSecretKey::Account(public_key),
+        )
+    }
+
+    /// Creates a delegate deploy, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn delegate(
+        chain_name: String,
+        auction_contract_hash: ContractHash,
+        validator_public_key: PublicKey,
+        delegator_public_key: PublicKey,
+        amount: U512,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+        let args = runtime_args! {
+            ARG_DELEGATOR => delegator_public_key.clone(),
+            ARG_VALIDATOR => validator_public_key,
+            ARG_AUCTION_AMOUNT => amount,
+        };
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: auction_contract_hash,
+            entry_point: METHOD_DELEGATE.to_string(),
+            args,
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            1,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            AccountAndSecretKey::Account(delegator_public_key),
+        )
+    }
+
+    /// Creates an undelegate deploy, for testing.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn undelegate(
+        chain_name: String,
+        auction_contract_hash: ContractHash,
+        validator_public_key: PublicKey,
+        delegator_public_key: PublicKey,
+        amount: U512,
+        timestamp: Timestamp,
+        ttl: TimeDiff,
+    ) -> Self {
+        let payment = ExecutableDeployItem::ModuleBytes {
+            module_bytes: Bytes::new(),
+            args: runtime_args! { ARG_AMOUNT => U512::from(3_000_000_000_u64) },
+        };
+        let args = runtime_args! {
+            ARG_DELEGATOR => delegator_public_key.clone(),
+            ARG_VALIDATOR => validator_public_key,
+            ARG_AUCTION_AMOUNT => amount,
+        };
+        let session = ExecutableDeployItem::StoredContractByHash {
+            hash: auction_contract_hash,
+            entry_point: METHOD_UNDELEGATE.to_string(),
+            args,
+        };
+
+        Deploy::build(
+            timestamp,
+            ttl,
+            1,
+            vec![],
+            chain_name,
+            payment,
+            session,
+            AccountAndSecretKey::Account(delegator_public_key),
         )
     }
 }

@@ -36,8 +36,8 @@ function main() {
     if [ -z "$TEST_ID" ]; then
         log "tooling needs to be updated to deal with AddressableEntity after 2.0 upgrade"
         log "disabling for now"
-#        # PR CI tests
-#        start_upgrade_scenario_1
+        # PR CI tests
+        start_upgrade_scenario_1
 #        start_upgrade_scenario_3
 #        start_upgrade_scenario_11
     else
