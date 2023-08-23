@@ -3189,6 +3189,7 @@ name = "juliet"
 version = "0.1.0"
 dependencies = [
  "array-init",
+ "assert_matches",
  "bimap",
  "bytemuck",
  "bytes",

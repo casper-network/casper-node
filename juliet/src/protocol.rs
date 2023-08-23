@@ -1310,9 +1310,80 @@ mod tests {
         assert_eq!(outgoing.header().error_kind(), ErrorKind::Other);
     }
 
+    /// Maximum frame size used in many tests.
+    const MAX_FRAME_SIZE: MaxFrameSize = MaxFrameSize::new(20);
+
+    /// Construct a reasonable configuration for tests.
+    const fn test_configuration() -> ProtocolBuilder<4> {
+        ProtocolBuilder::with_default_channel_config(
+            ChannelConfiguration::new()
+                .with_request_limit(2)
+                .with_max_request_payload_size(40)
+                .with_max_response_payload_size(40),
+        )
+        .max_frame_size(MAX_FRAME_SIZE.get())
+    }
+
     #[test]
     fn use_case_send_request_with_no_payload() {
-        todo!("simulate a working request that sends a single request with no payload, should produce appropriate events on receiving side, using transmissions inputs");
+        let pb = test_configuration();
+
+        let mut server = pb.build();
+        let mut client = pb.build();
+
+        let common_channel = ChannelId::new(2);
+
+        let mut req_bytes = BytesMut::from(
+            client
+                .create_request(common_channel, None)
+                .expect("should be able to create request")
+                .to_bytes(MAX_FRAME_SIZE)
+                .as_ref(),
+        );
+
+        let server_completed_read = server
+            .process_incoming(&mut req_bytes)
+            .expect("should yield completed read");
+        assert_matches::assert_matches!(
+            server_completed_read,
+            CompletedRead::NewRequest {
+                channel,
+                id,
+                payload
+            } => {
+                assert_eq!(channel, common_channel);
+                assert_eq!(id, Id::new(1));
+                assert!(payload.is_none());
+            }
+        );
+        assert!(req_bytes.is_empty(), "should consume entire buffer");
+
+        // Server has received the client's request, return a response.
+        let mut resp_bytes = BytesMut::from(
+            server
+                .create_response(common_channel, Id::new(1), None)
+                .expect("should be able to create response")
+                .expect("should produce response")
+                .to_bytes(MAX_FRAME_SIZE)
+                .as_ref(),
+        );
+
+        let client_completed_read = client
+            .process_incoming(&mut resp_bytes)
+            .expect("should yield response");
+        assert_matches::assert_matches!(
+            client_completed_read,
+            CompletedRead::ReceivedResponse {
+                channel,
+                id,
+                payload
+            } => {
+                assert_eq!(channel, common_channel);
+                assert_eq!(id, Id::new(1));
+                assert!(payload.is_none());
+            }
+        );
+        assert!(resp_bytes.is_empty(), "should consume entire buffer");
     }
 
     #[test]
