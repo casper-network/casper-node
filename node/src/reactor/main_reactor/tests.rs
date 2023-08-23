@@ -948,7 +948,7 @@ fn simple_test_chain(
 
     let diff = total_node_count - named.len();
     // Leave open slots for named validators.
-    let mut keys: Vec<Arc<SecretKey>> = (1..diff)
+    let mut keys: Vec<Arc<SecretKey>> = (1..=diff)
         .map(|_| Arc::new(SecretKey::random(rng)))
         .collect();
     // Nameless validators stake; default == 100 token
@@ -1068,6 +1068,18 @@ fn check_bid_existence_at_tip(
     }
 }
 
+async fn settle_era(
+    net: &mut TestingNetwork<FilterReactor<MainReactor>>,
+    rng: &mut TestRng,
+    era_id: &mut EraId,
+    era_settle_duration: Duration,
+) {
+    info!(?era_id, "settling network on era");
+    net.settle_on(rng, has_completed_era(*era_id), era_settle_duration)
+        .await;
+    era_id.increment();
+}
+
 async fn settle_deploy(net: &mut TestingNetwork<FilterReactor<MainReactor>>, deploy: Deploy) {
     // saturate the network with the deploy via just making them all store and accept it
     // they're all validators so one of them should propose it
@@ -1132,6 +1144,10 @@ async fn run_withdraw_bid_network() {
     testing::init_logging();
 
     let mut rng = crate::new_rng();
+    let mut era_id = EraId::new(0);
+    let era_timeout = Duration::from_secs(90);
+    let execution_timeout = Duration::from_secs(120);
+    let deploy_ttl = TimeDiff::from_seconds(60);
     let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
     let alice_stake = U512::from(200_000_000_000u64);
     let alice_public_key = PublicKey::from(&*alice_secret_key);
@@ -1157,35 +1173,23 @@ async fn run_withdraw_bid_network() {
     };
 
     // genesis
-    info!("genesis");
-    net.settle_on(
-        &mut rng,
-        has_completed_era(EraId::from(1)),
-        Duration::from_secs(90),
-    )
-    .await;
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
     // making sure our post genesis assumption that alice has a bid is correct
-    info!("alice should have a bid record");
     check_bid_existence_at_tip(&net, &alice_public_key, None, true);
 
     /* Now that the preamble is behind us, lets get some work done */
 
     // crank the network forward
-    info!("settling network");
-    net.settle_on(
-        &mut rng,
-        has_completed_era(EraId::from(1)),
-        Duration::from_secs(90),
-    )
-    .await;
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
-    let auction_hash = get_system_contract_hash(
-        &net,
-        &alice_public_key,
-        casper_types::system::AUCTION.to_string(),
-    );
     let (deploy_hash, deploy) = {
+        let auction_hash = get_system_contract_hash(
+            &net,
+            &alice_public_key,
+            casper_types::system::AUCTION.to_string(),
+        );
+
         // create & sign deploy to withdraw alice's full stake
         let mut withdraw_bid = Deploy::withdraw_bid(
             chain_name,
@@ -1193,7 +1197,7 @@ async fn run_withdraw_bid_network() {
             alice_public_key.clone(),
             alice_stake,
             Timestamp::now(),
-            TimeDiff::from_seconds(60),
+            deploy_ttl,
         );
         // sign the deploy (single sig in this scenario)
         withdraw_bid.sign(&alice_secret_key);
@@ -1201,17 +1205,15 @@ async fn run_withdraw_bid_network() {
         let deploy_hash = *DeployOrTransferHash::new(&withdraw_bid).deploy_hash();
         (deploy_hash, withdraw_bid)
     };
-
     settle_deploy(&mut net, deploy).await;
 
-    let timeout = Duration::from_secs(120);
     let bid_key = Key::Bid(BidAddr::from(alice_public_key.clone()));
     settle_execution(
         &mut net,
         &mut rng,
         bid_key,
         deploy_hash,
-        timeout,
+        execution_timeout,
         |key, effects| {
             let _ = effects
                 .transforms()
@@ -1230,13 +1232,7 @@ async fn run_withdraw_bid_network() {
     .await;
 
     // crank the network forward
-    info!("settling network");
-    net.settle_on(
-        &mut rng,
-        has_completed_era(EraId::from(2)),
-        Duration::from_secs(90),
-    )
-    .await;
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
     check_bid_existence_at_tip(&net, &alice_public_key, None, false);
 }
@@ -1246,6 +1242,10 @@ async fn run_undelegate_bid_network() {
     testing::init_logging();
 
     let mut rng = crate::new_rng();
+    let mut era_id = EraId::new(0);
+    let era_timeout = Duration::from_secs(90);
+    let execution_timeout = Duration::from_secs(120);
+    let deploy_ttl = TimeDiff::from_seconds(60);
     let alice = {
         let secret_key = Arc::new(SecretKey::random(&mut rng));
         let public_key = PublicKey::from(&*secret_key);
@@ -1276,30 +1276,18 @@ async fn run_undelegate_bid_network() {
     };
 
     // genesis
-    info!("genesis");
-    net.settle_on(
-        &mut rng,
-        has_completed_era(EraId::from(1)),
-        Duration::from_secs(90),
-    )
-    .await;
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
-    // making sure our post genesis assumption that alice has a bid is correct
-    info!("alice should have a bid record");
+    // making sure our post genesis assumptions are correct
     check_bid_existence_at_tip(&net, &alice.1, None, true);
-    info!("bob should have a bid record");
     check_bid_existence_at_tip(&net, &bob.1, None, true);
+    // alice should not have a delegation bid record for bob (yet)
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
 
     /* Now that the preamble is behind us, lets get some work done */
 
     // crank the network forward
-    info!("settling network");
-    net.settle_on(
-        &mut rng,
-        has_completed_era(EraId::from(1)),
-        Duration::from_secs(90),
-    )
-    .await;
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
     let auction_hash =
         get_system_contract_hash(&net, &alice.1, casper_types::system::AUCTION.to_string());
@@ -1318,7 +1306,7 @@ async fn run_undelegate_bid_network() {
             alice.1.clone(),
             alice_delegation_amount,
             Timestamp::now(),
-            TimeDiff::from_seconds(60),
+            deploy_ttl,
         );
         // sign the deploy (single sig in this scenario)
         delegate.sign(&alice.0);
@@ -1328,7 +1316,6 @@ async fn run_undelegate_bid_network() {
     };
     settle_deploy(&mut net, deploy).await;
 
-    let timeout = Duration::from_secs(120);
     let bid_key = Key::Bid(BidAddr::new_from_public_keys(
         &bob.1.clone(),
         Some(&alice.1.clone()),
@@ -1339,7 +1326,7 @@ async fn run_undelegate_bid_network() {
         &mut rng,
         bid_key,
         deploy_hash,
-        timeout,
+        execution_timeout,
         |key, effects| {
             let _ = effects
                 .transforms()
@@ -1362,25 +1349,25 @@ async fn run_undelegate_bid_network() {
     )
     .await;
 
-    info!("alice should have a delegation bid record for bob");
+    // alice should now have a delegation bid record for bob
     check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), true);
 
     let (deploy_hash, deploy) = {
-        // create & sign deploy to delegate from alice to bob
-        let mut delegate = Deploy::undelegate(
+        // create & sign deploy to undelegate from alice to bob
+        let mut undelegate = Deploy::undelegate(
             chain_name,
             auction_hash,
             bob.1.clone(),
             alice.1.clone(),
             alice_delegation_amount,
             Timestamp::now(),
-            TimeDiff::from_seconds(60),
+            deploy_ttl,
         );
         // sign the deploy (single sig in this scenario)
-        delegate.sign(&alice.0);
+        undelegate.sign(&alice.0);
         // we'll need the deploy_hash later to check results
-        let deploy_hash = *DeployOrTransferHash::new(&delegate).deploy_hash();
-        (deploy_hash, delegate)
+        let deploy_hash = *DeployOrTransferHash::new(&undelegate).deploy_hash();
+        (deploy_hash, undelegate)
     };
     settle_deploy(&mut net, deploy).await;
 
@@ -1389,7 +1376,7 @@ async fn run_undelegate_bid_network() {
         &mut rng,
         bid_key,
         deploy_hash,
-        timeout,
+        execution_timeout,
         |key, effects| {
             let _ = effects
                 .transforms()
@@ -1398,7 +1385,7 @@ async fn run_undelegate_bid_network() {
                     TransformKind::Prune(prune_key) => prune_key == &key,
                     _ => false,
                 })
-                .expect("should have a prune record for delegate bid");
+                .expect("should have a prune record for undelegated bid");
             true
         },
         |key, error_message, cost| {
@@ -1408,13 +1395,7 @@ async fn run_undelegate_bid_network() {
     .await;
 
     // crank the network forward
-    info!("settling network");
-    net.settle_on(
-        &mut rng,
-        has_completed_era(EraId::from(2)),
-        Duration::from_secs(90),
-    )
-    .await;
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
 
     // making sure the validator records are still present but the undelegated bid is gone
     check_bid_existence_at_tip(&net, &alice.1, None, true);
