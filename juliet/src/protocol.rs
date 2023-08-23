@@ -75,7 +75,10 @@ impl MaxFrameSize {
     /// Will panic if the given maximum frame size is less than [`MaxFrameSize::MIN`].
     #[inline(always)]
     pub const fn new(max_frame_size: u32) -> Self {
-        assert!(max_frame_size >= Self::MIN);
+        assert!(
+            max_frame_size >= Self::MIN,
+            "given maximum frame size is below permissible minimum for maximum frame size"
+        );
         MaxFrameSize(max_frame_size)
     }
 
@@ -250,26 +253,10 @@ impl Channel {
         }
     }
 
-    /// Returns whether or not the peer has exhausted the number of requests allowed.
-    ///
-    /// Depending on the size of the payload an [`OutgoingMessage`] may span multiple frames. On a
-    /// single channel, only one multi-frame message may be in the process of sending at a time,
-    /// thus it is not permissible to begin sending frames of a different multi-frame message before
-    /// the send of a previous one has been completed.
-    ///
-    /// Additional single-frame messages can be interspersed in between at will.
-    ///
-    /// [`JulietProtocol`] does not track whether or not a multi-frame message is in-flight; it is
-    /// up to the caller to ensure no second multi-frame message commences sending before the first
-    /// one completes.
-    ///
-    /// This problem can be avoided in its entirety if all frames of all messages created on a
-    /// single channel are sent in the order they are created.
-    ///
-    /// Additionally frames of a single message may also not be reordered.
+    /// Returns whether or not the peer has exhausted the number of in-flight requests allowed.
     #[inline]
     pub fn is_at_max_incoming_requests(&self) -> bool {
-        self.incoming_requests.len() == self.config.request_limit as usize
+        self.incoming_requests.len() >= self.config.request_limit as usize
     }
 
     /// Increments the cancellation allowance if possible.
@@ -912,44 +899,209 @@ pub const fn payload_is_multi_frame(max_frame_size: MaxFrameSize, payload_len: u
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use bytes::{Buf, Bytes, BytesMut};
 
     use crate::{
         header::{Header, Kind},
-        protocol::CompletedRead,
+        protocol::{CompletedRead, LocalProtocolViolation},
         ChannelConfiguration, ChannelId, Id,
     };
 
-    use super::{JulietProtocol, ProtocolBuilder};
+    use super::{Channel, JulietProtocol, MaxFrameSize, ProtocolBuilder};
 
     #[test]
-    fn max_frame_size_implemented_correctly() {
-        todo!("ensure methods on max frame size work as they should");
+    fn max_frame_size_works() {
+        let sz = MaxFrameSize::new(1234);
+        assert_eq!(sz.get(), 1234);
+        assert_eq!(sz.without_header(), 1230);
+
+        // Smallest allowed:
+        assert_eq!(MaxFrameSize::MIN, 10);
+        let small = MaxFrameSize::new(10);
+        assert_eq!(small.get(), 10);
+        assert_eq!(small.without_header(), 6);
+    }
+
+    #[test]
+    #[should_panic(expected = "permissible minimum for maximum frame size")]
+    fn max_frame_size_panics_on_too_small_size() {
+        MaxFrameSize::new(MaxFrameSize::MIN - 1);
     }
 
     #[test]
     fn request_id_generation_generates_unique_ids() {
-        todo!("ensure request ids generate unique IDs");
+        let mut channel = Channel::new(Default::default());
+
+        // IDs are sequential.
+        assert_eq!(channel.generate_request_id(), Some(Id::new(1)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(2)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(3)));
+
+        // Manipulate internal counter, expecting rollover.
+        channel.prev_request_id = u16::MAX - 2;
+        assert_eq!(channel.generate_request_id(), Some(Id::new(u16::MAX - 1)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(u16::MAX)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(0)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(1)));
+
+        // Insert some request IDs to mark them as used, causing them to be skipped.
+        channel.outgoing_requests.extend([1, 2, 3, 5].map(Id::new));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(4)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(6)));
     }
 
     #[test]
     fn allowed_to_send_throttles_when_appropriate() {
-        todo!("`allowed_to_send_request` should block/clear sending");
+        // A channel with a request limit of 0 is unusable, but legal.
+        assert!(
+            !Channel::new(ChannelConfiguration::new().with_request_limit(0))
+                .allowed_to_send_request()
+        );
+
+        // Capacity: 1
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(1));
+        assert!(channel.allowed_to_send_request());
+
+        // Incoming requests should not affect this.
+        channel.incoming_requests.insert(Id::new(1234));
+        channel.incoming_requests.insert(Id::new(5678));
+        channel.incoming_requests.insert(Id::new(9010));
+        assert!(channel.allowed_to_send_request());
+
+        // Fill up capacity.
+        channel.outgoing_requests.insert(Id::new(1));
+        assert!(!channel.allowed_to_send_request());
+
+        // Capacity: 2
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(2));
+        assert!(channel.allowed_to_send_request());
+        channel.outgoing_requests.insert(Id::new(1));
+        assert!(channel.allowed_to_send_request());
+        channel.outgoing_requests.insert(Id::new(2));
+        assert!(!channel.allowed_to_send_request());
     }
 
     #[test]
     fn is_at_max_incoming_requests_works() {
-        todo!("ensure `is_at_max_incoming_requests` is implemented correctly");
+        // A channel with a request limit of 0 is legal.
+        assert!(
+            Channel::new(ChannelConfiguration::new().with_request_limit(0))
+                .is_at_max_incoming_requests()
+        );
+
+        // Capacity: 1
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(1));
+        assert!(!channel.is_at_max_incoming_requests());
+
+        // Inserting outgoing requests should not prompt any change to incoming.
+        channel.outgoing_requests.insert(Id::new(1234));
+        channel.outgoing_requests.insert(Id::new(4567));
+        assert!(!channel.is_at_max_incoming_requests());
+
+        channel.incoming_requests.insert(Id::new(1));
+        assert!(channel.is_at_max_incoming_requests());
+
+        // Capacity: 2
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(2));
+        assert!(!channel.is_at_max_incoming_requests());
+        channel.incoming_requests.insert(Id::new(1));
+        assert!(!channel.is_at_max_incoming_requests());
+        channel.incoming_requests.insert(Id::new(2));
+        assert!(channel.is_at_max_incoming_requests());
     }
 
     #[test]
     fn cancellation_allowance_incrementation_works() {
-        todo!("ensure lower level cancellation allowance functions work");
+        // With a 0 request limit, we also don't allow any cancellations.
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(0));
+        channel.increment_cancellation_allowance();
+
+        assert_eq!(channel.cancellation_allowance, 0);
+
+        // Ensure that the cancellation allowance cannot exceed request limit.
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(3));
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 1);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 2);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 3);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 3);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 3);
     }
 
     #[test]
     fn test_channel_lookups_work() {
-        todo!("ensure channel lookups work, may have to add additional examples if panicking");
+        let mut protocol: JulietProtocol<3> = ProtocolBuilder::new().build();
+
+        // We mark channels by inserting an ID into them, that way we can ensure we're not getting
+        // back the same channel every time.
+        protocol
+            .lookup_channel_mut(ChannelId(0))
+            .expect("channel missing")
+            .outgoing_requests
+            .insert(Id::new(100));
+        protocol
+            .lookup_channel_mut(ChannelId(1))
+            .expect("channel missing")
+            .outgoing_requests
+            .insert(Id::new(101));
+        protocol
+            .lookup_channel_mut(ChannelId(2))
+            .expect("channel missing")
+            .outgoing_requests
+            .insert(Id::new(102));
+        assert!(matches!(
+            protocol.lookup_channel_mut(ChannelId(3)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(3)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel_mut(ChannelId(4)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(4)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel_mut(ChannelId(255)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(255)))
+        ));
+
+        // Now look up the channels and ensure they contain the right values
+        assert_eq!(
+            protocol
+                .lookup_channel(ChannelId(0))
+                .expect("channel missing")
+                .outgoing_requests,
+            HashSet::from([Id::new(100)])
+        );
+        assert_eq!(
+            protocol
+                .lookup_channel(ChannelId(1))
+                .expect("channel missing")
+                .outgoing_requests,
+            HashSet::from([Id::new(101)])
+        );
+        assert_eq!(
+            protocol
+                .lookup_channel(ChannelId(2))
+                .expect("channel missing")
+                .outgoing_requests,
+            HashSet::from([Id::new(102)])
+        );
+        assert!(matches!(
+            protocol.lookup_channel(ChannelId(3)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(3)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel(ChannelId(4)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(4)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel(ChannelId(255)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(255)))
+        ));
     }
 
     #[test]
