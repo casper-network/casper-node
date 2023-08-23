@@ -597,6 +597,9 @@ impl<const N: usize> JulietProtocol<N> {
 
     /// Creates an error message with type [`ErrorKind::Other`].
     ///
+    /// The resulting [`OutgoingMessage`] is the last message that should be sent to the peer, the
+    /// caller should ensure no more messages are sent.
+    ///
     /// # Local protocol violations
     ///
     /// Will return a [`LocalProtocolViolation`] when attempting to send on an invalid channel.
@@ -902,14 +905,16 @@ mod tests {
     use std::collections::HashSet;
 
     use bytes::{Buf, Bytes, BytesMut};
+    use proptest_attr_macro::proptest;
+    use strum::IntoEnumIterator;
 
     use crate::{
-        header::{Header, Kind},
-        protocol::{CompletedRead, LocalProtocolViolation},
-        ChannelConfiguration, ChannelId, Id,
+        header::{ErrorKind, Header, Kind},
+        protocol::{payload_is_multi_frame, CompletedRead, LocalProtocolViolation},
+        ChannelConfiguration, ChannelId, Id, Outcome,
     };
 
-    use super::{Channel, JulietProtocol, MaxFrameSize, ProtocolBuilder};
+    use super::{err_msg, Channel, JulietProtocol, MaxFrameSize, ProtocolBuilder};
 
     #[test]
     fn max_frame_size_works() {
@@ -1104,46 +1109,205 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn err_msg_works() {
-        todo!("the `err_msg` helper function should work");
+    #[proptest]
+    fn err_msg_works(header: Header) {
+        for err_kind in ErrorKind::iter() {
+            let outcome = err_msg::<()>(header, err_kind);
+            if let Outcome::Fatal(msg) = outcome {
+                assert_eq!(msg.header().id(), header.id());
+                assert_eq!(msg.header().channel(), header.channel());
+                assert!(msg.header().is_error());
+                assert_eq!(msg.header().error_kind(), err_kind);
+            } else {
+                panic!("expected outcome to be fatal");
+            }
+        }
     }
 
     #[test]
-    fn multi_frame_detection_works() {
-        todo!("ensure `payload_is_multi_frame` works")
-    }
+    fn multi_frame_estimation_works() {
+        let max_frame_size = MaxFrameSize::new(512);
 
-    #[test]
-    fn ensure_allowed_to_send_request_gates_correctly() {
-        todo!(
-            "`allowed_to_send_request` should allow the agreed upon number of in-flight requests"
-        );
+        // Note: 512 takes two bytes to encode, so the total overhead is 6 bytes.
+
+        assert!(!payload_is_multi_frame(max_frame_size, 0));
+        assert!(!payload_is_multi_frame(max_frame_size, 1));
+        assert!(!payload_is_multi_frame(max_frame_size, 5));
+        assert!(!payload_is_multi_frame(max_frame_size, 6));
+        assert!(!payload_is_multi_frame(max_frame_size, 7));
+        assert!(!payload_is_multi_frame(max_frame_size, 505));
+        assert!(!payload_is_multi_frame(max_frame_size, 506));
+        assert!(payload_is_multi_frame(max_frame_size, 507));
+        assert!(payload_is_multi_frame(max_frame_size, 508));
+        assert!(payload_is_multi_frame(max_frame_size, u32::MAX as usize));
     }
 
     #[test]
     fn create_requests_with_correct_input_sets_state_accordingly() {
-        todo!("ensure that calling `create_requests` results in the expect state both with and without payload");
+        const LONG_PAYLOAD: &[u8] =
+            b"large payload large payload large payload large payload large payload large payload";
+
+        // Try different payload sizes (no payload, single frame payload, multiframe payload).
+        for payload in [
+            None,
+            Some(Bytes::from_static(b"asdf")),
+            Some(Bytes::from_static(LONG_PAYLOAD)),
+        ] {
+            // Configure a protocol with payload, at least 10 bytes segment size.
+            let mut protocol = ProtocolBuilder::<5>::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_request_limit(1)
+                    .with_max_request_payload_size(1024),
+            )
+            .max_frame_size(20)
+            .build();
+
+            let channel = ChannelId::new(2);
+            let other_channel = ChannelId::new(0);
+
+            assert!(protocol
+                .allowed_to_send_request(channel)
+                .expect("channel should exist"));
+            let expected_header_kind = if payload.is_none() {
+                Kind::Request
+            } else {
+                Kind::RequestPl
+            };
+
+            let req = protocol
+                .create_request(channel, payload)
+                .expect("should be able to create request");
+
+            assert_eq!(req.header().channel(), channel);
+            assert_eq!(req.header().kind(), expected_header_kind);
+
+            // We expect exactly one id in the outgoing set.
+            assert_eq!(
+                protocol
+                    .lookup_channel(channel)
+                    .expect("should have channel")
+                    .outgoing_requests,
+                [Id::new(1)].into()
+            );
+
+            // We've used up the default limit of one.
+            assert!(!protocol
+                .allowed_to_send_request(channel)
+                .expect("channel should exist"));
+
+            // We should still be able to create requests on a different channel.
+            assert!(protocol
+                .lookup_channel(other_channel)
+                .expect("channel 0 should exist")
+                .outgoing_requests
+                .is_empty());
+
+            let other_req = protocol
+                .create_request(other_channel, None)
+                .expect("should be able to create request");
+
+            assert_eq!(other_req.header().channel(), other_channel);
+            assert_eq!(other_req.header().kind(), Kind::Request);
+
+            // We expect exactly one id in the outgoing set of each channel now.
+            assert_eq!(
+                protocol
+                    .lookup_channel(channel)
+                    .expect("should have channel")
+                    .outgoing_requests,
+                [Id::new(1)].into()
+            );
+            assert_eq!(
+                protocol
+                    .lookup_channel(other_channel)
+                    .expect("should have channel")
+                    .outgoing_requests,
+                [Id::new(1)].into()
+            );
+        }
     }
 
     #[test]
     fn create_requests_with_invalid_inputs_fails() {
-        todo!("wrong inputs for `create_requests` should cause errors");
+        // Configure a protocol with payload, at least 10 bytes segment size.
+        let mut protocol = ProtocolBuilder::<2>::new().build();
+
+        let channel = ChannelId::new(1);
+
+        // Try an invalid channel, should result in an error.
+        assert!(matches!(
+            protocol.create_request(ChannelId::new(2), None),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(2)))
+        ));
+
+        assert!(protocol
+            .allowed_to_send_request(channel)
+            .expect("channel should exist"));
+        let _ = protocol
+            .create_request(channel, None)
+            .expect("should be able to create request");
+
+        assert!(matches!(
+            protocol.create_request(channel, None),
+            Err(LocalProtocolViolation::WouldExceedRequestLimit)
+        ));
     }
 
     #[test]
     fn create_response_with_correct_input_clears_state_accordingly() {
-        todo!("should update internal state correctly")
+        let mut protocol = ProtocolBuilder::<4>::new().build();
+
+        let channel = ChannelId::new(3);
+
+        // Inject a channel to have already received two requests.
+        let req_id = Id::new(9);
+        let leftover_id = Id::new(77);
+        protocol
+            .lookup_channel_mut(channel)
+            .expect("should find channel")
+            .incoming_requests
+            .extend([req_id, leftover_id]);
+
+        // Responding to a non-existent request should not result in a message.
+        assert!(protocol
+            .create_response(channel, Id::new(12), None)
+            .expect("should allow attempting to respond to non-existent request")
+            .is_none());
+
+        // Actual response.
+        let resp = protocol
+            .create_response(channel, req_id, None)
+            .expect("should allow responding to request")
+            .expect("should actually answer request");
+
+        assert_eq!(resp.header().channel(), channel);
+        assert_eq!(resp.header().id(), req_id);
+        assert_eq!(resp.header().kind(), Kind::Response);
+
+        // Outgoing set should be empty afterwards.
+        assert_eq!(
+            protocol
+                .lookup_channel(channel)
+                .expect("should find channel")
+                .incoming_requests,
+            [leftover_id].into()
+        );
     }
 
     #[test]
-    fn create_response_with_invalid_input_produces_errors() {
-        todo!("should update internal state correctly")
-    }
+    fn custom_errors_are_possible() {
+        let mut protocol = ProtocolBuilder::<4>::new().build();
 
-    #[test]
-    fn custom_errors_should_end_protocol_processing_data() {
-        todo!("ensure that custom errors produce a message and end the processing of data")
+        // The channel ID for custom errors can be arbitrary!
+        let id = Id::new(12345);
+        let channel = ChannelId::new(123);
+        let outgoing = protocol
+            .custom_error(channel, id, Bytes::new())
+            .expect("should be able to send custom error");
+
+        assert_eq!(outgoing.header().id(), id);
+        assert_eq!(outgoing.header().channel(), channel);
+        assert_eq!(outgoing.header().error_kind(), ErrorKind::Other);
     }
 
     #[test]
