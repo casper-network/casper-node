@@ -6,6 +6,7 @@ use std::fmt::{Debug, Display};
 
 use bytemuck::{Pod, Zeroable};
 use hex_fmt::HexFmt;
+use strum::EnumCount;
 use thiserror::Error;
 
 use crate::{ChannelId, Id};
@@ -47,7 +48,7 @@ impl Debug for Header {
 }
 
 /// Error kind, from the kind byte.
-#[derive(Copy, Clone, Debug, Error, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, EnumCount, Error, Eq, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum ErrorKind {
@@ -95,11 +96,10 @@ pub enum ErrorKind {
     /// Peer sent a request cancellation exceeding the cancellation allowance.
     #[error("cancellation limit exceeded")]
     CancellationLimitExceeded = 13,
-    // Note: When adding additional kinds, update the `HIGHEST` associated constant.
 }
 
 /// Frame kind, from the kind byte.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, EnumCount, Eq, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 
@@ -116,21 +116,6 @@ pub enum Kind {
     CancelReq = 4,
     /// Cancellation of a response.
     CancelResp = 5,
-    // Note: When adding additional kinds, update the `HIGHEST` associated constant.
-}
-
-impl ErrorKind {
-    /// The highest error kind number.
-    ///
-    /// Only error kinds <= `HIGHEST` are valid.
-    const HIGHEST: Self = Self::CancellationLimitExceeded;
-}
-
-impl Kind {
-    /// The highest frame kind number.
-    ///
-    /// Only error kinds <= `HIGHEST` are valid.
-    const HIGHEST: Self = Self::CancelResp;
 }
 
 impl Header {
@@ -174,11 +159,11 @@ impl Header {
 
         // Check that the kind byte is within valid range.
         if header.is_error() {
-            if (header.kind_byte() & Self::KIND_ERR_MASK) > ErrorKind::HIGHEST as u8 {
+            if (header.kind_byte() & Self::KIND_ERR_MASK) >= ErrorKind::COUNT as u8 {
                 return None;
             }
         } else {
-            if (header.kind_byte() & Self::KIND_MASK) > Kind::HIGHEST as u8 {
+            if (header.kind_byte() & Self::KIND_MASK) >= Kind::COUNT as u8 {
                 return None;
             }
 
