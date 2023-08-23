@@ -17,6 +17,8 @@ tokio = { version = "1.29.1", features = [ "macros", "io-util", "sync" ] }
 tracing = { version = "0.1.37", optional = true }
 
 [dev-dependencies]
+# TODO: Upgrade `derive_more` to non-beta version, once released.
+derive_more = { version = "1.0.0-beta.2", features = [ "debug" ] }
 tokio = { version = "1.29.1", features = [
   "macros",
   "net",
@@ -29,9 +31,6 @@ proptest-derive = "0.3.0"
 rand = "0.8.5"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = [ "env-filter" ] }
-derivative = "2.2.0"
-# TODO: Upgrade `derive_more` to non-beta version, once released.
-derive_more = { version = "1.0.0-beta.2", features = [ "debug" ] }
 
 [[example]]
 name = "fizzbuzz"
