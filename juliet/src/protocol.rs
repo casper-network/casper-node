@@ -902,7 +902,7 @@ pub const fn payload_is_multi_frame(max_frame_size: MaxFrameSize, payload_len: u
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, ops::Not};
 
     use bytes::{Buf, Bytes, BytesMut};
     use proptest_attr_macro::proptest;
@@ -914,7 +914,7 @@ mod tests {
         ChannelConfiguration, ChannelId, Id, Outcome,
     };
 
-    use super::{err_msg, Channel, JulietProtocol, MaxFrameSize, ProtocolBuilder};
+    use super::{err_msg, Channel, JulietProtocol, MaxFrameSize, OutgoingMessage, ProtocolBuilder};
 
     #[test]
     fn max_frame_size_works() {
@@ -1310,40 +1310,139 @@ mod tests {
         assert_eq!(outgoing.header().error_kind(), ErrorKind::Other);
     }
 
-    /// Maximum frame size used in many tests.
-    const MAX_FRAME_SIZE: MaxFrameSize = MaxFrameSize::new(20);
+    /// A simplified setup for testing back and forth between two peers.
+    ///
+    /// Note that the terms "client" and "server" are used loosely here, as they are equal peers.
+    /// Designating one as the client (typically the one sending the first message) and the other
+    /// one as the server helps tracking these though, as it is less easily confused than "peer_a"
+    /// and "peer_b".
+    struct TestingSetup {
+        /// The "client"'s protocol state.
+        client: JulietProtocol<4>,
+        /// The "server"'s protocol state.
+        server: JulietProtocol<4>,
+        /// The channel communication is sent across for these tests.
+        common_channel: ChannelId,
+        /// Maximum frame size in test environment.
+        max_frame_size: MaxFrameSize,
+    }
 
-    /// Construct a reasonable configuration for tests.
-    const fn test_configuration() -> ProtocolBuilder<4> {
-        ProtocolBuilder::with_default_channel_config(
-            ChannelConfiguration::new()
-                .with_request_limit(2)
-                .with_max_request_payload_size(40)
-                .with_max_response_payload_size(40),
-        )
-        .max_frame_size(MAX_FRAME_SIZE.get())
+    /// Peer selection.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+
+    enum Peer {
+        Client,
+        Server,
+    }
+
+    impl Not for Peer {
+        type Output = Self;
+
+        fn not(self) -> Self::Output {
+            match self {
+                Client => Server,
+                Server => Client,
+            }
+        }
+    }
+
+    use Peer::{Client, Server};
+
+    impl TestingSetup {
+        /// Instantiates a new testing setup.
+        fn new() -> Self {
+            let max_frame_size = MaxFrameSize::new(20);
+            let pb = ProtocolBuilder::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_request_limit(2)
+                    .with_max_request_payload_size(40)
+                    .with_max_response_payload_size(40),
+            )
+            .max_frame_size(max_frame_size.get());
+            let common_channel = ChannelId(2);
+
+            let server = pb.build();
+            let client = pb.build();
+
+            TestingSetup {
+                client,
+                server,
+                common_channel,
+                max_frame_size,
+            }
+        }
+
+        #[inline]
+        fn get_peer_mut(&mut self, target: Peer) -> &mut JulietProtocol<4> {
+            match target {
+                Client => &mut self.client,
+                Server => &mut self.server,
+            }
+        }
+
+        /// Take `msg` and send it to `dest`.
+        ///
+        /// Will check that the message is fully processed and removed on [`Outcome::Success`].
+        fn recv_on(
+            &mut self,
+            dest: Peer,
+            msg: OutgoingMessage,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let mut msg_bytes = BytesMut::from(msg.to_bytes(self.max_frame_size).as_ref());
+
+            self.get_peer_mut(dest)
+                .process_incoming(&mut msg_bytes)
+                .to_result()
+                .map(|v| {
+                    assert!(msg_bytes.is_empty(), "client should have consumed input");
+                    v
+                })
+        }
+
+        /// Make the client create a new request, return the outcome of the server's reception.
+        fn create_and_send_request(
+            &mut self,
+            from: Peer,
+            payload: Option<Bytes>,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel = self.common_channel;
+            let msg = self
+                .get_peer_mut(from)
+                .create_request(channel, payload)
+                .expect("should be able to create request");
+
+            self.recv_on(!from, msg)
+        }
+
+        /// Make the server create a new response, return the outcome of the client's reception.
+        ///
+        /// If no response was scheduled for sending, returns `None`.
+        fn create_and_send_response(
+            &mut self,
+            from: Peer,
+            id: Id,
+            payload: Option<Bytes>,
+        ) -> Option<Result<CompletedRead, OutgoingMessage>> {
+            let channel = self.common_channel;
+
+            let msg = self
+                .get_peer_mut(from)
+                .create_response(channel, id, payload)
+                .expect("should be able to create response")?;
+
+            Some(self.recv_on(!from, msg))
+        }
     }
 
     #[test]
     fn use_case_send_request_with_no_payload() {
-        let pb = test_configuration();
+        let mut env = TestingSetup::new();
 
-        let mut server = pb.build();
-        let mut client = pb.build();
+        let expected_id = Id::new(1);
+        let server_completed_read = env
+            .create_and_send_request(Client, None)
+            .expect("server should accept request");
 
-        let common_channel = ChannelId::new(2);
-
-        let mut req_bytes = BytesMut::from(
-            client
-                .create_request(common_channel, None)
-                .expect("should be able to create request")
-                .to_bytes(MAX_FRAME_SIZE)
-                .as_ref(),
-        );
-
-        let server_completed_read = server
-            .process_incoming(&mut req_bytes)
-            .expect("should yield completed read");
         assert_matches::assert_matches!(
             server_completed_read,
             CompletedRead::NewRequest {
@@ -1351,26 +1450,18 @@ mod tests {
                 id,
                 payload
             } => {
-                assert_eq!(channel, common_channel);
-                assert_eq!(id, Id::new(1));
+                assert_eq!(channel, env.common_channel);
+                assert_eq!(id, expected_id);
                 assert!(payload.is_none());
             }
         );
-        assert!(req_bytes.is_empty(), "should consume entire buffer");
 
-        // Server has received the client's request, return a response.
-        let mut resp_bytes = BytesMut::from(
-            server
-                .create_response(common_channel, Id::new(1), None)
-                .expect("should be able to create response")
-                .expect("should produce response")
-                .to_bytes(MAX_FRAME_SIZE)
-                .as_ref(),
-        );
+        // Return a response.
+        let client_completed_read = env
+            .create_and_send_response(Server, expected_id, None)
+            .expect("did not expect response to be dropped")
+            .expect("shoult not fail to process response on client");
 
-        let client_completed_read = client
-            .process_incoming(&mut resp_bytes)
-            .expect("should yield response");
         assert_matches::assert_matches!(
             client_completed_read,
             CompletedRead::ReceivedResponse {
@@ -1378,12 +1469,11 @@ mod tests {
                 id,
                 payload
             } => {
-                assert_eq!(channel, common_channel);
-                assert_eq!(id, Id::new(1));
+                assert_eq!(channel, env.common_channel);
+                assert_eq!(id, expected_id);
                 assert!(payload.is_none());
             }
         );
-        assert!(resp_bytes.is_empty(), "should consume entire buffer");
     }
 
     #[test]

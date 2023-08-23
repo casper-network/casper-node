@@ -160,6 +160,21 @@ impl<T, E> Outcome<T, E> {
                 .expect("did not expect 0-byte `Incomplete`"),
         )
     }
+
+    /// Converts an [`Outcome`] into a result, panicking on [`Outcome::Incomplete`].
+    ///
+    /// This function should never be used outside tests.
+    #[cfg(test)]
+    #[track_caller]
+    pub fn to_result(self) -> Result<T, E> {
+        match self {
+            Outcome::Incomplete(missing) => {
+                panic!("did not expect incompletion by {} bytes when", missing)
+            }
+            Outcome::Fatal(e) => Err(e),
+            Outcome::Success(s) => Ok(s),
+        }
+    }
 }
 
 /// `try!` for [`Outcome`].
