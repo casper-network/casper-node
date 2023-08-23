@@ -1438,7 +1438,7 @@ mod tests {
     }
 
     #[test]
-    fn use_case_send_request_with_no_payload() {
+    fn use_case_req_no_payload_ok() {
         let mut env = TestingSetup::new();
 
         let expected_id = Id::new(1);
@@ -1480,28 +1480,68 @@ mod tests {
     }
 
     #[test]
-    fn model_based_single_roundtrip_test() {
-        todo!("model a single request interaction with various outcomes and test across various transmission stutter steps");
+    fn env_req_no_payload_exceed_in_flight_limit() {
+        todo!();
     }
 
     #[test]
-    fn error_codes_set_appropriately_on_request_reception() {
-        todo!("sending invalid requests should produce the appropriate errors")
+    fn env_req_no_payload_exceed_req_size_limit() {
+        todo!();
     }
 
     #[test]
-    fn error_codes_set_appropriately_on_response_reception() {
-        todo!("sending invalid responses should produce the appropriate errors")
+    fn env_req_no_payload_duplicate_request() {
+        todo!();
     }
 
     #[test]
-    fn exceeding_cancellation_allowance_triggers_error() {
-        todo!("should not be possible to exceed the cancellation allowance")
+    fn env_req_no_payload_response_for_ficticious_request() {
+        todo!();
     }
 
     #[test]
-    fn cancelling_requests_clears_state_and_causes_dropping_of_outbound_replies() {
-        todo!("if a cancellation for a request is received, the outbound response should be cancelled, and a cancellation produced as well")
+    fn env_req_no_payload_cancellation_for_ficticious_request() {
+        todo!();
+    }
+
+    #[test]
+    fn env_req_no_payload_request_cancellation_ok() {
+        todo!();
+    }
+
+    #[test]
+    fn env_req_no_payload_response_cancellation_ok() {
+        todo!();
+    }
+
+    #[test]
+    fn env_req_no_payload_response_size_limit_exceeded() {
+        todo!();
+    }
+
+    #[test]
+    fn env_req_no_payload_response_cancellation_limit_exceeded() {
+        todo!();
+    }
+
+    #[test]
+    fn env_max_frame_size_exceeded() {
+        todo!();
+    }
+
+    #[test]
+    fn env_invalid_header() {
+        todo!();
+    }
+
+    #[test]
+    fn env_bad_varint() {
+        todo!();
+    }
+
+    #[test]
+    fn env_req_with_payloads() {
+        todo!("cover all cases without payload + segment/size violations");
     }
 
     #[test]
