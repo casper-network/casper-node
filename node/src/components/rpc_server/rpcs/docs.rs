@@ -505,8 +505,7 @@ mod tests {
         };
         let license = OpenRpcLicenseField {
             name: "APACHE LICENSE, VERSION 2.0".to_string(),
-            url: "https://www.apache.org/licenses/LICENSE-2.0"
-                .to_string(),
+            url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
         };
         let info = OpenRpcInfoField {
             version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
