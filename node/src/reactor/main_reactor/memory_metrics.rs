@@ -172,7 +172,7 @@ impl MemoryMetrics {
         let event_stream_server = reactor.event_stream_server.estimate_heap_size() as i64;
         let consensus = reactor.consensus.estimate_heap_size() as i64;
         let fetchers = reactor.fetchers.estimate_heap_size() as i64;
-        let deploy_gossiper = reactor.deploy_gossiper.estimate_heap_size() as i64;
+        let deploy_gossiper = reactor.transaction_gossiper.estimate_heap_size() as i64;
         let finality_signature_gossiper =
             reactor.finality_signature_gossiper.estimate_heap_size() as i64;
         let block_gossiper = reactor.block_gossiper.estimate_heap_size() as i64;
