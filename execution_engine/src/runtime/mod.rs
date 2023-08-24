@@ -2665,7 +2665,7 @@ where
 
                 Ok(())
             }
-            EntryPointAccess::Abstract => Err(Error::AbstractMethod(name.to_string())),
+            EntryPointAccess::Template => Err(Error::TemplateMethod(name.to_string())),
         }
     }
 
@@ -2695,7 +2695,7 @@ where
             };
             for entry_point in entry_points {
                 match entry_point.access() {
-                    EntryPointAccess::Public | EntryPointAccess::Abstract => {
+                    EntryPointAccess::Public | EntryPointAccess::Template => {
                         continue;
                     }
                     EntryPointAccess::Groups(groups) => {

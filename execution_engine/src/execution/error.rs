@@ -130,7 +130,7 @@ pub enum Error {
     NoSuchMethod(String),
     /// Contract does
     #[error("Error calling an abstract entry point: {}", _0)]
-    AbstractMethod(String),
+    TemplateMethod(String),
     /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(PreprocessingError),

@@ -2553,7 +2553,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::NoActiveContractVersions(_)
                 | ExecError::InvalidContractVersion(_)
                 | ExecError::NoSuchMethod(_)
-                | ExecError::AbstractMethod(_)
+                | ExecError::TemplateMethod(_)
                 | ExecError::KeyIsNotAURef(_)
                 | ExecError::UnexpectedStoredValueVariant
                 | ExecError::LockedContract(_)

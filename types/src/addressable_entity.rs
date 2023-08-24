@@ -1234,7 +1234,7 @@ pub enum EntryPointAccess {
     /// contract.
     Groups(Vec<Group>),
     /// Can't be accessed directly but are kept in the derived wasm bytes.
-    Abstract,
+    Template,
 }
 
 const ENTRYPOINTACCESS_PUBLIC_TAG: u8 = 1;
@@ -1264,7 +1264,7 @@ impl ToBytes for EntryPointAccess {
                 result.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 result.append(&mut groups.to_bytes()?);
             }
-            EntryPointAccess::Abstract => {
+            EntryPointAccess::Template => {
                 result.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
             }
         }
@@ -1275,7 +1275,7 @@ impl ToBytes for EntryPointAccess {
         match self {
             EntryPointAccess::Public => 1,
             EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
-            EntryPointAccess::Abstract => 1,
+            EntryPointAccess::Template => 1,
         }
     }
 
@@ -1288,7 +1288,7 @@ impl ToBytes for EntryPointAccess {
                 writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 groups.write_bytes(writer)?;
             }
-            EntryPointAccess::Abstract => {
+            EntryPointAccess::Template => {
                 writer.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
             }
         }
@@ -1307,7 +1307,7 @@ impl FromBytes for EntryPointAccess {
                 let result = EntryPointAccess::Groups(groups);
                 Ok((result, bytes))
             }
-            ENTRYPOINTACCESS_ABSTRACT_TAG => Ok((EntryPointAccess::Abstract, bytes)),
+            ENTRYPOINTACCESS_ABSTRACT_TAG => Ok((EntryPointAccess::Template, bytes)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

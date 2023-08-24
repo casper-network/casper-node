@@ -136,7 +136,7 @@ pub extern "C" fn call() {
             INCREASE_ENTRY_POINT.to_string(),
             Parameters::new(),
             CLType::Unit,
-            EntryPointAccess::Abstract,
+            EntryPointAccess::Template,
             EntryPointType::Contract,
         );
         entry_points.add_entry_point(entry_point);
@@ -144,7 +144,7 @@ pub extern "C" fn call() {
             DECREASE_ENTRY_POINT.to_string(),
             Parameters::new(),
             CLType::Unit,
-            EntryPointAccess::Abstract,
+            EntryPointAccess::Template,
             EntryPointType::Contract,
         );
         entry_points.add_entry_point(entry_point);
