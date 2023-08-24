@@ -295,6 +295,33 @@ impl Channel {
     pub fn allowed_to_send_request(&self) -> bool {
         self.outgoing_requests.len() < self.config.request_limit as usize
     }
+
+    /// Creates a new request, bypassing all client-side checks.
+    ///
+    /// Low-level function that does nothing but create a syntactically correct request and track
+    /// its outgoing ID. This function is not meant to be called outside of this module or its unit
+    /// tests. See [`JulietProtocol::create_request`] instead.
+    #[inline(always)]
+    fn create_unchecked_request(
+        &mut self,
+        channel_id: ChannelId,
+        payload: Option<Bytes>,
+    ) -> OutgoingMessage {
+        // The `unwrap_or` below should never be triggered, as long as `u16::MAX` or less
+        // requests are currently in flight, which is always the case with safe API use.
+        let id = self.generate_request_id().unwrap_or(Id(0));
+
+        // Record the outgoing request for later.
+        self.outgoing_requests.insert(id);
+
+        if let Some(payload) = payload {
+            let header = Header::new(header::Kind::RequestPl, channel_id, id);
+            OutgoingMessage::new(header, Some(payload))
+        } else {
+            let header = Header::new(header::Kind::Request, channel_id, id);
+            OutgoingMessage::new(header, None)
+        }
+    }
 }
 
 /// A successful read from the peer.
@@ -479,20 +506,7 @@ impl<const N: usize> JulietProtocol<N> {
             return Err(LocalProtocolViolation::WouldExceedRequestLimit);
         }
 
-        // The `unwrap_or` below should never be triggered, as long as `u16::MAX` or less
-        // requests are currently in flight, which is always the case.
-        let id = chan.generate_request_id().unwrap_or(Id(0));
-
-        // Record the outgoing request for later.
-        chan.outgoing_requests.insert(id);
-
-        if let Some(payload) = payload {
-            let header = Header::new(header::Kind::RequestPl, channel, id);
-            Ok(OutgoingMessage::new(header, Some(payload)))
-        } else {
-            let header = Header::new(header::Kind::Request, channel, id);
-            Ok(OutgoingMessage::new(header, None))
-        }
+        Ok(chan.create_unchecked_request(channel, payload))
     }
 
     /// Creates a new response to be sent.
@@ -902,7 +916,7 @@ pub const fn payload_is_multi_frame(max_frame_size: MaxFrameSize, payload_len: u
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, ops::Not};
+    use std::{collections::HashSet, fmt::Debug, ops::Not};
 
     use bytes::{Buf, Bytes, BytesMut};
     use proptest_attr_macro::proptest;
@@ -1402,6 +1416,7 @@ mod tests {
         /// Creates a new request on peer `origin`, the sends it to the other peer.
         ///
         /// Returns the outcome of the other peer's reception.
+        #[track_caller]
         fn create_and_send_request(
             &mut self,
             origin: Peer,
@@ -1416,10 +1431,33 @@ mod tests {
             self.recv_on(!origin, msg)
         }
 
+        /// Similar to `create_and_send_request`, but bypasses all checks.
+        ///
+        /// Allows for sending requests that are normally not allowed by the protocol API.
+        #[track_caller]
+        fn inject_and_send_request(
+            &mut self,
+            origin: Peer,
+            payload: Option<Bytes>,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel_id = self.common_channel;
+            let origin_channel = self
+                .get_peer_mut(origin)
+                .lookup_channel_mut(channel_id)
+                .expect("channel does not exist, why?");
+
+            // Create request, bypassing all checks usually performed by the protocol.
+            let msg = origin_channel.create_unchecked_request(channel_id, payload);
+
+            // Send to peer and return outcome.
+            self.recv_on(!origin, msg)
+        }
+
         /// Creates a new response on peer `origin`, the sends it to the other peer.
         ///
         /// Returns the outcome of the other peer's reception. If no response was scheduled for
         /// sending, returns `None`.
+        #[track_caller]
         fn create_and_send_response(
             &mut self,
             origin: Peer,
@@ -1435,6 +1473,83 @@ mod tests {
 
             Some(self.recv_on(!origin, msg))
         }
+
+        /// Asserts the given completed read is a [`CompletedRead::NewRequest`] with the given ID
+        /// and payload.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_new_request(
+            &self,
+            expected_id: Id,
+            expected_payload: Option<&[u8]>,
+            completed_read: CompletedRead,
+        ) {
+            assert_matches::assert_matches!(
+                completed_read,
+                CompletedRead::NewRequest {
+                    channel,
+                    id,
+                    payload
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
+                    assert_eq!(payload.as_deref(), expected_payload);
+                }
+            );
+        }
+
+        /// Asserts the given completed read is a [`CompletedRead::ReceivedResponse`] with the given
+        /// ID and payload.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_received_response(
+            &self,
+            expected_id: Id,
+            expected_payload: Option<&[u8]>,
+            completed_read: CompletedRead,
+        ) {
+            assert_matches::assert_matches!(
+                completed_read,
+                CompletedRead::ReceivedResponse {
+                    channel,
+                    id,
+                    payload
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
+                    assert_eq!(payload.as_deref(), expected_payload);
+                }
+            );
+        }
+
+        /// Asserts given `Result` is of type `Err` and its message contains a specific header.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_error_message<T: Debug>(
+            &self,
+            error_kind: ErrorKind,
+            id: Id,
+            result: Result<T, OutgoingMessage>,
+        ) {
+            match result {
+                Ok(v) => panic!("expected an error, got positive outcome instead: {:?}", v),
+                Err(err) => {
+                    let header = err.header();
+                    assert_eq!(header.error_kind(), error_kind);
+                    assert_eq!(header.id(), id);
+                    assert_eq!(header.channel(), self.common_channel);
+                }
+            }
+        }
     }
 
     #[test]
@@ -1445,43 +1560,38 @@ mod tests {
         let bob_completed_read = env
             .create_and_send_request(Alice, None)
             .expect("bob should accept request");
-
-        assert_matches::assert_matches!(
-            bob_completed_read,
-            CompletedRead::NewRequest {
-                channel,
-                id,
-                payload
-            } => {
-                assert_eq!(channel, env.common_channel);
-                assert_eq!(id, expected_id);
-                assert!(payload.is_none());
-            }
-        );
+        env.assert_is_new_request(expected_id, None, bob_completed_read);
 
         // Return a response.
         let alice_completed_read = env
             .create_and_send_response(Bob, expected_id, None)
             .expect("did not expect response to be dropped")
             .expect("should not fail to process response on alice");
-
-        assert_matches::assert_matches!(
-            alice_completed_read,
-            CompletedRead::ReceivedResponse {
-                channel,
-                id,
-                payload
-            } => {
-                assert_eq!(channel, env.common_channel);
-                assert_eq!(id, expected_id);
-                assert!(payload.is_none());
-            }
-        );
+        env.assert_is_received_response(expected_id, None, alice_completed_read);
     }
 
     #[test]
     fn env_req_no_payload_exceed_in_flight_limit() {
-        todo!();
+        let mut env = TestingSetup::new();
+        let bob_completed_read_1 = env
+            .create_and_send_request(Alice, None)
+            .expect("bob should accept request 1");
+        env.assert_is_new_request(Id::new(1), None, bob_completed_read_1);
+
+        let bob_completed_read_2 = env
+            .create_and_send_request(Alice, None)
+            .expect("bob should accept request 2");
+        env.assert_is_new_request(Id::new(2), None, bob_completed_read_2);
+
+        // We now need to bypass the local protocol checks to inject a malicious one.
+
+        let local_err_result = env.inject_and_send_request(Alice, None);
+
+        env.assert_is_error_message(
+            ErrorKind::RequestLimitExceeded,
+            Id::new(3),
+            local_err_result,
+        );
     }
 
     #[test]
