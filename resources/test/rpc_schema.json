@@ -4117,17 +4117,10 @@
                 ]
               },
               {
-                "description": "Pattern of entry point types introduced in 2.0.\n\nIf this bit is missing, that means given entry point type was defined in pre-2.0 world. Installer entry point.",
+                "description": "Installer entry point.",
                 "type": "string",
                 "enum": [
                   "Install"
-                ]
-              },
-              {
-                "description": "Normal entry point.",
-                "type": "string",
-                "enum": [
-                  "Normal"
                 ]
               }
             ]
