@@ -940,12 +940,19 @@ mod tests {
         SingleFrame,
         /// A payload that spans more than one frame.
         MultiFrame,
+        /// A payload that exceeds the request size limit.
+        TooLarge,
     }
 
     impl VaryingPayload {
         /// Returns all valid payload sizes.
         fn all_valid() -> impl Iterator<Item = Self> {
-            VaryingPayload::iter()
+            [
+                VaryingPayload::None,
+                VaryingPayload::SingleFrame,
+                VaryingPayload::MultiFrame,
+            ]
+            .into_iter()
         }
 
         /// Returns whether the resulting payload would be `Option::None`.
@@ -954,6 +961,7 @@ mod tests {
                 VaryingPayload::None => true,
                 VaryingPayload::SingleFrame => false,
                 VaryingPayload::MultiFrame => false,
+                VaryingPayload::TooLarge => false,
             }
         }
 
@@ -984,10 +992,13 @@ mod tests {
         fn get_slice(self) -> Option<&'static [u8]> {
             const LONG_PAYLOAD: &[u8] =
             b"large payload large payload large payload large payload large payload large payload";
+            const OVERLY_LONG_PAYLOAD: &[u8] = b"abcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefgh";
+
             match self {
                 VaryingPayload::None => None,
                 VaryingPayload::SingleFrame => Some(b"asdf"),
                 VaryingPayload::MultiFrame => Some(LONG_PAYLOAD),
+                VaryingPayload::TooLarge => Some(OVERLY_LONG_PAYLOAD),
             }
         }
     }
@@ -1388,6 +1399,7 @@ mod tests {
     }
 
     /// A simplified setup for testing back and forth between two peers.
+    #[derive(Debug)]
     struct TestingSetup {
         /// Alice's protocol state.
         alice: JulietProtocol<4>,
@@ -1662,13 +1674,41 @@ mod tests {
     }
 
     #[test]
-    fn env_req_no_payload_exceed_req_size_limit() {
-        todo!();
+    fn env_req_exceed_req_size_limit() {
+        let payload = VaryingPayload::TooLarge;
+
+        let mut env = TestingSetup::new();
+        let bob_result = env.inject_and_send_request(Alice, payload.get());
+
+        env.assert_is_error_message(ErrorKind::RequestTooLarge, Id::new(1), bob_result);
     }
 
     #[test]
-    fn env_req_no_payload_duplicate_request() {
-        todo!();
+    fn env_req_duplicate_request() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
+
+            // Send a second request with the same ID. For this, we manipulate Alice's internal
+            // counter and state.
+            let alice_channel = env
+                .alice
+                .lookup_channel_mut(env.common_channel)
+                .expect("should have channel");
+            alice_channel.prev_request_id -= 1;
+            alice_channel.outgoing_requests.clear();
+
+            let second_send_result = env.inject_and_send_request(Alice, payload.get());
+            env.assert_is_error_message(
+                ErrorKind::DuplicateRequest,
+                Id::new(1),
+                second_send_result,
+            );
+        }
     }
 
     #[test]
