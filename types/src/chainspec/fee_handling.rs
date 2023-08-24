@@ -1,3 +1,4 @@
+#[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
@@ -8,8 +9,9 @@ const FEE_HANDLING_ACCUMULATE_TAG: u8 = 1;
 const FEE_HANDLING_BURN_TAG: u8 = 2;
 
 /// Defines how fees are handled in the system.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, DataSize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub enum FeeHandling {
     /// Transaction fees are paid to the block proposer.
     ///

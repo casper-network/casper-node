@@ -90,7 +90,8 @@ impl Distribution<GenesisValidator> for Standard {
 }
 
 /// Special account in the system that is useful only for some private chains.
-#[derive(DataSize, Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct AdministratorAccount {
     public_key: PublicKey,
     balance: Motes,

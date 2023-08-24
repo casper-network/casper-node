@@ -118,7 +118,7 @@ pub struct CoreConfig {
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub administrators: BTreeSet<PublicKey>,
     /// Refund handling.
-    #[data_size(skip)]
+    #[cfg_attr(feature = "datasize", data_size(skip))]
     pub refund_handling: RefundHandling,
     /// Fee handling.
     pub fee_handling: FeeHandling,
