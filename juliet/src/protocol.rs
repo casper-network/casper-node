@@ -920,7 +920,8 @@ mod tests {
 
     use bytes::{Buf, Bytes, BytesMut};
     use proptest_attr_macro::proptest;
-    use strum::IntoEnumIterator;
+    use proptest_derive::Arbitrary;
+    use strum::{EnumIter, IntoEnumIterator};
 
     use crate::{
         header::{ErrorKind, Header, Kind},
@@ -929,6 +930,67 @@ mod tests {
     };
 
     use super::{err_msg, Channel, JulietProtocol, MaxFrameSize, OutgoingMessage, ProtocolBuilder};
+
+    /// A generic payload that can be used in testing.
+    #[derive(Arbitrary, Clone, Copy, Debug, EnumIter)]
+    enum VaryingPayload {
+        /// No payload at all.
+        None,
+        /// A payload that fits into a single frame (using `TestingSetup`'s defined limits).
+        SingleFrame,
+        /// A payload that spans more than one frame.
+        MultiFrame,
+    }
+
+    impl VaryingPayload {
+        /// Returns all valid payload sizes.
+        fn all_valid() -> impl Iterator<Item = Self> {
+            VaryingPayload::iter()
+        }
+
+        /// Returns whether the resulting payload would be `Option::None`.
+        fn is_none(self) -> bool {
+            match self {
+                VaryingPayload::None => true,
+                VaryingPayload::SingleFrame => false,
+                VaryingPayload::MultiFrame => false,
+            }
+        }
+
+        /// Returns the kind header required if this payload is used in a request.
+        fn request_kind(self) -> Kind {
+            if self.is_none() {
+                Kind::Request
+            } else {
+                Kind::RequestPl
+            }
+        }
+
+        /// Returns the kind header required if this payload is used in a response.
+        fn response_kind(self) -> Kind {
+            if self.is_none() {
+                Kind::Response
+            } else {
+                Kind::ResponsePl
+            }
+        }
+
+        /// Produce the actual payload.
+        fn get(self) -> Option<Bytes> {
+            self.get_slice().map(Bytes::from_static)
+        }
+
+        /// Produce the payloads underlying slice.
+        fn get_slice(self) -> Option<&'static [u8]> {
+            const LONG_PAYLOAD: &[u8] =
+            b"large payload large payload large payload large payload large payload large payload";
+            match self {
+                VaryingPayload::None => None,
+                VaryingPayload::SingleFrame => Some(b"asdf"),
+                VaryingPayload::MultiFrame => Some(LONG_PAYLOAD),
+            }
+        }
+    }
 
     #[test]
     fn max_frame_size_works() {
@@ -1158,15 +1220,7 @@ mod tests {
 
     #[test]
     fn create_requests_with_correct_input_sets_state_accordingly() {
-        const LONG_PAYLOAD: &[u8] =
-            b"large payload large payload large payload large payload large payload large payload";
-
-        // Try different payload sizes (no payload, single frame payload, multiframe payload).
-        for payload in [
-            None,
-            Some(Bytes::from_static(b"asdf")),
-            Some(Bytes::from_static(LONG_PAYLOAD)),
-        ] {
+        for payload in VaryingPayload::all_valid() {
             // Configure a protocol with payload, at least 10 bytes segment size.
             let mut protocol = ProtocolBuilder::<5>::with_default_channel_config(
                 ChannelConfiguration::new()
@@ -1182,18 +1236,13 @@ mod tests {
             assert!(protocol
                 .allowed_to_send_request(channel)
                 .expect("channel should exist"));
-            let expected_header_kind = if payload.is_none() {
-                Kind::Request
-            } else {
-                Kind::RequestPl
-            };
 
             let req = protocol
-                .create_request(channel, payload)
+                .create_request(channel, payload.get())
                 .expect("should be able to create request");
 
             assert_eq!(req.header().channel(), channel);
-            assert_eq!(req.header().kind(), expected_header_kind);
+            assert_eq!(req.header().kind(), payload.request_kind());
 
             // We expect exactly one id in the outgoing set.
             assert_eq!(
@@ -1217,11 +1266,11 @@ mod tests {
                 .is_empty());
 
             let other_req = protocol
-                .create_request(other_channel, None)
+                .create_request(other_channel, payload.get())
                 .expect("should be able to create request");
 
             assert_eq!(other_req.header().channel(), other_channel);
-            assert_eq!(other_req.header().kind(), Kind::Request);
+            assert_eq!(other_req.header().kind(), payload.request_kind());
 
             // We expect exactly one id in the outgoing set of each channel now.
             assert_eq!(
@@ -1243,69 +1292,83 @@ mod tests {
 
     #[test]
     fn create_requests_with_invalid_inputs_fails() {
-        // Configure a protocol with payload, at least 10 bytes segment size.
-        let mut protocol = ProtocolBuilder::<2>::new().build();
+        for payload in VaryingPayload::all_valid() {
+            // Configure a protocol with payload, at least 10 bytes segment size.
+            let mut protocol = ProtocolBuilder::<2>::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_max_request_payload_size(512)
+                    .with_max_response_payload_size(512),
+            )
+            .build();
 
-        let channel = ChannelId::new(1);
+            let channel = ChannelId::new(1);
 
-        // Try an invalid channel, should result in an error.
-        assert!(matches!(
-            protocol.create_request(ChannelId::new(2), None),
-            Err(LocalProtocolViolation::InvalidChannel(ChannelId(2)))
-        ));
+            // Try an invalid channel, should result in an error.
+            assert!(matches!(
+                protocol.create_request(ChannelId::new(2), payload.get()),
+                Err(LocalProtocolViolation::InvalidChannel(ChannelId(2)))
+            ));
 
-        assert!(protocol
-            .allowed_to_send_request(channel)
-            .expect("channel should exist"));
-        let _ = protocol
-            .create_request(channel, None)
-            .expect("should be able to create request");
+            assert!(protocol
+                .allowed_to_send_request(channel)
+                .expect("channel should exist"));
+            let _ = protocol
+                .create_request(channel, payload.get())
+                .expect("should be able to create request");
 
-        assert!(matches!(
-            protocol.create_request(channel, None),
-            Err(LocalProtocolViolation::WouldExceedRequestLimit)
-        ));
+            assert!(matches!(
+                protocol.create_request(channel, payload.get()),
+                Err(LocalProtocolViolation::WouldExceedRequestLimit)
+            ));
+        }
     }
 
     #[test]
     fn create_response_with_correct_input_clears_state_accordingly() {
-        let mut protocol = ProtocolBuilder::<4>::new().build();
+        for payload in VaryingPayload::all_valid() {
+            let mut protocol = ProtocolBuilder::<4>::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_max_request_payload_size(512)
+                    .with_max_response_payload_size(512),
+            )
+            .build();
 
-        let channel = ChannelId::new(3);
+            let channel = ChannelId::new(3);
 
-        // Inject a channel to have already received two requests.
-        let req_id = Id::new(9);
-        let leftover_id = Id::new(77);
-        protocol
-            .lookup_channel_mut(channel)
-            .expect("should find channel")
-            .incoming_requests
-            .extend([req_id, leftover_id]);
-
-        // Responding to a non-existent request should not result in a message.
-        assert!(protocol
-            .create_response(channel, Id::new(12), None)
-            .expect("should allow attempting to respond to non-existent request")
-            .is_none());
-
-        // Actual response.
-        let resp = protocol
-            .create_response(channel, req_id, None)
-            .expect("should allow responding to request")
-            .expect("should actually answer request");
-
-        assert_eq!(resp.header().channel(), channel);
-        assert_eq!(resp.header().id(), req_id);
-        assert_eq!(resp.header().kind(), Kind::Response);
-
-        // Outgoing set should be empty afterwards.
-        assert_eq!(
+            // Inject a channel to have already received two requests.
+            let req_id = Id::new(9);
+            let leftover_id = Id::new(77);
             protocol
-                .lookup_channel(channel)
+                .lookup_channel_mut(channel)
                 .expect("should find channel")
-                .incoming_requests,
-            [leftover_id].into()
-        );
+                .incoming_requests
+                .extend([req_id, leftover_id]);
+
+            // Responding to a non-existent request should not result in a message.
+            assert!(protocol
+                .create_response(channel, Id::new(12), payload.get())
+                .expect("should allow attempting to respond to non-existent request")
+                .is_none());
+
+            // Actual response.
+            let resp = protocol
+                .create_response(channel, req_id, payload.get())
+                .expect("should allow responding to request")
+                .expect("should actually answer request");
+
+            assert_eq!(resp.header().channel(), channel);
+            assert_eq!(resp.header().id(), req_id);
+            assert_eq!(resp.header().kind(), payload.response_kind());
+
+            // Outgoing set should be empty afterwards.
+            assert_eq!(
+                protocol
+                    .lookup_channel(channel)
+                    .expect("should find channel")
+                    .incoming_requests,
+                [leftover_id].into()
+            );
+        }
     }
 
     #[test]
@@ -1368,8 +1431,8 @@ mod tests {
             let pb = ProtocolBuilder::with_default_channel_config(
                 ChannelConfiguration::new()
                     .with_request_limit(2)
-                    .with_max_request_payload_size(40)
-                    .with_max_response_payload_size(40),
+                    .with_max_request_payload_size(512)
+                    .with_max_response_payload_size(512),
             )
             .max_frame_size(max_frame_size.get());
             let common_channel = ChannelId(2);
@@ -1553,45 +1616,49 @@ mod tests {
     }
 
     #[test]
-    fn use_case_req_no_payload_ok() {
-        let mut env = TestingSetup::new();
+    fn use_case_req_ok() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
 
-        let expected_id = Id::new(1);
-        let bob_completed_read = env
-            .create_and_send_request(Alice, None)
-            .expect("bob should accept request");
-        env.assert_is_new_request(expected_id, None, bob_completed_read);
+            let expected_id = Id::new(1);
+            let bob_completed_read = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request");
+            env.assert_is_new_request(expected_id, payload.get_slice(), bob_completed_read);
 
-        // Return a response.
-        let alice_completed_read = env
-            .create_and_send_response(Bob, expected_id, None)
-            .expect("did not expect response to be dropped")
-            .expect("should not fail to process response on alice");
-        env.assert_is_received_response(expected_id, None, alice_completed_read);
+            // Return a response.
+            let alice_completed_read = env
+                .create_and_send_response(Bob, expected_id, payload.get())
+                .expect("did not expect response to be dropped")
+                .expect("should not fail to process response on alice");
+            env.assert_is_received_response(expected_id, payload.get_slice(), alice_completed_read);
+        }
     }
 
     #[test]
-    fn env_req_no_payload_exceed_in_flight_limit() {
-        let mut env = TestingSetup::new();
-        let bob_completed_read_1 = env
-            .create_and_send_request(Alice, None)
-            .expect("bob should accept request 1");
-        env.assert_is_new_request(Id::new(1), None, bob_completed_read_1);
+    fn env_req_exceed_in_flight_limit() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
 
-        let bob_completed_read_2 = env
-            .create_and_send_request(Alice, None)
-            .expect("bob should accept request 2");
-        env.assert_is_new_request(Id::new(2), None, bob_completed_read_2);
+            let bob_completed_read_2 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 2");
+            env.assert_is_new_request(Id::new(2), payload.get_slice(), bob_completed_read_2);
 
-        // We now need to bypass the local protocol checks to inject a malicious one.
+            // We now need to bypass the local protocol checks to inject a malicious one.
 
-        let local_err_result = env.inject_and_send_request(Alice, None);
+            let local_err_result = env.inject_and_send_request(Alice, payload.get());
 
-        env.assert_is_error_message(
-            ErrorKind::RequestLimitExceeded,
-            Id::new(3),
-            local_err_result,
-        );
+            env.assert_is_error_message(
+                ErrorKind::RequestLimitExceeded,
+                Id::new(3),
+                local_err_result,
+            );
+        }
     }
 
     #[test]
