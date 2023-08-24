@@ -5,21 +5,16 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{
-    engine_config::{
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    },
-    EngineConfig, EngineConfigBuilder, Error as CoreError, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+use casper_execution_engine::{
+    engine_state::{EngineConfigBuilder, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
+    execution::Error as ExecError,
 };
-use casper_execution_engine::execution::Error as ExecError;
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
     AccessRights, ApiError, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef, WasmConfig,
+    ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 

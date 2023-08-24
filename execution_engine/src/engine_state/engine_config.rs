@@ -42,6 +42,8 @@ pub const DEFAULT_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
 };
 /// Default fee handling.
 pub const DEFAULT_FEE_HANDLING: FeeHandling = FeeHandling::PayToProposer;
+/// Default compute rewards.
+pub const DEFAULT_COMPUTE_REWARDS: bool = true;
 
 /// The runtime configuration of the execution engine
 #[derive(Debug, Clone)]
@@ -76,6 +78,8 @@ pub struct EngineConfig {
     pub(crate) refund_handling: RefundHandling,
     /// Fee handling.
     pub(crate) fee_handling: FeeHandling,
+    /// Compute auction rewards.
+    pub(crate) compute_rewards: bool,
 }
 
 impl Default for EngineConfig {
@@ -95,6 +99,7 @@ impl Default for EngineConfig {
             allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
             refund_handling: DEFAULT_REFUND_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
+            compute_rewards: DEFAULT_COMPUTE_REWARDS,
         }
     }
 }
@@ -135,6 +140,7 @@ impl EngineConfig {
             allow_unrestricted_transfers: DEFAULT_ALLOW_UNRESTRICTED_TRANSFERS,
             refund_handling: DEFAULT_REFUND_HANDLING,
             fee_handling: DEFAULT_FEE_HANDLING,
+            compute_rewards: DEFAULT_COMPUTE_REWARDS,
         }
     }
 
@@ -207,6 +213,11 @@ impl EngineConfig {
     pub fn fee_handling(&self) -> FeeHandling {
         self.fee_handling
     }
+
+    /// Returns the engine config's compute rewards flag.
+    pub fn compute_rewards(&self) -> bool {
+        self.compute_rewards
+    }
 }
 
 /// A builder for an [`EngineConfig`].
@@ -229,6 +240,7 @@ pub struct EngineConfigBuilder {
     allow_unrestricted_transfers: Option<bool>,
     refund_handling: Option<RefundHandling>,
     fee_handling: Option<FeeHandling>,
+    compute_rewards: Option<bool>,
 }
 
 impl EngineConfigBuilder {
@@ -343,6 +355,12 @@ impl EngineConfigBuilder {
         self
     }
 
+    /// Sets compute rewards config option.
+    pub fn with_compute_rewards(mut self, compute_rewards: bool) -> Self {
+        self.compute_rewards = Some(compute_rewards);
+        self
+    }
+
     /// Builds a new [`EngineConfig`] object.
     pub fn build(self) -> EngineConfig {
         let max_query_depth = self.max_query_depth.unwrap_or(DEFAULT_MAX_QUERY_DEPTH);
@@ -380,6 +398,7 @@ impl EngineConfigBuilder {
             .vesting_schedule_period_millis
             .unwrap_or(DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS);
         let max_delegators_per_validator = self.max_delegators_per_validator;
+        let compute_rewards = self.compute_rewards.unwrap_or(DEFAULT_COMPUTE_REWARDS);
 
         EngineConfig {
             max_query_depth,
@@ -396,6 +415,7 @@ impl EngineConfigBuilder {
             strict_argument_checking,
             vesting_schedule_period_millis,
             max_delegators_per_validator,
+            compute_rewards,
         }
     }
 }

@@ -9,7 +9,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::{
     engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
-    genesis::{ExecConfig, ExecConfigBuilder},
+    genesis::ExecConfigBuilder,
     run_genesis_request::RunGenesisRequest,
 };
 use casper_types::{
@@ -77,7 +77,7 @@ fn should_run_genesis() {
 
     builder.run_genesis(&run_genesis_request);
 
-    let system_account = builder
+    let _system_account = builder
         .get_entity_by_account_hash(PublicKey::System.to_account_hash())
         .expect("system account should exist");
 

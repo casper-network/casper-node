@@ -4,7 +4,8 @@ use casper_engine_test_support::{
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512, FeeHandling, RefundHandling, DEFAULT_NOP_COST,
+    FeeHandling, RefundHandling, RuntimeArgs, DEFAULT_NOP_COST, DEFAULT_WASMLESS_TRANSFER_COST,
+    U512,
 };
 use num_rational::Ratio;
 use num_traits::{One, Zero};
@@ -12,7 +13,7 @@ use num_traits::{One, Zero};
 use crate::{
     test::private_chain::{
         self, ACCOUNT_1_ADDR, DEFAULT_ADMIN_ACCOUNT_ADDR, PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
-        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
+        PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS, PRIVATE_CHAIN_COMPUTE_REWARDS,
     },
     wasm_utils,
 };
@@ -104,10 +105,11 @@ fn test_burning_fees(
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
         refund_handling,
         fee_handling,
+        PRIVATE_CHAIN_COMPUTE_REWARDS,
     );
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_1 = builder
-        .get_contract(handle_payment)
+        .get_addressable_entity(handle_payment)
         .expect("should have handle payment contract");
     let rewards_purse_key = handle_payment_1
         .named_keys()
@@ -124,7 +126,7 @@ fn test_burning_fees(
     let total_supply_before = builder.total_supply(None);
     let exec_request_1_proposer = exec_request_1.proposer.clone();
     let proposer_account_1 = builder
-        .get_account(exec_request_1_proposer.to_account_hash())
+        .get_entity_by_account_hash(exec_request_1_proposer.to_account_hash())
         .expect("should have proposer account");
     builder.exec(exec_request_1).expect_success().commit();
     assert_eq!(

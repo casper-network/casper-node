@@ -11,8 +11,6 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
-    system::mint::ARG_AMOUNT,
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter},
     system::standard_payment,
     CLType, RuntimeArgs, URef, U512,
 };

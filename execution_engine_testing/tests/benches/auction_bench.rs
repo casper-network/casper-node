@@ -1,5 +1,8 @@
 use std::{path::Path, time::Duration};
 
+use casper_execution_engine::engine_state::{
+    genesis::ExecConfigBuilder, EngineConfig, ExecuteRequest, RunGenesisRequest,
+};
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion, Throughput,
 };
@@ -11,21 +14,9 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
-};
-use casper_execution_engine::engine_state::{
-    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, run_genesis_request::RunGenesisRequest,
-    EngineConfig, ExecConfig, ExecuteRequest,
-use casper_execution_engine::{
-    core::engine_state::{
-        engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        genesis::{ExecConfigBuilder, GenesisValidator},
-        run_genesis_request::RunGenesisRequest,
-        EngineConfig, ExecuteRequest, GenesisAccount, RewardItem,
-    },
-    shared::system_config::auction_costs::DEFAULT_DELEGATE_COST,
+    DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_types::{
     account::AccountHash,

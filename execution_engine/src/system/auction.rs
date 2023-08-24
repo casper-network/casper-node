@@ -560,7 +560,6 @@ pub trait Auction:
         }
 
         let seigniorage_recipients = self.read_seigniorage_recipients()?;
-        let base_round_reward = self.read_base_round_reward()?;
 
         let mut era_info = EraInfo::new();
         let seigniorage_allocations = era_info.seigniorage_allocations_mut();
@@ -575,7 +574,13 @@ pub trait Auction:
             continue;
         }*/
 
-        let total_reward: Ratio<U512> = Ratio::from(base_round_reward);
+        let total_reward = if self.should_compute_rewards() {
+            let base_round_reward = self.read_base_round_reward()?;
+
+            Ratio::from(base_round_reward)
+        } else {
+            Ratio::from(U512::zero())
+        };
 
         let delegator_total_stake: U512 = recipient
             .delegator_total_stake()

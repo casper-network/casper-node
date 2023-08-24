@@ -2,21 +2,14 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
-};
-use casper_execution_engine::engine_state::{
-    engine_config::{
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    },
-    EngineConfig, EngineConfigBuilder, Error, DEFAULT_MAX_QUERY_DEPTH,
-    DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
+    engine_state::{EngineConfigBuilder, Error},
     execution::Error as ExecError,
     runtime::{PreprocessingError, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
 };
-use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig, DEFAULT_WASM_MAX_MEMORY};
+use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig};
 
 use crate::wasm_utils;
 

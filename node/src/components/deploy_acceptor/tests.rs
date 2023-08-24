@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
+    collections::{BTreeSet, VecDeque},
     fmt::{self, Debug, Display, Formatter},
     sync::Arc,
     time::Duration,

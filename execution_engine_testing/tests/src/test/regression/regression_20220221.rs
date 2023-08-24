@@ -6,7 +6,7 @@ use casper_engine_test_support::{
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::engine_state::{EngineConfig, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT};
+use casper_execution_engine::engine_state::DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT;
 use casper_types::{
     runtime_args,
     system::{

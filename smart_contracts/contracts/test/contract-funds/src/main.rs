@@ -12,8 +12,8 @@ use casper_contract::{
 
 use casper_types::{
     account::AccountHash,
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter},
-    CLTyped, CLValue, Key, URef,
+    addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, NamedKeys, Parameter},
+    CLTyped, CLValue, EntryPoints, Key, URef,
 };
 
 const GET_PAYMENT_PURSE_NAME: &str = "get_payment_purse";

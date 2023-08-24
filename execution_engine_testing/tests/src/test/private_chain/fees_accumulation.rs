@@ -1,13 +1,13 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_BLOCK_TIME, DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{step::RewardItem, EngineConfigBuilder};
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
-    EraId, FeeHandling, ProtocolVersion, RuntimeArgs, U512,
+    EraId, FeeHandling, Key, ProtocolVersion, RuntimeArgs, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -18,8 +18,6 @@ use crate::{
     },
     wasm_utils,
 };
-
-const VALIDATOR_1_REWARD_FACTOR: u64 = 0;
 
 static OLD_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| *DEFAULT_PROTOCOL_VERSION);
 static NEW_PROTOCOL_VERSION: Lazy<ProtocolVersion> = Lazy::new(|| {
@@ -38,7 +36,7 @@ fn default_genesis_config_should_not_have_rewards_purse() {
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_contract(handle_payment)
+        .get_addressable_entity(handle_payment)
         .expect("should have handle payment contract");
 
     assert!(
@@ -57,7 +55,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
 
     let handle_payment = builder.get_handle_payment_contract_hash();
     let handle_payment_1 = builder
-        .get_contract(handle_payment)
+        .get_addressable_entity(handle_payment)
         .expect("should have handle payment contract");
 
     let rewards_purse_key = handle_payment_1
@@ -76,7 +74,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
 
     let exec_request_1_proposer = exec_request_1.proposer.clone();
     let proposer_account_1 = builder
-        .get_account(exec_request_1_proposer.to_account_hash())
+        .get_entity_by_account_hash(exec_request_1_proposer.to_account_hash())
         .expect("should have proposer account");
     builder.exec(exec_request_1).expect_success().commit();
     assert_eq!(
@@ -85,7 +83,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
     );
 
     let handle_payment_2 = builder
-        .get_contract(handle_payment)
+        .get_addressable_entity(handle_payment)
         .expect("should have handle payment contract");
 
     assert_eq!(
@@ -105,7 +103,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
 
     let exec_request_2_proposer = exec_request_2.proposer.clone();
     let proposer_account_2 = builder
-        .get_account(exec_request_2_proposer.to_account_hash())
+        .get_entity_by_account_hash(exec_request_2_proposer.to_account_hash())
         .expect("should have proposer account");
 
     builder.exec(exec_request_2).expect_success().commit();
@@ -115,7 +113,7 @@ fn should_finalize_and_accumulate_rewards_purse() {
     );
 
     let handle_payment_3 = builder
-        .get_contract(handle_payment)
+        .get_addressable_entity(handle_payment)
         .expect("should have handle payment contract");
 
     assert_eq!(
@@ -138,7 +136,7 @@ fn should_accumulate_deploy_fees() {
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_contract(handle_payment_hash)
+        .get_addressable_entity(handle_payment_hash)
         .expect("should have handle payment contract");
 
     let rewards_purse = handle_payment_contract
@@ -164,7 +162,7 @@ fn should_accumulate_deploy_fees() {
     builder.exec(exec_request).expect_success().commit();
 
     let handle_payment_after = builder
-        .get_contract(handle_payment_hash)
+        .get_addressable_entity(handle_payment_hash)
         .expect("should have handle payment contract");
 
     assert_eq!(
@@ -191,7 +189,7 @@ fn should_accumulate_deploy_fees() {
 
     // Ensures default proposer didn't receive any funds
     let proposer_account = builder
-        .get_account(exec_request_proposer.to_account_hash())
+        .get_entity_by_account_hash(exec_request_proposer.to_account_hash())
         .expect("should have proposer account");
 
     assert_eq!(
@@ -207,15 +205,15 @@ fn should_distribute_accumulated_fees_to_admins() {
 
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment = builder
-        .get_contract(handle_payment_hash)
+        .get_addressable_entity(handle_payment_hash)
         .expect("should have handle payment contract");
+
     let accumulation_purse = handle_payment
         .named_keys()
         .get(ACCUMULATION_PURSE_KEY)
-        .unwrap()
-        .as_uref()
-        .cloned()
-        .unwrap();
+        .expect("handle payment should have named key")
+        .into_uref()
+        .expect("accumulation purse should be an uref");
 
     let exec_request_1 = ExecuteRequestBuilder::module_bytes(
         *DEFAULT_ADMIN_ACCOUNT_ADDR,
@@ -224,56 +222,38 @@ fn should_distribute_accumulated_fees_to_admins() {
     )
     .build();
 
+    let accumulated_purse_balance_before_exec = builder.get_purse_balance(accumulation_purse);
+    assert!(accumulated_purse_balance_before_exec.is_zero());
+
     builder.exec(exec_request_1).expect_success().commit();
 
     // At this point rewards purse balance is not zero as the `private_chain_setup` executes bunch
     // of deploys before
-    let accumulated_purse_balance_before = builder.get_purse_balance(accumulation_purse);
-    assert!(!accumulated_purse_balance_before.is_zero());
+    let accumulated_purse_balance_after_exec = builder.get_purse_balance(accumulation_purse);
+    assert!(!accumulated_purse_balance_after_exec.is_zero());
 
     let admin = builder
-        .get_account(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ADMIN_ACCOUNT_ADDR)
         .expect("should have admin account");
     let admin_balance_before = builder.get_purse_balance(admin.main_purse());
 
-    let mut timestamp_millis = 0;
-    for _ in 0..3 {
-        let step_request = StepRequestBuilder::new()
-            .with_parent_state_hash(builder.get_post_state_hash())
-            .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-            .with_next_era_id(builder.get_era().successor())
-            .with_era_end_timestamp_millis(timestamp_millis)
-            .with_run_auction(true)
-            .with_reward_item(RewardItem::new(
-                VALIDATOR_1_PUBLIC_KEY.clone(),
-                VALIDATOR_1_REWARD_FACTOR,
-            ))
-            .build();
-        builder.step(step_request).expect("should execute step");
-        timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
-    }
-
-    let last_trusted_era = builder.get_era();
-
-    let step_request = StepRequestBuilder::new()
-        .with_parent_state_hash(builder.get_post_state_hash())
-        .with_protocol_version(*DEFAULT_PROTOCOL_VERSION)
-        .with_reward_item(RewardItem::new(
+    builder
+        .distribute(
+            None,
+            *DEFAULT_PROTOCOL_VERSION,
             VALIDATOR_1_PUBLIC_KEY.clone(),
-            VALIDATOR_1_REWARD_FACTOR,
-        ))
-        .with_next_era_id(last_trusted_era.successor())
-        .with_era_end_timestamp_millis(timestamp_millis)
-        .with_run_auction(true)
-        .build();
+            1,
+            DEFAULT_BLOCK_TIME,
+        )
+        .expect("should distribute");
 
-    builder.step(step_request).expect("should execute step");
-
-    let accumulated_purse_balance_after = builder.get_purse_balance(accumulation_purse);
+    let accumulated_purse_balance_after_distribute = builder.get_purse_balance(accumulation_purse);
 
     assert!(
-        accumulated_purse_balance_after < accumulated_purse_balance_before,
-        "accumulated purse balance should be distributed"
+        accumulated_purse_balance_after_distribute < accumulated_purse_balance_after_exec,
+        "accumulated purse balance should be distributed ({} >= {})",
+        accumulated_purse_balance_after_distribute,
+        accumulated_purse_balance_after_exec
     );
 
     let admin_balance_after = builder.get_purse_balance(admin.main_purse());
@@ -293,16 +273,20 @@ fn should_accumulate_fees_after_upgrade() {
 
     // Ensures default proposer didn't receive any funds
     let proposer_account = builder
-        .get_account(*DEFAULT_PROPOSER_ADDR)
-        .expect("should have proposer account");
+        .query(None, Key::Account(*DEFAULT_PROPOSER_ADDR), &[])
+        .expect("should have proposer account")
+        .into_account()
+        .expect("should have legacy Account under the Key::Account variant");
 
     let proposer_balance_before = builder.get_purse_balance(proposer_account.main_purse());
 
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_contract(handle_payment_hash)
-        .expect("should have handle payment contract");
+        .query(None, handle_payment_hash.into(), &[])
+        .expect("should have handle payment contract")
+        .into_contract()
+        .expect("should have legacy Contract under the Key::Contract variant");
 
     assert!(
         handle_payment_contract
@@ -330,7 +314,7 @@ fn should_accumulate_fees_after_upgrade() {
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
     let handle_payment_contract = builder
-        .get_contract(handle_payment_hash)
+        .get_addressable_entity(handle_payment_hash)
         .expect("should have handle payment contract");
     let rewards_purse = handle_payment_contract
         .named_keys()
@@ -353,7 +337,7 @@ fn should_accumulate_fees_after_upgrade() {
     builder.exec(exec_request).expect_success().commit();
 
     let handle_payment_after = builder
-        .get_contract(handle_payment_hash)
+        .get_addressable_entity(handle_payment_hash)
         .expect("should have handle payment contract");
 
     assert_eq!(

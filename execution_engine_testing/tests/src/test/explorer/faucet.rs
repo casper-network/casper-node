@@ -869,10 +869,10 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 75_226_722_710;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 579_477_300;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 3_174_340_810;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 3_242_225_730;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 81_664_455_710;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 579_020_750;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 3_180_104_470;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 3_247_076_290;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);

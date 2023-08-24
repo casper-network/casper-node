@@ -189,6 +189,22 @@ impl StoredValue {
             StoredValue::AddressableEntity(_) => Tag::AddressableEntity,
         }
     }
+
+    /// Returns a wrapped [`Account`]s if this is a `Account` variant.
+    pub fn into_account(self) -> Option<Account> {
+        match self {
+            StoredValue::Account(account) => Some(account),
+            _ => None,
+        }
+    }
+
+    /// Returns a wrapped [`Contract`]s if this is a `Contract` variant.
+    pub fn into_contract(self) -> Option<Contract> {
+        match self {
+            StoredValue::Contract(contract) => Some(contract),
+            _ => None,
+        }
+    }
 }
 
 impl From<CLValue> for StoredValue {

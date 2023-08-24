@@ -1,7 +1,7 @@
 use casper_types::{
     account::AccountHash,
     system::{mint::Error, CallStackElement},
-    Key, Phase, StoredValue, URef, U512,
+    AddressableEntity, Key, Phase, URef, U512,
 };
 
 use crate::{engine_state::SystemContractRegistry, execution};
@@ -19,10 +19,10 @@ pub trait RuntimeProvider {
 
     fn is_called_from_standard_payment(&self) -> bool;
 
-    fn read_account(
+    fn read_addressable_entity_by_account_hash(
         &mut self,
-        account_hash: &AccountHash,
-    ) -> Result<Option<StoredValue>, execution::Error>;
+        account_hash: AccountHash,
+    ) -> Result<Option<AddressableEntity>, execution::Error>;
 
     /// Gets execution phase
     fn get_phase(&self) -> Phase;

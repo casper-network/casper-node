@@ -15,13 +15,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{
     engine_state::{
-        self,
-        engine_config::{
-            DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            DEFAULT_STRICT_ARGUMENT_CHECKING, DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        },
-        genesis::ExecConfigBuilder,
+        self, engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::ExecConfigBuilder,
         EngineConfigBuilder, Error, RunGenesisRequest,
     },
     execution,
@@ -39,8 +33,8 @@ use casper_types::{
             ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey,
-    SystemConfig, WasmConfig, U256, U512,
+    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey, U256,
+    U512,
 };
 
 use crate::lmdb_fixture;

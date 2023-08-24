@@ -355,13 +355,16 @@ impl LmdbWasmTestBuilder {
         };
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
-        WasmTestBuilder {
+
+        let post_state_hash = mode.post_state_hash();
+
+        let mut builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
             prune_results: Vec::new(),
             genesis_hash: None,
-            post_state_hash: mode.post_state_hash(),
+            post_state_hash,
             effects: Vec::new(),
             genesis_effects: None,
             system_account: None,
@@ -369,7 +372,14 @@ impl LmdbWasmTestBuilder {
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
+        };
+
+        if let Some(post_state_hash) = post_state_hash {
+            builder.system_contract_registry =
+                builder.query_system_contract_registry(Some(post_state_hash));
         }
+
+        builder
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -1117,7 +1127,8 @@ where
                     Ok(_) | Err(_) => None,
                 }
             }
-            Some(_) | None => None,
+            Some(_other_variant) => None,
+            None => None,
         }
     }
 
@@ -1145,19 +1156,6 @@ where
 
     /// Retrieve a Contract from global state.
     pub fn get_legacy_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
-        let contract_value: StoredValue = self
-            .query(None, contract_hash.into(), &[])
-            .expect("should have contract value");
-
-        if let StoredValue::Contract(contract) = contract_value {
-            Some(contract)
-        } else {
-            None
-        }
-    }
-
-    /// Queries for a contract by `ContractHash`.
-    pub fn get_contract(&self, contract_hash: ContractHash) -> Option<Contract> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");

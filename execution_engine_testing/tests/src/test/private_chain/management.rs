@@ -22,15 +22,15 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, Contract, ContractHash, ContractPackageHash, GenesisAccount, Key,
-    Package, RuntimeArgs, U512,
+    ApiError, CLType, CLValue, ContractHash, ContractPackageHash, GenesisAccount, Key, Package,
+    RuntimeArgs, U512,
 };
 use tempfile::TempDir;
 
 use crate::{
     test::private_chain::{
         self, ACCOUNT_2_ADDR, ADMIN_1_ACCOUNT_ADDR, PRIVATE_CHAIN_ALLOW_AUCTION_BIDS,
-        VALIDATOR_1_PUBLIC_KEY,
+        PRIVATE_CHAIN_COMPUTE_REWARDS, VALIDATOR_1_PUBLIC_KEY,
     },
     wasm_utils,
 };
@@ -288,7 +288,7 @@ fn administrator_account_should_disable_any_account() {
     let mut builder = super::private_chain_setup();
 
     let account_1_genesis = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
     // Account 1 can deploy after genesis
@@ -341,7 +341,7 @@ fn administrator_account_should_disable_any_account() {
     ));
 
     let account_1_disabled = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
     assert_ne!(
         account_1_genesis, account_1_disabled,
@@ -404,7 +404,7 @@ fn administrator_account_should_disable_any_account() {
     builder.exec(exec_request_3).expect_success().commit();
 
     let account_1_unfrozen = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
     assert_eq!(
         account_1_genesis, account_1_unfrozen,
@@ -429,7 +429,7 @@ fn native_transfer_should_create_new_private_account() {
     builder.exec(transfer_request).expect_success().commit();
 
     let _account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("should have account 1 after transfer");
 }
 
@@ -453,7 +453,7 @@ fn wasm_transfer_should_create_new_private_account() {
     builder.exec(transfer_request).expect_success().commit();
 
     let _account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("should have account 1 after genesis");
 }
 
@@ -475,7 +475,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .commit();
 
     let account_1_genesis = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
     let stored_contract_key = account_1_genesis
@@ -488,11 +488,10 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .expect("should have stored contract hash");
 
     let do_nothing_contract_package_key = {
-        let stored_value = builder
-            .query(None, *stored_contract_key, &[])
-            .expect("should query");
-        let contract = Contract::try_from(stored_value).expect("should be contract");
-        Key::from(contract.contract_package_hash())
+        let addressable_entity = builder
+            .get_addressable_entity(stored_contract_hash)
+            .expect("should be entity");
+        Key::from(addressable_entity.contract_package_hash())
     };
 
     let do_nothing_contract_package_hash = do_nothing_contract_package_key
@@ -656,6 +655,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         true,
         PRIVATE_CHAIN_REFUND_HANDLING,
         PRIVATE_CHAIN_FEE_HANDLING,
+        PRIVATE_CHAIN_COMPUTE_REWARDS,
     );
 
     let store_contract_request = ExecuteRequestBuilder::standard(
@@ -671,7 +671,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .commit();
 
     let account_1_genesis = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
     let stored_contract_key = account_1_genesis
@@ -684,11 +684,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .expect("should have stored contract hash");
 
     let test_payment_stored_package_key = {
-        let stored_value = builder
-            .query(None, *stored_contract_key, &[])
-            .expect("should query");
-        let contract = Contract::try_from(stored_value).expect("should be contract");
-        Key::from(contract.contract_package_hash())
+        let addressable_entity = builder
+            .get_addressable_entity(stored_contract_hash)
+            .expect("should be addressable entity");
+        Key::from(addressable_entity.contract_package_hash())
     };
 
     let test_payment_stored_package_hash = test_payment_stored_package_key

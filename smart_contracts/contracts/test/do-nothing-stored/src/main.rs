@@ -3,8 +3,7 @@
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    addressable_entity::{EntryPoint, EntryPoints},
-    contracts::{EntryPoint, EntryPoints, Parameters},
+    addressable_entity::{EntryPoint, EntryPoints, Parameters},
     CLType, EntryPointAccess, EntryPointType,
 };
 

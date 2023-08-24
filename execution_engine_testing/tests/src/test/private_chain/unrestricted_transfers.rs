@@ -156,13 +156,14 @@ fn should_disallow_transfer_to_own_purse_via_direct_mint_transfer_call() {
     let mint_contract_hash = builder.get_mint_contract_hash();
 
     let account = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account");
     let maybe_to: Option<AccountHash> = None;
     let source: URef = account.main_purse();
     let target: URef = account
         .named_keys()
-        .get(TEST_PURSE).unwrap()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should be uref");
     let amount: U512 = U512::one();
@@ -218,7 +219,7 @@ fn should_allow_admin_to_transfer_to_own_purse_via_direct_mint_transfer_call() {
     let mint_contract_hash = builder.get_mint_contract_hash();
 
     let account = builder
-        .get_account(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ADMIN_ACCOUNT_ADDR)
         .expect("should have account");
     let maybe_to: Option<AccountHash> = None;
     let source: URef = account.main_purse();
@@ -324,7 +325,7 @@ fn should_disallow_transfer_to_own_purse_via_native_transfer() {
     builder.exec(create_purse_request).expect_success().commit();
 
     let account = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account");
     let source: URef = account.main_purse();
     let target: URef = account
@@ -378,7 +379,7 @@ fn should_allow_admin_to_transfer_to_own_purse_via_native_transfer() {
     builder.exec(create_purse_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ADMIN_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ADMIN_ACCOUNT_ADDR)
         .expect("should have account");
     let source: URef = account.main_purse();
     let target: URef = account
@@ -744,7 +745,7 @@ fn should_allow_custom_payment_by_paying_to_system_account() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let handle_payment_contract = builder
-        .get_contract(builder.get_handle_payment_contract_hash())
+        .get_addressable_entity(builder.get_handle_payment_contract_hash())
         .unwrap();
     let payment_purse_key = handle_payment_contract
         .named_keys()
@@ -791,7 +792,7 @@ fn should_allow_transfer_to_system_in_a_session_code() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let handle_payment_contract = builder
-        .get_contract(builder.get_handle_payment_contract_hash())
+        .get_addressable_entity(builder.get_handle_payment_contract_hash())
         .unwrap();
     let payment_purse_key = handle_payment_contract
         .named_keys()
@@ -804,7 +805,7 @@ fn should_allow_transfer_to_system_in_a_session_code() {
         "after finalizing a private chain custom payment code a payment purse should be empty"
     );
 
-    let system_account = builder.get_account(*SYSTEM_ADDR).unwrap();
+    let system_account = builder.get_entity_by_account_hash(*SYSTEM_ADDR).unwrap();
     assert_eq!(
         system_account.main_purse().addr(),
         payment_purse_uref.addr()
@@ -829,7 +830,7 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
     builder.exec(fund_transfer_1).expect_success().commit();
 
     let handle_payment_contract = builder
-        .get_contract(builder.get_handle_payment_contract_hash())
+        .get_addressable_entity(builder.get_handle_payment_contract_hash())
         .unwrap();
     let payment_purse_key = handle_payment_contract
         .named_keys()
@@ -842,7 +843,7 @@ fn should_allow_transfer_to_system_in_a_native_transfer() {
         "after finalizing a private chain custom payment code a payment purse should be empty"
     );
 
-    let system_account = builder.get_account(*SYSTEM_ADDR).unwrap();
+    let system_account = builder.get_entity_by_account_hash(*SYSTEM_ADDR).unwrap();
     assert_eq!(
         system_account.main_purse().addr(),
         payment_purse_uref.addr()

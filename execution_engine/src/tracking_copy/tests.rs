@@ -8,7 +8,7 @@ use casper_storage::global_state::{
     trie::merkle_proof::TrieMerkleProof,
 };
 use casper_types::{
-    account::{Account, AccountHash, ACCOUNT_HASH_LENGTH},
+    account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{ActionThresholds, AssociatedKeys, ContractHash, NamedKeys, Weight},
     execution::{Effects, Transform, TransformKind},
     gens::*,
@@ -643,7 +643,7 @@ fn validate_query_proof_should_work() {
     let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([21; 32]),
         *ACCOUNT_WASM_HASH,
-        named_keys.clone(),
+        named_keys,
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
         fake_purse,
@@ -652,19 +652,6 @@ fn validate_query_proof_should_work() {
     ));
 
     let main_account_value = StoredValue::CLValue(cl_value_2);
-    let associated_keys = casper_types::account::AssociatedKeys::new(
-        account_hash,
-        casper_types::account::Weight::new(1),
-    );
-    let main_account_value = StoredValue::Account(Account::new(
-        account_hash,
-        named_keys,
-        fake_purse,
-        associated_keys,
-        casper_types::account::ActionThresholds::default(),
-    ));
-
-    let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let main_account_key = Key::Account(account_hash);
 
     // random value for proof injection attack
@@ -867,6 +854,19 @@ fn validate_query_proof_should_work() {
         ),
         Err(ValidationError::InvalidProofHash)
     );
+
+    let main_account_query_result = misfit_tracking_copy
+        .query(&EngineConfig::default(), main_account_key, &[])
+        .expect("should query");
+
+    match main_account_query_result {
+        TrackingCopyQueryResult::Success { value, .. } => assert!(
+            value.as_cl_value().is_some(),
+            "Expected CLValue under main account key, got {:?}",
+            value
+        ),
+        result => panic!("Expected query success, got {:?}", result),
+    }
 }
 
 #[test]

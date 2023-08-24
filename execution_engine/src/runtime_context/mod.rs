@@ -968,17 +968,11 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_by_account_hash()?;
+        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
 
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
-            return Err(AddKeyFailure::PermissionDenied.into());
-        }
-
-        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
-            // Exit early if authorization keys weight doesn't exceed required
-            // key management threshold
             return Err(AddKeyFailure::PermissionDenied.into());
         }
 
@@ -1010,7 +1004,7 @@ where
 
     /// Remove associated key.
     pub(crate) fn remove_associated_key(&mut self, account_hash: AccountHash) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_by_account_hash()?;
+        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
@@ -1048,7 +1042,7 @@ where
         account_hash: AccountHash,
         weight: Weight,
     ) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_by_account_hash()?;
+        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
@@ -1093,16 +1087,10 @@ where
         action_type: ActionType,
         threshold: Weight,
     ) -> Result<(), Error> {
-        let entity_key = self.get_entity_address_by_account_hash()?;
+        let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
             // Exit early with error to avoid mutations
-            return Err(SetThresholdFailure::PermissionDeniedError.into());
-        }
-
-        if !self.entity().can_manage_keys_with(&self.authorization_keys) {
-            // Exit early if authorization keys weight doesn't exceed required
-            // key management threshold
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
@@ -1135,9 +1123,32 @@ where
         Ok(value)
     }
 
-    fn get_entity_address_by_account_hash(&mut self) -> Result<Key, Error> {
-        let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(self.account_hash))?;
+    pub(crate) fn get_entity_address_for_account_hash(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<Key, Error> {
+        let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(account_hash))?;
         CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)
+    }
+
+    pub(crate) fn read_addressable_entity_by_account_hash(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<Option<AddressableEntity>, Error> {
+        match self.read_gs(&Key::Account(account_hash))? {
+            Some(StoredValue::CLValue(cl_value)) => {
+                let key: Key = cl_value.into_t().map_err(Error::CLValue)?;
+                match self.read_gs(&key)? {
+                    Some(StoredValue::AddressableEntity(addressable_entity)) => {
+                        Ok(Some(addressable_entity))
+                    }
+                    Some(_other_variant_2) => Err(Error::UnexpectedStoredValueVariant),
+                    None => Ok(None),
+                }
+            }
+            Some(_other_variant_1) => Err(Error::UnexpectedStoredValueVariant),
+            None => Ok(None),
+        }
     }
 
     /// Checks if the account context is valid.

@@ -3,7 +3,7 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, CallStackElement},
-    CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
+    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;
@@ -85,11 +85,12 @@ where
         self.context.phase() == Phase::Payment && self.module.is_none()
     }
 
-    fn read_account(
+    fn read_addressable_entity_by_account_hash(
         &mut self,
-        account_hash: &AccountHash,
-    ) -> Result<Option<StoredValue>, execution::Error> {
-        self.context.read_account(&Key::Account(*account_hash))
+        account_hash: AccountHash,
+    ) -> Result<Option<AddressableEntity>, execution::Error> {
+        self.context
+            .read_addressable_entity_by_account_hash(account_hash)
     }
 }
 

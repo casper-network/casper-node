@@ -12,7 +12,7 @@ use casper_types::{
         mint::{Error, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         CallStackElement,
     },
-    Key, Phase, PublicKey, StoredValue, URef, U512,
+    Key, Phase, PublicKey, URef, U512,
 };
 
 use crate::{
@@ -162,29 +162,25 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                     let is_source_admin = self.is_administrator(&account_hash);
                     match maybe_to {
                         Some(to) => {
-                            let maybe_account = self.read_account(&to);
+                            let maybe_account = self.read_addressable_entity_by_account_hash(to);
 
                             match maybe_account {
-                                Ok(Some(StoredValue::Account(account))) => {
+                                Ok(Some(addressable_entity)) => {
                                     // This can happen when user tries to transfer funds by
                                     // calling mint
                                     // directly but tries to specify wrong account hash.
-                                    if account.main_purse().addr() != target.addr() {
+                                    if addressable_entity.main_purse().addr() != target.addr() {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
-                                    let is_target_system_account = account.account_hash()
-                                        == PublicKey::System.to_account_hash();
-                                    let is_target_administrator =
-                                        self.is_administrator(&account.account_hash());
+                                    let is_target_system_account =
+                                        to == PublicKey::System.to_account_hash();
+                                    let is_target_administrator = self.is_administrator(&to);
                                     if !(is_source_admin
                                         || is_target_system_account
                                         || is_target_administrator)
                                     {
                                         return Err(Error::DisabledUnrestrictedTransfers);
                                     }
-                                }
-                                Ok(Some(_stored_value)) => {
-                                    return Err(Error::DisabledUnrestrictedTransfers);
                                 }
                                 Ok(None) => {
                                     // `to` is specified, but no new account is persisted
@@ -197,6 +193,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                                 }
                                 Err(error) => {
                                     warn!(%error, "error while reading account");
+                                    // dbg!(&error);
                                     return Err(Error::Storage);
                                 }
                             }

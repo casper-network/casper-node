@@ -1001,7 +1001,7 @@ where
         let wasm_config = engine_config.wasm_config();
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
-            utils::instance_and_memory(module.clone(), protocol_version, &engine_config)?;
+            utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
         self.memory = Some(memory);
         self.module = Some(module);
         self.stack = Some(stack);
@@ -1364,7 +1364,7 @@ where
         let (instance, memory) = utils::instance_and_memory(
             module.clone(),
             protocol_version,
-            &self.context.engine_config(),
+            self.context.engine_config(),
         )?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
 
@@ -2356,13 +2356,6 @@ where
                     StoredValue::CLValue(contract_by_account),
                 )?;
 
-                // None, and Some(_) with empty container is considered equal for the purpose of
-                // listing admin keys.
-                let account = {
-                    let named_keys = NamedKeys::default();
-                    Account::create(target, named_keys, target_purse)
-                };
-                self.context.write_account(target_key, account)?;
                 Ok(Ok(TransferredTo::NewAccount))
             }
             Err(mint_error) => Ok(Err(mint_error.into())),

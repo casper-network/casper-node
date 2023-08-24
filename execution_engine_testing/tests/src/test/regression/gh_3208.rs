@@ -8,13 +8,7 @@ use casper_engine_test_support::{
     DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS,
 };
 use casper_execution_engine::{
-    engine_state::{
-        self,
-        engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
-        genesis::ExecConfigBuilder,
-        EngineConfig, EngineConfigBuilder, ExecConfig, RunGenesisRequest, DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-    },
+    engine_state::{self, genesis::ExecConfigBuilder, EngineConfigBuilder, RunGenesisRequest},
     execution,
 };
 use casper_types::{

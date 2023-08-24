@@ -173,6 +173,7 @@ impl From<AccountsConfig> for Vec<GenesisAccount> {
 
 #[cfg(any(feature = "testing", test))]
 mod tests {
+    #[cfg(test)]
     use crate::{bytesrepr, testing::TestRng, AccountsConfig};
 
     #[test]

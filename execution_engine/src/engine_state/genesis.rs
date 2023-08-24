@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
-    account::{Account, AccountHash},
+    account::AccountHash,
     addressable_entity::{ActionThresholds, NamedKeys},
     execution::Effects,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
@@ -597,9 +597,9 @@ where
         self.store_contract(
             ContractPackageKind::Account(system_account_addr),
             NO_WASM,
-            U512::zero(),
             None,
             None,
+            self.create_purse(U512::zero())?,
         )?;
 
         Ok(())
@@ -1013,31 +1013,23 @@ where
         let mut total_supply = U512::zero();
 
         for account in accounts {
+            let account_starting_balance = account.balance().value();
+
             let main_purse = match account {
                 GenesisAccount::System
                     if self.exec_config.administrative_accounts().next().is_some() =>
                 {
                     payment_purse_uref
                 }
-                _ => self.create_purse(account.balance().value())?,
+                _ => self.create_purse(account_starting_balance)?,
             };
 
-            let account_hash = account.account_hash();
-            let key = Key::Account(account_hash);
-            let stored_value = StoredValue::Account(Account::create(
-                account_hash,
-                Default::default(),
-                main_purse,
-            ));
-            self.tracking_copy.borrow_mut().write(key, stored_value);
-
-            let account_starting_balance = account.balance().value();
             self.store_contract(
                 ContractPackageKind::Account(account.account_hash()),
                 NO_WASM,
-                account_starting_balance,
                 None,
                 None,
+                main_purse,
             )?;
 
             total_supply += account_starting_balance;
@@ -1104,9 +1096,9 @@ where
         self.store_contract(
             contract_package_kind,
             NO_WASM,
-            U512::zero(),
             Some(named_keys),
             Some(entry_points),
+            self.create_purse(U512::zero())?,
         )
     }
 
@@ -1114,9 +1106,9 @@ where
         &self,
         contract_package_kind: ContractPackageKind,
         no_wasm: bool,
-        starting_balance: U512,
         maybe_named_keys: Option<NamedKeys>,
         maybe_entry_points: Option<EntryPoints>,
+        main_purse: URef,
     ) -> Result<ContractHash, Box<GenesisError>> {
         let protocol_version = self.protocol_version;
         let contract_wasm_hash = if no_wasm {
@@ -1135,7 +1127,6 @@ where
             ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
-        let main_purse = self.create_purse(starting_balance)?;
         let associated_keys = contract_package_kind.associated_keys();
         let maybe_account_hash = contract_package_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();
@@ -1286,8 +1277,6 @@ mod tests {
     use super::*;
     use casper_types::AsymmetricType;
     use rand::RngCore;
-
-    use super::*;
 
     use casper_types::{bytesrepr, SecretKey};
 

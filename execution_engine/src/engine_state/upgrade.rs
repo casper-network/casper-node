@@ -331,24 +331,13 @@ where
             AddressGenerator::new(&seed_bytes, phase)
         };
         let system_contract = SystemContractType::HandlePayment;
-        let contract_name = system_contract.contract_name();
-        let mut contract = if let StoredValue::Contract(contract) = self
-            .tracking_copy
-            .borrow_mut()
-            .read(&Key::Hash(handle_payment_hash.value()))
-            .map_err(|_| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
-            })?
-            .ok_or_else(|| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContract(contract_name.to_string())
-            })? {
-            contract
-        } else {
-            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                contract_name,
-            ));
-        };
-        if !contract.named_keys().contains(ACCUMULATION_PURSE_KEY) {
+
+        let mut addressable_entity =
+            self.retrieve_system_contract(*handle_payment_hash, system_contract)?;
+        if !addressable_entity
+            .named_keys()
+            .contains(ACCUMULATION_PURSE_KEY)
+        {
             let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
             let balance_clvalue = CLValue::from_t(U512::zero())?;
             self.tracking_copy.borrow_mut().write(
@@ -361,10 +350,10 @@ where
 
             let mut new_named_keys = NamedKeys::new();
             new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
-            contract.append_named_keys(new_named_keys);
+            addressable_entity.named_keys_append(new_named_keys);
             self.tracking_copy.borrow_mut().write(
                 (*handle_payment_hash).into(),
-                StoredValue::Contract(contract),
+                StoredValue::AddressableEntity(addressable_entity),
             );
         }
 

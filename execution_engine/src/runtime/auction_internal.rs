@@ -146,6 +146,10 @@ where
     fn allow_auction_bids(&self) -> bool {
         self.context.engine_config().allow_auction_bids()
     }
+
+    fn should_compute_rewards(&self) -> bool {
+        self.context.engine_config().compute_rewards()
+    }
 }
 
 impl<'a, R> MintProvider for Runtime<'a, R>

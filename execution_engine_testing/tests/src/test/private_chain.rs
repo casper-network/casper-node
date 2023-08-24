@@ -137,6 +137,7 @@ const PRIVATE_CHAIN_REFUND_HANDLING: RefundHandling = RefundHandling::Refund {
     refund_ratio: Ratio::new_raw(1, 1),
 };
 const PRIVATE_CHAIN_FEE_HANDLING: FeeHandling = FeeHandling::Accumulate;
+const PRIVATE_CHAIN_COMPUTE_REWARDS: bool = false;
 
 static DEFUALT_PRIVATE_CHAIN_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
     ExecConfigBuilder::default()
@@ -168,12 +169,14 @@ fn custom_setup_genesis_only(
     allow_unrestricted_transfers: bool,
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
+    compute_rewards: bool,
 ) -> LmdbWasmTestBuilder {
     let engine_config = make_engine_config(
         allow_auction_bids,
         allow_unrestricted_transfers,
         refund_handling,
         fee_handling,
+        compute_rewards,
     );
     let data_dir = TempDir::new().expect("should create temp dir");
     let mut builder = LmdbWasmTestBuilder::new_with_config(data_dir.as_ref(), engine_config);
@@ -187,6 +190,7 @@ fn setup_genesis_only() -> LmdbWasmTestBuilder {
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
         PRIVATE_CHAIN_REFUND_HANDLING,
         PRIVATE_CHAIN_FEE_HANDLING,
+        PRIVATE_CHAIN_COMPUTE_REWARDS,
     )
 }
 
@@ -212,6 +216,7 @@ fn make_engine_config(
     allow_unrestricted_transfers: bool,
     refund_handling: RefundHandling,
     fee_handling: FeeHandling,
+    compute_rewards: bool,
 ) -> EngineConfig {
     let administrator_accounts = PRIVATE_CHAIN_GENESIS_ADMIN_SET.clone();
     EngineConfigBuilder::default()
@@ -221,6 +226,7 @@ fn make_engine_config(
         .with_refund_handling(refund_handling)
         .with_fee_handling(fee_handling)
         .with_wasm_config(make_wasm_config())
+        .with_compute_rewards(compute_rewards)
         .build()
 }
 
@@ -230,5 +236,6 @@ fn private_chain_setup() -> LmdbWasmTestBuilder {
         PRIVATE_CHAIN_ALLOW_UNRESTRICTED_TRANSFERS,
         PRIVATE_CHAIN_REFUND_HANDLING,
         PRIVATE_CHAIN_FEE_HANDLING,
+        PRIVATE_CHAIN_COMPUTE_REWARDS,
     )
 }

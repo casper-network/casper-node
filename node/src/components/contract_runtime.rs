@@ -40,10 +40,9 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::Bytes, ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes,
-    ChainspecRegistry, Deploy, Digest, EraId, ProtocolVersion, SystemConfig, Timestamp,
-    UpgradeConfig, WasmConfig,
+    ChainspecRegistry, Deploy, Digest, EraId, FeeHandling, ProtocolVersion, PublicKey,
+    RefundHandling, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
 };
-use casper_types::{FeeHandling, PublicKey, RefundHandling};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -999,7 +998,6 @@ mod trie_chunking_tests {
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::ContractRuntimeError,
-        effect::Effects,
         types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
 

@@ -5,14 +5,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{Error as CoreError, MAX_PAYMENT};
-use casper_types::{
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST,
-    U512,
-};
-use parity_wasm::{
-    builder,
-    elements::{Instruction, Instructions},
-};
+use casper_types::{runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST, U512};
 
 use crate::wasm_utils;
 

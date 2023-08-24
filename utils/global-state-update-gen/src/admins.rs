@@ -79,7 +79,7 @@ pub(crate) fn generate_admins(matches: &ArgMatches<'_>) {
     let total_supply_key = {
         let mint_contract_hash = test_builder.get_mint_contract_hash();
         let mint_contract = test_builder
-            .get_contract(mint_contract_hash)
+            .get_addressable_entity(mint_contract_hash)
             .expect("mint system contract");
         mint_contract
             .named_keys()

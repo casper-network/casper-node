@@ -1,7 +1,7 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use crate::bytesrepr::{ToBytes, self, FromBytes};
+use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 const FEE_HANDLING_PROPOSER_TAG: u8 = 0;
 const FEE_HANDLING_ACCUMULATE_TAG: u8 = 1;

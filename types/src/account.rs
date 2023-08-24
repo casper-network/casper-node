@@ -20,8 +20,7 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 
 pub use self::{
-    account_hash::AccountHash,
-    account_hash::{ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
+    account_hash::{AccountHash, ACCOUNT_HASH_FORMATTED_STRING_PREFIX, ACCOUNT_HASH_LENGTH},
     action_thresholds::ActionThresholds,
     action_type::ActionType,
     associated_keys::AssociatedKeys,
