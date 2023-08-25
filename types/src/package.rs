@@ -1046,15 +1046,15 @@ mod tests {
 
     use super::*;
     use crate::{
-        addressable_entity::NamedKeys, AccessRights, ContractVersionKey, EntryPoint,
-        EntryPointAccess, EntryPointType, Parameter, ProtocolVersion, URef,
+        AccessRights, ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Parameter,
+        ProtocolVersion, URef,
     };
     use alloc::borrow::ToOwned;
 
     const CONTRACT_HASH_V1: ContractHash = ContractHash::new([42; 32]);
     const CONTRACT_HASH_V2: ContractHash = ContractHash::new([84; 32]);
 
-    fn make_contract_package() -> Package {
+    fn make_contract_package_with_two_versions() -> Package {
         let mut contract_package = Package::new(
             URef::new([0; 32], AccessRights::NONE),
             ContractVersions::default(),
@@ -1103,14 +1103,13 @@ mod tests {
             ret
         };
 
-        let _contract_package_hash = [41; 32];
-        let contract_hash = [42; 32];
-        let _contract_wasm_hash = [43; 32];
-        let _named_keys = NamedKeys::new();
         let protocol_version = ProtocolVersion::V1_0_0;
 
-        contract_package
-            .insert_contract_version(protocol_version.value().major, contract_hash.into());
+        let v1 = contract_package
+            .insert_contract_version(protocol_version.value().major, CONTRACT_HASH_V1);
+        let v2 = contract_package
+            .insert_contract_version(protocol_version.value().major, CONTRACT_HASH_V2);
+        assert!(v2 > v1);
 
         contract_package
     }
@@ -1142,7 +1141,7 @@ mod tests {
 
     #[test]
     fn roundtrip_serialization() {
-        let contract_package = make_contract_package();
+        let contract_package = make_contract_package_with_two_versions();
         let bytes = contract_package.to_bytes().expect("should serialize");
         let (decoded_package, rem) = Package::from_bytes(&bytes).expect("should deserialize");
         assert_eq!(contract_package, decoded_package);
@@ -1151,7 +1150,7 @@ mod tests {
 
     #[test]
     fn should_remove_group() {
-        let mut contract_package = make_contract_package();
+        let mut contract_package = make_contract_package_with_two_versions();
 
         assert!(!contract_package.remove_group(&Group::new("Non-existent group")));
         assert!(contract_package.remove_group(&Group::new("Group 1")));
@@ -1162,7 +1161,7 @@ mod tests {
     fn should_disable_and_enable_contract_version() {
         const CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
 
-        let mut contract_package = make_contract_package();
+        let mut contract_package = make_contract_package_with_two_versions();
 
         assert!(
             !contract_package.is_contract_enabled(&CONTRACT_HASH),
@@ -1351,7 +1350,7 @@ mod tests {
 
     #[test]
     fn should_not_allow_to_enable_non_existing_version() {
-        let mut contract_package = make_contract_package();
+        let mut contract_package = make_contract_package_with_two_versions();
 
         assert_eq!(
             contract_package.enable_version(ContractHash::default()),
