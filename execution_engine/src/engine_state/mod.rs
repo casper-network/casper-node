@@ -483,7 +483,7 @@ where
             let mut borrow = tracking_copy.borrow_mut();
             if let Ok(existing_bid_keys) = borrow.get_keys(&KeyTag::Bid) {
                 for key in existing_bid_keys {
-                    if let Some(StoredValue::Bid(BidKind::Unified(existing_bid))) =
+                    if let Some(StoredValue::Bid(existing_bid)) =
                         borrow.get(&key).map_err(|err| err.into())?
                     {
                         // prune away the original record, we don't need it anymore
@@ -506,7 +506,7 @@ where
                         let validator_bid = ValidatorBid::from(*existing_bid.clone());
                         borrow.write(
                             validator_bid_addr.into(),
-                            StoredValue::Bid(BidKind::Validator(Box::new(validator_bid))),
+                            StoredValue::BidKind(BidKind::Validator(Box::new(validator_bid))),
                         );
 
                         let delegators = existing_bid.delegators().clone();
@@ -522,7 +522,7 @@ where
                             if !delegator.staked_amount().is_zero() {
                                 borrow.write(
                                     delegator_bid_addr.into(),
-                                    StoredValue::Bid(BidKind::Delegator(Box::new(delegator))),
+                                    StoredValue::BidKind(BidKind::Delegator(Box::new(delegator))),
                                 );
                             }
                         }
@@ -531,7 +531,7 @@ where
             }
         }
 
-        // apply the arbitrary modifications
+        // apply accepted global state updates (if any)
         for (key, value) in upgrade_config.global_state_update() {
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
@@ -2163,12 +2163,14 @@ where
         let mut tracking_copy = tracking_copy.borrow_mut();
 
         let bid_keys = tracking_copy
-            .get_keys(&KeyTag::Bid)
+            .get_keys(&KeyTag::BidAddr)
             .map_err(|err| Error::Exec(err.into()))?;
 
         let mut bids = vec![];
         for key in bid_keys.iter() {
-            if let Some(StoredValue::Bid(bid_kind)) = tracking_copy.get(key).map_err(Into::into)? {
+            if let Some(StoredValue::BidKind(bid_kind)) =
+                tracking_copy.get(key).map_err(Into::into)?
+            {
                 bids.push(bid_kind);
             };
         }

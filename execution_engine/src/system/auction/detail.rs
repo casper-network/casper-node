@@ -46,7 +46,7 @@ where
 {
     // todo!("this could be optimized somewhat by adding a method to get keys with
     //  prefix of KeyTag::Bid + BidKindTag::Validator");
-    let bids_keys = provider.get_keys(&KeyTag::Bid)?;
+    let bids_keys = provider.get_keys(&KeyTag::BidAddr)?;
 
     let mut ret = BTreeMap::new();
 
@@ -544,7 +544,7 @@ pub(crate) fn read_validator_bid<P>(
 where
     P: StorageProvider + ?Sized,
 {
-    if !bid_key.is_bid_key() {
+    if !bid_key.is_bid_addr_key() {
         return Err(Error::InvalidKeyVariant);
     }
     if let Some(BidKind::Validator(validator_bid)) = provider.read_bid(bid_key)? {
@@ -584,7 +584,7 @@ pub(crate) fn read_delegator_bid<P>(
 where
     P: RuntimeProvider + ?Sized + StorageProvider,
 {
-    if !bid_key.is_bid_key() {
+    if !bid_key.is_bid_addr_key() {
         return Err(Error::InvalidKeyVariant);
     }
     if let Some(BidKind::Delegator(delegator_bid)) = provider.read_bid(bid_key)? {

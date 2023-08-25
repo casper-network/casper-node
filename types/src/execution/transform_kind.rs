@@ -149,6 +149,11 @@ impl TransformKind {
                     let found = "Bid".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::BidKind(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "BidKind".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
                 StoredValue::Withdraw(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "Withdraw".to_string();

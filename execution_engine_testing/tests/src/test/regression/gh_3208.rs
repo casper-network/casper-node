@@ -25,7 +25,7 @@ use casper_types::{
         auction::{self, BidAddr, DelegationRate},
         standard_payment,
     },
-    ApiError, GenesisAccount, GenesisValidator, Motes, StoredValue, U512,
+    ApiError, GenesisAccount, GenesisValidator, Key, Motes, StoredValue, U512,
 };
 
 use crate::lmdb_fixture;
@@ -64,33 +64,39 @@ fn should_run_regression_with_already_initialized_fixed_schedule() {
     let (builder, _lmdb_fixture_state, _temp_dir) =
         lmdb_fixture::builder_from_global_state_fixture(LMDB_FIXTURE_NAME);
 
-    let bid_addr = BidAddr::legacy(DEFAULT_PROPOSER_ADDR.value());
+    let bid_key = Key::Bid(*DEFAULT_PROPOSER_ADDR);
 
-    let stored_value = builder.query(None, bid_addr.into(), &[]).unwrap();
-    let bid = stored_value.as_bid_kind().expect("expected BidKind");
-    assert!(bid.is_locked_with_vesting_schedule(7776000000, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS));
-    let vesting_schedule = bid
-        .vesting_schedule()
-        .expect("should have a schedule initialized already");
+    let stored_value = builder.query(None, bid_key, &[]).unwrap();
+    if let StoredValue::Bid(bid) = stored_value {
+        assert!(
+            bid.is_locked_with_vesting_schedule(7776000000, DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS)
+        );
+        let vesting_schedule = bid
+            .vesting_schedule()
+            .expect("should have a schedule initialized already");
 
-    let initial_stake = *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE;
+        let initial_stake = *DEFAULT_PROPOSER_ACCOUNT_INITIAL_STAKE;
 
-    let total_vested_amounts = {
-        let mut total_vested_amounts = U512::zero();
+        let total_vested_amounts = {
+            let mut total_vested_amounts = U512::zero();
 
-        for i in 0..LOCKED_AMOUNTS_LENGTH {
-            let timestamp =
-                vesting_schedule.initial_release_timestamp_millis() + (WEEK_MILLIS * i) as u64;
-            if let Some(locked_amount) = vesting_schedule.locked_amount(timestamp) {
-                let current_vested_amount = initial_stake - locked_amount - total_vested_amounts;
-                total_vested_amounts += current_vested_amount
+            for i in 0..LOCKED_AMOUNTS_LENGTH {
+                let timestamp =
+                    vesting_schedule.initial_release_timestamp_millis() + (WEEK_MILLIS * i) as u64;
+                if let Some(locked_amount) = vesting_schedule.locked_amount(timestamp) {
+                    let current_vested_amount =
+                        initial_stake - locked_amount - total_vested_amounts;
+                    total_vested_amounts += current_vested_amount
+                }
             }
-        }
 
-        total_vested_amounts
-    };
+            total_vested_amounts
+        };
 
-    assert_eq!(total_vested_amounts, initial_stake);
+        assert_eq!(total_vested_amounts, initial_stake);
+    } else {
+        panic!("unexpected StoredValue variant.")
+    }
 }
 
 #[ignore]
@@ -107,7 +113,7 @@ fn should_initialize_default_vesting_schedule() {
         .query(None, bid_addr.into(), &[])
         .expect("should query proposers bid");
 
-    let bid_before = if let StoredValue::Bid(bid) = stored_value_before {
+    let bid_before = if let StoredValue::BidKind(bid) = stored_value_before {
         bid
     } else {
         panic!("Expected a bid variant in the global state");
@@ -140,7 +146,7 @@ fn should_initialize_default_vesting_schedule() {
         .query(None, bid_addr.into(), &[])
         .expect("should query proposers bid");
 
-    let bid_after = if let StoredValue::Bid(bid) = stored_value_after {
+    let bid_after = if let StoredValue::BidKind(bid) = stored_value_after {
         bid
     } else {
         panic!("Expected a bid variant in the global state");

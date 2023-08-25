@@ -604,7 +604,7 @@ mod prop_tests {
 
     proptest! {
         #[test]
-        fn test_value_bid(bid in gens::bid_arb()) {
+        fn test_unified_bid(bid in gens::unified_bid_arb(0..3)) {
             bytesrepr::test_serialization_roundtrip(&bid);
         }
     }

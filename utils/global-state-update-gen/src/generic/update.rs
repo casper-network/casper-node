@@ -72,7 +72,7 @@ impl Update {
 
     pub(crate) fn get_written_bid(&self, account: AccountHash) -> BidKind {
         self.entries
-            .get(&Key::Bid(BidAddr::from(account)))
+            .get(&Key::BidAddr(BidAddr::from(account)))
             .expect("stored value should exist")
             .as_bid_kind()
             .expect("stored value should be be BidKind")
@@ -107,7 +107,7 @@ impl Update {
         let mut ret = vec![];
 
         for (_, v) in self.entries.clone() {
-            if let StoredValue::Bid(BidKind::Delegator(delegator)) = v {
+            if let StoredValue::BidKind(BidKind::Delegator(delegator)) = v {
                 if delegator.validator_public_key() != validator_bid.validator_public_key() {
                     continue;
                 }
@@ -182,7 +182,7 @@ impl Update {
     #[track_caller]
     pub(crate) fn assert_written_bid(&self, account: AccountHash, bid: BidKind) {
         assert_eq!(
-            self.entries.get(&Key::Bid(BidAddr::from(account))),
+            self.entries.get(&Key::BidAddr(BidAddr::from(account))),
             Some(&StoredValue::from(bid))
         );
     }

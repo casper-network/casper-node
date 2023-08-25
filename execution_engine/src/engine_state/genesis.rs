@@ -703,19 +703,19 @@ where
         // store all delegator and validator bids
         for (validator_public_key, (validator_bid, delegators)) in staked {
             for (delegator_public_key, delegator_bid) in delegators {
-                let delegator_bid_key = Key::Bid(BidAddr::new_from_public_keys(
+                let delegator_bid_key = Key::BidAddr(BidAddr::new_from_public_keys(
                     &validator_public_key.clone(),
                     Some(&delegator_public_key.clone()),
                 ));
                 self.tracking_copy.borrow_mut().write(
                     delegator_bid_key,
-                    StoredValue::Bid(BidKind::Delegator(Box::new(delegator_bid))),
+                    StoredValue::BidKind(BidKind::Delegator(Box::new(delegator_bid))),
                 );
             }
-            let validator_bid_key = Key::Bid(BidAddr::from(validator_public_key.clone()));
+            let validator_bid_key = Key::BidAddr(BidAddr::from(validator_public_key.clone()));
             self.tracking_copy.borrow_mut().write(
                 validator_bid_key,
-                StoredValue::Bid(BidKind::Validator(Box::new(validator_bid))),
+                StoredValue::BidKind(BidKind::Validator(Box::new(validator_bid))),
             );
         }
 

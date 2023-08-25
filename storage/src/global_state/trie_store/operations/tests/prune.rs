@@ -1,11 +1,11 @@
 use super::*;
 use crate::global_state::{transaction_source::Writable, trie_store::operations::PruneResult};
 
-fn checked_delete<K, V, T, S, E>(
+fn checked_prune<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
     root: &Digest,
-    key_to_delete: &K,
+    key_to_prune: &K,
 ) -> Result<PruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + std::fmt::Debug + Eq,
@@ -15,28 +15,28 @@ where
     S::Error: From<T::Error>,
     E: From<S::Error> + From<bytesrepr::Error>,
 {
-    let _counter = TestValue::before_operation(TestOperation::Delete);
-    let delete_result = operations::prune::<K, V, T, S, E>(txn, store, root, key_to_delete);
-    let counter = TestValue::after_operation(TestOperation::Delete);
+    let _counter = TestValue::before_operation(TestOperation::Prune);
+    let prune_result = operations::prune::<K, V, T, S, E>(txn, store, root, key_to_prune);
+    let counter = TestValue::after_operation(TestOperation::Prune);
     assert_eq!(counter, 0, "Delete should never deserialize a value");
-    let delete_result = delete_result?;
-    if let PruneResult::Pruned(new_root) = delete_result {
+    let prune_result = prune_result?;
+    if let PruneResult::Pruned(new_root) = prune_result {
         operations::check_integrity::<K, V, T, S, E>(txn, store, vec![new_root])?;
     }
-    Ok(delete_result)
+    Ok(prune_result)
 }
 
 mod partial_tries {
     use super::*;
     use crate::global_state::trie_store::operations::PruneResult;
 
-    fn delete_from_partial_trie_had_expected_results<'a, K, V, R, S, E>(
+    fn prune_from_partial_trie_had_expected_results<'a, K, V, R, S, E>(
         environment: &'a R,
         store: &S,
         root: &Digest,
-        key_to_delete: &K,
-        expected_root_after_delete: &Digest,
-        expected_tries_after_delete: &[HashedTrie<K, V>],
+        key_to_prune: &K,
+        expected_root_after_prune: &Digest,
+        expected_tries_after_prune: &[HashedTrie<K, V>],
     ) -> Result<(), E>
     where
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
@@ -48,33 +48,33 @@ mod partial_tries {
     {
         let mut txn = environment.create_read_write_txn()?;
         // The assert below only works with partial tries
-        assert_eq!(store.get(&txn, expected_root_after_delete)?, None);
-        let root_after_delete =
-            match checked_delete::<K, V, _, _, E>(&mut txn, store, root, key_to_delete)? {
-                PruneResult::Pruned(root_after_delete) => root_after_delete,
+        assert_eq!(store.get(&txn, expected_root_after_prune)?, None);
+        let root_after_prune =
+            match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
+                PruneResult::Pruned(root_after_prune) => root_after_prune,
                 PruneResult::DoesNotExist => panic!("key did not exist"),
                 PruneResult::RootNotFound => panic!("root should be found"),
             };
-        assert_eq!(root_after_delete, *expected_root_after_delete);
-        for HashedTrie { hash, trie } in expected_tries_after_delete {
+        assert_eq!(root_after_prune, *expected_root_after_prune);
+        for HashedTrie { hash, trie } in expected_tries_after_prune {
             assert_eq!(store.get(&txn, hash)?, Some(trie.clone()));
         }
         Ok(())
     }
 
     #[test]
-    fn lmdb_delete_from_partial_trie_had_expected_results() {
+    fn lmdb_prune_from_partial_trie_had_expected_results() {
         for i in 0..TEST_LEAVES_LENGTH {
             let (initial_root_hash, initial_tries) = TEST_TRIE_GENERATORS[i + 1]().unwrap();
             let (updated_root_hash, updated_tries) = TEST_TRIE_GENERATORS[i]().unwrap();
-            let key_to_delete = &TEST_LEAVES[i];
+            let key_to_prune = &TEST_LEAVES[i];
             let context = LmdbTestContext::new(&initial_tries).unwrap();
 
-            delete_from_partial_trie_had_expected_results::<TestKey, TestValue, _, _, error::Error>(
+            prune_from_partial_trie_had_expected_results::<TestKey, TestValue, _, _, error::Error>(
                 &context.environment,
                 &context.store,
                 &initial_root_hash,
-                key_to_delete.key().unwrap(),
+                key_to_prune.key().unwrap(),
                 &updated_root_hash,
                 updated_tries.as_slice(),
             )
@@ -82,11 +82,11 @@ mod partial_tries {
         }
     }
 
-    fn delete_non_existent_key_from_partial_trie_should_return_does_not_exist<'a, K, V, R, S, E>(
+    fn prune_non_existent_key_from_partial_trie_should_return_does_not_exist<'a, K, V, R, S, E>(
         environment: &'a R,
         store: &S,
         root: &Digest,
-        key_to_delete: &K,
+        key_to_prune: &K,
     ) -> Result<(), E>
     where
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
@@ -97,21 +97,21 @@ mod partial_tries {
         E: From<R::Error> + From<S::Error> + From<bytesrepr::Error>,
     {
         let mut txn = environment.create_read_write_txn()?;
-        match checked_delete::<K, V, _, _, E>(&mut txn, store, root, key_to_delete)? {
-            PruneResult::Pruned(_) => panic!("should not delete"),
+        match checked_prune::<K, V, _, _, E>(&mut txn, store, root, key_to_prune)? {
+            PruneResult::Pruned(_) => panic!("should not prune"),
             PruneResult::DoesNotExist => Ok(()),
             PruneResult::RootNotFound => panic!("root should be found"),
         }
     }
 
     #[test]
-    fn lmdb_delete_non_existent_key_from_partial_trie_should_return_does_not_exist() {
+    fn lmdb_prune_non_existent_key_from_partial_trie_should_return_does_not_exist() {
         for i in 0..TEST_LEAVES_LENGTH {
             let (initial_root_hash, initial_tries) = TEST_TRIE_GENERATORS[i]().unwrap();
-            let key_to_delete = &TEST_LEAVES_ADJACENTS[i];
+            let key_to_prune = &TEST_LEAVES_ADJACENTS[i];
             let context = LmdbTestContext::new(&initial_tries).unwrap();
 
-            delete_non_existent_key_from_partial_trie_should_return_does_not_exist::<
+            prune_non_existent_key_from_partial_trie_should_return_does_not_exist::<
                 TestKey,
                 TestValue,
                 _,
@@ -121,7 +121,7 @@ mod partial_tries {
                 &context.environment,
                 &context.store,
                 &initial_root_hash,
-                key_to_delete.key().unwrap(),
+                key_to_prune.key().unwrap(),
             )
             .unwrap();
         }
@@ -152,7 +152,7 @@ mod full_tries {
         },
     };
 
-    fn serially_insert_and_delete<'a, K, V, R, S, E>(
+    fn serially_insert_and_prune<'a, K, V, R, S, E>(
         environment: &'a R,
         store: &S,
         root: &Digest,
@@ -181,26 +181,26 @@ mod full_tries {
         // Delete the key-value pairs, checking the resulting roots as we go
         let mut current_root = roots.pop().unwrap_or_else(|| root.to_owned());
         for (key, _value) in pairs.iter().rev() {
-            let _counter = TestValue::before_operation(TestOperation::Delete);
-            let delete_result = prune::<K, V, _, _, E>(&mut txn, store, &current_root, key);
-            let counter = TestValue::after_operation(TestOperation::Delete);
+            let _counter = TestValue::before_operation(TestOperation::Prune);
+            let prune_result = prune::<K, V, _, _, E>(&mut txn, store, &current_root, key);
+            let counter = TestValue::after_operation(TestOperation::Prune);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
-            if let PruneResult::Pruned(new_root) = delete_result? {
+            if let PruneResult::Pruned(new_root) = prune_result? {
                 current_root = roots.pop().unwrap_or_else(|| root.to_owned());
                 assert_eq!(new_root, current_root);
             } else {
-                panic!("Could not delete")
+                panic!("Could not prune")
             }
         }
         Ok(())
     }
 
     #[test]
-    fn lmdb_serially_insert_and_delete() {
+    fn lmdb_serially_insert_and_prune() {
         let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
         let context = LmdbTestContext::new(&empty_trie).unwrap();
 
-        serially_insert_and_delete::<TestKey, TestValue, _, _, error::Error>(
+        serially_insert_and_prune::<TestKey, TestValue, _, _, error::Error>(
             &context.environment,
             &context.store,
             &empty_root_hash,
@@ -214,20 +214,20 @@ mod full_tries {
         .unwrap();
     }
 
-    const INTERLEAVED_INSERT_AND_DELETE_TEST_LEAVES_1: [(TestKey, TestValue); 3] = [
+    const INTERLEAVED_INSERT_AND_PRUNE_TEST_LEAVES_1: [(TestKey, TestValue); 3] = [
         (TestKey([1u8; 7]), TestValue([1u8; 6])),
         (TestKey([0u8; 7]), TestValue([0u8; 6])),
         (TestKey([0u8, 1, 1, 1, 1, 1, 1]), TestValue([2u8; 6])),
     ];
 
-    const INTERLEAVED_DELETE_TEST_KEYS_1: [TestKey; 1] = [TestKey([1u8; 7])];
+    const INTERLEAVED_PRUNE_TEST_KEYS_1: [TestKey; 1] = [TestKey([1u8; 7])];
 
-    fn interleaved_insert_and_delete<'a, K, V, R, S, E>(
+    fn interleaved_insert_and_prune<'a, K, V, R, S, E>(
         environment: &'a R,
         store: &S,
         root: &Digest,
         pairs_to_insert: &[(K, V)],
-        keys_to_delete: &[K],
+        keys_to_prune: &[K],
     ) -> Result<(), E>
     where
         K: ToBytes + FromBytes + Clone + Eq + std::fmt::Debug,
@@ -249,12 +249,12 @@ mod full_tries {
                 panic!("Could not write pair")
             }
         }
-        for key in keys_to_delete.iter() {
-            let _counter = TestValue::before_operation(TestOperation::Delete);
-            let delete_result = prune::<K, V, _, _, E>(&mut txn, store, &expected_root, key);
-            let counter = TestValue::after_operation(TestOperation::Delete);
+        for key in keys_to_prune.iter() {
+            let _counter = TestValue::before_operation(TestOperation::Prune);
+            let prune_result = prune::<K, V, _, _, E>(&mut txn, store, &expected_root, key);
+            let counter = TestValue::after_operation(TestOperation::Prune);
             assert_eq!(counter, 0, "Delete should never deserialize a value");
-            match delete_result? {
+            match prune_result? {
                 PruneResult::Pruned(new_root) => {
                     expected_root = new_root;
                 }
@@ -263,15 +263,15 @@ mod full_tries {
             }
         }
 
-        let pairs_to_insert_less_deleted: Vec<(K, V)> = pairs_to_insert
+        let pairs_to_insert_less_pruned: Vec<(K, V)> = pairs_to_insert
             .iter()
             .rev()
             .cloned()
-            .filter(|(key, _value)| !keys_to_delete.contains(key))
+            .filter(|(key, _value)| !keys_to_prune.contains(key))
             .collect();
 
         let mut actual_root = *root;
-        for (key, value) in pairs_to_insert_less_deleted.iter() {
+        for (key, value) in pairs_to_insert_less_pruned.iter() {
             if let WriteResult::Written(new_root) =
                 write::<K, V, _, _, E>(&mut txn, store, &actual_root, key, value)?
             {
@@ -287,16 +287,16 @@ mod full_tries {
     }
 
     #[test]
-    fn lmdb_interleaved_insert_and_delete() {
+    fn lmdb_interleaved_insert_and_prune() {
         let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
         let context = LmdbTestContext::new(&empty_trie).unwrap();
 
-        interleaved_insert_and_delete::<TestKey, TestValue, _, _, error::Error>(
+        interleaved_insert_and_prune::<TestKey, TestValue, _, _, error::Error>(
             &context.environment,
             &context.store,
             &empty_root_hash,
-            &INTERLEAVED_INSERT_AND_DELETE_TEST_LEAVES_1,
-            &INTERLEAVED_DELETE_TEST_KEYS_1,
+            &INTERLEAVED_INSERT_AND_PRUNE_TEST_LEAVES_1,
+            &INTERLEAVED_PRUNE_TEST_KEYS_1,
         )
         .unwrap();
     }
@@ -317,13 +317,13 @@ mod full_tries {
 
     proptest! {
         #[test]
-        fn prop_lmdb_interleaved_insert_and_delete(
+        fn prop_lmdb_interleaved_insert_and_prune(
             pairs_to_insert in collection::vec((colliding_key_arb(), stored_value_arb()), get_range())
         ) {
             let (empty_root_hash, empty_trie) = TEST_TRIE_GENERATORS[0]().unwrap();
             let context = LmdbTestContext::new(&empty_trie).unwrap();
 
-            let keys_to_delete = {
+            let keys_to_prune = {
                 let mut tmp = Vec::new();
                 for i in (0..pairs_to_insert.len()).step_by(2) {
                     tmp.push(pairs_to_insert[i].0)
@@ -331,12 +331,12 @@ mod full_tries {
                 tmp
             };
 
-            interleaved_insert_and_delete::<Key, StoredValue, _, _, error::Error>(
+            interleaved_insert_and_prune::<Key, StoredValue, _, _, error::Error>(
                 &context.environment,
                 &context.store,
                 &empty_root_hash,
                 &pairs_to_insert,
-                &keys_to_delete,
+                &keys_to_prune,
             )
             .unwrap();
         }

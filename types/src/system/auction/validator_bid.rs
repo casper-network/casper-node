@@ -358,130 +358,11 @@ mod tests {
             validator_release_timestamp,
         );
 
-        // TODO: move testing of this to outer logic as the processing no longer
-        // is part of the record impl
-        // assert!(bid.process_with_vesting_schedule(
-        //     validator_release_timestamp,
-        //     vesting_schedule_period_millis,
-        // ));
         assert!(!bid.is_locked_with_vesting_schedule(
             validator_release_timestamp,
             vesting_schedule_period_millis
         ));
     }
-    //
-    // #[test]
-    // fn should_initialize_delegators_different_timestamps() {
-    //     todo!(
-    //         "move all of this testing to EE auction logic as this functionality no longer exists\
-    //     in the record impl"
-    //     );
-    //     const TIMESTAMP_MILLIS: u64 = WEEK_MILLIS;
-    //
-    //     let validator_pk: PublicKey = (&SecretKey::ed25519_from_bytes([42; 32]).unwrap()).into();
-    //
-    //     let delegator_1_pk: PublicKey = (&SecretKey::ed25519_from_bytes([43;
-    // 32]).unwrap()).into();     let delegator_2_pk: PublicKey =
-    // (&SecretKey::ed25519_from_bytes([44; 32]).unwrap()).into();
-    //
-    //     let validator_release_timestamp = TIMESTAMP_MILLIS;
-    //     let validator_bonding_purse = URef::new([42; 32], AccessRights::ADD);
-    //     let validator_staked_amount = U512::from(1000);
-    //     let validator_delegation_rate = 0;
-    //
-    //     let delegator_1_release_timestamp = TIMESTAMP_MILLIS + 1;
-    //     let delegator_1_bonding_purse = URef::new([52; 32], AccessRights::ADD);
-    //     let delegator_1_staked_amount = U512::from(2000);
-    //
-    //     let delegator_2_release_timestamp = TIMESTAMP_MILLIS + 2;
-    //     let delegator_2_bonding_purse = URef::new([62; 32], AccessRights::ADD);
-    //     let delegator_2_staked_amount = U512::from(3000);
-    //
-    //     let delegator_1 = Delegator::locked(
-    //         delegator_1_pk.clone(),
-    //         delegator_1_staked_amount,
-    //         delegator_1_bonding_purse,
-    //         validator_pk.clone(),
-    //         delegator_1_release_timestamp,
-    //     );
-    //
-    //     let delegator_2 = Delegator::locked(
-    //         delegator_2_pk.clone(),
-    //         delegator_2_staked_amount,
-    //         delegator_2_bonding_purse,
-    //         validator_pk.clone(),
-    //         delegator_2_release_timestamp,
-    //     );
-    //
-    //     let mut bid = ValidatorBid::locked(
-    //         validator_pk,
-    //         validator_bonding_purse,
-    //         validator_staked_amount,
-    //         validator_delegation_rate,
-    //         validator_release_timestamp,
-    //     );
-    //
-    //     assert!(!bid.process_with_vesting_schedule(
-    //         validator_release_timestamp - 1,
-    //         TEST_VESTING_SCHEDULE_LENGTH_MILLIS
-    //     ));
-    //
-    //     {
-    //         let delegators = bid.delegators_mut();
-    //
-    //         delegators.insert(delegator_1_pk.clone(), delegator_1);
-    //         delegators.insert(delegator_2_pk.clone(), delegator_2);
-    //     }
-    //
-    //     assert!(bid.process_with_vesting_schedule(
-    //         delegator_1_release_timestamp,
-    //         TEST_VESTING_SCHEDULE_LENGTH_MILLIS
-    //     ));
-    //
-    //     let delegator_1_updated_1 = bid.delegators().get(&delegator_1_pk).cloned().unwrap();
-    //     assert!(delegator_1_updated_1
-    //         .vesting_schedule()
-    //         .unwrap()
-    //         .locked_amounts()
-    //         .is_some());
-    //
-    //     let delegator_2_updated_1 = bid.delegators().get(&delegator_2_pk).cloned().unwrap();
-    //     assert!(delegator_2_updated_1
-    //         .vesting_schedule()
-    //         .unwrap()
-    //         .locked_amounts()
-    //         .is_none());
-    //
-    //     assert!(bid.process_with_vesting_schedule(
-    //         delegator_2_release_timestamp,
-    //         TEST_VESTING_SCHEDULE_LENGTH_MILLIS
-    //     ));
-    //
-    //     let delegator_1_updated_2 = bid.delegators().get(&delegator_1_pk).cloned().unwrap();
-    //     assert!(delegator_1_updated_2
-    //         .vesting_schedule()
-    //         .unwrap()
-    //         .locked_amounts()
-    //         .is_some());
-    //     // Delegator 1 is already initialized and did not change after 2nd Bid::process
-    //     assert_eq!(delegator_1_updated_1, delegator_1_updated_2);
-    //
-    //     let delegator_2_updated_2 = bid.delegators().get(&delegator_2_pk).cloned().unwrap();
-    //     assert!(delegator_2_updated_2
-    //         .vesting_schedule()
-    //         .unwrap()
-    //         .locked_amounts()
-    //         .is_some());
-    //
-    //     // Delegator 2 is different compared to first Bid::process
-    //     assert_ne!(delegator_2_updated_1, delegator_2_updated_2);
-    //
-    //     // Validator initialized, and all delegators initialized
-    //     assert!(!bid.process_with_vesting_schedule(
-    //         delegator_2_release_timestamp + 1,
-    //         TEST_VESTING_SCHEDULE_LENGTH_MILLIS
-    //     ));
-    // }
 }
 
 #[cfg(test)]
@@ -492,7 +373,7 @@ mod prop_tests {
 
     proptest! {
         #[test]
-        fn test_value_bid(bid in gens::bid_arb()) {
+        fn test_value_bid(bid in gens::validator_bid_arb()) {
             bytesrepr::test_serialization_roundtrip(&bid);
         }
     }

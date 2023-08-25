@@ -132,11 +132,14 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
     type Error = error::Error;
 
     fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
-        if self.cache.read().unwrap().pruned.contains(key) {
-            return Ok(None);
-        }
-        if let Some(value) = self.cache.read().unwrap().get(key) {
-            return Ok(Some(value.clone()));
+        {
+            let cache = self.cache.read().unwrap();
+            if cache.pruned.contains(key) {
+                return Ok(None);
+            }
+            if let Some(value) = cache.get(key) {
+                return Ok(Some(value.clone()));
+            }
         }
         let txn = self.environment.create_read_txn()?;
         let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
@@ -189,10 +192,11 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             prefix,
         );
         let mut ret = Vec::new();
+        let cache = self.cache.read().unwrap();
         for result in keys_iter {
             match result {
                 Ok(key) => {
-                    if !self.cache.read().unwrap().pruned.contains(&key) {
+                    if !cache.pruned.contains(&key) {
                         ret.push(key);
                     }
                 }
@@ -260,13 +264,13 @@ impl CommitProvider for ScratchGlobalState {
                     }
                 }
             };
-
+            let mut cache = self.cache.write().unwrap();
             match instruction {
                 TransformInstruction::Store(value) => {
-                    self.cache.write().unwrap().insert_write(key, value);
+                    cache.insert_write(key, value);
                 }
                 TransformInstruction::Prune(key) => {
-                    self.cache.write().unwrap().prune(key);
+                    cache.prune(key);
                 }
             }
         }

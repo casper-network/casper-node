@@ -108,7 +108,8 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     };
 
     let validator_public_key = PublicKey::from(&validator_secret_key);
-    let validator_bid_key = Key::Bid(BidAddr::new_from_public_keys(&validator_public_key, None));
+    let validator_bid_key =
+        Key::BidAddr(BidAddr::new_from_public_keys(&validator_public_key, None));
     let validator_bid = ValidatorBid::locked(
         validator_public_key.clone(),
         URef::new([10; 32], AccessRights::READ_ADD_WRITE),
@@ -118,7 +119,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     );
     let validator_bid_kind = BidKind::Validator(Box::new(validator_bid));
     let delegator_public_key = PublicKey::from(&delegator_secret_key);
-    let delegator_bid_key = Key::Bid(BidAddr::new_from_public_keys(
+    let delegator_bid_key = Key::BidAddr(BidAddr::new_from_public_keys(
         &validator_public_key,
         Some(&delegator_public_key),
     ));
@@ -131,23 +132,38 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
     );
     let delegator_bid_kind = BidKind::Delegator(Box::new(delegator_bid.clone()));
 
-    let unified_bid_key = Key::Bid(BidAddr::legacy(
+    let unified_bid_key = Key::BidAddr(BidAddr::legacy(
         validator_public_key.to_account_hash().value(),
     ));
     let unified_bid = {
         let mut unified_bid = Bid::locked(
+            validator_public_key.clone(),
+            URef::new([10; 32], AccessRights::READ_ADD_WRITE),
+            U512::from(50_000_000_000u64),
+            100,
+            u64::MAX,
+        );
+        unified_bid.delegators_mut().insert(
+            delegator_bid.delegator_public_key().clone(),
+            delegator_bid.clone(),
+        );
+        unified_bid
+    };
+    let unified_bid_kind = BidKind::Unified(Box::new(unified_bid));
+
+    let original_bid_key = Key::Bid(validator_public_key.to_account_hash());
+    let original_bid = {
+        let mut bid = Bid::locked(
             validator_public_key,
             URef::new([10; 32], AccessRights::READ_ADD_WRITE),
             U512::from(50_000_000_000u64),
             100,
             u64::MAX,
         );
-        unified_bid
-            .delegators_mut()
+        bid.delegators_mut()
             .insert(delegator_bid.delegator_public_key().clone(), delegator_bid);
-        unified_bid
+        bid
     };
-    let unified_bid_kind = BidKind::Unified(Box::new(unified_bid));
 
     let withdraw_purse_1 = WithdrawPurse::new(
         URef::new([10; 32], AccessRights::READ),
@@ -225,9 +241,12 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             "Balance".to_string(),
             ABITestCase::from_inputs(vec![BALANCE_KEY.into()])?,
         );
-
         keys.insert(
             "WriteBid".to_string(),
+            ABITestCase::from_inputs(vec![original_bid_key.into()])?,
+        );
+        keys.insert(
+            "WriteUnifiedBid".to_string(),
             ABITestCase::from_inputs(vec![unified_bid_key.into()])?,
         );
         keys.insert(
@@ -409,16 +428,20 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         );
 
         stored_value.insert(
+            "Bid".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::Bid(Box::new(original_bid)).into()])?,
+        );
+        stored_value.insert(
             "UnifiedBid".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Bid(unified_bid_kind).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::BidKind(unified_bid_kind).into()])?,
         );
         stored_value.insert(
             "ValidatorBid".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Bid(validator_bid_kind).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::BidKind(validator_bid_kind).into()])?,
         );
         stored_value.insert(
             "DelegatorBid".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Bid(delegator_bid_kind).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::BidKind(delegator_bid_kind).into()])?,
         );
         stored_value.insert(
             "Withdraw".to_string(),

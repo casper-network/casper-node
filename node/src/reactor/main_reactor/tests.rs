@@ -105,8 +105,8 @@ impl TestChain {
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
-        let min_motes = 10_000_000_000u64; // 100 token
-        let max_motes = min_motes * 100; // 10_000 token
+        let min_motes = 100_000_000_000u64; // 1000 token
+        let max_motes = min_motes * 100; // 100_000 token
         let balance = U512::from(rng.gen_range(min_motes..max_motes));
 
         // Override accounts with those generated from the keys.
@@ -1209,7 +1209,7 @@ async fn run_withdraw_bid_network() {
     };
     settle_deploy(&mut net, deploy).await;
 
-    let bid_key = Key::Bid(BidAddr::from(alice_public_key.clone()));
+    let bid_key = Key::BidAddr(BidAddr::from(alice_public_key.clone()));
     settle_execution(
         &mut net,
         &mut rng,
@@ -1318,7 +1318,7 @@ async fn run_undelegate_bid_network() {
     };
     settle_deploy(&mut net, deploy).await;
 
-    let bid_key = Key::Bid(BidAddr::new_from_public_keys(
+    let bid_key = Key::BidAddr(BidAddr::new_from_public_keys(
         &bob.1.clone(),
         Some(&alice.1.clone()),
     ));
@@ -1334,11 +1334,8 @@ async fn run_undelegate_bid_network() {
                 .transforms()
                 .iter()
                 .find(|x| match x.kind() {
-                    TransformKind::Write(StoredValue::Bid(bid_kind)) => {
-                        Key::Bid(BidAddr::new_from_public_keys(
-                            &bid_kind.validator_public_key(),
-                            bid_kind.delegator_public_key().as_ref(),
-                        )) == key
+                    TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+                        Key::from(bid_kind.bid_addr()) == key
                     }
                     _ => false,
                 })
@@ -1489,7 +1486,7 @@ async fn run_redelegate_bid_network() {
     };
     settle_deploy(&mut net, deploy).await;
 
-    let bid_key = Key::Bid(BidAddr::new_from_public_keys(
+    let bid_key = Key::BidAddr(BidAddr::new_from_public_keys(
         &bob.1.clone(),
         Some(&alice.1.clone()),
     ));
@@ -1505,11 +1502,8 @@ async fn run_redelegate_bid_network() {
                 .transforms()
                 .iter()
                 .find(|x| match x.kind() {
-                    TransformKind::Write(StoredValue::Bid(bid_kind)) => {
-                        Key::Bid(BidAddr::new_from_public_keys(
-                            &bid_kind.validator_public_key(),
-                            bid_kind.delegator_public_key().as_ref(),
-                        )) == key
+                    TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+                        Key::from(bid_kind.bid_addr()) == key
                     }
                     _ => false,
                 })

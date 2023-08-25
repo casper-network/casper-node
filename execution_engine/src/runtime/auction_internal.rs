@@ -73,7 +73,7 @@ where
 
     fn read_bid(&mut self, key: &Key) -> Result<Option<BidKind>, Error> {
         match self.context.read_gs(key) {
-            Ok(Some(StoredValue::Bid(bid_kind))) => Ok(Some(bid_kind)),
+            Ok(Some(StoredValue::BidKind(bid_kind))) => Ok(Some(bid_kind)),
             Ok(Some(_)) => {
                 error!("StorageProvider::read_bid: unexpected StoredValue variant");
                 Err(Error::Storage)
@@ -92,7 +92,7 @@ where
 
     fn write_bid(&mut self, key: Key, bid_kind: BidKind) -> Result<(), Error> {
         self.context
-            .metered_write_gs_unsafe(key, StoredValue::Bid(bid_kind))
+            .metered_write_gs_unsafe(key, StoredValue::BidKind(bid_kind))
             .map_err(|exec_error| {
                 error!("StorageProvider::write_bid: {:?}", exec_error);
                 <Option<Error>>::from(exec_error).unwrap_or(Error::Storage)
