@@ -291,7 +291,7 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
     prop_oneof![
         Just(EntryPointAccess::Public),
         collection::vec(group_arb(), 0..32).prop_map(EntryPointAccess::Groups),
-        Just(EntryPointAccess::Abstract),
+        Just(EntryPointAccess::Template),
     ]
 }
 
