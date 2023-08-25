@@ -886,9 +886,10 @@ impl<const N: usize> JulietProtocol<N> {
                         return err_msg(header, ErrorKind::CancellationLimitExceeded);
                     }
                     channel.cancellation_allowance -= 1;
+                    buffer.advance(Header::SIZE);
 
-                    // TODO: What to do with partially received multi-frame request?
-                    // TODO: Actually remove from incoming set.
+                    // TODO: What to do with partially received multi-frame request? (needs tests)
+                    // TODO: Actually remove from incoming set. (needs tests)
 
                     #[cfg(feature = "tracing")]
                     {
