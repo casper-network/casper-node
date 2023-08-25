@@ -921,11 +921,13 @@ mod tests {
     use bytes::{Buf, Bytes, BytesMut};
     use proptest_attr_macro::proptest;
     use proptest_derive::Arbitrary;
+    use static_assertions::const_assert;
     use strum::{EnumIter, IntoEnumIterator};
 
     use crate::{
         header::{ErrorKind, Header, Kind},
         protocol::{payload_is_multi_frame, CompletedRead, LocalProtocolViolation},
+        varint::Varint32,
         ChannelConfiguration, ChannelId, Id, Outcome,
     };
 
@@ -990,13 +992,22 @@ mod tests {
 
         /// Produce the payloads underlying slice.
         fn get_slice(self) -> Option<&'static [u8]> {
+            const SHORT_PAYLOAD: &[u8] = b"asdf";
+            const_assert!(
+                SHORT_PAYLOAD.len()
+                    <= TestingSetup::MAX_FRAME_SIZE as usize - Header::SIZE - Varint32::MAX_LEN
+            );
+
             const LONG_PAYLOAD: &[u8] =
             b"large payload large payload large payload large payload large payload large payload";
+            const_assert!(LONG_PAYLOAD.len() > TestingSetup::MAX_FRAME_SIZE as usize);
+
             const OVERLY_LONG_PAYLOAD: &[u8] = b"abcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefgh";
+            const_assert!(OVERLY_LONG_PAYLOAD.len() > TestingSetup::MAX_PAYLOAD_SIZE as usize);
 
             match self {
                 VaryingPayload::None => None,
-                VaryingPayload::SingleFrame => Some(b"asdf"),
+                VaryingPayload::SingleFrame => Some(SHORT_PAYLOAD),
                 VaryingPayload::MultiFrame => Some(LONG_PAYLOAD),
                 VaryingPayload::TooLarge => Some(OVERLY_LONG_PAYLOAD),
             }
@@ -1402,9 +1413,9 @@ mod tests {
     #[derive(Debug)]
     struct TestingSetup {
         /// Alice's protocol state.
-        alice: JulietProtocol<4>,
+        alice: JulietProtocol<{ Self::NUM_CHANNELS as usize }>,
         /// Bob's protocol state.
-        bob: JulietProtocol<4>,
+        bob: JulietProtocol<{ Self::NUM_CHANNELS as usize }>,
         /// The channel communication is sent across for these tests.
         common_channel: ChannelId,
         /// Maximum frame size in test environment.
@@ -1437,17 +1448,21 @@ mod tests {
     use Peer::{Alice, Bob};
 
     impl TestingSetup {
+        const MAX_PAYLOAD_SIZE: u32 = 512;
+        const MAX_FRAME_SIZE: u32 = 20;
+        const NUM_CHANNELS: u8 = 4;
+
         /// Instantiates a new testing setup.
         fn new() -> Self {
-            let max_frame_size = MaxFrameSize::new(20);
+            let max_frame_size = MaxFrameSize::new(Self::MAX_FRAME_SIZE);
             let pb = ProtocolBuilder::with_default_channel_config(
                 ChannelConfiguration::new()
                     .with_request_limit(2)
-                    .with_max_request_payload_size(512)
-                    .with_max_response_payload_size(512),
+                    .with_max_request_payload_size(Self::MAX_PAYLOAD_SIZE)
+                    .with_max_response_payload_size(Self::MAX_PAYLOAD_SIZE),
             )
             .max_frame_size(max_frame_size.get());
-            let common_channel = ChannelId(2);
+            let common_channel = ChannelId(Self::NUM_CHANNELS - 1);
 
             let alice = pb.build();
             let bob = pb.build();

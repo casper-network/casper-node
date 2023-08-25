@@ -3200,6 +3200,7 @@ dependencies = [
  "proptest-attr-macro",
  "proptest-derive",
  "rand 0.8.5",
+ "static_assertions",
  "strum 0.25.0",
  "thiserror",
  "tokio",
