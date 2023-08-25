@@ -324,6 +324,44 @@ impl Channel {
     }
 }
 
+/// Creates a new response without checking or altering channel states.
+///
+/// Low-level function exposed for testing. Does not affect the tracking of IDs, thus can be used to
+/// send duplicate or ficticious responses.
+#[inline(always)]
+fn create_unchecked_response(
+    channel: ChannelId,
+    id: Id,
+    payload: Option<Bytes>,
+) -> OutgoingMessage {
+    if let Some(payload) = payload {
+        let header = Header::new(header::Kind::ResponsePl, channel, id);
+        OutgoingMessage::new(header, Some(payload))
+    } else {
+        let header = Header::new(header::Kind::Response, channel, id);
+        OutgoingMessage::new(header, None)
+    }
+}
+
+/// Creates a request cancellation without checks.
+///
+/// Low-level function exposed for testing. Does not verify that the given request exists or has not
+/// been cancelled before.
+#[inline(always)]
+fn create_unchecked_request_cancellation(channel: ChannelId, id: Id) -> OutgoingMessage {
+    let header = Header::new(header::Kind::CancelReq, channel, id);
+    OutgoingMessage::new(header, None)
+}
+
+/// Creates a response cancellation without checks.
+///
+/// Low-level function exposed for testing. Does not verify that the given request has been received
+/// or a response sent already.
+fn create_unchecked_response_cancellation(channel: ChannelId, id: Id) -> OutgoingMessage {
+    let header = Header::new(header::Kind::CancelResp, channel, id);
+    OutgoingMessage::new(header, None)
+}
+
 /// A successful read from the peer.
 #[must_use]
 #[derive(Debug, Eq, PartialEq)]
@@ -544,13 +582,7 @@ impl<const N: usize> JulietProtocol<N> {
             }
         }
 
-        if let Some(payload) = payload {
-            let header = Header::new(header::Kind::ResponsePl, channel, id);
-            Ok(Some(OutgoingMessage::new(header, Some(payload))))
-        } else {
-            let header = Header::new(header::Kind::Response, channel, id);
-            Ok(Some(OutgoingMessage::new(header, None)))
-        }
+        Ok(Some(create_unchecked_response(channel, id, payload)))
     }
 
     /// Creates a cancellation for an outgoing request.
@@ -579,8 +611,7 @@ impl<const N: usize> JulietProtocol<N> {
             return Ok(None);
         }
 
-        let header = Header::new(header::Kind::CancelReq, channel, id);
-        Ok(Some(OutgoingMessage::new(header, None)))
+        Ok(Some(create_unchecked_request_cancellation(channel, id)))
     }
 
     /// Creates a cancellation of an incoming request.
@@ -605,8 +636,7 @@ impl<const N: usize> JulietProtocol<N> {
             return Ok(None);
         }
 
-        let header = Header::new(header::Kind::CancelResp, channel, id);
-        Ok(Some(OutgoingMessage::new(header, None)))
+        Ok(Some(create_unchecked_response_cancellation(channel, id)))
     }
 
     /// Creates an error message with type [`ErrorKind::Other`].
@@ -926,7 +956,10 @@ mod tests {
 
     use crate::{
         header::{ErrorKind, Header, Kind},
-        protocol::{payload_is_multi_frame, CompletedRead, LocalProtocolViolation},
+        protocol::{
+            create_unchecked_response, payload_is_multi_frame, CompletedRead,
+            LocalProtocolViolation,
+        },
         varint::Varint32,
         ChannelConfiguration, ChannelId, Id, Outcome,
     };
@@ -1543,6 +1576,24 @@ mod tests {
             self.recv_on(!origin, msg)
         }
 
+        /// Creates a new request cancellation on peer `origin`, the sends it to the other peer.
+        ///
+        /// Returns the outcome of the other peer's reception.
+        #[track_caller]
+        fn cancel_and_send_request(
+            &mut self,
+            origin: Peer,
+            id: Id,
+        ) -> Option<Result<CompletedRead, OutgoingMessage>> {
+            let channel = self.common_channel;
+            let msg = self
+                .get_peer_mut(origin)
+                .cancel_request(channel, id)
+                .expect("should be able to create request cancellation")?;
+
+            Some(self.recv_on(!origin, msg))
+        }
+
         /// Creates a new response on peer `origin`, the sends it to the other peer.
         ///
         /// Returns the outcome of the other peer's reception. If no response was scheduled for
@@ -1562,6 +1613,24 @@ mod tests {
                 .expect("should be able to create response")?;
 
             Some(self.recv_on(!origin, msg))
+        }
+
+        /// Similar to `create_and_send_response`, but bypasses all checks.
+        ///
+        /// Allows for sending requests that are normally not allowed by the protocol API.
+        #[track_caller]
+        fn inject_and_send_response(
+            &mut self,
+            origin: Peer,
+            id: Id,
+            payload: Option<Bytes>,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel_id = self.common_channel;
+
+            let msg = create_unchecked_response(channel_id, id, payload);
+
+            // Send to peer and return outcome.
+            self.recv_on(!origin, msg)
         }
 
         /// Asserts the given completed read is a [`CompletedRead::NewRequest`] with the given ID
@@ -1587,6 +1656,26 @@ mod tests {
                     assert_eq!(channel, self.common_channel);
                     assert_eq!(id, expected_id);
                     assert_eq!(payload.as_deref(), expected_payload);
+                }
+            );
+        }
+
+        /// Asserts the given completed read is a [`CompletedRead::RequestCancellation`] with the
+        /// given ID.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_request_cancellation(&self, expected_id: Id, completed_read: CompletedRead) {
+            assert_matches::assert_matches!(
+                completed_read,
+                CompletedRead::RequestCancellation {
+                    channel,
+                    id,
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
                 }
             );
         }
@@ -1663,6 +1752,47 @@ mod tests {
     }
 
     #[test]
+    fn use_case_cancel_req() {
+        // A request followed by a response can take multiple orders, all of which are valid:
+
+        // Alice:Req, Alice:Cancel, Bob:Response
+        // Alice:Req, Alice:Cancel, Bob:Bob:Cancel
+        // Alice:Req, Bob:Response, Alice:Cancel
+        // Alice:Req, Bob:Cancel, Alice:Cancel
+
+        #[derive(Copy, Clone, Debug)]
+        enum Step {
+            AliceReq,
+            AliceCancel,
+            BobRespond,
+            BobCancel,
+        }
+
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let expected_id = Id::new(1);
+
+            // Alice sends a request first.
+            let bob_completed_read = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request");
+            env.assert_is_new_request(expected_id, payload.get_slice(), bob_completed_read);
+
+            // She follows it up with a request cancellation immediately.
+            let bob_completed_read_2 = env
+                .cancel_and_send_request(Alice, expected_id)
+                .expect("should produce cancellation for unanswered response")
+                .expect("should be able to send request cancellation");
+            env.assert_is_request_cancellation(expected_id, bob_completed_read_2);
+
+            // TODO: Send response (should be swallowed).
+
+            // TODO: Cancellation swallowing if response sent.
+        }
+    }
+
+    #[test]
     fn env_req_exceed_in_flight_limit() {
         for payload in VaryingPayload::all_valid() {
             let mut env = TestingSetup::new();
@@ -1727,13 +1857,44 @@ mod tests {
     }
 
     #[test]
-    fn env_req_no_payload_response_for_ficticious_request() {
-        todo!();
+    fn env_req_response_for_ficticious_request() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
+
+            // Send a response with a wrong ID.
+            let second_send_result = env.inject_and_send_response(Bob, Id::new(123), payload.get());
+            env.assert_is_error_message(
+                ErrorKind::FictitiousRequest,
+                Id::new(123),
+                second_send_result,
+            );
+        }
     }
 
     #[test]
-    fn env_req_no_payload_cancellation_for_ficticious_request() {
-        todo!();
+    fn env_req_cancellation_for_ficticious_request() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
+
+            todo!("cancel here");
+
+            // let second_send_result = env.inject_and_send_response(Bob, Id::new(123), payload.get());
+            // env.assert_is_error_message(
+            //     ErrorKind::FictitiousCancel,
+            //     Id::new(123),
+            //     second_send_result,
+            // );
+        }
     }
 
     #[test]
@@ -1775,6 +1936,8 @@ mod tests {
     fn env_req_with_payloads() {
         todo!("cover all cases without payload + segment/size violations");
     }
+
+    // TODO: Ensure one request or cancellation per request
 
     #[test]
     fn response_with_no_payload_is_cleared_from_buffer() {
