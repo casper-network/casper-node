@@ -785,6 +785,40 @@ where
         Ok(BalanceResult::Success { motes, proof })
     }
 
+    /// Get the total supply for an era targeted by the state hash.
+    pub fn get_total_supply(
+        &self,
+        correlation_id: CorrelationId,
+        state_hash: Digest,
+    ) -> Result<U512, Error> {
+        let tracking_copy = self
+            .tracking_copy(state_hash)?
+            .ok_or(Error::RootNotFound(state_hash))?;
+
+        let mint = self.get_system_mint_hash(correlation_id, state_hash)?;
+        let query_result = tracking_copy
+            .query(
+                correlation_id,
+                self.config(),
+                mint.into(),
+                &[mint::TOTAL_SUPPLY_KEY.to_owned()],
+            )
+            .map_err(|e| e.into())?;
+
+        use super::tracking_copy::TrackingCopyQueryResult::*;
+        match query_result {
+            Success { value, proofs: _ } => value
+                .as_cl_value()
+                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
+                .clone()
+                .into_t()
+                .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
+            ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
+            CircularReference(s) => Err(Error::Mint(format!("CircularReference({s})"))),
+            DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
+        }
+    }
+
     /// Executes a native transfer.
     ///
     /// Native transfers do not involve WASM at all, and also skip executing payment code.

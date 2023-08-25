@@ -144,7 +144,7 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::SpeculativeExecutionState,
+    contract_runtime::{SpeculativeExecutionState, TotalSupplyRequest},
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
@@ -2012,6 +2012,28 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| ContractRuntimeRequest::GetEraValidators { request, responder },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Returns a map of validators weights for all eras as known from `root_hash`.
+    ///
+    /// This operation is read only.
+    #[allow(unused)] //TODO remove in the next ticket implementation.
+    pub(crate) async fn get_era_total_supply(
+        self,
+        state_hash: Digest,
+    ) -> Result<U512, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let total_supply_request = TotalSupplyRequest::new(state_hash);
+        self.make_request(
+            move |responder| ContractRuntimeRequest::GetTotalSupply {
+                total_supply_request,
+                responder,
+            },
             QueueKind::ContractRuntime,
         )
         .await

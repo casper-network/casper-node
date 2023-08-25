@@ -32,6 +32,9 @@ const COMMIT_STEP_HELP: &str = "time in seconds to commit the step at era end";
 const GET_BALANCE_NAME: &str = "contract_runtime_get_balance";
 const GET_BALANCE_HELP: &str = "time in seconds to get the balance of a purse from global state";
 
+const GET_TOTAL_SUPPLY_NAME: &str = "contract_runtime_get_total_supply";
+const GET_TOTAL_SUPPLY_HELP: &str = "time in seconds to get the total supply from global state";
+
 const GET_ERA_VALIDATORS_NAME: &str = "contract_runtime_get_era_validators";
 const GET_ERA_VALIDATORS_HELP: &str =
     "time in seconds to get validators for a given era from global state";
@@ -64,6 +67,7 @@ pub struct Metrics {
     pub(super) run_query: Histogram,
     pub(super) commit_step: Histogram,
     pub(super) get_balance: Histogram,
+    pub(super) get_total_supply: Histogram,
     pub(super) get_era_validators: Histogram,
     pub(super) get_bids: Histogram,
     pub(super) put_trie: Histogram,
@@ -130,6 +134,12 @@ impl Metrics {
                 registry,
                 GET_BALANCE_NAME,
                 GET_BALANCE_HELP,
+                common_buckets.clone(),
+            )?,
+            get_total_supply: utils::register_histogram_metric(
+                registry,
+                GET_TOTAL_SUPPLY_NAME,
+                GET_TOTAL_SUPPLY_HELP,
                 common_buckets.clone(),
             )?,
             get_era_validators: utils::register_histogram_metric(

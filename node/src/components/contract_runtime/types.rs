@@ -18,6 +18,11 @@ pub struct ValidatorWeightsByEraIdRequest {
     protocol_version: ProtocolVersion,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TotalSupplyRequest {
+    pub state_hash: Digest,
+}
+
 impl ValidatorWeightsByEraIdRequest {
     /// Constructs a new ValidatorWeightsByEraIdRequest.
     pub fn new(state_hash: Digest, era_id: EraId, protocol_version: ProtocolVersion) -> Self {
@@ -47,6 +52,12 @@ impl ValidatorWeightsByEraIdRequest {
 impl From<ValidatorWeightsByEraIdRequest> for GetEraValidatorsRequest {
     fn from(input: ValidatorWeightsByEraIdRequest) -> Self {
         GetEraValidatorsRequest::new(input.state_hash, input.protocol_version)
+    }
+}
+
+impl TotalSupplyRequest {
+    pub fn new(state_hash: Digest) -> Self {
+        TotalSupplyRequest { state_hash }
     }
 }
 

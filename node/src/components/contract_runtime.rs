@@ -71,6 +71,7 @@ pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
     BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
+    TotalSupplyRequest,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -374,6 +375,28 @@ impl ContractRuntime {
                     );
                     metrics.get_balance.observe(start.elapsed().as_secs_f64());
                     trace!(?result, "balance result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetTotalSupply {
+                total_supply_request,
+                responder,
+            } => {
+                trace!(?total_supply_request, "get total supply request");
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+
+                async move {
+                    let correlation_id = CorrelationId::new();
+                    let start = Instant::now();
+                    let result = engine_state
+                        .get_total_supply(correlation_id, total_supply_request.state_hash);
+
+                    metrics
+                        .get_total_supply
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "total supply result");
                     responder.respond(result).await
                 }
                 .ignore()
