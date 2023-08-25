@@ -962,6 +962,7 @@ pub const fn payload_is_multi_frame(max_frame_size: MaxFrameSize, payload_len: u
 mod tests {
     use std::{collections::HashSet, fmt::Debug, ops::Not};
 
+    use assert_matches::assert_matches;
     use bytes::{Buf, Bytes, BytesMut};
     use proptest_attr_macro::proptest;
     use proptest_derive::Arbitrary;
@@ -978,7 +979,10 @@ mod tests {
         ChannelConfiguration, ChannelId, Id, Outcome,
     };
 
-    use super::{err_msg, Channel, JulietProtocol, MaxFrameSize, OutgoingMessage, ProtocolBuilder};
+    use super::{
+        create_unchecked_request_cancellation, err_msg, Channel, JulietProtocol, MaxFrameSize,
+        OutgoingMessage, ProtocolBuilder,
+    };
 
     /// A generic payload that can be used in testing.
     #[derive(Arbitrary, Clone, Copy, Debug, EnumIter)]
@@ -1550,6 +1554,20 @@ mod tests {
                 })
         }
 
+        /// Take `msg` and send it to peer `dest`.
+        ///
+        /// Will check that the message is fully processed and removed, and a new header read
+        /// expected next.
+        fn expect_consumes(&mut self, dest: Peer, msg: OutgoingMessage) {
+            let mut msg_bytes = BytesMut::from(msg.to_bytes(self.max_frame_size).as_ref());
+
+            let outcome = self.get_peer_mut(dest).process_incoming(&mut msg_bytes);
+
+            assert!(msg_bytes.is_empty(), "client should have consumed input");
+
+            assert_matches!(outcome, Outcome::Incomplete(n) if n.get() == 4);
+        }
+
         /// Creates a new request on peer `origin`, the sends it to the other peer.
         ///
         /// Returns the outcome of the other peer's reception.
@@ -1678,7 +1696,7 @@ mod tests {
             expected_payload: Option<&[u8]>,
             completed_read: CompletedRead,
         ) {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 completed_read,
                 CompletedRead::NewRequest {
                     channel,
@@ -1700,7 +1718,7 @@ mod tests {
         /// Will panic if the assertion fails.
         #[track_caller]
         fn assert_is_request_cancellation(&self, expected_id: Id, completed_read: CompletedRead) {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 completed_read,
                 CompletedRead::RequestCancellation {
                     channel,
@@ -1725,7 +1743,7 @@ mod tests {
             expected_payload: Option<&[u8]>,
             completed_read: CompletedRead,
         ) {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 completed_read,
                 CompletedRead::ReceivedResponse {
                     channel,
@@ -1747,7 +1765,7 @@ mod tests {
         /// Will panic if the assertion fails.
         #[track_caller]
         fn assert_is_response_cancellation(&self, expected_id: Id, completed_read: CompletedRead) {
-            assert_matches::assert_matches!(
+            assert_matches!(
                 completed_read,
                 CompletedRead::ResponseCancellation {
                     channel,
@@ -1771,15 +1789,11 @@ mod tests {
             id: Id,
             result: Result<T, OutgoingMessage>,
         ) {
-            match result {
-                Ok(v) => panic!("expected an error, got positive outcome instead: {:?}", v),
-                Err(err) => {
-                    let header = err.header();
-                    assert_eq!(header.error_kind(), error_kind);
-                    assert_eq!(header.id(), id);
-                    assert_eq!(header.channel(), self.common_channel);
-                }
-            }
+            let err = result.expect_err("expected an error, got positive outcome instead");
+            let header = err.header();
+            assert_eq!(header.error_kind(), error_kind);
+            assert_eq!(header.id(), id);
+            assert_eq!(header.channel(), self.common_channel);
         }
     }
 
@@ -1830,7 +1844,7 @@ mod tests {
     }
 
     #[test]
-    fn use_case_areq_acnc_bresp() {
+    fn use_case_areq_acnc_brsp() {
         // Alice:Request, Alice:Cancel, Bob:Respond
         for payload in VaryingPayload::all_valid() {
             let (mut env, id) = env_with_initial_areq(payload);
@@ -1856,19 +1870,97 @@ mod tests {
         // Alice:Request, Alice:Cancel, Bob:Respond
         for payload in VaryingPayload::all_valid() {
             let (mut env, id) = env_with_initial_areq(payload);
+
+            // Alice directly follows with a cancellation.
             let bob_read_of_cancel = env
                 .cancel_request_and_send(Alice, id)
                 .expect("alice should send cancellation")
                 .expect("bob should produce cancellation");
             env.assert_is_request_cancellation(id, bob_read_of_cancel);
 
+            // Bob's application confirms with a response cancellation.
+            let alices_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_response_cancellation(id, alices_read);
+        }
+    }
+
+    #[test]
+    fn use_case_areq_brsp_acnc() {
+        // Alice:Request, Bob:Respond, Alice:Cancel
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Bob's application responds.
+            let alices_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_received_response(id, payload.get_slice(), alices_read);
+
+            // Alice's app attempts to send a cancellation, which should be swallowed.
+            assert!(env.cancel_request_and_send(Alice, id).is_none());
+        }
+    }
+
+    #[test]
+    fn use_case_areq_bcnc_acnc() {
+        // Alice:Request, Bob:Respond, Alice:Cancel
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
             // Bob's application answers with a response cancellation.
+            let alices_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_response_cancellation(id, alices_read);
+
+            // Alice's app attempts to send a cancellation, which should be swallowed.
+            assert!(env.cancel_request_and_send(Alice, id).is_none());
+        }
+    }
+
+    #[test]
+    fn use_case_areq_brsp_acncsim() {
+        // Alice:Request, Bob:Respond, Alice:CancelSim
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Bob's application responds.
+            let alices_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_received_response(id, payload.get_slice(), alices_read);
+
+            // Alice's app attempts to send a cancellation due to a race condition.
+            env.expect_consumes(
+                Bob,
+                create_unchecked_request_cancellation(env.common_channel, id),
+            );
+        }
+    }
+
+    #[test]
+    fn use_case_areq_bcnc_acncsim() {
+        // Alice:Request, Bob:Respond, Alice:CancelSim
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Bob's application cancels.
             let alices_read = env
                 .cancel_response_and_send(Bob, id)
                 .expect("bob must send the response")
                 .expect("bob should be ablet to create the response");
 
             env.assert_is_response_cancellation(id, alices_read);
+            env.expect_consumes(
+                Bob,
+                create_unchecked_request_cancellation(env.common_channel, id),
+            );
         }
     }
 
@@ -1966,18 +2058,10 @@ mod tests {
                 .expect("bob should accept request 1");
             env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
 
-            todo!("cancel here");
+            // Have bob send a response for a request that was never made.
+            let alice_result = env.inject_and_send_response(Bob, Id::new(123), payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, Id::new(123), alice_result);
         }
-    }
-
-    #[test]
-    fn env_req_no_payload_request_cancellation_ok() {
-        todo!();
-    }
-
-    #[test]
-    fn env_req_no_payload_response_cancellation_ok() {
-        todo!();
     }
 
     #[test]
@@ -2005,12 +2089,7 @@ mod tests {
         todo!();
     }
 
-    #[test]
-    fn env_req_with_payloads() {
-        todo!("cover all cases without payload + segment/size violations");
-    }
-
-    // TODO: Ensure one request or cancellation per request
+    // TODO: Ensure one request or cancellation per request is enforced.
 
     #[test]
     fn response_with_no_payload_is_cleared_from_buffer() {
