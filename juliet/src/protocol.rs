@@ -604,10 +604,10 @@ impl<const N: usize> JulietProtocol<N> {
     ) -> Result<Option<OutgoingMessage>, LocalProtocolViolation> {
         let chan = self.lookup_channel_mut(channel)?;
 
-        if !chan.outgoing_requests.remove(&id) {
-            // The request has been cancelled, no need to send a response. This also prevents us
-            // from ever violating the cancellation limit by accident, if all requests are sent
-            // properly.
+        if !chan.outgoing_requests.contains(&id) {
+            // The request has received a response already, no need to cancel. Note that merely
+            // sending the cancellation is not enough here, we still expect either cancellation or
+            // response from the peer.
             return Ok(None);
         }
 
@@ -889,7 +889,6 @@ impl<const N: usize> JulietProtocol<N> {
                     buffer.advance(Header::SIZE);
 
                     // TODO: What to do with partially received multi-frame request? (needs tests)
-                    // TODO: Actually remove from incoming set. (needs tests)
 
                     #[cfg(feature = "tracing")]
                     {
@@ -897,14 +896,28 @@ impl<const N: usize> JulietProtocol<N> {
                         trace!(%header, "received request cancellation");
                     }
 
-                    return Success(CompletedRead::RequestCancellation {
-                        channel: header.channel(),
-                        id: header.id(),
-                    });
+                    // Check incoming request. If it was already cancelled or answered, ignore, as
+                    // it is valid to send wrong cancellation up to the cancellation allowance.
+                    //
+                    // An incoming request may have also already been answered, which is also
+                    // reason to ignore it.
+                    //
+                    // However, we cannot remove it here, as we need to track whether we have sent
+                    // something back.
+                    if !channel.incoming_requests.contains(&header.id()) {
+                        // Already answered, ignore the late cancellation.
+                    } else {
+                        return Success(CompletedRead::RequestCancellation {
+                            channel: header.channel(),
+                            id: header.id(),
+                        });
+                    }
                 }
                 Kind::CancelResp => {
                     if channel.outgoing_requests.remove(&header.id()) {
                         log_frame!(header);
+                        buffer.advance(Header::SIZE);
+
                         return Success(CompletedRead::ResponseCancellation {
                             channel: header.channel(),
                             id: header.id(),
@@ -1581,7 +1594,7 @@ mod tests {
         ///
         /// Returns the outcome of the other peer's reception.
         #[track_caller]
-        fn cancel_and_send_request(
+        fn cancel_request_and_send(
             &mut self,
             origin: Peer,
             id: Id,
@@ -1591,6 +1604,24 @@ mod tests {
                 .get_peer_mut(origin)
                 .cancel_request(channel, id)
                 .expect("should be able to create request cancellation")?;
+
+            Some(self.recv_on(!origin, msg))
+        }
+
+        /// Creates a new response cancellation on peer `origin`, the sends it to the other peer.
+        ///
+        /// Returns the outcome of the other peer's reception.
+        #[track_caller]
+        fn cancel_response_and_send(
+            &mut self,
+            origin: Peer,
+            id: Id,
+        ) -> Option<Result<CompletedRead, OutgoingMessage>> {
+            let channel = self.common_channel;
+            let msg = self
+                .get_peer_mut(origin)
+                .cancel_response(channel, id)
+                .expect("should be able to create response cancellation")?;
 
             Some(self.recv_on(!origin, msg))
         }
@@ -1708,6 +1739,26 @@ mod tests {
             );
         }
 
+        /// Asserts the given completed read is a [`CompletedRead::ResponseCancellation`] with the
+        /// given ID.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_response_cancellation(&self, expected_id: Id, completed_read: CompletedRead) {
+            assert_matches::assert_matches!(
+                completed_read,
+                CompletedRead::ResponseCancellation {
+                    channel,
+                    id,
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
+                }
+            );
+        }
+
         /// Asserts given `Result` is of type `Err` and its message contains a specific header.
         ///
         /// # Panics
@@ -1752,44 +1803,72 @@ mod tests {
         }
     }
 
+    // A request followed by a response can take multiple orders, all of which are valid:
+
+    // Alice:Request, Alice:Cancel, Bob:Respond     (cancellation ignored)
+    // Alice:Request, Alice:Cancel, Bob:Cancel      (cancellation honored or Bob cancelled)
+    // Alice:Request, Bob:Respond, Alice:Cancel     (cancellation not in time)
+    // Alice:Request, Bob:Cancel, Alice:Cancel      (cancellation acknowledged)
+
+    // Alice's cancellation can also be on the wire at the same time as Bob's responses.
+    // Alice:Request, Bob:Respond, Alice:CancelSim  (cancellation arrives after response)
+    // Alice:Request, Bob:Cancel, Alice:CancelSim   (cancellation arrives after cancellation)
+
+    /// Sets up the environment with Alice's initial request.
+    fn env_with_initial_areq(payload: VaryingPayload) -> (TestingSetup, Id) {
+        let mut env = TestingSetup::new();
+
+        let expected_id = Id::new(1);
+
+        // Alice sends a request first.
+        let bob_initial_completed_read = env
+            .create_and_send_request(Alice, payload.get())
+            .expect("bob should accept request");
+        env.assert_is_new_request(expected_id, payload.get_slice(), bob_initial_completed_read);
+
+        (env, expected_id)
+    }
+
     #[test]
-    fn use_case_cancel_req() {
-        // A request followed by a response can take multiple orders, all of which are valid:
-
-        // Alice:Req, Alice:Cancel, Bob:Response
-        // Alice:Req, Alice:Cancel, Bob:Bob:Cancel
-        // Alice:Req, Bob:Response, Alice:Cancel
-        // Alice:Req, Bob:Cancel, Alice:Cancel
-
-        #[derive(Copy, Clone, Debug)]
-        enum Step {
-            AliceReq,
-            AliceCancel,
-            BobRespond,
-            BobCancel,
-        }
-
+    fn use_case_areq_acnc_bresp() {
+        // Alice:Request, Alice:Cancel, Bob:Respond
         for payload in VaryingPayload::all_valid() {
-            let mut env = TestingSetup::new();
+            let (mut env, id) = env_with_initial_areq(payload);
+            let bob_read_of_cancel = env
+                .cancel_request_and_send(Alice, id)
+                .expect("alice should send cancellation")
+                .expect("bob should produce cancellation");
+            env.assert_is_request_cancellation(id, bob_read_of_cancel);
 
-            let expected_id = Id::new(1);
+            // Bob's application doesn't notice and sends the response anyway. It should at arrive
+            // at Alice's to confirm the cancellation.
+            let alices_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
 
-            // Alice sends a request first.
-            let bob_completed_read = env
-                .create_and_send_request(Alice, payload.get())
-                .expect("bob should accept request");
-            env.assert_is_new_request(expected_id, payload.get_slice(), bob_completed_read);
+            env.assert_is_received_response(id, payload.get_slice(), alices_read);
+        }
+    }
 
-            // She follows it up with a request cancellation immediately.
-            let bob_completed_read_2 = env
-                .cancel_and_send_request(Alice, expected_id)
-                .expect("should produce cancellation for unanswered response")
-                .expect("should be able to send request cancellation");
-            env.assert_is_request_cancellation(expected_id, bob_completed_read_2);
+    #[test]
+    fn use_case_areq_acnc_bcnc() {
+        // Alice:Request, Alice:Cancel, Bob:Respond
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+            let bob_read_of_cancel = env
+                .cancel_request_and_send(Alice, id)
+                .expect("alice should send cancellation")
+                .expect("bob should produce cancellation");
+            env.assert_is_request_cancellation(id, bob_read_of_cancel);
 
-            // TODO: Send response (should be swallowed).
+            // Bob's application answers with a response cancellation.
+            let alices_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
 
-            // TODO: Cancellation swallowing if response sent.
+            env.assert_is_response_cancellation(id, alices_read);
         }
     }
 
@@ -1888,13 +1967,6 @@ mod tests {
             env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
 
             todo!("cancel here");
-
-            // let second_send_result = env.inject_and_send_response(Bob, Id::new(123), payload.get());
-            // env.assert_is_error_message(
-            //     ErrorKind::FictitiousCancel,
-            //     Id::new(123),
-            //     second_send_result,
-            // );
         }
     }
 
