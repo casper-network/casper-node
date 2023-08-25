@@ -427,7 +427,7 @@ impl TestScenario {
                     deploy_config: chainspec.deploy_config,
                     wasm_config: chainspec.wasm_config,
                     system_costs_config: chainspec.system_costs_config,
-                    transaction_config: chainspec.transaction_config,
+                    transaction_v1_config: chainspec.transaction_v1_config,
                 };
 
                 chainspec.core_config.administrators.clear();

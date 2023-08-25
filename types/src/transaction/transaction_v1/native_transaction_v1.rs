@@ -9,9 +9,9 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::AuctionTransaction;
+use super::AuctionTransactionV1;
 #[cfg(doc)]
-use super::Transaction;
+use super::TransactionV1;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -23,17 +23,17 @@ const MINT_TRANSFER_TAG: u8 = 0;
 const AUCTION_TAG: u8 = 1;
 const RESERVATION_TAG: u8 = 2;
 
-/// A [`Transaction`] targeting native functionality.
+/// A [`TransactionV1`] targeting native functionality.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "A Transaction targeting native functionality.")
+    schemars(description = "A TransactionV1 targeting native functionality.")
 )]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
-pub enum NativeTransaction {
+pub enum NativeTransactionV1 {
     /// Calls the `transfer` entry point of the mint to transfer `Motes` from a source purse to a
     /// target purse.
     ///
@@ -55,70 +55,74 @@ pub enum NativeTransaction {
     MintTransfer(RuntimeArgs),
 
     /// A transaction targeting the auction.
-    Auction(AuctionTransaction),
+    Auction(AuctionTransactionV1),
 
     /// A transaction reserving a future execution.
     Reservation(RuntimeArgs),
 }
 
-impl NativeTransaction {
-    /// Returns a new `NativeTransaction::MintTransfer`.
+impl NativeTransactionV1 {
+    /// Returns a new `NativeTransactionV1::MintTransfer`.
     pub fn new_mint_transfer(args: RuntimeArgs) -> Self {
-        NativeTransaction::MintTransfer(args)
+        NativeTransactionV1::MintTransfer(args)
     }
 
-    /// Returns a new `NativeTransaction::Auction`.
-    pub fn new_auction(auction_transaction: AuctionTransaction) -> Self {
-        NativeTransaction::Auction(auction_transaction)
+    /// Returns a new `NativeTransactionV1::Auction`.
+    pub fn new_auction(auction_transaction: AuctionTransactionV1) -> Self {
+        NativeTransactionV1::Auction(auction_transaction)
     }
 
-    /// Returns a new `NativeTransaction::Reservation`.
+    /// Returns a new `NativeTransactionV1::Reservation`.
     pub fn new_reservation(args: RuntimeArgs) -> Self {
-        NativeTransaction::Reservation(args)
+        NativeTransactionV1::Reservation(args)
     }
 
     /// Returns the runtime arguments.
     pub fn args(&self) -> &RuntimeArgs {
         match self {
-            NativeTransaction::MintTransfer(args) | NativeTransaction::Reservation(args) => args,
-            NativeTransaction::Auction(auction_transaction) => auction_transaction.args(),
+            NativeTransactionV1::MintTransfer(args) | NativeTransactionV1::Reservation(args) => {
+                args
+            }
+            NativeTransactionV1::Auction(auction_transaction) => auction_transaction.args(),
         }
     }
 
-    /// Returns a random `NativeTransaction`.
+    /// Returns a random `NativeTransactionV1`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..3) {
-            0 => NativeTransaction::MintTransfer(RuntimeArgs::random(rng)),
-            1 => NativeTransaction::Auction(AuctionTransaction::random(rng)),
-            2 => NativeTransaction::Reservation(RuntimeArgs::random(rng)),
+            0 => NativeTransactionV1::MintTransfer(RuntimeArgs::random(rng)),
+            1 => NativeTransactionV1::Auction(AuctionTransactionV1::random(rng)),
+            2 => NativeTransactionV1::Reservation(RuntimeArgs::random(rng)),
             _ => unreachable!(),
         }
     }
 }
 
-impl Display for NativeTransaction {
+impl Display for NativeTransactionV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            NativeTransaction::MintTransfer(_) => write!(formatter, "mint transfer"),
-            NativeTransaction::Auction(auction_txn) => write!(formatter, "native: {}", auction_txn),
-            NativeTransaction::Reservation(_) => write!(formatter, "reservation"),
+            NativeTransactionV1::MintTransfer(_) => write!(formatter, "mint transfer"),
+            NativeTransactionV1::Auction(auction_txn) => {
+                write!(formatter, "native: {}", auction_txn)
+            }
+            NativeTransactionV1::Reservation(_) => write!(formatter, "reservation"),
         }
     }
 }
 
-impl ToBytes for NativeTransaction {
+impl ToBytes for NativeTransactionV1 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            NativeTransaction::MintTransfer(args) => {
+            NativeTransactionV1::MintTransfer(args) => {
                 MINT_TRANSFER_TAG.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
-            NativeTransaction::Auction(auction_txn) => {
+            NativeTransactionV1::Auction(auction_txn) => {
                 AUCTION_TAG.write_bytes(writer)?;
                 auction_txn.write_bytes(writer)
             }
-            NativeTransaction::Reservation(args) => {
+            NativeTransactionV1::Reservation(args) => {
                 RESERVATION_TAG.write_bytes(writer)?;
                 args.write_bytes(writer)
             }
@@ -134,28 +138,28 @@ impl ToBytes for NativeTransaction {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                NativeTransaction::MintTransfer(args) => args.serialized_length(),
-                NativeTransaction::Auction(auction_txn) => auction_txn.serialized_length(),
-                NativeTransaction::Reservation(args) => args.serialized_length(),
+                NativeTransactionV1::MintTransfer(args) => args.serialized_length(),
+                NativeTransactionV1::Auction(auction_txn) => auction_txn.serialized_length(),
+                NativeTransactionV1::Reservation(args) => args.serialized_length(),
             }
     }
 }
 
-impl FromBytes for NativeTransaction {
+impl FromBytes for NativeTransactionV1 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             MINT_TRANSFER_TAG => {
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
-                Ok((NativeTransaction::MintTransfer(args), remainder))
+                Ok((NativeTransactionV1::MintTransfer(args), remainder))
             }
             AUCTION_TAG => {
-                let (auction_txn, remainder) = AuctionTransaction::from_bytes(remainder)?;
-                Ok((NativeTransaction::Auction(auction_txn), remainder))
+                let (auction_txn, remainder) = AuctionTransactionV1::from_bytes(remainder)?;
+                Ok((NativeTransactionV1::Auction(auction_txn), remainder))
             }
             RESERVATION_TAG => {
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
-                Ok((NativeTransaction::Reservation(args), remainder))
+                Ok((NativeTransactionV1::Reservation(args), remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -170,7 +174,7 @@ mod tests {
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         for _ in 0..10 {
-            bytesrepr::test_serialization_roundtrip(&NativeTransaction::random(rng));
+            bytesrepr::test_serialization_roundtrip(&NativeTransactionV1::random(rng));
         }
     }
 }

@@ -16,7 +16,7 @@ use crate::{
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 // Disallow unknown fields to ensure config files and command-line overrides contain valid keys.
 #[serde(deny_unknown_fields)]
-pub struct TransactionConfig {
+pub struct TransactionV1Config {
     /// Maximum time to live any deploy can specify.
     pub max_ttl: TimeDiff,
     /// Maximum possible size in bytes of a single Transaction.
@@ -29,7 +29,7 @@ pub struct TransactionConfig {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl TransactionConfig {
+impl TransactionV1Config {
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let max_ttl = TimeDiff::from_seconds(rng.gen_range(60..3_600));
@@ -37,7 +37,7 @@ impl TransactionConfig {
         let block_max_approval_count = rng.gen();
         let max_args_length = rng.gen();
 
-        TransactionConfig {
+        TransactionV1Config {
             max_ttl,
             max_transaction_size,
             block_max_approval_count,
@@ -47,10 +47,10 @@ impl TransactionConfig {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl Default for TransactionConfig {
+impl Default for TransactionV1Config {
     fn default() -> Self {
         let one_day = TimeDiff::from_seconds(86400);
-        TransactionConfig {
+        TransactionV1Config {
             max_ttl: one_day,
             max_transaction_size: 1_048_576,
             block_max_approval_count: 2600,
@@ -59,7 +59,7 @@ impl Default for TransactionConfig {
     }
 }
 
-impl ToBytes for TransactionConfig {
+impl ToBytes for TransactionV1Config {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.max_ttl.write_bytes(writer)?;
         self.max_transaction_size.write_bytes(writer)?;
@@ -81,13 +81,13 @@ impl ToBytes for TransactionConfig {
     }
 }
 
-impl FromBytes for TransactionConfig {
+impl FromBytes for TransactionV1Config {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (max_ttl, remainder) = TimeDiff::from_bytes(bytes)?;
         let (max_transaction_size, remainder) = u32::from_bytes(remainder)?;
         let (block_max_approval_count, remainder) = u32::from_bytes(remainder)?;
         let (max_args_length, remainder) = u32::from_bytes(remainder)?;
-        let config = TransactionConfig {
+        let config = TransactionV1Config {
             max_ttl,
             max_transaction_size,
             block_max_approval_count,
@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let mut rng = TestRng::new();
-        let config = TransactionConfig::random(&mut rng);
+        let config = TransactionV1Config::random(&mut rng);
         bytesrepr::test_serialization_roundtrip(&config);
     }
 }

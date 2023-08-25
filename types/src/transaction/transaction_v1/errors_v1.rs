@@ -10,48 +10,50 @@ use std::error::Error as StdError;
 use datasize::DataSize;
 use serde::Serialize;
 
+#[cfg(doc)]
+use super::TransactionV1;
 use crate::{crypto, TimeDiff, Timestamp};
 
-/// Returned when a `Transaction` fails validation.
+/// Returned when a [`TransactionV1`] fails validation.
 #[derive(Clone, Eq, PartialEq, Debug)]
 #[cfg_attr(feature = "std", derive(Serialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[non_exhaustive]
-pub enum TransactionConfigFailure {
+pub enum TransactionV1ConfigFailure {
     /// Invalid chain name.
     InvalidChainName {
         /// The expected chain name.
         expected: String,
-        /// The `Transaction`'s chain name.
+        /// The transaction's chain name.
         got: String,
     },
 
-    /// `Transaction` is too large.
-    ExcessiveSize(ExcessiveSizeError),
+    /// Transaction is too large.
+    ExcessiveSize(ExcessiveSizeErrorV1),
 
     /// Excessive time-to-live.
     ExcessiveTimeToLive {
         /// The time-to-live limit.
         max_ttl: TimeDiff,
-        /// The `Transaction`'s time-to-live.
+        /// The transaction's time-to-live.
         got: TimeDiff,
     },
 
-    /// `Transaction`'s timestamp is in the future.
+    /// Transaction's timestamp is in the future.
     TimestampInFuture {
-        /// The node's timestamp when validating the `Transaction`.
+        /// The node's timestamp when validating the transaction.
         validation_timestamp: Timestamp,
-        /// The `Transaction`'s timestamp.
+        /// The transaction's timestamp.
         got: Timestamp,
     },
 
     /// The provided body hash does not match the actual hash of the body.
     InvalidBodyHash,
 
-    /// The provided `Transaction` hash does not match the actual hash of the `Transaction`.
+    /// The provided transaction hash does not match the actual hash of the transaction.
     InvalidTransactionHash,
 
-    /// The `Transaction` has no approvals.
+    /// The transaction has no approvals.
     EmptyApprovals,
 
     /// Invalid approval.
@@ -62,44 +64,44 @@ pub enum TransactionConfigFailure {
         error: crypto::Error,
     },
 
-    /// Excessive length of `Transaction`'s runtime args.
+    /// Excessive length of transaction's runtime args.
     ExcessiveArgsLength {
         /// The byte size limit of runtime arguments.
         max_length: usize,
-        /// The length of the `Transaction`'s runtime arguments.
+        /// The length of the transaction's runtime arguments.
         got: usize,
     },
 
-    /// The amount of approvals on the `Transaction` exceeds the configured limit.
+    /// The amount of approvals on the transaction exceeds the configured limit.
     ExcessiveApprovals {
         /// The chainspec limit for max_associated_keys.
         max_associated_keys: u32,
-        /// Number of approvals on the `Transaction`.
+        /// Number of approvals on the transaction.
         got: u32,
     },
 }
 
-impl Display for TransactionConfigFailure {
+impl Display for TransactionV1ConfigFailure {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            TransactionConfigFailure::InvalidChainName { expected, got } => {
+            TransactionV1ConfigFailure::InvalidChainName { expected, got } => {
                 write!(
                     formatter,
                     "invalid chain name: expected {}, got {}",
                     expected, got
                 )
             }
-            TransactionConfigFailure::ExcessiveSize(error) => {
+            TransactionV1ConfigFailure::ExcessiveSize(error) => {
                 write!(formatter, "transaction size too large: {}", error)
             }
-            TransactionConfigFailure::ExcessiveTimeToLive { max_ttl, got } => {
+            TransactionV1ConfigFailure::ExcessiveTimeToLive { max_ttl, got } => {
                 write!(
                     formatter,
                     "time-to-live of {} exceeds limit of {}",
                     got, max_ttl
                 )
             }
-            TransactionConfigFailure::TimestampInFuture {
+            TransactionV1ConfigFailure::TimestampInFuture {
                 validation_timestamp,
                 got,
             } => {
@@ -109,36 +111,36 @@ impl Display for TransactionConfigFailure {
                     got, validation_timestamp
                 )
             }
-            TransactionConfigFailure::InvalidBodyHash => {
+            TransactionV1ConfigFailure::InvalidBodyHash => {
                 write!(
                     formatter,
                     "the provided hash does not match the actual hash of the transaction body"
                 )
             }
-            TransactionConfigFailure::InvalidTransactionHash => {
+            TransactionV1ConfigFailure::InvalidTransactionHash => {
                 write!(
                     formatter,
                     "the provided hash does not match the actual hash of the transaction"
                 )
             }
-            TransactionConfigFailure::EmptyApprovals => {
+            TransactionV1ConfigFailure::EmptyApprovals => {
                 write!(formatter, "the transaction has no approvals")
             }
-            TransactionConfigFailure::InvalidApproval { index, error } => {
+            TransactionV1ConfigFailure::InvalidApproval { index, error } => {
                 write!(
                     formatter,
                     "the transaction approval at index {} is invalid: {}",
                     index, error
                 )
             }
-            TransactionConfigFailure::ExcessiveArgsLength { max_length, got } => {
+            TransactionV1ConfigFailure::ExcessiveArgsLength { max_length, got } => {
                 write!(
                     formatter,
                     "serialized transaction runtime args of {} bytes exceeds limit of {} bytes",
                     got, max_length
                 )
             }
-            TransactionConfigFailure::ExcessiveApprovals {
+            TransactionV1ConfigFailure::ExcessiveApprovals {
                 max_associated_keys,
                 got,
             } => {
@@ -153,41 +155,41 @@ impl Display for TransactionConfigFailure {
     }
 }
 
-impl From<ExcessiveSizeError> for TransactionConfigFailure {
-    fn from(error: ExcessiveSizeError) -> Self {
-        TransactionConfigFailure::ExcessiveSize(error)
+impl From<ExcessiveSizeErrorV1> for TransactionV1ConfigFailure {
+    fn from(error: ExcessiveSizeErrorV1) -> Self {
+        TransactionV1ConfigFailure::ExcessiveSize(error)
     }
 }
 
 #[cfg(feature = "std")]
-impl StdError for TransactionConfigFailure {
+impl StdError for TransactionV1ConfigFailure {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            TransactionConfigFailure::InvalidApproval { error, .. } => Some(error),
-            TransactionConfigFailure::InvalidChainName { .. }
-            | TransactionConfigFailure::ExcessiveSize(_)
-            | TransactionConfigFailure::ExcessiveTimeToLive { .. }
-            | TransactionConfigFailure::TimestampInFuture { .. }
-            | TransactionConfigFailure::InvalidBodyHash
-            | TransactionConfigFailure::InvalidTransactionHash
-            | TransactionConfigFailure::EmptyApprovals
-            | TransactionConfigFailure::ExcessiveArgsLength { .. }
-            | TransactionConfigFailure::ExcessiveApprovals { .. } => None,
+            TransactionV1ConfigFailure::InvalidApproval { error, .. } => Some(error),
+            TransactionV1ConfigFailure::InvalidChainName { .. }
+            | TransactionV1ConfigFailure::ExcessiveSize(_)
+            | TransactionV1ConfigFailure::ExcessiveTimeToLive { .. }
+            | TransactionV1ConfigFailure::TimestampInFuture { .. }
+            | TransactionV1ConfigFailure::InvalidBodyHash
+            | TransactionV1ConfigFailure::InvalidTransactionHash
+            | TransactionV1ConfigFailure::EmptyApprovals
+            | TransactionV1ConfigFailure::ExcessiveArgsLength { .. }
+            | TransactionV1ConfigFailure::ExcessiveApprovals { .. } => None,
         }
     }
 }
 
-/// Error returned when a `Transaction` is too large.
+/// Error returned when a transaction is too large.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Serialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ExcessiveSizeError {
-    /// The maximum permitted serialized `Transaction` size, in bytes.
+pub struct ExcessiveSizeErrorV1 {
+    /// The maximum permitted serialized transaction size, in bytes.
     pub max_transaction_size: u32,
-    /// The serialized size of the `Transaction` provided, in bytes.
+    /// The serialized size of the transaction provided, in bytes.
     pub actual_transaction_size: usize,
 }
 
-impl Display for ExcessiveSizeError {
+impl Display for ExcessiveSizeErrorV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
@@ -198,38 +200,38 @@ impl Display for ExcessiveSizeError {
 }
 
 #[cfg(feature = "std")]
-impl StdError for ExcessiveSizeError {}
+impl StdError for ExcessiveSizeErrorV1 {}
 
 /// Errors other than validation failures relating to Transactions.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Error {
+pub enum ErrorV1 {
     /// Error while encoding to JSON.
     EncodeToJson(serde_json::Error),
 
     /// Error while decoding from JSON.
-    DecodeFromJson(DecodeFromJsonError),
+    DecodeFromJson(DecodeFromJsonErrorV1),
 }
 
-impl From<serde_json::Error> for Error {
+impl From<serde_json::Error> for ErrorV1 {
     fn from(error: serde_json::Error) -> Self {
-        Error::EncodeToJson(error)
+        ErrorV1::EncodeToJson(error)
     }
 }
 
-impl From<DecodeFromJsonError> for Error {
-    fn from(error: DecodeFromJsonError) -> Self {
-        Error::DecodeFromJson(error)
+impl From<DecodeFromJsonErrorV1> for ErrorV1 {
+    fn from(error: DecodeFromJsonErrorV1) -> Self {
+        ErrorV1::DecodeFromJson(error)
     }
 }
 
-impl Display for Error {
+impl Display for ErrorV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            Error::EncodeToJson(error) => {
+            ErrorV1::EncodeToJson(error) => {
                 write!(formatter, "encoding to json: {}", error)
             }
-            Error::DecodeFromJson(error) => {
+            ErrorV1::DecodeFromJson(error) => {
                 write!(formatter, "decoding from json: {}", error)
             }
         }
@@ -237,19 +239,19 @@ impl Display for Error {
 }
 
 #[cfg(feature = "std")]
-impl StdError for Error {
+impl StdError for ErrorV1 {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            Error::EncodeToJson(error) => Some(error),
-            Error::DecodeFromJson(error) => Some(error),
+            ErrorV1::EncodeToJson(error) => Some(error),
+            ErrorV1::DecodeFromJson(error) => Some(error),
         }
     }
 }
 
-/// Error while decoding a `Transaction` from JSON.
+/// Error while decoding a `TransactionV1` from JSON.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum DecodeFromJsonError {
+pub enum DecodeFromJsonErrorV1 {
     /// Failed to decode from base 16.
     FromHex(base16::DecodeError),
 
@@ -257,25 +259,25 @@ pub enum DecodeFromJsonError {
     TryFromSlice(TryFromSliceError),
 }
 
-impl From<base16::DecodeError> for DecodeFromJsonError {
+impl From<base16::DecodeError> for DecodeFromJsonErrorV1 {
     fn from(error: base16::DecodeError) -> Self {
-        DecodeFromJsonError::FromHex(error)
+        DecodeFromJsonErrorV1::FromHex(error)
     }
 }
 
-impl From<TryFromSliceError> for DecodeFromJsonError {
+impl From<TryFromSliceError> for DecodeFromJsonErrorV1 {
     fn from(error: TryFromSliceError) -> Self {
-        DecodeFromJsonError::TryFromSlice(error)
+        DecodeFromJsonErrorV1::TryFromSlice(error)
     }
 }
 
-impl Display for DecodeFromJsonError {
+impl Display for DecodeFromJsonErrorV1 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         match self {
-            DecodeFromJsonError::FromHex(error) => {
+            DecodeFromJsonErrorV1::FromHex(error) => {
                 write!(formatter, "{}", error)
             }
-            DecodeFromJsonError::TryFromSlice(error) => {
+            DecodeFromJsonErrorV1::TryFromSlice(error) => {
                 write!(formatter, "{}", error)
             }
         }
@@ -283,11 +285,11 @@ impl Display for DecodeFromJsonError {
 }
 
 #[cfg(feature = "std")]
-impl StdError for DecodeFromJsonError {
+impl StdError for DecodeFromJsonErrorV1 {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
-            DecodeFromJsonError::FromHex(error) => Some(error),
-            DecodeFromJsonError::TryFromSlice(error) => Some(error),
+            DecodeFromJsonErrorV1::FromHex(error) => Some(error),
+            DecodeFromJsonErrorV1::TryFromSlice(error) => Some(error),
         }
     }
 }

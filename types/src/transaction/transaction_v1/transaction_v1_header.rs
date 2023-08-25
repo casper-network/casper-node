@@ -10,17 +10,17 @@ use serde::{Deserialize, Serialize};
 #[cfg(any(feature = "std", test))]
 use tracing::debug;
 
-use super::PricingMode;
+use super::PricingModeV1;
 #[cfg(doc)]
-use super::Transaction;
+use super::TransactionV1;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{TransactionConfig, TransactionConfigFailure, TransactionHash};
+use crate::{TransactionV1Config, TransactionV1ConfigFailure, TransactionV1Hash};
 
-/// The header portion of a [`Transaction`].
+/// The header portion of a [`TransactionV1`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 #[cfg_attr(
     any(feature = "std", test),
@@ -28,27 +28,31 @@ use crate::{TransactionConfig, TransactionConfigFailure, TransactionHash};
     serde(deny_unknown_fields)
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct TransactionHeader {
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The header portion of a TransactionV1.")
+)]
+pub struct TransactionV1Header {
     account: PublicKey,
     timestamp: Timestamp,
     ttl: TimeDiff,
-    pricing_mode: PricingMode,
+    pricing_mode: PricingModeV1,
     body_hash: Digest,
     chain_name: String,
 }
 
-impl TransactionHeader {
+impl TransactionV1Header {
     #[cfg(any(feature = "std", feature = "json-schema", test))]
     pub(super) fn new(
         account: PublicKey,
         timestamp: Timestamp,
         ttl: TimeDiff,
-        pricing_mode: PricingMode,
+        pricing_mode: PricingModeV1,
         body_hash: Digest,
         chain_name: String,
     ) -> Self {
-        TransactionHeader {
+        TransactionV1Header {
             account,
             timestamp,
             ttl,
@@ -58,41 +62,39 @@ impl TransactionHeader {
         }
     }
 
-    /// Returns the public key of the account providing the context in which to run the
-    /// `Transaction`.
+    /// Returns the public key of the account providing the context in which to run the transaction.
     pub fn account(&self) -> &PublicKey {
         &self.account
     }
 
-    /// Returns the creation timestamp of the `Transaction`.
+    /// Returns the creation timestamp of the transaction.
     pub fn timestamp(&self) -> Timestamp {
         self.timestamp
     }
 
-    /// Returns the duration after the creation timestamp for which the `Transaction` will stay
-    /// valid.
+    /// Returns the duration after the creation timestamp for which the transaction will stay valid.
     ///
-    /// After this duration has ended, the `Transaction` will be considered expired.
+    /// After this duration has ended, the transaction will be considered expired.
     pub fn ttl(&self) -> TimeDiff {
         self.ttl
     }
 
-    /// Returns `true` if the `Transaction` has expired.
+    /// Returns `true` if the transaction has expired.
     pub fn expired(&self, current_instant: Timestamp) -> bool {
         self.expires() < current_instant
     }
 
-    /// Returns the pricing mode for the `Transaction`.
-    pub fn pricing_mode(&self) -> &PricingMode {
+    /// Returns the pricing mode for the transaction.
+    pub fn pricing_mode(&self) -> &PricingModeV1 {
         &self.pricing_mode
     }
 
-    /// Returns the hash of the body of the `Transaction`.
+    /// Returns the hash of the body of the transaction.
     pub fn body_hash(&self) -> &Digest {
         &self.body_hash
     }
 
-    /// Returns the name of the chain the `Transaction` should be executed on.
+    /// Returns the name of the chain the transaction should be executed on.
     pub fn chain_name(&self) -> &str {
         &self.chain_name
     }
@@ -102,10 +104,10 @@ impl TransactionHeader {
     #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
-        config: &TransactionConfig,
+        config: &TransactionV1Config,
         at: Timestamp,
-        transaction_hash: &TransactionHash,
-    ) -> Result<(), TransactionConfigFailure> {
+        transaction_hash: &TransactionV1Hash,
+    ) -> Result<(), TransactionV1ConfigFailure> {
         if self.ttl() > config.max_ttl {
             debug!(
                 %transaction_hash,
@@ -113,7 +115,7 @@ impl TransactionHeader {
                 max_ttl = %config.max_ttl,
                 "transaction ttl excessive"
             );
-            return Err(TransactionConfigFailure::ExcessiveTimeToLive {
+            return Err(TransactionV1ConfigFailure::ExcessiveTimeToLive {
                 max_ttl: config.max_ttl,
                 got: self.ttl(),
             });
@@ -124,7 +126,7 @@ impl TransactionHeader {
                 %transaction_hash, transaction_header = %self, %at,
                 "transaction timestamp in the future"
             );
-            return Err(TransactionConfigFailure::TimestampInFuture {
+            return Err(TransactionV1ConfigFailure::TimestampInFuture {
                 validation_timestamp: at,
                 got: self.timestamp(),
             });
@@ -133,7 +135,7 @@ impl TransactionHeader {
         Ok(())
     }
 
-    /// Returns the timestamp of when the `Transaction` expires, i.e. `self.timestamp + self.ttl`.
+    /// Returns the timestamp of when the transaction expires, i.e. `self.timestamp + self.ttl`.
     pub fn expires(&self) -> Timestamp {
         self.timestamp.saturating_add(self.ttl)
     }
@@ -144,7 +146,7 @@ impl TransactionHeader {
     }
 }
 
-impl ToBytes for TransactionHeader {
+impl ToBytes for TransactionV1Header {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.account.write_bytes(writer)?;
         self.timestamp.write_bytes(writer)?;
@@ -170,15 +172,15 @@ impl ToBytes for TransactionHeader {
     }
 }
 
-impl FromBytes for TransactionHeader {
+impl FromBytes for TransactionV1Header {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (account, remainder) = PublicKey::from_bytes(bytes)?;
         let (timestamp, remainder) = Timestamp::from_bytes(remainder)?;
         let (ttl, remainder) = TimeDiff::from_bytes(remainder)?;
-        let (pricing_mode, remainder) = PricingMode::from_bytes(remainder)?;
+        let (pricing_mode, remainder) = PricingModeV1::from_bytes(remainder)?;
         let (body_hash, remainder) = Digest::from_bytes(remainder)?;
         let (chain_name, remainder) = String::from_bytes(remainder)?;
-        let transaction_header = TransactionHeader {
+        let transaction_header = TransactionV1Header {
             account,
             timestamp,
             ttl,
@@ -190,11 +192,11 @@ impl FromBytes for TransactionHeader {
     }
 }
 
-impl Display for TransactionHeader {
+impl Display for TransactionV1Header {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "transaction-header[account: {}, timestamp: {}, ttl: {}, pricing mode: {}, \
+            "transaction-v1-header[account: {}, timestamp: {}, ttl: {}, pricing mode: {}, \
             chain_name: {}]",
             self.account, self.timestamp, self.ttl, self.pricing_mode, self.chain_name,
         )
