@@ -2065,31 +2065,153 @@ mod tests {
     }
 
     #[test]
-    fn env_req_no_payload_response_size_limit_exceeded() {
-        todo!();
+    fn env_req_size_limit_exceeded() {
+        let mut env = TestingSetup::new();
+
+        let payload = VaryingPayload::TooLarge;
+
+        // Alice should not allow too-large requests to be sent.
+        let violation = env
+            .alice
+            .create_request(env.common_channel, payload.get())
+            .expect_err("should not be able to create too large request");
+
+        assert_matches!(violation, LocalProtocolViolation::PayloadExceedsLimit);
+
+        // If we force the issue, Bob must refuse it instead.
+        let bob_result = env.inject_and_send_request(Alice, payload.get());
+        env.assert_is_error_message(ErrorKind::RequestTooLarge, Id::new(1), bob_result);
     }
 
     #[test]
-    fn env_req_no_payload_response_cancellation_limit_exceeded() {
-        todo!();
+    fn env_response_size_limit_exceeded() {
+        let (mut env, id) = env_with_initial_areq(VaryingPayload::None);
+        let payload = VaryingPayload::TooLarge;
+
+        // Bob should not allow too-large responses to be sent.
+        let violation = env
+            .bob
+            .create_request(env.common_channel, payload.get())
+            .expect_err("should not be able to create too large response");
+        assert_matches!(violation, LocalProtocolViolation::PayloadExceedsLimit);
+
+        // If we force the issue, Alice must refuse it.
+        let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+        env.assert_is_error_message(ErrorKind::ResponseTooLarge, Id::new(1), alice_result);
+    }
+
+    #[test]
+    fn env_req_response_cancellation_limit_exceeded() {
+        for payload in VaryingPayload::all_valid() {
+            for num_requests in 0..=2 {
+                let mut env = TestingSetup::new();
+
+                // Have Alice make requests in order to fill-up the in-flights.
+                for i in 0..num_requests {
+                    let expected_id = Id::new(i + 1);
+                    let bobs_read = env
+                        .create_and_send_request(Alice, payload.get())
+                        .expect("should accept request");
+                    env.assert_is_new_request(expected_id, payload.get_slice(), bobs_read);
+                }
+
+                // Now send the corresponding amount of cancellations.
+                for i in 0..num_requests {
+                    let id = Id::new(i + 1);
+
+                    let msg = create_unchecked_request_cancellation(env.common_channel, id);
+
+                    let bobs_read = env.recv_on(Bob, msg).expect("cancellation should not fail");
+                    env.assert_is_request_cancellation(id, bobs_read);
+                }
+
+                let id = Id::new(num_requests + 1);
+                // Finally another cancellation should trigger an error.
+                let msg = create_unchecked_request_cancellation(env.common_channel, id);
+
+                let bobs_result = env.recv_on(Bob, msg);
+                env.assert_is_error_message(ErrorKind::CancellationLimitExceeded, id, bobs_result);
+            }
+        }
     }
 
     #[test]
     fn env_max_frame_size_exceeded() {
-        todo!();
+        // Note: An actual `MaxFrameSizeExceeded` can never occur due to how this library is
+        //       implemented. This is the closest situation that can occur.
+
+        let mut env = TestingSetup::new();
+
+        let payload = VaryingPayload::TooLarge;
+        let id = Id::new(1);
+
+        // We have to craft the message by hand to exceed the frame size.
+        let msg = OutgoingMessage::new(
+            Header::new(Kind::RequestPl, env.common_channel, id),
+            payload.get(),
+        );
+        let mut encoded = BytesMut::from(
+            msg.to_bytes(MaxFrameSize::new(
+                2 * payload
+                    .get()
+                    .expect("TooLarge payload should have body")
+                    .len() as u32,
+            ))
+            .as_ref(),
+        );
+        let violation = env.bob.process_incoming(&mut encoded).to_result();
+
+        env.assert_is_error_message(ErrorKind::RequestTooLarge, id, violation);
     }
 
     #[test]
     fn env_invalid_header() {
-        todo!();
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let id = Id::new(1);
+
+            // We have to craft the message by hand to exceed the frame size.
+            let msg = OutgoingMessage::new(
+                Header::new(Kind::RequestPl, env.common_channel, id),
+                payload.get(),
+            );
+            let mut encoded = BytesMut::from(msg.to_bytes(env.max_frame_size).as_ref());
+
+            // Patch the header so that it is broken.
+            encoded[0] = 0b0000_1111; // Kind: Normal, all data bits set.
+
+            let violation = env.bob.process_incoming(&mut encoded).to_result();
+
+            env.assert_is_error_message(ErrorKind::InvalidHeader, id, violation);
+        }
     }
 
     #[test]
     fn env_bad_varint() {
-        todo!();
-    }
+        let payload = VaryingPayload::MultiFrame;
+        let mut env = TestingSetup::new();
 
-    // TODO: Ensure one request or cancellation per request is enforced.
+        let id = Id::new(1);
+
+        // We have to craft the message by hand to exceed the frame size.
+        let msg = OutgoingMessage::new(
+            Header::new(Kind::RequestPl, env.common_channel, id),
+            payload.get(),
+        );
+        let mut encoded = BytesMut::from(msg.to_bytes(env.max_frame_size).as_ref());
+
+        // Invalidate the varint.
+        encoded[4] = 0xFF;
+        encoded[5] = 0xFF;
+        encoded[6] = 0xFF;
+        encoded[7] = 0xFF;
+        encoded[8] = 0xFF;
+
+        let violation = env.bob.process_incoming(&mut encoded).to_result();
+
+        env.assert_is_error_message(ErrorKind::BadVarInt, id, violation);
+    }
 
     #[test]
     fn response_with_no_payload_is_cleared_from_buffer() {
