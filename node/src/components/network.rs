@@ -423,7 +423,8 @@ where
         for peer_id in self.outgoing_manager.connected_peers() {
             total_outgoing_manager_connected_peers += 1;
 
-            if !self.validator_matrix.has_era(&era_id)
+            if true
+                || !self.validator_matrix.has_era(&era_id)
                 || self.outgoing_limiter.is_validator_in_era(era_id, &peer_id)
             {
                 total_connected_validators_in_era += 1;
