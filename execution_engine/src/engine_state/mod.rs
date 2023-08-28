@@ -1420,7 +1420,7 @@ where
                 &authorization_keys,
                 Rc::clone(&tracking_copy),
             ) {
-                Ok((contract, contract_hash)) => (contract, contract_hash),
+                Ok((addressable_entity, entity_hash)) => (addressable_entity, entity_hash),
                 Err(e) => return Ok(ExecutionResult::precondition_failure(e)),
             }
         };

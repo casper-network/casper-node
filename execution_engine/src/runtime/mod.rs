@@ -1647,9 +1647,13 @@ where
         bytes_written_ptr: u32,
         version_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        self.context.validate_key(&Key::from(package_hash))?;
+        // self.context.validate_key(&Key::from(package_hash))?;
+        //
+        // let mut package: Package = self.context.get_validated_package(package_hash)?;
 
-        let mut package: Package = self.context.get_validated_package(package_hash)?;
+        let mut package = self
+            .context
+            .read_gs_typed::<Package>(&Key::from(package_hash))?;
 
         if package.get_package_kind() != ContractPackageKind::Wasm {
             return Err(Error::InvalidContext);
@@ -1661,6 +1665,44 @@ where
         if package.is_locked() && version.is_some() {
             return Err(Error::LockedContract(package_hash));
         }
+        let (main_purse, associated_keys, action_thresholds) = match package.current_contract_hash()
+        {
+            Some(previous_contract_hash) => {
+                let mut previous_entity: AddressableEntity =
+                    self.context.read_gs_typed(&previous_contract_hash.into())?;
+
+                // Check if the calling entity must be grandfathered into the new
+                // addressable entity format
+                if previous_entity.associated_keys().is_empty()
+                    && self.context.validate_uref(&package.access_key()).is_ok()
+                {
+                    let upgrade_management_threshold =
+                        previous_entity.action_thresholds().upgrade_management();
+                    previous_entity.add_associated_key(
+                        self.context.get_caller(),
+                        *upgrade_management_threshold,
+                    )?;
+                }
+
+                if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
+                    return Err(Error::UpgradeAuthorizationFailure);
+                }
+
+                // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
+                let mut previous_named_keys = previous_entity.named_keys().clone();
+                named_keys.append(&mut previous_named_keys);
+                (
+                    previous_entity.main_purse(),
+                    previous_entity.associated_keys().clone(),
+                    previous_entity.action_thresholds().clone(),
+                )
+            }
+            None => (
+                self.create_purse()?,
+                AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
+                ActionThresholds::default(),
+            ),
+        };
 
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
@@ -1672,39 +1714,6 @@ where
 
         let protocol_version = self.context.protocol_version();
         let major = protocol_version.value().major;
-
-        // TODO: EE-1032 - Implement different ways of carrying on existing named keys
-        if let Some(previous_contract_hash) = package.current_contract_hash() {
-            let previous_entity: AddressableEntity =
-                self.context.read_gs_typed(&previous_contract_hash.into())?;
-
-            if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
-                return Err(Error::UpgradeAuthorizationFailure);
-            }
-
-            let mut previous_named_keys = previous_entity.take_named_keys();
-            named_keys.append(&mut previous_named_keys);
-        }
-
-        let (main_purse, associated_keys, action_thresholds) = match package.current_contract_hash()
-        {
-            Some(previous_contract_hash) => {
-                let previous_contract: AddressableEntity =
-                    self.context.read_gs_typed(&previous_contract_hash.into())?;
-                let mut previous_named_keys = previous_contract.named_keys().clone();
-                named_keys.append(&mut previous_named_keys);
-                (
-                    previous_contract.main_purse(),
-                    previous_contract.associated_keys().clone(),
-                    previous_contract.action_thresholds().clone(),
-                )
-            }
-            None => (
-                self.create_purse()?,
-                AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
-                ActionThresholds::default(),
-            ),
-        };
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -3038,16 +3047,14 @@ where
                     ));
                 }
 
+                let access_uref = &legacy_contract_package.access_key();
+
                 self.context
                     .metered_write_gs(contract_package_key, legacy_contract_package)?;
 
                 let entity_main_purse = self.create_purse()?;
 
-                let associated_keys = if self
-                    .context
-                    .validate_uref(*legacy_contract_package.access_key())
-                    .is_ok()
-                {
+                let associated_keys = if self.context.validate_uref(access_uref).is_ok() {
                     AssociatedKeys::new(self.context.get_caller(), Weight::new(1))
                 } else {
                     AssociatedKeys::default()
