@@ -6,7 +6,7 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{
         self,
-        main_reactor::{keep_up::synced_to_ttl, MainEvent, MainReactor},
+        main_reactor::{keep_up::synced_to_ttl_and_signature_delay, MainEvent, MainReactor},
     },
     storage::HighestOrphanedBlockResult,
     NodeRng,
@@ -120,10 +120,11 @@ impl MainReactor {
         if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
             self.storage.get_highest_orphaned_block_header()
         {
-            if synced_to_ttl(
+            if synced_to_ttl_and_signature_delay(
                 highest_switch_block_header,
                 &highest_orphaned_block_header,
                 self.chainspec.deploy_config.max_ttl,
+                self.chainspec.core_config.signature_rewards_max_delay,
             )? {
                 debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
             } else {
