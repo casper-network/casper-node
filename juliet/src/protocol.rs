@@ -980,8 +980,8 @@ mod tests {
     };
 
     use super::{
-        create_unchecked_request_cancellation, err_msg, Channel, JulietProtocol, MaxFrameSize,
-        OutgoingMessage, ProtocolBuilder,
+        create_unchecked_request_cancellation, create_unchecked_response_cancellation, err_msg,
+        Channel, JulietProtocol, MaxFrameSize, OutgoingMessage, ProtocolBuilder,
     };
 
     /// A generic payload that can be used in testing.
@@ -1683,6 +1683,23 @@ mod tests {
             self.recv_on(!origin, msg)
         }
 
+        /// Similar to `create_and_send_response_cancellation`, but bypasses all checks.
+        ///
+        /// Allows for sending request cancellations that are not allowed by the protocol API.
+        #[track_caller]
+        fn inject_and_send_response_cancellation(
+            &mut self,
+            origin: Peer,
+            id: Id,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel_id = self.common_channel;
+
+            let msg = create_unchecked_response_cancellation(channel_id, id);
+
+            // Send to peer and return outcome.
+            self.recv_on(!origin, msg)
+        }
+
         /// Asserts the given completed read is a [`CompletedRead::NewRequest`] with the given ID
         /// and payload.
         ///
@@ -2266,5 +2283,54 @@ mod tests {
         );
 
         assert_eq!(response_raw.remaining(), 0);
+    }
+
+    #[test]
+    fn one_respone_or_cancellation_per_request() {
+        for payload in VaryingPayload::all_valid() {
+            // Case 1: Response, response.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("should send response")
+                .expect("should accept response");
+            env.assert_is_received_response(id, payload.get_slice(), completed_read);
+
+            let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, id, alice_result);
+
+            // Case 2: Response, cancel.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("should send response")
+                .expect("should accept response");
+            env.assert_is_received_response(id, payload.get_slice(), completed_read);
+
+            let alice_result = env.inject_and_send_response_cancellation(Bob, id);
+            env.assert_is_error_message(ErrorKind::FictitiousCancel, id, alice_result);
+
+            // Case 3: Cancel, response.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("should send response cancellation")
+                .expect("should accept response cancellation");
+            env.assert_is_response_cancellation(id, completed_read);
+
+            let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, id, alice_result);
+
+            // Case4: Cancel, cancel.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("should send response")
+                .expect("should accept response");
+            env.assert_is_received_response(id, payload.get_slice(), completed_read);
+
+            let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, id, alice_result);
+        }
     }
 }
