@@ -2322,9 +2322,9 @@ mod tests {
         assert_eq!(
             outcome,
             CompletedRead::ReceivedResponse {
-                channel: channel,
+                channel,
                 /// The ID of the request received.
-                id: id,
+                id,
                 /// The response payload.
                 payload: None,
             }
