@@ -25,7 +25,7 @@ use super::{Account, Contract, ContractPackage};
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub enum StoredValue {
-    /// A CasperLabs value.
+    /// An instance of any variant of CLValue
     CLValue(CLValue),
     /// An account.
     Account(Account),
