@@ -6,6 +6,7 @@ use std::fmt::{Debug, Display};
 
 use bytemuck::{Pod, Zeroable};
 use hex_fmt::HexFmt;
+use strum::{EnumCount, EnumIter, FromRepr};
 use thiserror::Error;
 
 use crate::{ChannelId, Id};
@@ -47,7 +48,7 @@ impl Debug for Header {
 }
 
 /// Error kind, from the kind byte.
-#[derive(Copy, Clone, Debug, Error, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, EnumCount, EnumIter, Error, FromRepr, Eq, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 pub enum ErrorKind {
@@ -95,11 +96,10 @@ pub enum ErrorKind {
     /// Peer sent a request cancellation exceeding the cancellation allowance.
     #[error("cancellation limit exceeded")]
     CancellationLimitExceeded = 13,
-    // Note: When adding additional kinds, update the `HIGHEST` associated constant.
 }
 
 /// Frame kind, from the kind byte.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, EnumCount, EnumIter, Eq, FromRepr, PartialEq)]
 #[cfg_attr(test, derive(proptest_derive::Arbitrary))]
 #[repr(u8)]
 
@@ -116,21 +116,6 @@ pub enum Kind {
     CancelReq = 4,
     /// Cancellation of a response.
     CancelResp = 5,
-    // Note: When adding additional kinds, update the `HIGHEST` associated constant.
-}
-
-impl ErrorKind {
-    /// The highest error kind number.
-    ///
-    /// Only error kinds <= `HIGHEST` are valid.
-    const HIGHEST: Self = Self::CancellationLimitExceeded;
-}
-
-impl Kind {
-    /// The highest frame kind number.
-    ///
-    /// Only error kinds <= `HIGHEST` are valid.
-    const HIGHEST: Self = Self::CancelResp;
 }
 
 impl Header {
@@ -174,11 +159,11 @@ impl Header {
 
         // Check that the kind byte is within valid range.
         if header.is_error() {
-            if (header.kind_byte() & Self::KIND_ERR_MASK) > ErrorKind::HIGHEST as u8 {
+            if (header.kind_byte() & Self::KIND_ERR_MASK) >= ErrorKind::COUNT as u8 {
                 return None;
             }
         } else {
-            if (header.kind_byte() & Self::KIND_MASK) > Kind::HIGHEST as u8 {
+            if (header.kind_byte() & Self::KIND_MASK) >= Kind::COUNT as u8 {
                 return None;
             }
 
@@ -234,23 +219,13 @@ impl Header {
     #[inline(always)]
     pub const fn error_kind(self) -> ErrorKind {
         debug_assert!(self.is_error());
-        match self.kind_byte() & Self::KIND_ERR_MASK {
-            0 => ErrorKind::Other,
-            1 => ErrorKind::MaxFrameSizeExceeded,
-            2 => ErrorKind::InvalidHeader,
-            3 => ErrorKind::SegmentViolation,
-            4 => ErrorKind::BadVarInt,
-            5 => ErrorKind::InvalidChannel,
-            6 => ErrorKind::InProgress,
-            7 => ErrorKind::ResponseTooLarge,
-            8 => ErrorKind::RequestTooLarge,
-            9 => ErrorKind::DuplicateRequest,
-            10 => ErrorKind::FictitiousRequest,
-            11 => ErrorKind::RequestLimitExceeded,
-            12 => ErrorKind::FictitiousCancel,
-            13 => ErrorKind::CancellationLimitExceeded,
-            // Would violate validity invariant.
-            _ => unreachable!(),
+        match ErrorKind::from_repr(self.kind_byte() & Self::KIND_ERR_MASK) {
+            Some(value) => value,
+            None => {
+                // While this is representable, it would violate the invariant of this type that is
+                // enforced by [`Header::parse`].
+                unreachable!()
+            }
         }
     }
 
@@ -262,15 +237,13 @@ impl Header {
     #[inline(always)]
     pub const fn kind(self) -> Kind {
         debug_assert!(!self.is_error());
-        match self.kind_byte() & Self::KIND_MASK {
-            0 => Kind::Request,
-            1 => Kind::Response,
-            2 => Kind::RequestPl,
-            3 => Kind::ResponsePl,
-            4 => Kind::CancelReq,
-            5 => Kind::CancelResp,
-            // Would violate validity invariant.
-            _ => unreachable!(),
+
+        match Kind::from_repr(self.kind_byte() & Self::KIND_MASK) {
+            Some(kind) => kind,
+            None => {
+                // Invariant enfored by [`Header::parse`].
+                unreachable!()
+            }
         }
     }
 

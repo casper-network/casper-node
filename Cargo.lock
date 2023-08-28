@@ -569,7 +569,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
- "strum",
+ "strum 0.24.1",
  "tempfile",
  "thiserror",
  "tracing",
@@ -695,7 +695,7 @@ dependencies = [
  "static_assertions",
  "stats_alloc",
  "structopt",
- "strum",
+ "strum 0.24.1",
  "sys-info",
  "tempfile",
  "thiserror",
@@ -751,7 +751,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "serde_test",
- "strum",
+ "strum 0.24.1",
  "tempfile",
  "thiserror",
  "uint",
@@ -1359,17 +1359,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derivative"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcc3dd5e9e9c0b295d6e1e4d811fb6f157d5ffd784b8d202fc62eac8035a770b"
-dependencies = [
- "proc-macro2 1.0.56",
- "quote 1.0.26",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "derive_more"
 version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1384,18 +1373,18 @@ dependencies = [
 
 [[package]]
 name = "derive_more"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d79dfbcc1f34f3b3a0ce7574276f6f198acb811d70dd19d9dcbfe6263a83d983"
+checksum = "f1335e0609db169713d97c340dd769773c6c63cd953c8fcf1063043fd3d6dd11"
 dependencies = [
  "derive_more-impl",
 ]
 
 [[package]]
 name = "derive_more-impl"
-version = "1.0.0-beta.2"
+version = "1.0.0-beta.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "395aee42a456ecfd4c7034be5011e1a98edcbab2611867c8988a0f40d0bb242a"
+checksum = "df541e0e2a8069352be228ce4b85a1da6f59bfd325e56f57e4b241babbc3f832"
 dependencies = [
  "proc-macro2 1.0.56",
  "quote 1.0.26",
@@ -3255,17 +3244,19 @@ name = "juliet"
 version = "0.1.0"
 dependencies = [
  "array-init",
+ "assert_matches",
  "bimap",
  "bytemuck",
  "bytes",
- "derivative",
- "derive_more 1.0.0-beta.2",
+ "derive_more 1.0.0-beta.3",
  "futures",
  "hex_fmt",
  "proptest",
  "proptest-attr-macro",
  "proptest-derive",
  "rand",
+ "static_assertions",
+ "strum 0.25.0",
  "thiserror",
  "tokio",
  "tracing",
@@ -5209,7 +5200,16 @@ version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.24.3",
+]
+
+[[package]]
+name = "strum"
+version = "0.25.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "290d54ea6f91c969195bdbcd7442c8c2a2ba87da8bf60a7ee86a235d4bc1e125"
+dependencies = [
+ "strum_macros 0.25.2",
 ]
 
 [[package]]
@@ -5223,6 +5223,19 @@ dependencies = [
  "quote 1.0.26",
  "rustversion",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.25.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8d03b598d3d0fff69bf533ee3ef19b8eeb342729596df84bcc7e1f96ec4059"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2 1.0.56",
+ "quote 1.0.26",
+ "rustversion",
+ "syn 2.0.15",
 ]
 
 [[package]]

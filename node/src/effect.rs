@@ -256,10 +256,6 @@ impl<T: Debug> AutoClosingResponder<T> {
 impl<T> Drop for AutoClosingResponder<T> {
     fn drop(&mut self) {
         if let Some(sender) = self.0.sender.take() {
-            debug!(
-                sending_value = %self.0,
-                "responding None by dropping auto-close responder"
-            );
             // We still haven't answered, send an answer.
             if let Err(_unsent_value) = sender.send(None) {
                 debug!(

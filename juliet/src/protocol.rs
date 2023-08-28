@@ -75,7 +75,10 @@ impl MaxFrameSize {
     /// Will panic if the given maximum frame size is less than [`MaxFrameSize::MIN`].
     #[inline(always)]
     pub const fn new(max_frame_size: u32) -> Self {
-        assert!(max_frame_size >= Self::MIN);
+        assert!(
+            max_frame_size >= Self::MIN,
+            "given maximum frame size is below permissible minimum for maximum frame size"
+        );
         MaxFrameSize(max_frame_size)
     }
 
@@ -130,6 +133,7 @@ impl Default for MaxFrameSize {
 /// Their return types are usually converted into frames via [`OutgoingMessage::frames()`] and need
 /// to be sent to the peer.
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 pub struct JulietProtocol<const N: usize> {
     /// Bi-directional channels.
     channels: [Channel; N],
@@ -214,6 +218,7 @@ impl<const N: usize> ProtocolBuilder<N> {
 /// Used internally by the protocol to keep track. This data structure closely tracks the
 /// information specified in the juliet RFC.
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 struct Channel {
     /// A set of request IDs from requests received that have not been answered with a response or
     /// cancellation yet.
@@ -250,26 +255,10 @@ impl Channel {
         }
     }
 
-    /// Returns whether or not the peer has exhausted the number of requests allowed.
-    ///
-    /// Depending on the size of the payload an [`OutgoingMessage`] may span multiple frames. On a
-    /// single channel, only one multi-frame message may be in the process of sending at a time,
-    /// thus it is not permissible to begin sending frames of a different multi-frame message before
-    /// the send of a previous one has been completed.
-    ///
-    /// Additional single-frame messages can be interspersed in between at will.
-    ///
-    /// [`JulietProtocol`] does not track whether or not a multi-frame message is in-flight; it is
-    /// up to the caller to ensure no second multi-frame message commences sending before the first
-    /// one completes.
-    ///
-    /// This problem can be avoided in its entirety if all frames of all messages created on a
-    /// single channel are sent in the order they are created.
-    ///
-    /// Additionally frames of a single message may also not be reordered.
+    /// Returns whether or not the peer has exhausted the number of in-flight requests allowed.
     #[inline]
     pub fn is_at_max_incoming_requests(&self) -> bool {
-        self.incoming_requests.len() == self.config.request_limit as usize
+        self.incoming_requests.len() >= self.config.request_limit as usize
     }
 
     /// Increments the cancellation allowance if possible.
@@ -308,6 +297,71 @@ impl Channel {
     pub fn allowed_to_send_request(&self) -> bool {
         self.outgoing_requests.len() < self.config.request_limit as usize
     }
+
+    /// Creates a new request, bypassing all client-side checks.
+    ///
+    /// Low-level function that does nothing but create a syntactically correct request and track
+    /// its outgoing ID. This function is not meant to be called outside of this module or its unit
+    /// tests. See [`JulietProtocol::create_request`] instead.
+    #[inline(always)]
+    fn create_unchecked_request(
+        &mut self,
+        channel_id: ChannelId,
+        payload: Option<Bytes>,
+    ) -> OutgoingMessage {
+        // The `unwrap_or` below should never be triggered, as long as `u16::MAX` or less
+        // requests are currently in flight, which is always the case with safe API use.
+        let id = self.generate_request_id().unwrap_or(Id(0));
+
+        // Record the outgoing request for later.
+        self.outgoing_requests.insert(id);
+
+        if let Some(payload) = payload {
+            let header = Header::new(header::Kind::RequestPl, channel_id, id);
+            OutgoingMessage::new(header, Some(payload))
+        } else {
+            let header = Header::new(header::Kind::Request, channel_id, id);
+            OutgoingMessage::new(header, None)
+        }
+    }
+}
+
+/// Creates a new response without checking or altering channel states.
+///
+/// Low-level function exposed for testing. Does not affect the tracking of IDs, thus can be used to
+/// send duplicate or ficticious responses.
+#[inline(always)]
+fn create_unchecked_response(
+    channel: ChannelId,
+    id: Id,
+    payload: Option<Bytes>,
+) -> OutgoingMessage {
+    if let Some(payload) = payload {
+        let header = Header::new(header::Kind::ResponsePl, channel, id);
+        OutgoingMessage::new(header, Some(payload))
+    } else {
+        let header = Header::new(header::Kind::Response, channel, id);
+        OutgoingMessage::new(header, None)
+    }
+}
+
+/// Creates a request cancellation without checks.
+///
+/// Low-level function exposed for testing. Does not verify that the given request exists or has not
+/// been cancelled before.
+#[inline(always)]
+fn create_unchecked_request_cancellation(channel: ChannelId, id: Id) -> OutgoingMessage {
+    let header = Header::new(header::Kind::CancelReq, channel, id);
+    OutgoingMessage::new(header, None)
+}
+
+/// Creates a response cancellation without checks.
+///
+/// Low-level function exposed for testing. Does not verify that the given request has been received
+/// or a response sent already.
+fn create_unchecked_response_cancellation(channel: ChannelId, id: Id) -> OutgoingMessage {
+    let header = Header::new(header::Kind::CancelResp, channel, id);
+    OutgoingMessage::new(header, None)
 }
 
 /// A successful read from the peer.
@@ -492,20 +546,7 @@ impl<const N: usize> JulietProtocol<N> {
             return Err(LocalProtocolViolation::WouldExceedRequestLimit);
         }
 
-        // The `unwrap_or` below should never be triggered, as long as `u16::MAX` or less
-        // requests are currently in flight, which is always the case.
-        let id = chan.generate_request_id().unwrap_or(Id(0));
-
-        // Record the outgoing request for later.
-        chan.outgoing_requests.insert(id);
-
-        if let Some(payload) = payload {
-            let header = Header::new(header::Kind::RequestPl, channel, id);
-            Ok(OutgoingMessage::new(header, Some(payload)))
-        } else {
-            let header = Header::new(header::Kind::Request, channel, id);
-            Ok(OutgoingMessage::new(header, None))
-        }
+        Ok(chan.create_unchecked_request(channel, payload))
     }
 
     /// Creates a new response to be sent.
@@ -543,13 +584,7 @@ impl<const N: usize> JulietProtocol<N> {
             }
         }
 
-        if let Some(payload) = payload {
-            let header = Header::new(header::Kind::ResponsePl, channel, id);
-            Ok(Some(OutgoingMessage::new(header, Some(payload))))
-        } else {
-            let header = Header::new(header::Kind::Response, channel, id);
-            Ok(Some(OutgoingMessage::new(header, None)))
-        }
+        Ok(Some(create_unchecked_response(channel, id, payload)))
     }
 
     /// Creates a cancellation for an outgoing request.
@@ -571,15 +606,14 @@ impl<const N: usize> JulietProtocol<N> {
     ) -> Result<Option<OutgoingMessage>, LocalProtocolViolation> {
         let chan = self.lookup_channel_mut(channel)?;
 
-        if !chan.outgoing_requests.remove(&id) {
-            // The request has been cancelled, no need to send a response. This also prevents us
-            // from ever violating the cancellation limit by accident, if all requests are sent
-            // properly.
+        if !chan.outgoing_requests.contains(&id) {
+            // The request has received a response already, no need to cancel. Note that merely
+            // sending the cancellation is not enough here, we still expect either cancellation or
+            // response from the peer.
             return Ok(None);
         }
 
-        let header = Header::new(header::Kind::CancelReq, channel, id);
-        Ok(Some(OutgoingMessage::new(header, None)))
+        Ok(Some(create_unchecked_request_cancellation(channel, id)))
     }
 
     /// Creates a cancellation of an incoming request.
@@ -604,11 +638,13 @@ impl<const N: usize> JulietProtocol<N> {
             return Ok(None);
         }
 
-        let header = Header::new(header::Kind::CancelResp, channel, id);
-        Ok(Some(OutgoingMessage::new(header, None)))
+        Ok(Some(create_unchecked_response_cancellation(channel, id)))
     }
 
     /// Creates an error message with type [`ErrorKind::Other`].
+    ///
+    /// The resulting [`OutgoingMessage`] is the last message that should be sent to the peer, the
+    /// caller should ensure no more messages are sent.
     ///
     /// # Local protocol violations
     ///
@@ -852,9 +888,9 @@ impl<const N: usize> JulietProtocol<N> {
                         return err_msg(header, ErrorKind::CancellationLimitExceeded);
                     }
                     channel.cancellation_allowance -= 1;
+                    buffer.advance(Header::SIZE);
 
-                    // TODO: What to do with partially received multi-frame request?
-                    // TODO: Actually remove from incoming set.
+                    // TODO: What to do with partially received multi-frame request? (needs tests)
 
                     #[cfg(feature = "tracing")]
                     {
@@ -862,14 +898,28 @@ impl<const N: usize> JulietProtocol<N> {
                         trace!(%header, "received request cancellation");
                     }
 
-                    return Success(CompletedRead::RequestCancellation {
-                        channel: header.channel(),
-                        id: header.id(),
-                    });
+                    // Check incoming request. If it was already cancelled or answered, ignore, as
+                    // it is valid to send wrong cancellation up to the cancellation allowance.
+                    //
+                    // An incoming request may have also already been answered, which is also
+                    // reason to ignore it.
+                    //
+                    // However, we cannot remove it here, as we need to track whether we have sent
+                    // something back.
+                    if !channel.incoming_requests.contains(&header.id()) {
+                        // Already answered, ignore the late cancellation.
+                    } else {
+                        return Success(CompletedRead::RequestCancellation {
+                            channel: header.channel(),
+                            id: header.id(),
+                        });
+                    }
                 }
                 Kind::CancelResp => {
                     if channel.outgoing_requests.remove(&header.id()) {
                         log_frame!(header);
+                        buffer.advance(Header::SIZE);
+
                         return Success(CompletedRead::ResponseCancellation {
                             channel: header.channel(),
                             id: header.id(),
@@ -912,18 +962,1337 @@ pub const fn payload_is_multi_frame(max_frame_size: MaxFrameSize, payload_len: u
 
 #[cfg(test)]
 mod tests {
+    use std::{collections::HashSet, fmt::Debug, ops::Not};
+
+    use assert_matches::assert_matches;
     use bytes::{Buf, Bytes, BytesMut};
+    use proptest_attr_macro::proptest;
+    use proptest_derive::Arbitrary;
+    use static_assertions::const_assert;
+    use strum::{EnumIter, IntoEnumIterator};
 
     use crate::{
-        header::{Header, Kind},
-        protocol::CompletedRead,
-        ChannelConfiguration, ChannelId, Id,
+        header::{ErrorKind, Header, Kind},
+        protocol::{
+            create_unchecked_response, payload_is_multi_frame, CompletedRead,
+            LocalProtocolViolation,
+        },
+        varint::Varint32,
+        ChannelConfiguration, ChannelId, Id, Outcome,
     };
 
-    use super::{JulietProtocol, ProtocolBuilder};
+    use super::{
+        create_unchecked_request_cancellation, create_unchecked_response_cancellation, err_msg,
+        Channel, JulietProtocol, MaxFrameSize, OutgoingMessage, ProtocolBuilder,
+    };
+
+    /// A generic payload that can be used in testing.
+    #[derive(Arbitrary, Clone, Copy, Debug, EnumIter)]
+    enum VaryingPayload {
+        /// No payload at all.
+        None,
+        /// A payload that fits into a single frame (using `TestingSetup`'s defined limits).
+        SingleFrame,
+        /// A payload that spans more than one frame.
+        MultiFrame,
+        /// A payload that exceeds the request size limit.
+        TooLarge,
+    }
+
+    impl VaryingPayload {
+        /// Returns all valid payload sizes.
+        fn all_valid() -> impl Iterator<Item = Self> {
+            [
+                VaryingPayload::None,
+                VaryingPayload::SingleFrame,
+                VaryingPayload::MultiFrame,
+            ]
+            .into_iter()
+        }
+
+        /// Returns whether the resulting payload would be `Option::None`.
+        fn is_none(self) -> bool {
+            match self {
+                VaryingPayload::None => true,
+                VaryingPayload::SingleFrame => false,
+                VaryingPayload::MultiFrame => false,
+                VaryingPayload::TooLarge => false,
+            }
+        }
+
+        /// Returns the kind header required if this payload is used in a request.
+        fn request_kind(self) -> Kind {
+            if self.is_none() {
+                Kind::Request
+            } else {
+                Kind::RequestPl
+            }
+        }
+
+        /// Returns the kind header required if this payload is used in a response.
+        fn response_kind(self) -> Kind {
+            if self.is_none() {
+                Kind::Response
+            } else {
+                Kind::ResponsePl
+            }
+        }
+
+        /// Produce the actual payload.
+        fn get(self) -> Option<Bytes> {
+            self.get_slice().map(Bytes::from_static)
+        }
+
+        /// Produce the payloads underlying slice.
+        fn get_slice(self) -> Option<&'static [u8]> {
+            const SHORT_PAYLOAD: &[u8] = b"asdf";
+            const_assert!(
+                SHORT_PAYLOAD.len()
+                    <= TestingSetup::MAX_FRAME_SIZE as usize - Header::SIZE - Varint32::MAX_LEN
+            );
+
+            const LONG_PAYLOAD: &[u8] =
+            b"large payload large payload large payload large payload large payload large payload";
+            const_assert!(LONG_PAYLOAD.len() > TestingSetup::MAX_FRAME_SIZE as usize);
+
+            const OVERLY_LONG_PAYLOAD: &[u8] = b"abcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefghabcdefgh";
+            const_assert!(OVERLY_LONG_PAYLOAD.len() > TestingSetup::MAX_PAYLOAD_SIZE as usize);
+
+            match self {
+                VaryingPayload::None => None,
+                VaryingPayload::SingleFrame => Some(SHORT_PAYLOAD),
+                VaryingPayload::MultiFrame => Some(LONG_PAYLOAD),
+                VaryingPayload::TooLarge => Some(OVERLY_LONG_PAYLOAD),
+            }
+        }
+    }
+
+    #[test]
+    fn max_frame_size_works() {
+        let sz = MaxFrameSize::new(1234);
+        assert_eq!(sz.get(), 1234);
+        assert_eq!(sz.without_header(), 1230);
+
+        // Smallest allowed:
+        assert_eq!(MaxFrameSize::MIN, 10);
+        let small = MaxFrameSize::new(10);
+        assert_eq!(small.get(), 10);
+        assert_eq!(small.without_header(), 6);
+    }
+
+    #[test]
+    #[should_panic(expected = "permissible minimum for maximum frame size")]
+    fn max_frame_size_panics_on_too_small_size() {
+        MaxFrameSize::new(MaxFrameSize::MIN - 1);
+    }
+
+    #[test]
+    fn request_id_generation_generates_unique_ids() {
+        let mut channel = Channel::new(Default::default());
+
+        // IDs are sequential.
+        assert_eq!(channel.generate_request_id(), Some(Id::new(1)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(2)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(3)));
+
+        // Manipulate internal counter, expecting rollover.
+        channel.prev_request_id = u16::MAX - 2;
+        assert_eq!(channel.generate_request_id(), Some(Id::new(u16::MAX - 1)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(u16::MAX)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(0)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(1)));
+
+        // Insert some request IDs to mark them as used, causing them to be skipped.
+        channel.outgoing_requests.extend([1, 2, 3, 5].map(Id::new));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(4)));
+        assert_eq!(channel.generate_request_id(), Some(Id::new(6)));
+    }
+
+    #[test]
+    fn allowed_to_send_throttles_when_appropriate() {
+        // A channel with a request limit of 0 is unusable, but legal.
+        assert!(
+            !Channel::new(ChannelConfiguration::new().with_request_limit(0))
+                .allowed_to_send_request()
+        );
+
+        // Capacity: 1
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(1));
+        assert!(channel.allowed_to_send_request());
+
+        // Incoming requests should not affect this.
+        channel.incoming_requests.insert(Id::new(1234));
+        channel.incoming_requests.insert(Id::new(5678));
+        channel.incoming_requests.insert(Id::new(9010));
+        assert!(channel.allowed_to_send_request());
+
+        // Fill up capacity.
+        channel.outgoing_requests.insert(Id::new(1));
+        assert!(!channel.allowed_to_send_request());
+
+        // Capacity: 2
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(2));
+        assert!(channel.allowed_to_send_request());
+        channel.outgoing_requests.insert(Id::new(1));
+        assert!(channel.allowed_to_send_request());
+        channel.outgoing_requests.insert(Id::new(2));
+        assert!(!channel.allowed_to_send_request());
+    }
+
+    #[test]
+    fn is_at_max_incoming_requests_works() {
+        // A channel with a request limit of 0 is legal.
+        assert!(
+            Channel::new(ChannelConfiguration::new().with_request_limit(0))
+                .is_at_max_incoming_requests()
+        );
+
+        // Capacity: 1
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(1));
+        assert!(!channel.is_at_max_incoming_requests());
+
+        // Inserting outgoing requests should not prompt any change to incoming.
+        channel.outgoing_requests.insert(Id::new(1234));
+        channel.outgoing_requests.insert(Id::new(4567));
+        assert!(!channel.is_at_max_incoming_requests());
+
+        channel.incoming_requests.insert(Id::new(1));
+        assert!(channel.is_at_max_incoming_requests());
+
+        // Capacity: 2
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(2));
+        assert!(!channel.is_at_max_incoming_requests());
+        channel.incoming_requests.insert(Id::new(1));
+        assert!(!channel.is_at_max_incoming_requests());
+        channel.incoming_requests.insert(Id::new(2));
+        assert!(channel.is_at_max_incoming_requests());
+    }
+
+    #[test]
+    fn cancellation_allowance_incrementation_works() {
+        // With a 0 request limit, we also don't allow any cancellations.
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(0));
+        channel.increment_cancellation_allowance();
+
+        assert_eq!(channel.cancellation_allowance, 0);
+
+        // Ensure that the cancellation allowance cannot exceed request limit.
+        let mut channel = Channel::new(ChannelConfiguration::new().with_request_limit(3));
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 1);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 2);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 3);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 3);
+        channel.increment_cancellation_allowance();
+        assert_eq!(channel.cancellation_allowance, 3);
+    }
+
+    #[test]
+    fn test_channel_lookups_work() {
+        let mut protocol: JulietProtocol<3> = ProtocolBuilder::new().build();
+
+        // We mark channels by inserting an ID into them, that way we can ensure we're not getting
+        // back the same channel every time.
+        protocol
+            .lookup_channel_mut(ChannelId(0))
+            .expect("channel missing")
+            .outgoing_requests
+            .insert(Id::new(100));
+        protocol
+            .lookup_channel_mut(ChannelId(1))
+            .expect("channel missing")
+            .outgoing_requests
+            .insert(Id::new(101));
+        protocol
+            .lookup_channel_mut(ChannelId(2))
+            .expect("channel missing")
+            .outgoing_requests
+            .insert(Id::new(102));
+        assert!(matches!(
+            protocol.lookup_channel_mut(ChannelId(3)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(3)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel_mut(ChannelId(4)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(4)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel_mut(ChannelId(255)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(255)))
+        ));
+
+        // Now look up the channels and ensure they contain the right values
+        assert_eq!(
+            protocol
+                .lookup_channel(ChannelId(0))
+                .expect("channel missing")
+                .outgoing_requests,
+            HashSet::from([Id::new(100)])
+        );
+        assert_eq!(
+            protocol
+                .lookup_channel(ChannelId(1))
+                .expect("channel missing")
+                .outgoing_requests,
+            HashSet::from([Id::new(101)])
+        );
+        assert_eq!(
+            protocol
+                .lookup_channel(ChannelId(2))
+                .expect("channel missing")
+                .outgoing_requests,
+            HashSet::from([Id::new(102)])
+        );
+        assert!(matches!(
+            protocol.lookup_channel(ChannelId(3)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(3)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel(ChannelId(4)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(4)))
+        ));
+        assert!(matches!(
+            protocol.lookup_channel(ChannelId(255)),
+            Err(LocalProtocolViolation::InvalidChannel(ChannelId(255)))
+        ));
+    }
+
+    #[proptest]
+    fn err_msg_works(header: Header) {
+        for err_kind in ErrorKind::iter() {
+            let outcome = err_msg::<()>(header, err_kind);
+            if let Outcome::Fatal(msg) = outcome {
+                assert_eq!(msg.header().id(), header.id());
+                assert_eq!(msg.header().channel(), header.channel());
+                assert!(msg.header().is_error());
+                assert_eq!(msg.header().error_kind(), err_kind);
+            } else {
+                panic!("expected outcome to be fatal");
+            }
+        }
+    }
+
+    #[test]
+    fn multi_frame_estimation_works() {
+        let max_frame_size = MaxFrameSize::new(512);
+
+        // Note: 512 takes two bytes to encode, so the total overhead is 6 bytes.
+
+        assert!(!payload_is_multi_frame(max_frame_size, 0));
+        assert!(!payload_is_multi_frame(max_frame_size, 1));
+        assert!(!payload_is_multi_frame(max_frame_size, 5));
+        assert!(!payload_is_multi_frame(max_frame_size, 6));
+        assert!(!payload_is_multi_frame(max_frame_size, 7));
+        assert!(!payload_is_multi_frame(max_frame_size, 505));
+        assert!(!payload_is_multi_frame(max_frame_size, 506));
+        assert!(payload_is_multi_frame(max_frame_size, 507));
+        assert!(payload_is_multi_frame(max_frame_size, 508));
+        assert!(payload_is_multi_frame(max_frame_size, u32::MAX as usize));
+    }
+
+    #[test]
+    fn create_requests_with_correct_input_sets_state_accordingly() {
+        for payload in VaryingPayload::all_valid() {
+            // Configure a protocol with payload, at least 10 bytes segment size.
+            let mut protocol = ProtocolBuilder::<5>::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_request_limit(1)
+                    .with_max_request_payload_size(1024),
+            )
+            .max_frame_size(20)
+            .build();
+
+            let channel = ChannelId::new(2);
+            let other_channel = ChannelId::new(0);
+
+            assert!(protocol
+                .allowed_to_send_request(channel)
+                .expect("channel should exist"));
+
+            let req = protocol
+                .create_request(channel, payload.get())
+                .expect("should be able to create request");
+
+            assert_eq!(req.header().channel(), channel);
+            assert_eq!(req.header().kind(), payload.request_kind());
+
+            // We expect exactly one id in the outgoing set.
+            assert_eq!(
+                protocol
+                    .lookup_channel(channel)
+                    .expect("should have channel")
+                    .outgoing_requests,
+                [Id::new(1)].into()
+            );
+
+            // We've used up the default limit of one.
+            assert!(!protocol
+                .allowed_to_send_request(channel)
+                .expect("channel should exist"));
+
+            // We should still be able to create requests on a different channel.
+            assert!(protocol
+                .lookup_channel(other_channel)
+                .expect("channel 0 should exist")
+                .outgoing_requests
+                .is_empty());
+
+            let other_req = protocol
+                .create_request(other_channel, payload.get())
+                .expect("should be able to create request");
+
+            assert_eq!(other_req.header().channel(), other_channel);
+            assert_eq!(other_req.header().kind(), payload.request_kind());
+
+            // We expect exactly one id in the outgoing set of each channel now.
+            assert_eq!(
+                protocol
+                    .lookup_channel(channel)
+                    .expect("should have channel")
+                    .outgoing_requests,
+                [Id::new(1)].into()
+            );
+            assert_eq!(
+                protocol
+                    .lookup_channel(other_channel)
+                    .expect("should have channel")
+                    .outgoing_requests,
+                [Id::new(1)].into()
+            );
+        }
+    }
+
+    #[test]
+    fn create_requests_with_invalid_inputs_fails() {
+        for payload in VaryingPayload::all_valid() {
+            // Configure a protocol with payload, at least 10 bytes segment size.
+            let mut protocol = ProtocolBuilder::<2>::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_max_request_payload_size(512)
+                    .with_max_response_payload_size(512),
+            )
+            .build();
+
+            let channel = ChannelId::new(1);
+
+            // Try an invalid channel, should result in an error.
+            assert!(matches!(
+                protocol.create_request(ChannelId::new(2), payload.get()),
+                Err(LocalProtocolViolation::InvalidChannel(ChannelId(2)))
+            ));
+
+            assert!(protocol
+                .allowed_to_send_request(channel)
+                .expect("channel should exist"));
+            let _ = protocol
+                .create_request(channel, payload.get())
+                .expect("should be able to create request");
+
+            assert!(matches!(
+                protocol.create_request(channel, payload.get()),
+                Err(LocalProtocolViolation::WouldExceedRequestLimit)
+            ));
+        }
+    }
+
+    #[test]
+    fn create_response_with_correct_input_clears_state_accordingly() {
+        for payload in VaryingPayload::all_valid() {
+            let mut protocol = ProtocolBuilder::<4>::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_max_request_payload_size(512)
+                    .with_max_response_payload_size(512),
+            )
+            .build();
+
+            let channel = ChannelId::new(3);
+
+            // Inject a channel to have already received two requests.
+            let req_id = Id::new(9);
+            let leftover_id = Id::new(77);
+            protocol
+                .lookup_channel_mut(channel)
+                .expect("should find channel")
+                .incoming_requests
+                .extend([req_id, leftover_id]);
+
+            // Responding to a non-existent request should not result in a message.
+            assert!(protocol
+                .create_response(channel, Id::new(12), payload.get())
+                .expect("should allow attempting to respond to non-existent request")
+                .is_none());
+
+            // Actual response.
+            let resp = protocol
+                .create_response(channel, req_id, payload.get())
+                .expect("should allow responding to request")
+                .expect("should actually answer request");
+
+            assert_eq!(resp.header().channel(), channel);
+            assert_eq!(resp.header().id(), req_id);
+            assert_eq!(resp.header().kind(), payload.response_kind());
+
+            // Outgoing set should be empty afterwards.
+            assert_eq!(
+                protocol
+                    .lookup_channel(channel)
+                    .expect("should find channel")
+                    .incoming_requests,
+                [leftover_id].into()
+            );
+        }
+    }
+
+    #[test]
+    fn custom_errors_are_possible() {
+        let mut protocol = ProtocolBuilder::<4>::new().build();
+
+        // The channel ID for custom errors can be arbitrary!
+        let id = Id::new(12345);
+        let channel = ChannelId::new(123);
+        let outgoing = protocol
+            .custom_error(channel, id, Bytes::new())
+            .expect("should be able to send custom error");
+
+        assert_eq!(outgoing.header().id(), id);
+        assert_eq!(outgoing.header().channel(), channel);
+        assert_eq!(outgoing.header().error_kind(), ErrorKind::Other);
+    }
+
+    /// A simplified setup for testing back and forth between two peers.
+    #[derive(Clone, Debug)]
+    struct TestingSetup {
+        /// Alice's protocol state.
+        alice: JulietProtocol<{ Self::NUM_CHANNELS as usize }>,
+        /// Bob's protocol state.
+        bob: JulietProtocol<{ Self::NUM_CHANNELS as usize }>,
+        /// The channel communication is sent across for these tests.
+        common_channel: ChannelId,
+        /// Maximum frame size in test environment.
+        max_frame_size: MaxFrameSize,
+    }
+
+    /// Peer selection.
+    ///
+    /// Used to select a target when interacting with the test environment.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+
+    enum Peer {
+        /// Alice.
+        Alice,
+        /// Bob, aka "not Alice".
+        Bob,
+    }
+
+    impl Not for Peer {
+        type Output = Self;
+
+        fn not(self) -> Self::Output {
+            match self {
+                Alice => Bob,
+                Bob => Alice,
+            }
+        }
+    }
+
+    use Peer::{Alice, Bob};
+
+    impl TestingSetup {
+        const MAX_PAYLOAD_SIZE: u32 = 512;
+        const MAX_FRAME_SIZE: u32 = 20;
+        const NUM_CHANNELS: u8 = 4;
+
+        /// Instantiates a new testing setup.
+        fn new() -> Self {
+            let max_frame_size = MaxFrameSize::new(Self::MAX_FRAME_SIZE);
+            let pb = ProtocolBuilder::with_default_channel_config(
+                ChannelConfiguration::new()
+                    .with_request_limit(2)
+                    .with_max_request_payload_size(Self::MAX_PAYLOAD_SIZE)
+                    .with_max_response_payload_size(Self::MAX_PAYLOAD_SIZE),
+            )
+            .max_frame_size(max_frame_size.get());
+            let common_channel = ChannelId(Self::NUM_CHANNELS - 1);
+
+            let alice = pb.build();
+            let bob = pb.build();
+
+            TestingSetup {
+                alice,
+                bob,
+                common_channel,
+                max_frame_size,
+            }
+        }
+
+        /// Retrieves a handle to the protocol state of the given peer.
+        #[inline]
+        fn get_peer_mut(&mut self, peer: Peer) -> &mut JulietProtocol<4> {
+            match peer {
+                Alice => &mut self.alice,
+                Bob => &mut self.bob,
+            }
+        }
+
+        /// Take `msg` and send it to peer `dest`.
+        ///
+        /// Will check that the message is fully processed and removed on [`Outcome::Success`].
+        fn recv_on(
+            &mut self,
+            dest: Peer,
+            msg: OutgoingMessage,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let msg_bytes = msg.to_bytes(self.max_frame_size);
+            let mut msg_bytes_buffer = BytesMut::from(msg_bytes.as_ref());
+
+            let orig_self = self.clone();
+
+            let expected = self
+                .get_peer_mut(dest)
+                .process_incoming(&mut msg_bytes_buffer)
+                .to_result()
+                .map(|v| {
+                    assert!(
+                        msg_bytes_buffer.is_empty(),
+                        "client should have consumed input"
+                    );
+                    v
+                });
+
+            // Test parsing of partially received data.
+            //
+            // This loop runs through almost every sensibly conceivable size of chunks in which data
+            // can be transmitted and simulates a trickling reception. The original state of the
+            // receiving facilities is cloned first, and the outcome of the trickle reception is
+            // compared against the reference of receiving in one go from earlier (`expected`).
+            for transmission_chunk_size in 1..=(self.max_frame_size.get() as usize * 2 + 1) {
+                let mut unsent = msg_bytes.clone();
+                let mut buffer = BytesMut::new();
+                let mut this = orig_self.clone();
+
+                let result = loop {
+                    // Put more data from unsent into the buffer.
+                    let chunk = unsent.split_to(transmission_chunk_size.min(unsent.remaining()));
+                    buffer.extend(chunk);
+
+                    let outcome = this.get_peer_mut(dest).process_incoming(&mut buffer);
+
+                    if matches!(outcome, Outcome::Incomplete(_)) {
+                        if unsent.is_empty() {
+                            panic!(
+                                "got incompletion before completion  while attempting to send \
+                                message piecewise in {} byte chunks",
+                                transmission_chunk_size
+                            );
+                        }
+
+                        // Continue reading until complete.
+                        continue;
+                    }
+
+                    break outcome.to_result();
+                };
+
+                assert_eq!(result, expected, "should not see difference between trickling reception and single send reception");
+            }
+
+            expected
+        }
+
+        /// Take `msg` and send it to peer `dest`.
+        ///
+        /// Will check that the message is fully processed and removed, and a new header read
+        /// expected next.
+        fn expect_consumes(&mut self, dest: Peer, msg: OutgoingMessage) {
+            let mut msg_bytes = BytesMut::from(msg.to_bytes(self.max_frame_size).as_ref());
+
+            let outcome = self.get_peer_mut(dest).process_incoming(&mut msg_bytes);
+
+            assert!(msg_bytes.is_empty(), "client should have consumed input");
+
+            assert_matches!(outcome, Outcome::Incomplete(n) if n.get() == 4);
+        }
+
+        /// Creates a new request on peer `origin`, the sends it to the other peer.
+        ///
+        /// Returns the outcome of the other peer's reception.
+        #[track_caller]
+        fn create_and_send_request(
+            &mut self,
+            origin: Peer,
+            payload: Option<Bytes>,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel = self.common_channel;
+            let msg = self
+                .get_peer_mut(origin)
+                .create_request(channel, payload)
+                .expect("should be able to create request");
+
+            self.recv_on(!origin, msg)
+        }
+
+        /// Similar to `create_and_send_request`, but bypasses all checks.
+        ///
+        /// Allows for sending requests that are normally not allowed by the protocol API.
+        #[track_caller]
+        fn inject_and_send_request(
+            &mut self,
+            origin: Peer,
+            payload: Option<Bytes>,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel_id = self.common_channel;
+            let origin_channel = self
+                .get_peer_mut(origin)
+                .lookup_channel_mut(channel_id)
+                .expect("channel does not exist, why?");
+
+            // Create request, bypassing all checks usually performed by the protocol.
+            let msg = origin_channel.create_unchecked_request(channel_id, payload);
+
+            // Send to peer and return outcome.
+            self.recv_on(!origin, msg)
+        }
+
+        /// Creates a new request cancellation on peer `origin`, the sends it to the other peer.
+        ///
+        /// Returns the outcome of the other peer's reception.
+        #[track_caller]
+        fn cancel_request_and_send(
+            &mut self,
+            origin: Peer,
+            id: Id,
+        ) -> Option<Result<CompletedRead, OutgoingMessage>> {
+            let channel = self.common_channel;
+            let msg = self
+                .get_peer_mut(origin)
+                .cancel_request(channel, id)
+                .expect("should be able to create request cancellation")?;
+
+            Some(self.recv_on(!origin, msg))
+        }
+
+        /// Creates a new response cancellation on peer `origin`, the sends it to the other peer.
+        ///
+        /// Returns the outcome of the other peer's reception.
+        #[track_caller]
+        fn cancel_response_and_send(
+            &mut self,
+            origin: Peer,
+            id: Id,
+        ) -> Option<Result<CompletedRead, OutgoingMessage>> {
+            let channel = self.common_channel;
+            let msg = self
+                .get_peer_mut(origin)
+                .cancel_response(channel, id)
+                .expect("should be able to create response cancellation")?;
+
+            Some(self.recv_on(!origin, msg))
+        }
+
+        /// Creates a new response on peer `origin`, the sends it to the other peer.
+        ///
+        /// Returns the outcome of the other peer's reception. If no response was scheduled for
+        /// sending, returns `None`.
+        #[track_caller]
+        fn create_and_send_response(
+            &mut self,
+            origin: Peer,
+            id: Id,
+            payload: Option<Bytes>,
+        ) -> Option<Result<CompletedRead, OutgoingMessage>> {
+            let channel = self.common_channel;
+
+            let msg = self
+                .get_peer_mut(origin)
+                .create_response(channel, id, payload)
+                .expect("should be able to create response")?;
+
+            Some(self.recv_on(!origin, msg))
+        }
+
+        /// Similar to `create_and_send_response`, but bypasses all checks.
+        ///
+        /// Allows for sending requests that are normally not allowed by the protocol API.
+        #[track_caller]
+        fn inject_and_send_response(
+            &mut self,
+            origin: Peer,
+            id: Id,
+            payload: Option<Bytes>,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel_id = self.common_channel;
+
+            let msg = create_unchecked_response(channel_id, id, payload);
+
+            // Send to peer and return outcome.
+            self.recv_on(!origin, msg)
+        }
+
+        /// Similar to `create_and_send_response_cancellation`, but bypasses all checks.
+        ///
+        /// Allows for sending request cancellations that are not allowed by the protocol API.
+        #[track_caller]
+        fn inject_and_send_response_cancellation(
+            &mut self,
+            origin: Peer,
+            id: Id,
+        ) -> Result<CompletedRead, OutgoingMessage> {
+            let channel_id = self.common_channel;
+
+            let msg = create_unchecked_response_cancellation(channel_id, id);
+
+            // Send to peer and return outcome.
+            self.recv_on(!origin, msg)
+        }
+
+        /// Asserts the given completed read is a [`CompletedRead::NewRequest`] with the given ID
+        /// and payload.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_new_request(
+            &self,
+            expected_id: Id,
+            expected_payload: Option<&[u8]>,
+            completed_read: CompletedRead,
+        ) {
+            assert_matches!(
+                completed_read,
+                CompletedRead::NewRequest {
+                    channel,
+                    id,
+                    payload
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
+                    assert_eq!(payload.as_deref(), expected_payload);
+                }
+            );
+        }
+
+        /// Asserts the given completed read is a [`CompletedRead::RequestCancellation`] with the
+        /// given ID.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_request_cancellation(&self, expected_id: Id, completed_read: CompletedRead) {
+            assert_matches!(
+                completed_read,
+                CompletedRead::RequestCancellation {
+                    channel,
+                    id,
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
+                }
+            );
+        }
+
+        /// Asserts the given completed read is a [`CompletedRead::ReceivedResponse`] with the given
+        /// ID and payload.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_received_response(
+            &self,
+            expected_id: Id,
+            expected_payload: Option<&[u8]>,
+            completed_read: CompletedRead,
+        ) {
+            assert_matches!(
+                completed_read,
+                CompletedRead::ReceivedResponse {
+                    channel,
+                    id,
+                    payload
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
+                    assert_eq!(payload.as_deref(), expected_payload);
+                }
+            );
+        }
+
+        /// Asserts the given completed read is a [`CompletedRead::ResponseCancellation`] with the
+        /// given ID.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_response_cancellation(&self, expected_id: Id, completed_read: CompletedRead) {
+            assert_matches!(
+                completed_read,
+                CompletedRead::ResponseCancellation {
+                    channel,
+                    id,
+                } => {
+                    assert_eq!(channel, self.common_channel);
+                    assert_eq!(id, expected_id);
+                }
+            );
+        }
+
+        /// Asserts given `Result` is of type `Err` and its message contains a specific header.
+        ///
+        /// # Panics
+        ///
+        /// Will panic if the assertion fails.
+        #[track_caller]
+        fn assert_is_error_message<T: Debug>(
+            &self,
+            error_kind: ErrorKind,
+            id: Id,
+            result: Result<T, OutgoingMessage>,
+        ) {
+            let err = result.expect_err("expected an error, got positive outcome instead");
+            let header = err.header();
+            assert_eq!(header.error_kind(), error_kind);
+            assert_eq!(header.id(), id);
+            assert_eq!(header.channel(), self.common_channel);
+        }
+    }
+
+    #[test]
+    fn use_case_req_ok() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let expected_id = Id::new(1);
+            let bob_completed_read = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request");
+            env.assert_is_new_request(expected_id, payload.get_slice(), bob_completed_read);
+
+            // Return a response.
+            let alice_completed_read = env
+                .create_and_send_response(Bob, expected_id, payload.get())
+                .expect("did not expect response to be dropped")
+                .expect("should not fail to process response on alice");
+            env.assert_is_received_response(expected_id, payload.get_slice(), alice_completed_read);
+        }
+    }
+
+    // A request followed by a response can take multiple orders, all of which are valid:
+
+    // Alice:Request, Alice:Cancel, Bob:Respond     (cancellation ignored)
+    // Alice:Request, Alice:Cancel, Bob:Cancel      (cancellation honored or Bob cancelled)
+    // Alice:Request, Bob:Respond, Alice:Cancel     (cancellation not in time)
+    // Alice:Request, Bob:Cancel, Alice:Cancel      (cancellation acknowledged)
+
+    // Alice's cancellation can also be on the wire at the same time as Bob's responses.
+    // Alice:Request, Bob:Respond, Alice:CancelSim  (cancellation arrives after response)
+    // Alice:Request, Bob:Cancel, Alice:CancelSim   (cancellation arrives after cancellation)
+
+    /// Sets up the environment with Alice's initial request.
+    fn env_with_initial_areq(payload: VaryingPayload) -> (TestingSetup, Id) {
+        let mut env = TestingSetup::new();
+
+        let expected_id = Id::new(1);
+
+        // Alice sends a request first.
+        let bob_initial_completed_read = env
+            .create_and_send_request(Alice, payload.get())
+            .expect("bob should accept request");
+        env.assert_is_new_request(expected_id, payload.get_slice(), bob_initial_completed_read);
+
+        (env, expected_id)
+    }
+
+    #[test]
+    fn use_case_areq_acnc_brsp() {
+        // Alice:Request, Alice:Cancel, Bob:Respond
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+            let bob_read_of_cancel = env
+                .cancel_request_and_send(Alice, id)
+                .expect("alice should send cancellation")
+                .expect("bob should produce cancellation");
+            env.assert_is_request_cancellation(id, bob_read_of_cancel);
+
+            // Bob's application doesn't notice and sends the response anyway. It should at arrive
+            // at Alice's to confirm the cancellation.
+            let alices_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+
+            env.assert_is_received_response(id, payload.get_slice(), alices_read);
+        }
+    }
+
+    #[test]
+    fn use_case_areq_acnc_bcnc() {
+        // Alice:Request, Alice:Cancel, Bob:Respond
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Alice directly follows with a cancellation.
+            let bob_read_of_cancel = env
+                .cancel_request_and_send(Alice, id)
+                .expect("alice should send cancellation")
+                .expect("bob should produce cancellation");
+            env.assert_is_request_cancellation(id, bob_read_of_cancel);
+
+            // Bob's application confirms with a response cancellation.
+            let alices_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_response_cancellation(id, alices_read);
+        }
+    }
+
+    #[test]
+    fn use_case_areq_brsp_acnc() {
+        // Alice:Request, Bob:Respond, Alice:Cancel
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Bob's application responds.
+            let alices_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_received_response(id, payload.get_slice(), alices_read);
+
+            // Alice's app attempts to send a cancellation, which should be swallowed.
+            assert!(env.cancel_request_and_send(Alice, id).is_none());
+        }
+    }
+
+    #[test]
+    fn use_case_areq_bcnc_acnc() {
+        // Alice:Request, Bob:Respond, Alice:Cancel
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Bob's application answers with a response cancellation.
+            let alices_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_response_cancellation(id, alices_read);
+
+            // Alice's app attempts to send a cancellation, which should be swallowed.
+            assert!(env.cancel_request_and_send(Alice, id).is_none());
+        }
+    }
+
+    #[test]
+    fn use_case_areq_brsp_acncsim() {
+        // Alice:Request, Bob:Respond, Alice:CancelSim
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Bob's application responds.
+            let alices_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+            env.assert_is_received_response(id, payload.get_slice(), alices_read);
+
+            // Alice's app attempts to send a cancellation due to a race condition.
+            env.expect_consumes(
+                Bob,
+                create_unchecked_request_cancellation(env.common_channel, id),
+            );
+        }
+    }
+
+    #[test]
+    fn use_case_areq_bcnc_acncsim() {
+        // Alice:Request, Bob:Respond, Alice:CancelSim
+        for payload in VaryingPayload::all_valid() {
+            let (mut env, id) = env_with_initial_areq(payload);
+
+            // Bob's application cancels.
+            let alices_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("bob must send the response")
+                .expect("bob should be ablet to create the response");
+
+            env.assert_is_response_cancellation(id, alices_read);
+            env.expect_consumes(
+                Bob,
+                create_unchecked_request_cancellation(env.common_channel, id),
+            );
+        }
+    }
+
+    #[test]
+    fn env_req_exceed_in_flight_limit() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
+
+            let bob_completed_read_2 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 2");
+            env.assert_is_new_request(Id::new(2), payload.get_slice(), bob_completed_read_2);
+
+            // We now need to bypass the local protocol checks to inject a malicious one.
+
+            let local_err_result = env.inject_and_send_request(Alice, payload.get());
+
+            env.assert_is_error_message(
+                ErrorKind::RequestLimitExceeded,
+                Id::new(3),
+                local_err_result,
+            );
+        }
+    }
+
+    #[test]
+    fn env_req_exceed_req_size_limit() {
+        let payload = VaryingPayload::TooLarge;
+
+        let mut env = TestingSetup::new();
+        let bob_result = env.inject_and_send_request(Alice, payload.get());
+
+        env.assert_is_error_message(ErrorKind::RequestTooLarge, Id::new(1), bob_result);
+    }
+
+    #[test]
+    fn env_req_duplicate_request() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
+
+            // Send a second request with the same ID. For this, we manipulate Alice's internal
+            // counter and state.
+            let alice_channel = env
+                .alice
+                .lookup_channel_mut(env.common_channel)
+                .expect("should have channel");
+            alice_channel.prev_request_id -= 1;
+            alice_channel.outgoing_requests.clear();
+
+            let second_send_result = env.inject_and_send_request(Alice, payload.get());
+            env.assert_is_error_message(
+                ErrorKind::DuplicateRequest,
+                Id::new(1),
+                second_send_result,
+            );
+        }
+    }
+
+    #[test]
+    fn env_req_response_for_ficticious_request() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
+
+            // Send a response with a wrong ID.
+            let second_send_result = env.inject_and_send_response(Bob, Id::new(123), payload.get());
+            env.assert_is_error_message(
+                ErrorKind::FictitiousRequest,
+                Id::new(123),
+                second_send_result,
+            );
+        }
+    }
+
+    #[test]
+    fn env_req_cancellation_for_ficticious_request() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let bob_completed_read_1 = env
+                .create_and_send_request(Alice, payload.get())
+                .expect("bob should accept request 1");
+            env.assert_is_new_request(Id::new(1), payload.get_slice(), bob_completed_read_1);
+
+            // Have bob send a response for a request that was never made.
+            let alice_result = env.inject_and_send_response(Bob, Id::new(123), payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, Id::new(123), alice_result);
+        }
+    }
+
+    #[test]
+    fn env_req_size_limit_exceeded() {
+        let mut env = TestingSetup::new();
+
+        let payload = VaryingPayload::TooLarge;
+
+        // Alice should not allow too-large requests to be sent.
+        let violation = env
+            .alice
+            .create_request(env.common_channel, payload.get())
+            .expect_err("should not be able to create too large request");
+
+        assert_matches!(violation, LocalProtocolViolation::PayloadExceedsLimit);
+
+        // If we force the issue, Bob must refuse it instead.
+        let bob_result = env.inject_and_send_request(Alice, payload.get());
+        env.assert_is_error_message(ErrorKind::RequestTooLarge, Id::new(1), bob_result);
+    }
+
+    #[test]
+    fn env_response_size_limit_exceeded() {
+        let (mut env, id) = env_with_initial_areq(VaryingPayload::None);
+        let payload = VaryingPayload::TooLarge;
+
+        // Bob should not allow too-large responses to be sent.
+        let violation = env
+            .bob
+            .create_request(env.common_channel, payload.get())
+            .expect_err("should not be able to create too large response");
+        assert_matches!(violation, LocalProtocolViolation::PayloadExceedsLimit);
+
+        // If we force the issue, Alice must refuse it.
+        let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+        env.assert_is_error_message(ErrorKind::ResponseTooLarge, Id::new(1), alice_result);
+    }
+
+    #[test]
+    fn env_req_response_cancellation_limit_exceeded() {
+        for payload in VaryingPayload::all_valid() {
+            for num_requests in 0..=2 {
+                let mut env = TestingSetup::new();
+
+                // Have Alice make requests in order to fill-up the in-flights.
+                for i in 0..num_requests {
+                    let expected_id = Id::new(i + 1);
+                    let bobs_read = env
+                        .create_and_send_request(Alice, payload.get())
+                        .expect("should accept request");
+                    env.assert_is_new_request(expected_id, payload.get_slice(), bobs_read);
+                }
+
+                // Now send the corresponding amount of cancellations.
+                for i in 0..num_requests {
+                    let id = Id::new(i + 1);
+
+                    let msg = create_unchecked_request_cancellation(env.common_channel, id);
+
+                    let bobs_read = env.recv_on(Bob, msg).expect("cancellation should not fail");
+                    env.assert_is_request_cancellation(id, bobs_read);
+                }
+
+                let id = Id::new(num_requests + 1);
+                // Finally another cancellation should trigger an error.
+                let msg = create_unchecked_request_cancellation(env.common_channel, id);
+
+                let bobs_result = env.recv_on(Bob, msg);
+                env.assert_is_error_message(ErrorKind::CancellationLimitExceeded, id, bobs_result);
+            }
+        }
+    }
+
+    #[test]
+    fn env_max_frame_size_exceeded() {
+        // Note: An actual `MaxFrameSizeExceeded` can never occur due to how this library is
+        //       implemented. This is the closest situation that can occur.
+
+        let mut env = TestingSetup::new();
+
+        let payload = VaryingPayload::TooLarge;
+        let id = Id::new(1);
+
+        // We have to craft the message by hand to exceed the frame size.
+        let msg = OutgoingMessage::new(
+            Header::new(Kind::RequestPl, env.common_channel, id),
+            payload.get(),
+        );
+        let mut encoded = BytesMut::from(
+            msg.to_bytes(MaxFrameSize::new(
+                2 * payload
+                    .get()
+                    .expect("TooLarge payload should have body")
+                    .len() as u32,
+            ))
+            .as_ref(),
+        );
+        let violation = env.bob.process_incoming(&mut encoded).to_result();
+
+        env.assert_is_error_message(ErrorKind::RequestTooLarge, id, violation);
+    }
+
+    #[test]
+    fn env_invalid_header() {
+        for payload in VaryingPayload::all_valid() {
+            let mut env = TestingSetup::new();
+
+            let id = Id::new(123);
+
+            // We have to craft the message by hand to exceed the frame size.
+            let msg = OutgoingMessage::new(
+                Header::new(Kind::RequestPl, env.common_channel, id),
+                payload.get(),
+            );
+            let mut encoded = BytesMut::from(msg.to_bytes(env.max_frame_size).as_ref());
+
+            // Patch the header so that it is broken.
+            encoded[0] = 0b0000_1111; // Kind: Normal, all data bits set.
+
+            let violation = env
+                .bob
+                .process_incoming(&mut encoded)
+                .to_result()
+                .expect_err("expected invalid header to produce an error");
+
+            // We have to manually assert the error, since invalid header errors are sent with an ID
+            // of 0 and on channel 0.
+
+            let header = violation.header();
+            assert_eq!(header.error_kind(), ErrorKind::InvalidHeader);
+            assert_eq!(header.id(), Id::new(0));
+            assert_eq!(header.channel(), ChannelId::new(0));
+        }
+    }
+
+    #[test]
+    fn env_bad_varint() {
+        let payload = VaryingPayload::MultiFrame;
+        let mut env = TestingSetup::new();
+
+        let id = Id::new(1);
+
+        // We have to craft the message by hand to exceed the frame size.
+        let msg = OutgoingMessage::new(
+            Header::new(Kind::RequestPl, env.common_channel, id),
+            payload.get(),
+        );
+        let mut encoded = BytesMut::from(msg.to_bytes(env.max_frame_size).as_ref());
+
+        // Invalidate the varint.
+        encoded[4] = 0xFF;
+        encoded[5] = 0xFF;
+        encoded[6] = 0xFF;
+        encoded[7] = 0xFF;
+        encoded[8] = 0xFF;
+
+        let violation = env.bob.process_incoming(&mut encoded).to_result();
+
+        env.assert_is_error_message(ErrorKind::BadVarInt, id, violation);
+    }
 
     #[test]
     fn response_with_no_payload_is_cleared_from_buffer() {
+        // This test is fairly specific from a concrete bug. In general, buffer advancement is
+        // tested in other tests as one of many condition checks.
+
         let mut protocol: JulietProtocol<16> = ProtocolBuilder::with_default_channel_config(
             ChannelConfiguration::new()
                 .with_max_request_payload_size(4096)
@@ -953,9 +2322,9 @@ mod tests {
         assert_eq!(
             outcome,
             CompletedRead::ReceivedResponse {
-                channel: channel,
+                channel,
                 /// The ID of the request received.
-                id: id,
+                id,
                 /// The response payload.
                 payload: None,
             }
@@ -964,6 +2333,52 @@ mod tests {
         assert_eq!(response_raw.remaining(), 0);
     }
 
-    // TODO: Additional tests checking buffer is advanced properly when receiving in
-    //       `process_incoming`.
+    #[test]
+    fn one_respone_or_cancellation_per_request() {
+        for payload in VaryingPayload::all_valid() {
+            // Case 1: Response, response.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("should send response")
+                .expect("should accept response");
+            env.assert_is_received_response(id, payload.get_slice(), completed_read);
+
+            let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, id, alice_result);
+
+            // Case 2: Response, cancel.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("should send response")
+                .expect("should accept response");
+            env.assert_is_received_response(id, payload.get_slice(), completed_read);
+
+            let alice_result = env.inject_and_send_response_cancellation(Bob, id);
+            env.assert_is_error_message(ErrorKind::FictitiousCancel, id, alice_result);
+
+            // Case 3: Cancel, response.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .cancel_response_and_send(Bob, id)
+                .expect("should send response cancellation")
+                .expect("should accept response cancellation");
+            env.assert_is_response_cancellation(id, completed_read);
+
+            let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, id, alice_result);
+
+            // Case4: Cancel, cancel.
+            let (mut env, id) = env_with_initial_areq(payload);
+            let completed_read = env
+                .create_and_send_response(Bob, id, payload.get())
+                .expect("should send response")
+                .expect("should accept response");
+            env.assert_is_received_response(id, payload.get_slice(), completed_read);
+
+            let alice_result = env.inject_and_send_response(Bob, id, payload.get());
+            env.assert_is_error_message(ErrorKind::FictitiousRequest, id, alice_result);
+        }
+    }
 }

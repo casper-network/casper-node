@@ -636,6 +636,7 @@ mod tests {
 
     use super::{JulietRpcClient, JulietRpcServer};
 
+    #[allow(clippy::type_complexity)] // We'll allow it in testing.
     fn setup_peers<const N: usize>(
         builder: RpcBuilder<N>,
     ) -> (
