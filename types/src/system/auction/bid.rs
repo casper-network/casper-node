@@ -14,14 +14,14 @@ use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::{DelegationRate, Delegator, Error},
+    system::auction::{DelegationRate, Delegator, Error, ValidatorBid},
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
 pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
 
 /// An entry in the validator map.
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
@@ -44,6 +44,22 @@ pub struct Bid {
 }
 
 impl Bid {
+    #[allow(missing_docs)]
+    pub fn from_non_unified(
+        validator_bid: ValidatorBid,
+        delegators: BTreeMap<PublicKey, Delegator>,
+    ) -> Self {
+        Self {
+            validator_public_key: validator_bid.validator_public_key().clone(),
+            bonding_purse: *validator_bid.bonding_purse(),
+            staked_amount: validator_bid.staked_amount(),
+            delegation_rate: *validator_bid.delegation_rate(),
+            vesting_schedule: validator_bid.vesting_schedule().cloned(),
+            delegators,
+            inactive: validator_bid.inactive(),
+        }
+    }
+
     /// Creates new instance of a bid with locked funds.
     pub fn locked(
         validator_public_key: PublicKey,
@@ -272,7 +288,7 @@ impl Bid {
         }
 
         for delegator in self.delegators_mut().values_mut() {
-            let staked_amount = *delegator.staked_amount();
+            let staked_amount = delegator.staked_amount();
             if let Some(vesting_schedule) = delegator.vesting_schedule_mut() {
                 if timestamp_millis >= vesting_schedule.initial_release_timestamp_millis()
                     && vesting_schedule
@@ -303,7 +319,7 @@ impl Bid {
         self.delegators
             .iter()
             .fold(Some(U512::zero()), |maybe_a, (_, b)| {
-                maybe_a.and_then(|a| a.checked_add(*b.staked_amount()))
+                maybe_a.and_then(|a| a.checked_add(b.staked_amount()))
             })
             .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
             .ok_or(Error::InvalidAmount)
@@ -588,7 +604,7 @@ mod prop_tests {
 
     proptest! {
         #[test]
-        fn test_value_bid(bid in gens::bid_arb(1..100)) {
+        fn test_unified_bid(bid in gens::unified_bid_arb(0..3)) {
             bytesrepr::test_serialization_roundtrip(&bid);
         }
     }

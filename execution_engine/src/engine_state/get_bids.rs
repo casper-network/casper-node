@@ -1,5 +1,5 @@
 //! Support for obtaining current bids from the auction system.
-use casper_types::{system::auction::Bids, Digest};
+use casper_types::{system::auction::BidKind, Digest};
 
 /// Represents a request to obtain current bids in the auction system.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,13 +27,13 @@ pub enum GetBidsResult {
     /// Contains current bids returned from the global state.
     Success {
         /// Current bids.
-        bids: Bids,
+        bids: Vec<BidKind>,
     },
 }
 
 impl GetBidsResult {
-    /// Returns wrapped [`Bids`] if this represents a successful query result.
-    pub fn into_success(self) -> Option<Bids> {
+    /// Returns wrapped [`Vec<BidKind>`] if this represents a successful query result.
+    pub fn into_success(self) -> Option<Vec<BidKind>> {
         if let Self::Success { bids } = self {
             Some(bids)
         } else {

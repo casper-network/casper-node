@@ -24,7 +24,7 @@ use casper_types::{
     bytesrepr::ToBytes,
     execution::Effects,
     package::ContractPackageKind,
-    system::auction::EraInfo,
+    system::auction::{BidKind, EraInfo},
     AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
     ContractPackageHash, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
     Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr,
@@ -139,7 +139,6 @@ where
         access_rights: ContextAccessRights,
         runtime_args: RuntimeArgs,
     ) -> Self {
-        // debug_assert!(base_key != self.base_key);
         let entity = self.entity;
         let authorization_keys = self.authorization_keys.clone();
         let account_hash = self.account_hash;
@@ -314,10 +313,6 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
-            Key::SystemContractRegistry => {
-                error!("should not remove the system contract registry key");
-                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
-            }
             Key::EraSummary => {
                 self.named_keys.remove(name);
                 Ok(())
@@ -326,6 +321,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::SystemContractRegistry => {
+                error!("should not remove the system contract registry key");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
             Key::ChainspecRegistry => {
                 error!("should not remove the chainspec registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
@@ -333,6 +332,11 @@ where
             Key::ChecksumRegistry => {
                 error!("should not remove the checksum registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
+            bid_key @ Key::BidAddr(_) => {
+                let _bid_kind: BidKind = self.read_gs_typed(&bid_key)?;
+                self.named_keys.remove(name);
+                Ok(())
             }
         }
     }
@@ -554,6 +558,15 @@ where
             .map_err(Into::into)
     }
 
+    /// Returns all key's that start with prefix, if any.
+    pub fn get_keys_with_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .reader()
+            .keys_with_prefix(prefix)
+            .map_err(Into::into)
+    }
+
     /// Write a transfer instance to the global state.
     pub fn write_transfer(&mut self, key: Key, value: Transfer) {
         if let Key::Transfer(_) = key {
@@ -676,6 +689,7 @@ where
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
             StoredValue::Bid(_) => Ok(()),
+            StoredValue::BidKind(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
             StoredValue::Unbonding(_) => Ok(()),
         }
@@ -741,62 +755,66 @@ where
     /// Tests whether reading from the `key` is valid.
     pub fn is_readable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) => true,
-            Key::Hash(_) => true,
             Key::URef(uref) => uref.is_readable(),
-            Key::Transfer(_) => true,
-            Key::DeployInfo(_) => true,
-            Key::EraInfo(_) => true,
             Key::Balance(_) => false,
-            Key::Bid(_) => true,
-            Key::Withdraw(_) => true,
-            Key::Dictionary(_) => true,
-            Key::SystemContractRegistry => true,
-            Key::EraSummary => true,
-            Key::Unbond(_) => true,
-            Key::ChainspecRegistry => true,
-            Key::ChecksumRegistry => true,
+            Key::Account(_)
+            | Key::Hash(_)
+            | Key::Transfer(_)
+            | Key::DeployInfo(_)
+            | Key::EraInfo(_)
+            | Key::Bid(_)
+            | Key::Withdraw(_)
+            | Key::Dictionary(_)
+            | Key::SystemContractRegistry
+            | Key::EraSummary
+            | Key::Unbond(_)
+            | Key::ChainspecRegistry
+            | Key::ChecksumRegistry
+            | Key::BidAddr(_) => true,
         }
     }
 
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) => false,
             Key::Hash(_) => &self.get_entity_address() == key, // ???
             Key::URef(uref) => uref.is_addable(),
-            Key::Transfer(_) => false,
-            Key::DeployInfo(_) => false,
-            Key::EraInfo(_) => false,
-            Key::Balance(_) => false,
-            Key::Bid(_) => false,
-            Key::Withdraw(_) => false,
-            Key::Dictionary(_) => false,
-            Key::SystemContractRegistry => false,
-            Key::EraSummary => false,
-            Key::Unbond(_) => false,
-            Key::ChainspecRegistry => false,
-            Key::ChecksumRegistry => false,
+            Key::Account(_)
+            | Key::Transfer(_)
+            | Key::DeployInfo(_)
+            | Key::EraInfo(_)
+            | Key::Balance(_)
+            | Key::Bid(_)
+            | Key::Withdraw(_)
+            | Key::Dictionary(_)
+            | Key::SystemContractRegistry
+            | Key::EraSummary
+            | Key::Unbond(_)
+            | Key::ChainspecRegistry
+            | Key::ChecksumRegistry
+            | Key::BidAddr(_) => false,
         }
     }
 
     /// Tests whether writing to `key` is valid.
     pub fn is_writeable(&self, key: &Key) -> bool {
         match key {
-            Key::Account(_) | Key::Hash(_) => false,
             Key::URef(uref) => uref.is_writeable(),
-            Key::Transfer(_) => false,
-            Key::DeployInfo(_) => false,
-            Key::EraInfo(_) => false,
-            Key::Balance(_) => false,
-            Key::Bid(_) => false,
-            Key::Withdraw(_) => false,
-            Key::Dictionary(_) => false,
-            Key::SystemContractRegistry => false,
-            Key::EraSummary => false,
-            Key::Unbond(_) => false,
-            Key::ChainspecRegistry => false,
-            Key::ChecksumRegistry => false,
+            Key::Account(_)
+            | Key::Hash(_)
+            | Key::Transfer(_)
+            | Key::DeployInfo(_)
+            | Key::EraInfo(_)
+            | Key::Balance(_)
+            | Key::Bid(_)
+            | Key::Withdraw(_)
+            | Key::Dictionary(_)
+            | Key::SystemContractRegistry
+            | Key::EraSummary
+            | Key::Unbond(_)
+            | Key::ChainspecRegistry
+            | Key::ChecksumRegistry
+            | Key::BidAddr(_) => false,
         }
     }
 
@@ -857,6 +875,17 @@ where
     {
         let amount: Gas = call_cost.into();
         self.charge_gas(amount)
+    }
+
+    /// Prune a key from the global state.
+    ///
+    /// Use with caution - there is no validation done as the key is assumed to be validated
+    /// already.
+    pub(crate) fn prune_gs_unsafe<K>(&mut self, key: K)
+    where
+        K: Into<Key>,
+    {
+        self.tracking_copy.borrow_mut().prune(key.into());
     }
 
     /// Writes data to global state with a measurement.

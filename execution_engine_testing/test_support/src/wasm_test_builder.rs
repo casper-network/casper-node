@@ -47,9 +47,9 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights, WithdrawPurses,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
+            BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
+            WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
@@ -478,7 +478,7 @@ impl LmdbWasmTestBuilder {
         let maybe_exec_results = cached_state.run_execute(exec_request);
         for execution_result in maybe_exec_results.unwrap() {
             let _post_state_hash = cached_state
-                .apply_effects(
+                .commit_effects(
                     self.post_state_hash.expect("requires a post_state_hash"),
                     execution_result.effects().clone(),
                 )
@@ -756,7 +756,7 @@ where
     pub fn commit_transforms(&mut self, pre_state_hash: Digest, effects: Effects) -> &mut Self {
         let post_state_hash = self
             .engine_state
-            .apply_effects(pre_state_hash, effects)
+            .commit_effects(pre_state_hash, effects)
             .expect("should commit");
         self.post_state_hash = Some(post_state_hash);
         self
@@ -814,7 +814,7 @@ where
             },
         )
         .build();
-        self.exec(run_request).commit().expect_success()
+        self.exec(run_request).expect_success().commit()
     }
 
     /// Increments engine state.
@@ -1255,8 +1255,8 @@ where
         result.remove(&era_id)
     }
 
-    /// Gets [`Bids`].
-    pub fn get_bids(&mut self) -> Bids {
+    /// Gets [`Vec<BidKind>`].
+    pub fn get_bids(&mut self) -> Vec<BidKind> {
         let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
         let get_bids_result = self.engine_state.get_bids(get_bids_request).unwrap();
@@ -1485,8 +1485,13 @@ where
     pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
         let result = self.engine_state.commit_prune(prune_config);
 
-        if let Ok(PruneResult::Success { post_state_hash }) = &result {
+        if let Ok(PruneResult::Success {
+            post_state_hash,
+            effects,
+        }) = &result
+        {
             self.post_state_hash = Some(*post_state_hash);
+            self.effects.push(effects.clone());
         }
 
         self.prune_results.push(result);
