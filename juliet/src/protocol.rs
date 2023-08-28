@@ -2169,7 +2169,7 @@ mod tests {
         for payload in VaryingPayload::all_valid() {
             let mut env = TestingSetup::new();
 
-            let id = Id::new(1);
+            let id = Id::new(123);
 
             // We have to craft the message by hand to exceed the frame size.
             let msg = OutgoingMessage::new(
@@ -2181,9 +2181,19 @@ mod tests {
             // Patch the header so that it is broken.
             encoded[0] = 0b0000_1111; // Kind: Normal, all data bits set.
 
-            let violation = env.bob.process_incoming(&mut encoded).to_result();
+            let violation = env
+                .bob
+                .process_incoming(&mut encoded)
+                .to_result()
+                .expect_err("expected invalid header to produce an error");
 
-            env.assert_is_error_message(ErrorKind::InvalidHeader, id, violation);
+            // We have to manually assert the error, since invalid header errors are sent with an ID
+            // of 0 and on channel 0.
+
+            let header = violation.header();
+            assert_eq!(header.error_kind(), ErrorKind::InvalidHeader);
+            assert_eq!(header.id(), Id::new(0));
+            assert_eq!(header.channel(), ChannelId::new(0));
         }
     }
 
