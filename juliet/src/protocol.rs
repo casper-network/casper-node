@@ -133,6 +133,7 @@ impl Default for MaxFrameSize {
 /// Their return types are usually converted into frames via [`OutgoingMessage::frames()`] and need
 /// to be sent to the peer.
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 pub struct JulietProtocol<const N: usize> {
     /// Bi-directional channels.
     channels: [Channel; N],
@@ -217,6 +218,7 @@ impl<const N: usize> ProtocolBuilder<N> {
 /// Used internally by the protocol to keep track. This data structure closely tracks the
 /// information specified in the juliet RFC.
 #[derive(Debug)]
+#[cfg_attr(test, derive(Clone))]
 struct Channel {
     /// A set of request IDs from requests received that have not been answered with a response or
     /// cancellation yet.
@@ -1461,7 +1463,7 @@ mod tests {
     }
 
     /// A simplified setup for testing back and forth between two peers.
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     struct TestingSetup {
         /// Alice's protocol state.
         alice: JulietProtocol<{ Self::NUM_CHANNELS as usize }>,
@@ -1543,15 +1545,61 @@ mod tests {
             dest: Peer,
             msg: OutgoingMessage,
         ) -> Result<CompletedRead, OutgoingMessage> {
-            let mut msg_bytes = BytesMut::from(msg.to_bytes(self.max_frame_size).as_ref());
+            let msg_bytes = msg.to_bytes(self.max_frame_size);
+            let mut msg_bytes_buffer = BytesMut::from(msg_bytes.as_ref());
 
-            self.get_peer_mut(dest)
-                .process_incoming(&mut msg_bytes)
+            let orig_self = self.clone();
+
+            let expected = self
+                .get_peer_mut(dest)
+                .process_incoming(&mut msg_bytes_buffer)
                 .to_result()
                 .map(|v| {
-                    assert!(msg_bytes.is_empty(), "client should have consumed input");
+                    assert!(
+                        msg_bytes_buffer.is_empty(),
+                        "client should have consumed input"
+                    );
                     v
-                })
+                });
+
+            // Test parsing of partially received data.
+            //
+            // This loop runs through almost every sensibly conceivable size of chunks in which data
+            // can be transmitted and simulates a trickling reception. The original state of the
+            // receiving facilities is cloned first, and the outcome of the trickle reception is
+            // compared against the reference of receiving in one go from earlier (`expected`).
+            for transmission_chunk_size in 1..=(self.max_frame_size.get() as usize * 2 + 1) {
+                let mut unsent = msg_bytes.clone();
+                let mut buffer = BytesMut::new();
+                let mut this = orig_self.clone();
+
+                let result = loop {
+                    // Put more data from unsent into the buffer.
+                    let chunk = unsent.split_to(transmission_chunk_size.min(unsent.remaining()));
+                    buffer.extend(chunk);
+
+                    let outcome = this.get_peer_mut(dest).process_incoming(&mut buffer);
+
+                    if matches!(outcome, Outcome::Incomplete(_)) {
+                        if unsent.is_empty() {
+                            panic!(
+                                "got incompletion before completion  while attempting to send \
+                                message piecewise in {} byte chunks",
+                                transmission_chunk_size
+                            );
+                        }
+
+                        // Continue reading until complete.
+                        continue;
+                    }
+
+                    break outcome.to_result();
+                };
+
+                assert_eq!(result, expected, "should not see difference between trickling reception and single send reception");
+            }
+
+            expected
         }
 
         /// Take `msg` and send it to peer `dest`.

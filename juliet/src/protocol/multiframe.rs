@@ -27,6 +27,7 @@ use super::{outgoing_message::OutgoingMessage, MaxFrameSize};
 /// in the same way it would if they were on the same channel. The caller thus must ensure to create
 /// an instance of `MultiframeReceiver` for every active channel.
 #[derive(Debug, Default)]
+#[cfg_attr(test, derive(Clone))]
 pub(super) enum MultiframeReceiver {
     /// The channel is ready to start receiving a new multi-frame message.
     #[default]
