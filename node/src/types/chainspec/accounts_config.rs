@@ -9,7 +9,7 @@ use std::path::Path;
 use datasize::DataSize;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use casper_execution_engine::core::engine_state::GenesisAccount;
+use casper_execution_engine::core::engine_state::{genesis::AdministratorAccount, GenesisAccount};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
@@ -41,14 +41,25 @@ pub struct AccountsConfig {
     accounts: Vec<AccountConfig>,
     #[serde(default, deserialize_with = "sorted_vec_deserializer")]
     delegators: Vec<DelegatorConfig>,
+    #[serde(
+        default,
+        deserialize_with = "sorted_vec_deserializer",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    administrators: Vec<AdministratorAccount>,
 }
 
 impl AccountsConfig {
-    /// Creates a new `AccountsConfig`.
-    pub fn new(accounts: Vec<AccountConfig>, delegators: Vec<DelegatorConfig>) -> Self {
+    /// Create new accounts config instance.
+    pub fn new(
+        accounts: Vec<AccountConfig>,
+        delegators: Vec<DelegatorConfig>,
+        administrators: Vec<AdministratorAccount>,
+    ) -> Self {
         Self {
             accounts,
             delegators,
+            administrators,
         }
     }
 
@@ -60,6 +71,11 @@ impl AccountsConfig {
     /// Delegators.
     pub fn delegators(&self) -> &[DelegatorConfig] {
         &self.delegators
+    }
+
+    /// Administrators.
+    pub fn administrators(&self) -> &[AdministratorAccount] {
+        &self.administrators
     }
 
     /// Account.
@@ -84,7 +100,7 @@ impl AccountsConfig {
     ) -> Result<(Self, Option<Bytes>), ChainspecAccountsLoadError> {
         let accounts_path = dir_path.as_ref().join(CHAINSPEC_ACCOUNTS_FILENAME);
         if !accounts_path.is_file() {
-            let config = AccountsConfig::new(vec![], vec![]);
+            let config = AccountsConfig::new(vec![], vec![], vec![]);
             let maybe_bytes = None;
             return Ok((config, maybe_bytes));
         }
@@ -96,6 +112,9 @@ impl AccountsConfig {
     #[cfg(test)]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
+        use casper_types::{Motes, U512};
+        use rand::Rng;
+
         let alpha = AccountConfig::random(rng);
         let accounts = vec![
             alpha.clone(),
@@ -109,9 +128,16 @@ impl AccountsConfig {
 
         let delegators = vec![delegator];
 
+        let admin_balance: u32 = rng.gen();
+        let administrators = vec![AdministratorAccount::new(
+            PublicKey::random(rng),
+            Motes::new(U512::from(admin_balance)),
+        )];
+
         AccountsConfig {
             accounts,
             delegators,
+            administrators,
         }
     }
 }
@@ -121,11 +147,14 @@ impl ToBytes for AccountsConfig {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.accounts.to_bytes()?);
         buffer.extend(self.delegators.to_bytes()?);
+        buffer.extend(self.administrators.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.accounts.serialized_length() + self.delegators.serialized_length()
+        self.accounts.serialized_length()
+            + self.delegators.serialized_length()
+            + self.administrators.serialized_length()
     }
 }
 
@@ -133,7 +162,8 @@ impl FromBytes for AccountsConfig {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (accounts, remainder) = FromBytes::from_bytes(bytes)?;
         let (delegators, remainder) = FromBytes::from_bytes(remainder)?;
-        let accounts_config = AccountsConfig::new(accounts, delegators);
+        let (administrators, remainder) = FromBytes::from_bytes(remainder)?;
+        let accounts_config = AccountsConfig::new(accounts, delegators, administrators);
         Ok((accounts_config, remainder))
     }
 }
@@ -148,6 +178,11 @@ impl From<AccountsConfig> for Vec<GenesisAccount> {
         for delegator_config in accounts_config.delegators {
             let genesis_account = delegator_config.into();
             genesis_accounts.push(genesis_account);
+        }
+
+        for administrator_config in accounts_config.administrators {
+            let administrator_account = administrator_config.into();
+            genesis_accounts.push(administrator_account);
         }
 
         genesis_accounts

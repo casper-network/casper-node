@@ -10,7 +10,7 @@ mod types;
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     path::Path,
@@ -29,8 +29,11 @@ use tracing::{debug, error, info, trace};
 
 use casper_execution_engine::{
     core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, DeployItem, EngineConfig, EngineState,
-        GenesisSuccess, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        self,
+        engine_config::{FeeHandling, RefundHandling},
+        genesis::GenesisError,
+        ChainspecRegistry, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
+        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{newtypes::CorrelationId, system_config::SystemConfig, wasm_config::WasmConfig},
     storage::{
@@ -39,7 +42,7 @@ use casper_execution_engine::{
     },
 };
 use casper_hashing::Digest;
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, PublicKey, Timestamp};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -608,6 +611,11 @@ impl ContractRuntime {
         vesting_schedule_period_millis: u64,
         max_delegators_per_validator: Option<u32>,
         registry: &Registry,
+        administrative_accounts: BTreeSet<PublicKey>,
+        allow_auction_bids: bool,
+        allow_unrestricted_transfers: bool,
+        refund_handling: RefundHandling,
+        fee_handling: FeeHandling,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -631,17 +639,22 @@ impl ContractRuntime {
         )?);
 
         let global_state = LmdbGlobalState::empty(environment, trie_store)?;
-        let engine_config = EngineConfig::new(
-            contract_runtime_config.max_query_depth_or_default(),
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            minimum_delegation_amount,
-            strict_argument_checking,
-            vesting_schedule_period_millis,
-            max_delegators_per_validator,
-            wasm_config,
-            system_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
+            .with_max_associated_keys(max_associated_keys)
+            .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
+            .with_minimum_delegation_amount(minimum_delegation_amount)
+            .with_strict_argument_checking(strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+            .with_max_delegators_per_validator(max_delegators_per_validator)
+            .with_wasm_config(wasm_config)
+            .with_system_config(system_config)
+            .with_administrative_accounts(administrative_accounts)
+            .with_allow_auction_bids(allow_auction_bids)
+            .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
+            .with_refund_handling(refund_handling)
+            .with_fee_handling(fee_handling)
+            .build();
 
         let engine_state = Arc::new(EngineState::new(global_state, engine_config));
 
@@ -972,6 +985,7 @@ impl ContractRuntime {
 #[cfg(test)]
 mod trie_chunking_tests {
     use casper_execution_engine::{
+        core::engine_state::engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
         shared::{
             additive_map::AdditiveMap, newtypes::CorrelationId, system_config::SystemConfig,
             transform::Transform, wasm_config::WasmConfig,
@@ -1057,6 +1071,11 @@ mod trie_chunking_tests {
             1,
             None,
             &Registry::default(),
+            Default::default(),
+            true,
+            true,
+            DEFAULT_REFUND_HANDLING,
+            DEFAULT_FEE_HANDLING,
         )
         .unwrap();
         let empty_state_root = contract_runtime
