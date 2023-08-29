@@ -1414,12 +1414,12 @@ where
         for (public_key, status) in self.incoming_validator_status.iter_mut() {
             // If there is only a `Weak` ref, we lost the connection to the validator, but the
             // disconnection has not reached us yet.
-            status.upgrade().map(|arc| {
+            if let Some(arc) = status.upgrade() {
                 arc.store(
                     active_validators.contains(public_key),
                     std::sync::atomic::Ordering::Relaxed,
                 )
-            });
+            }
         }
 
         Effects::default()

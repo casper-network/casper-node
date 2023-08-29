@@ -271,8 +271,7 @@ impl ValidatorMatrix {
             .values()
             .rev()
             .take(self.auction_delay as usize + 1)
-            .map(|validator_weights| validator_weights.validator_public_keys())
-            .flatten()
+            .flat_map(|validator_weights| validator_weights.validator_public_keys())
             .cloned()
             .collect()
     }
