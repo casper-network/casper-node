@@ -122,7 +122,7 @@ impl<C: Context + 'static> HighwayProtocol<C> {
             .trailing_zeros()
             .saturating_sub(1) as u8;
         // Doesn't overflow since it's at most highway_config.maximum_round_length.
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         let maximum_round_length =
             TimeDiff::from_millis(minimum_round_length.millis() << maximum_round_exponent);
 
@@ -663,10 +663,10 @@ impl<C: Context + 'static> HighwayProtocol<C> {
     }
 }
 
-#[allow(clippy::integer_arithmetic)]
+#[allow(clippy::arithmetic_side_effects)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::integer_arithmetic` lint.
+    // module-wide `clippy::arithmetic_side_effects` lint.
 
     use datasize::DataSize;
     use serde::{Deserialize, Serialize};

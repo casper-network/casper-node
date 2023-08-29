@@ -757,7 +757,7 @@ impl Ord for PublicKey {
 
 // This implementation of `Hash` agrees with the derived `PartialEq`.  It's required since
 // `ed25519_dalek::PublicKey` doesn't implement `Hash`.
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for PublicKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.tag().hash(state);

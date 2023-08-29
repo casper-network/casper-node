@@ -125,7 +125,7 @@ impl<C: Context> FinalityDetector<C> {
     }
 
     /// Returns the quorum required by a summit with the specified level and the required FTT.
-    #[allow(clippy::integer_arithmetic)] // See comments.
+    #[allow(clippy::arithmetic_side_effects)] // See comments.
     fn quorum_for_lvl(&self, lvl: usize, total_w: Weight) -> Weight {
         // A level-lvl summit with quorum  total_w/2 + t  has relative FTT  2t(1 − 1/2^lvl). So:
         // quorum = total_w / 2 + ftt / 2 / (1 - 1/2^lvl)
@@ -153,7 +153,7 @@ impl<C: Context> FinalityDetector<C> {
     /// Returns the height of the next block that will be finalized.
     fn next_height(&self, state: &State<C>) -> u64 {
         // In a trillion years, we need to make block height u128.
-        #[allow(clippy::integer_arithmetic)]
+        #[allow(clippy::arithmetic_side_effects)]
         let height_plus_1 = |bhash| state.block(bhash).height + 1;
         self.last_finalized.as_ref().map_or(0, height_plus_1)
     }

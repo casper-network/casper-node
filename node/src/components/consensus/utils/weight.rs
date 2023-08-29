@@ -54,7 +54,7 @@ impl<'a> Sum<&'a Weight> for Weight {
 impl Mul<u64> for Weight {
     type Output = Self;
 
-    #[allow(clippy::integer_arithmetic)] // The caller needs to prevent overflows.
+    #[allow(clippy::arithmetic_side_effects)] // The caller needs to prevent overflows.
     fn mul(self, rhs: u64) -> Self {
         Weight(self.0 * rhs)
     }
@@ -63,7 +63,7 @@ impl Mul<u64> for Weight {
 impl Div<u64> for Weight {
     type Output = Self;
 
-    #[allow(clippy::integer_arithmetic)] // The caller needs to avoid dividing by zero.
+    #[allow(clippy::arithmetic_side_effects)] // The caller needs to avoid dividing by zero.
     fn div(self, rhs: u64) -> Self {
         Weight(self.0 / rhs)
     }

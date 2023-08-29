@@ -461,7 +461,7 @@ impl EraSupervisor {
         let seed = Self::era_seed(booking_block_hash, key_block.accumulated_seed());
 
         // The beginning of the new era is marked by the key block.
-        #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
+        #[allow(clippy::arithmetic_side_effects)] // Block height should never reach u64::MAX.
         let start_height = key_block.height() + 1;
         let start_time = key_block.timestamp();
 
@@ -942,7 +942,7 @@ impl EraSupervisor {
         self.open_eras.get_mut(&era_id).unwrap()
     }
 
-    #[allow(clippy::integer_arithmetic)] // Block height should never reach u64::MAX.
+    #[allow(clippy::arithmetic_side_effects)] // Block height should never reach u64::MAX.
     fn handle_consensus_outcome<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
