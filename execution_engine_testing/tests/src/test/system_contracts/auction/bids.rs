@@ -174,6 +174,7 @@ const DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
 const CASPER_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
 const CASPER_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
 
+#[allow(deprecated)]
 fn setup(accounts: Vec<GenesisAccount>) -> InMemoryWasmTestBuilder {
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
@@ -197,6 +198,7 @@ fn setup(accounts: Vec<GenesisAccount>) -> InMemoryWasmTestBuilder {
             let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
             let unbonding_delay = DEFAULT_UNBONDING_DELAY;
             let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+            #[allow(deprecated)]
             ExecConfig::new(
                 accounts,
                 wasm_config,
