@@ -231,6 +231,11 @@ impl BlockBuilder {
         self.latch.count() > 0
     }
 
+    #[cfg(test)]
+    pub fn latch_count(&self) -> u8 {
+        self.latch.count()
+    }
+
     pub(super) fn check_latch(&mut self, interval: TimeDiff) -> bool {
         self.latch.check_latch(interval, Timestamp::now())
     }
@@ -456,20 +461,56 @@ impl BlockBuilder {
         }
     }
 
+    pub(super) fn waiting_for_block_header(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::Initialized(..) => true,
+            BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
+    }
+
     pub(super) fn register_block_header(
         &mut self,
         block_header: BlockHeader,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
+        let was_waiting_for_block_header = self.waiting_for_block_header();
+
         let era_id = block_header.era_id();
         let acceptance = self.acquisition_state.register_block_header(
             block_header,
             self.strict_finality_protocol_version,
             self.should_fetch_execution_state,
         );
-        self.handle_acceptance(maybe_peer, acceptance)?;
+        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_block_header)?;
         self.era_id = Some(era_id);
         Ok(())
+    }
+
+    pub(super) fn waiting_for_block(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::HaveWeakFinalitySignatures(..) => true,
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
     }
 
     pub(super) fn register_block(
@@ -477,10 +518,34 @@ impl BlockBuilder {
         block: &Block,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
+        let was_waiting_for_block = self.waiting_for_block();
         let acceptance = self
             .acquisition_state
             .register_block(block, self.should_fetch_execution_state);
-        self.handle_acceptance(maybe_peer, acceptance)
+        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_block)
+    }
+
+    pub(super) fn waiting_for_approvals_hashes(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::HaveBlock(..) if !self.should_fetch_execution_state => true,
+            BlockAcquisitionState::HaveAllExecutionResults(..)
+                if self.should_fetch_execution_state =>
+            {
+                true
+            }
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
     }
 
     pub(super) fn register_approvals_hashes(
@@ -488,10 +553,11 @@ impl BlockBuilder {
         approvals_hashes: &ApprovalsHashes,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
+        let was_waiting_for_approvals_hashes = self.waiting_for_approvals_hashes();
         let acceptance = self
             .acquisition_state
             .register_approvals_hashes(approvals_hashes, self.should_fetch_execution_state);
-        self.handle_acceptance(maybe_peer, acceptance)
+        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_approvals_hashes)
     }
 
     pub(super) fn register_finality_signature_pending(&mut self, validator: PublicKey) {
@@ -518,11 +584,17 @@ impl BlockBuilder {
         }
     }
 
+    pub(super) fn waiting_for_signatures(&self) -> bool {
+        self.acquisition_state
+            .actively_acquiring_signatures(self.should_fetch_execution_state)
+    }
+
     pub(super) fn register_finality_signature(
         &mut self,
         finality_signature: FinalitySignature,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
+        let was_waiting_for_sigs = self.waiting_for_signatures();
         let validator_weights = self
             .validator_weights
             .as_ref()
@@ -532,7 +604,7 @@ impl BlockBuilder {
             validator_weights,
             self.should_fetch_execution_state,
         );
-        self.handle_acceptance(maybe_peer, acceptance)
+        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_sigs)
     }
 
     pub(super) fn register_global_state(&mut self, global_state: Digest) -> Result<(), Error> {
@@ -562,12 +634,31 @@ impl BlockBuilder {
         Ok(())
     }
 
+    pub(super) fn waiting_for_execution_results(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::HaveGlobalState(..) if self.should_fetch_execution_state => true,
+            BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveApprovalsHashes(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
+    }
+
     pub(super) fn register_fetched_execution_results(
         &mut self,
         maybe_peer: Option<NodeId>,
         block_execution_results_or_chunk: BlockExecutionResultsOrChunk,
     ) -> Result<Option<HashMap<DeployHash, casper_types::ExecutionResult>>, Error> {
         debug!(block_hash=%self.block_hash, "register_fetched_execution_results");
+        let was_waiting_for_execution_results = self.waiting_for_execution_results();
         match self.acquisition_state.register_execution_results_or_chunk(
             block_execution_results_or_chunk,
             self.should_fetch_execution_state,
@@ -580,7 +671,11 @@ impl BlockBuilder {
                     ?acceptance,
                     "register_fetched_execution_results: Ok(RegisterExecResultsOutcome)"
                 );
-                self.handle_acceptance(maybe_peer, Ok(acceptance))?;
+                self.handle_acceptance(
+                    maybe_peer,
+                    Ok(acceptance),
+                    was_waiting_for_execution_results,
+                )?;
                 Ok(exec_results)
             }
             Err(BlockAcquisitionError::ExecutionResults(error)) => {
@@ -596,6 +691,9 @@ impl BlockBuilder {
                     | execution_results_acquisition::Error::AttemptToApplyDataWhenMissingChecksum { .. }
                     | execution_results_acquisition::Error::InvalidOutcomeFromApplyingChunk { .. }
                     => {
+                        if was_waiting_for_execution_results {
+                            self.latch_decrement();
+                        }
                         debug!(
                             "register_fetched_execution_results: BlockHashMismatch | \
                             InvalidAttemptToApplyChecksum | AttemptToApplyDataWhenMissingChecksum \
@@ -619,6 +717,9 @@ impl BlockBuilder {
                                 self.disqualify_peer(peer);
                             }
                         }
+                        if was_waiting_for_execution_results {
+                            self.latch_decrement();
+                        }
                     }
                     // malicious peer
                     execution_results_acquisition::Error::InvalidChunkCount { .. }
@@ -629,10 +730,16 @@ impl BlockBuilder {
                         if let Some(peer) = maybe_peer {
                             self.disqualify_peer(peer);
                         }
+                        if was_waiting_for_execution_results {
+                            self.latch_decrement();
+                        }
                     }
                     // checksum unavailable, so unknown if this peer is malicious
                     execution_results_acquisition::Error::ChunksWithDifferentChecksum { .. } => {
                         debug!("register_fetched_execution_results: ChunksWithDifferentChecksum");
+                        if was_waiting_for_execution_results {
+                            self.latch_decrement();
+                        }
                     }
                 }
                 Err(Error::BlockAcquisition(
@@ -660,15 +767,44 @@ impl BlockBuilder {
         Ok(())
     }
 
+    pub(super) fn waiting_for_deploys(&self) -> bool {
+        match &self.acquisition_state {
+            BlockAcquisitionState::HaveApprovalsHashes(_, _, deploys) => {
+                deploys.needs_deploy().is_some()
+            }
+            BlockAcquisitionState::HaveAllExecutionResults(_, _, deploys, checksum)
+                if self.should_fetch_execution_state =>
+            {
+                if !checksum.is_checkable() {
+                    deploys.needs_deploy().is_some()
+                } else {
+                    false
+                }
+            }
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveBlockHeader(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveBlock(..)
+            | BlockAcquisitionState::HaveGlobalState(..)
+            | BlockAcquisitionState::HaveAllExecutionResults(..)
+            | BlockAcquisitionState::HaveAllDeploys(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+        }
+    }
+
     pub(super) fn register_deploy(
         &mut self,
         deploy_id: DeployId,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
+        let was_waiting_for_deploys = self.waiting_for_deploys();
         let acceptance = self
             .acquisition_state
             .register_deploy(deploy_id, self.should_fetch_execution_state);
-        self.handle_acceptance(maybe_peer, acceptance)
+        self.handle_acceptance(maybe_peer, acceptance, was_waiting_for_deploys)
     }
 
     pub(super) fn register_peers(&mut self, peers: Vec<NodeId>) {
@@ -690,19 +826,36 @@ impl BlockBuilder {
         &mut self,
         maybe_peer: Option<NodeId>,
         acceptance: Result<Option<Acceptance>, BlockAcquisitionError>,
+        should_unlatch: bool,
     ) -> Result<(), Error> {
         match acceptance {
             Ok(Some(Acceptance::NeededIt)) => {
+                // Got a useful response. Unlatch in all cases since we want to get the next item.
                 self.touch();
                 if let Some(peer) = maybe_peer {
                     self.promote_peer(peer);
                 }
             }
-            Ok(Some(Acceptance::HadIt)) | Ok(None) => (),
+            Ok(Some(Acceptance::HadIt)) => {
+                // Already had this item, which means that this was a late response for a previous
+                // fetch. We don't unlatch in this case and wait for a valid response.
+            }
+            Ok(None) => {
+                if should_unlatch {
+                    self.latch_decrement();
+                }
+            }
             Err(error) => {
                 if let Some(peer) = maybe_peer {
                     self.disqualify_peer(peer);
                 }
+
+                // If we were waiting for a response and the item was not good,
+                // decrement latch. Fetch will be retried when unlatched.
+                if should_unlatch {
+                    self.latch_decrement();
+                }
+
                 return Err(Error::BlockAcquisition(error));
             }
         }
