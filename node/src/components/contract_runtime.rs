@@ -28,7 +28,7 @@ use tracing::{debug, error, info, trace};
 use casper_execution_engine::{
     core::engine_state::{
         self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
+        QueryRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
     },
     shared::{system_config::SystemConfig, wasm_config::WasmConfig},
 };
@@ -43,7 +43,7 @@ use casper_storage::{
         },
     },
 };
-use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp};
+use casper_types::{bytesrepr::Bytes, EraId, ProtocolVersion, Timestamp, U512};
 
 use crate::{
     components::{fetcher::FetchResponse, Component, ComponentState},
@@ -388,10 +388,8 @@ impl ContractRuntime {
                 let metrics = Arc::clone(&self.metrics);
 
                 async move {
-                    let correlation_id = CorrelationId::new();
                     let start = Instant::now();
-                    let result = engine_state
-                        .get_total_supply(correlation_id, total_supply_request.state_hash);
+                    let result = query_total_supply(engine_state, total_supply_request.state_hash);
 
                     metrics
                         .get_total_supply
@@ -978,6 +976,37 @@ impl ContractRuntime {
                 .ok();
         };
     }
+}
+
+fn query_total_supply(
+    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+    state_hash: Digest,
+) -> Result<U512, engine_state::Error> {
+    use casper_types::system::mint;
+    use engine_state::{Error, QueryResult::*};
+
+    let correlation_id = CorrelationId::new();
+    let mint = engine_state.get_system_mint_hash(correlation_id, state_hash)?;
+    let request = QueryRequest::new(
+        state_hash,
+        mint.into(),
+        vec![mint::TOTAL_SUPPLY_KEY.to_owned()],
+    );
+
+    engine_state
+        .run_query(correlation_id, request)
+        .and_then(move |query_result| match query_result {
+            Success { value, proofs: _ } => value
+                .as_cl_value()
+                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
+                .clone()
+                .into_t()
+                .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
+            ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
+            CircularReference(s) => Err(Error::Mint(format!("CircularReference({s})"))),
+            DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
+            RootNotFound => Err(Error::RootNotFound(state_hash)),
+        })
 }
 
 #[cfg(test)]

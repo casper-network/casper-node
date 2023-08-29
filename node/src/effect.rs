@@ -2017,11 +2017,11 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Returns a map of validators weights for all eras as known from `root_hash`.
+    /// Returns the total supply from the given `root_hash`.
     ///
     /// This operation is read only.
     #[allow(unused)] //TODO remove in the next ticket implementation.
-    pub(crate) async fn get_era_total_supply(
+    pub(crate) async fn get_total_supply(
         self,
         state_hash: Digest,
     ) -> Result<U512, engine_state::Error>
