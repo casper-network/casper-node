@@ -34,7 +34,6 @@ mod handshake;
 mod health;
 mod identity;
 mod insights;
-mod limiter;
 mod message;
 mod metrics;
 mod outgoing;
@@ -46,7 +45,6 @@ mod transport;
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
     marker::PhantomData,
@@ -58,7 +56,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use array_init::array_init;
 use bincode::Options;
 use bytes::Bytes;
 use datasize::DataSize;
@@ -76,7 +73,6 @@ use strum::EnumCount;
 use tokio::{
     io::{ReadHalf, WriteHalf},
     net::TcpStream,
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
@@ -90,7 +86,6 @@ use self::{
     error::{ConnectionError, MessageReceiverError},
     event::{IncomingConnection, OutgoingConnection},
     health::{HealthConfig, TaggedTimestamp},
-    limiter::Limiter,
     message::NodeKeyPair,
     metrics::Metrics,
     outgoing::{DialOutcome, DialRequest, OutgoingConfig, OutgoingManager},
@@ -210,10 +205,6 @@ where
     #[data_size(skip)]
     net_metrics: Arc<Metrics>,
 
-    /// The outgoing bandwidth limiter.
-    #[data_size(skip)]
-    outgoing_limiter: Limiter,
-
     /// The era that is considered the active era by the network component.
     active_era: EraId,
 
@@ -246,15 +237,6 @@ where
         validator_matrix: ValidatorMatrix,
     ) -> Result<Network<REv, P>, Error> {
         let net_metrics = Arc::new(Metrics::new(registry)?);
-
-        let outgoing_limiter = Limiter::new(
-            cfg.max_outgoing_byte_rate_non_validators,
-            net_metrics
-                .accumulated_outgoing_limiter_delay
-                .inner()
-                .clone(),
-            validator_matrix.clone(),
-        );
 
         let outgoing_manager = OutgoingManager::with_metrics(
             OutgoingConfig {
@@ -309,7 +291,6 @@ where
             incoming_validator_status: Default::default(),
             connection_symmetries: HashMap::new(),
             net_metrics,
-            outgoing_limiter,
             // We start with an empty set of validators for era 0 and expect to be updated.
             active_era: EraId::new(0),
             state: ComponentState::Uninitialized,
@@ -423,10 +404,7 @@ where
         for peer_id in self.outgoing_manager.connected_peers() {
             total_outgoing_manager_connected_peers += 1;
 
-            if true
-                || !self.validator_matrix.has_era(&era_id)
-                || self.outgoing_limiter.is_validator_in_era(era_id, &peer_id)
-            {
+            if true {
                 total_connected_validators_in_era += 1;
                 self.send_message(peer_id, msg.clone(), None)
             }
@@ -446,12 +424,14 @@ where
         &self,
         rng: &mut NodeRng,
         msg: Arc<Message<P>>,
-        gossip_target: GossipTarget,
+        _gossip_target: GossipTarget,
         count: usize,
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
-        let is_validator_in_era =
-            |era: EraId, peer_id: &NodeId| self.outgoing_limiter.is_validator_in_era(era, peer_id);
+        // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
+        let is_validator_in_era = |_, _: &_| true;
+        let gossip_target = GossipTarget::All;
+
         let peer_ids = choose_gossip_peers(
             rng,
             gossip_target,
@@ -976,8 +956,6 @@ where
             .or_default()
             .unmark_outgoing(Instant::now());
 
-        self.outgoing_limiter.remove_connected_validator(&peer_id);
-
         self.process_dial_requests(requests)
     }
 
@@ -1433,36 +1411,16 @@ where
         for (public_key, status) in self.incoming_validator_status.iter_mut() {
             // If there is only a `Weak` ref, we lost the connection to the validator, but the
             // disconnection has not reached us yet.
-            status.upgrade().map(|arc| {
+            if let Some(arc) = status.upgrade() {
                 arc.store(
                     active_validators.contains(public_key),
                     std::sync::atomic::Ordering::Relaxed,
                 )
-            });
+            }
         }
 
         Effects::default()
     }
-}
-
-/// Setup a fixed amount of senders/receivers.
-fn unbounded_channels<T, const N: usize>() -> ([UnboundedSender<T>; N], [UnboundedReceiver<T>; N]) {
-    // TODO: Improve this somehow to avoid the extra allocation required (turning a
-    //       `Vec` into a fixed size array).
-    let mut senders_vec = Vec::with_capacity(Channel::COUNT);
-
-    let receivers: [_; N] = array_init(|_| {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        senders_vec.push(sender);
-
-        receiver
-    });
-
-    let senders: [_; N] = senders_vec
-        .try_into()
-        .expect("constant size array conversion failed");
-
-    (senders, receivers)
 }
 
 /// Transport type for base encrypted connections.

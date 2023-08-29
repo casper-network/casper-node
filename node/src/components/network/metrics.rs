@@ -117,6 +117,7 @@ pub(super) struct Metrics {
     pub(super) requests_for_trie_finished: RegisteredMetric<IntCounter>,
 
     /// Total time spent delaying outgoing traffic to non-validators due to limiter, in seconds.
+    #[allow(dead_code)] // Metric kept for backwards compabitility.
     pub(super) accumulated_outgoing_limiter_delay: RegisteredMetric<Counter>,
 }
 

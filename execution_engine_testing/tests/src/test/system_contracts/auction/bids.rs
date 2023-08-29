@@ -5,29 +5,28 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, DEFAULT_PROTOCOL_VERSION,
+    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG,
+    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_MAX_ASSOCIATED_KEYS,
+    DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, SYSTEM_ADDR,
-    TIMESTAMP_MILLIS_INCREMENT, TIMESTAMP_MILLIS_INCREMENT,
+    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::{
     core::{
         engine_state::{
             self,
-            engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
+            engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
             genesis::{ExecConfigBuilder, GenesisAccount, GenesisValidator},
             run_genesis_request::RunGenesisRequest,
-            EngineConfigBuilder, Error, RewardItem,
+            EngineConfig, EngineConfigBuilder, Error, ExecConfig, RewardItem,
+            DEFAULT_MAX_QUERY_DEPTH,
         },
         execution,
     },
-    shared::{system_config::SystemConfig, transform::Transform, wasm_config::WasmConfig},
+    shared::transform::Transform,
     storage::global_state::in_memory::InMemoryGlobalState,
 };
 use casper_types::{
@@ -175,6 +174,7 @@ const DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
 const CASPER_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
 const CASPER_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
 
+#[allow(deprecated)]
 fn setup(accounts: Vec<GenesisAccount>) -> InMemoryWasmTestBuilder {
     let engine_config = EngineConfig::new(
         DEFAULT_MAX_QUERY_DEPTH,
@@ -198,6 +198,7 @@ fn setup(accounts: Vec<GenesisAccount>) -> InMemoryWasmTestBuilder {
             let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
             let unbonding_delay = DEFAULT_UNBONDING_DELAY;
             let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
+            #[allow(deprecated)]
             ExecConfig::new(
                 accounts,
                 wasm_config,
@@ -2519,6 +2520,7 @@ fn should_release_vfta_holder_stake() {
         (DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT) / 14;
     const DELEGATOR_VFTA_STAKE: u64 = DELEGATOR_1_STAKE - DEFAULT_MINIMUM_DELEGATION_AMOUNT;
     const EXPECTED_REMAINDER: u64 = 12;
+    const NEW_MINIMUM_DELEGATION_AMOUNT: u64 = 0;
     const EXPECTED_LOCKED_AMOUNTS: [u64; 14] = [
         1392858, 1285716, 1178574, 1071432, 964290, 857148, 750006, 642864, 535722, 428580, 321438,
         214296, 107154, 0,

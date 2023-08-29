@@ -22,12 +22,13 @@
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
-    sync::{Arc, OnceLock},
+    sync::Arc,
     time::Duration,
 };
 
 use bytes::Bytes;
 
+use once_cell::sync::OnceCell;
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -136,7 +137,7 @@ struct NewOutgoingRequest {
 #[derive(Debug)]
 struct RequestGuardInner {
     /// The returned response of the request.
-    outcome: OnceLock<Result<Option<Bytes>, RequestError>>,
+    outcome: OnceCell<Result<Option<Bytes>, RequestError>>,
     /// A notifier for when the result arrives.
     ready: Option<Notify>,
 }
@@ -144,7 +145,7 @@ struct RequestGuardInner {
 impl RequestGuardInner {
     fn new() -> Self {
         RequestGuardInner {
-            outcome: OnceLock::new(),
+            outcome: OnceCell::new(),
             ready: Some(Notify::new()),
         }
     }
@@ -425,7 +426,7 @@ pub struct RequestGuard {
 impl RequestGuard {
     /// Creates a new request guard with no shared data that is already resolved to an error.
     fn new_error(error: RequestError) -> Self {
-        let outcome = OnceLock::new();
+        let outcome = OnceCell::new();
         outcome
             .set(Err(error))
             .expect("newly constructed cell should always be empty");

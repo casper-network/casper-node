@@ -245,6 +245,7 @@ fn should_not_retain_genesis_validator_slot_protection_after_vesting_period_elap
 
 #[ignore]
 #[test]
+#[allow(deprecated)]
 fn should_retain_genesis_validator_slot_protection() {
     const CASPER_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
     const CASPER_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
