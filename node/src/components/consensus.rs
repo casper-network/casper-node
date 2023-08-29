@@ -1,6 +1,6 @@
 //! The consensus component. Provides distributed consensus among the nodes in the network.
 
-#![warn(clippy::arithmetic_side_effects)]
+#![warn(clippy::integer_arithmetic)]
 
 mod cl_context;
 mod config;
@@ -70,10 +70,10 @@ pub(crate) use validator_change::ValidatorChange;
 
 const COMPONENT_NAME: &str = "consensus";
 
-#[allow(clippy::arithmetic_side_effects)]
+#[allow(clippy::integer_arithmetic)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
+    // module-wide `clippy::integer_arithmetic` lint.
 
     use casper_types::{EraId, PublicKey};
     use datasize::DataSize;

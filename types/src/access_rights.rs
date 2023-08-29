@@ -21,7 +21,7 @@ pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
 bitflags! {
     /// A struct which behaves like a set of bitflags to define access rights associated with a
     /// [`URef`](crate::URef).
-    #[allow(clippy::derived_hash_with_manual_eq)]
+    #[allow(clippy::derive_hash_xor_eq)]
     #[cfg_attr(feature = "datasize", derive(DataSize))]
     pub struct AccessRights: u8 {
         /// No permissions

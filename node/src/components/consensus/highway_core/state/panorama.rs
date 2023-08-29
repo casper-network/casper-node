@@ -13,10 +13,10 @@ use crate::components::consensus::{
     utils::{ValidatorIndex, ValidatorMap},
 };
 
-#[allow(clippy::arithmetic_side_effects)]
+#[allow(clippy::integer_arithmetic)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
+    // module-wide `clippy::integer_arithmetic` lint.
 
     use datasize::DataSize;
     use serde::{Deserialize, Serialize};
@@ -154,7 +154,7 @@ impl<C: Context> Panorama<C> {
     /// Returns the correct sequence number for a new unit by `vidx` with this panorama.
     pub(crate) fn next_seq_num(&self, state: &State<C>, vidx: ValidatorIndex) -> u64 {
         // In a trillion years, we need to make seq number u128.
-        #[allow(clippy::arithmetic_side_effects)]
+        #[allow(clippy::integer_arithmetic)]
         let add1 = |vh: &C::Hash| state.unit(vh).seq_number + 1;
         self[vidx].correct().map_or(0, add1)
     }

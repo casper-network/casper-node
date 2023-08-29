@@ -60,7 +60,7 @@ impl<C: Context> RoundSuccessMeter<C> {
     fn check_proposals_success(&self, state: &State<C>, proposal_h: &C::Hash) -> bool {
         let total_w = state.total_weight();
 
-        #[allow(clippy::arithmetic_side_effects)] // FTT is less than 100%, so this can't overflow.
+        #[allow(clippy::integer_arithmetic)] // FTT is less than 100%, so this can't overflow.
         let finality_detector = FinalityDetector::<C>::new(max(
             Weight(
                 (u128::from(total_w) * *self.config.acceleration_ftt.numer() as u128
@@ -185,7 +185,7 @@ impl<C: Context> RoundSuccessMeter<C> {
     pub(super) fn new_length(&self) -> TimeDiff {
         let current_round_index = round_index(self.current_round_id, self.current_round_len);
         let num_failures = self.count_failures() as u64;
-        #[allow(clippy::arithmetic_side_effects)] // The acceleration_parameter is not zero.
+        #[allow(clippy::integer_arithmetic)] // The acceleration_parameter is not zero.
         if num_failures > self.config.max_failed_rounds()
             && self.current_round_len * 2 <= self.max_round_len
         {
@@ -204,7 +204,7 @@ impl<C: Context> RoundSuccessMeter<C> {
 }
 
 /// Returns the round index `i`, if `r_id` is the ID of the `i`-th round after the epoch.
-#[allow(clippy::arithmetic_side_effects)] // Checking for division by 0.
+#[allow(clippy::integer_arithmetic)] // Checking for division by 0.
 fn round_index(r_id: Timestamp, round_len: TimeDiff) -> u64 {
     if round_len.millis() == 0 {
         error!("called round_index with round_len 0.");

@@ -83,7 +83,7 @@ impl<C: Context> Unit<C> {
                 skip_idx.push(old_unit.skip_idx[i]);
             }
         }
-        #[allow(clippy::arithmetic_side_effects)] // Only called with valid units.
+        #[allow(clippy::integer_arithmetic)] // Only called with valid units.
         let round_len =
             TimeDiff::from_millis(state.params().min_round_length().millis() << wunit.round_exp);
         let unit = Unit {

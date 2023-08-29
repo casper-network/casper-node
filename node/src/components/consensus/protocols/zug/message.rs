@@ -14,10 +14,10 @@ use crate::{
     utils::ds,
 };
 
-#[allow(clippy::arithmetic_side_effects)]
+#[allow(clippy::integer_arithmetic)]
 mod relaxed {
     // This module exists solely to exempt the `EnumDiscriminants` macro generated code from the
-    // module-wide `clippy::arithmetic_side_effects` lint.
+    // module-wide `clippy::integer_arithmetic` lint.
 
     use datasize::DataSize;
     use serde::{Deserialize, Serialize};

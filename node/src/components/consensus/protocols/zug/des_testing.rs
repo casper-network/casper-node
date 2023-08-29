@@ -1,4 +1,4 @@
-#![allow(clippy::arithmetic_side_effects)] // In tests, overflows panic anyway.
+#![allow(clippy::integer_arithmetic)] // In tests, overflows panic anyway.
 
 use std::{
     collections::{hash_map::DefaultHasher, HashMap, VecDeque},

@@ -128,7 +128,7 @@ impl FromStr for EraId {
 impl Add<u64> for EraId {
     type Output = EraId;
 
-    #[allow(clippy::arithmetic_side_effects)] // The caller must make sure this doesn't overflow.
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     fn add(self, x: u64) -> EraId {
         EraId::from(self.0 + x)
     }
@@ -143,7 +143,7 @@ impl AddAssign<u64> for EraId {
 impl Sub<u64> for EraId {
     type Output = EraId;
 
-    #[allow(clippy::arithmetic_side_effects)] // The caller must make sure this doesn't overflow.
+    #[allow(clippy::integer_arithmetic)] // The caller must make sure this doesn't overflow.
     fn sub(self, x: u64) -> EraId {
         EraId::from(self.0 - x)
     }

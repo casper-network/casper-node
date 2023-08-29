@@ -66,7 +66,7 @@ pub(crate) fn ftt<C: Context>(
         finality_threshold_fraction < 1.into(),
         "finality threshold must be less than 100%"
     );
-    #[allow(clippy::arithmetic_side_effects)] // FTT is less than 1, so this can't overflow
+    #[allow(clippy::integer_arithmetic)] // FTT is less than 1, so this can't overflow
     let ftt = total_weight * *finality_threshold_fraction.numer() as u128
         / *finality_threshold_fraction.denom() as u128;
     (ftt as u64).into()

@@ -81,7 +81,7 @@ fn compute_rewards_for<C: Context>(
     let faulty_w: Weight = panorama.iter_faulty().map(|vidx| state.weight(vidx)).sum();
 
     // Collect the block rewards for each validator who is a member of at least one summit.
-    #[allow(clippy::arithmetic_side_effects)] // See inline comments.
+    #[allow(clippy::integer_arithmetic)] // See inline comments.
     max_quorum
         .enumerate()
         .zip(state.weights())
@@ -139,7 +139,7 @@ fn round_participation<'a, C: Context>(
     maybe_unit.map_or(RoundParticipation::No, |(vh, unit)| {
         // Round length is not 0:
         // It is computed as 2^round_exp * min_round_length from a valid WireUnit.
-        #[allow(clippy::arithmetic_side_effects)]
+        #[allow(clippy::integer_arithmetic)]
         if r_id.millis() % unit.round_len.millis() != 0 {
             // Round length doesn't divide `r_id`, so the validator was not assigned to that round.
             RoundParticipation::Unassigned
@@ -153,7 +153,7 @@ fn round_participation<'a, C: Context>(
 }
 
 #[allow(unused_qualifications)] // This is to suppress warnings originating in the test macros.
-#[allow(clippy::arithmetic_side_effects)] // Overflows in tests would panic anyway.
+#[allow(clippy::integer_arithmetic)] // Overflows in tests would panic anyway.
 #[cfg(test)]
 mod tests {
     use casper_types::TimeDiff;
