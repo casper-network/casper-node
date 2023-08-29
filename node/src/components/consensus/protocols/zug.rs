@@ -201,8 +201,9 @@ where
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
     write_wal: Option<WriteWal<C>>,
-    /// The list of the node from which we wait for a sync response.
-    expected_to_send_a_sync_response: registered_sync::RegisteredSync,
+    /// A map of random IDs -> tipmestamp of when it has been created, allowing to track
+    /// to which nodes we have asked for a request.
+    sent_sync_requests: registered_sync::RegisteredSync,
 }
 
 impl<C: Context + 'static> Zug<C> {
@@ -267,7 +268,7 @@ impl<C: Context + 'static> Zug<C> {
             paused: false,
             next_scheduled_update: Timestamp::MAX,
             write_wal: None,
-            expected_to_send_a_sync_response: Default::default(),
+            sent_sync_requests: Default::default(),
         }
     }
 
@@ -495,7 +496,7 @@ impl<C: Context + 'static> Zug<C> {
                     faulty,
                     active,
                     *self.instance_id(),
-                    self.expected_to_send_a_sync_response.insert_new(rng),
+                    self.sent_sync_requests.create_and_register_new_id(rng),
                 );
             }
         };
@@ -519,7 +520,7 @@ impl<C: Context + 'static> Zug<C> {
         }
 
         // We register the node to which we asked the sync for:
-        let sync_id = self.expected_to_send_a_sync_response.insert_new(rng);
+        let sync_id = self.sent_sync_requests.create_and_register_new_id(rng);
 
         SyncRequest {
             round_id,
@@ -959,10 +960,7 @@ impl<C: Context + 'static> Zug<C> {
         } = sync_response;
 
         // We have not asked for any sync response:
-        if self
-            .expected_to_send_a_sync_response
-            .id_not_registered(sync_id)
-        {
+        if self.sent_sync_requests.try_remove_id(sync_id) {
             return vec![ProtocolOutcome::Disconnect(sender)];
         }
 
@@ -2649,7 +2647,7 @@ mod registered_sync {
             self.0.retain(|_, timestamp| timestamp.elapsed() < ONE_MIN);
         }
 
-        pub fn insert_new(&mut self, rng: &mut NodeRng) -> RandomId {
+        pub fn create_and_register_new_id(&mut self, rng: &mut NodeRng) -> RandomId {
             self.prune_old();
 
             let id = loop {
@@ -2665,7 +2663,9 @@ mod registered_sync {
             id
         }
 
-        pub fn id_not_registered(&mut self, id: RandomId) -> bool {
+        /// Returns `true` if ID has been succesfully removed, *i.e.* it was present
+        /// in the data structure.
+        pub fn try_remove_id(&mut self, id: RandomId) -> bool {
             self.0.remove(&id).is_none()
         }
     }
