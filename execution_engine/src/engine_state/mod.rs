@@ -18,6 +18,7 @@ pub mod system_contract_registry;
 mod transfer;
 pub mod upgrade;
 
+use itertools::Itertools;
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -39,7 +40,7 @@ use casper_storage::{
             StateReader,
         },
         trie::{merkle_proof::TrieMerkleProof, TrieRaw},
-        trie_store::operations::DeleteResult,
+        trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
 };
 use casper_types::{
@@ -50,10 +51,10 @@ use casper_types::{
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
     system::{
         auction::{
-            EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
-            ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
-            UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
+            BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
+            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, ARG_VALIDATOR,
+            ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY, ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY,
+            SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY, UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
@@ -166,11 +167,25 @@ impl EngineState<DataAccessLayer<LmdbGlobalState>> {
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
     ) -> Result<Digest, Error> {
-        let stored_values = scratch_global_state.into_inner();
-        self.state
+        let (stored_values, keys_to_prune) = scratch_global_state.into_inner();
+
+        let post_state_hash = self
+            .state
             .state()
-            .put_stored_values(state_root_hash, stored_values)
-            .map_err(Into::into)
+            .put_stored_values(state_root_hash, stored_values)?;
+
+        if keys_to_prune.is_empty() {
+            return Ok(post_state_hash);
+        }
+        let prune_keys = keys_to_prune.iter().cloned().collect_vec();
+        match self.state.state().prune_keys(post_state_hash, &prune_keys) {
+            Ok(result) => match result {
+                GlobalStatePruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
+                GlobalStatePruneResult::DoesNotExist => Err(Error::FailedToPrune(prune_keys)),
+                GlobalStatePruneResult::RootNotFound => Err(Error::RootNotFound(post_state_hash)),
+            },
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
@@ -202,10 +217,25 @@ impl EngineState<LmdbGlobalState> {
         state_root_hash: Digest,
         scratch_global_state: ScratchGlobalState,
     ) -> Result<Digest, Error> {
-        let stored_values = scratch_global_state.into_inner();
-        self.state
-            .put_stored_values(state_root_hash, stored_values)
-            .map_err(Into::into)
+        let (stored_values, keys_to_prune) = scratch_global_state.into_inner();
+        let post_state_hash = match self.state.put_stored_values(state_root_hash, stored_values) {
+            Ok(root_hash) => root_hash,
+            Err(err) => {
+                return Err(err.into());
+            }
+        };
+        if keys_to_prune.is_empty() {
+            return Ok(post_state_hash);
+        }
+        let prune_keys = keys_to_prune.iter().cloned().collect_vec();
+        match self.state.prune_keys(post_state_hash, &prune_keys) {
+            Ok(result) => match result {
+                GlobalStatePruneResult::Pruned(post_state_hash) => Ok(post_state_hash),
+                GlobalStatePruneResult::DoesNotExist => Err(Error::FailedToPrune(prune_keys)),
+                GlobalStatePruneResult::RootNotFound => Err(Error::RootNotFound(post_state_hash)),
+            },
+            Err(err) => Err(err.into()),
+        }
     }
 }
 
@@ -459,7 +489,60 @@ where
                 .write(*locked_funds_period_key, value);
         }
 
-        // apply the arbitrary modifications
+        // One time upgrade of existing bids
+        {
+            let mut borrow = tracking_copy.borrow_mut();
+            if let Ok(existing_bid_keys) = borrow.get_keys(&KeyTag::Bid) {
+                for key in existing_bid_keys {
+                    if let Some(StoredValue::Bid(existing_bid)) =
+                        borrow.get(&key).map_err(|err| err.into())?
+                    {
+                        // prune away the original record, we don't need it anymore
+                        borrow.prune(key);
+
+                        if existing_bid.staked_amount().is_zero() {
+                            // the previous logic enforces unbonding all delegators of
+                            // a validator that reduced their personal stake to 0 (and we have
+                            // various existent tests that prove this), thus there is no need
+                            // to handle the complicated hypothetical case of one or more
+                            // delegator stakes being > 0 if the validator stake is 0.
+                            //
+                            // tl;dr this is a "zombie" bid and we don't need to continue
+                            // carrying it forward at tip.
+                            continue;
+                        }
+
+                        let validator_public_key = existing_bid.validator_public_key();
+                        let validator_bid_addr = BidAddr::from(validator_public_key.clone());
+                        let validator_bid = ValidatorBid::from(*existing_bid.clone());
+                        borrow.write(
+                            validator_bid_addr.into(),
+                            StoredValue::BidKind(BidKind::Validator(Box::new(validator_bid))),
+                        );
+
+                        let delegators = existing_bid.delegators().clone();
+                        for (_, delegator) in delegators {
+                            let delegator_bid_addr = BidAddr::new_from_public_keys(
+                                validator_public_key,
+                                Some(delegator.delegator_public_key()),
+                            );
+                            // the previous code was removing a delegator bid from the embedded
+                            // collection within their validator's bid when the delegator fully
+                            // unstaked, so technically we don't need to check for 0 balance here.
+                            // However, since it is low effort to check, doing it just to be sure.
+                            if !delegator.staked_amount().is_zero() {
+                                borrow.write(
+                                    delegator_bid_addr.into(),
+                                    StoredValue::BidKind(BidKind::Delegator(Box::new(delegator))),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // apply accepted global state updates (if any)
         for (key, value) in upgrade_config.global_state_update() {
             tracking_copy.borrow_mut().write(*key, value.clone());
         }
@@ -471,7 +554,7 @@ where
             let withdraw_keys = tracking_copy
                 .borrow_mut()
                 .get_keys(&KeyTag::Withdraw)
-                .map_err(|_| Error::FailedToGetWithdrawKeys)?;
+                .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?;
 
             let (unbonding_delay, current_era_id) = {
                 let auction_contract = tracking_copy.borrow_mut().get_contract(*auction_hash)?;
@@ -516,7 +599,7 @@ where
                 let withdraw_purses = tracking_copy
                     .borrow_mut()
                     .read(&key)
-                    .map_err(|_| Error::FailedToGetWithdrawKeys)?
+                    .map_err(|_| Error::FailedToGetKeys(KeyTag::Withdraw))?
                     .ok_or(Error::FailedToGetStoredWithdraws)?
                     .as_withdraw()
                     .ok_or(Error::FailedToGetWithdrawPurses)?
@@ -567,8 +650,7 @@ where
                 .write(*unbonding_delay_key, value);
         }
 
-        // Perform global state migrations that require state.
-
+        // EraInfo migration
         if let Some(activation_point) = upgrade_config.activation_point() {
             // The highest stored era is the immediate predecessor of the activation point.
             let highest_era_info_id = activation_point.saturating_sub(1);
@@ -618,30 +700,39 @@ where
 
     /// Commit a prune of leaf nodes from the tip of the merkle trie.
     pub fn commit_prune(&self, prune_config: PruneConfig) -> Result<PruneResult, Error> {
-        let state_root_hash = prune_config.pre_state_hash();
+        let pre_state_hash = prune_config.pre_state_hash();
 
         // Validate the state root hash just to make sure we can safely short circuit in case the
         // list of keys is empty.
-        match self.tracking_copy(state_root_hash)? {
+        let tracking_copy = match self.tracking_copy(pre_state_hash)? {
             None => return Ok(PruneResult::RootNotFound),
-            Some(_tracking_copy) => {}
+            Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
         };
 
         let keys_to_delete = prune_config.keys_to_prune();
         if keys_to_delete.is_empty() {
+            // effectively a noop
             return Ok(PruneResult::Success {
-                post_state_hash: state_root_hash,
+                post_state_hash: pre_state_hash,
+                effects: Effects::default(),
             });
         }
 
-        match self.state.delete_keys(state_root_hash, keys_to_delete) {
-            Ok(DeleteResult::Deleted(post_state_hash)) => {
-                Ok(PruneResult::Success { post_state_hash })
-            }
-            Ok(DeleteResult::DoesNotExist) => Ok(PruneResult::DoesNotExist),
-            Ok(DeleteResult::RootNotFound) => Ok(PruneResult::RootNotFound),
-            Err(error) => Err(Error::Exec(error.into())),
+        for key in keys_to_delete {
+            tracking_copy.borrow_mut().prune(*key)
         }
+
+        let effects = tracking_copy.borrow().effects();
+
+        let post_state_hash = self
+            .state
+            .commit(pre_state_hash, effects.clone())
+            .map_err(Into::<execution::Error>::into)?;
+
+        Ok(PruneResult::Success {
+            post_state_hash,
+            effects,
+        })
     }
 
     /// Creates a new tracking copy instance.
@@ -2083,13 +2174,16 @@ where
         }
     }
 
-    /// Apply effects of the execution.
+    /// Commit effects of the execution.
     ///
-    /// This is also referred to as "committing" the effects into the global state. This method has
-    /// to be run after an execution has been made to persists the effects of it.
+    /// This method has to be run after an execution has been made to persists the effects of it.
     ///
     /// Returns new state root hash.
-    pub fn apply_effects(&self, pre_state_hash: Digest, effects: Effects) -> Result<Digest, Error> {
+    pub fn commit_effects(
+        &self,
+        pre_state_hash: Digest,
+        effects: Effects,
+    ) -> Result<Digest, Error> {
         self.state
             .commit(pre_state_hash, effects)
             .map_err(|err| Error::Exec(err.into()))
@@ -2187,7 +2281,8 @@ where
 
     /// Gets current bids from the auction system.
     pub fn get_bids(&self, get_bids_request: GetBidsRequest) -> Result<GetBidsResult, Error> {
-        let tracking_copy = match self.tracking_copy(get_bids_request.state_hash())? {
+        let state_root_hash = get_bids_request.state_hash();
+        let tracking_copy = match self.tracking_copy(state_root_hash)? {
             Some(tracking_copy) => Rc::new(RefCell::new(tracking_copy)),
             None => return Ok(GetBidsResult::RootNotFound),
         };
@@ -2195,17 +2290,17 @@ where
         let mut tracking_copy = tracking_copy.borrow_mut();
 
         let bid_keys = tracking_copy
-            .get_keys(&KeyTag::Bid)
+            .get_keys(&KeyTag::BidAddr)
             .map_err(|err| Error::Exec(err.into()))?;
 
-        let mut bids = BTreeMap::new();
-
+        let mut bids = vec![];
         for key in bid_keys.iter() {
-            if let Some(StoredValue::Bid(bid)) = tracking_copy.get(key).map_err(Into::into)? {
-                bids.insert(bid.validator_public_key().clone(), *bid);
+            if let Some(StoredValue::BidKind(bid_kind)) =
+                tracking_copy.get(key).map_err(Into::into)?
+            {
+                bids.push(bid_kind);
             };
         }
-
         Ok(GetBidsResult::Success { bids })
     }
 
@@ -2744,13 +2839,14 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             | Error::MissingSystemContractHash(_)
             | Error::MissingChecksumRegistry
             | Error::RuntimeStackOverflow
-            | Error::FailedToGetWithdrawKeys
+            | Error::FailedToGetKeys(_)
             | Error::FailedToGetStoredWithdraws
             | Error::FailedToGetWithdrawPurses
             | Error::FailedToRetrieveUnbondingDelay
             | Error::FailedToRetrieveEraId
             | Error::MissingTrieNodeChildren(_)
             | Error::FailedToRetrieveAccumulationPurse => false,
+            Error::FailedToPrune(_) => false,
         },
         ExecutionResult::Success { .. } => false,
     }

@@ -352,7 +352,7 @@ impl BlockAcquisitionState {
                         block, peer_list, rng,
                     ))
                 } else if signatures.has_sufficient_finality(is_historical, true) {
-                    Ok(BlockAcquisitionAction::switch_to_have_strict_finality(
+                    Ok(BlockAcquisitionAction::switch_to_have_sufficient_finality(
                         block.header(),
                     ))
                 } else {
@@ -382,7 +382,7 @@ impl BlockAcquisitionState {
                         exec_results,
                     )
                 } else if signatures.has_sufficient_finality(is_historical, true) {
-                    Ok(BlockAcquisitionAction::switch_to_have_strict_finality(
+                    Ok(BlockAcquisitionAction::switch_to_have_sufficient_finality(
                         block.header(),
                     ))
                 } else {
@@ -438,7 +438,7 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveAllDeploys(block, signatures) => {
                 if signatures.has_sufficient_finality(is_historical, true) {
-                    Ok(BlockAcquisitionAction::switch_to_have_strict_finality(
+                    Ok(BlockAcquisitionAction::switch_to_have_sufficient_finality(
                         block.header(),
                     ))
                 } else {

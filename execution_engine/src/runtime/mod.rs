@@ -900,12 +900,15 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
+                let minimum_delegation_amount =
+                    self.context.engine_config().minimum_delegation_amount();
 
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
                         evicted_validators,
                         max_delegators_per_validator,
+                        minimum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 
@@ -1894,7 +1897,7 @@ where
     }
 
     /// Records given auction info at a given era id
-    fn record_era_summary(&mut self, era_info: EraInfo) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), Error> {
         if self.context.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidContext);
         }
@@ -3153,6 +3156,10 @@ where
         }
 
         Ok(Ok(()))
+    }
+
+    fn prune(&mut self, key: Key) {
+        self.context.prune_gs_unsafe(key);
     }
 
     pub(crate) fn migrate_contract_and_contract_package(

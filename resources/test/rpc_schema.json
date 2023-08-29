@@ -1607,13 +1607,21 @@
                         "bid": {
                           "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
                           "bonding_purse": "uref-fafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafafa-007",
-                          "staked_amount": "10",
+                          "staked_amount": "20",
                           "delegation_rate": 0,
-                          "vesting_schedule": {
-                            "initial_release_timestamp_millis": 42,
-                            "locked_amounts": null
-                          },
-                          "delegators": [],
+                          "vesting_schedule": null,
+                          "delegators": [
+                            {
+                              "delegator_public_key": "014508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff",
+                              "delegator": {
+                                "delegator_public_key": "014508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff",
+                                "staked_amount": "10",
+                                "bonding_purse": "uref-fbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfbfb-007",
+                                "validator_public_key": "01197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d61",
+                                "vesting_schedule": null
+                              }
+                            }
+                          ],
                           "inactive": false
                         }
                       }
@@ -2564,6 +2572,13 @@
                 "enum": [
                   "NoOp"
                 ]
+              },
+              {
+                "description": "A prune operation.",
+                "type": "string",
+                "enum": [
+                  "Prune"
+                ]
               }
             ]
           },
@@ -2834,6 +2849,32 @@
                 "enum": [
                   "WriteAddressableEntity"
                 ]
+              },
+              {
+                "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
+                "type": "object",
+                "required": [
+                  "Prune"
+                ],
+                "properties": {
+                  "Prune": {
+                    "$ref": "#/components/schemas/Key"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Writes the given BidKind to global state.",
+                "type": "object",
+                "required": [
+                  "WriteBidKind"
+                ],
+                "properties": {
+                  "WriteBidKind": {
+                    "$ref": "#/components/schemas/BidKind"
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
@@ -3403,6 +3444,113 @@
             },
             "additionalProperties": false
           },
+          "Key": {
+            "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+            "type": "string"
+          },
+          "BidKind": {
+            "description": "Auction bid variants.",
+            "oneOf": [
+              {
+                "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
+                "type": "object",
+                "required": [
+                  "Unified"
+                ],
+                "properties": {
+                  "Unified": {
+                    "$ref": "#/components/schemas/Bid"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A bid record containing only validator data.",
+                "type": "object",
+                "required": [
+                  "Validator"
+                ],
+                "properties": {
+                  "Validator": {
+                    "$ref": "#/components/schemas/ValidatorBid"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "A bid record containing only delegator data.",
+                "type": "object",
+                "required": [
+                  "Delegator"
+                ],
+                "properties": {
+                  "Delegator": {
+                    "$ref": "#/components/schemas/Delegator"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "ValidatorBid": {
+            "description": "An entry in the validator map.",
+            "type": "object",
+            "required": [
+              "bonding_purse",
+              "delegation_rate",
+              "inactive",
+              "staked_amount",
+              "validator_public_key"
+            ],
+            "properties": {
+              "validator_public_key": {
+                "description": "Validator public key",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/PublicKey"
+                  }
+                ]
+              },
+              "bonding_purse": {
+                "description": "The purse that was used for bonding.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/URef"
+                  }
+                ]
+              },
+              "staked_amount": {
+                "description": "The amount of tokens staked by a validator (not including delegators).",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/U512"
+                  }
+                ]
+              },
+              "delegation_rate": {
+                "description": "Delegation rate",
+                "type": "integer",
+                "format": "uint8",
+                "minimum": 0.0
+              },
+              "vesting_schedule": {
+                "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/VestingSchedule"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "inactive": {
+                "description": "`true` if validator has been \"evicted\"",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
           "ExecutionResultV2": {
             "description": "The result of executing a single deploy.",
             "oneOf": [
@@ -3604,10 +3752,6 @@
             "items": {
               "$ref": "#/components/schemas/NamedKey"
             }
-          },
-          "Key": {
-            "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
-            "type": "string"
           },
           "AssociatedKeys": {
             "description": "A collection of weighted public keys (represented as account hashes) associated with an account.",
@@ -3898,7 +4042,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "A bid.",
+                "description": "Variant that stores [`Bid`].",
                 "type": "object",
                 "required": [
                   "Bid"
@@ -3911,7 +4055,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Withdraw information.",
+                "description": "Variant that stores withdraw information.",
                 "type": "object",
                 "required": [
                   "Withdraw"
@@ -3951,6 +4095,19 @@
                 "properties": {
                   "AddressableEntity": {
                     "$ref": "#/components/schemas/AddressableEntity"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "description": "Variant that stores [`BidKind`].",
+                "type": "object",
+                "required": [
+                  "BidKind"
+                ],
+                "properties": {
+                  "BidKind": {
+                    "$ref": "#/components/schemas/BidKind"
                   }
                 },
                 "additionalProperties": false

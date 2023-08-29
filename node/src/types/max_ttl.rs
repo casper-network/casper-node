@@ -113,6 +113,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn should_not_err() {
+        let higher = Timestamp::now();
+        let lower = higher.saturating_sub(SUB_MAX_TTL);
+        let max_ttl: MaxTtl = MAX_TTL.into();
+        let elapsed = max_ttl.ttl_elapsed(lower, higher);
+        assert!(
+            !elapsed,
+            "can't have elapsed because timestamps are chronologically reversed (programmer error)"
+        );
+    }
+
     fn assert_sync_to_ttl(is_genesis: bool, ttl_synced_expected: bool, msg: &str) {
         let max_ttl: MaxTtl = MAX_TTL.into();
         let rng = &mut TestRng::new();
