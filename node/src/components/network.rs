@@ -45,7 +45,6 @@ mod transport;
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     fs::OpenOptions,
     marker::PhantomData,
@@ -57,7 +56,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use array_init::array_init;
 use bincode::Options;
 use bytes::Bytes;
 use datasize::DataSize;
@@ -75,7 +73,6 @@ use strum::EnumCount;
 use tokio::{
     io::{ReadHalf, WriteHalf},
     net::TcpStream,
-    sync::mpsc::{self, UnboundedReceiver, UnboundedSender},
     task::JoinHandle,
 };
 use tokio_openssl::SslStream;
