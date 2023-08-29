@@ -6,7 +6,7 @@
 //! insights should neither be abused just because they are available.
 
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::BTreeSet,
     fmt::{self, Debug, Display, Formatter},
     net::SocketAddr,
     time::{Duration, SystemTime},
@@ -38,12 +38,6 @@ pub(crate) struct NetworkInsights {
     node_key_pair: Option<PublicKey>,
     /// The active era as seen by the networking component.
     net_active_era: EraId,
-    /// The list of node IDs that are being preferred due to being active validators.
-    privileged_active_outgoing_nodes: Option<HashSet<PublicKey>>,
-    /// The list of node IDs that are being preferred due to being upcoming validators.
-    privileged_upcoming_outgoing_nodes: Option<HashSet<PublicKey>>,
-    /// The amount of bandwidth allowance currently buffered, ready to be spent.
-    unspent_bandwidth_allowance_bytes: Option<i64>,
     /// Map of outgoing connections, along with their current state.
     outgoing_connections: Vec<(SocketAddr, OutgoingInsight)>,
     /// Map of incoming connections.
@@ -267,15 +261,6 @@ impl NetworkInsights {
     where
         P: Payload,
     {
-        // Since we are at the top level of the component, we gain access to inner values of the
-        // respective structs. We abuse this to gain debugging insights. Note: If limiters are no
-        // longer a `trait`, the trait methods can be removed as well in favor of direct access.
-        let (privileged_active_outgoing_nodes, privileged_upcoming_outgoing_nodes) = net
-            .outgoing_limiter
-            .debug_inspect_validators(&net.active_era)
-            .map(|(a, b)| (Some(a), Some(b)))
-            .unwrap_or_default();
-
         let anchor = TimeAnchor::now();
 
         let outgoing_connections = net
@@ -314,11 +299,6 @@ impl NetworkInsights {
                 .node_key_pair()
                 .map(|kp| kp.public_key().clone()),
             net_active_era: net.active_era,
-            privileged_active_outgoing_nodes,
-            privileged_upcoming_outgoing_nodes,
-            unspent_bandwidth_allowance_bytes: net
-                .outgoing_limiter
-                .debug_inspect_unspent_allowance(),
             outgoing_connections,
             connection_symmetries,
         }
@@ -339,32 +319,6 @@ impl Display for NetworkInsights {
             "node {} @ {}",
             self.our_id,
             OptDisplay::new(self.public_addr, "no listen addr")
-        )?;
-        writeln!(
-            f,
-            "active era: {} unspent_bandwidth_allowance_bytes: {}",
-            self.net_active_era,
-            OptDisplay::new(self.unspent_bandwidth_allowance_bytes, "inactive"),
-        )?;
-        let active = self
-            .privileged_active_outgoing_nodes
-            .as_ref()
-            .map(HashSet::iter)
-            .map(DisplayIter::new);
-        writeln!(
-            f,
-            "privileged active: {}",
-            OptDisplay::new(active, "inactive")
-        )?;
-        let upcoming = self
-            .privileged_upcoming_outgoing_nodes
-            .as_ref()
-            .map(HashSet::iter)
-            .map(DisplayIter::new);
-        writeln!(
-            f,
-            "privileged upcoming: {}",
-            OptDisplay::new(upcoming, "inactive")
         )?;
 
         f.write_str("outgoing connections:\n")?;
