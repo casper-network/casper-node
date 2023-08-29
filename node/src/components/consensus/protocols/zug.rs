@@ -201,8 +201,8 @@ where
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
     write_wal: Option<WriteWal<C>>,
-    /// A map of random IDs -> tipmestamp of when it has been created, allowing to track
-    /// to which nodes we have asked for a request.
+    /// A map of random IDs -> tipmestamp of when it has been created, allowing to
+    /// verify that a response has been asked for.
     sent_sync_requests: registered_sync::RegisteredSync,
 }
 
@@ -519,7 +519,7 @@ impl<C: Context + 'static> Zug<C> {
             echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
         }
 
-        // We register the node to which we asked the sync for:
+        // We create a new ID that the responder will use to show it's allowed to do so:
         let sync_id = self.sent_sync_requests.create_and_register_new_id(rng);
 
         SyncRequest {
@@ -960,7 +960,7 @@ impl<C: Context + 'static> Zug<C> {
         } = sync_response;
 
         // We have not asked for any sync response:
-        if self.sent_sync_requests.try_remove_id(sync_id) {
+        if self.sent_sync_requests.try_remove_id(sync_id).is_none() {
             return vec![ProtocolOutcome::Disconnect(sender)];
         }
 
@@ -2663,10 +2663,11 @@ mod registered_sync {
             id
         }
 
-        /// Returns `true` if ID has been succesfully removed, *i.e.* it was present
-        /// in the data structure.
-        pub fn try_remove_id(&mut self, id: RandomId) -> bool {
-            self.0.remove(&id).is_none()
+        /// Tries and remove the random ID from the stored IDs and returns it if it was present.
+        pub fn try_remove_id(&mut self, id: RandomId) -> Option<RandomId> {
+            self.0.remove(&id)?;
+
+            Some(id)
         }
     }
 
