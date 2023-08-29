@@ -11,8 +11,6 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::TransformError;
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
 use crate::{
     addressable_entity::NamedKeys,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -130,7 +128,7 @@ impl TransformKind {
 
     /// Returns a random `TransformKind`.
     #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         match rng.gen_range(0..9) {
             0 => TransformKind::Identity,
             1 => TransformKind::Write(StoredValue::CLValue(CLValue::from_t(true).unwrap())),
@@ -322,7 +320,9 @@ mod tests {
 
     use num::{Bounded, Num};
 
-    use crate::{bytesrepr::Bytes, AccessRights, ContractWasm, Key, URef, U128, U256, U512};
+    use crate::{
+        bytesrepr::Bytes, testing::TestRng, AccessRights, ContractWasm, Key, URef, U128, U256, U512,
+    };
 
     use super::*;
 

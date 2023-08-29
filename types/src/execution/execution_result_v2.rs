@@ -13,7 +13,7 @@ use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
-use rand::Rng;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -82,6 +82,32 @@ pub enum ExecutionResultV2 {
         /// The cost in Motes of executing the deploy.
         cost: U512,
     },
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<ExecutionResultV2> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutionResultV2 {
+        let transfer_count = rng.gen_range(0..6);
+        let mut transfers = Vec::new();
+        for _ in 0..transfer_count {
+            transfers.push(TransferAddr::new(rng.gen()))
+        }
+
+        if rng.gen() {
+            ExecutionResultV2::Failure {
+                effects: Effects::random(rng),
+                transfers,
+                cost: rng.gen::<u64>().into(),
+                error_message: format!("Error message {}", rng.gen::<u64>()),
+            }
+        } else {
+            ExecutionResultV2::Success {
+                effects: Effects::random(rng),
+                transfers,
+                cost: rng.gen::<u64>().into(),
+            }
+        }
+    }
 }
 
 impl ExecutionResultV2 {
