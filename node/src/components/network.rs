@@ -894,14 +894,14 @@ where
             NetworkRequest::SendMessage {
                 dest,
                 payload,
-                respond_after_queueing,
+                respond_early,
                 auto_closing_responder,
             } => {
                 // We're given a message to send. Pass on the responder so that confirmation
                 // can later be given once the message has actually been buffered.
                 self.net_metrics.direct_message_requests.inc();
 
-                if respond_after_queueing {
+                if respond_early {
                     self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
                     auto_closing_responder.respond(()).ignore()
                 } else {
