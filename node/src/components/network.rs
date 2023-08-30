@@ -1007,7 +1007,7 @@ where
         span: Span,
     ) -> Effects<Event<P>>
     where
-        REv: FromIncoming<P> + From<PeerBehaviorAnnouncement>,
+        REv: FromIncoming<P> + From<NetworkRequest<P>> + From<PeerBehaviorAnnouncement>,
     {
         // Note: For non-payload channels, we drop the `Ticket` implicitly at end of scope.
         span.in_scope(|| match msg {
