@@ -1009,7 +1009,7 @@ impl reactor::Reactor for MainReactor {
         let metrics = Metrics::new(registry.clone());
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
-        let dead_metrics = DeadMetrics::new(&registry)?;
+        let dead_metrics = DeadMetrics::new(registry)?;
 
         let protocol_version = chainspec.protocol_config.version;
 
