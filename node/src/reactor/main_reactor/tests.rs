@@ -416,7 +416,7 @@ async fn historical_sync_with_era_height_1() {
     net.settle_on(
         &mut rng,
         is_in_era(EraId::from(3)),
-        Duration::from_secs(1000),
+        Duration::from_secs(180),
     )
     .await;
 
@@ -465,7 +465,7 @@ async fn historical_sync_with_era_height_1() {
     net.settle_on(
         &mut rng,
         node_has_lowest_available_block_at_or_below_height(1, joiner_id),
-        Duration::from_secs(1000),
+        Duration::from_secs(180),
     )
     .await;
 
