@@ -49,6 +49,7 @@ use crate::{
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
+    dead_metrics::DeadMetrics,
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
@@ -173,6 +174,9 @@ pub(crate) struct MainReactor {
     memory_metrics: MemoryMetrics,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
+    #[data_size(skip)]
+    #[allow(dead_code)]
+    dead_metrics: DeadMetrics,
 
     //   ambient settings / data / load-bearing config
     validator_matrix: ValidatorMatrix,
@@ -1005,6 +1009,7 @@ impl reactor::Reactor for MainReactor {
         let metrics = Metrics::new(registry.clone());
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
+        let dead_metrics = DeadMetrics::new(&registry)?;
 
         let protocol_version = chainspec.protocol_config.version;
 
@@ -1191,6 +1196,7 @@ impl reactor::Reactor for MainReactor {
             metrics,
             memory_metrics,
             event_queue_metrics,
+            dead_metrics,
 
             state: ReactorState::Initialize {},
             attempts: 0,
