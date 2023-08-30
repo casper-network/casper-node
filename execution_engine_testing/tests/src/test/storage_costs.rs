@@ -5,21 +5,15 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{
-    engine_config::{
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    },
-    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-};
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     BrTableCost, CLValue, ContractHash, ControlFlowCosts, EraId, HostFunction, HostFunctionCosts,
-    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig,
+    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue, WasmConfig,
     DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
@@ -138,6 +132,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
     random_bytes: HostFunction::fixed(0),
+    enable_contract_version: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(
@@ -172,19 +167,11 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        *STORAGE_COSTS_ONLY,
-        SystemConfig::default(),
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(*STORAGE_COSTS_ONLY)
+        .build();
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     builder
 }

@@ -1,5 +1,8 @@
 use std::{path::Path, time::Duration};
 
+use casper_execution_engine::engine_state::{
+    genesis::ExecConfigBuilder, EngineConfig, ExecuteRequest, RunGenesisRequest,
+};
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, Criterion, Throughput,
 };
@@ -11,13 +14,9 @@ use casper_engine_test_support::{
     DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
     DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
-    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
-};
-use casper_execution_engine::engine_state::{
-    engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, run_genesis_request::RunGenesisRequest,
-    EngineConfig, ExecConfig, ExecuteRequest,
+    DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
+    DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_types::{
     account::AccountHash,
@@ -108,17 +107,17 @@ fn create_run_genesis_request(
     genesis_accounts: Vec<GenesisAccount>,
 ) -> RunGenesisRequest {
     let exec_config = {
-        ExecConfig::new(
-            genesis_accounts,
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-            validator_slots,
-            DEFAULT_AUCTION_DELAY,
-            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-            DEFAULT_ROUND_SEIGNIORAGE_RATE,
-            DEFAULT_UNBONDING_DELAY,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        )
+        ExecConfigBuilder::new()
+            .with_accounts(genesis_accounts)
+            .with_wasm_config(*DEFAULT_WASM_CONFIG)
+            .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+            .with_validator_slots(validator_slots)
+            .with_auction_delay(DEFAULT_AUCTION_DELAY)
+            .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+            .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+            .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+            .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+            .build()
     };
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,

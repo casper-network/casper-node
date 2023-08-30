@@ -5,6 +5,7 @@ NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 PINNED_STABLE  := $(shell sed -nr 's/channel\s+=\s+\"(.*)\"/\1/p' rust-toolchain.toml)
+WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
 CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
@@ -46,7 +47,7 @@ strip-contract/%:
 	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
 
 .PHONY: strip-all-contracts
-strip-all-contracts: $(patsubst %, strip-contract/%, $(ALL_CONTRACTS))
+strip-all-contracts: $(info Using 'wasm-strip' version $(WASM_STRIP_VERSION)) $(patsubst %, strip-contract/%, $(ALL_CONTRACTS))
 
 .PHONY: strip-client-contracts
 strip-client-contracts: $(patsubst %, strip-contract/%, $(CLIENT_CONTRACTS))

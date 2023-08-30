@@ -40,6 +40,10 @@ const GAS_LIMIT: u64 = 500_000_000_000_000u64;
 
 static TEST_ENGINE_CONFIG: Lazy<EngineConfig> = Lazy::new(EngineConfig::default);
 
+fn test_engine_config() -> EngineConfig {
+    EngineConfig::default()
+}
+
 fn new_tracking_copy(
     account_hash: AccountHash,
     init_entity_key: Key,
@@ -152,7 +156,7 @@ fn new_runtime_context<'a>(
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::new(RefCell::new(tracking_copy)),
-        *TEST_ENGINE_CONFIG,
+        TEST_ENGINE_CONFIG.clone(),
         BlockTime::new(0),
         ProtocolVersion::V1_0_0,
         DeployHash::from_raw([1u8; 32]),
@@ -979,7 +983,7 @@ fn should_meter_for_gas_storage_write() {
     named_keys.insert("entry".to_string(), uref_as_key);
 
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let expected_write_cost = TEST_ENGINE_CONFIG
+    let expected_write_cost = test_engine_config()
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());
@@ -1014,7 +1018,7 @@ fn should_meter_for_gas_storage_add() {
     named_keys.insert("entry".to_string(), uref_as_key);
 
     let value = StoredValue::CLValue(CLValue::from_t(43_i32).unwrap());
-    let expected_add_cost = TEST_ENGINE_CONFIG
+    let expected_add_cost = test_engine_config()
         .wasm_config()
         .storage_costs()
         .calculate_gas_cost(value.serialized_length());

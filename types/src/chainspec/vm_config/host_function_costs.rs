@@ -293,6 +293,8 @@ pub struct HostFunctionCosts {
     pub blake2b: HostFunction<[Cost; 4]>,
     /// Cost of calling the `next address` host function.
     pub random_bytes: HostFunction<[Cost; 2]>,
+    /// Cost of calling the `enable_contract_version` host function.
+    pub enable_contract_version: HostFunction<[Cost; 4]>,
 }
 
 impl Default for HostFunctionCosts {
@@ -424,6 +426,7 @@ impl Default for HostFunctionCosts {
             ),
             blake2b: HostFunction::default(),
             random_bytes: HostFunction::default(),
+            enable_contract_version: HostFunction::default(),
         }
     }
 }
@@ -474,6 +477,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.print.to_bytes()?);
         ret.append(&mut self.blake2b.to_bytes()?);
         ret.append(&mut self.random_bytes.to_bytes()?);
+        ret.append(&mut self.enable_contract_version.to_bytes()?);
         Ok(ret)
     }
 
@@ -521,6 +525,7 @@ impl ToBytes for HostFunctionCosts {
             + self.print.serialized_length()
             + self.blake2b.serialized_length()
             + self.random_bytes.serialized_length()
+            + self.enable_contract_version.serialized_length()
     }
 }
 
@@ -569,6 +574,7 @@ impl FromBytes for HostFunctionCosts {
         let (print, rem) = FromBytes::from_bytes(rem)?;
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         let (random_bytes, rem) = FromBytes::from_bytes(rem)?;
+        let (enable_contract_version, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -614,6 +620,7 @@ impl FromBytes for HostFunctionCosts {
                 print,
                 blake2b,
                 random_bytes,
+                enable_contract_version,
             },
             rem,
         ))
@@ -666,6 +673,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             print: rng.gen(),
             blake2b: rng.gen(),
             random_bytes: rng.gen(),
+            enable_contract_version: rng.gen(),
         }
     }
 }
@@ -728,6 +736,7 @@ pub mod gens {
             print in host_function_cost_arb(),
             blake2b in host_function_cost_arb(),
             random_bytes in host_function_cost_arb(),
+            enable_contract_version in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -773,6 +782,7 @@ pub mod gens {
                 print,
                 blake2b,
                 random_bytes,
+                enable_contract_version,
             }
         }
     }

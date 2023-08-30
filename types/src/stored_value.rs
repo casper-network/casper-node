@@ -199,6 +199,22 @@ impl StoredValue {
             StoredValue::BidKind(_) => Tag::BidKind,
         }
     }
+
+    /// Returns a wrapped [`Account`]s if this is a `Account` variant.
+    pub fn into_account(self) -> Option<Account> {
+        match self {
+            StoredValue::Account(account) => Some(account),
+            _ => None,
+        }
+    }
+
+    /// Returns a wrapped [`Contract`]s if this is a `Contract` variant.
+    pub fn into_contract(self) -> Option<Contract> {
+        match self {
+            StoredValue::Contract(contract) => Some(contract),
+            _ => None,
+        }
+    }
 }
 
 impl From<CLValue> for StoredValue {
@@ -283,6 +299,20 @@ impl TryFrom<StoredValue> for ContractWasm {
             StoredValue::ContractWasm(contract_wasm) => Ok(contract_wasm),
             _ => Err(TypeMismatch::new(
                 "ContractWasm".to_string(),
+                stored_value.type_name(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<StoredValue> for Contract {
+    type Error = TypeMismatch;
+
+    fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
+        match stored_value {
+            StoredValue::Contract(contract) => Ok(contract),
+            _ => Err(TypeMismatch::new(
+                "Contract".to_string(),
                 stored_value.type_name(),
             )),
         }

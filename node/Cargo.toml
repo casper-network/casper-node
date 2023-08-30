@@ -28,7 +28,6 @@ casper-storage = { version = "1.4.3", path = "../storage" }
 casper-types = { version = "3.0.0", path = "../types", features = ["datasize", "json-schema", "std"] }
 datasize = { version = "0.2.11", features = ["detailed", "fake_clock-types", "futures-types", "smallvec-types"] }
 derive_more = "0.99.7"
-ed25519-dalek = { version = "1", default-features = false, features = ["rand", "serde", "u64_backend"] }
 either = { version = "1", features = ["serde"] }
 enum-iterator = "0.6.0"
 erased-serde = "0.3.18"

@@ -12,7 +12,7 @@ use crate::{
     GenesisAccount, Motes, PublicKey,
 };
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 #[cfg(any(feature = "testing", test))]
 use crate::{SecretKey, U512};
@@ -64,7 +64,7 @@ impl AccountConfig {
         self.validator.is_some()
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let public_key =
