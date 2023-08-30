@@ -72,17 +72,6 @@ impl Params {
         self.seed
     }
 
-    /// Returns the total reward for a finalized block.
-    pub(crate) fn block_reward(&self) -> u64 {
-        self.block_reward
-    }
-
-    /// Returns the reduced block reward that is paid out even if the heaviest summit does not
-    /// exceed half the total weight. This is at most `block_reward`.
-    pub(crate) fn reduced_block_reward(&self) -> u64 {
-        self.reduced_block_reward
-    }
-
     /// Returns the minimum round length. This is always greater than 0.
     pub(crate) fn min_round_length(&self) -> TimeDiff {
         self.min_round_len
