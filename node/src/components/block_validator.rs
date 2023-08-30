@@ -609,6 +609,11 @@ where
                     .iter()
                     .any(|sigs| sigs.has_some())
                 {
+                    debug!(
+                        ?block, %minimum_block_height, %proposed_block_height,
+                        "block cites signatures, validation required - requesting past blocks \
+                        from storage"
+                    );
                     let proposed_block = block.clone();
                     effects.extend(
                         effect_builder
@@ -626,6 +631,7 @@ where
                     );
                 } else {
                     // If no signatures are cited, the citation is automatically valid.
+                    debug!("no signatures included in block, no validation of signatures required");
                     state
                         .signatures_validation_state
                         .require_signatures(HashSet::new(), KeyedCounter::default());
