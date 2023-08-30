@@ -1688,16 +1688,6 @@ where
             .into_uref()
             .ok_or(Error::InvalidKeyVariant)?;
 
-        // let purse_balance_key = match tracking_copy
-        //     .borrow_mut()
-        //     .get_purse_balance_key(payment_purse_key)
-        // {
-        //     Ok(key) => key,
-        //     Err(error) => {
-        //         return Ok(ExecutionResult::precondition_failure(error.into()));
-        //     }
-        // };
-
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
