@@ -634,14 +634,28 @@ impl MainReactor {
                 // that we measure from the start of the active era
                 // (for consensus reasons), so this can be up to TTL + era length in practice
                 if !self.sync_to_genesis {
-                    if let Some(highest_switch_block_header) = self
+                    let highest_orphaned_block_era = highest_orphaned_block_header.era_id();
+                    let maybe_highest_orphaned_era_switch_block = self
+                        .storage
+                        .read_switch_block_header_by_era_id(highest_orphaned_block_era)
+                        .map_err(|err| err.to_string())?;
+                    let maybe_highest_switch_block_header = self
                         .storage
                         .read_highest_switch_block_headers(1)
                         .map_err(|err| err.to_string())?
-                        .last()
-                    {
+                        .into_iter()
+                        .next();
+
+                    if let (
+                        Some(highest_orphaned_era_switch_block),
+                        Some(highest_switch_block_header),
+                    ) = (
+                        maybe_highest_orphaned_era_switch_block,
+                        maybe_highest_switch_block_header,
+                    ) {
                         if synced_to_ttl_and_signature_delay(
-                            highest_switch_block_header,
+                            &highest_switch_block_header,
+                            &highest_orphaned_era_switch_block,
                             &highest_orphaned_block_header,
                             self.chainspec.deploy_config.max_ttl,
                             self.chainspec.core_config.signature_rewards_max_delay,
@@ -707,6 +721,7 @@ impl MainReactor {
 
 pub(crate) fn synced_to_ttl_and_signature_delay(
     latest_switch_block_header: &BlockHeader,
+    highest_orphaned_era_switch_block: &BlockHeader,
     highest_orphaned_block_header: &BlockHeader,
     max_ttl: TimeDiff,
     signature_delay: u64,
@@ -718,7 +733,7 @@ pub(crate) fn synced_to_ttl_and_signature_delay(
             max_ttl,
         ) && has_blocks_within_signature_delay(
             latest_switch_block_header.height(),
-            highest_orphaned_block_header.height(),
+            highest_orphaned_era_switch_block.height(),
             signature_delay,
         )))
 }
@@ -731,12 +746,19 @@ fn is_timestamp_at_ttl(
     lowest_block_timestamp < latest_switch_block_timestamp.saturating_sub(max_ttl)
 }
 
+// Checks if we have all the blocks necessary to validate rewarded finality signatures.
+// In order to validate finality signatures, we need to know:
+// 1) all the blocks within `signature_rewards_max_delay` of the latest block,
+// 2) validators for all the eras such blocks belong to.
+// Both those points can be satisfied by checking whether the lowest switch block within the
+// highest contiguous range of blocks is old enough (ie. whether its height is lower than latest
+// block's height minus `signature_rewards_max_delay`).
 fn has_blocks_within_signature_delay(
     latest_switch_block_height: u64,
-    lowest_block_height: u64,
+    lowest_switch_block_height: u64,
     signature_delay: u64,
 ) -> bool {
-    lowest_block_height < latest_switch_block_height.saturating_sub(signature_delay)
+    lowest_switch_block_height < latest_switch_block_height.saturating_sub(signature_delay)
 }
 
 #[cfg(test)]
@@ -884,6 +906,7 @@ mod tests {
         assert_eq!(
             synced_to_ttl_and_signature_delay(
                 latest_switch_block.header(),
+                latest_orphaned_block.header(),
                 latest_orphaned_block.header(),
                 MAX_TTL,
                 SIG_DELAY,
