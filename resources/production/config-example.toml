@@ -7,7 +7,7 @@
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
 # Whether to synchronize all data back to genesis, or just [deploys.max_ttl] (chainspec setting) worth of data.
-sync_to_genesis = true
+sync_handling = 'ttl'
 
 # Idle time after which the syncing process is considered stalled.
 idle_tolerance = '20min'
