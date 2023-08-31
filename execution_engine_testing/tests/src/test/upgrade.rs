@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state, execution::Error};
@@ -10,7 +10,8 @@ use casper_types::{
     runtime_args,
     system::mint,
     testing::TestRng,
-    CLValue, ContractHash, ContractPackageHash, PublicKey, RuntimeArgs, StoredValue, U512,
+    CLValue, ContractHash, ContractPackageHash, EraId, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, U512,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -946,4 +947,163 @@ fn should_only_upgrade_if_threshold_is_met() {
         .exec(valid_upgrade_request)
         .expect_success()
         .commit();
+}
+
+fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, ProtocolVersion, AccountHash) {
+    const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
+    const UPGRADE_THRESHOLDS_FIXTURE: &str = "upgrade_thresholds";
+
+    let (mut builder, lmdb_fixture_state, _temp_dir) =
+        crate::lmdb_fixture::builder_from_global_state_fixture(UPGRADE_THRESHOLDS_FIXTURE);
+
+    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let new_protocol_version =
+        ProtocolVersion::from_parts(current_protocol_version.value().major + 1, 0, 0);
+
+    let activation_point = EraId::new(0u64);
+
+    let mut upgrade_request = UpgradeRequestBuilder::new()
+        .with_current_protocol_version(current_protocol_version)
+        .with_new_protocol_version(new_protocol_version)
+        .with_activation_point(activation_point)
+        .build();
+
+    builder
+        .upgrade_with_upgrade_request_using_scratch(
+            *builder.get_engine_state().config(),
+            &mut upgrade_request,
+        )
+        .expect_upgrade_success();
+
+    let transfer = ExecuteRequestBuilder::transfer(
+        *DEFAULT_ACCOUNT_ADDR,
+        runtime_args! {
+            mint::ARG_TARGET => ACCOUNT_1_ADDR,
+            mint::ARG_AMOUNT => MINIMUM_ACCOUNT_CREATION_BALANCE,
+            mint::ARG_ID => Some(42u64),
+        },
+    )
+    .with_protocol_version(new_protocol_version)
+    .build();
+
+    builder.exec(transfer).expect_success().commit();
+
+    (builder, new_protocol_version, ACCOUNT_1_ADDR)
+}
+
+#[ignore]
+#[test]
+fn should_migrate_with_correct_upgrade_thresholds() {
+    let (mut builder, new_protocol_version, _) = setup_upgrade_threshold_state();
+
+    let default_addressable_entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default entity");
+
+    let contract_hash = default_addressable_entity
+        .named_keys()
+        .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
+        .map(|holder_key| holder_key.into_hash().map(ContractHash::new))
+        .unwrap()
+        .expect("must convert to hash");
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        &format!("{}.wasm", PURSE_HOLDER_STORED_CALLER_CONTRACT_NAME),
+        runtime_args! {
+            ENTRY_POINT_NAME => VERSION,
+            HASH_KEY_NAME => contract_hash
+        },
+    )
+    .with_protocol_version(new_protocol_version)
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let purse_holder_as_entity = builder
+        .get_addressable_entity(contract_hash)
+        .expect("must have purse holder entity hash");
+
+    let actual_associated_keys = purse_holder_as_entity.associated_keys();
+
+    let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
+
+    assert_eq!(actual_associated_keys, &expect_associated_keys);
+}
+
+#[ignore]
+#[test]
+fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
+    let (mut builder, new_protocol_version, entity_1) = setup_upgrade_threshold_state();
+
+    let default_addressable_entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default entity");
+
+    let contract_hash = default_addressable_entity
+        .named_keys()
+        .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
+        .map(|holder_key| holder_key.into_hash().map(ContractHash::new))
+        .unwrap()
+        .expect("must convert to hash");
+
+    let stored_package_hash = default_addressable_entity
+        .named_keys()
+        .get(HASH_KEY_NAME)
+        .expect("should have stored package hash")
+        .into_hash()
+        .expect("should have hash");
+
+    let exec_request = ExecuteRequestBuilder::standard(
+        entity_1,
+        &format!("{}.wasm", PURSE_HOLDER_STORED_CALLER_CONTRACT_NAME),
+        runtime_args! {
+            ENTRY_POINT_NAME => VERSION,
+            HASH_KEY_NAME => contract_hash
+        },
+    )
+    .with_protocol_version(new_protocol_version)
+    .build();
+
+    builder.exec(exec_request).expect_success().commit();
+
+    let purse_holder_as_entity = builder
+        .get_addressable_entity(contract_hash)
+        .expect("must have purse holder entity hash");
+
+    let actual_associated_keys = purse_holder_as_entity.associated_keys();
+
+    assert!(actual_associated_keys.is_empty());
+
+    let upgrade_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        &format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME),
+        runtime_args! {
+            ARG_CONTRACT_PACKAGE => stored_package_hash
+        },
+    )
+    .with_protocol_version(new_protocol_version)
+    .build();
+
+    builder.exec(upgrade_request).expect_success().commit();
+
+    let new_entity_hash = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have entity")
+        .named_keys()
+        .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
+        .map(|key| key.into_hash().map(ContractHash::new))
+        .unwrap()
+        .expect("must get contract hash");
+
+    let updated_purse_entity = builder
+        .get_addressable_entity(new_entity_hash)
+        .expect("must have purse holder entity hash");
+
+    let actual_associated_keys = updated_purse_entity.associated_keys();
+
+    let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
+
+    assert_eq!(actual_associated_keys, &expect_associated_keys);
 }

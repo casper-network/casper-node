@@ -37,7 +37,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
     let transform: AdditiveMap<Key, Transform> = transforms[0].clone().into();
 
     let contract_key: Key = builder
-        .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract hash associated with default account")
         .into();
 

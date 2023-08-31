@@ -1079,7 +1079,7 @@ where
     }
 
     /// Gets the contract hash associated with a given account hash.
-    pub fn get_contract_hash_by_account_hash(
+    pub fn get_entity_hash_by_account_hash(
         &self,
         account_hash: AccountHash,
     ) -> Option<ContractHash> {

@@ -1109,8 +1109,13 @@ where
         let (contract, contract_hash, contract_package) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
                 let contract_key = contract_hash.into();
-                let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
-                let contract_package_key = Key::from(contract.contract_package_hash());
+                let entity =
+                    if let Some(StoredValue::Contract(_)) = self.context.read_gs(&contract_key)? {
+                        self.migrate_contract_and_contract_package(contract_hash)?
+                    } else {
+                        self.context.read_gs_typed(&contract_key)?
+                    };
+                let contract_package_key = Key::from(entity.contract_package_hash());
                 let contract_package: Package =
                     self.context.read_gs_typed(&contract_package_key)?;
 
@@ -1124,7 +1129,7 @@ where
                     return Err(Error::DisabledContract(contract_hash));
                 }
 
-                (contract, contract_hash, contract_package)
+                (entity, contract_hash, contract_package)
             }
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
@@ -1152,9 +1157,14 @@ where
                     .ok_or(Error::InvalidContractVersion(contract_version_key))?;
 
                 let contract_key = contract_hash.into();
-                let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
+                let entity =
+                    if let Some(StoredValue::Contract(_)) = self.context.read_gs(&contract_key)? {
+                        self.migrate_contract_and_contract_package(contract_hash)?
+                    } else {
+                        self.context.read_gs_typed(&contract_key)?
+                    };
 
-                (contract, contract_hash, contract_package)
+                (entity, contract_hash, contract_package)
             }
         };
 
@@ -3025,7 +3035,7 @@ where
     pub(crate) fn migrate_contract_and_contract_package(
         &mut self,
         contract_hash: ContractHash,
-    ) -> Result<(), Error> {
+    ) -> Result<AddressableEntity, Error> {
         let contract_key: Key = contract_hash.into();
         let maybe_legacy_contract = self.context.read_gs(&contract_key)?;
         match maybe_legacy_contract {
@@ -3050,7 +3060,7 @@ where
                 let access_uref = &legacy_contract_package.access_key();
 
                 self.context
-                    .metered_write_gs(contract_package_key, legacy_contract_package)?;
+                    .metered_write_gs_unsafe(contract_package_key, legacy_contract_package)?;
 
                 let entity_main_purse = self.create_purse()?;
 
@@ -3071,9 +3081,11 @@ where
                     ActionThresholds::default(),
                 );
 
-                self.context.metered_write_gs(contract_key, updated_entity)
+                self.context
+                    .metered_write_gs_unsafe(contract_key, updated_entity.clone())?;
+                Ok(updated_entity)
             }
-            Some(StoredValue::AddressableEntity(_)) => Ok(()),
+            Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
             Some(_) => Err(Error::UnexpectedStoredValueVariant),
             None => Err(Error::InvalidContract(contract_hash)),
         }
