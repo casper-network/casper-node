@@ -22,6 +22,7 @@ enum GenesisAccountTag {
     System = 0,
     Account = 1,
     Delegator = 2,
+    Administrator = 3,
 }
 
 /// Represents details about genesis account's validator status.
@@ -88,6 +89,62 @@ impl Distribution<GenesisValidator> for Standard {
     }
 }
 
+/// Special account in the system that is useful only for some private chains.
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub struct AdministratorAccount {
+    public_key: PublicKey,
+    balance: Motes,
+}
+
+impl AdministratorAccount {
+    /// Creates new special account.
+    pub fn new(public_key: PublicKey, balance: Motes) -> Self {
+        Self {
+            public_key,
+            balance,
+        }
+    }
+
+    /// Gets a reference to the administrator account's public key.
+    pub fn public_key(&self) -> &PublicKey {
+        &self.public_key
+    }
+}
+
+impl ToBytes for AdministratorAccount {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        let AdministratorAccount {
+            public_key,
+            balance,
+        } = self;
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        buffer.extend(public_key.to_bytes()?);
+        buffer.extend(balance.to_bytes()?);
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        let AdministratorAccount {
+            public_key,
+            balance,
+        } = self;
+        public_key.serialized_length() + balance.serialized_length()
+    }
+}
+
+impl FromBytes for AdministratorAccount {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (public_key, remainder) = FromBytes::from_bytes(bytes)?;
+        let (balance, remainder) = FromBytes::from_bytes(remainder)?;
+        let administrator_account = AdministratorAccount {
+            public_key,
+            balance,
+        };
+        Ok((administrator_account, remainder))
+    }
+}
+
 /// This enum represents possible states of a genesis account.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -118,6 +175,16 @@ pub enum GenesisAccount {
         /// Delegated amount for given `validator_public_key`.
         delegated_amount: Motes,
     },
+    /// An administrative account in the genesis process.
+    ///
+    /// This variant makes sense for some private chains.
+    Administrator(AdministratorAccount),
+}
+
+impl From<AdministratorAccount> for GenesisAccount {
+    fn from(v: AdministratorAccount) -> Self {
+        Self::Administrator(v)
+    }
 }
 
 impl GenesisAccount {
@@ -163,6 +230,9 @@ impl GenesisAccount {
                 delegator_public_key,
                 ..
             } => delegator_public_key.clone(),
+            GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
+                public_key.clone()
+            }
         }
     }
 
@@ -175,6 +245,9 @@ impl GenesisAccount {
                 delegator_public_key,
                 ..
             } => delegator_public_key.to_account_hash(),
+            GenesisAccount::Administrator(AdministratorAccount { public_key, .. }) => {
+                public_key.to_account_hash()
+            }
         }
     }
 
@@ -184,6 +257,7 @@ impl GenesisAccount {
             GenesisAccount::System => Motes::zero(),
             GenesisAccount::Account { balance, .. } => *balance,
             GenesisAccount::Delegator { balance, .. } => *balance,
+            GenesisAccount::Administrator(AdministratorAccount { balance, .. }) => *balance,
         }
     }
 
@@ -204,6 +278,14 @@ impl GenesisAccount {
             GenesisAccount::Delegator {
                 delegated_amount, ..
             } => *delegated_amount,
+            GenesisAccount::Administrator(AdministratorAccount {
+                public_key: _,
+                balance: _,
+            }) => {
+                // This is defaulted to zero because administrator accounts are filtered out before
+                // validator set is created at the genesis.
+                Motes::zero()
+            }
         }
     }
 
@@ -221,6 +303,9 @@ impl GenesisAccount {
             | GenesisAccount::Delegator { .. } => {
                 // This value represents a delegation rate in invalid state that system is supposed
                 // to reject if used.
+                DelegationRate::max_value()
+            }
+            GenesisAccount::Administrator(AdministratorAccount { .. }) => {
                 DelegationRate::max_value()
             }
         }
@@ -241,7 +326,8 @@ impl GenesisAccount {
             | GenesisAccount::Account {
                 validator: None, ..
             }
-            | GenesisAccount::Delegator { .. } => false,
+            | GenesisAccount::Delegator { .. }
+            | GenesisAccount::Administrator(AdministratorAccount { .. }) => false,
         }
     }
 
@@ -276,6 +362,15 @@ impl GenesisAccount {
                 delegated_amount,
             )),
             _ => None,
+        }
+    }
+
+    /// Gets the administrator account variant.
+    pub fn as_administrator_account(&self) -> Option<&AdministratorAccount> {
+        if let Self::Administrator(v) = self {
+            Some(v)
+        } else {
+            None
         }
     }
 }
@@ -322,6 +417,10 @@ impl ToBytes for GenesisAccount {
                 buffer.extend(balance.value().to_bytes()?);
                 buffer.extend(delegated_amount.value().to_bytes()?);
             }
+            GenesisAccount::Administrator(administrator_account) => {
+                buffer.push(GenesisAccountTag::Administrator as u8);
+                buffer.extend(administrator_account.to_bytes()?);
+            }
         }
         Ok(buffer)
     }
@@ -350,6 +449,9 @@ impl ToBytes for GenesisAccount {
                     + balance.value().serialized_length()
                     + delegated_amount.value().serialized_length()
                     + TAG_LENGTH
+            }
+            GenesisAccount::Administrator(administrator_account) => {
+                administrator_account.serialized_length() + TAG_LENGTH
             }
         }
     }
@@ -381,6 +483,12 @@ impl FromBytes for GenesisAccount {
                     balance,
                     Motes::new(delegated_amount_value),
                 );
+                Ok((genesis_account, remainder))
+            }
+            tag if tag == GenesisAccountTag::Administrator as u8 => {
+                let (administrator_account, remainder) =
+                    AdministratorAccount::from_bytes(remainder)?;
+                let genesis_account = GenesisAccount::Administrator(administrator_account);
                 Ok((genesis_account, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),

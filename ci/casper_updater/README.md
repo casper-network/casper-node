@@ -1,10 +1,10 @@
 # casper-updater
 
-A tool to update versions of all published CasperLabs packages.
+A tool to update versions of all published Casper packages.
 
 # Usage
 
-The tool iterates through each published CasperLabs package, asking for a new version for each or automatically bumping the major, minor or patch version if `--bump=[major|minor|patch]` was specified.  Once a valid version is specified, all files dependent on that version are updated.
+The tool iterates through each published package, asking for a new version for each or automatically bumping the major, minor or patch version if `--bump=[major|minor|patch]` was specified.  Once a valid version is specified, all files dependent on that version are updated.
 
 If you run the tool from its own directory it will expect to find the casper-node root directory at '../..'.  Alternatively, you can give the path to the casper-node root directory via `--root-dir`.    
 

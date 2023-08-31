@@ -1072,6 +1072,11 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.vesting_schedule_period.millis(),
             max_delegators_per_validator,
             registry,
+            chainspec.core_config.administrators.clone(),
+            chainspec.core_config.allow_auction_bids,
+            chainspec.core_config.allow_unrestricted_transfers,
+            chainspec.core_config.refund_handling,
+            chainspec.core_config.fee_handling,
         )?;
 
         let network = Network::new(

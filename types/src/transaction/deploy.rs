@@ -265,6 +265,11 @@ impl Deploy {
         &self.approvals
     }
 
+    /// Replaces the set of approvals attached to this deploy.
+    pub fn replace_approvals(&mut self, approvals: BTreeSet<DeployApproval>) {
+        self.approvals = approvals;
+    }
+
     /// Adds a signature of this `Deploy`'s hash to its approvals.
     pub fn sign(&mut self, secret_key: &SecretKey) {
         let approval = DeployApproval::create(&self.hash, secret_key);

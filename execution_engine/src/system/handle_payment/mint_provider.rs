@@ -22,4 +22,7 @@ pub trait MintProvider {
 
     /// Checks balance of a `purse`. Returns `None` if given purse does not exist.
     fn balance(&mut self, purse: URef) -> Result<Option<U512>, Error>;
+
+    /// Reduce total supply by `amount`.
+    fn reduce_total_supply(&mut self, amount: U512) -> Result<(), Error>;
 }

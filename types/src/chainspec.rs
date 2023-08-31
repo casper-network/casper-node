@@ -5,10 +5,12 @@ mod accounts_config;
 mod activation_point;
 mod chainspec_raw_bytes;
 mod core_config;
+mod fee_handling;
 mod global_state_update;
 mod highway_config;
 mod network_config;
 mod protocol_config;
+mod refund_handling;
 mod transaction_config;
 mod vm_config;
 
@@ -28,16 +30,18 @@ use crate::{
     Digest, EraId, ProtocolVersion,
 };
 pub use accounts_config::{
-    AccountConfig, AccountsConfig, DelegatorConfig, GenesisAccount, GenesisValidator,
-    ValidatorConfig,
+    AccountConfig, AccountsConfig, AdministratorAccount, DelegatorConfig, GenesisAccount,
+    GenesisValidator, ValidatorConfig,
 };
 pub use activation_point::ActivationPoint;
 pub use chainspec_raw_bytes::ChainspecRawBytes;
 pub use core_config::{ConsensusProtocolName, CoreConfig, LegacyRequiredFinality};
+pub use fee_handling::FeeHandling;
 pub use global_state_update::{GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError};
 pub use highway_config::HighwayConfig;
 pub use network_config::NetworkConfig;
 pub use protocol_config::ProtocolConfig;
+pub use refund_handling::RefundHandling;
 pub use transaction_config::{DeployConfig, TransactionConfig, TransactionV1Config};
 #[cfg(any(feature = "testing", test))]
 pub use transaction_config::{DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};

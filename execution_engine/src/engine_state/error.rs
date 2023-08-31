@@ -105,9 +105,12 @@ pub enum Error {
     /// Failed to retrieve contract record by a given account hash.
     #[error("Failed to retrieve contract by account hash {0}")]
     MissingContractByAccountHash(AccountHash),
-    /// Failed to retreive the entity's package
-    #[error("Failed to retreieve the entity package as {0}")]
+    /// Failed to retrieve the entity's package
+    #[error("Failed to retrieve the entity package as {0}")]
     MissingEntityPackage(ContractPackageHash),
+    /// Failed to retrieve accumulation purse from handle payment system contract.
+    #[error("Failed to retrieve accumulation purse from the handle payment contract")]
+    FailedToRetrieveAccumulationPurse,
     /// Failed to prune listed keys.
     #[error("Pruning attempt failed.")]
     FailedToPrune(Vec<Key>),

@@ -92,7 +92,7 @@ impl From<&Chainspec> for TomlChainspec {
             name: chainspec.network_config.name.clone(),
             maximum_net_message_size: chainspec.network_config.maximum_net_message_size,
         };
-        let core = chainspec.core_config;
+        let core = chainspec.core_config.clone();
         let transactions = chainspec.transaction_config;
         let highway = chainspec.highway_config;
         let wasm = chainspec.wasm_config;
@@ -184,7 +184,7 @@ pub(super) fn parse_toml_accounts<P: AsRef<Path>>(
 ) -> Result<(AccountsConfig, Option<Bytes>), ChainspecAccountsLoadError> {
     let accounts_path = dir_path.as_ref().join(CHAINSPEC_ACCOUNTS_FILENAME);
     if !accounts_path.is_file() {
-        let config = AccountsConfig::new(vec![], vec![]);
+        let config = AccountsConfig::new(vec![], vec![], vec![]);
         let maybe_bytes = None;
         return Ok((config, maybe_bytes));
     }

@@ -4,7 +4,7 @@ use datasize::DataSize;
 use rand::{distributions::Standard, prelude::*};
 use serde::{Deserialize, Serialize};
 
-#[cfg(test)]
+#[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -43,7 +43,7 @@ impl DelegatorConfig {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "testing", test))]
     /// Generates a random instance using a `TestRng`.
     pub fn random(rng: &mut TestRng) -> Self {
         let validator_public_key =

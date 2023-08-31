@@ -1389,6 +1389,27 @@ mod tests {
         assert_eq!(result.unwrap_err(), Error::Formatting);
     }
 
+    #[test]
+    fn should_have_generic_tobytes_impl_for_borrowed_types() {
+        struct NonCopyable;
+
+        impl ToBytes for NonCopyable {
+            fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+                Ok(vec![1, 2, 3])
+            }
+
+            fn serialized_length(&self) -> usize {
+                3
+            }
+        }
+
+        let noncopyable: &NonCopyable = &NonCopyable;
+
+        assert_eq!(noncopyable.to_bytes().unwrap(), vec![1, 2, 3]);
+        assert_eq!(noncopyable.serialized_length(), 3);
+        assert_eq!(noncopyable.into_bytes().unwrap(), vec![1, 2, 3]);
+    }
+
     #[cfg(debug_assertions)]
     #[test]
     #[should_panic(expected = "You should use Bytes newtype wrapper for efficiency")]

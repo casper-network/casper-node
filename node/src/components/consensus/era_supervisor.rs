@@ -1057,7 +1057,18 @@ impl EraSupervisor {
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
+
+                // TODO - add support for the `compute_rewards` chainspec parameter coming from
+                // private chain implementation in the 2.0 rewards scheme.
+                let _compute_rewards = self.chainspec.core_config.compute_rewards;
                 let report = terminal_block_data.map(|tbd| {
+                    // If block rewards are disabled, zero them.
+                    // if !compute_rewards {
+                    //     for reward in tbd.rewards.values_mut() {
+                    //         *reward = 0;
+                    //     }
+                    // }
+
                     EraReport::new(era.accusations(), BTreeMap::new(), tbd.inactive_validators)
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());

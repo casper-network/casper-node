@@ -13,7 +13,7 @@ use proptest::{
 };
 
 use crate::{
-    account::{self, AccountHash},
+    account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
     addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
     package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
@@ -28,10 +28,7 @@ use crate::{
 };
 
 use crate::{
-    account::{
-        action_thresholds::gens::account_action_thresholds_arb,
-        associated_keys::gens::account_associated_keys_arb, Account,
-    },
+    account::{associated_keys::gens::account_associated_keys_arb, Account},
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
     },

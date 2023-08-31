@@ -1,5 +1,5 @@
 use casper_execution_engine::engine_state::{
-    step::{EvictItem, SlashItem},
+    step::{EvictItem, RewardItem, SlashItem},
     StepRequest,
 };
 use casper_types::{Digest, EraId, ProtocolVersion};
@@ -10,6 +10,7 @@ pub struct StepRequestBuilder {
     parent_state_hash: Digest,
     protocol_version: ProtocolVersion,
     slash_items: Vec<SlashItem>,
+    reward_items: Vec<RewardItem>,
     evict_items: Vec<EvictItem>,
     run_auction: bool,
     next_era_id: EraId,
@@ -37,6 +38,12 @@ impl StepRequestBuilder {
     /// Pushes the given [`SlashItem`] into `slash_items`.
     pub fn with_slash_item(mut self, slash_item: SlashItem) -> Self {
         self.slash_items.push(slash_item);
+        self
+    }
+
+    /// Pushes the given [`RewardItem`] into `reward_items`.
+    pub fn with_reward_item(mut self, reward_item: RewardItem) -> Self {
+        self.reward_items.push(reward_item);
         self
     }
 
@@ -87,6 +94,7 @@ impl Default for StepRequestBuilder {
             run_auction: true, //<-- run_auction by default
             next_era_id: Default::default(),
             era_end_timestamp_millis: Default::default(),
+            reward_items: Default::default(),
         }
     }
 }
