@@ -3,16 +3,18 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 #[cfg(test)]
-use casper_types::{
-    account::AccountHash, system::auction::Bid, AddressableEntity, CLValue, PublicKey, URef, U512,
-};
+use casper_types::{account::AccountHash, AddressableEntity, CLValue, PublicKey, URef, U512};
 use casper_types::{Key, StoredValue};
+
+#[cfg(test)]
+use casper_types::system::auction::{BidAddr, BidKind, Delegator, ValidatorBid};
 
 #[cfg(test)]
 use super::state_reader::StateReader;
 
 use crate::utils::{print_entry, print_validators, ValidatorInfo};
 
+#[derive(Debug)]
 pub(crate) struct Update {
     entries: BTreeMap<Key, StoredValue>,
     // Holds the complete set of validators, only if the validator set changed
@@ -68,13 +70,68 @@ impl Update {
             .clone()
     }
 
-    pub(crate) fn get_written_bid(&self, account: AccountHash) -> Bid {
+    pub(crate) fn get_written_bid(&self, account: AccountHash) -> BidKind {
         self.entries
-            .get(&Key::Bid(account))
-            .expect("should create bid")
-            .as_bid()
-            .expect("should be bid")
+            .get(&Key::BidAddr(BidAddr::from(account)))
+            .expect("stored value should exist")
+            .as_bid_kind()
+            .expect("stored value should be be BidKind")
             .clone()
+    }
+
+    #[track_caller]
+    pub(crate) fn get_total_stake(&self, account: AccountHash) -> Option<U512> {
+        let bid_addr = BidAddr::from(account);
+
+        if let BidKind::Validator(validator_bid) = self
+            .entries
+            .get(&bid_addr.into())
+            .expect("should create bid")
+            .as_bid_kind()
+            .expect("should be bid")
+        {
+            let delegator_stake: U512 = self
+                .delegators(validator_bid)
+                .iter()
+                .map(|x| x.staked_amount())
+                .sum();
+
+            Some(validator_bid.staked_amount() + delegator_stake)
+        } else {
+            None
+        }
+    }
+
+    #[track_caller]
+    pub(crate) fn delegators(&self, validator_bid: &ValidatorBid) -> Vec<Delegator> {
+        let mut ret = vec![];
+
+        for (_, v) in self.entries.clone() {
+            if let StoredValue::BidKind(BidKind::Delegator(delegator)) = v {
+                if delegator.validator_public_key() != validator_bid.validator_public_key() {
+                    continue;
+                }
+                ret.push(*delegator);
+            }
+        }
+
+        ret
+    }
+
+    #[track_caller]
+    pub(crate) fn delegator(
+        &self,
+        validator_bid: &ValidatorBid,
+        delegator_public_key: &PublicKey,
+    ) -> Option<Delegator> {
+        let delegators = self.delegators(validator_bid);
+        for delegator in delegators {
+            if delegator.delegator_public_key() != delegator_public_key {
+                continue;
+            }
+            return Some(delegator);
+        }
+        None
     }
 
     #[track_caller]
@@ -123,9 +180,9 @@ impl Update {
     }
 
     #[track_caller]
-    pub(crate) fn assert_written_bid(&self, account: AccountHash, bid: Bid) {
+    pub(crate) fn assert_written_bid(&self, account: AccountHash, bid: BidKind) {
         assert_eq!(
-            self.entries.get(&Key::Bid(account)),
+            self.entries.get(&Key::BidAddr(BidAddr::from(account))),
             Some(&StoredValue::from(bid))
         );
     }
@@ -155,27 +212,28 @@ impl Update {
 
     /// `expected`: (bid_purse, unbonder_key, amount)
     #[track_caller]
+    #[allow(unused)]
     pub(crate) fn assert_unbonding_purses<'a>(
         &self,
-        validator_key: &PublicKey,
+        account_hash: AccountHash,
         expected: impl IntoIterator<Item = (URef, &'a PublicKey, u64)>,
     ) {
         let mut expected: Vec<_> = expected
             .into_iter()
             .map(|(bid_purse, unbonder_key, amount)| {
-                (validator_key, bid_purse, unbonder_key, U512::from(amount))
+                (account_hash, bid_purse, unbonder_key, U512::from(amount))
             })
             .collect();
         let mut data: Vec<_> = self
             .entries
-            .get(&Key::Unbond(validator_key.to_account_hash()))
+            .get(&Key::Unbond(account_hash))
             .expect("should have unbonds for the account")
             .as_unbonding()
             .expect("should be unbonding purses")
             .iter()
             .map(|unbonding_purse| {
                 (
-                    unbonding_purse.validator_public_key(),
+                    unbonding_purse.validator_public_key().to_account_hash(),
                     *unbonding_purse.bonding_purse(),
                     unbonding_purse.unbonder_public_key(),
                     *unbonding_purse.amount(),

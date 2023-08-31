@@ -27,6 +27,9 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
+#[cfg(test)]
+use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
+
 use casper_execution_engine::engine_state::{
     self, genesis::GenesisError, DeployItem, EngineConfig, EngineState, GenesisSuccess,
     SystemContractRegistry, UpgradeSuccess,
@@ -953,12 +956,6 @@ impl ContractRuntime {
         result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
     }
 
-    /// Returns the engine state, for testing only.
-    #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
-        &self.engine_state
-    }
-
     #[inline]
     fn try_init_system_contract_registry_cache(&mut self) {
         // The system contract registry is stable so we can use the latest state root hash that we
@@ -976,6 +973,23 @@ impl ContractRuntime {
                 .get_system_contract_registry(state_root_hash)
                 .ok();
         };
+    }
+
+    /// Returns the engine state, for testing only.
+    #[cfg(test)]
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
+        &self.engine_state
+    }
+
+    /// Returns auction state, for testing only.
+    #[cfg(test)]
+    pub(crate) fn auction_state(
+        &self,
+        root_hash: Digest,
+    ) -> Result<GetBidsResult, engine_state::Error> {
+        let engine_state = Arc::clone(&self.engine_state);
+        let get_bids_request = GetBidsRequest::new(root_hash);
+        engine_state.get_bids(get_bids_request)
     }
 }
 
@@ -1076,7 +1090,7 @@ mod trie_chunking_tests {
         }
         let post_state_hash = contract_runtime
             .engine_state()
-            .apply_effects(empty_state_root, effects)
+            .commit_effects(empty_state_root, effects)
             .expect("applying effects to succeed");
         (contract_runtime, post_state_hash)
     }

@@ -104,7 +104,7 @@ impl From<&Bid> for SeigniorageRecipient {
         let delegator_stake = bid
             .delegators()
             .iter()
-            .map(|(public_key, delegator)| (public_key.clone(), *delegator.staked_amount()))
+            .map(|(public_key, delegator)| (public_key.clone(), delegator.staked_amount()))
             .collect();
         Self {
             stake: *bid.staked_amount(),

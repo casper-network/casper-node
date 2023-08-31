@@ -4,10 +4,10 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{
-        auction::{Bid, EraInfo, Error, UnbondingPurse},
+        auction::{BidAddr, BidKind, EraInfo, Error, UnbondingPurse},
         mint,
     },
-    CLTyped, EraId, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
+    CLTyped, Key, KeyTag, URef, BLAKE2B_DIGEST_LENGTH, U512,
 };
 
 /// Provider of runtime host functionality.
@@ -23,6 +23,12 @@ pub trait RuntimeProvider {
 
     /// Gets keys in a given keyspace
     fn get_keys(&mut self, key_tag: &KeyTag) -> Result<BTreeSet<Key>, Error>;
+
+    /// Gets keys by prefix.
+    fn get_keys_by_prefix(&mut self, prefix: &[u8]) -> Result<Vec<Key>, Error>;
+
+    /// Returns the current number of delegators for this validator.
+    fn delegator_count(&mut self, bid_addr: &BidAddr) -> Result<usize, Error>;
 
     /// Returns a 32-byte BLAKE2b digest
     fn blake2b<T: AsRef<[u8]>>(&self, data: T) -> [u8; BLAKE2B_DIGEST_LENGTH];
@@ -40,23 +46,26 @@ pub trait StorageProvider {
     fn write<T: ToBytes + CLTyped>(&mut self, uref: URef, value: T) -> Result<(), Error>;
 
     /// Reads [`Bid`] at account hash derived from given public key
-    fn read_bid(&mut self, account_hash: &AccountHash) -> Result<Option<Bid>, Error>;
+    fn read_bid(&mut self, key: &Key) -> Result<Option<BidKind>, Error>;
 
-    /// Writes given [`Bid`] at account hash derived from given public key
-    fn write_bid(&mut self, account_hash: AccountHash, bid: Bid) -> Result<(), Error>;
+    /// Writes given [`BidKind`] at given key.
+    fn write_bid(&mut self, key: Key, bid_kind: BidKind) -> Result<(), Error>;
 
     /// Reads collection of [`UnbondingPurse`]s at account hash derived from given public key
-    fn read_unbond(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;
+    fn read_unbonds(&mut self, account_hash: &AccountHash) -> Result<Vec<UnbondingPurse>, Error>;
 
     /// Writes given [`UnbondingPurse`]s at account hash derived from given public key
-    fn write_unbond(
+    fn write_unbonds(
         &mut self,
         account_hash: AccountHash,
         unbonding_purses: Vec<UnbondingPurse>,
     ) -> Result<(), Error>;
 
-    /// Records era summary.
-    fn record_era_info(&mut self, _era_id: EraId, era_summary: EraInfo) -> Result<(), Error>;
+    /// Records era info.
+    fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), Error>;
+
+    /// Prunes a given bid at [`BidAddr`].
+    fn prune_bid(&mut self, bid_addr: BidAddr);
 }
 
 /// Provides an access to mint.

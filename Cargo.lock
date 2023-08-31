@@ -2826,6 +2826,7 @@ dependencies = [
  "casper-storage",
  "casper-types",
  "clap 2.34.0",
+ "itertools 0.10.5",
  "lmdb-rkv",
  "rand 0.8.5",
  "serde",

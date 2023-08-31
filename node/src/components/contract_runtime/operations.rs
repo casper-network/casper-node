@@ -180,7 +180,7 @@ pub fn execute_finalized_block(
                 .into(),
         ),
     ));
-    scratch_state.apply_effects(state_root_hash, effects)?;
+    scratch_state.commit_effects(state_root_hash, effects)?;
 
     if let Some(metrics) = metrics.as_ref() {
         metrics.exec_block.observe(start.elapsed().as_secs_f64());
@@ -267,7 +267,9 @@ pub fn execute_finalized_block(
                         "commit prune: key does not exist"
                     );
                 }
-                Ok(PruneResult::Success { post_state_hash }) => {
+                Ok(PruneResult::Success {
+                    post_state_hash, ..
+                }) => {
                     info!(
                         previous_block_height,
                         %key_block_height_for_activation_point,
@@ -408,7 +410,7 @@ where
 {
     trace!(?state_root_hash, ?effects, "commit");
     let start = Instant::now();
-    let result = engine_state.apply_effects(state_root_hash, effects);
+    let result = engine_state.commit_effects(state_root_hash, effects);
     if let Some(metrics) = metrics {
         metrics.apply_effect.observe(start.elapsed().as_secs_f64());
     }
