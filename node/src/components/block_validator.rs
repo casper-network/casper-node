@@ -21,7 +21,7 @@ use datasize::DataSize;
 use derive_more::{Display, From};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 use casper_types::{EraId, Timestamp};
 
@@ -146,6 +146,7 @@ impl SignaturesValidationState {
         if matches!(*self, SignaturesValidationState::Valid) {
             warn!("invalidating SignaturesValidationState::Valid");
         }
+        debug!("switching to SignaturesValidationState::Invalid");
         *self = SignaturesValidationState::Invalid;
     }
 
@@ -412,11 +413,14 @@ impl BlockValidator {
                         .signatures_validation_state
                         .require_block(sender, first_missing_block_height);
 
+                    trace!(%rel_height, "maybe_block = None if signatures.has_some() - returning");
+
                     return Effects::new();
                 }
                 None => {
                     // we have no block, but there are also no signatures cited for this block, so
                     // we can continue
+                    trace!(%rel_height, "maybe_block = None");
                 }
                 Some(block) => {
                     let padded_signatures = block
@@ -425,11 +429,21 @@ impl BlockValidator {
                         .rewarded_signatures()
                         .clone()
                         .left_padded(rel_height.saturating_add(1));
+                    trace!(
+                        ?padded_signatures,
+                        ?rewarded_signatures,
+                        intersection = ?rewarded_signatures.intersection(&padded_signatures),
+                        "maybe_block is Some"
+                    );
                     if rewarded_signatures
                         .intersection(&padded_signatures)
                         .has_some()
                     {
                         // block cited a signature that has been cited before - it is invalid!
+                        debug!(
+                            %rel_height,
+                            "maybe_block is Some, nonzero intersection with previous"
+                        );
                         block_validation_state
                             .signatures_validation_state
                             .invalidate();
@@ -506,6 +520,10 @@ impl BlockValidator {
                     })
             })
             .collect();
+        trace!(
+            ?included_sigs,
+            "handle_got_past_blocks_with_metadata included_sigs"
+        );
 
         let mut in_flight = KeyedCounter::default();
         let effects = included_sigs
