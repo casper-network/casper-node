@@ -47,6 +47,14 @@ pub(crate) enum Error {
         /// The timestamp when the node validated the expiry timestamp.
         current_node_timestamp: Timestamp,
     },
+
+    /// Component state error: expected a deploy.
+    #[error("internal error: expected a deploy")]
+    ExpectedDeploy,
+
+    /// Component state error: expected a version 1 transaction.
+    #[error("internal error: expected a deploy")]
+    ExpectedTransactionV1,
 }
 
 impl Error {

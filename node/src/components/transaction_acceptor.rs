@@ -279,18 +279,13 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
         // Only deploys need their payment code checked.
-        if !matches!(&event_metadata.transaction, Transaction::Deploy(_)) {
-            return self.verify_body(effect_builder, event_metadata, block_header);
-        }
-
-        let payment_identifier = match &event_metadata.transaction {
-            Transaction::Deploy(deploy) => {
-                if let Err(error) = deploy_payment_is_valid(deploy.payment(), &block_header) {
-                    return self.reject_transaction(effect_builder, *event_metadata, error);
-                }
-                deploy.payment().identifier()
+        let payment_identifier = if let Transaction::Deploy(deploy) = &event_metadata.transaction {
+            if let Err(error) = deploy_payment_is_valid(deploy.payment(), &block_header) {
+                return self.reject_transaction(effect_builder, *event_metadata, error);
             }
-            _ => unreachable!("early return above for all transaction variants other than deploy"),
+            deploy.payment().identifier()
+        } else {
+            return self.verify_body(effect_builder, event_metadata, block_header);
         };
 
         match payment_identifier {
@@ -325,7 +320,7 @@ impl TransactionAcceptor {
                 let key = Key::from(contract_package_hash);
                 let maybe_package_version = contract_package_identifier.version();
                 effect_builder
-                    .get_contract_package(*block_header.state_root_hash(), key)
+                    .get_package(*block_header.state_root_hash(), key)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
@@ -362,7 +357,14 @@ impl TransactionAcceptor {
     ) -> Effects<Event> {
         let session = match &event_metadata.transaction {
             Transaction::Deploy(deploy) => deploy.session(),
-            Transaction::V1(_) => unreachable!("should only handle deploy"),
+            Transaction::V1(txn) => {
+                error!(%txn, "should only handle deploys in verify_deploy_session");
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::ExpectedDeploy,
+                );
+            }
         };
 
         match session {
@@ -424,7 +426,7 @@ impl TransactionAcceptor {
                 let key = Key::from(contract_package_hash);
                 let maybe_contract_version = package_identifier.version();
                 effect_builder
-                    .get_contract_package(*block_header.state_root_hash(), key)
+                    .get_package(*block_header.state_root_hash(), key)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,
@@ -450,7 +452,17 @@ impl TransactionAcceptor {
         }
 
         let next_step = match &event_metadata.transaction {
-            Transaction::Deploy(_) => unreachable!("should only handle transaction v1"),
+            Transaction::Deploy(deploy) => {
+                error!(
+                    %deploy,
+                    "should only handle version 1 transactions in verify_transaction_v1_body"
+                );
+                return self.reject_transaction(
+                    effect_builder,
+                    *event_metadata,
+                    Error::ExpectedTransactionV1,
+                );
+            }
             Transaction::V1(txn) => match txn.body() {
                 TransactionV1Kind::Userland(UserlandTransactionV1::DirectCall(
                     DirectCallV1::StoredContractByHash { hash, .. },
@@ -490,7 +502,7 @@ impl TransactionAcceptor {
             NextStep::GetPackage(package_hash, maybe_contract_version) => {
                 let key = Key::from(package_hash);
                 effect_builder
-                    .get_contract_package(*block_header.state_root_hash(), key)
+                    .get_package(*block_header.state_root_hash(), key)
                     .event(move |maybe_package| Event::GetPackageResult {
                         event_metadata,
                         block_header,

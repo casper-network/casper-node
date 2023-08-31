@@ -4,12 +4,12 @@ use datasize::DataSize;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    Motes, U512,
+    Motes,
 };
+#[cfg(any(feature = "testing", test))]
+use crate::{testing::TestRng, U512};
 
 /// The default  maximum number of motes that payment code execution can cost.
 #[cfg(any(feature = "testing", test))]

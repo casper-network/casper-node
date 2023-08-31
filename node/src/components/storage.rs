@@ -207,7 +207,7 @@ pub struct Storage {
     finalized_deploy_approvals_db: Database,
     /// The finalized transaction approvals database.
     #[data_size(skip)]
-    finalized_approvals_db: Database,
+    finalized_transaction_approvals_db: Database,
     /// A map of block height to block ID.
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
@@ -434,7 +434,7 @@ impl Storage {
         let state_store_db = env.create_db(Some("state_store"), DatabaseFlags::empty())?;
         let finalized_deploy_approvals_db =
             env.create_db(Some("finalized_approvals"), DatabaseFlags::empty())?;
-        let finalized_approvals_db = env.create_db(
+        let finalized_transaction_approvals_db = env.create_db(
             Some("versioned_finalized_approvals"),
             DatabaseFlags::empty(),
         )?;
@@ -544,7 +544,7 @@ impl Storage {
             transfer_db,
             state_store_db,
             finalized_deploy_approvals_db,
-            finalized_approvals_db,
+            finalized_transaction_approvals_db,
             block_height_index,
             switch_block_era_id_index,
             deploy_hash_index,
@@ -2341,7 +2341,7 @@ impl Storage {
         transaction_hash: &TransactionHash,
     ) -> Result<Option<FinalizedApprovals>, LmdbExtError> {
         if let Some(approvals) =
-            txn.get_value_bytesrepr(self.finalized_approvals_db, transaction_hash)?
+            txn.get_value_bytesrepr(self.finalized_transaction_approvals_db, transaction_hash)?
         {
             return Ok(Some(approvals));
         }
@@ -2510,7 +2510,7 @@ impl Storage {
 
         if should_store {
             let _ = txn.put_value_bytesrepr(
-                self.finalized_approvals_db,
+                self.finalized_transaction_approvals_db,
                 transaction_hash,
                 finalized_approvals,
                 true,
