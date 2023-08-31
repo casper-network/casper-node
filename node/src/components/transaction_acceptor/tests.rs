@@ -3,6 +3,7 @@
 use std::{
     collections::VecDeque,
     fmt::{self, Debug, Display, Formatter},
+    iter,
     sync::Arc,
     time::Duration,
 };
@@ -27,8 +28,8 @@ use casper_types::{
     bytesrepr::Bytes,
     testing::TestRng,
     Block, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigurationFailure,
-    EraId, Package, RuntimeArgs, StoredValue, TestTransactionV1Builder, Timestamp, Transaction,
-    TransactionV1, TransactionV1Kind, URef, U512,
+    EraId, Package, PublicKey, RuntimeArgs, SecretKey, StoredValue, TestTransactionV1Builder,
+    Timestamp, Transaction, TransactionV1, TransactionV1Kind, URef, U512,
 };
 
 use super::*;
@@ -185,6 +186,7 @@ enum TestScenario {
     FromClientCustomPaymentContractPackage(ContractPackageScenario),
     FromClientSessionContract(TxnType, ContractScenario),
     FromClientSessionContractPackage(TxnType, ContractPackageScenario),
+    FromClientSignedByAdmin(TxnType),
     DeployWithNativeTransferInPayment,
     DeployWithEmptySessionModuleBytes,
     DeployWithoutPaymentAmount,
@@ -199,6 +201,7 @@ impl TestScenario {
     fn source(&self, rng: &mut NodeRng) -> Source {
         match self {
             TestScenario::FromPeerInvalidTransaction(_)
+            | TestScenario::FromPeerExpired(_)
             | TestScenario::FromPeerValidTransaction(_)
             | TestScenario::FromPeerRepeatedValidTransaction(_)
             | TestScenario::BalanceCheckForDeploySentByPeer
@@ -208,9 +211,9 @@ impl TestScenario {
             | TestScenario::FromPeerCustomPaymentContract(_)
             | TestScenario::FromPeerCustomPaymentContractPackage(_)
             | TestScenario::FromPeerSessionContract(..)
-            | TestScenario::FromPeerSessionContractPackage(..)
-            | TestScenario::FromPeerExpired(_) => Source::Peer(NodeId::random(rng)),
+            | TestScenario::FromPeerSessionContractPackage(..) => Source::Peer(NodeId::random(rng)),
             TestScenario::FromClientInvalidTransaction(_)
+            | TestScenario::FromClientExpired(_)
             | TestScenario::FromClientMissingAccount(_)
             | TestScenario::FromClientInsufficientBalance(_)
             | TestScenario::FromClientValidTransaction(_)
@@ -227,13 +230,13 @@ impl TestScenario {
             | TestScenario::FromClientCustomPaymentContractPackage(_)
             | TestScenario::FromClientSessionContract(..)
             | TestScenario::FromClientSessionContractPackage(..)
+            | TestScenario::FromClientSignedByAdmin(_)
             | TestScenario::DeployWithEmptySessionModuleBytes
-            | TestScenario::DeployWithNativeTransferInPayment
-            | TestScenario::FromClientExpired(_) => Source::Client,
+            | TestScenario::DeployWithNativeTransferInPayment => Source::Client,
         }
     }
 
-    fn transaction(&self, rng: &mut NodeRng) -> Transaction {
+    fn transaction(&self, rng: &mut TestRng, admin: &SecretKey) -> Transaction {
         match self {
             TestScenario::FromPeerInvalidTransaction(TxnType::Deploy)
             | TestScenario::FromClientInvalidTransaction(TxnType::Deploy) => {
@@ -289,6 +292,25 @@ impl TestScenario {
                     Transaction::from(txn)
                 }
             },
+            TestScenario::FromClientSignedByAdmin(TxnType::Deploy) => {
+                let mut deploy = Deploy::random_valid_native_transfer(rng);
+                deploy.sign(admin);
+                Transaction::from(deploy)
+            }
+            TestScenario::FromClientSignedByAdmin(TxnType::V1) => {
+                let body = TransactionV1Kind::new_userland_standard(
+                    Bytes::from(vec![1]),
+                    RuntimeArgs::new(),
+                );
+                let cloned_secret_key = SecretKey::from_der(admin.to_der().unwrap()).unwrap();
+                let txn = TestTransactionV1Builder::new(rng)
+                    .with_chain_name("casper-example")
+                    .with_timestamp(Timestamp::now())
+                    .with_body(body)
+                    .with_secret_key(Some(cloned_secret_key))
+                    .build();
+                Transaction::from(txn)
+            }
             TestScenario::AccountWithUnknownBalance
             | TestScenario::BalanceCheckForDeploySentByPeer => {
                 Transaction::from(Deploy::random_valid_native_transfer(rng))
@@ -479,13 +501,14 @@ impl TestScenario {
     fn is_valid_transaction_case(&self) -> bool {
         match self {
             TestScenario::FromPeerRepeatedValidTransaction(_)
+            | TestScenario::FromPeerExpired(_)
             | TestScenario::FromPeerValidTransaction(_)
             | TestScenario::FromPeerMissingAccount(_) // account check skipped if from peer
             | TestScenario::FromPeerAccountWithInsufficientWeight(_) // account check skipped if from peer
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys(_) // account check skipped if from peer
             | TestScenario::FromClientRepeatedValidTransaction(_)
             | TestScenario::FromClientValidTransaction(_)
-            | TestScenario::FromPeerExpired(_) => true,
+            | TestScenario::FromClientSignedByAdmin(..) => true,
             TestScenario::FromPeerInvalidTransaction(_)
             | TestScenario::FromClientInsufficientBalance(_)
             | TestScenario::FromClientMissingAccount(_)
@@ -859,21 +882,23 @@ async fn run_transaction_acceptor_without_timeout(
     test_scenario: TestScenario,
 ) -> Result<(), super::Error> {
     let _ = logging::init();
-    let mut rng = TestRng::new();
+    let rng = &mut TestRng::new();
 
-    let (chainspec, chainspec_raw_bytes) =
+    let admin = SecretKey::random(rng);
+    let (mut chainspec, chainspec_raw_bytes) =
         <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+    chainspec.core_config.administrators = iter::once(PublicKey::from(&admin)).collect();
 
     let mut runner: Runner<ConditionCheckReactor<Reactor>> = Runner::new(
         test_scenario,
         Arc::new(chainspec),
         Arc::new(chainspec_raw_bytes),
-        &mut rng,
+        rng,
     )
     .await
     .unwrap();
 
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(Block::random(rng));
     // Create a channel to assert that the block was successfully injected into storage.
     let (result_sender, result_receiver) = oneshot::channel();
 
@@ -884,7 +909,7 @@ async fn run_transaction_acceptor_without_timeout(
     // There are two scheduled events, so we only need to try cranking until the second time it
     // returns `Some`.
     for _ in 0..2 {
-        while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
+        while runner.try_crank(rng).await == TryCrankOutcome::NoEventsToProcess {
             time::sleep(POLL_INTERVAL).await;
         }
     }
@@ -895,9 +920,9 @@ async fn run_transaction_acceptor_without_timeout(
     let txn_responder = Responder::without_shutdown(txn_sender);
 
     // Create a transaction specific to the test scenario
-    let txn = test_scenario.transaction(&mut rng);
+    let txn = test_scenario.transaction(rng, &admin);
     // Mark the source as either a peer or a client depending on the scenario.
-    let source = test_scenario.source(&mut rng);
+    let source = test_scenario.source(rng);
 
     {
         // Inject the transaction artificially into storage to simulate a previously seen one.
@@ -906,7 +931,7 @@ async fn run_transaction_acceptor_without_timeout(
             runner
                 .process_injected_effects(put_transaction_to_storage(&txn, result_sender))
                 .await;
-            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
+            while runner.try_crank(rng).await == TryCrankOutcome::NoEventsToProcess {
                 time::sleep(POLL_INTERVAL).await;
             }
             // Check that the "previously seen" transaction is present in storage.
@@ -920,11 +945,11 @@ async fn run_transaction_acceptor_without_timeout(
                 .process_injected_effects(inject_balance_check_for_peer(
                     &txn,
                     source.clone(),
-                    &mut rng,
+                    rng,
                     txn_responder,
                 ))
                 .await;
-            while runner.try_crank(&mut rng).await == TryCrankOutcome::NoEventsToProcess {
+            while runner.try_crank(rng).await == TryCrankOutcome::NoEventsToProcess {
                 time::sleep(POLL_INTERVAL).await;
             }
         }
@@ -1053,7 +1078,8 @@ async fn run_transaction_acceptor_without_timeout(
             }
             // Check that a new and valid transaction sent by a client raises an
             // `AcceptedNewTransaction` announcement with the appropriate source.
-            TestScenario::FromClientValidTransaction(_) => {
+            TestScenario::FromClientValidTransaction(_)
+            | TestScenario::FromClientSignedByAdmin(_) => {
                 matches!(
                     event,
                     Event::TransactionAcceptorAnnouncement(
@@ -1086,7 +1112,7 @@ async fn run_transaction_acceptor_without_timeout(
         .set_condition_checker(Box::new(stopping_condition));
 
     loop {
-        match runner.try_crank(&mut rng).await {
+        match runner.try_crank(rng).await {
             TryCrankOutcome::ProcessedAnEvent => {
                 if runner.reactor().condition_result() {
                     break;
@@ -2098,6 +2124,20 @@ async fn should_accept_expired_transaction_v1_from_peer() {
 #[should_panic]
 async fn should_panic_when_balance_checking_for_deploy_sent_by_peer() {
     let test_scenario = TestScenario::BalanceCheckForDeploySentByPeer;
+    let result = run_transaction_acceptor(test_scenario).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_deploy_signed_by_admin_from_client() {
+    let test_scenario = TestScenario::FromClientSignedByAdmin(TxnType::Deploy);
+    let result = run_transaction_acceptor(test_scenario).await;
+    assert!(result.is_ok())
+}
+
+#[tokio::test]
+async fn should_accept_transaction_v1_signed_by_admin_from_client() {
+    let test_scenario = TestScenario::FromClientSignedByAdmin(TxnType::V1);
     let result = run_transaction_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }

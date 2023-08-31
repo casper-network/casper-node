@@ -3,7 +3,7 @@ mod event;
 mod metrics;
 mod tests;
 
-use std::{fmt::Debug, sync::Arc};
+use std::{collections::BTreeSet, fmt::Debug, sync::Arc};
 
 use datasize::DataSize;
 use prometheus::Registry;
@@ -11,11 +11,11 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::{BalanceRequest, MAX_PAYMENT};
 use casper_types::{
-    addressable_entity::AddressableEntity, package::Package, system::auction::ARG_AMOUNT,
-    BlockHeader, Chainspec, ContractHash, ContractIdentifier, ContractPackageHash,
-    ContractPackageIdentifier, ContractVersion, ContractVersionKey, DirectCallV1,
-    ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, ProtocolVersion, Transaction,
-    TransactionConfig, TransactionV1Kind, UserlandTransactionV1, U512,
+    account::AccountHash, addressable_entity::AddressableEntity, package::Package,
+    system::auction::ARG_AMOUNT, BlockHeader, Chainspec, ContractHash, ContractIdentifier,
+    ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey,
+    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, ProtocolVersion,
+    Transaction, TransactionConfig, TransactionV1Kind, UserlandTransactionV1, U512,
 };
 
 use crate::{
@@ -72,6 +72,7 @@ pub struct TransactionAcceptor {
     protocol_version: ProtocolVersion,
     config: TransactionConfig,
     max_associated_keys: u32,
+    administrators: BTreeSet<AccountHash>,
     #[data_size(skip)]
     metrics: metrics::Metrics,
 }
@@ -81,11 +82,18 @@ impl TransactionAcceptor {
         chainspec: &Chainspec,
         registry: &Registry,
     ) -> Result<Self, prometheus::Error> {
+        let administrators = chainspec
+            .core_config
+            .administrators
+            .iter()
+            .map(|public_key| public_key.to_account_hash())
+            .collect();
         Ok(TransactionAcceptor {
             chain_name: chainspec.network_config.name.clone(),
             protocol_version: chainspec.protocol_version(),
             config: chainspec.transaction_config,
             max_associated_keys: chainspec.core_config.max_associated_keys,
+            administrators,
             metrics: metrics::Metrics::new(registry)?,
         })
     }
@@ -213,7 +221,9 @@ impl TransactionAcceptor {
                 self.reject_transaction(effect_builder, *event_metadata, error)
             }
             Some(entity) => {
-                if let Err(parameter_failure) = is_authorized_entity(&entity, &event_metadata) {
+                if let Err(parameter_failure) =
+                    is_authorized_entity(&entity, &self.administrators, &event_metadata)
+                {
                     let error = Error::parameter_failure(&block_header, parameter_failure);
                     return self.reject_transaction(effect_builder, *event_metadata, error);
                 }
@@ -858,9 +868,18 @@ impl<REv: ReactorEventT> Component<REv> for TransactionAcceptor {
 #[allow(clippy::result_large_err)]
 fn is_authorized_entity(
     addressable_entity: &AddressableEntity,
+    administrators: &BTreeSet<AccountHash>,
     event_metadata: &EventMetadata,
 ) -> Result<(), ParameterFailure> {
     let authorization_keys = event_metadata.transaction.signers();
+
+    if administrators
+        .intersection(&authorization_keys)
+        .next()
+        .is_some()
+    {
+        return Ok(());
+    }
 
     if !addressable_entity.can_authorize(&authorization_keys) {
         return Err(ParameterFailure::InvalidAssociatedKeys);
