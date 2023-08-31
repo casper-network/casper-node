@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, thread, time::Duration};
 
-use casper_types::testing::TestRng;
+use casper_types::{testing::TestRng, BlockV2};
 use num_rational::Ratio;
 
 use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
@@ -10,7 +10,7 @@ use super::*;
 #[test]
 fn handle_acceptance() {
     let mut rng = TestRng::new();
-    let block = Block::random(&mut rng);
+    let block = BlockV2::random(&mut rng);
     let mut builder = BlockBuilder::new(
         *block.hash(),
         false,
@@ -93,7 +93,7 @@ fn handle_acceptance() {
 #[test]
 fn register_era_validator_weights() {
     let mut rng = TestRng::new();
-    let block = Block::random(&mut rng);
+    let block = BlockV2::random(&mut rng);
     let mut builder = BlockBuilder::new(
         *block.hash(),
         false,
@@ -141,7 +141,7 @@ fn register_era_validator_weights() {
 fn register_finalized_block() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = BlockV2::random(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),
@@ -209,7 +209,7 @@ fn register_finalized_block() {
 fn register_block_execution() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = BlockV2::random(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),
@@ -286,7 +286,7 @@ fn register_block_execution() {
 fn register_block_executed() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = BlockV2::random(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),
@@ -351,7 +351,7 @@ fn register_block_executed() {
 fn register_block_marked_complete() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = Block::random(&mut rng);
+    let block = BlockV2::random(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),

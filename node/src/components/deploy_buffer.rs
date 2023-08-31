@@ -19,8 +19,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Approval, Block, Deploy, DeployConfig, DeployFootprint, DeployHash, DeployId, DisplayIter,
-    Timestamp, VersionedBlock,
+    Approval, Block, BlockV2, Deploy, DeployConfig, DeployFootprint, DeployHash, DeployId,
+    DisplayIter, Timestamp,
 };
 
 use crate::{
@@ -293,7 +293,7 @@ impl DeployBuffer {
     }
 
     /// Update buffer and holds considering new added block.
-    fn register_block(&mut self, block: &Block) {
+    fn register_block(&mut self, block: &BlockV2) {
         let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
@@ -301,7 +301,7 @@ impl DeployBuffer {
     }
 
     /// When initializing the buffer, register past blocks in order to provide replay protection.
-    fn register_block_for_replay_protection_on_init(&mut self, block: &VersionedBlock) {
+    fn register_block_for_replay_protection_on_init(&mut self, block: &Block) {
         let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block_for_replay_protection_on_init({}) timestamp finalized", block_height);

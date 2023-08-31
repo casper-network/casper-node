@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, sync::Arc};
 
 use prometheus::Registry;
 
-use casper_types::{testing::TestRng, Block, BlockHash, Chainspec};
+use casper_types::{testing::TestRng, BlockHash, BlockV2, Chainspec};
 
 use crate::{
     components::{
@@ -15,7 +15,7 @@ use crate::{
 use super::{Error, SyncLeaper};
 
 pub(crate) fn make_test_sync_leap(rng: &mut TestRng) -> SyncLeap {
-    let block = Block::random(rng);
+    let block = BlockV2::random(rng);
     SyncLeap {
         trusted_ancestor_only: false,
         trusted_block_header: block.header().clone(),

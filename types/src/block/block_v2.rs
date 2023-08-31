@@ -1,12 +1,18 @@
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use alloc::collections::BTreeMap;
 use alloc::{boxed::Box, vec::Vec};
-use core::fmt::{self, Display, Formatter};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use core::iter;
-
+use core::{
+    convert::TryFrom,
+    fmt::{self, Display, Formatter},
+};
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
@@ -15,30 +21,60 @@ use once_cell::sync::OnceCell;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use rand::Rng;
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-pub use super::json_compatibility::{
-    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
-    JsonValidatorWeight,
-};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockBody, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
+    BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
     ProtocolVersion, PublicKey, Timestamp,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::{testing::TestRng, Block, EraReport, U512};
+use crate::{testing::TestRng, EraReport, U512};
 
-use super::versioned_block::VersionedBlock;
+use super::{Block, BlockBodyV2, BlockConversionError};
 
-/// A block after execution, with the resulting post-state-hash.  This is the core component of the
-/// Casper linear blockchain. Version 2.
+#[cfg(feature = "json-schema")]
+static BLOCK_V2: Lazy<BlockV2> = Lazy::new(|| {
+    let parent_hash = BlockHash::new(Digest::from([7; Digest::LENGTH]));
+    let parent_seed = Digest::from([9; Digest::LENGTH]);
+    let state_root_hash = Digest::from([8; Digest::LENGTH]);
+    let random_bit = true;
+    let era_end = Some(EraEnd::example().clone());
+    let timestamp = *Timestamp::example();
+    let era_id = EraId::from(1);
+    let height = 10;
+    let protocol_version = ProtocolVersion::V1_0_0;
+    let secret_key = crate::SecretKey::example();
+    let proposer = PublicKey::from(secret_key);
+    let deploy_hashes = vec![DeployHash::new(Digest::from([20; Digest::LENGTH]))];
+    let transfer_hashes = vec![DeployHash::new(Digest::from([21; Digest::LENGTH]))];
+    BlockV2::new(
+        parent_hash,
+        parent_seed,
+        state_root_hash,
+        random_bit,
+        era_end,
+        timestamp,
+        era_id,
+        height,
+        protocol_version,
+        proposer,
+        deploy_hashes,
+        transfer_hashes,
+    )
+});
+
+/// A block after execution, with the resulting global state root hash. This is the core component
+/// of the Casper linear blockchain. Version 2.
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct BlockV2 {
+    /// The block hash identifying this block.
     pub(super) hash: BlockHash,
+    /// The header portion of the block.
     pub(super) header: BlockHeader,
-    pub(super) body: BlockBody,
+    /// The body portion of the block.
+    pub(super) body: BlockBodyV2,
 }
 
 impl BlockV2 {
@@ -59,7 +95,7 @@ impl BlockV2 {
         deploy_hashes: Vec<DeployHash>,
         transfer_hashes: Vec<DeployHash>,
     ) -> Self {
-        let body = BlockBody::new(proposer, deploy_hashes, transfer_hashes);
+        let body = BlockBodyV2::new(proposer, deploy_hashes, transfer_hashes);
         let body_hash = body.hash();
         let accumulated_seed = Digest::hash_pair(parent_seed, [random_bit as u8]);
         let header = BlockHeader::new(
@@ -81,7 +117,7 @@ impl BlockV2 {
 
     // This method is not intended to be used by third party crates.
     #[doc(hidden)]
-    pub fn new_from_header_and_body(header: BlockHeader, body: BlockBody) -> Self {
+    pub fn new_from_header_and_body(header: BlockHeader, body: BlockBodyV2) -> Self {
         let hash = header.block_hash();
         BlockV2 { hash, header, body }
     }
@@ -102,7 +138,7 @@ impl BlockV2 {
     }
 
     /// Returns the block's body.
-    pub fn body(&self) -> &BlockBody {
+    pub fn body(&self) -> &BlockBodyV2 {
         &self.body
     }
 
@@ -194,7 +230,7 @@ impl BlockV2 {
         let actual_block_header_hash = self.header().block_hash();
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
-                block: Box::new(VersionedBlock::V2(self.clone())),
+                block: Box::new(Block::V2(self.clone())),
                 actual_block_hash: actual_block_header_hash,
             });
         }
@@ -202,12 +238,19 @@ impl BlockV2 {
         let actual_block_body_hash = self.body.hash();
         if *self.header.body_hash() != actual_block_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
-                block: Box::new(VersionedBlock::V2(self.clone())),
+                block: Box::new(Block::V2(self.clone())),
                 actual_block_body_hash,
             });
         }
 
         Ok(())
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &BLOCK_V2
     }
 
     /// Returns a random block.
@@ -404,17 +447,6 @@ impl Display for BlockV2 {
     }
 }
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonBlock> for Block {
-    fn from(block: JsonBlock) -> Self {
-        Block {
-            hash: block.hash,
-            header: BlockHeader::from(block.header),
-            body: BlockBody::from(block.body),
-        }
-    }
-}
-
 impl ToBytes for BlockV2 {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.hash.write_bytes(writer)?;
@@ -439,26 +471,21 @@ impl FromBytes for BlockV2 {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (hash, remainder) = BlockHash::from_bytes(bytes)?;
         let (header, remainder) = BlockHeader::from_bytes(remainder)?;
-        let (body, remainder) = BlockBody::from_bytes(remainder)?;
+        let (body, remainder) = BlockBodyV2::from_bytes(remainder)?;
         let block = BlockV2 { hash, header, body };
         Ok((block, remainder))
     }
 }
 
-impl From<VersionedBlock> for BlockV2 {
-    fn from(value: VersionedBlock) -> Self {
-        match value {
-            VersionedBlock::V1(_) => todo!(),
-            VersionedBlock::V2(v2) => v2,
-        }
-    }
-}
+impl TryFrom<Block> for BlockV2 {
+    type Error = BlockConversionError;
 
-impl From<&VersionedBlock> for BlockV2 {
-    fn from(value: &VersionedBlock) -> Self {
+    fn try_from(value: Block) -> Result<BlockV2, BlockConversionError> {
         match value {
-            VersionedBlock::V1(_) => todo!(),
-            VersionedBlock::V2(v2) => v2.clone(),
+            Block::V2(v2) => Ok(v2),
+            _ => Err(BlockConversionError::DifferentVersion {
+                expected_version: 2,
+            }),
         }
     }
 }
@@ -470,7 +497,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = Block::random(rng);
+        let block = BlockV2::random(rng);
         bytesrepr::test_serialization_roundtrip(&block);
     }
 
@@ -478,13 +505,13 @@ mod tests {
     fn block_check_bad_body_hash_sad_path() {
         let rng = &mut TestRng::new();
 
-        let mut block = Block::random(rng);
+        let mut block = BlockV2::random(rng);
         let bogus_block_body_hash = Digest::hash([0xde, 0xad, 0xbe, 0xef]);
         block.header.set_body_hash(bogus_block_body_hash);
         block.hash = block.header.block_hash();
 
         let expected_error = BlockValidationError::UnexpectedBodyHash {
-            block: Box::new(VersionedBlock::V2(block.clone())),
+            block: Box::new(Block::V2(block.clone())),
             actual_block_body_hash: block.body.hash(),
         };
         assert_eq!(block.verify(), Err(expected_error));
@@ -494,12 +521,12 @@ mod tests {
     fn block_check_bad_block_hash_sad_path() {
         let rng = &mut TestRng::new();
 
-        let mut block = Block::random(rng);
+        let mut block = BlockV2::random(rng);
         let bogus_block_hash = BlockHash::from(Digest::hash([0xde, 0xad, 0xbe, 0xef]));
         block.hash = bogus_block_hash;
 
         let expected_error = BlockValidationError::UnexpectedBlockHash {
-            block: Box::new(VersionedBlock::V2(block.clone())),
+            block: Box::new(Block::V2(block.clone())),
             actual_block_hash: block.header.block_hash(),
         };
         assert_eq!(block.verify(), Err(expected_error));

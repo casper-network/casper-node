@@ -12,7 +12,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
-use casper_types::{Block, Deploy, FinalitySignature};
+use casper_types::{BlockV2, Deploy, FinalitySignature};
 
 use crate::{
     components::{
@@ -44,7 +44,7 @@ pub(crate) enum Message {
     ConsensusRequest(consensus::ConsensusRequestMessage),
     /// Block gossiper component message.
     #[from]
-    BlockGossiper(gossiper::Message<Block>),
+    BlockGossiper(gossiper::Message<BlockV2>),
     /// Deploy gossiper component message.
     #[from]
     DeployGossiper(gossiper::Message<Deploy>),
@@ -83,7 +83,7 @@ impl Payload for Message {
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy | Tag::LegacyDeploy => MessageKind::DeployTransfer,
-                Tag::VersionedBlock => MessageKind::BlockTransfer,
+                Tag::Block => MessageKind::BlockTransfer,
                 Tag::BlockHeader => MessageKind::BlockTransfer,
                 Tag::TrieOrChunk => MessageKind::TrieTransfer,
                 Tag::FinalitySignature => MessageKind::Other,
@@ -125,7 +125,7 @@ impl Payload for Message {
             Message::GetRequest { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_requests,
                 Tag::LegacyDeploy => weights.legacy_deploy_requests,
-                Tag::VersionedBlock => weights.block_requests,
+                Tag::Block => weights.block_requests,
                 Tag::BlockHeader => weights.block_header_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
                 Tag::FinalitySignature => weights.finality_signature_requests,
@@ -136,7 +136,7 @@ impl Payload for Message {
             Message::GetResponse { tag, .. } => match tag {
                 Tag::Deploy => weights.deploy_responses,
                 Tag::LegacyDeploy => weights.legacy_deploy_responses,
-                Tag::VersionedBlock => weights.block_responses,
+                Tag::Block => weights.block_responses,
                 Tag::BlockHeader => weights.block_header_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
                 Tag::FinalitySignature => weights.finality_signature_responses,
@@ -300,7 +300,7 @@ impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
         + From<ConsensusDemand>
-        + From<GossiperIncoming<Block>>
+        + From<GossiperIncoming<BlockV2>>
         + From<GossiperIncoming<Deploy>>
         + From<GossiperIncoming<FinalitySignature>>
         + From<GossiperIncoming<GossipedAddress>>
@@ -353,9 +353,9 @@ where
                     message: Box::new(NetRequest::LegacyDeploy(serialized_id)),
                 }
                 .into(),
-                Tag::VersionedBlock => NetRequestIncoming {
+                Tag::Block => NetRequestIncoming {
                     sender,
-                    message: Box::new(NetRequest::VersionedBlock(serialized_id)),
+                    message: Box::new(NetRequest::Block(serialized_id)),
                 }
                 .into(),
                 Tag::BlockHeader => NetRequestIncoming {
@@ -403,7 +403,7 @@ where
                     message: Box::new(NetResponse::LegacyDeploy(serialized_item)),
                 }
                 .into(),
-                Tag::VersionedBlock => NetResponseIncoming {
+                Tag::Block => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::Block(serialized_item)),
                 }

@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::{self, QueryResult};
 use casper_types::{
-    Block, BlockHash, BlockV2, Digest, DigestError, JsonBlock, Key, ProtocolVersion, Transfer,
+    Block, BlockHash, BlockHeader, Digest, DigestError, JsonBlockWithSignatures, Key,
+    ProtocolVersion, Transfer,
 };
 
 use super::{
@@ -31,40 +32,40 @@ pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
-    block_identifier: BlockIdentifier::Hash(JsonBlock::doc_example().hash),
+    block_identifier: BlockIdentifier::Hash(*JsonBlockWithSignatures::example().block.hash()),
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    block: Some(JsonBlock::doc_example().clone()),
+    block_with_signatures: Some(JsonBlockWithSignatures::example().clone()),
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     Lazy::new(|| GetBlockTransfersParams {
-        block_identifier: BlockIdentifier::Hash(JsonBlock::doc_example().hash),
+        block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
     });
 static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        block_hash: Some(JsonBlock::doc_example().hash),
+        block_hash: Some(*BlockHash::example()),
         transfers: Some(vec![Transfer::default()]),
     });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {
-        block_identifier: BlockIdentifier::Height(JsonBlock::doc_example().header.height),
+        block_identifier: BlockIdentifier::Height(BlockHeader::example().height()),
     });
 static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
     Lazy::new(|| GetStateRootHashResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        state_root_hash: Some(JsonBlock::doc_example().header.state_root_hash),
+        state_root_hash: Some(*BlockHeader::example().state_root_hash()),
     });
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
-    block_identifier: BlockIdentifier::Hash(JsonBlock::doc_example().hash),
+    block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
 });
 static GET_ERA_SUMMARY_PARAMS: Lazy<GetEraSummaryParams> = Lazy::new(|| GetEraSummaryParams {
-    block_identifier: BlockIdentifier::Hash(JsonBlock::doc_example().hash),
+    block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });
 static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSummaryResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -138,7 +139,7 @@ pub struct GetBlockResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The block, if found.
-    pub block: Option<JsonBlock>,
+    pub block_with_signatures: Option<JsonBlockWithSignatures>,
 }
 
 impl DocExample for GetBlockResult {
@@ -176,13 +177,12 @@ impl RpcWithOptionalParams for GetBlock {
         )
         .await?;
 
-        let block: BlockV2 = block.into(); // TODO: change this to support versioning
-        let json_block = JsonBlock::new(block, Some(block_signatures));
+        let json_block = JsonBlockWithSignatures::new(block, Some(block_signatures));
 
         // Return the result.
         let result = Self::ResponseResult {
             api_version,
-            block: Some(json_block),
+            block_with_signatures: Some(json_block),
         };
         Ok(result)
     }
@@ -408,7 +408,6 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
             });
         }
 
-        let block: BlockV2 = block.into(); //TODO: change this to support versioning
         let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,
@@ -466,7 +465,6 @@ impl RpcWithOptionalParams for GetEraSummary {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
         let block = common::get_block(maybe_block_id, true, effect_builder).await?;
 
-        let block: BlockV2 = block.into(); // TODO: change this to support versioning
         let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,

@@ -11,7 +11,7 @@ mod signed_block;
 
 use casper_types::{
     bytesrepr::{self, ToBytes},
-    Block, BlockHash, DeployId, Digest, FinalitySignature,
+    BlockHash, DeployId, Digest, FinalitySignature,
 };
 
 pub(crate) use approvals_hashes::ApprovalsHashes;

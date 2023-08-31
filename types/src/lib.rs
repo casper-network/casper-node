@@ -79,16 +79,14 @@ pub use access_rights::{
 #[doc(inline)]
 pub use api_error::ApiError;
 pub use block::{
-    Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd, EraReport,
-    FinalitySignature, FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
-    VersionedBlock, VersionedBlockBody,
+    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd,
+    EraReport, FinalitySignature, FinalitySignatureId, SignedBlockHeader,
+    SignedBlockHeaderValidationError,
 };
+
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use block::{
-    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
-    JsonValidatorWeight,
-};
+pub use block::JsonBlockWithSignatures;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{

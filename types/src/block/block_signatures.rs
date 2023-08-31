@@ -71,8 +71,11 @@ impl StdError for BlockSignaturesMergeError {}
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct BlockSignatures {
+    /// The block hash.
     pub(super) block_hash: BlockHash,
+    /// The era ID in which this block was created.
     pub(super) era_id: EraId,
+    /// The proofs of the block, i.e. a collection of validators' signatures of the block hash.
     pub(super) proofs: BTreeMap<PublicKey, Signature>,
 }
 

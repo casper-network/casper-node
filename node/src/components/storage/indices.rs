@@ -1,7 +1,7 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
 use casper_types::{
-    BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash, EraId, VersionedBlockBody,
+    BlockBody, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash, EraId,
 };
 
 use super::{FatalStorageError, Storage};
@@ -50,10 +50,10 @@ impl Storage {
     /// Inserts the relevant entries to the index.
     ///
     /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_versioned_block_body_to_deploy_index(
+    pub(crate) fn insert_block_body_to_deploy_index(
         deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
         block_hash: BlockHash,
-        block_body: &VersionedBlockBody,
+        block_body: &BlockBody,
         block_height: u64,
     ) -> Result<(), FatalStorageError> {
         if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
@@ -80,10 +80,10 @@ impl Storage {
     /// Inserts the relevant entries to the index.
     ///
     /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_block_body_to_deploy_index(
+    pub(crate) fn insert_block_body_v2_to_deploy_index(
         deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
         block_hash: BlockHash,
-        block_body: &BlockBody,
+        block_body: &BlockBodyV2,
         block_height: u64,
     ) -> Result<(), FatalStorageError> {
         if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {

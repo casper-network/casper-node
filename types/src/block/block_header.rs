@@ -3,15 +3,17 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
-use super::Block;
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use super::JsonBlockHeader;
+use super::BlockV2;
 use super::{BlockHash, EraEnd};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
@@ -20,21 +22,59 @@ use crate::{
 #[cfg(feature = "std")]
 use crate::{ActivationPoint, ProtocolConfig};
 
-/// The header portion of a [`Block`].
+#[cfg(feature = "json-schema")]
+static BLOCK_HEADER: Lazy<BlockHeader> = Lazy::new(|| {
+    let parent_hash = BlockHash::new(Digest::from([7; Digest::LENGTH]));
+    let state_root_hash = Digest::from([8; Digest::LENGTH]);
+    let random_bit = true;
+    let era_end = Some(EraEnd::example().clone());
+    let timestamp = *Timestamp::example();
+    let era_id = EraId::from(1);
+    let height: u64 = 10;
+    let protocol_version = ProtocolVersion::V1_0_0;
+    let accumulated_seed = Digest::hash_pair(Digest::from([9; Digest::LENGTH]), [random_bit as u8]);
+    let body_hash = Digest::from([5; Digest::LENGTH]);
+    BlockHeader::new(
+        parent_hash,
+        state_root_hash,
+        body_hash,
+        random_bit,
+        accumulated_seed,
+        era_end,
+        timestamp,
+        era_id,
+        height,
+        protocol_version,
+        #[cfg(any(feature = "once_cell", test))]
+        OnceCell::new(),
+    )
+});
+
+/// The header portion of a block.
 #[derive(Clone, Eq, Debug)]
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct BlockHeader {
+    /// The parent block's hash.
     pub(super) parent_hash: BlockHash,
+    /// The root hash of global state after the deploys in this block have been executed.
     pub(super) state_root_hash: Digest,
+    /// The hash of the block's body.
     pub(super) body_hash: Digest,
+    /// A random bit needed for initializing a future era.
     pub(super) random_bit: bool,
-    /// The seed for the sequence of leaders accumulated from random_bits.
+    /// A seed needed for initializing a future era.
     pub(super) accumulated_seed: Digest,
+    /// The `EraEnd` of a block if it is a switch block.
     pub(super) era_end: Option<EraEnd>,
+    /// The timestamp from when the block was proposed.
     pub(super) timestamp: Timestamp,
+    /// The era ID in which this block was created.
     pub(super) era_id: EraId,
+    /// The height of this block, i.e. the number of ancestors.
     pub(super) height: u64,
+    /// The protocol version of the network from when this block was created.
     pub(super) protocol_version: ProtocolVersion,
     #[cfg_attr(any(all(feature = "std", feature = "once_cell"), test), serde(skip))]
     #[cfg_attr(
@@ -190,6 +230,13 @@ impl BlockHeader {
         self.block_hash.get_or_init(|| block_hash);
     }
 
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &BLOCK_HEADER
+    }
+
     #[cfg(test)]
     pub(super) fn set_body_hash(&mut self, new_body_hash: Digest) {
         self.body_hash = new_body_hash;
@@ -326,34 +373,15 @@ impl FromBytes for BlockHeader {
     }
 }
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonBlockHeader> for BlockHeader {
-    fn from(block_header: JsonBlockHeader) -> Self {
-        BlockHeader {
-            parent_hash: block_header.parent_hash,
-            state_root_hash: block_header.state_root_hash,
-            body_hash: block_header.body_hash,
-            random_bit: block_header.random_bit,
-            accumulated_seed: block_header.accumulated_seed,
-            era_end: block_header.era_end.map(EraEnd::from),
-            timestamp: block_header.timestamp,
-            era_id: block_header.era_id,
-            height: block_header.height,
-            protocol_version: block_header.protocol_version,
-            block_hash: OnceCell::new(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, Block};
+    use crate::{testing::TestRng, BlockV2};
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = Block::random(rng);
+        let block = BlockV2::random(rng);
         bytesrepr::test_serialization_roundtrip(block.header());
     }
 }

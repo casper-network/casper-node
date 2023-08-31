@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use futures::FutureExt;
 
-use casper_types::{BlockHash, BlockValidationError, VersionedBlock};
+use casper_types::{Block, BlockHash, BlockValidationError};
 
 use crate::{
     components::fetcher::{
@@ -18,12 +18,12 @@ use crate::{
     types::NodeId,
 };
 
-impl FetchItem for VersionedBlock {
+impl FetchItem for Block {
     type Id = BlockHash;
     type ValidationError = BlockValidationError;
     type ValidationMetadata = EmptyValidationMetadata;
 
-    const TAG: Tag = Tag::VersionedBlock;
+    const TAG: Tag = Tag::Block;
 
     fn fetch_id(&self) -> Self::Id {
         *self.hash()
@@ -35,12 +35,10 @@ impl FetchItem for VersionedBlock {
 }
 
 #[async_trait]
-impl ItemFetcher<VersionedBlock> for Fetcher<VersionedBlock> {
+impl ItemFetcher<Block> for Fetcher<Block> {
     const SAFE_TO_RESPOND_TO_ALL: bool = false;
 
-    fn item_handles(
-        &mut self,
-    ) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<VersionedBlock>>> {
+    fn item_handles(&mut self) -> &mut HashMap<BlockHash, HashMap<NodeId, ItemHandle<Block>>> {
         &mut self.item_handles
     }
 
@@ -55,17 +53,17 @@ impl ItemFetcher<VersionedBlock> for Fetcher<VersionedBlock> {
     async fn get_locally<REv: From<StorageRequest> + From<BlockAccumulatorRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         id: BlockHash,
-    ) -> Option<VersionedBlock> {
-        effect_builder.get_versioned_block_from_storage(id).await
+    ) -> Option<Block> {
+        effect_builder.get_block_from_storage(id).await
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item: VersionedBlock,
-    ) -> StoringState<'a, VersionedBlock> {
+        item: Block,
+    ) -> StoringState<'a, Block> {
         StoringState::Enqueued(
             effect_builder
-                .put_versioned_block_to_storage(Arc::new(item))
+                .put_block_to_storage(Arc::new(item))
                 .map(|_| ())
                 .boxed(),
         )
@@ -73,7 +71,7 @@ impl ItemFetcher<VersionedBlock> for Fetcher<VersionedBlock> {
 
     async fn announce_fetched_new_item<REv: From<FetchedNewBlockAnnouncement> + Send>(
         effect_builder: EffectBuilder<REv>,
-        item: VersionedBlock,
+        item: Block,
         peer: NodeId,
     ) {
         effect_builder

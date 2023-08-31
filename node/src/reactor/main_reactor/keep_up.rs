@@ -709,7 +709,7 @@ fn is_timestamp_at_ttl(
 mod tests {
     use std::str::FromStr;
 
-    use casper_types::{testing::TestRng, Block, ProtocolVersion, TimeDiff, Timestamp};
+    use casper_types::{testing::TestRng, BlockV2, ProtocolVersion, TimeDiff, Timestamp};
 
     use crate::reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl};
 
@@ -774,7 +774,7 @@ mod tests {
     fn should_detect_ttl_at_genesis() {
         let mut rng = TestRng::new();
 
-        let latest_switch_block = Block::random_with_specifics(
+        let latest_switch_block = BlockV2::random_with_specifics(
             &mut rng,
             100.into(),
             1000,
@@ -783,7 +783,7 @@ mod tests {
             None,
         );
 
-        let latest_orphaned_block = Block::random_with_specifics(
+        let latest_orphaned_block = BlockV2::random_with_specifics(
             &mut rng,
             0.into(),
             0,

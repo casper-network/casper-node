@@ -15,7 +15,7 @@ use thiserror::Error as ThisError;
 use tokio::time;
 
 use casper_types::{
-    generate_ed25519_keypair, testing::TestRng, ActivationPoint, Block, Chainspec,
+    generate_ed25519_keypair, testing::TestRng, ActivationPoint, BlockV2, Chainspec,
     ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, SemVer, Signature, U512,
 };
 use reactor::ReactorEvent;
@@ -46,11 +46,11 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const RECENT_ERA_INTERVAL: u64 = 1;
 const VALIDATOR_SLOTS: u32 = 100;
 
-fn meta_block_with_default_state(block: Arc<Block>) -> MetaBlock {
+fn meta_block_with_default_state(block: Arc<BlockV2>) -> MetaBlock {
     MetaBlock::new(block, vec![], MetaBlockState::new())
 }
 
-fn signatures_for_block(block: &Block, signatures: &Vec<FinalitySignature>) -> BlockSignatures {
+fn signatures_for_block(block: &BlockV2, signatures: &Vec<FinalitySignature>) -> BlockSignatures {
     let mut block_signatures = BlockSignatures::new(*block.hash(), block.era_id());
     for signature in signatures {
         block_signatures.insert_signature(signature.clone());
@@ -377,7 +377,7 @@ fn upsert_acceptor() {
 #[test]
 fn acceptor_get_peers() {
     let mut rng = TestRng::new();
-    let block = Block::random(&mut rng);
+    let block = BlockV2::random(&mut rng);
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     assert!(acceptor.peers().is_empty());
     let first_peer = NodeId::random(&mut rng);
@@ -392,7 +392,7 @@ fn acceptor_get_peers() {
 fn acceptor_register_finality_signature() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(BlockV2::random(&mut rng));
     let mut meta_block = MetaBlock::new(block.clone(), vec![], MetaBlockState::new());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
@@ -535,12 +535,12 @@ fn acceptor_register_finality_signature() {
 fn acceptor_register_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(BlockV2::random(&mut rng));
     let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create a finality signature with the wrong block hash.
-    let wrong_block = meta_block_with_default_state(Arc::new(Block::random(&mut rng)));
+    let wrong_block = meta_block_with_default_state(Arc::new(BlockV2::random(&mut rng)));
     assert!(matches!(
         acceptor.register_block(wrong_block, None).unwrap_err(),
         Error::BlockHashMismatch {
@@ -551,7 +551,7 @@ fn acceptor_register_block() {
 
     {
         // Invalid block case.
-        let invalid_block = Arc::new(Block::random_invalid(&mut rng));
+        let invalid_block = Arc::new(BlockV2::random_invalid(&mut rng));
         let mut invalid_block_acceptor = BlockAcceptor::new(*invalid_block.hash(), vec![]);
         let invalid_meta_block = meta_block_with_default_state(invalid_block);
         let malicious_peer = NodeId::random(&mut rng);
@@ -612,7 +612,7 @@ fn acceptor_register_block() {
 fn acceptor_should_store_block() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(BlockV2::random(&mut rng));
     let mut meta_block = meta_block_with_default_state(block.clone());
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
@@ -746,7 +746,7 @@ fn acceptor_should_correctly_bound_the_signatures() {
     let validator_slots = 2;
 
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(BlockV2::random(&mut rng));
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     let first_peer = NodeId::random(&mut rng);
 
@@ -773,7 +773,7 @@ fn acceptor_signatures_bound_should_not_be_triggered_if_peers_are_different() {
     let validator_slots = 3;
 
     // Create a block and an acceptor for it.
-    let block = Arc::new(Block::random(&mut rng));
+    let block = Arc::new(BlockV2::random(&mut rng));
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     let first_peer = NodeId::random(&mut rng);
     let second_peer = NodeId::random(&mut rng);
@@ -848,8 +848,14 @@ fn accumulator_should_leap() {
 
     // Create an acceptor to change the highest usable block height.
     {
-        let block =
-            Block::random_with_specifics(&mut rng, era_id, 1, ProtocolVersion::V1_0_0, false, None);
+        let block = BlockV2::random_with_specifics(
+            &mut rng,
+            era_id,
+            1,
+            ProtocolVersion::V1_0_0,
+            false,
+            None,
+        );
 
         block_accumulator
             .block_acceptors
@@ -864,7 +870,7 @@ fn accumulator_should_leap() {
     let block_height = attempt_execution_threshold;
     // Insert an acceptor within execution range
     {
-        let block = Block::random_with_specifics(
+        let block = BlockV2::random_with_specifics(
             &mut rng,
             era_id,
             block_height,
@@ -888,7 +894,7 @@ fn accumulator_should_leap() {
     let centurion = 100;
     // Insert an upgrade boundary
     {
-        let block = Block::random_with_specifics(
+        let block = BlockV2::random_with_specifics(
             &mut rng,
             era_id,
             centurion,
@@ -971,7 +977,7 @@ fn expected_leap_instruction(expected: LeapInstruction, actual: LeapInstruction)
     );
 }
 
-fn block_acceptor(block: Block) -> BlockAcceptor {
+fn block_acceptor(block: BlockV2) -> BlockAcceptor {
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     // One finality signature from our only validator for block 1.
     acceptor
@@ -1170,7 +1176,7 @@ fn accumulator_purge() {
         .contains_key(&peer_2));
 
     // Create a block just in range of block 3 to not qualify for a purge.
-    let in_range_block = Arc::new(Block::random_with_specifics(
+    let in_range_block = Arc::new(BlockV2::random_with_specifics(
         &mut rng,
         block_3.era_id(),
         block_3.height() - block_accumulator.attempt_execution_threshold,
@@ -1205,7 +1211,7 @@ fn accumulator_purge() {
     }
 
     // Create a block just out of range of block 3 to qualify for a purge.
-    let out_of_range_block = Arc::new(Block::random_with_specifics(
+    let out_of_range_block = Arc::new(BlockV2::random_with_specifics(
         &mut rng,
         block_3.era_id(),
         block_3.height() - block_accumulator.attempt_execution_threshold - 1,
@@ -1286,7 +1292,7 @@ fn accumulator_purge() {
     }
 
     // Create a future block after block 3.
-    let future_block = Arc::new(Block::random_with_specifics(
+    let future_block = Arc::new(BlockV2::random_with_specifics(
         &mut rng,
         block_3.era_id(),
         block_3.height() + block_accumulator.attempt_execution_threshold,
@@ -1322,7 +1328,7 @@ fn accumulator_purge() {
 
     // Create a future block after block 3, but which will not have strict
     // finality.
-    let future_unsigned_block = Arc::new(Block::random_with_specifics(
+    let future_unsigned_block = Arc::new(BlockV2::random_with_specifics(
         &mut rng,
         block_3.era_id(),
         block_3.height() + block_accumulator.attempt_execution_threshold * 2,
@@ -1411,13 +1417,13 @@ fn register_evw_for_era(validator_matrix: &mut ValidatorMatrix, era_id: EraId) {
     validator_matrix.register_era_validator_weights(weights);
 }
 
-fn generate_next_block(rng: &mut TestRng, block: &Block) -> Block {
+fn generate_next_block(rng: &mut TestRng, block: &BlockV2) -> BlockV2 {
     let era_id = if block.is_switch_block() {
         block.era_id().successor()
     } else {
         block.era_id()
     };
-    Block::random_with_specifics(
+    BlockV2::random_with_specifics(
         rng,
         era_id,
         // Safe because generated heights can't get to `u64::MAX`.
@@ -1428,12 +1434,12 @@ fn generate_next_block(rng: &mut TestRng, block: &Block) -> Block {
     )
 }
 
-fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
+fn generate_non_genesis_block(rng: &mut TestRng) -> BlockV2 {
     let era = rng.gen_range(10..20);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
 
-    Block::random_with_specifics(
+    BlockV2::random_with_specifics(
         rng,
         EraId::from(era),
         height,
@@ -1443,8 +1449,8 @@ fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
     )
 }
 
-fn generate_older_block(rng: &mut TestRng, block: &Block, height_difference: u64) -> Block {
-    Block::random_with_specifics(
+fn generate_older_block(rng: &mut TestRng, block: &BlockV2, height_difference: u64) -> BlockV2 {
+    BlockV2::random_with_specifics(
         rng,
         block.era_id().predecessor().unwrap_or_default(),
         block.height() - height_difference,
@@ -1526,7 +1532,7 @@ async fn block_accumulator_reactor_flow() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block(block_1.hash())
+            .read_block_v2(block_1.hash())
             .unwrap()
             .unwrap();
         assert_eq!(expected_block, block_1);
@@ -1578,7 +1584,7 @@ async fn block_accumulator_reactor_flow() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block(block_2.hash())
+            .read_block_v2(block_2.hash())
             .unwrap()
             .unwrap();
         assert_eq!(expected_block, block_2);
@@ -1785,7 +1791,7 @@ async fn block_accumulator_reactor_flow() {
             .contains_key(older_block.hash()));
     }
 
-    let old_era_block = Block::random_with_specifics(
+    let old_era_block = BlockV2::random_with_specifics(
         &mut rng,
         block_1.era_id() - RECENT_ERA_INTERVAL - 1,
         1,
@@ -1916,7 +1922,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block(block_1.hash())
+            .read_block_v2(block_1.hash())
             .unwrap()
             .unwrap();
         assert_eq!(expected_block, block_1);

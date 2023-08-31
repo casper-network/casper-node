@@ -7,6 +7,8 @@ use core::iter;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
 
@@ -19,20 +21,24 @@ use rand::Rng;
 use crate::U512;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    BlockBodyV1, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd, EraId,
-    ProtocolVersion, PublicKey, Timestamp, VersionedBlock,
+    Block, BlockBodyV1, BlockHash, BlockHeader, BlockValidationError, DeployHash, Digest, EraEnd,
+    EraId, ProtocolVersion, PublicKey, Timestamp,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, EraReport};
 
-/// A block after execution, with the resulting post-state-hash.  This is the core component of the
-/// Casper linear blockchain.
+/// A block after execution, with the resulting global state root hash. This is the core component
+/// of the Casper linear blockchain. Version 1.
 #[cfg_attr(any(feature = "std", test), derive(Serialize, Deserialize))]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[derive(Clone, Eq, PartialEq, Debug)]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct BlockV1 {
+    /// The block hash identifying this block.
     pub(super) hash: BlockHash,
+    /// The header portion of the block.
     pub(super) header: BlockHeader,
+    /// The body portion of the block.
     pub(super) body: BlockBodyV1,
 }
 
@@ -189,7 +195,7 @@ impl BlockV1 {
         let actual_block_header_hash = self.header().block_hash();
         if *self.hash() != actual_block_header_hash {
             return Err(BlockValidationError::UnexpectedBlockHash {
-                block: Box::new(VersionedBlock::V1(self.clone())),
+                block: Box::new(Block::V1(self.clone())),
                 actual_block_hash: actual_block_header_hash,
             });
         }
@@ -197,7 +203,7 @@ impl BlockV1 {
         let actual_block_body_hash = self.body.hash();
         if *self.header.body_hash() != actual_block_body_hash {
             return Err(BlockValidationError::UnexpectedBodyHash {
-                block: Box::new(VersionedBlock::V1(self.clone())),
+                block: Box::new(Block::V1(self.clone())),
                 actual_block_body_hash,
             });
         }
@@ -431,6 +437,8 @@ impl FromBytes for BlockV1 {
 
 #[cfg(test)]
 mod tests {
+    use crate::Block;
+
     use super::*;
 
     #[test]
@@ -450,7 +458,7 @@ mod tests {
         block.hash = block.header.block_hash();
 
         let expected_error = BlockValidationError::UnexpectedBodyHash {
-            block: Box::new(VersionedBlock::V1(block.clone())),
+            block: Box::new(Block::V1(block.clone())),
             actual_block_body_hash: block.body.hash(),
         };
         assert_eq!(block.verify(), Err(expected_error));
@@ -465,7 +473,7 @@ mod tests {
         block.hash = bogus_block_hash;
 
         let expected_error = BlockValidationError::UnexpectedBlockHash {
-            block: Box::new(VersionedBlock::V1(block.clone())),
+            block: Box::new(Block::V1(block.clone())),
             actual_block_hash: block.header.block_hash(),
         };
         assert_eq!(block.verify(), Err(expected_error));

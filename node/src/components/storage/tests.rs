@@ -18,7 +18,7 @@ use casper_types::{
     ApprovalsHash, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, BlockV1,
     BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionResult,
     FinalitySignature, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TimeDiff,
-    Transfer, URef, VersionedBlock, U512,
+    Transfer, URef, U512,
 };
 use tempfile::tempdir;
 
@@ -81,7 +81,7 @@ fn create_sync_leap_test_chain(
     non_signed_blocks: &[u64], // indices of blocks to not be signed
     include_switch_block_at_tip: bool,
     maybe_recent_era_count: Option<u64>, // if Some, override default `RECENT_ERA_COUNT`
-) -> (Storage, Chainspec, Vec<Block>) {
+) -> (Storage, Chainspec, Vec<BlockV2>) {
     // Test chain:
     //      S0      S1 B2 B3 S4 B5 B6 S7 B8 B9 S10 B11 B12
     //  era 0 | era 1 | era 2  | era 3  | era 4   | era 5 ...
@@ -107,7 +107,7 @@ fn create_sync_leap_test_chain(
     let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
     trusted_validator_weights.insert(validator_public_key, U512::from(2000000000000u64));
 
-    let mut blocks: Vec<Block> = vec![];
+    let mut blocks: Vec<BlockV2> = vec![];
     let block_count = 13 + include_switch_block_at_tip as u64;
     (0_u64..block_count).for_each(|height| {
         let is_switch = height == 0 || height % 3 == 1;
@@ -122,7 +122,7 @@ fn create_sync_leap_test_chain(
             *blocks.get((height - 1) as usize).unwrap().hash()
         };
 
-        let block = Block::random_with_specifics_and_parent_and_validator_weights(
+        let block = BlockV2::random_with_specifics_and_parent_and_validator_weights(
             &mut harness.rng,
             era_id,
             height,
@@ -138,7 +138,7 @@ fn create_sync_leap_test_chain(
         blocks.push(block);
     });
     blocks.iter().for_each(|block| {
-        storage.write_block(block).unwrap();
+        storage.write_block_v2(block).unwrap();
 
         let fs = FinalitySignature::create(*block.hash(), block.era_id(), &validator_secret_key);
         assert!(fs.is_verified().is_ok());
@@ -275,20 +275,20 @@ fn get_block_header_at_height(
 }
 
 /// Requests block at a specific height from a storage component.
-fn get_block_at_height(storage: &mut Storage, height: u64) -> Option<VersionedBlock> {
+fn get_block_at_height(storage: &mut Storage, height: u64) -> Option<Block> {
     storage
         .read_block_by_height(height)
         .expect("could not get block by height")
 }
 
-/// Loads a block from a storage component.
-fn get_block(
+/// Loads a block v2 from a storage component.
+fn get_block_v2(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
-) -> Option<Block> {
+) -> Option<BlockV2> {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetBlock {
+        StorageRequest::GetBlockV2 {
             block_hash,
             responder,
         }
@@ -299,13 +299,13 @@ fn get_block(
 }
 
 /// Loads a block from a storage component.
-fn get_versioned_block(
+fn get_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
-) -> Option<VersionedBlock> {
+) -> Option<Block> {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::GetVersionedBlock {
+        StorageRequest::GetBlock {
             block_hash,
             responder,
         }
@@ -404,7 +404,7 @@ fn get_naive_deploy_and_metadata(
 fn get_highest_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-) -> Option<VersionedBlock> {
+) -> Option<Block> {
     let response = harness.send_request(storage, |responder| {
         StorageRequest::GetHighestCompleteBlock { responder }.into()
     });
@@ -428,11 +428,11 @@ fn get_highest_complete_block_header(
 fn put_complete_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-    block: Arc<Block>,
+    block: Arc<BlockV2>,
 ) -> bool {
     let block_height = block.height();
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutBlock { block, responder }.into()
+        StorageRequest::PutBlockV2 { block, responder }.into()
     });
     assert!(harness.is_idle());
     harness.send_request(storage, move |responder| {
@@ -464,13 +464,13 @@ fn mark_block_complete(
 }
 
 /// Stores a block in a storage component.
-fn put_versioned_block(
+fn put_block(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
-    block: Arc<VersionedBlock>,
+    block: Arc<Block>,
 ) -> bool {
     let response = harness.send_request(storage, move |responder| {
-        StorageRequest::PutVersionedBlock { block, responder }.into()
+        StorageRequest::PutBlock { block, responder }.into()
     });
     assert!(harness.is_idle());
     response
@@ -689,7 +689,7 @@ fn get_block_of_non_existing_block_returns_none() {
     let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
-    let response = get_block(&mut harness, &mut storage, block_hash);
+    let response = get_block_v2(&mut harness, &mut storage, block_hash);
 
     assert!(response.is_none());
     assert!(harness.is_idle());
@@ -700,7 +700,7 @@ fn read_block_by_height_with_available_block_range() {
     let mut harness = ComponentHarness::default();
 
     // Create a random block, load and store it.
-    let block_33 = Arc::new(Block::random_with_specifics(
+    let block_33 = Arc::new(BlockV2::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         33,
@@ -726,7 +726,7 @@ fn read_block_by_height_with_available_block_range() {
     );
 
     // Create a random block as a different height, load and store it.
-    let block_14 = Arc::new(Block::random_with_specifics(
+    let block_14 = Arc::new(BlockV2::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         14,
@@ -750,7 +750,7 @@ fn can_retrieve_block_by_height() {
     let mut harness = ComponentHarness::default();
 
     // Create some random blocks, load and store them.
-    let block_33 = Arc::new(Block::random_with_specifics(
+    let block_v2_33 = Arc::new(BlockV2::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         33,
@@ -758,9 +758,9 @@ fn can_retrieve_block_by_height() {
         true,
         None,
     ));
-    let versioned_block_33: VersionedBlock = (*block_33).clone().into();
+    let block_33: Block = (*block_v2_33).clone().into();
 
-    let block_14 = Arc::new(Block::random_with_specifics(
+    let block_v2_14 = Arc::new(BlockV2::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         14,
@@ -768,9 +768,9 @@ fn can_retrieve_block_by_height() {
         false,
         None,
     ));
-    let versioned_block_14: VersionedBlock = (*block_14).clone().into();
+    let block_14: Block = (*block_v2_14).clone().into();
 
-    let block_99 = Arc::new(Block::random_with_specifics(
+    let block_v2_99 = Arc::new(BlockV2::random_with_specifics(
         &mut harness.rng,
         EraId::new(2),
         99,
@@ -778,7 +778,7 @@ fn can_retrieve_block_by_height() {
         true,
         None,
     ));
-    let versioned_block_99: VersionedBlock = (*block_99).clone().into();
+    let block_99: Block = (*block_v2_99).clone().into();
 
     let mut storage = storage_fixture(&harness);
 
@@ -795,16 +795,16 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting 33 changes this.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_33.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&versioned_block_33)
+        Some(&block_33)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -812,32 +812,32 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 14, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&versioned_block_33)
+        Some(&block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, true).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 14, no change in highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_14.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&versioned_block_33)
+        Some(&block_33)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
-        Some(&versioned_block_14)
+        Some(&block_14)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, true).as_ref(),
@@ -845,58 +845,58 @@ fn can_retrieve_block_by_height() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_14.header())
+        Some(block_v2_14.header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&versioned_block_33)
+        Some(&block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 99, changes highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_99.clone());
     // Mark block 99 as complete.
     storage.completed_blocks.insert(99);
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&versioned_block_99)
+        Some(&block_99)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_99.header())
+        Some(block_v2_99.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
-        Some(&versioned_block_14)
+        Some(&block_14)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_14.header())
+        Some(block_v2_14.header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&versioned_block_33)
+        Some(&block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 99).as_ref(),
-        Some(&versioned_block_99)
+        Some(&block_99)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 99, false).as_ref(),
-        Some(block_99.header())
+        Some(block_v2_99.header())
     );
 }
 
@@ -907,7 +907,7 @@ fn different_block_at_height_is_fatal() {
     let mut storage = storage_fixture(&harness);
 
     // Create two different blocks at the same height.
-    let block_44_a = Arc::new(Block::random_with_specifics(
+    let block_44_a = Arc::new(BlockV2::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         44,
@@ -915,7 +915,7 @@ fn different_block_at_height_is_fatal() {
         false,
         None,
     ));
-    let block_44_b = Arc::new(Block::random_with_specifics(
+    let block_44_b = Arc::new(BlockV2::random_with_specifics(
         &mut harness.rng,
         EraId::new(1),
         44,
@@ -1306,21 +1306,26 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = Block::random(&mut harness.rng);
-    let versioned_block: VersionedBlock = block.clone().into();
-    let block_height = block.height();
+    let block_v2 = BlockV2::random(&mut harness.rng);
+    let block: Block = block_v2.clone().into();
+    let block_height = block_v2.height();
 
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
     let execution_result: ExecutionResult = harness.rng.gen();
     put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
-    put_complete_block(&mut harness, &mut storage, Arc::new(block.clone()));
+    put_complete_block(&mut harness, &mut storage, Arc::new(block_v2.clone()));
     let mut execution_results = HashMap::new();
     execution_results.insert(*deploy.hash(), execution_result.clone());
-    put_execution_results(&mut harness, &mut storage, *block.hash(), execution_results);
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        *block_v2.hash(),
+        execution_results,
+    );
     assert_eq!(
         get_block_at_height(&mut storage, block_height).expect("block not indexed properly"),
-        versioned_block
+        block
     );
 
     // After storing everything, destroy the harness and component, then rebuild using the
@@ -1332,9 +1337,9 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         .build();
     let mut storage = storage_fixture(&harness);
 
-    let actual_block = get_block(&mut harness, &mut storage, *block.hash())
+    let actual_block = get_block_v2(&mut harness, &mut storage, *block_v2.hash())
         .expect("missing block we stored earlier");
-    assert_eq!(actual_block, block);
+    assert_eq!(actual_block, block_v2);
     let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
     assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
@@ -1347,11 +1352,11 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         _ => panic!("Unexpected missing metadata."),
     };
     assert_eq!(execution_results.len(), 1);
-    assert_eq!(execution_results[block.hash()], execution_result);
+    assert_eq!(execution_results[block_v2.hash()], execution_result);
 
     assert_eq!(
         get_block_at_height(&mut storage, block_height).expect("block index was not restored"),
-        versioned_block
+        block
     );
 }
 
@@ -1367,10 +1372,10 @@ fn should_hard_reset() {
         .collect();
 
     // Create and store 8 blocks, 0-2 in era 0, 3-5 in era 1, and 6,7 in era 2.
-    let blocks: Vec<Block> = (0..blocks_count)
+    let blocks: Vec<BlockV2> = (0..blocks_count)
         .map(|height| {
             let is_switch = height % blocks_per_era == blocks_per_era - 1;
-            Block::random_with_specifics(
+            BlockV2::random_with_specifics(
                 &mut harness.rng,
                 EraId::from(height as u64 / 3),
                 height as u64,
@@ -1426,7 +1431,7 @@ fn should_hard_reset() {
 
     // Check the highest block is #7.
     assert_eq!(
-        Some(VersionedBlock::from(blocks[blocks_count - 1].clone())),
+        Some(Block::from(blocks[blocks_count - 1].clone())),
         get_highest_complete_block(&mut harness, &mut storage)
     );
 
@@ -1440,7 +1445,7 @@ fn should_hard_reset() {
         let highest_block = get_highest_complete_block(&mut harness, &mut storage);
         if reset_era > 0 {
             assert_eq!(
-                VersionedBlock::from(blocks[blocks_per_era * reset_era - 1].clone()),
+                Block::from(blocks[blocks_per_era * reset_era - 1].clone()),
                 highest_block.unwrap()
             );
         } else {
@@ -1449,7 +1454,7 @@ fn should_hard_reset() {
 
         // Check deleted blocks can't be retrieved.
         for (index, block) in blocks.iter().enumerate() {
-            let result = get_block(&mut harness, &mut storage, *block.hash());
+            let result = get_block_v2(&mut harness, &mut storage, *block.hash());
             let should_get_block = index < blocks_per_era * reset_era;
             assert_eq!(should_get_block, result.is_some());
         }
@@ -1605,7 +1610,7 @@ fn can_put_and_get_block() {
     let only_from_available_block_range = false;
 
     // Create a random block, store and load it.
-    let block = Block::random(&mut harness.rng);
+    let block = BlockV2::random(&mut harness.rng);
     let block = Arc::new(block);
 
     let mut storage = storage_fixture(&harness);
@@ -1620,7 +1625,7 @@ fn can_put_and_get_block() {
         "storing block the second time should have returned `true`"
     );
 
-    let response = get_block(&mut harness, &mut storage, *block.hash());
+    let response = get_block_v2(&mut harness, &mut storage, *block.hash());
     assert_eq!(response.as_ref(), Some(&*block));
 
     // Also ensure we can retrieve just the header.
@@ -1844,7 +1849,7 @@ fn should_restrict_returned_blocks() {
 
     // Create the following disjoint sequences: 1-2 4-5
     [1, 2, 4, 5].iter().for_each(|height| {
-        let block = Block::random_with_specifics(
+        let block = BlockV2::random_with_specifics(
             &mut harness.rng,
             EraId::from(1),
             *height,
@@ -1852,7 +1857,7 @@ fn should_restrict_returned_blocks() {
             false,
             None,
         );
-        storage.write_block(&block).unwrap();
+        storage.write_block_v2(&block).unwrap();
         storage.completed_blocks.insert(*height);
     });
 
@@ -1910,7 +1915,7 @@ fn should_get_block_header_by_height() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = Block::random(&mut harness.rng);
+    let block = BlockV2::random(&mut harness.rng);
     let expected_header = block.header().clone();
     let height = block.height();
 
@@ -1935,12 +1940,12 @@ fn check_force_resync_with_marker_file() {
     assert!(!force_resync_file_path.exists());
 
     // Add a couple of blocks into storage.
-    let first_block = Block::random(&mut harness.rng);
+    let first_block = BlockV2::random(&mut harness.rng);
     put_complete_block(&mut harness, &mut storage, Arc::new(first_block.clone()));
     let second_block = loop {
         // We need to make sure that the second random block has different height than the first
         // one.
-        let block = Block::random(&mut harness.rng);
+        let block = BlockV2::random(&mut harness.rng);
         if block.height() != first_block.height() {
             break block;
         }
@@ -2071,8 +2076,8 @@ fn copy_dir_recursive(src: impl AsRef<Path>, dest: impl AsRef<Path>) -> io::Resu
 fn can_retrieve_block_by_height_with_different_block_versions() {
     let mut harness = ComponentHarness::default();
 
-    // BlockV1 as a VersionedBlock
-    let block_14: Arc<VersionedBlock> = Arc::new(
+    // BlockV1 as a versioned Block
+    let block_14: Arc<Block> = Arc::new(
         BlockV1::build_for_test(
             TestBlockBuilder::new()
                 .era(1)
@@ -2083,34 +2088,34 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
         .into(),
     );
 
-    // BlockV2 as a VersionedBlock
-    let block_33: Arc<BlockV2> = Arc::new(
+    // BlockV2 as a versioned Block
+    let block_v2_33: Arc<BlockV2> = Arc::new(
         TestBlockBuilder::new()
             .era(1)
             .height(33)
             .switch_block(true)
             .build(&mut harness.rng),
     );
-    let versioned_block_33: Arc<VersionedBlock> = Arc::new((*block_33).clone().into());
+    let block_33: Arc<Block> = Arc::new((*block_v2_33).clone().into());
 
     // BlockV2
-    let block_99: Arc<BlockV2> = Arc::new(
+    let block_v2_99: Arc<BlockV2> = Arc::new(
         TestBlockBuilder::new()
             .era(2)
             .height(99)
             .switch_block(true)
             .build(&mut harness.rng),
     );
-    let versioned_block_99: Arc<VersionedBlock> = Arc::new((*block_99).clone().into());
+    let block_99: Arc<Block> = Arc::new((*block_v2_99).clone().into());
 
     let mut storage = storage_fixture(&harness);
 
+    assert!(get_block_v2(&mut harness, &mut storage, *block_14.hash()).is_none());
+    assert!(get_block_v2(&mut harness, &mut storage, *block_v2_33.hash()).is_none());
+    assert!(get_block_v2(&mut harness, &mut storage, *block_v2_99.hash()).is_none());
     assert!(get_block(&mut harness, &mut storage, *block_14.hash()).is_none());
-    assert!(get_block(&mut harness, &mut storage, *block_33.hash()).is_none());
-    assert!(get_block(&mut harness, &mut storage, *block_99.hash()).is_none());
-    assert!(get_versioned_block(&mut harness, &mut storage, *block_14.hash()).is_none());
-    assert!(get_versioned_block(&mut harness, &mut storage, *block_33.hash()).is_none());
-    assert!(get_versioned_block(&mut harness, &mut storage, *block_99.hash()).is_none());
+    assert!(get_block(&mut harness, &mut storage, *block_v2_33.hash()).is_none());
+    assert!(get_block(&mut harness, &mut storage, *block_v2_99.hash()).is_none());
     assert!(!is_block_stored(
         &mut harness,
         &mut storage,
@@ -2119,42 +2124,42 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     assert!(!is_block_stored(
         &mut harness,
         &mut storage,
-        *block_33.hash()
+        *block_v2_33.hash()
     ));
     assert!(!is_block_stored(
         &mut harness,
         &mut storage,
-        *block_99.hash()
+        *block_v2_99.hash()
     ));
 
-    let was_new = put_versioned_block(&mut harness, &mut storage, versioned_block_33.clone());
+    let was_new = put_block(&mut harness, &mut storage, block_33.clone());
     assert!(was_new);
     assert!(mark_block_complete(
         &mut harness,
         &mut storage,
-        block_33.height()
+        block_v2_33.height()
     ));
 
     // block is of the current version so it should be returned
-    assert!(get_block(&mut harness, &mut storage, *block_33.hash()).is_some());
+    assert!(get_block_v2(&mut harness, &mut storage, *block_v2_33.hash()).is_some());
 
     // block should be stored as versioned and should be returned
-    assert!(get_versioned_block(&mut harness, &mut storage, *block_33.hash()).is_some());
+    assert!(get_block(&mut harness, &mut storage, *block_v2_33.hash()).is_some());
 
     // block is stored since it was returned before
     assert!(is_block_stored(
         &mut harness,
         &mut storage,
-        *block_33.hash()
+        *block_v2_33.hash()
     ));
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&*versioned_block_33)
+        Some(&*block_33)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -2162,23 +2167,23 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     assert!(get_block_header_at_height(&mut storage, 14, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&*versioned_block_33)
+        Some(&*block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, true).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
-    let was_new = put_versioned_block(&mut harness, &mut storage, block_14.clone());
+    let was_new = put_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
 
     // block is not of the current version so don't return it
-    assert!(get_block(&mut harness, &mut storage, *block_14.hash()).is_none());
+    assert!(get_block_v2(&mut harness, &mut storage, *block_14.hash()).is_none());
 
     // block should be stored as versioned and should be returned
-    assert!(get_versioned_block(&mut harness, &mut storage, *block_14.hash()).is_some());
+    assert!(get_block(&mut harness, &mut storage, *block_14.hash()).is_some());
 
     // block is stored since it was returned before
     assert!(is_block_stored(
@@ -2189,11 +2194,11 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&*versioned_block_33)
+        Some(&*block_33)
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -2211,28 +2216,28 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&*versioned_block_33)
+        Some(&*block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 99, changes highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_99.clone());
     // Mark block 99 as complete.
     storage.completed_blocks.insert(99);
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&VersionedBlock::from((*block_99).clone()))
+        Some(&Block::from((*block_v2_99).clone()))
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_99.header())
+        Some(block_v2_99.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -2246,19 +2251,19 @@ fn can_retrieve_block_by_height_with_different_block_versions() {
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&*versioned_block_33)
+        Some(&*block_33)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_33.header())
+        Some(block_v2_33.header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 99).as_ref(),
-        Some(&*versioned_block_99)
+        Some(&*block_99)
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 99, false).as_ref(),
-        Some(block_99.header())
+        Some(block_v2_99.header())
     );
 }
 
@@ -2312,22 +2317,22 @@ fn assert_block_exists_in_storage(
 
     // GetBlock should return only blocks from storage that are of the current version.
     assert_eq!(
-        get_block(harness, storage, *block_hash).map_or(false, |_| true),
+        get_block_v2(harness, storage, *block_hash).map_or(false, |_| true),
         expect_exists_as_latest_version
     );
     assert_eq!(
         storage
-            .read_block(block_hash)
+            .read_block_v2(block_hash)
             .unwrap()
             .map_or(false, |_| true),
         expect_exists_as_latest_version
     );
 
-    // Check if we can get the block as a VersionedBlock.
-    let block = get_versioned_block(harness, storage, *block_hash);
+    // Check if we can get the block as a versioned Block.
+    let block = get_block(harness, storage, *block_hash);
     assert_eq!(
         storage
-            .read_versioned_block(block_hash)
+            .read_block(block_hash)
             .unwrap()
             .map_or(false, |_| true),
         expect_exists_as_versioned
@@ -2554,8 +2559,8 @@ fn check_block_operations_with_node_1_5_2_storage() {
         );
 
         // Check version
-        let block = get_versioned_block(&mut harness, &mut storage, *hash).unwrap();
-        assert!(matches!(block, VersionedBlock::V1(_)));
+        let block = get_block(&mut harness, &mut storage, *hash).unwrap();
+        assert!(matches!(block, Block::V1(_)));
 
         assert_eq!(block.height(), block_info.height);
 
@@ -2630,7 +2635,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
     // Now add some blocks and test if they can be retrieved correctly
     if let Some(new_lowest_height) = lowest_stored_block_height.checked_sub(1) {
         // Add a BlockV1 that precedes the lowest available block
-        let new_lowest_block: Arc<VersionedBlock> = Arc::new(
+        let new_lowest_block: Arc<Block> = Arc::new(
             BlockV1::build_for_test(
                 TestBlockBuilder::new()
                     .era(1)
@@ -2653,7 +2658,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
         );
 
         // Put the block to storage.
-        let was_new = put_versioned_block(&mut harness, &mut storage, new_lowest_block.clone());
+        let was_new = put_block(&mut harness, &mut storage, new_lowest_block.clone());
         assert!(was_new);
 
         let block_signatures = random_signatures(
@@ -2667,7 +2672,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
             block_signatures
         ));
 
-        // Check that the block was stored and can be fetched as a VersionedBlock.
+        // Check that the block was stored and can be fetched as a versioned Block.
         assert_block_exists_in_storage(
             &mut harness,
             &mut storage,
@@ -2688,7 +2693,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
         let new_highest_block_height = *storage.block_height_index.keys().max().unwrap() + 1;
 
         // Add a BlockV2 as a versioned block
-        let new_highest_block: Arc<VersionedBlock> = Arc::new(
+        let new_highest_block: Arc<Block> = Arc::new(
             TestBlockBuilder::new()
                 .era(50)
                 .height(new_highest_block_height)
@@ -2708,7 +2713,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
             false,
         );
 
-        let was_new = put_versioned_block(&mut harness, &mut storage, new_highest_block.clone());
+        let was_new = put_block(&mut harness, &mut storage, new_highest_block.clone());
         assert!(was_new);
 
         let block_signatures = random_signatures(
@@ -2722,8 +2727,8 @@ fn check_block_operations_with_node_1_5_2_storage() {
             block_signatures
         ));
 
-        // Check that the block was stored and can be fetched as a VersionedBlock or block at the
-        // latest version.
+        // Check that the block was stored and can be fetched as a versioned Block or
+        // as a block at the latest version.
         assert_block_exists_in_storage(
             &mut harness,
             &mut storage,
@@ -2743,7 +2748,7 @@ fn check_block_operations_with_node_1_5_2_storage() {
     {
         let new_highest_block_height = *storage.block_height_index.keys().max().unwrap() + 1;
 
-        // Add a BlockV2 as a versioned block
+        // Add a BlockV2 as a unversioned block
         let new_highest_block: Arc<BlockV2> = Arc::new(
             TestBlockBuilder::new()
                 .era(51)
@@ -2777,8 +2782,8 @@ fn check_block_operations_with_node_1_5_2_storage() {
             block_signatures
         ));
 
-        // Check that the block was stored and can be fetched as a VersionedBlock or block at the
-        // latest version.
+        // Check that the block was stored and can be fetched as a versioned Block or
+        // as a block at the latest version.
         assert_block_exists_in_storage(
             &mut harness,
             &mut storage,

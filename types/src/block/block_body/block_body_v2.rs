@@ -5,22 +5,28 @@ use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 #[cfg(any(feature = "once_cell", test))]
 use once_cell::sync::OnceCell;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use crate::JsonBlockBody;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     past_finality_signatures::PastFinalitySignatures,
     DeployHash, Digest, PublicKey,
 };
 
+/// The body portion of a block. Version 2.
 #[derive(Clone, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct BlockBodyV2 {
+    /// The public key of the validator which proposed the block.
     pub(super) proposer: PublicKey,
+    /// The deploy hashes of the non-transfer deploys within the block.
     pub(super) deploy_hashes: Vec<DeployHash>,
+    /// The deploy hashes of the transfers within the block.
     pub(super) transfer_hashes: Vec<DeployHash>,
+    /// The past finality signatures.
     pub(super) past_finality_signatures: PastFinalitySignatures,
     #[serde(skip)]
     #[cfg_attr(
@@ -167,19 +173,5 @@ impl FromBytes for BlockBodyV2 {
             hash: OnceCell::new(),
         };
         Ok((body, bytes))
-    }
-}
-
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonBlockBody> for BlockBodyV2 {
-    fn from(json_body: JsonBlockBody) -> Self {
-        BlockBodyV2 {
-            proposer: json_body.proposer,
-            deploy_hashes: json_body.deploy_hashes,
-            transfer_hashes: json_body.transfer_hashes,
-            past_finality_signatures: Default::default(), /* TODO[RC]: this will come from
-                                                           * JsonBlockBodyV2 */
-            hash: OnceCell::new(),
-        }
     }
 }

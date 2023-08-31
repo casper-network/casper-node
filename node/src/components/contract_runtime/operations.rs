@@ -19,7 +19,7 @@ use casper_storage::{
     },
 };
 use casper_types::{
-    Block, CLValue, Deploy, DeployHash, DeployHeader, Digest, EraEnd, EraId, EraReport,
+    BlockV2, CLValue, Deploy, DeployHash, DeployHeader, Digest, EraEnd, EraId, EraReport,
     ExecutionResult, Key, ProtocolVersion, PublicKey, U512,
 };
 
@@ -326,7 +326,7 @@ pub fn execute_finalized_block(
         }
     };
 
-    let block = Arc::new(Block::new(
+    let block = Arc::new(BlockV2::new(
         parent_hash,
         parent_seed,
         state_root_hash,

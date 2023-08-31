@@ -5,7 +5,7 @@ use either::Either;
 use serde::Serialize;
 
 use casper_execution_engine::engine_state;
-use casper_types::{BlockHash, BlockHeader, Deploy, Digest, FinalitySignature, VersionedBlock};
+use casper_types::{Block, BlockHash, BlockHeader, Deploy, Digest, FinalitySignature};
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
@@ -40,7 +40,7 @@ pub(crate) enum Event {
     #[from]
     BlockHeaderFetched(FetchResult<BlockHeader>),
     #[from]
-    BlockFetched(FetchResult<VersionedBlock>),
+    BlockFetched(FetchResult<Block>),
     #[from]
     ApprovalsHashesFetched(FetchResult<ApprovalsHashes>),
     #[from]

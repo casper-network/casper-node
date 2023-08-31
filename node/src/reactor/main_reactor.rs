@@ -18,7 +18,7 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
@@ -26,7 +26,7 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockHash, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature, PublicKey,
+    BlockHash, BlockV2, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature, PublicKey,
     TimeDiff, Timestamp, U512,
 };
 
@@ -155,7 +155,7 @@ pub(crate) struct MainReactor {
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
     deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
-    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
+    block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
         Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
 
@@ -562,19 +562,24 @@ impl reactor::Reactor for MainReactor {
                 _gossiped_block_id,
             )) => Effects::new(),
             MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
-                let versioned_block = &*block;
-                let block: Block = versioned_block.into();
-                reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator::Event::ReceivedBlock {
-                            block: Arc::new(block),
-                            sender: peer,
-                        },
-                    ),
-                )
+                // The block accumulator shouldn't concern itself with historical blocks that are
+                // being fetched. If the block is not convertible to the current version it means
+                // that it is surely a historical block.
+                if let Ok(block) = (*block).clone().try_into() {
+                    reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ReceivedBlock {
+                                block: Arc::new(block),
+                                sender: peer,
+                            },
+                        ),
+                    )
+                } else {
+                    Effects::new()
+                }
             }
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
@@ -1101,7 +1106,7 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
+        let block_gossiper = Gossiper::<{ BlockV2::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
             registry,

@@ -25,9 +25,9 @@ use casper_execution_engine::engine_state::{
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash, BlockHeader,
-    BlockSignatures, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId, Digest,
-    DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef, VersionedBlock,
+    BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId,
+    Digest, DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use super::GossipTarget;
@@ -262,17 +262,17 @@ where
 /// A storage request.
 pub(crate) enum StorageRequest {
     /// Store given block.
-    PutBlock {
+    PutBlockV2 {
         /// Block to be stored.
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
     },
-    /// Store given versioned block.
-    PutVersionedBlock {
+    /// Store given block.
+    PutBlock {
         /// Block to be stored.
-        block: Arc<VersionedBlock>,
+        block: Arc<Block>,
         /// Responder to call with the result.  Returns true if the block was stored on this
         /// attempt or false if it was previously stored.
         responder: Responder<bool>,
@@ -286,11 +286,19 @@ pub(crate) enum StorageRequest {
     /// Store the block and approvals hashes.
     PutExecutedBlock {
         /// Block to be stored.
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
         responder: Responder<bool>,
+    },
+    /// Retrieve block with given hash.
+    GetBlockV2 {
+        /// Hash of block to be retrieved.
+        block_hash: BlockHash,
+        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
+        /// storage.
+        responder: Responder<Option<BlockV2>>,
     },
     /// Retrieve block with given hash.
     GetBlock {
@@ -299,14 +307,6 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
         /// storage.
         responder: Responder<Option<Block>>,
-    },
-    /// Retrieve versioned block with given hash.
-    GetVersionedBlock {
-        /// Hash of block to be retrieved.
-        block_hash: BlockHash,
-        /// Responder to call with the result.  Returns `None` if the block doesn't exist in local
-        /// storage.
-        responder: Responder<Option<VersionedBlock>>,
     },
     IsBlockStored {
         block_hash: BlockHash,
@@ -323,7 +323,7 @@ pub(crate) enum StorageRequest {
     /// Retrieve highest complete block.
     GetHighestCompleteBlock {
         /// Responder.
-        responder: Responder<Option<VersionedBlock>>,
+        responder: Responder<Option<Block>>,
     },
     /// Retrieve highest complete block header.
     GetHighestCompleteBlockHeader {
@@ -517,8 +517,8 @@ pub(crate) enum StorageRequest {
 impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
-            StorageRequest::PutVersionedBlock { block, .. } => {
+            StorageRequest::PutBlockV2 { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutBlock { block, .. } => {
                 write!(formatter, "put versioned {}", block)
             }
             StorageRequest::PutApprovalsHashes {
@@ -526,11 +526,11 @@ impl Display for StorageRequest {
             } => {
                 write!(formatter, "put {}", approvals_hashes)
             }
+            StorageRequest::GetBlockV2 { block_hash, .. } => {
+                write!(formatter, "get block v2 {}", block_hash)
+            }
             StorageRequest::GetBlock { block_hash, .. } => {
                 write!(formatter, "get block {}", block_hash)
-            }
-            StorageRequest::GetVersionedBlock { block_hash, .. } => {
-                write!(formatter, "get versioned block {}", block_hash)
             }
             StorageRequest::IsBlockStored { block_hash, .. } => {
                 write!(formatter, "is block {} stored", block_hash)

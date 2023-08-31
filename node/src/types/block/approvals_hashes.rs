@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{bytesrepr, ApprovalsHash, DeployId, Digest, Key, StoredValue};
+use casper_types::{bytesrepr, ApprovalsHash, Block, DeployId, Digest, Key, StoredValue};
 
-use super::{Block, BlockHash};
+use super::BlockHash;
 use crate::{
     components::{
         contract_runtime::APPROVALS_CHECKSUM_NAME,

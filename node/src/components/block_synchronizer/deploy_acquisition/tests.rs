@@ -5,7 +5,7 @@ use rand::Rng;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, Block, CLValue, Deploy, EraId, ProtocolVersion, StoredValue,
+    testing::TestRng, AccessRights, BlockV2, CLValue, Deploy, EraId, ProtocolVersion, StoredValue,
     URef,
 };
 
@@ -29,7 +29,7 @@ fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Deploy> + Clone>(
     let era = rng.gen_range(0..6);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
-    let block = Block::random_with_specifics(
+    let block = BlockV2::random_with_specifics(
         rng,
         EraId::from(era),
         height,

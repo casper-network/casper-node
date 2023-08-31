@@ -35,7 +35,7 @@ use tokio::sync::{
 use tracing::{error, info, warn};
 use warp::Filter;
 
-use casper_types::{JsonBlock, ProtocolVersion};
+use casper_types::ProtocolVersion;
 
 use super::Component;
 use crate::{
@@ -237,7 +237,7 @@ where
                 }
                 Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
-                    block: Box::new(JsonBlock::new((*block).clone(), None)),
+                    block: Box::new((*block).clone().into()),
                 }),
                 Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
                 Event::DeployProcessed {
