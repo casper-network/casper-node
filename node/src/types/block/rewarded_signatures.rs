@@ -126,9 +126,12 @@ impl SingleBlockRewardedSignatures {
 
     /// Calculates the set intersection of two instances of `SingleBlockRewardedSignatures`.
     pub(crate) fn intersection(mut self, other: &SingleBlockRewardedSignatures) -> Self {
-        for (self_byte, other_byte) in self.0.iter_mut().zip(other.0.iter()) {
-            *self_byte &= other_byte;
-        }
+        self.0 = self
+            .0
+            .iter()
+            .zip(other.0.iter())
+            .map(|(a, b)| *a & *b)
+            .collect();
         self
     }
 

@@ -424,7 +424,7 @@ impl BlockValidator {
                         .body()
                         .rewarded_signatures()
                         .clone()
-                        .left_padded(rel_height);
+                        .left_padded(rel_height.saturating_add(1));
                     if rewarded_signatures
                         .intersection(&padded_signatures)
                         .has_some()
