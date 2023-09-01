@@ -19,6 +19,7 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 use lmdb::DatabaseFlags;
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use prometheus::Registry;
 use serde::Serialize;
@@ -70,8 +71,8 @@ use metrics::Metrics;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
-    TotalSupplyRequest,
+    BlockAndExecutionResults, EraValidatorsRequest, RoundSeigniorageRateRequest,
+    StepEffectAndUpcomingEraValidators, TotalSupplyRequest,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -395,6 +396,32 @@ impl ContractRuntime {
                         .get_total_supply
                         .observe(start.elapsed().as_secs_f64());
                     trace!(?result, "total supply result");
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
+                responder,
+            } => {
+                trace!(
+                    ?round_seigniorage_rate_request,
+                    "get round seigniorage rate request"
+                );
+                let engine_state = Arc::clone(&self.engine_state);
+                let metrics = Arc::clone(&self.metrics);
+
+                async move {
+                    let start = Instant::now();
+                    let result = query_round_seigniorage_rate(
+                        engine_state,
+                        round_seigniorage_rate_request.state_hash,
+                    );
+
+                    metrics
+                        .get_round_seigniorage_rate
+                        .observe(start.elapsed().as_secs_f64());
+                    trace!(?result, "round seigniorage rate result");
                     responder.respond(result).await
                 }
                 .ignore()
@@ -1002,6 +1029,37 @@ fn query_total_supply(
                 .clone()
                 .into_t()
                 .map_err(|e| Error::Mint(format!("CLValue not a U512: {e}"))),
+            ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
+            CircularReference(s) => Err(Error::Mint(format!("CircularReference({s})"))),
+            DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),
+            RootNotFound => Err(Error::RootNotFound(state_hash)),
+        })
+}
+
+fn query_round_seigniorage_rate(
+    engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
+    state_hash: Digest,
+) -> Result<Ratio<U512>, engine_state::Error> {
+    use casper_types::system::mint;
+    use engine_state::{Error, QueryResult::*};
+
+    let correlation_id = CorrelationId::new();
+    let mint = engine_state.get_system_mint_hash(correlation_id, state_hash)?;
+    let request = QueryRequest::new(
+        state_hash,
+        mint.into(),
+        vec![mint::ROUND_SEIGNIORAGE_RATE_KEY.to_owned()],
+    );
+
+    engine_state
+        .run_query(correlation_id, request)
+        .and_then(move |query_result| match query_result {
+            Success { value, proofs: _ } => value
+                .as_cl_value()
+                .ok_or_else(|| Error::Mint("Value not a CLValue".to_owned()))?
+                .clone()
+                .into_t()
+                .map_err(|e| Error::Mint(format!("CLValue not a Ratio<U512>: {e}"))),
             ValueNotFound(s) => Err(Error::Mint(format!("ValueNotFound({s})"))),
             CircularReference(s) => Err(Error::Mint(format!("CircularReference({s})"))),
             DepthLimit { depth } => Err(Error::Mint(format!("DepthLimit({depth})"))),

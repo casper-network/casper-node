@@ -109,6 +109,7 @@ use std::{
 use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
+use num_rational::Ratio;
 use once_cell::sync::Lazy;
 use serde::{Serialize, Serializer};
 use smallvec::{smallvec, SmallVec};
@@ -144,7 +145,9 @@ use crate::{
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{SpeculativeExecutionState, TotalSupplyRequest},
+    contract_runtime::{
+        RoundSeigniorageRateRequest, SpeculativeExecutionState, TotalSupplyRequest,
+    },
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
@@ -2032,6 +2035,28 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             move |responder| ContractRuntimeRequest::GetTotalSupply {
                 total_supply_request,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
+    }
+
+    /// Returns the seigniorage rate from the given `root_hash`.
+    ///
+    /// This operation is read only.
+    #[allow(unused)] //TODO remove in the next ticket implementation.
+    pub(crate) async fn get_round_seigniorage_rate(
+        self,
+        state_hash: Digest,
+    ) -> Result<Ratio<U512>, engine_state::Error>
+    where
+        REv: From<ContractRuntimeRequest>,
+    {
+        let round_seigniorage_rate_request = RoundSeigniorageRateRequest::new(state_hash);
+        self.make_request(
+            move |responder| ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
                 responder,
             },
             QueueKind::ContractRuntime,

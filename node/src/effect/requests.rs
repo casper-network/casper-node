@@ -12,6 +12,7 @@ use std::{
 
 use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
+use num_rational::Ratio;
 use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
@@ -44,7 +45,10 @@ use crate::{
         network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState, TotalSupplyRequest},
+    contract_runtime::{
+        ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
+        TotalSupplyRequest,
+    },
     effect::{AutoClosingResponder, Responder},
     reactor::main_reactor::ReactorState,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
@@ -915,6 +919,12 @@ pub(crate) enum ContractRuntimeRequest {
         total_supply_request: TotalSupplyRequest,
         responder: Responder<Result<U512, engine_state::Error>>,
     },
+    /// Get the round seigniorage rate.
+    GetRoundSeigniorageRate {
+        #[serde(skip_serializing)]
+        round_seigniorage_rate_request: RoundSeigniorageRateRequest,
+        responder: Responder<Result<Ratio<U512>, engine_state::Error>>,
+    },
     /// Returns validator weights.
     GetEraValidators {
         /// Get validators weights request.
@@ -988,6 +998,16 @@ impl Display for ContractRuntimeRequest {
                 ..
             } => {
                 write!(formatter, "get total supply: {:?}", total_supply_request)
+            }
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get round seigniorage rate: {:?}",
+                    round_seigniorage_rate_request
+                )
             }
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
