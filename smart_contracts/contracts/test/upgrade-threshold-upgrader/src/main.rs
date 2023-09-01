@@ -24,8 +24,6 @@ const ENTRYPOINT_ADD_ASSOCIATED_KEY: &str = "add_associated_key";
 const ENTRYPOINT_MANAGE_ACTION_THRESHOLD: &str = "manage_action_threshold";
 const ENTRYPOINT_REMOVE_ASSOCIATED_KEY: &str = "remove_associated_key";
 
-const PACKAGE_HASH_KEY_NAME: &str = "contract_package_hash";
-const ACCESS_UREF_NAME: &str = "access_uref";
 const CONTRACT_HASH_NAME: &str = "contract_hash_name";
 
 #[no_mangle]
@@ -85,7 +83,7 @@ pub extern "C" fn call() {
         entrypoints
     };
     // this should overwrite the previous contract obj with the new contract obj at the same uref
-    let (new_contract_hash, new_contract_version) =
+    let (new_contract_hash, _new_contract_version) =
         storage::add_contract_version(contract_package, entry_points, NamedKeys::new());
     runtime::put_key(CONTRACT_HASH_NAME, new_contract_hash.into());
 }

@@ -11,8 +11,8 @@ use casper_types::{
     runtime_args,
     system::mint,
     testing::TestRng,
-    CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion, PublicKey,
-    RuntimeArgs, StoredValue, U512,
+    CLValue, ContractHash, ContractPackageHash, EraId, ProtocolVersion, PublicKey, RuntimeArgs,
+    StoredValue, U512,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -702,13 +702,12 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let access_uref = entity
+    let access_uref = *entity
         .named_keys()
         .get(ACCESS_KEY_NAME)
         .expect("must have access URef")
         .as_uref()
-        .expect("must convert to URef")
-        .clone();
+        .expect("must convert to URef");
 
     let stored_package_hash: ContractPackageHash = entity
         .named_keys()
@@ -1109,6 +1108,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     assert_eq!(actual_associated_keys, &expect_associated_keys);
 }
 
+#[allow(clippy::enum_variant_names)]
 enum InvocationType {
     ByContractHash,
     ByContractName,

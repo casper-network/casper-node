@@ -12,7 +12,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    runtime_args, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
+    runtime_args, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
     Parameter, RuntimeArgs, URef,
 };
 
