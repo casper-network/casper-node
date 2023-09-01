@@ -4268,7 +4268,7 @@
                 "description": "Can't be accessed directly but are kept in the derived wasm bytes.",
                 "type": "string",
                 "enum": [
-                  "Abstract"
+                  "Template"
                 ]
               }
             ]
