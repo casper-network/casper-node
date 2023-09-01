@@ -3,6 +3,7 @@ mod chainspec_registry;
 mod check_transfer_success;
 mod contract_api;
 mod contract_context;
+mod counter_factory;
 mod deploy;
 mod explorer;
 mod gas_counter;

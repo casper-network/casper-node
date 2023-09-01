@@ -4263,6 +4263,13 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Can't be accessed directly but are kept in the derived wasm bytes.",
+                "type": "string",
+                "enum": [
+                  "Template"
+                ]
               }
             ]
           },
@@ -4271,7 +4278,7 @@
             "type": "string"
           },
           "EntryPointType": {
-            "description": "Context of method execution",
+            "description": "Context of method execution\n\nMost significant bit represents version i.e. - 0b0 -> 0.x/1.x (session & contracts) - 0b1 -> 2.x and later (introduced installer, utility entry points)",
             "oneOf": [
               {
                 "description": "Runs as session code",
@@ -4285,6 +4292,13 @@
                 "type": "string",
                 "enum": [
                   "Contract"
+                ]
+              },
+              {
+                "description": "Installer entry point.",
+                "type": "string",
+                "enum": [
+                  "Install"
                 ]
               }
             ]

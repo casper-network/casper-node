@@ -598,6 +598,13 @@ impl Key {
         }
     }
 
+    /// Returns [`ContractHash`] of `self` if `self` is of type [`Key::Hash`], otherwise returns
+    /// `None`.
+    pub fn into_contract_hash(self) -> Option<ContractHash> {
+        let hash_addr = self.into_hash()?;
+        Some(ContractHash::new(hash_addr))
+    }
+
     /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
     /// returns `None`.
     pub fn as_uref(&self) -> Option<&URef> {

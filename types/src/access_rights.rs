@@ -21,7 +21,6 @@ pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
 bitflags! {
     /// A struct which behaves like a set of bitflags to define access rights associated with a
     /// [`URef`](crate::URef).
-    #[allow(clippy::derive_hash_xor_eq)]
     #[cfg_attr(feature = "datasize", derive(DataSize))]
     pub struct AccessRights: u8 {
         /// No permissions
@@ -33,13 +32,13 @@ bitflags! {
         /// Permission to add to the value under the associated `URef`.
         const ADD   = 0b100;
         /// Permission to read or add to the value under the associated `URef`.
-        const READ_ADD       = Self::READ.bits | Self::ADD.bits;
+        const READ_ADD       = Self::READ.bits() | Self::ADD.bits();
         /// Permission to read or write the value under the associated `URef`.
-        const READ_WRITE     = Self::READ.bits | Self::WRITE.bits;
+        const READ_WRITE     = Self::READ.bits() | Self::WRITE.bits();
         /// Permission to add to, or write the value under the associated `URef`.
-        const ADD_WRITE      = Self::ADD.bits  | Self::WRITE.bits;
+        const ADD_WRITE      = Self::ADD.bits()  | Self::WRITE.bits();
         /// Permission to read, add to, or write the value under the associated `URef`.
-        const READ_ADD_WRITE = Self::READ.bits | Self::ADD.bits | Self::WRITE.bits;
+        const READ_ADD_WRITE = Self::READ.bits() | Self::ADD.bits() | Self::WRITE.bits();
     }
 }
 
@@ -89,7 +88,7 @@ impl Display for AccessRights {
 
 impl bytesrepr::ToBytes for AccessRights {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.bits.to_bytes()
+        self.bits().to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -114,7 +113,7 @@ impl bytesrepr::FromBytes for AccessRights {
 
 impl Serialize for AccessRights {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        self.bits.serialize(serializer)
+        self.bits().serialize(serializer)
     }
 }
 
