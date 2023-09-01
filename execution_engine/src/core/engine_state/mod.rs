@@ -743,7 +743,7 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
 
-        let proposer_main_purse_balance_key = {
+        let rewards_target_purse_balance_key = {
             match tracking_copy
                 .borrow_mut()
                 .get_purse_balance_key(correlation_id, rewards_target_purse.into())
@@ -786,7 +786,7 @@ where
             account_main_purse_balance,
             wasmless_transfer_gas_cost,
             account_main_purse_balance_key,
-            proposer_main_purse_balance_key,
+            rewards_target_purse_balance_key,
         ) {
             Ok(execution_result) => execution_result,
             Err(error) => ExecutionResult::precondition_failure(error),
@@ -1344,6 +1344,26 @@ where
             }
         };
 
+        let rewards_target_purse =
+            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
+                Ok(target_purse) => target_purse,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            };
+
+        let rewards_target_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(correlation_id, rewards_target_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
@@ -1428,34 +1448,6 @@ where
         };
         log_execution_result("payment result", &payment_result);
 
-        // the proposer of the block this deploy is in receives the gas from this deploy execution
-        let proposer_purse = {
-            let proposer_account: Account = match tracking_copy
-                .borrow_mut()
-                .get_account(correlation_id, AccountHash::from(&proposer))
-            {
-                Ok(account) => account,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            };
-            proposer_account.main_purse()
-        };
-
-        let proposer_main_purse_balance_key = {
-            // Get reward purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, proposer_purse.into())
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
-
         // If provided wasm file was malformed, we should charge.
         if should_charge_for_errors_in_wasm(&payment_result) {
             let error = payment_result
@@ -1469,7 +1461,7 @@ where
                 account_main_purse_balance,
                 payment_result.cost(),
                 account_main_purse_balance_key,
-                proposer_main_purse_balance_key,
+                rewards_target_purse_balance_key,
             ) {
                 Ok(execution_result) => return Ok(execution_result),
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
@@ -1486,26 +1478,6 @@ where
                 .get_purse_balance(correlation_id, purse_balance_key)
             {
                 Ok(balance) => balance,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
-
-        let rewards_target_purse =
-            match self.get_rewards_purse(correlation_id, proposer, prestate_hash) {
-                Ok(target_purse) => target_purse,
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            };
-
-        let proposer_main_purse_balance_key = {
-            // Get reward purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(correlation_id, rewards_target_purse.into())
-            {
-                Ok(key) => key,
                 Err(error) => {
                     return Ok(ExecutionResult::precondition_failure(error.into()));
                 }
@@ -1540,7 +1512,7 @@ where
                 account_main_purse_balance,
                 gas_cost,
                 account_main_purse_balance_key,
-                proposer_main_purse_balance_key,
+                rewards_target_purse_balance_key,
             ) {
                 Ok(execution_result) => return Ok(execution_result),
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
@@ -1635,7 +1607,7 @@ where
                 account_main_purse_balance,
                 session_result.cost(),
                 account_main_purse_balance_key,
-                proposer_main_purse_balance_key,
+                rewards_target_purse_balance_key,
             ) {
                 Ok(execution_result) => return Ok(execution_result),
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
