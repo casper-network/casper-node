@@ -1109,22 +1109,125 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     assert_eq!(actual_associated_keys, &expect_associated_keys);
 }
 
-#[ignore]
-#[test]
-fn should_migrate_stored_contract_by_package_call() {
+enum InvocationType {
+    ByContractHash,
+    ByContractName,
+    ByPackageHash(Option<ContractVersion>),
+    ByPackageName(Option<ContractVersion>),
+}
+
+fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
     let (mut builder, new_protocol_version, _) = setup_upgrade_threshold_state();
 
-    let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
-        *DEFAULT_ACCOUNT_ADDR,
-        HASH_KEY_NAME,
-        None,
-        ENTRY_POINT_ADD,
-        runtime_args! {
-            PURSE_NAME_ARG_NAME => PURSE_1,
-        },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
+    let runtime_args = runtime_args! {
+        PURSE_NAME_ARG_NAME => PURSE_1
+    };
+
+    let default_addressable_entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default entity");
+
+    let contract_hash = default_addressable_entity
+        .named_keys()
+        .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
+        .map(|holder_key| holder_key.into_hash().map(ContractHash::new))
+        .unwrap()
+        .expect("must convert to hash");
+
+    let execute_request = match invocation_type {
+        InvocationType::ByPackageName(maybe_contract_version) => {
+            ExecuteRequestBuilder::versioned_contract_call_by_name(
+                *DEFAULT_ACCOUNT_ADDR,
+                HASH_KEY_NAME,
+                maybe_contract_version,
+                ENTRY_POINT_ADD,
+                runtime_args,
+            )
+            .with_protocol_version(new_protocol_version)
+            .build()
+        }
+        InvocationType::ByPackageHash(maybe_contract_version) => {
+            let package_hash = default_addressable_entity
+                .named_keys()
+                .get(HASH_KEY_NAME)
+                .expect("must have package named key entry")
+                .into_hash()
+                .map(ContractPackageHash::new)
+                .unwrap();
+
+            ExecuteRequestBuilder::versioned_contract_call_by_hash(
+                *DEFAULT_ACCOUNT_ADDR,
+                package_hash,
+                maybe_contract_version,
+                ENTRY_POINT_ADD,
+                runtime_args,
+            )
+            .with_protocol_version(new_protocol_version)
+            .build()
+        }
+        InvocationType::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
+            *DEFAULT_ACCOUNT_ADDR,
+            contract_hash,
+            ENTRY_POINT_ADD,
+            runtime_args,
+        )
+        .with_protocol_version(new_protocol_version)
+        .build(),
+        InvocationType::ByContractName => ExecuteRequestBuilder::contract_call_by_name(
+            *DEFAULT_ACCOUNT_ADDR,
+            PURSE_HOLDER_STORED_CONTRACT_NAME,
+            ENTRY_POINT_ADD,
+            runtime_args,
+        )
+        .with_protocol_version(new_protocol_version)
+        .build(),
+    };
 
     builder.exec(execute_request).expect_success().commit();
+
+    let updated_purse_entity = builder
+        .get_addressable_entity(contract_hash)
+        .expect("must have purse holder entity hash");
+
+    let actual_associated_keys = updated_purse_entity.associated_keys();
+
+    let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
+
+    assert_eq!(actual_associated_keys, &expect_associated_keys);
+}
+
+#[ignore]
+#[test]
+fn should_correct_migrate_contract_when_invoked_by_package_name() {
+    call_and_migrate_purse_holder_contract(InvocationType::ByPackageName(None))
+}
+
+#[ignore]
+#[test]
+fn should_correctly_migrate_contract_when_invoked_by_name_and_version() {
+    call_and_migrate_purse_holder_contract(InvocationType::ByPackageName(Some(INITIAL_VERSION)))
+}
+
+#[ignore]
+#[test]
+fn should_correct_migrate_contract_when_invoked_by_package_hash() {
+    call_and_migrate_purse_holder_contract(InvocationType::ByPackageHash(None))
+}
+
+#[ignore]
+#[test]
+fn should_correct_migrate_contract_when_invoked_by_package_hash_and_specific_version() {
+    call_and_migrate_purse_holder_contract(InvocationType::ByPackageHash(Some(INITIAL_VERSION)))
+}
+
+#[ignore]
+#[test]
+fn should_correctly_migrate_contract_when_invoked_by_contract_hash() {
+    call_and_migrate_purse_holder_contract(InvocationType::ByContractHash)
+}
+
+#[ignore]
+#[test]
+fn should_correctly_migrate_contract_when_invoked_by_contract_name() {
+    call_and_migrate_purse_holder_contract(InvocationType::ByContractName)
 }

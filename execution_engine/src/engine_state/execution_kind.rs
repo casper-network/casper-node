@@ -114,8 +114,11 @@ impl ExecutionKind {
                     .borrow_mut()
                     .get_contract_package(contract_package_hash)?;
 
-                let maybe_version_key =
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
+                let maybe_version_key = if contract_package.is_legacy() {
+                    contract_package.current_contract_version()
+                } else {
+                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver))
+                };
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
@@ -151,8 +154,11 @@ impl ExecutionKind {
                     .borrow_mut()
                     .get_contract_package(contract_package_hash)?;
 
-                let maybe_version_key =
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver));
+                let maybe_version_key = if contract_package.is_legacy() {
+                    contract_package.current_contract_version()
+                } else {
+                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver))
+                };
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| contract_package.current_contract_version())
