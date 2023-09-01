@@ -16,7 +16,7 @@ use casper_types::{
     addressable_entity::{ActionType, NamedKeys, Weight},
     bytesrepr::Bytes,
     runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, ContractVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, RuntimeArgs, U512,
+    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, U512,
 };
 
 const MIN_FUNCTION_NAME_LENGTH: usize = 1;

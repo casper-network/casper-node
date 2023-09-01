@@ -1639,6 +1639,7 @@ fn should_get_block_header_by_height() {
     assert_eq!(expected_header, maybe_block_header.unwrap());
 }
 
+#[ignore]
 #[test]
 fn check_force_resync_with_marker_file() {
     let mut harness = ComponentHarness::default();

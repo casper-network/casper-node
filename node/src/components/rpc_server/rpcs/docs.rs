@@ -34,12 +34,12 @@ const DEFINITIONS_PATH: &str = "#/components/schemas/";
 // As per https://spec.open-rpc.org/#service-discovery-method.
 pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
-        name: "CasperLabs".to_string(),
+        name: "Casper Labs".to_string(),
         url: "https://casperlabs.io".to_string(),
     };
     let license = OpenRpcLicenseField {
-        name: "CasperLabs Open Source License Version 1.0".to_string(),
-        url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
+        name: "APACHE LICENSE, VERSION 2.0".to_string(),
+        url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
     };
     let info = OpenRpcInfoField {
         version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
@@ -525,13 +525,12 @@ mod tests {
 
     fn check_optional_params_fields<T: RpcWithOptionalParams>() -> Vec<SchemaParam> {
         let contact = OpenRpcContactField {
-            name: "CasperLabs".to_string(),
+            name: "Casper Labs".to_string(),
             url: "https://casperlabs.io".to_string(),
         };
         let license = OpenRpcLicenseField {
-            name: "CasperLabs Open Source License Version 1.0".to_string(),
-            url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE"
-                .to_string(),
+            name: "APACHE LICENSE, VERSION 2.0".to_string(),
+            url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
         };
         let info = OpenRpcInfoField {
             version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),

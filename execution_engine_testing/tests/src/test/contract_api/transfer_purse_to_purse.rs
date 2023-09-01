@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use casper_types::{runtime_args, system::mint, ApiError, CLValue, RuntimeArgs, U512};
+use casper_types::{runtime_args, system::mint, ApiError, CLValue, U512};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,

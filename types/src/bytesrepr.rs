@@ -1354,10 +1354,9 @@ where
     assert_eq!(
         serialized.len(),
         t.serialized_length(),
-        "\nLength of serialized data: {},\nserialized_length() yielded: {},\nserialized data: {:?}, t is {:?}",
+        "\nLength of serialized data: {},\nserialized_length() yielded: {},\n t is {:?}",
         serialized.len(),
         t.serialized_length(),
-        serialized,
         t
     );
     let mut written_bytes = vec![];
@@ -1388,6 +1387,27 @@ mod tests {
         let malicious_bytes = (1u64, 0u64).to_bytes().unwrap();
         let result: Result<Ratio<u64>, Error> = deserialize(malicious_bytes);
         assert_eq!(result.unwrap_err(), Error::Formatting);
+    }
+
+    #[test]
+    fn should_have_generic_tobytes_impl_for_borrowed_types() {
+        struct NonCopyable;
+
+        impl ToBytes for NonCopyable {
+            fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+                Ok(vec![1, 2, 3])
+            }
+
+            fn serialized_length(&self) -> usize {
+                3
+            }
+        }
+
+        let noncopyable: &NonCopyable = &NonCopyable;
+
+        assert_eq!(noncopyable.to_bytes().unwrap(), vec![1, 2, 3]);
+        assert_eq!(noncopyable.serialized_length(), 3);
+        assert_eq!(noncopyable.into_bytes().unwrap(), vec![1, 2, 3]);
     }
 
     #[cfg(debug_assertions)]

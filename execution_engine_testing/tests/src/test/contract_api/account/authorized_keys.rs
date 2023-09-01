@@ -7,7 +7,7 @@ use casper_execution_engine::{
     execution,
 };
 use casper_types::{
-    account::AccountHash, addressable_entity::Weight, runtime_args, system::mint, RuntimeArgs, U512,
+    account::AccountHash, addressable_entity::Weight, runtime_args, system::mint, U512,
 };
 
 const CONTRACT_ADD_ASSOCIATED_KEY: &str = "add_associated_key.wasm";

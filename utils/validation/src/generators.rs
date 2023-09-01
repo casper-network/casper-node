@@ -10,7 +10,10 @@ use casper_types::{
     },
     addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups, Package},
-    system::auction::{Bid, EraInfo, SeigniorageAllocation, UnbondingPurse, WithdrawPurse},
+    system::auction::{
+        Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
+        ValidatorBid, WithdrawPurse,
+    },
     AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
     ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion, PublicKey,
@@ -25,7 +28,7 @@ use casper_validation::{
 const DO_NOTHING_BYTES: &[u8] = b"\x00asm\x01\x00\x00\x00\x01\x04\x01`\x00\x00\x03\x02\x01\x00\x05\x03\x01\x00\x01\x07\x08\x01\x04call\x00\x00\n\x04\x01\x02\x00\x0b";
 
 pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
-    let basic = {
+    let basic_fixture = {
         let mut basic = BTreeMap::new();
         basic.insert(
             "SerializeU8".to_string(),
@@ -104,13 +107,64 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         era_info
     };
 
-    let bid = Bid::locked(
-        PublicKey::from(&validator_secret_key),
+    let validator_public_key = PublicKey::from(&validator_secret_key);
+    let validator_bid_key =
+        Key::BidAddr(BidAddr::new_from_public_keys(&validator_public_key, None));
+    let validator_bid = ValidatorBid::locked(
+        validator_public_key.clone(),
         URef::new([10; 32], AccessRights::READ_ADD_WRITE),
         U512::from(50_000_000_000u64),
         100,
         u64::MAX,
     );
+    let validator_bid_kind = BidKind::Validator(Box::new(validator_bid));
+    let delegator_public_key = PublicKey::from(&delegator_secret_key);
+    let delegator_bid_key = Key::BidAddr(BidAddr::new_from_public_keys(
+        &validator_public_key,
+        Some(&delegator_public_key),
+    ));
+    let delegator_bid = Delegator::locked(
+        delegator_public_key,
+        U512::from(1_000_000_000u64),
+        URef::new([11; 32], AccessRights::READ_ADD_WRITE),
+        validator_public_key.clone(),
+        u64::MAX,
+    );
+    let delegator_bid_kind = BidKind::Delegator(Box::new(delegator_bid.clone()));
+
+    let unified_bid_key = Key::BidAddr(BidAddr::legacy(
+        validator_public_key.to_account_hash().value(),
+    ));
+    let unified_bid = {
+        let mut unified_bid = Bid::locked(
+            validator_public_key.clone(),
+            URef::new([10; 32], AccessRights::READ_ADD_WRITE),
+            U512::from(50_000_000_000u64),
+            100,
+            u64::MAX,
+        );
+        unified_bid.delegators_mut().insert(
+            delegator_bid.delegator_public_key().clone(),
+            delegator_bid.clone(),
+        );
+        unified_bid
+    };
+    let unified_bid_kind = BidKind::Unified(Box::new(unified_bid));
+
+    let original_bid_key = Key::Bid(validator_public_key.to_account_hash());
+    let original_bid = {
+        let mut bid = Bid::locked(
+            validator_public_key,
+            URef::new([10; 32], AccessRights::READ_ADD_WRITE),
+            U512::from(50_000_000_000u64),
+            100,
+            u64::MAX,
+        );
+        bid.delegators_mut()
+            .insert(delegator_bid.delegator_public_key().clone(), delegator_bid);
+        bid
+    };
+
     let withdraw_purse_1 = WithdrawPurse::new(
         URef::new([10; 32], AccessRights::READ),
         PublicKey::from(&validator_secret_key),
@@ -142,7 +196,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         None,
     );
 
-    let key = {
+    let keys_fixture = {
         const ACCOUNT_KEY: Key = Key::Account(AccountHash::new([42; 32]));
         const HASH_KEY: Key = Key::Hash([42; 32]);
         const UREF_KEY: Key = Key::URef(URef::new([42; 32], AccessRights::READ));
@@ -150,7 +204,6 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         const DEPLOY_INFO_KEY: Key = Key::DeployInfo(DeployHash::from_raw([42; 32]));
         const ERA_INFO_KEY: Key = Key::EraInfo(EraId::new(42));
         const BALANCE_KEY: Key = Key::Balance([42; 32]);
-        const BID_KEY: Key = Key::Bid(AccountHash::new([42; 32]));
         const WITHDRAW_KEY: Key = Key::Withdraw(AccountHash::new([42; 32]));
         const DICTIONARY_KEY: Key = Key::Dictionary([42; 32]);
         const SYSTEM_CONTRACT_REGISTRY_KEY: Key = Key::SystemContractRegistry;
@@ -189,9 +242,22 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![BALANCE_KEY.into()])?,
         );
         keys.insert(
-            "Bid".to_string(),
-            ABITestCase::from_inputs(vec![BID_KEY.into()])?,
+            "WriteBid".to_string(),
+            ABITestCase::from_inputs(vec![original_bid_key.into()])?,
         );
+        keys.insert(
+            "WriteUnifiedBid".to_string(),
+            ABITestCase::from_inputs(vec![unified_bid_key.into()])?,
+        );
+        keys.insert(
+            "WriteValidatorBid".to_string(),
+            ABITestCase::from_inputs(vec![validator_bid_key.into()])?,
+        );
+        keys.insert(
+            "WriteDelegatorBid".to_string(),
+            ABITestCase::from_inputs(vec![delegator_bid_key.into()])?,
+        );
+
         keys.insert(
             "Withdraw".to_string(),
             ABITestCase::from_inputs(vec![WITHDRAW_KEY.into()])?,
@@ -226,7 +292,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         }
     };
 
-    let stored_value = {
+    let stored_value_fixture = {
         let mut stored_value = BTreeMap::new();
 
         let cl_value = CLValue::from_t("Hello, world!").expect("should create cl value");
@@ -360,9 +426,22 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             "EraInfo".to_string(),
             ABITestCase::from_inputs(vec![StoredValue::EraInfo(era_info).into()])?,
         );
+
         stored_value.insert(
             "Bid".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::Bid(Box::new(bid)).into()])?,
+            ABITestCase::from_inputs(vec![StoredValue::Bid(Box::new(original_bid)).into()])?,
+        );
+        stored_value.insert(
+            "UnifiedBid".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::BidKind(unified_bid_kind).into()])?,
+        );
+        stored_value.insert(
+            "ValidatorBid".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::BidKind(validator_bid_kind).into()])?,
+        );
+        stored_value.insert(
+            "DelegatorBid".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::BidKind(delegator_bid_kind).into()])?,
         );
         stored_value.insert(
             "Withdraw".to_string(),
@@ -387,5 +466,5 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         }
     };
 
-    Ok(vec![basic, stored_value, key])
+    Ok(vec![basic_fixture, stored_value_fixture, keys_fixture])
 }

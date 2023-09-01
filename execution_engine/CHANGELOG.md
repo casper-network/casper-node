@@ -15,9 +15,18 @@ All notable changes to this project will be documented in this file.  The format
 ### Added
 * Add support for a factory pattern on the host side.
 
+### Added
+* Add chainspec option `core.allow_unrestricted_transfers` that, if enabled, allows token transfers between any two peers. Disabling this option makes sense only for private chains.
+* Add chainspec option `core.allow_auction_bids` that, if enabled, allows auction entrypoints `delegate` and `add_bid` to operate. Disabling this option makes sense only for private chains.
+* Add chainspec option `core.compute_rewards` that, if enabled, computes rewards for each era. Disabling this option makes sense only for private chains.
+* Add chainspec option `core.refund_handling` that specifies how payment refunds are handled.
+* Add chainspec option `core.fee_handling` that specifes how transaction fees are handled.
+* Add chainspec option `core.administrators` that, if set, contains list of administrator accounts. This option makes sense only for private chains.
+
+
+
 ### Changed
 * Default value for `max_stack_height` is increased to 500.
-
 
 
 ## 5.0.0

@@ -3,9 +3,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state, execution};
-use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, RuntimeArgs, URef, U512,
-};
+use casper_types::{account::AccountHash, runtime_args, system::mint, AccessRights, URef, U512};
 
 const TRANSFER_TO_NAMED_PURSE_CONTRACT: &str = "transfer_to_named_purse.wasm";
 

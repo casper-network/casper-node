@@ -12,8 +12,6 @@ use super::Transform;
 #[cfg(any(feature = "testing", test))]
 use super::TransformKind;
 use crate::bytesrepr::{self, FromBytes, ToBytes};
-#[cfg(any(feature = "testing", test))]
-use crate::testing::TestRng;
 
 /// A log of all transforms produced during execution.
 #[derive(Debug, Clone, Eq, Default, PartialEq, Serialize, Deserialize)]
@@ -59,7 +57,7 @@ impl Effects {
 
     /// Returns a random `Effects`.
     #[cfg(any(feature = "testing", test))]
-    pub fn random(rng: &mut TestRng) -> Self {
+    pub fn random<R: Rng + ?Sized>(rng: &mut R) -> Self {
         let mut effects = Effects::new();
         let transform_count = rng.gen_range(0..6);
         for _ in 0..transform_count {
@@ -94,6 +92,8 @@ impl FromBytes for Effects {
 
 #[cfg(test)]
 mod tests {
+    use crate::testing::TestRng;
+
     use super::*;
 
     #[test]

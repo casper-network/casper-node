@@ -3,10 +3,12 @@ use std::{
     cell::RefCell,
     cmp, env,
     fmt::{self, Debug, Display, Formatter},
-    thread,
+    iter, thread,
 };
 
-use rand::{self, CryptoRng, Error, Rng, RngCore, SeedableRng};
+use rand::{
+    self, distributions::uniform::SampleRange, CryptoRng, Error, Rng, RngCore, SeedableRng,
+};
 use rand_pcg::Pcg64Mcg;
 
 thread_local! {
@@ -73,6 +75,14 @@ impl TestRng {
         Self::set_flag_or_panic();
         let rng = Pcg64Mcg::from_seed(seed);
         TestRng { seed, rng }
+    }
+
+    /// Returns a random `String` of length within the range specified by `length_range`.
+    pub fn random_string<R: SampleRange<usize>>(&mut self, length_range: R) -> String {
+        let count = self.gen_range(length_range);
+        iter::repeat_with(|| self.gen::<char>())
+            .take(count)
+            .collect()
     }
 
     fn set_flag_or_panic() {

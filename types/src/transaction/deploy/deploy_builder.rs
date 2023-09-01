@@ -1,9 +1,7 @@
-mod account_and_secret_key;
 mod error;
 
-use super::{Deploy, DeployHash, ExecutableDeployItem, TransferTarget};
+use super::{super::AccountAndSecretKey, Deploy, DeployHash, ExecutableDeployItem, TransferTarget};
 use crate::{PublicKey, SecretKey, TimeDiff, Timestamp, URef, U512};
-pub(super) use account_and_secret_key::AccountAndSecretKey;
 pub use error::DeployBuilderError;
 
 /// A builder for constructing a [`Deploy`].

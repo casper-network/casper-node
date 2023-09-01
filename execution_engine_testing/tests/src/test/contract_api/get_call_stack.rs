@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
     runtime_args, system::CallStackElement, AddressableEntity, CLValue, ContractHash,
-    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
+    ContractPackageHash, EntryPointType, HashAddr, Key, StoredValue, U512,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -355,7 +355,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 
 mod session {
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
-    use casper_types::{execution::TransformKind, runtime_args, system::mint, Key, RuntimeArgs};
+    use casper_types::{execution::TransformKind, runtime_args, system::mint, Key};
 
     use super::{
         approved_amount, AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,

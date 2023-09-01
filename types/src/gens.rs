@@ -13,12 +13,12 @@ use proptest::{
 };
 
 use crate::{
-    account::{self, AccountHash},
+    account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
     addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
     package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
     system::auction::{
-        gens::era_info_arb, Bid, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
+        gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
@@ -28,16 +28,14 @@ use crate::{
 };
 
 use crate::{
-    account::{
-        action_thresholds::gens::account_action_thresholds_arb,
-        associated_keys::gens::account_associated_keys_arb, Account,
-    },
+    account::{associated_keys::gens::account_associated_keys_arb, Account},
     addressable_entity::{
         action_thresholds::gens::action_thresholds_arb, associated_keys::gens::associated_keys_arb,
     },
     contracts::Contract,
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
     package::ContractPackageKind,
+    system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
 
@@ -101,7 +99,8 @@ pub fn key_arb() -> impl Strategy<Value = Key> {
         deploy_hash_arb().prop_map(Key::DeployInfo),
         era_id_arb().prop_map(Key::EraInfo),
         uref_arb().prop_map(|uref| Key::Balance(uref.addr())),
-        account_hash_arb().prop_map(Key::Bid),
+        bid_addr_validator_arb().prop_map(Key::BidAddr),
+        bid_addr_delegator_arb().prop_map(Key::BidAddr),
         account_hash_arb().prop_map(Key::Withdraw),
         u8_slice_32().prop_map(Key::Dictionary),
         Just(Key::EraSummary),
@@ -120,6 +119,16 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
 
 pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
     u8_slice_32().prop_map(AccountHash::new)
+}
+
+pub fn bid_addr_validator_arb() -> impl Strategy<Value = BidAddr> {
+    u8_slice_32().prop_map(BidAddr::new_validator_addr)
+}
+
+pub fn bid_addr_delegator_arb() -> impl Strategy<Value = BidAddr> {
+    let x = u8_slice_32();
+    let y = u8_slice_32();
+    (x, y).prop_map(BidAddr::new_delegator_addr)
 }
 
 pub fn weight_arb() -> impl Strategy<Value = Weight> {
@@ -460,7 +469,7 @@ pub fn contract_package_arb() -> impl Strategy<Value = Package> {
         })
 }
 
-fn delegator_arb() -> impl Strategy<Value = Delegator> {
+pub(crate) fn delegator_arb() -> impl Strategy<Value = Delegator> {
     (
         public_key_arb_no_system(),
         u512_arb(),
@@ -478,7 +487,9 @@ fn delegation_rate_arb() -> impl Strategy<Value = DelegationRate> {
     0..=DELEGATION_RATE_DENOMINATOR // Maximum, allowed value for delegation rate.
 }
 
-pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Value = Bid> {
+pub(crate) fn unified_bid_arb(
+    delegations_len: impl Into<SizeRange>,
+) -> impl Strategy<Value = BidKind> {
     (
         public_key_arb_no_system(),
         uref_arb(),
@@ -518,7 +529,42 @@ pub(crate) fn bid_arb(delegations_len: impl Into<SizeRange>) -> impl Strategy<Va
                         .insert(delegator.delegator_public_key().clone(), delegator)
                         .is_none());
                 });
-                bid
+                BidKind::Unified(Box::new(bid))
+            },
+        )
+}
+
+pub(crate) fn delegator_bid_arb() -> impl Strategy<Value = BidKind> {
+    (delegator_arb()).prop_map(|delegator| BidKind::Delegator(Box::new(delegator)))
+}
+
+pub(crate) fn validator_bid_arb() -> impl Strategy<Value = BidKind> {
+    (
+        public_key_arb_no_system(),
+        uref_arb(),
+        u512_arb(),
+        delegation_rate_arb(),
+        bool::ANY,
+    )
+        .prop_map(
+            |(validator_public_key, bonding_purse, staked_amount, delegation_rate, is_locked)| {
+                let validator_bid = if is_locked {
+                    ValidatorBid::locked(
+                        validator_public_key,
+                        bonding_purse,
+                        staked_amount,
+                        delegation_rate,
+                        1u64,
+                    )
+                } else {
+                    ValidatorBid::unlocked(
+                        validator_public_key,
+                        bonding_purse,
+                        staked_amount,
+                        delegation_rate,
+                    )
+                };
+                BidKind::Validator(Box::new(validator_bid))
             },
         )
 }
@@ -585,7 +631,9 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         transfer_arb().prop_map(StoredValue::Transfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
-        bid_arb(0..100).prop_map(|bid| StoredValue::Bid(Box::new(bid))),
+        unified_bid_arb(0..3).prop_map(StoredValue::BidKind),
+        validator_bid_arb().prop_map(StoredValue::BidKind),
+        delegator_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
         unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
     ]
@@ -605,5 +653,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Withdraw(_) => stored_value,
             StoredValue::Unbonding(_) => stored_value,
             StoredValue::AddressableEntity(_) => stored_value,
+            StoredValue::BidKind(_) => stored_value,
         })
 }

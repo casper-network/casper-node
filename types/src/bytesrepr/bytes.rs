@@ -28,9 +28,13 @@ use crate::{checksummed_hex, CLType, CLTyped};
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "Hex-encoded array of bytes.")
+    schemars(description = "Hex-encoded bytes.")
 )]
-pub struct Bytes(#[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] Vec<u8>);
+#[rustfmt::skip]
+pub struct Bytes(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))]
+    Vec<u8>
+);
 
 impl Bytes {
     /// Constructs a new, empty vector of bytes.
