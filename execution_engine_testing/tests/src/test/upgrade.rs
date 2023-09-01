@@ -2,16 +2,17 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
+
 use casper_execution_engine::{engine_state, execution::Error};
-use casper_types::account::AccountHash;
-use casper_types::addressable_entity::{AssociatedKeys, Weight};
 use casper_types::{
+    account::AccountHash,
+    addressable_entity::{AssociatedKeys, Weight},
     package::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
     testing::TestRng,
-    CLValue, ContractHash, ContractPackageHash, EraId, ProtocolVersion, PublicKey, RuntimeArgs,
-    StoredValue, U512,
+    CLValue, ContractHash, ContractPackageHash, EraId, Key, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, U512,
 };
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
@@ -1106,4 +1107,24 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     let expect_associated_keys = AssociatedKeys::new(*DEFAULT_ACCOUNT_ADDR, Weight::new(1));
 
     assert_eq!(actual_associated_keys, &expect_associated_keys);
+}
+
+#[ignore]
+#[test]
+fn should_migrate_stored_contract_by_package_call() {
+    let (mut builder, new_protocol_version, _) = setup_upgrade_threshold_state();
+
+    let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        HASH_KEY_NAME,
+        None,
+        ENTRY_POINT_ADD,
+        runtime_args! {
+            PURSE_NAME_ARG_NAME => PURSE_1,
+        },
+    )
+    .with_protocol_version(new_protocol_version)
+    .build();
+
+    builder.exec(execute_request).expect_success().commit();
 }

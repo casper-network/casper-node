@@ -109,15 +109,7 @@ impl Executor {
                 // These args are passed through here as they are required to construct the new
                 // `Runtime` during the contract's execution (i.e. inside
                 // `Runtime::execute_contract`).
-                match runtime.migrate_contract_and_contract_package(contract_hash) {
-                    Ok(_) => runtime.call_contract_with_stack(
-                        contract_hash,
-                        &entry_point_name,
-                        args,
-                        stack,
-                    ),
-                    Err(error) => Err(error),
-                }
+                runtime.call_contract_with_stack(contract_hash, &entry_point_name, args, stack)
             }
         };
 
