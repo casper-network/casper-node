@@ -1228,8 +1228,19 @@ impl reactor::Reactor for MainReactor {
     #[cfg(test)]
     fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
         match name {
+            "diagnostics_port" => Some(
+                <DiagnosticsPort as InitializedComponent<MainEvent>>::state(&self.diagnostics_port),
+            ),
+            "event_stream_server" => Some(
+                <EventStreamServer as InitializedComponent<MainEvent>>::state(
+                    &self.event_stream_server,
+                ),
+            ),
             "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
                 &self.rest_server,
+            )),
+            "rpc_server" => Some(<RpcServer as InitializedComponent<MainEvent>>::state(
+                &self.rpc_server,
             )),
             _ => None,
         }

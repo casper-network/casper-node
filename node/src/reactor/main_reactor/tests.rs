@@ -1255,3 +1255,49 @@ async fn all_metrics_from_1_5_are_present() {
         missing
     );
 }
+
+#[tokio::test]
+async fn port_bound_components_report_ready() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    let mut chain = TestChain::new(&mut rng, 2, None);
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Ensure all `PortBoundComponent` implementors report readiness eventually.
+    net.settle_on_component_state(
+        &mut rng,
+        "rest_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    net.settle_on_component_state(
+        &mut rng,
+        "rpc_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    net.settle_on_component_state(
+        &mut rng,
+        "event_stream_server",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
+
+    net.settle_on_component_state(
+        &mut rng,
+        "diagnostics_port",
+        &ComponentState::Initialized,
+        Duration::from_secs(10),
+    )
+    .await;
+}
