@@ -12,6 +12,7 @@ use std::{
 
 use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
+use num_rational::Ratio;
 use serde::Serialize;
 use smallvec::SmallVec;
 use static_assertions::const_assert;
@@ -26,7 +27,7 @@ use casper_execution_engine::core::engine_state::{
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::Bytes, system::auction::EraValidators, EraId, ExecutionResult, Key, ProtocolVersion,
-    PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    PublicKey, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -44,7 +45,10 @@ use crate::{
         network::NetworkInsights,
         upgrade_watcher::NextUpgrade,
     },
-    contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
+    contract_runtime::{
+        ContractRuntimeError, RoundSeigniorageRateRequest, SpeculativeExecutionState,
+        TotalSupplyRequest,
+    },
     effect::{AutoClosingResponder, Responder},
     reactor::main_reactor::ReactorState,
     rpcs::{chain::BlockIdentifier, docs::OpenRpcSchema},
@@ -909,6 +913,18 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the balance result.
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
+    /// Get the total supply on the chain.
+    GetTotalSupply {
+        #[serde(skip_serializing)]
+        total_supply_request: TotalSupplyRequest,
+        responder: Responder<Result<U512, engine_state::Error>>,
+    },
+    /// Get the round seigniorage rate.
+    GetRoundSeigniorageRate {
+        #[serde(skip_serializing)]
+        round_seigniorage_rate_request: RoundSeigniorageRateRequest,
+        responder: Responder<Result<Ratio<U512>, engine_state::Error>>,
+    },
     /// Returns validator weights.
     GetEraValidators {
         /// Get validators weights request.
@@ -977,6 +993,22 @@ impl Display for ContractRuntimeRequest {
             ContractRuntimeRequest::GetBalance {
                 balance_request, ..
             } => write!(formatter, "balance request: {:?}", balance_request),
+            ContractRuntimeRequest::GetTotalSupply {
+                total_supply_request,
+                ..
+            } => {
+                write!(formatter, "get total supply: {:?}", total_supply_request)
+            }
+            ContractRuntimeRequest::GetRoundSeigniorageRate {
+                round_seigniorage_rate_request,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get round seigniorage rate: {:?}",
+                    round_seigniorage_rate_request
+                )
+            }
             ContractRuntimeRequest::GetEraValidators { request, .. } => {
                 write!(formatter, "get era validators: {:?}", request)
             }
