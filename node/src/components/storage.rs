@@ -853,10 +853,26 @@ impl Storage {
                 block_hash,
                 responder,
             } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                responder
-                    .respond(self.get_transfers(&mut txn, &block_hash)?)
-                    .ignore()
+                // Get the transfers from the transfers DB. If the result is `None` it may mean
+                // that the block was fetched through the sync process using the
+                // historical synchronizer. Because we don't store any record for
+                // execution results of blocks that are empty (have no deploys whatsoever)
+                // when doing historical sync, we can safely assume that `None` in that case means
+                // that the block has an empty transfer array and we can present it
+                // as such to the caller. However we need to check that this assumption
+                // is true and if it's not, we return `None` meaning that no transfers are stored.
+                let transfers_from_storage =
+                    self.get_transfers(&mut self.env.begin_ro_txn()?, &block_hash)?;
+                let transfers = match transfers_from_storage {
+                    some_transfers @ Some(..) => some_transfers,
+                    None => self.read_block(&block_hash)?.and_then(|block| {
+                        block
+                            .deploy_and_transfer_hashes()
+                            .next()
+                            .map_or(Some(Vec::new()), |_| None)
+                    }),
+                };
+                responder.respond(transfers).ignore()
             }
             StorageRequest::PutDeploy { deploy, responder } => {
                 responder.respond(self.put_deploy(&deploy)?).ignore()
