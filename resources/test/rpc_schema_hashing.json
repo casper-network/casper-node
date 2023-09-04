@@ -258,7 +258,7 @@
                   },
                   "execution_results": [
                     {
-                      "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
+                      "block_hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252",
                       "result": {
                         "Success": {
                           "effect": {
@@ -365,7 +365,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "Hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 }
               ],
@@ -561,7 +561,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "BlockHash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 },
                 {
@@ -580,27 +580,13 @@
                   "block_header": {
                     "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                     "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                    "body_hash": "36f51a136e294b01754414c8f62ee64da02ac70c54ab0d823f01f3dd3b9b3bc9",
+                    "body_hash": "7fda38110b95942193710a41a35a2138c7cc712e16f8f38b7e76a4f0830baf07",
                     "random_bit": true,
                     "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                     "era_end": {
                       "era_report": {
                         "equivocators": [
                           "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
-                        ],
-                        "rewards": [
-                          {
-                            "validator": "010303030303030303030303030303030303030303030303030303030303030303",
-                            "amount": 1500
-                          },
-                          {
-                            "validator": "010606060606060606060606060606060606060606060606060606060606060606",
-                            "amount": 4800
-                          },
-                          {
-                            "validator": "010909090909090909090909090909090909090909090909090909090909090909",
-                            "amount": 9000
-                          }
                         ],
                         "inactive_validators": [
                           "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
@@ -618,6 +604,16 @@
                         {
                           "validator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                           "weight": "123"
+                        }
+                      ],
+                      "rewards": [
+                        {
+                          "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                          "amount": "501"
+                        },
+                        {
+                          "validator": "01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+                          "amount": "601"
                         }
                       ]
                     },
@@ -705,7 +701,7 @@
                 {
                   "name": "state_identifier",
                   "value": {
-                    "BlockHash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "BlockHash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 },
                 {
@@ -898,7 +894,7 @@
                   "chainspec_name": "casper-example",
                   "starting_state_root_hash": "0000000000000000000000000000000000000000000000000000000000000000",
                   "last_added_block_info": {
-                    "hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
+                    "hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252",
                     "timestamp": "2020-11-17T00:39:24.072Z",
                     "era_id": 1,
                     "height": 10,
@@ -1079,7 +1075,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "Hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 }
               ],
@@ -1088,31 +1084,17 @@
                 "value": {
                   "api_version": "1.5.0",
                   "block": {
-                    "hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
+                    "hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252",
                     "header": {
                       "parent_hash": "0707070707070707070707070707070707070707070707070707070707070707",
                       "state_root_hash": "0808080808080808080808080808080808080808080808080808080808080808",
-                      "body_hash": "36f51a136e294b01754414c8f62ee64da02ac70c54ab0d823f01f3dd3b9b3bc9",
+                      "body_hash": "7fda38110b95942193710a41a35a2138c7cc712e16f8f38b7e76a4f0830baf07",
                       "random_bit": true,
                       "accumulated_seed": "ac979f51525cfd979b14aa7dc0737c5154eabe0db9280eceaa8dc8d2905b20d5",
                       "era_end": {
                         "era_report": {
                           "equivocators": [
                             "013b6a27bcceb6a42d62a3a8d02a6f0d73653215771de243a63ac048a18b59da29"
-                          ],
-                          "rewards": [
-                            {
-                              "validator": "010303030303030303030303030303030303030303030303030303030303030303",
-                              "amount": 1500
-                            },
-                            {
-                              "validator": "010606060606060606060606060606060606060606060606060606060606060606",
-                              "amount": 4800
-                            },
-                            {
-                              "validator": "010909090909090909090909090909090909090909090909090909090909090909",
-                              "amount": 9000
-                            }
                           ],
                           "inactive_validators": [
                             "018139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
@@ -1131,6 +1113,16 @@
                             "validator": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
                             "weight": "123"
                           }
+                        ],
+                        "rewards": [
+                          {
+                            "validator": "016e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1",
+                            "amount": "501"
+                          },
+                          {
+                            "validator": "01ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
+                            "amount": "601"
+                          }
                         ]
                       },
                       "timestamp": "2020-11-17T00:39:24.072Z",
@@ -1148,7 +1140,7 @@
                         [
                           1,
                           1,
-                          1,
+                          0,
                           0,
                           0,
                           0,
@@ -1160,7 +1152,7 @@
                     "proofs": [
                       {
                         "public_key": "01d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
-                        "signature": "01c440d39261aaa441011415cc9f403ca35cb42dd0d9f59e0edaa27822de1b2a123998dd3c572080bfb4d90e57bedf848d9227fcee2a6353fc0357f69c1313ba03"
+                        "signature": "011e50704fb8ada89228c4be90d3067723536958a4319dcfeda2c70f69c287f327279e764d6bdaa6b4f814041fb9ec2dd928327d586dcf5249e4c5ff67f867720c"
                       }
                     ]
                   }
@@ -1227,7 +1219,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "Hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 }
               ],
@@ -1235,7 +1227,7 @@
                 "name": "chain_get_block_transfers_example_result",
                 "value": {
                   "api_version": "1.5.0",
-                  "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
+                  "block_hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252",
                   "transfers": [
                     {
                       "deploy_hash": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -1531,7 +1523,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "Hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 }
               ],
@@ -1540,7 +1532,7 @@
                 "value": {
                   "api_version": "1.5.0",
                   "era_summary": {
-                    "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
+                    "block_hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -1611,7 +1603,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "Hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 }
               ],
@@ -1693,7 +1685,7 @@
                 {
                   "name": "block_identifier",
                   "value": {
-                    "Hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117"
+                    "Hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252"
                   }
                 }
               ],
@@ -1702,7 +1694,7 @@
                 "value": {
                   "api_version": "1.5.0",
                   "era_summary": {
-                    "block_hash": "c97dcb6946d5e8965271ddeb327c453f8694d5e3bac1866cd5f35f0b76f36117",
+                    "block_hash": "c00fadd042cc39046dc4fd483cf8bb9688fbc6e631557535619b9f04e071d252",
                     "era_id": 42,
                     "stored_value": {
                       "EraInfo": {
@@ -4021,7 +4013,8 @@
             "type": "object",
             "required": [
               "era_report",
-              "next_era_validator_weights"
+              "next_era_validator_weights",
+              "rewards"
             ],
             "properties": {
               "era_report": {
@@ -4032,6 +4025,12 @@
                 "items": {
                   "$ref": "#/components/schemas/ValidatorWeight"
                 }
+              },
+              "rewards": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Reward"
+                }
               }
             },
             "additionalProperties": false
@@ -4041,8 +4040,7 @@
             "type": "object",
             "required": [
               "equivocators",
-              "inactive_validators",
-              "rewards"
+              "inactive_validators"
             ],
             "properties": {
               "equivocators": {
@@ -4051,35 +4049,11 @@
                   "$ref": "#/components/schemas/PublicKey"
                 }
               },
-              "rewards": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/Reward"
-                }
-              },
               "inactive_validators": {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/PublicKey"
                 }
-              }
-            },
-            "additionalProperties": false
-          },
-          "Reward": {
-            "type": "object",
-            "required": [
-              "amount",
-              "validator"
-            ],
-            "properties": {
-              "validator": {
-                "$ref": "#/components/schemas/PublicKey"
-              },
-              "amount": {
-                "type": "integer",
-                "format": "uint64",
-                "minimum": 0.0
               }
             },
             "additionalProperties": false
@@ -4095,6 +4069,22 @@
                 "$ref": "#/components/schemas/PublicKey"
               },
               "weight": {
+                "$ref": "#/components/schemas/U512"
+              }
+            },
+            "additionalProperties": false
+          },
+          "Reward": {
+            "type": "object",
+            "required": [
+              "amount",
+              "validator"
+            ],
+            "properties": {
+              "validator": {
+                "$ref": "#/components/schemas/PublicKey"
+              },
+              "amount": {
                 "$ref": "#/components/schemas/U512"
               }
             },

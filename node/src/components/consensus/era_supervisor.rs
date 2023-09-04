@@ -41,6 +41,7 @@ use crate::{
                 ConsensusProtocol, EraReport, FinalizedBlock as CpFinalizedBlock, ProposedBlock,
                 ProtocolOutcome,
             },
+            error::CreateNewEraError,
             metrics::Metrics,
             validator_change::{ValidatorChange, ValidatorChanges},
             ActionId, ChainspecConsensusExt, Config, ConsensusMessage, ConsensusRequestMessage,
@@ -64,7 +65,6 @@ use crate::{
 };
 
 pub use self::era::Era;
-use crate::components::consensus::error::CreateNewEraError;
 
 use super::{traits::ConsensusNetworkMessage, BlockContext};
 
@@ -1029,14 +1029,15 @@ impl EraSupervisor {
                 let era = self.open_eras.get_mut(&era_id).unwrap();
                 era.add_accusations(&equivocators);
                 era.add_accusations(value.accusations());
+
+                let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
+
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
                 let report = terminal_block_data.map(|tbd| EraReport {
                     equivocators: era.accusations(),
                     inactive_validators: tbd.inactive_validators,
-                    rewards: BTreeMap::new(),
                 });
-                let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
                 let finalized_approvals: HashMap<_, _> = proposed_block
                     .deploys()
                     .iter()

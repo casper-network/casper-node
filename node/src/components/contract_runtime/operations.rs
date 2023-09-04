@@ -102,6 +102,7 @@ pub fn execute_finalized_block(
     activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
+    maybe_rewards: Option<BTreeMap<PublicKey, U512>>,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -335,6 +336,7 @@ pub fn execute_finalized_block(
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
+        maybe_rewards,
         protocol_version,
     )?);
 
@@ -509,7 +511,6 @@ where
     let EraReport {
         equivocators,
         inactive_validators,
-        ..
     } = era_report;
 
     // Both inactive validators and equivocators are evicted

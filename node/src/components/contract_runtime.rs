@@ -4,6 +4,7 @@ mod config;
 mod error;
 mod metrics;
 mod operations;
+mod rewards;
 mod types;
 
 use std::{
@@ -26,12 +27,9 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
-        QueryRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+use casper_execution_engine::core::engine_state::{
+    self, genesis::GenesisError, ChainspecRegistry, EngineConfig, EngineState, GenesisSuccess,
+    QueryRequest, SystemContractRegistry, UpgradeConfig, UpgradeSuccess,
 };
 use casper_hashing::Digest;
 use casper_storage::{
@@ -60,8 +58,8 @@ use crate::{
     fatal,
     protocol::Message,
     types::{
-        ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError,
-        Deploy, FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
+        BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, ChunkingError, Deploy,
+        FinalizedBlock, MetaBlock, MetaBlockState, TrieOrChunk, TrieOrChunkId,
     },
     NodeRng,
 };
@@ -207,14 +205,12 @@ pub(crate) struct ContractRuntime {
     execution_pre_state: Arc<Mutex<ExecutionPreState>>,
     engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
     metrics: Arc<Metrics>,
-    protocol_version: ProtocolVersion,
 
     /// Finalized blocks waiting for their pre-state hash to start executing.
     exec_queue: ExecQueue,
     /// Cached instance of a [`SystemContractRegistry`].
     system_contract_registry: Option<SystemContractRegistry>,
-    activation_point: ActivationPoint,
-    prune_batch_size: u64,
+    chainspec: Arc<Chainspec>,
 }
 
 impl Debug for ContractRuntime {
@@ -537,26 +533,21 @@ impl ContractRuntime {
                             finalized_block_height,
                             deploys.len()
                         );
-                        let protocol_version = self.protocol_version;
                         let engine_state = Arc::clone(&self.engine_state);
                         let metrics = Arc::clone(&self.metrics);
                         let shared_pre_state = Arc::clone(&self.execution_pre_state);
-                        let activation_point = self.activation_point;
-                        let prune_batch_size = self.prune_batch_size;
                         effects.extend(
                             Self::execute_finalized_block_or_requeue(
                                 engine_state,
                                 metrics,
+                                self.chainspec.clone(),
                                 exec_queue,
                                 shared_pre_state,
                                 current_pre_state.clone(),
                                 effect_builder,
-                                protocol_version,
                                 finalized_block,
                                 deploys,
-                                activation_point,
                                 key_block_height_for_activation_point,
-                                prune_batch_size,
                                 meta_block_state,
                             )
                             .ignore(),
@@ -635,21 +626,10 @@ impl ContractRuntime {
 }
 
 impl ContractRuntime {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        protocol_version: ProtocolVersion,
         storage_dir: &Path,
         contract_runtime_config: &Config,
-        wasm_config: WasmConfig,
-        system_config: SystemConfig,
-        max_associated_keys: u32,
-        max_runtime_call_stack_height: u32,
-        minimum_delegation_amount: u64,
-        activation_point: ActivationPoint,
-        prune_batch_size: u64,
-        strict_argument_checking: bool,
-        vesting_schedule_period_millis: u64,
-        max_delegators_per_validator: Option<u32>,
+        chainspec: Arc<Chainspec>,
         registry: &Registry,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
@@ -686,14 +666,15 @@ impl ContractRuntime {
 
         let engine_config = EngineConfig::new(
             contract_runtime_config.max_query_depth_or_default(),
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            minimum_delegation_amount,
-            strict_argument_checking,
-            vesting_schedule_period_millis,
-            max_delegators_per_validator,
-            wasm_config,
-            system_config,
+            chainspec.core_config.max_associated_keys,
+            chainspec.core_config.max_runtime_call_stack_height,
+            chainspec.core_config.minimum_delegation_amount,
+            chainspec.core_config.strict_argument_checking,
+            chainspec.core_config.vesting_schedule_period.millis(),
+            (chainspec.core_config.max_delegators_per_validator != 0)
+                .then_some(chainspec.core_config.max_delegators_per_validator),
+            chainspec.wasm_config,
+            chainspec.system_costs_config,
         );
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
@@ -707,11 +688,9 @@ impl ContractRuntime {
             execution_pre_state,
             engine_state,
             metrics,
-            protocol_version,
             exec_queue: Arc::new(Mutex::new(BTreeMap::new())),
             system_contract_registry: None,
-            activation_point,
-            prune_batch_size,
+            chainspec,
         })
     }
 
@@ -791,16 +770,14 @@ impl ContractRuntime {
     async fn execute_finalized_block_or_requeue<REv>(
         engine_state: Arc<EngineState<DataAccessLayer<LmdbGlobalState>>>,
         metrics: Arc<Metrics>,
+        chainspec: Arc<Chainspec>,
         exec_queue: ExecQueue,
         shared_pre_state: Arc<Mutex<ExecutionPreState>>,
         current_pre_state: ExecutionPreState,
         effect_builder: EffectBuilder<REv>,
-        protocol_version: ProtocolVersion,
         finalized_block: FinalizedBlock,
         deploys: Vec<Deploy>,
-        activation_point: ActivationPoint,
         key_block_height_for_activation_point: u64,
-        prune_batch_size: u64,
         mut meta_block_state: MetaBlockState,
     ) where
         REv: From<ContractRuntimeRequest>
@@ -812,6 +789,28 @@ impl ContractRuntime {
     {
         debug!("ContractRuntime: execute_finalized_block_or_requeue");
         let contract_runtime_metrics = metrics.clone();
+
+        let protocol_version = chainspec.protocol_version();
+        let activation_point = chainspec.protocol_config.activation_point;
+        let prune_batch_size = chainspec.core_config.prune_batch_size;
+        let maybe_rewards = if finalized_block.era_report().is_some() {
+            match rewards::rewards_for_era(
+                effect_builder,
+                finalized_block.era_id(),
+                finalized_block.height(),
+                chainspec,
+            )
+            .await
+            {
+                Ok(rewards) => Some(rewards),
+                Err(e) => {
+                    return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await
+                }
+            }
+        } else {
+            None
+        };
+
         let BlockAndExecutionResults {
             block,
             approvals_hashes,
@@ -829,6 +828,7 @@ impl ContractRuntime {
                 activation_point.era_id(),
                 key_block_height_for_activation_point,
                 prune_batch_size,
+                maybe_rewards,
             )
         })
         .await
@@ -1069,7 +1069,8 @@ fn query_round_seigniorage_rate(
 
 #[cfg(test)]
 mod tests {
-    use casper_execution_engine::shared::{system_config::SystemConfig, wasm_config::WasmConfig};
+    use std::sync::Arc;
+
     use casper_hashing::{ChunkWithProof, Digest};
     use casper_storage::global_state::{
         shared::{transform::Transform, AdditiveMap, CorrelationId},
@@ -1079,7 +1080,8 @@ mod tests {
         },
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, CLValue, EraId, Key, ProtocolVersion, StoredValue,
+        account::AccountHash, bytesrepr, testing::TestRng, CLValue, EraId, Key, StoredValue,
+        TimeDiff,
     };
     use prometheus::Registry;
     use tempfile::tempdir;
@@ -1087,7 +1089,10 @@ mod tests {
     use crate::{
         components::fetcher::FetchResponse,
         contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
-        types::{ActivationPoint, ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
+        types::{
+            chainspec::{CoreConfig, ProtocolConfig},
+            ActivationPoint, Chainspec, ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk,
+        },
     };
 
     use super::ContractRuntimeError;
@@ -1139,22 +1144,32 @@ mod tests {
 
     // Creates a test ContractRuntime and feeds the underlying GlobalState with `test_pair`.
     // Returns [`ContractRuntime`] instance and the new Merkle root after applying the `test_pair`.
-    fn create_test_state(test_pair: [TestPair; 2]) -> (ContractRuntime, Digest) {
+    fn create_test_state(rng: &mut TestRng, test_pair: [TestPair; 2]) -> (ContractRuntime, Digest) {
         let temp_dir = tempdir().unwrap();
+        let chainspec = Chainspec {
+            protocol_config: ProtocolConfig {
+                activation_point: ActivationPoint::EraId(EraId::from(2)),
+                ..ProtocolConfig::random(rng)
+            },
+            core_config: CoreConfig {
+                max_associated_keys: 10,
+                max_runtime_call_stack_height: 10,
+                minimum_delegation_amount: 10,
+                prune_batch_size: 5,
+                strict_argument_checking: true,
+                vesting_schedule_period: TimeDiff::from_millis(1),
+                max_delegators_per_validator: 0,
+                ..CoreConfig::random(rng)
+            },
+            deploy_config: Default::default(),
+            wasm_config: Default::default(),
+            system_costs_config: Default::default(),
+            ..Chainspec::random(rng)
+        };
         let contract_runtime = ContractRuntime::new(
-            ProtocolVersion::default(),
             temp_dir.path(),
             &ContractRuntimeConfig::default(),
-            WasmConfig::default(),
-            SystemConfig::default(),
-            10,
-            10,
-            10,
-            ActivationPoint::EraId(EraId::from(2)),
-            5,
-            true,
-            1,
-            None,
+            Arc::new(chainspec),
             &Registry::default(),
         )
         .unwrap();
@@ -1185,7 +1200,8 @@ mod tests {
 
     #[test]
     fn returns_trie_or_chunk() {
-        let (contract_runtime, root_hash) = create_test_state(create_test_pairs_with_large_data());
+        let (contract_runtime, root_hash) =
+            create_test_state(&mut TestRng::new(), create_test_pairs_with_large_data());
 
         // Expect `Trie` with NodePointer when asking with a root hash.
         let trie = read_trie(&contract_runtime, TrieOrChunkId(0, root_hash));

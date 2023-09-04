@@ -159,15 +159,6 @@ impl TestBlockBuilder {
                     })
                     .take(equivocators_count)
                     .collect(),
-                    rewards: iter::repeat_with(|| {
-                        let pub_key = PublicKey::from(
-                            &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
-                        );
-                        let reward = rng.gen_range(1..1_000_000_000_000_u64);
-                        (pub_key, reward)
-                    })
-                    .take(rewards_count)
-                    .collect(),
                     inactive_validators: iter::repeat_with(|| {
                         PublicKey::from(
                             &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
@@ -197,6 +188,9 @@ impl TestBlockBuilder {
         let next_era_validator_weights = finalized_block
             .era_report()
             .map(|_| BTreeMap::<PublicKey, U512>::default());
+        let rewards = finalized_block
+            .era_report()
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
             parent_hash,
@@ -204,6 +198,7 @@ impl TestBlockBuilder {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
+            rewards,
             self.protocol_version,
         )
         .expect("Could not create random block with specifics")

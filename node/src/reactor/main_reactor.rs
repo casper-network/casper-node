@@ -1014,27 +1014,10 @@ impl reactor::Reactor for MainReactor {
             config.node.force_resync,
         )?;
 
-        let max_delegators_per_validator =
-            if chainspec.core_config.max_delegators_per_validator == 0 {
-                None
-            } else {
-                Some(chainspec.core_config.max_delegators_per_validator)
-            };
-
         let contract_runtime = ContractRuntime::new(
-            protocol_version,
             storage.root_path(),
             &config.contract_runtime,
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.max_associated_keys,
-            chainspec.core_config.max_runtime_call_stack_height,
-            chainspec.core_config.minimum_delegation_amount,
-            chainspec.protocol_config.activation_point,
-            chainspec.core_config.prune_batch_size,
-            chainspec.core_config.strict_argument_checking,
-            chainspec.core_config.vesting_schedule_period.millis(),
-            max_delegators_per_validator,
+            chainspec.clone(),
             registry,
         )?;
 

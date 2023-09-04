@@ -32,8 +32,7 @@ use tracing::error;
 use casper_hashing::{ChunkWithProofVerificationError, Digest};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, AsymmetricType, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp,
-    U512,
+    crypto, EraId, ProtocolVersion, PublicKey, SecretKey, Signature, Timestamp, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
@@ -41,7 +40,7 @@ use casper_types::{crypto::generate_ed25519_keypair, testing::TestRng};
 use crate::{
     components::{
         block_synchronizer::ExecutionResultsChecksum,
-        consensus,
+        consensus::{self},
         fetcher::{EmptyValidationMetadata, FetchItem, Tag},
         gossiper::{GossipItem, LargeGossipItem},
     },
@@ -70,16 +69,8 @@ static ERA_REPORT: Lazy<EraReport> = Lazy::new(|| {
     let public_key_3 = PublicKey::from(&secret_key_3);
     let inactive_validators = vec![public_key_3];
 
-    let rewards = IntoIterator::into_iter([
-        (PublicKey::ed25519_from_bytes([3; 32]).unwrap(), 1500),
-        (PublicKey::ed25519_from_bytes([6; 32]).unwrap(), 4800),
-        (PublicKey::ed25519_from_bytes([9; 32]).unwrap(), 9000),
-    ])
-    .collect();
-
     EraReport {
         equivocators,
-        rewards,
         inactive_validators,
     }
 });
@@ -103,9 +94,25 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
         );
         next_era_validator_weights
     };
+    let rewards = {
+        let mut rewards = BTreeMap::new();
+        rewards.insert(
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
+            U512::from(501),
+        );
+        rewards.insert(
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([7u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
+            U512::from(601),
+        );
+        rewards
+    };
 
     let era_report = EraReport::doc_example().clone();
-    EraEnd::new(era_report, next_era_validator_weights)
+    EraEnd::new(era_report, next_era_validator_weights, rewards)
 });
 static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let transfer_hashes = vec![*Deploy::doc_example().hash()];
@@ -114,7 +121,17 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
     let secret_key = SecretKey::doc_example();
     let public_key = PublicKey::from(secret_key);
     let era_report = EraReport::doc_example().clone();
-    let validator_set = era_report.rewards.keys().cloned().collect();
+    //let validator_set = era_report.rewards.keys().cloned().collect();
+    let validator_set = {
+        let mut validator_set = BTreeSet::new();
+        validator_set.insert(PublicKey::from(
+            &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
+        ));
+        validator_set.insert(PublicKey::from(
+            &SecretKey::ed25519_from_bytes([7u8; SecretKey::ED25519_LENGTH]).unwrap(),
+        ));
+        validator_set
+    };
     let rewarded_signatures =
         RewardedSignatures::new(vec![SingleBlockRewardedSignatures::from_validator_set(
             &validator_set,
@@ -173,6 +190,22 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         );
         Some(next_era_validator_weights)
     };
+    let rewards = {
+        let mut rewards = BTreeMap::new();
+        rewards.insert(
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([5u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
+            U512::from(501),
+        );
+        rewards.insert(
+            PublicKey::from(
+                &SecretKey::ed25519_from_bytes([7u8; SecretKey::ED25519_LENGTH]).unwrap(),
+            ),
+            U512::from(601),
+        );
+        Some(rewards)
+    };
 
     Block::new(
         parent_hash,
@@ -180,6 +213,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
+        rewards,
         protocol_version,
     )
     .expect("could not construct block")
@@ -400,12 +434,7 @@ pub type EraReport = consensus::EraReport<PublicKey>;
 impl Display for EraReport {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let slashings = DisplayIter::new(&self.equivocators);
-        let rewards = DisplayIter::new(
-            self.rewards
-                .iter()
-                .map(|(public_key, amount)| format!("{}: {}", public_key, amount)),
-        );
-        write!(f, "era end: slash {}, reward {}", slashings, rewards)
+        write!(f, "era end: slash {}", slashings)
     }
 }
 
@@ -413,27 +442,22 @@ impl ToBytes for EraReport {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.extend(self.equivocators.to_bytes()?);
-        buffer.extend(self.rewards.to_bytes()?);
         buffer.extend(self.inactive_validators.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.equivocators.serialized_length()
-            + self.rewards.serialized_length()
-            + self.inactive_validators.serialized_length()
+        self.equivocators.serialized_length() + self.inactive_validators.serialized_length()
     }
 }
 
 impl FromBytes for EraReport {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (equivocators, remainder) = Vec::<PublicKey>::from_bytes(bytes)?;
-        let (rewards, remainder) = BTreeMap::<PublicKey, u64>::from_bytes(remainder)?;
         let (inactive_validators, remainder) = Vec::<PublicKey>::from_bytes(remainder)?;
 
         let era_report = EraReport {
             equivocators,
-            rewards,
             inactive_validators,
         };
         Ok((era_report, remainder))
@@ -575,22 +599,12 @@ impl FinalizedBlock {
 
         let era_report = if is_switch {
             let equivocators_count = rng.gen_range(0..5);
-            let rewards_count = rng.gen_range(0..5);
             let inactive_count = rng.gen_range(0..5);
             Some(EraReport {
                 equivocators: iter::repeat_with(|| {
                     PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
                 })
                 .take(equivocators_count)
-                .collect(),
-                rewards: iter::repeat_with(|| {
-                    let pub_key = PublicKey::from(
-                        &SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap(),
-                    );
-                    let reward = rng.gen_range(1..(1_000_000_000 + 1));
-                    (pub_key, reward)
-                })
-                .take(rewards_count)
                 .collect(),
                 inactive_validators: iter::repeat_with(|| {
                     PublicKey::from(&SecretKey::ed25519_from_bytes(rng.gen::<[u8; 32]>()).unwrap())
@@ -781,13 +795,20 @@ pub struct EraEnd {
     era_report: EraReport,
     /// The validators for the upcoming era and their respective weights.
     next_era_validator_weights: BTreeMap<PublicKey, U512>,
+    /// The rewards distributed to the validators.
+    rewards: BTreeMap<PublicKey, U512>,
 }
 
 impl EraEnd {
-    fn new(era_report: EraReport, next_era_validator_weights: BTreeMap<PublicKey, U512>) -> Self {
+    fn new(
+        era_report: EraReport,
+        next_era_validator_weights: BTreeMap<PublicKey, U512>,
+        rewards: BTreeMap<PublicKey, U512>,
+    ) -> Self {
         EraEnd {
             era_report,
             next_era_validator_weights,
+            rewards,
         }
     }
 
@@ -800,18 +821,37 @@ impl EraEnd {
     pub fn next_era_validator_weights(&self) -> &BTreeMap<PublicKey, U512> {
         &self.next_era_validator_weights
     }
+
+    /// The rewards distributed to the validators.
+    pub fn rewards(&self) -> &BTreeMap<PublicKey, U512> {
+        &self.rewards
+    }
 }
 
 impl ToBytes for EraEnd {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
-        buffer.extend(self.era_report.to_bytes()?);
-        buffer.extend(self.next_era_validator_weights.to_bytes()?);
+        let EraEnd {
+            era_report,
+            next_era_validator_weights,
+            rewards,
+        } = self;
+        buffer.extend(era_report.to_bytes()?);
+        buffer.extend(next_era_validator_weights.to_bytes()?);
+        buffer.extend(rewards.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.era_report.serialized_length() + self.next_era_validator_weights.serialized_length()
+        let EraEnd {
+            era_report,
+            next_era_validator_weights,
+            rewards,
+        } = self;
+
+        era_report.serialized_length()
+            + next_era_validator_weights.serialized_length()
+            + rewards.serialized_length()
     }
 }
 
@@ -819,9 +859,11 @@ impl FromBytes for EraEnd {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (era_report, bytes) = EraReport::from_bytes(bytes)?;
         let (next_era_validator_weights, bytes) = BTreeMap::<PublicKey, U512>::from_bytes(bytes)?;
+        let (rewards, bytes) = BTreeMap::<PublicKey, U512>::from_bytes(bytes)?;
         let era_end = EraEnd {
             era_report,
             next_era_validator_weights,
+            rewards,
         };
         Ok((era_end, bytes))
     }
@@ -898,6 +940,7 @@ mod specimen_support {
                     "validator_count",
                     cache,
                 ),
+                rewards: btree_map_distinct_from_prop(estimator, "validator_count", cache),
             }
         }
     }
@@ -1425,6 +1468,7 @@ impl Block {
         state_root_hash: Digest,
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
+        rewards: Option<BTreeMap<PublicKey, U512>>,
         protocol_version: ProtocolVersion,
     ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
@@ -1436,15 +1480,20 @@ impl Block {
 
         let body_hash = body.hash();
 
-        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
-            (None, None) => None,
-            (Some(era_report), Some(next_era_validator_weights)) => {
-                Some(EraEnd::new(*era_report, next_era_validator_weights))
-            }
-            (maybe_era_report, maybe_next_era_validator_weights) => {
+        let era_end = match (
+            finalized_block.era_report,
+            next_era_validator_weights,
+            rewards,
+        ) {
+            (None, None, None) => None,
+            (Some(era_report), Some(next_era_validator_weights), Some(rewards)) => Some(
+                EraEnd::new(*era_report, next_era_validator_weights, rewards),
+            ),
+            (maybe_era_report, maybe_next_era_validator_weights, maybe_rewards) => {
                 return Err(BlockCreationError::CouldNotCreateEraEnd {
                     maybe_era_report,
                     maybe_next_era_validator_weights,
+                    maybe_rewards,
                 })
             }
         };
@@ -1501,6 +1550,15 @@ impl Block {
         &self.hash
     }
 
+    /// Era ID in which this block was created.
+    pub fn era_id(&self) -> EraId {
+        self.header.era_id()
+    }
+
+    pub(crate) fn is_switch(&self) -> bool {
+        self.header.era_end().is_some()
+    }
+
     pub(crate) fn state_root_hash(&self) -> &Digest {
         self.header.state_root_hash()
     }
@@ -1520,9 +1578,19 @@ impl Block {
         self.body.deploy_and_transfer_hashes()
     }
 
+    /// List of identifiers for finality signatures for a particular past block.
+    pub fn rewarded_signatures(&self) -> &RewardedSignatures {
+        self.body.rewarded_signatures()
+    }
+
     /// The height of a block.
     pub fn height(&self) -> u64 {
         self.header.height()
+    }
+
+    /// The block's proposer, *i.e.* the validator producing it.
+    pub fn proposer(&self) -> &PublicKey {
+        self.body().proposer()
     }
 
     /// The protocol version of the block.
@@ -1654,6 +1722,10 @@ impl Block {
             .clone()
             .era_report
             .map(|_| BTreeMap::<PublicKey, U512>::default());
+        let rewards = finalized_block
+            .clone()
+            .era_report
+            .map(|_| BTreeMap::<PublicKey, U512>::default());
 
         Block::new(
             parent_hash,
@@ -1661,6 +1733,7 @@ impl Block {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
+            rewards,
             protocol_version,
         )
         .expect("Could not create random block with specifics")
@@ -1681,6 +1754,7 @@ impl Block {
         deploys_iter: I,
         parent_hash: Option<BlockHash>,
         validator_weights: BTreeMap<PublicKey, U512>,
+        rewards: BTreeMap<PublicKey, U512>,
     ) -> Self {
         let parent_hash = match parent_hash {
             Some(parent_hash) => parent_hash,
@@ -1704,6 +1778,11 @@ impl Block {
         } else {
             Some(validator_weights)
         };
+        let rewards = if rewards.is_empty() {
+            None
+        } else {
+            Some(rewards)
+        };
 
         Block::new(
             parent_hash,
@@ -1711,6 +1790,7 @@ impl Block {
             state_root_hash,
             finalized_block,
             next_era_validator_weights,
+            rewards,
             protocol_version,
         )
         .expect("Could not create random block with specifics")
@@ -2074,7 +2154,7 @@ pub(crate) mod json_compatibility {
     #[serde(deny_unknown_fields)]
     struct Reward {
         validator: PublicKey,
-        amount: u64,
+        amount: U512,
     }
 
     #[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, PartialEq, Eq, DataSize)]
@@ -2089,7 +2169,6 @@ pub(crate) mod json_compatibility {
     #[serde(deny_unknown_fields)]
     struct JsonEraReport {
         equivocators: Vec<PublicKey>,
-        rewards: Vec<Reward>,
         inactive_validators: Vec<PublicKey>,
     }
 
@@ -2097,11 +2176,6 @@ pub(crate) mod json_compatibility {
         fn from(era_report: EraReport) -> Self {
             JsonEraReport {
                 equivocators: era_report.equivocators,
-                rewards: era_report
-                    .rewards
-                    .into_iter()
-                    .map(|(validator, amount)| Reward { validator, amount })
-                    .collect(),
                 inactive_validators: era_report.inactive_validators,
             }
         }
@@ -2110,15 +2184,9 @@ pub(crate) mod json_compatibility {
     impl From<JsonEraReport> for EraReport {
         fn from(era_report: JsonEraReport) -> Self {
             let equivocators = era_report.equivocators;
-            let rewards = era_report
-                .rewards
-                .into_iter()
-                .map(|reward| (reward.validator, reward.amount))
-                .collect();
             let inactive_validators = era_report.inactive_validators;
             EraReport {
                 equivocators,
-                rewards,
                 inactive_validators,
             }
         }
@@ -2129,6 +2197,7 @@ pub(crate) mod json_compatibility {
     pub struct JsonEraEnd {
         era_report: JsonEraReport,
         next_era_validator_weights: Vec<ValidatorWeight>,
+        rewards: Vec<Reward>,
     }
 
     impl From<EraEnd> for JsonEraEnd {
@@ -2142,9 +2211,15 @@ pub(crate) mod json_compatibility {
                     weight: *weight,
                 })
                 .collect();
+            let json_rewards = data
+                .rewards
+                .into_iter()
+                .map(|(validator, amount)| Reward { validator, amount })
+                .collect();
             JsonEraEnd {
                 era_report: json_era_end,
                 next_era_validator_weights: json_validator_weights,
+                rewards: json_rewards,
             }
         }
     }
@@ -2159,7 +2234,12 @@ pub(crate) mod json_compatibility {
                     (validator_weight.validator.clone(), validator_weight.weight)
                 })
                 .collect();
-            EraEnd::new(era_report, validator_weights)
+            let rewards = json_data
+                .rewards
+                .into_iter()
+                .map(|Reward { validator, amount }| (validator, amount))
+                .collect();
+            EraEnd::new(era_report, validator_weights, rewards)
         }
     }
 

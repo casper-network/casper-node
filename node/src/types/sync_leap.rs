@@ -2177,6 +2177,15 @@ mod tests {
                 None
             };
 
+            let rewards = validators.as_ref().map(|validators| {
+                let mut rewards = BTreeMap::new();
+                rewards.insert(
+                    validators.keys().next().unwrap().clone(),
+                    U512::from(123456_u64),
+                );
+                rewards
+            });
+
             if is_upgrade {
                 self.protocol_version = ProtocolVersion::from_parts(
                     self.protocol_version.value().major,
@@ -2202,6 +2211,7 @@ mod tests {
                     iter::empty(),
                 ),
                 validators,
+                rewards,
                 self.protocol_version,
             )
             .unwrap();

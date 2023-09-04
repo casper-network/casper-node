@@ -267,6 +267,12 @@ macro_rules! impl_traits_for_uint {
             }
         }
 
+        impl From<num_rational::Ratio<$type>> for $type {
+            fn from(ratio: num_rational::Ratio<$type>) -> Self {
+                ratio.numer() / ratio.denom()
+            }
+        }
+
         impl Integer for $type {
             /// Unsigned integer division. Returns the same result as `div` (`/`).
             #[inline]

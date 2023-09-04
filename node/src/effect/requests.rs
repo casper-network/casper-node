@@ -348,6 +348,12 @@ pub(crate) enum StorageRequest {
         /// local storage.
         responder: Responder<Option<BlockHeader>>,
     },
+    GetSwitchBlockHeaderByEra {
+        /// Era ID for which to get the block header.
+        era_id: EraId,
+        /// Responder to call with the result.
+        responder: Responder<Option<BlockHeader>>,
+    },
     /// Retrieve all transfers in a block with given hash.
     GetBlockTransfers {
         /// Hash of block to get transfers of.
@@ -533,6 +539,9 @@ impl Display for StorageRequest {
             }
             StorageRequest::GetBlockHeaderByHeight { block_height, .. } => {
                 write!(formatter, "get header for height {}", block_height)
+            }
+            StorageRequest::GetSwitchBlockHeaderByEra { era_id, .. } => {
+                write!(formatter, "get header for era {}", era_id)
             }
             StorageRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers for {}", block_hash)

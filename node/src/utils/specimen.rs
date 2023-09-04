@@ -532,6 +532,11 @@ impl LargestSpecimen for Block {
                 "validator_count",
                 cache,
             )),
+            Some(btree_map_distinct_from_prop(
+                estimator,
+                "validator_count",
+                cache,
+            )),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
         .expect("did not expect largest specimen creation of block to fail")
@@ -576,7 +581,6 @@ impl LargestSpecimen for EraReport<PublicKey> {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         EraReport {
             equivocators: vec_prop_specimen(estimator, "validator_count", cache),
-            rewards: btree_map_distinct_from_prop(estimator, "validator_count", cache),
             inactive_validators: vec_prop_specimen(estimator, "validator_count", cache),
         }
     }

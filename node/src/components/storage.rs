@@ -1152,6 +1152,10 @@ impl Storage {
                     .read_block_header_by_height(block_height, only_from_available_block_range)?;
                 responder.respond(maybe_header).ignore()
             }
+            StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder } => {
+                let maybe_header = self.read_switch_block_header_by_era_id(era_id)?;
+                responder.respond(maybe_header).ignore()
+            }
             StorageRequest::PutBlockHeader {
                 block_header,
                 responder,
@@ -1754,6 +1758,16 @@ impl Storage {
             )
         }
         ret
+    }
+
+    /// Retrieves single switch block header by era ID by looking it up in the index and returning
+    /// it.
+    pub(crate) fn read_switch_block_header_by_era_id(
+        &self,
+        era_id: EraId,
+    ) -> Result<Option<BlockHeader>, FatalStorageError> {
+        let mut txn = self.env.begin_ro_txn()?;
+        self.get_switch_block_header_by_era_id(&mut txn, era_id)
     }
 
     /// Retrieves a single block header by deploy hash by looking it up in the index and returning
