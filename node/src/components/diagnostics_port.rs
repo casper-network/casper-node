@@ -141,8 +141,16 @@ where
                     if self.state != ComponentState::Initializing {
                         return Effects::new();
                     }
-                    let (effects, state) = self.bind(self.config.value().enabled, effect_builder);
+                    let (effects, mut state) =
+                        self.bind(self.config.value().enabled, effect_builder);
+
+                    if matches!(state, ComponentState::Initializing) {
+                        // No port address to bind, jump to initialized immediately.
+                        state = ComponentState::Initialized;
+                    }
+
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
+
                     effects
                 }
             },
