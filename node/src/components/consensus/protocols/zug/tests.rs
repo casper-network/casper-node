@@ -1,4 +1,4 @@
-use super::*;
+use super::{registered_sync::RandomId, *};
 
 use std::{collections::BTreeSet, sync::Arc};
 
@@ -662,6 +662,7 @@ fn zug_sends_sync_request() {
                 active: 0,
                 faulty: 0,
                 instance_id: _,
+                sync_id: _,
             }),
             None,
         ) => {}
@@ -697,6 +698,7 @@ fn zug_sends_sync_request() {
                 active,
                 faulty,
                 instance_id: _,
+                sync_id: _,
             }),
             None,
         ) => {
@@ -770,6 +772,7 @@ fn zug_handles_sync_request() {
     zug.handle_message(&mut rng, sender, msg, timestamp);
 
     let first_validator_idx = ValidatorIndex(rng.gen_range(0..3));
+    let sync_id = RandomId::new(&mut rng);
 
     // The sender has everything we have except the proposal itself.
     let msg = SyncRequest::<ClContext> {
@@ -788,6 +791,7 @@ fn zug_handles_sync_request() {
         ),
         faulty: zug.validator_bit_field(first_validator_idx, vec![carol_idx].into_iter()),
         instance_id: *zug.instance_id(),
+        sync_id,
     };
     let (outcomes, response) = zug.handle_request_message(
         &mut rng,
@@ -808,11 +812,13 @@ fn zug_handles_sync_request() {
             signed_messages: Vec::new(),
             evidence: Vec::new(),
             instance_id: *zug.instance_id(),
+            sync_id,
         })
     );
     expect_no_gossip_block_finalized(outcomes);
 
     // But if there are missing messages, these are sent back.
+    let sync_id = RandomId::new(&mut rng);
     let msg = SyncRequest::<ClContext> {
         round_id: 0,
         proposal_hash: Some(hash1), // Wrong proposal!
@@ -825,6 +831,7 @@ fn zug_handles_sync_request() {
         active: zug.validator_bit_field(first_validator_idx, vec![alice_idx, bob_idx].into_iter()),
         faulty: zug.validator_bit_field(first_validator_idx, vec![].into_iter()),
         instance_id: *zug.instance_id(),
+        sync_id,
     };
     let (mut outcomes, response) = zug.handle_request_message(
         &mut rng,
@@ -857,6 +864,7 @@ fn zug_handles_sync_request() {
     );
     assert_eq!(sync_response.signed_messages, vec![]);
     assert_eq!(sync_response.evidence.len(), 1);
+    assert_eq!(sync_response.sync_id, sync_id);
     match (&sync_response.evidence[0], &zug.faults[&carol_idx]) {
         (
             (signed_msg, content2, sig2),
