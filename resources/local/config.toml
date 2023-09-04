@@ -6,8 +6,16 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Whether to synchronize all data back to genesis, or just [deploys.max_ttl] (chainspec setting) worth of data.
-sync_to_genesis = true
+# Historical sync behavior for this node. Options are:
+#  'genesis'  (node will attempt to acquire all block data back to genesis)
+#  'ttl'      (node will attempt to acquire all block data to comply with time to live enforcement)
+#  'nosync'   (node will only acquire blocks moving forward)
+# note: ttl is a chainsepc configured behavior on a given network; consult the `max_ttl` chainspec setting
+#       (it is currently ~18 hours by default on production and production-like networks but subject to change).
+# note: `nosync` is incompatible with validator behavior; a nosync node is prevented from participating
+#        in consensus / switching to validate mode. it is primarily for lightweight nodes that are
+#        only interested in recent activity.
+sync_handling = 'genesis'
 
 # Idle time after which the syncing process is considered stalled.
 idle_tolerance = '20min'
