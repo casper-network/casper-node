@@ -5,10 +5,11 @@ use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::AccountHash,
+    addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
-    contracts::{ContractPackageStatus, EntryPoints, NamedKeys},
     crypto,
+    package::{ContractPackageKind, ContractPackageStatus},
     system::auction::EraInfo,
     ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
     HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
@@ -30,7 +31,11 @@ where
     ) -> Result<Option<RuntimeValue>, Trap> {
         let func = FunctionIndex::try_from(index).expect("unknown function index");
 
-        let host_function_costs = self.config.wasm_config().take_host_function_costs();
+        let host_function_costs = self
+            .context
+            .engine_config()
+            .wasm_config()
+            .take_host_function_costs();
 
         match func {
             FunctionIndex::ReadFuncIndex => {
@@ -402,7 +407,7 @@ where
                     let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
                     bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
                 };
-                let ret = match self.transfer_from_purse_to_account(
+                let ret = match self.transfer_from_purse_to_account_hash(
                     source_purse,
                     account_hash,
                     amount,
@@ -453,16 +458,28 @@ where
                         id_size,
                     ],
                 )?;
-                let ret = self.transfer_from_purse_to_purse(
-                    source_ptr,
-                    source_size,
-                    target_ptr,
-                    target_size,
-                    amount_ptr,
-                    amount_size,
-                    id_ptr,
-                    id_size,
-                )?;
+
+                let source: URef = {
+                    let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let target: URef = {
+                    let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let amount: U512 = {
+                    let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let id: Option<u64> = {
+                    let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
+                    bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
+                };
+
+                let ret = self.transfer_from_purse_to_purse(source, target, amount, id)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
 
@@ -529,8 +546,8 @@ where
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
                 let package_status = ContractPackageStatus::new(is_locked);
-                let (hash_addr, access_addr) =
-                    self.create_contract_package_at_hash(package_status)?;
+                let (hash_addr, access_addr) = self
+                    .create_contract_package_at_hash(package_status, ContractPackageKind::Wasm)?;
 
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
@@ -938,7 +955,7 @@ where
                     Args::parse(args)?;
                 let _era_id: EraId = self.t_from_mem(era_id_ptr, era_id_size)?;
                 let era_info: EraInfo = self.t_from_mem(era_info_ptr, era_info_size)?;
-                self.record_era_summary(era_info)?;
+                self.record_era_info(era_info)?;
                 Ok(Some(RuntimeValue::I32(0)))
             }
 
@@ -1065,6 +1082,29 @@ where
                     .map_err(|error| Error::Interpreter(error.into()))?;
 
                 Ok(Some(RuntimeValue::I32(0)))
+            }
+            FunctionIndex::EnableContractVersion => {
+                // args(0) = pointer to package hash in wasm memory
+                // args(1) = size of package hash in wasm memory
+                // args(2) = pointer to contract hash in wasm memory
+                // args(3) = size of contract hash in wasm memory
+                let (package_key_ptr, package_key_size, contract_hash_ptr, contract_hash_size) =
+                    Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.enable_contract_version,
+                    [
+                        package_key_ptr,
+                        package_key_size,
+                        contract_hash_ptr,
+                        contract_hash_size,
+                    ],
+                )?;
+                let contract_package_hash = self.t_from_mem(package_key_ptr, package_key_size)?;
+                let contract_hash = self.t_from_mem(contract_hash_ptr, contract_hash_size)?;
+
+                let result = self.enable_contract_version(contract_package_hash, contract_hash)?;
+
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
         }
     }

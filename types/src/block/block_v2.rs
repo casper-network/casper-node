@@ -362,6 +362,7 @@ impl BlockV2 {
     ///
     /// If `validator_weights` is `Some`, a switch block is created and includes the provided
     /// weights in the era end's `next_era_validator_weights` field.
+    /// TODO[RC]: Are these needed?
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn random_with_specifics_and_parent_and_validator_weights(
         rng: &mut TestRng,
@@ -419,6 +420,18 @@ impl BlockV2 {
             None,
         );
         block.hash = BlockHash::random(rng);
+        assert!(block.verify().is_err());
+        block
+    }
+
+    /// Makes the block invalid, for testing purpose.
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
+    pub fn make_invalid(self, rng: &mut TestRng) -> Self {
+        let block = BlockV2 {
+            hash: BlockHash::random(rng),
+            ..self
+        };
+
         assert!(block.verify().is_err());
         block
     }

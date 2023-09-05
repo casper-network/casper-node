@@ -12,7 +12,7 @@ use casper_contract::{
 };
 use casper_types::{
     account::AccountHash,
-    contracts::{NamedKeys, Parameters},
+    addressable_entity::{NamedKeys, Parameters},
     ApiError, CLType, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
     RuntimeArgs, URef, U512,
 };

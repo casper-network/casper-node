@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
-use super::EraReport;
+use super::{EraReport, JsonEraEnd};
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
 use crate::{
@@ -143,6 +143,19 @@ impl KeyValueJsonSchema for NextEraValidatorLabels {
     const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The validator's weight.");
 }
 
+#[cfg(all(feature = "std", feature = "json-schema"))]
+impl From<JsonEraEnd> for EraEnd {
+    fn from(json_data: JsonEraEnd) -> Self {
+        let era_report = EraReport::from(json_data.era_report);
+        let validator_weights = json_data
+            .next_era_validator_weights
+            .iter()
+            .map(|validator_weight| (validator_weight.validator.clone(), validator_weight.weight))
+            .collect();
+        EraEnd::new(era_report, validator_weights)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -151,7 +164,17 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = BlockV2::random_switch_block(rng);
+        let block = {
+            let mut block = BlockV2::random(rng);
+
+            let next_era_weights = (0..6)
+                .map(|index| (PublicKey::random(rng), U512::from(index)))
+                .collect();
+            block.header.era_end = Some(EraEnd::new(EraReport::random(rng), next_era_weights));
+
+            block
+        };
+
         bytesrepr::test_serialization_roundtrip(block.era_end().unwrap());
     }
 }

@@ -1,7 +1,7 @@
-mod delete;
 mod ee_699;
 mod keys;
 mod proptests;
+mod prune;
 mod read;
 mod scan;
 mod synchronize;
@@ -58,7 +58,7 @@ const TEST_VAL_LENGTH: usize = 6;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub(crate) enum TestOperation {
-    Delete, // Deleting an existing value should not deserialize V
+    Prune, // Pruning an existing value should not deserialize V
 }
 
 type Counter = BTreeMap<TestOperation, usize>;
@@ -96,7 +96,7 @@ impl TestValue {
 
     pub(crate) fn increment() {
         let flag = FROMBYTES_INSIDE_OPERATION.with(|flag| flag.borrow().clone());
-        let op = TestOperation::Delete;
+        let op = TestOperation::Prune;
         if let Some(value) = flag.get(&op) {
             if *value > 0 {
                 FROMBYTES_COUNTER.with(|counter| {

@@ -1,7 +1,5 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::vec::Vec;
+use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -11,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::{bid::VestingSchedule, Error},
+    system::auction::{bid::VestingSchedule, Error, VESTING_SCHEDULE_LENGTH_MILLIS},
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
@@ -69,9 +67,34 @@ impl Delegator {
         &self.delegator_public_key
     }
 
+    /// Checks if a bid is still locked under a vesting schedule.
+    ///
+    /// Returns true if a timestamp falls below the initial lockup period + 91 days release
+    /// schedule, otherwise false.
+    pub fn is_locked(&self, timestamp_millis: u64) -> bool {
+        self.is_locked_with_vesting_schedule(timestamp_millis, VESTING_SCHEDULE_LENGTH_MILLIS)
+    }
+
+    /// Checks if a bid is still locked under a vesting schedule.
+    ///
+    /// Returns true if a timestamp falls below the initial lockup period + 91 days release
+    /// schedule, otherwise false.
+    pub fn is_locked_with_vesting_schedule(
+        &self,
+        timestamp_millis: u64,
+        vesting_schedule_period_millis: u64,
+    ) -> bool {
+        match &self.vesting_schedule {
+            Some(vesting_schedule) => {
+                vesting_schedule.is_vesting(timestamp_millis, vesting_schedule_period_millis)
+            }
+            None => false,
+        }
+    }
+
     /// Returns the staked amount
-    pub fn staked_amount(&self) -> &U512 {
-        &self.staked_amount
+    pub fn staked_amount(&self) -> U512 {
+        self.staked_amount
     }
 
     /// Returns the mutable staked amount
@@ -147,6 +170,23 @@ impl Delegator {
     pub fn vesting_schedule_mut(&mut self) -> Option<&mut VestingSchedule> {
         self.vesting_schedule.as_mut()
     }
+
+    /// Creates a new inactive instance of a bid with 0 staked amount.
+    pub fn empty(
+        validator_public_key: PublicKey,
+        delegator_public_key: PublicKey,
+        bonding_purse: URef,
+    ) -> Self {
+        let vesting_schedule = None;
+        let staked_amount = 0.into();
+        Self {
+            validator_public_key,
+            delegator_public_key,
+            bonding_purse,
+            staked_amount,
+            vesting_schedule,
+        }
+    }
 }
 
 impl CLTyped for Delegator {
@@ -204,6 +244,19 @@ impl FromBytes for Delegator {
     }
 }
 
+impl Display for Delegator {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "delegator {{ {} {} motes, bonding purse {}, validator {} }}",
+            self.delegator_public_key,
+            self.staked_amount,
+            self.bonding_purse,
+            self.validator_public_key
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
@@ -238,5 +291,19 @@ mod tests {
             release_timestamp_millis,
         );
         bytesrepr::test_serialization_roundtrip(&locked_delegator);
+    }
+}
+
+#[cfg(test)]
+mod prop_tests {
+    use proptest::prelude::*;
+
+    use crate::{bytesrepr, gens};
+
+    proptest! {
+        #[test]
+        fn test_value_bid(bid in gens::delegator_arb()) {
+            bytesrepr::test_serialization_roundtrip(&bid);
+        }
     }
 }

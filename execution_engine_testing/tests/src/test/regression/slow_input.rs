@@ -6,7 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, Gas, RuntimeArgs, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, Gas, RuntimeArgs,
+    DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
 };
 
 use walrus::{ir::BinaryOp, FunctionBuilder, InstrSeqBuilder, Module, ModuleConfig, ValType};

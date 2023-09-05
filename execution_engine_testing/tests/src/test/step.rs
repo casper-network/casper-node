@@ -10,7 +10,7 @@ use casper_execution_engine::engine_state::SlashItem;
 use casper_types::{
     system::{
         auction::{
-            Bids, DelegationRate, SeigniorageRecipientsSnapshot,
+            BidsExt, DelegationRate, SeigniorageRecipientsSnapshot,
             SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
         },
         mint::TOTAL_SUPPLY_KEY,
@@ -39,7 +39,7 @@ fn get_named_key(
     name: &str,
 ) -> Key {
     *builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have contract")
         .named_keys()
         .get(name)
@@ -94,28 +94,21 @@ fn should_step() {
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
         builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
-    let bids_before_slashing: Bids = builder.get_bids();
+    let bids_before_slashing = builder.get_bids();
+    let account_1_bid = bids_before_slashing
+        .validator_bid(&ACCOUNT_1_PK)
+        .expect("should have account1 bid");
+    assert!(!account_1_bid.inactive(), "bid should not be inactive");
     assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PK),
-        "should have entry in the genesis bids table {:?}",
-        bids_before_slashing
+        !account_1_bid.staked_amount().is_zero(),
+        "bid amount should not be 0"
     );
 
-    let bids_before_slashing: Bids = builder.get_bids();
-    assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PK),
-        "should have entry in bids table before slashing {:?}",
-        bids_before_slashing
-    );
+    builder.step(step_request).expect("should step");
 
-    builder.step(step_request).unwrap();
+    let bids_after_slashing = builder.get_bids();
+    assert!(bids_after_slashing.validator_bid(&ACCOUNT_1_PK).is_none());
 
-    let bids_after_slashing: Bids = builder.get_bids();
-    let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PK).unwrap();
-    assert!(account_1_bid.inactive());
-    assert!(account_1_bid.staked_amount().is_zero());
-
-    let bids_after_slashing: Bids = builder.get_bids();
     assert_ne!(
         bids_before_slashing, bids_after_slashing,
         "bids table should be different before and after slashing"
@@ -164,7 +157,7 @@ fn should_adjust_total_supply() {
         .with_next_era_id(EraId::from(1))
         .build();
 
-    builder.step(step_request).unwrap();
+    builder.step(step_request).expect("should step");
 
     let maybe_post_state_hash = Some(builder.get_post_state_hash());
 

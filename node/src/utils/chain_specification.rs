@@ -127,15 +127,16 @@ mod tests {
     use once_cell::sync::Lazy;
 
     use casper_types::{
-        bytesrepr::FromBytes, ActivationPoint, BlockV2, BrTableCost, ChainspecRawBytes,
-        ControlFlowCosts, CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig,
-        HostFunction, HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion,
-        StorageCosts, StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
+        bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
+        CoreConfig, DeployConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction,
+        HostFunctionCosts, Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts,
+        StoredValue, TimeDiff, Timestamp, WasmConfig, U512,
     };
 
     use super::*;
     use crate::{
         testing::init_logging,
+        types::TestBlockBuilder,
         utils::{Loadable, RESOURCES_PATH},
     };
 
@@ -220,6 +221,7 @@ mod tests {
             print: HostFunction::new(123, [0, 1]),
             blake2b: HostFunction::new(133, [0, 1, 2, 3]),
             random_bytes: HostFunction::new(123, [0, 1]),
+            enable_contract_version: HostFunction::new(142, [0, 1, 2, 3]),
         });
     static EXPECTED_GENESIS_WASM_COSTS: Lazy<WasmConfig> = Lazy::new(|| {
         WasmConfig::new(
@@ -423,7 +425,7 @@ mod tests {
         let upgrade_era = EraId::from(5);
         let previous_era = upgrade_era.saturating_sub(1);
 
-        let mut rng = crate::new_rng();
+        let rng = &mut crate::new_rng();
         let protocol_config = ProtocolConfig {
             version: current_version,
             hard_reset: false,
@@ -431,8 +433,12 @@ mod tests {
             global_state_update: None,
         };
 
-        let block =
-            BlockV2::random_with_specifics(&mut rng, previous_era, 100, past_version, true, None);
+        let block = TestBlockBuilder::new()
+            .era(previous_era)
+            .height(100)
+            .protocol_version(past_version)
+            .switch_block(true)
+            .build(rng);
         assert!(
             block
                 .header()
@@ -441,22 +447,24 @@ mod tests {
         );
 
         //
-        let block =
-            BlockV2::random_with_specifics(&mut rng, upgrade_era, 100, past_version, true, None);
+        let block = TestBlockBuilder::new()
+            .era(upgrade_era)
+            .height(100)
+            .protocol_version(past_version)
+            .switch_block(true)
+            .build(rng);
         assert!(
             !block
                 .header()
                 .is_last_block_before_activation(&protocol_config),
             "Not the activation point: wrong era."
         );
-        let block = BlockV2::random_with_specifics(
-            &mut rng,
-            previous_era,
-            100,
-            current_version,
-            true,
-            None,
-        );
+        let block = TestBlockBuilder::new()
+            .era(previous_era)
+            .height(100)
+            .protocol_version(current_version)
+            .switch_block(true)
+            .build(rng);
         assert!(
             !block
                 .header()
@@ -464,8 +472,12 @@ mod tests {
             "Not the activation point: wrong version."
         );
 
-        let block =
-            BlockV2::random_with_specifics(&mut rng, previous_era, 100, future_version, true, None);
+        let block = TestBlockBuilder::new()
+            .era(previous_era)
+            .height(100)
+            .protocol_version(future_version)
+            .switch_block(true)
+            .build(rng);
         assert!(
             !block
                 .header()
@@ -473,8 +485,12 @@ mod tests {
             "Alleged upgrade is in the past"
         );
 
-        let block =
-            BlockV2::random_with_specifics(&mut rng, previous_era, 100, past_version, false, None);
+        let block = TestBlockBuilder::new()
+            .era(previous_era)
+            .height(100)
+            .protocol_version(past_version)
+            .switch_block(false)
+            .build(rng);
         assert!(
             !block
                 .header()

@@ -7,9 +7,12 @@ use std::{
 use rand::Rng;
 
 use casper_types::{
-    account::{Account, AccountHash},
-    system::auction::{Bid, Bids, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, CLValue, Key, PublicKey, StoredValue, URef, U512,
+    account::AccountHash,
+    addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
+    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
+    EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -20,11 +23,12 @@ pub struct StateTracker<T> {
     entries_to_write: BTreeMap<Key, StoredValue>,
     total_supply: U512,
     total_supply_key: Key,
-    accounts_cache: BTreeMap<AccountHash, Account>,
+    accounts_cache: BTreeMap<AccountHash, AddressableEntity>,
     unbonds_cache: BTreeMap<AccountHash, Vec<UnbondingPurse>>,
     purses_cache: BTreeMap<URef, U512>,
-    bids_cache: Option<Bids>,
+    staking: Option<Vec<BidKind>>,
     seigniorage_recipients: Option<(Key, SeigniorageRecipientsSnapshot)>,
+    protocol_version: ProtocolVersion,
 }
 
 impl<T: StateReader> StateTracker<T> {
@@ -40,6 +44,8 @@ impl<T: StateReader> StateTracker<T> {
             .cloned()
             .expect("should be cl value");
 
+        let protocol_version = reader.get_protocol_version();
+
         Self {
             reader,
             entries_to_write: Default::default(),
@@ -48,8 +54,9 @@ impl<T: StateReader> StateTracker<T> {
             accounts_cache: BTreeMap::new(),
             unbonds_cache: BTreeMap::new(),
             purses_cache: BTreeMap::new(),
-            bids_cache: None,
+            staking: None,
             seigniorage_recipients: None,
+            protocol_version,
         }
     }
 
@@ -61,6 +68,23 @@ impl<T: StateReader> StateTracker<T> {
     /// Stores a write of an entry in the global state.
     pub fn write_entry(&mut self, key: Key, value: StoredValue) {
         let _ = self.entries_to_write.insert(key, value);
+    }
+
+    pub fn write_bid(&mut self, bid_kind: BidKind) {
+        let bid_addr = match bid_kind.clone() {
+            BidKind::Unified(bid) => BidAddr::from(bid.validator_public_key().clone()),
+            BidKind::Validator(validator_bid) => {
+                BidAddr::from(validator_bid.validator_public_key().clone())
+            }
+            BidKind::Delegator(delegator) => BidAddr::new_from_public_keys(
+                delegator.validator_public_key(),
+                Some(delegator.delegator_public_key()),
+            ),
+        };
+
+        let _ = self
+            .entries_to_write
+            .insert(bid_addr.into(), bid_kind.into());
     }
 
     /// Increases the total supply of the tokens in the network.
@@ -131,23 +155,71 @@ impl<T: StateReader> StateTracker<T> {
 
     /// Creates a new account for the given public key and seeds it with the given amount of
     /// tokens.
-    pub fn create_account(&mut self, account_hash: AccountHash, amount: U512) -> Account {
+    pub fn create_addressable_entity_for_account(
+        &mut self,
+        account_hash: AccountHash,
+        amount: U512,
+    ) -> AddressableEntity {
         let main_purse = self.create_purse(amount);
 
-        let account = Account::create(account_hash, Default::default(), main_purse);
+        let mut rng = rand::thread_rng();
 
-        self.accounts_cache.insert(account_hash, account.clone());
+        let contract_hash = ContractHash::new(rng.gen());
+        let contract_package_hash = ContractPackageHash::new(rng.gen());
+        let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
+
+        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
+
+        let addressable_entity = AddressableEntity::new(
+            contract_package_hash,
+            contract_wasm_hash,
+            NamedKeys::default(),
+            EntryPoints::new(),
+            self.protocol_version,
+            main_purse,
+            associated_keys,
+            ActionThresholds::default(),
+        );
+
+        let mut contract_package = Package::new(
+            URef::new(rng.gen(), AccessRights::READ_ADD_WRITE),
+            ContractVersions::default(),
+            BTreeSet::default(),
+            Groups::default(),
+            ContractPackageStatus::Locked,
+            ContractPackageKind::Account(account_hash),
+        );
+
+        contract_package
+            .insert_contract_version(self.protocol_version.value().major, contract_hash);
+        self.write_entry(
+            contract_package_hash.into(),
+            StoredValue::ContractPackage(contract_package.clone()),
+        );
+
+        self.write_entry(
+            contract_hash.into(),
+            StoredValue::AddressableEntity(addressable_entity.clone()),
+        );
+
+        let addressable_entity_by_account_hash = {
+            let contract_key: Key = contract_hash.into();
+            CLValue::from_t(contract_key).expect("must convert to cl_value")
+        };
+
+        self.accounts_cache
+            .insert(account_hash, addressable_entity.clone());
 
         self.write_entry(
             Key::Account(account_hash),
-            StoredValue::Account(account.clone()),
+            StoredValue::CLValue(addressable_entity_by_account_hash),
         );
 
-        account
+        addressable_entity
     }
 
     /// Gets the account for the given public key.
-    pub fn get_account(&mut self, account_hash: &AccountHash) -> Option<Account> {
+    pub fn get_account(&mut self, account_hash: &AccountHash) -> Option<AddressableEntity> {
         match self.accounts_cache.entry(*account_hash) {
             Entry::Vacant(vac) => self
                 .reader
@@ -168,7 +240,7 @@ impl<T: StateReader> StateTracker<T> {
         let to_account = if let Some(account) = self.get_account(&transfer.to) {
             account
         } else {
-            self.create_account(transfer.to, U512::zero())
+            self.create_addressable_entity_for_account(transfer.to, U512::zero())
         };
 
         let from_balance = self.get_purse_balance(from_account.main_purse());
@@ -208,104 +280,129 @@ impl<T: StateReader> StateTracker<T> {
     }
 
     /// Reads the bids from the global state.
-    pub fn get_bids(&mut self) -> Bids {
-        if let Some(ref bids) = self.bids_cache {
-            bids.clone()
+    pub fn get_bids(&mut self) -> Vec<BidKind> {
+        if let Some(ref staking) = self.staking {
+            staking.clone()
         } else {
-            let bids = self.reader.get_bids();
-            self.bids_cache = Some(bids.clone());
-            bids
+            let staking = self.reader.get_bids();
+            self.staking = Some(staking.clone());
+            staking
+        }
+    }
+
+    fn existing_bid(&mut self, bid_kind: &BidKind, existing_bids: Vec<BidKind>) -> Option<BidKind> {
+        match bid_kind.clone() {
+            BidKind::Unified(bid) => existing_bids
+                .unified_bid(bid.validator_public_key())
+                .map(|existing_bid| BidKind::Unified(Box::new(existing_bid))),
+            BidKind::Validator(validator_bid) => existing_bids
+                .validator_bid(validator_bid.validator_public_key())
+                .map(|existing_validator| BidKind::Validator(Box::new(existing_validator))),
+            BidKind::Delegator(delegator_bid) => {
+                // this one is a little tricky due to legacy issues.
+                match existing_bids.delegator_by_public_keys(
+                    delegator_bid.validator_public_key(),
+                    delegator_bid.delegator_public_key(),
+                ) {
+                    Some(existing_delegator) => {
+                        Some(BidKind::Delegator(Box::new(existing_delegator)))
+                    }
+                    None => {
+                        if let Some(existing_bid) =
+                            existing_bids.unified_bid(delegator_bid.validator_public_key())
+                        {
+                            existing_bid
+                                .delegators()
+                                .get(delegator_bid.delegator_public_key())
+                                .map(|existing_delegator| {
+                                    BidKind::Delegator(Box::new(existing_delegator.clone()))
+                                })
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
         }
     }
 
     /// Sets the bid for the given account.
-    pub fn set_bid(&mut self, public_key: PublicKey, bid: Bid, slash: bool) {
-        let maybe_current_bid = self.get_bids().get(&public_key).cloned();
+    pub fn set_bid(&mut self, bid_kind: BidKind, slash_instead_of_unbonding: bool) {
+        let new_stake = bid_kind.staked_amount();
+        let bonding_purse = bid_kind.bonding_purse();
+        let bids = self.get_bids();
 
-        let new_amount = *bid.staked_amount();
-        let old_amount = maybe_current_bid
-            .as_ref()
-            .map(|bid| self.get_purse_balance(*bid.bonding_purse()))
-            .unwrap_or_else(U512::zero);
+        let maybe_existing_bid = self.existing_bid(&bid_kind, bids);
 
-        // we called `get_bids` above, so `bids_cache` will be `Some`
-        self.bids_cache
-            .as_mut()
-            .unwrap()
-            .insert(public_key.clone(), bid.clone());
-
-        let account_hash = public_key.to_account_hash();
-
-        // Replace the bid.
-        self.write_entry(Key::Bid(account_hash), bid.clone().into());
-
-        // Update the bonding purses - this will also take care of the total supply changes.
-        if let Some(old_bid) = maybe_current_bid {
-            // only zero the bonding purse and write the balance to the new purse if the new one is
-            // different (just to save unnecessary writes)
-            if old_bid.bonding_purse() != bid.bonding_purse() {
-                self.set_purse_balance(*old_bid.bonding_purse(), U512::zero());
-                self.set_purse_balance(*bid.bonding_purse(), old_amount);
-            }
-            //
-            for (delegator_pub_key, delegator) in old_bid.delegators() {
-                // skip zeroing purses of delegators whose purses don't change - that will be
-                // handled later
-                if bid
-                    .delegators()
-                    .get(delegator_pub_key)
-                    .map(|new_delegator| new_delegator.bonding_purse() == delegator.bonding_purse())
-                    .unwrap_or(false)
-                {
-                    continue;
+        let previous_stake = match maybe_existing_bid {
+            None => U512::zero(),
+            Some(existing_bid) => {
+                //let previous_stake = self.get_purse_balance(existing_bid_kind.bonding_purse());
+                let previous_stake = existing_bid.staked_amount();
+                if existing_bid.bonding_purse() != bonding_purse {
+                    self.set_purse_balance(existing_bid.bonding_purse(), U512::zero());
+                    self.set_purse_balance(bonding_purse, previous_stake);
                 }
-                // zero the old purse if we are going to transfer the funds to a new purse, or if
-                // we're supposed to slash the delegator
-                if slash || bid.delegators().contains_key(delegator_pub_key) {
-                    // if we're transferring funds to a new purse, set the new purse balance to the
-                    // old amount
-                    let old_amount = self.get_purse_balance(*delegator.bonding_purse());
-                    if let Some(new_delegator) = bid.delegators().get(delegator_pub_key) {
-                        self.set_purse_balance(*new_delegator.bonding_purse(), old_amount);
-                    }
-                    self.set_purse_balance(*delegator.bonding_purse(), U512::zero());
-                } else {
-                    let amount = self.get_purse_balance(*delegator.bonding_purse());
-                    self.create_unbonding_purse(
-                        *delegator.bonding_purse(),
-                        &public_key,
-                        delegator_pub_key,
-                        amount,
-                    );
-                }
+                previous_stake
             }
-        }
+        };
 
-        if (slash && new_amount != old_amount) || new_amount > old_amount {
-            self.set_purse_balance(*bid.bonding_purse(), new_amount);
-        } else if new_amount < old_amount {
+        // we called `get_bids` above, so `staking` will be `Some`
+        self.staking.as_mut().unwrap().upsert(bid_kind.clone());
+
+        // Replace the bid (overwrite the previous bid, if any):
+        self.write_bid(bid_kind.clone());
+
+        if (slash_instead_of_unbonding && new_stake != previous_stake) || new_stake > previous_stake
+        {
+            self.set_purse_balance(bid_kind.bonding_purse(), new_stake);
+        } else if new_stake < previous_stake {
+            let unbonder_key = match bid_kind.delegator_public_key() {
+                None => bid_kind.validator_public_key(),
+                Some(delegator_public_key) => delegator_public_key,
+            };
+
+            let already_unbonded =
+                self.already_unbonding_amount(&bid_kind.validator_public_key(), &unbonder_key);
+
+            let amount = previous_stake - new_stake - already_unbonded;
             self.create_unbonding_purse(
-                *bid.bonding_purse(),
-                &public_key,
-                &public_key,
-                old_amount - new_amount,
+                bid_kind.bonding_purse(),
+                &bid_kind.validator_public_key(),
+                &unbonder_key,
+                amount,
             );
         }
+    }
 
-        for (delegator_public_key, delegator) in bid.delegators() {
-            let old_amount = self.get_purse_balance(*delegator.bonding_purse());
-            let new_amount = *delegator.staked_amount();
-            if (slash && new_amount != old_amount) || new_amount > old_amount {
-                self.set_purse_balance(*delegator.bonding_purse(), *delegator.staked_amount());
-            } else if new_amount < old_amount {
-                self.create_unbonding_purse(
-                    *delegator.bonding_purse(),
-                    &public_key,
-                    delegator_public_key,
-                    old_amount - new_amount,
-                );
+    /// Returns the sum of already unbonding purses for the given validator account & unbonder.
+    fn already_unbonding_amount(
+        &mut self,
+        validator_public_key: &PublicKey,
+        unbonder_public_key: &PublicKey,
+    ) -> U512 {
+        let unbonds = self.reader.get_unbonds();
+        let account_hash = AccountHash::from(validator_public_key);
+        if let Some(purses) = unbonds.get(&account_hash) {
+            if let Some(purse) = purses
+                .iter()
+                .find(|x| x.unbonder_public_key() == unbonder_public_key)
+            {
+                return *purse.amount();
             }
         }
+
+        let withdrawals = self.reader.get_withdraws();
+        if let Some(withdraws) = withdrawals.get(&account_hash) {
+            if let Some(withdraw) = withdraws
+                .iter()
+                .find(|x| x.unbonder_public_key() == unbonder_public_key)
+            {
+                return *withdraw.amount();
+            }
+        }
+
+        U512::zero()
     }
 
     /// Generates the writes to the global state that will remove the pending withdraws and unbonds
@@ -316,18 +413,17 @@ impl<T: StateReader> StateTracker<T> {
         let unbonds = self.reader.get_unbonds();
         for removed_validator in removed {
             let acc = removed_validator.to_account_hash();
-            if let Some(withdraw_set) = withdraws.get(&acc) {
-                for withdraw in withdraw_set {
-                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
-                }
-                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
-            }
-
             if let Some(unbond_set) = unbonds.get(&acc) {
                 for unbond in unbond_set {
                     self.set_purse_balance(*unbond.bonding_purse(), U512::zero());
                 }
                 self.write_entry(Key::Unbond(acc), StoredValue::Unbonding(vec![]));
+            }
+            if let Some(withdraw_set) = withdraws.get(&acc) {
+                for withdraw in withdraw_set {
+                    self.set_purse_balance(*withdraw.bonding_purse(), U512::zero());
+                }
+                self.write_entry(Key::Withdraw(acc), StoredValue::Withdraw(vec![]));
             }
         }
     }
@@ -344,14 +440,22 @@ impl<T: StateReader> StateTracker<T> {
         let unbonding_purses = match self.unbonds_cache.entry(account_hash) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
+                // Fill the cache with the information from the reader when the cache is empty:
                 let existing_purses = self
                     .reader
-                    .query(Key::Unbond(account_hash))
-                    .and_then(|stored_val| stored_val.as_unbonding().cloned())
+                    .get_unbonds()
+                    .get(&account_hash)
+                    .cloned()
                     .unwrap_or_default();
+
                 entry.insert(existing_purses)
             }
         };
+
+        if amount == U512::zero() {
+            return;
+        }
+
         // Take the first era from the snapshot as the unbonding era.
         let new_purse = UnbondingPurse::new(
             bonding_purse,

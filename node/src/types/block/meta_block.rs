@@ -6,7 +6,9 @@ use std::sync::Arc;
 use datasize::DataSize;
 use serde::Serialize;
 
-use casper_types::{ActivationPoint, BlockV2, DeployHash, DeployHeader, ExecutionResult};
+use casper_types::{
+    execution::ExecutionResult, ActivationPoint, BlockV2, DeployHash, DeployHeader,
+};
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
 pub(crate) use state::State;
@@ -76,21 +78,22 @@ impl MetaBlock {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
-
-    use rand::Rng;
-
-    use casper_types::{testing::TestRng, Deploy};
+    use casper_types::{execution::ExecutionResultV2, testing::TestRng, Deploy};
 
     use super::*;
+    use crate::types::TestBlockBuilder;
 
     #[test]
     fn should_merge_when_same_non_empty_execution_results() {
-        let mut rng = TestRng::new();
+        let rng = &mut TestRng::new();
 
-        let block = Arc::new(BlockV2::random(&mut rng));
-        let deploy = Deploy::random(&mut rng);
-        let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
+        let deploy = Deploy::random(rng);
+        let execution_results = vec![(
+            *deploy.hash(),
+            deploy.take_header(),
+            ExecutionResult::from(ExecutionResultV2::random(rng)),
+        )];
         let state = State::new_already_stored();
 
         let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
@@ -106,9 +109,9 @@ mod tests {
 
     #[test]
     fn should_merge_when_both_empty_execution_results() {
-        let mut rng = TestRng::new();
+        let rng = &mut TestRng::new();
 
-        let block = Arc::new(BlockV2::random(&mut rng));
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
         let state = State::new();
 
         let meta_block1 = MetaBlock::new(Arc::clone(&block), vec![], state);
@@ -124,11 +127,15 @@ mod tests {
 
     #[test]
     fn should_merge_when_one_empty_execution_results() {
-        let mut rng = TestRng::new();
+        let rng = &mut TestRng::new();
 
-        let block = Arc::new(BlockV2::random(&mut rng));
-        let deploy = Deploy::random(&mut rng);
-        let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
+        let deploy = Deploy::random(rng);
+        let execution_results = vec![(
+            *deploy.hash(),
+            deploy.take_header(),
+            ExecutionResult::from(ExecutionResultV2::random(rng)),
+        )];
         let state = State::new_not_to_be_gossiped();
 
         let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results.clone(), state);
@@ -144,19 +151,22 @@ mod tests {
 
     #[test]
     fn should_fail_to_merge_different_blocks() {
-        let mut rng = TestRng::new();
+        let rng = &mut TestRng::new();
 
-        let block1 = Arc::new(BlockV2::random(&mut rng));
-        let block2 = Arc::new(BlockV2::random_with_specifics(
-            &mut rng,
-            block1.era_id().successor(),
-            block1.height() + 1,
-            block1.protocol_version(),
-            true,
-            iter::empty(),
-        ));
-        let deploy = Deploy::random(&mut rng);
-        let execution_results = vec![(*deploy.hash(), deploy.take_header(), rng.gen())];
+        let block1 = Arc::new(TestBlockBuilder::new().build(rng));
+        let block2 = Arc::new(
+            TestBlockBuilder::new()
+                .era(block1.era_id().successor())
+                .height(block1.height() + 1)
+                .switch_block(true)
+                .build(rng),
+        );
+        let deploy = Deploy::random(rng);
+        let execution_results = vec![(
+            *deploy.hash(),
+            deploy.take_header(),
+            ExecutionResult::from(ExecutionResultV2::random(rng)),
+        )];
         let state = State::new();
 
         let meta_block1 = MetaBlock::new(block1, execution_results.clone(), state);
@@ -174,13 +184,21 @@ mod tests {
 
     #[test]
     fn should_fail_to_merge_different_execution_results() {
-        let mut rng = TestRng::new();
+        let rng = &mut TestRng::new();
 
-        let block = Arc::new(BlockV2::random(&mut rng));
-        let deploy1 = Deploy::random(&mut rng);
-        let execution_results1 = vec![(*deploy1.hash(), deploy1.take_header(), rng.gen())];
-        let deploy2 = Deploy::random(&mut rng);
-        let execution_results2 = vec![(*deploy2.hash(), deploy2.take_header(), rng.gen())];
+        let block = Arc::new(TestBlockBuilder::new().build(rng));
+        let deploy1 = Deploy::random(rng);
+        let execution_results1 = vec![(
+            *deploy1.hash(),
+            deploy1.take_header(),
+            ExecutionResult::from(ExecutionResultV2::random(rng)),
+        )];
+        let deploy2 = Deploy::random(rng);
+        let execution_results2 = vec![(
+            *deploy2.hash(),
+            deploy2.take_header(),
+            ExecutionResult::from(ExecutionResultV2::random(rng)),
+        )];
         let state = State::new();
 
         let meta_block1 = MetaBlock::new(Arc::clone(&block), execution_results1, state);

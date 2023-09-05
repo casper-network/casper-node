@@ -5,39 +5,11 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::{Error as CoreError, MAX_PAYMENT};
-use casper_types::{
-    contracts::DEFAULT_ENTRY_POINT_NAME, runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST, U512,
-};
-use parity_wasm::{
-    builder,
-    elements::{Instruction, Instructions},
-};
+use casper_types::{runtime_args, Gas, RuntimeArgs, DEFAULT_NOP_COST, U512};
 
 use crate::wasm_utils;
 
 const ARG_AMOUNT: &str = "amount";
-
-/// Creates minimal session code that does only one "nop" opcode
-pub fn do_minimum_bytes() -> Vec<u8> {
-    let module = builder::module()
-        .function()
-        // A signature with 0 params and no return type
-        .signature()
-        .build()
-        .body()
-        .with_instructions(Instructions::new(vec![Instruction::Nop, Instruction::End]))
-        .build()
-        .build()
-        // Export above function
-        .export()
-        .field(DEFAULT_ENTRY_POINT_NAME)
-        .build()
-        // Memory section is mandatory
-        .memory()
-        .build()
-        .build();
-    parity_wasm::serialize(module).expect("should serialize")
-}
 
 #[ignore]
 #[test]
@@ -67,7 +39,9 @@ fn should_charge_minimum_for_do_nothing_session() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let proposer_balance_before = builder.get_proposer_purse_balance();
 
@@ -107,7 +81,7 @@ fn should_execute_do_minimum_session() {
 
         let deploy = DeployItemBuilder::new()
             .with_address(account_hash)
-            .with_session_bytes(do_minimum_bytes(), session_args)
+            .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
             .with_empty_payment_bytes(runtime_args! {
                 ARG_AMOUNT => minimum_deploy_payment,
             })
@@ -123,7 +97,9 @@ fn should_execute_do_minimum_session() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let proposer_balance_before = builder.get_proposer_purse_balance();
 
@@ -178,7 +154,9 @@ fn should_charge_minimum_for_do_nothing_payment() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let proposer_balance_before = builder.get_proposer_purse_balance();
 

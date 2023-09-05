@@ -9,8 +9,7 @@ mod era_end;
 mod era_report;
 mod finality_signature;
 mod finality_signature_id;
-#[cfg(all(feature = "std", feature = "json-schema"))]
-mod json_block_with_signatures;
+mod json_compatibility;
 mod signed_block_header;
 
 use alloc::{boxed::Box, vec::Vec};
@@ -20,8 +19,7 @@ use std::error::Error as StdError;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(feature = "json-schema")]
-use once_cell::sync::Lazy;
+
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
@@ -45,7 +43,10 @@ pub use era_report::EraReport;
 pub use finality_signature::FinalitySignature;
 pub use finality_signature_id::FinalitySignatureId;
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use json_block_with_signatures::JsonBlockWithSignatures;
+pub use json_compatibility::{
+    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
+    JsonValidatorWeight,
+};
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
@@ -138,9 +139,6 @@ impl Display for BlockConversionError {
         }
     }
 }
-
-#[cfg(feature = "json-schema")]
-static BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
@@ -237,6 +235,30 @@ impl Block {
         }
     }
 
+    /// Returns the hash of the block's body.
+    pub fn body_hash(&self) -> &Digest {
+        match self {
+            Block::V1(v1) => v1.header().body_hash(),
+            Block::V2(v2) => v2.header().body_hash(),
+        }
+    }
+
+    /// Returns a random bit needed for initializing a future era.
+    pub fn random_bit(&self) -> bool {
+        match self {
+            Block::V1(v1) => v1.header().random_bit(),
+            Block::V2(v2) => v2.header().random_bit(),
+        }
+    }
+
+    /// Returns the parent block's hash.
+    pub fn parent_hash(&self) -> &BlockHash {
+        match self {
+            Block::V1(v1) => v1.parent_hash(),
+            Block::V2(v2) => v2.parent_hash(),
+        }
+    }
+
     /// The block body.
     pub fn body(&self) -> BlockBody {
         match self {
@@ -277,6 +299,14 @@ impl Block {
         }
     }
 
+    /// Returns the `EraEnd` of a block if it is a switch block.
+    pub fn era_end(&self) -> Option<&EraEnd> {
+        match self {
+            Block::V1(v1) => v1.header().era_end(),
+            Block::V2(v2) => v2.header().era_end(),
+        }
+    }
+
     /// Returns `true` if this block is the last one in the current era.
     pub fn is_switch_block(&self) -> bool {
         match self {
@@ -307,21 +337,28 @@ impl Block {
             Block::V2(v2) => v2.header.state_root_hash(),
         }
     }
-
-    // This method is not intended to be used by third party crates.
-    #[doc(hidden)]
-    #[cfg(feature = "json-schema")]
-    pub fn example() -> &'static Self {
-        &BLOCK
-    }
 }
 
 impl Display for Block {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Block::V1(v1) => fmt::Display::fmt(&v1, f),
-            Block::V2(v2) => fmt::Display::fmt(&v2, f),
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "executed block #{}, {}, timestamp {}, {}, parent {}, post-state hash {}, body hash \
+            {}, random bit {}, protocol version: {}",
+            self.height(),
+            self.hash(),
+            self.timestamp(),
+            self.era_id(),
+            self.parent_hash().inner(),
+            self.state_root_hash(),
+            self.body_hash(),
+            self.random_bit(),
+            self.protocol_version()
+        )?;
+        if let Some(era_end) = self.era_end() {
+            write!(formatter, ", era_end: {}", era_end)?;
         }
+        Ok(())
     }
 }
 
@@ -391,10 +428,16 @@ impl From<BlockV1> for Block {
     }
 }
 
+// TODO[RC]: impl From<JsonBlock> for BlockV2 {
+
 #[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonBlockWithSignatures> for Block {
-    fn from(block_with_signatures: JsonBlockWithSignatures) -> Self {
-        block_with_signatures.block
+impl From<JsonBlock> for BlockV2 {
+    fn from(block: JsonBlock) -> Self {
+        BlockV2 {
+            hash: block.hash,
+            header: BlockHeader::from(block.header),
+            body: BlockBodyV2::from(block.body),
+        }
     }
 }
 

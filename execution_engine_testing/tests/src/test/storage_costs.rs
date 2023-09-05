@@ -5,21 +5,15 @@ use once_cell::sync::Lazy;
 use casper_engine_test_support::DEFAULT_ACCOUNT_PUBLIC_KEY;
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::engine_state::{
-    engine_config::{
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    },
-    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-};
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
     BrTableCost, CLValue, ContractHash, ControlFlowCosts, EraId, HostFunction, HostFunctionCosts,
-    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue, SystemConfig, WasmConfig,
+    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue, WasmConfig,
     DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
@@ -138,6 +132,7 @@ static NEW_HOST_FUNCTION_COSTS: Lazy<HostFunctionCosts> = Lazy::new(|| HostFunct
     print: HostFunction::fixed(0),
     blake2b: HostFunction::fixed(0),
     random_bytes: HostFunction::fixed(0),
+    enable_contract_version: HostFunction::fixed(0),
 });
 static STORAGE_COSTS_ONLY: Lazy<WasmConfig> = Lazy::new(|| {
     WasmConfig::new(
@@ -172,19 +167,11 @@ fn initialize_isolated_storage_costs() -> LmdbWasmTestBuilder {
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        *STORAGE_COSTS_ONLY,
-        SystemConfig::default(),
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(*STORAGE_COSTS_ONLY)
+        .build();
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     builder
 }
@@ -204,7 +191,7 @@ fn should_verify_isolate_host_side_payment_code_is_free() {
     .build();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let balance_before = builder.get_purse_balance(account.main_purse());
 
@@ -243,7 +230,7 @@ fn should_verify_isolated_auction_storage_is_free() {
     builder.exec(exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let bond_amount = U512::from(BOND_AMOUNT);
@@ -311,7 +298,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
     assert!(!builder.last_exec_gas_cost().value().is_zero());
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: ContractHash = account
@@ -423,7 +410,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: ContractHash = account
@@ -535,7 +522,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
     // let mut builder_a = builder.clone();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: ContractHash = account
@@ -651,7 +638,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
     // let mut builder_a = builder.clone();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let contract_hash: ContractHash = account
@@ -761,7 +748,7 @@ fn should_verify_new_uref_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -806,7 +793,7 @@ fn should_verify_put_key_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -851,7 +838,7 @@ fn should_verify_remove_key_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -896,7 +883,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -941,7 +928,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());
@@ -1020,7 +1007,7 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
     builder.exec(install_exec_request).expect_success().commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
     let balance_before = builder.get_purse_balance(account.main_purse());

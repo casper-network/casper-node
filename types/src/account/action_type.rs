@@ -1,6 +1,6 @@
 use core::convert::TryFrom;
 
-use super::TryFromIntError;
+use crate::addressable_entity::TryFromIntError;
 
 /// The various types of action which can be performed in the context of a given account.
 #[repr(u32)]

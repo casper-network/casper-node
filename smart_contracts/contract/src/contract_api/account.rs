@@ -4,9 +4,9 @@ use alloc::vec::Vec;
 use core::convert::TryFrom;
 
 use casper_types::{
-    account::{
-        AccountHash, ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure,
-        UpdateKeyFailure, Weight,
+    account::AccountHash,
+    addressable_entity::{
+        ActionType, AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
     },
     bytesrepr, URef, UREF_SERIALIZED_LENGTH,
 };

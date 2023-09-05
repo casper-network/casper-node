@@ -162,7 +162,7 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn switch_to_have_strict_finality(block_header: &BlockHeader) -> Self {
+    pub(super) fn switch_to_have_sufficient_finality(block_header: &BlockHeader) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
             need_next: NeedNext::SwitchToHaveStrictFinality(
@@ -294,7 +294,7 @@ impl BlockAcquisitionAction {
             }
             None => {
                 if signatures.has_sufficient_finality(is_historical, true) {
-                    BlockAcquisitionAction::switch_to_have_strict_finality(block_header)
+                    BlockAcquisitionAction::switch_to_have_sufficient_finality(block_header)
                 } else {
                     signatures_from_missing_validators(
                         validator_weights,

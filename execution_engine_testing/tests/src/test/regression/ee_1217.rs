@@ -6,9 +6,7 @@ use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
     execution::Error as ExecError,
 };
-use casper_types::{
-    runtime_args, system::auction, ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
-};
+use casper_types::{runtime_args, system::auction, ApiError, PublicKey, SecretKey, U512};
 use once_cell::sync::Lazy;
 
 const CONTRACT_REGRESSION: &str = "ee_1217_regression.wasm";

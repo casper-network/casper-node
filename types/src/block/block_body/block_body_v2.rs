@@ -11,7 +11,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    past_finality_signatures::PastFinalitySignatures,
     DeployHash, Digest, PublicKey,
 };
 
@@ -26,8 +25,6 @@ pub struct BlockBodyV2 {
     pub(super) deploy_hashes: Vec<DeployHash>,
     /// The deploy hashes of the transfers within the block.
     pub(super) transfer_hashes: Vec<DeployHash>,
-    /// The past finality signatures.
-    pub(super) past_finality_signatures: PastFinalitySignatures,
     #[serde(skip)]
     #[cfg_attr(
         all(any(feature = "once_cell", test), feature = "datasize"),
@@ -48,7 +45,6 @@ impl BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
-            past_finality_signatures: Default::default(),
             #[cfg(any(feature = "once_cell", test))]
             hash: OnceCell::new(),
         }
@@ -67,11 +63,6 @@ impl BlockBodyV2 {
     /// Returns the deploy hashes of the transfers within the block.
     pub fn transfer_hashes(&self) -> &[DeployHash] {
         &self.transfer_hashes
-    }
-
-    /// Returns the past finality signatures stored in the block.
-    pub fn past_finality_signatures(&self) -> &PastFinalitySignatures {
-        &self.past_finality_signatures
     }
 
     /// Returns the deploy and transfer hashes in the order in which they were executed.
@@ -106,7 +97,6 @@ impl PartialEq for BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
-            past_finality_signatures,
             hash: _,
         } = self;
         #[cfg(not(any(feature = "once_cell", test)))]
@@ -119,7 +109,6 @@ impl PartialEq for BlockBodyV2 {
         *proposer == other.proposer
             && *deploy_hashes == other.deploy_hashes
             && *transfer_hashes == other.transfer_hashes
-            && *past_finality_signatures == other.past_finality_signatures
     }
 }
 
@@ -127,11 +116,10 @@ impl Display for BlockBodyV2 {
     fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
         write!(
             formatter,
-            "block body proposed by {}, {} deploys, {} transfers, {} past finality signatures",
+            "block body proposed by {}, {} deploys, {} transfers",
             self.proposer,
             self.deploy_hashes.len(),
             self.transfer_hashes.len(),
-            self.past_finality_signatures.0.len()
         )
     }
 }
@@ -141,7 +129,7 @@ impl ToBytes for BlockBodyV2 {
         self.proposer.write_bytes(writer)?;
         self.deploy_hashes.write_bytes(writer)?;
         self.transfer_hashes.write_bytes(writer)?;
-        self.past_finality_signatures.write_bytes(writer)
+        Ok(())
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
@@ -154,7 +142,6 @@ impl ToBytes for BlockBodyV2 {
         self.proposer.serialized_length()
             + self.deploy_hashes.serialized_length()
             + self.transfer_hashes.serialized_length()
-            + self.past_finality_signatures.serialized_length()
     }
 }
 
@@ -163,12 +150,10 @@ impl FromBytes for BlockBodyV2 {
         let (proposer, bytes) = PublicKey::from_bytes(bytes)?;
         let (deploy_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
         let (transfer_hashes, bytes) = Vec::<DeployHash>::from_bytes(bytes)?;
-        let (past_finality_signatures, bytes) = PastFinalitySignatures::from_bytes(bytes)?;
         let body = BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
-            past_finality_signatures,
             #[cfg(any(feature = "once_cell", test))]
             hash: OnceCell::new(),
         };

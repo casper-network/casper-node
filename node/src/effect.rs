@@ -115,16 +115,18 @@ use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
 use casper_execution_engine::engine_state::{
-    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, ExecutionJournal,
-    GetBidsRequest, GetBidsResult, QueryRequest, QueryResult,
+    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
+    GetBidsResult, QueryRequest, QueryResult,
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash,
-    BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Contract, ContractPackage, Deploy,
-    DeployHash, DeployHeader, DeployId, Digest, EraId, ExecutionEffect, ExecutionResult,
-    FinalitySignature, FinalitySignatureId, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef,
-    U512,
+    bytesrepr::Bytes,
+    execution::{Effects as ExecutionEffects, ExecutionResultV2},
+    package::Package,
+    system::auction::EraValidators,
+    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
+    Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId, FinalitySignature,
+    FinalitySignatureId, Key, PublicKey, StoredValue, TimeDiff, Timestamp, Transfer, URef, U512,
 };
 
 use crate::{
@@ -146,7 +148,7 @@ use crate::{
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployMetadataExt,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployExecutionInfo,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
         MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
     },
@@ -159,6 +161,7 @@ use announcements::{
     MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, UnexecutedBlockAnnouncement,
     UpgradeWatcherAnnouncement,
 };
+use casper_types::execution::ExecutionResult;
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
     AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest,
@@ -1003,19 +1006,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a committed Step success.
-    pub(crate) async fn announce_commit_step_success(
-        self,
-        era_id: EraId,
-        execution_journal: ExecutionJournal,
-    ) where
+    pub(crate) async fn announce_commit_step_success(self, era_id: EraId, effects: ExecutionEffects)
+    where
         REv: From<ContractRuntimeAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ContractRuntimeAnnouncement::CommitStepSuccess {
-                    era_id,
-                    execution_effect: ExecutionEffect::from(&execution_journal),
-                },
+                ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
                 QueueKind::ContractRuntime,
             )
             .await
@@ -1568,6 +1565,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_execution_results_to_storage(
         self,
         block_hash: BlockHash,
+        block_height: u64,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
@@ -1575,6 +1573,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::PutExecutionResults {
                 block_hash: Box::new(block_hash),
+                block_height,
                 execution_results,
                 responder,
             },
@@ -1584,15 +1583,15 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploy_and_metadata_from_storage(
+    pub(crate) async fn get_deploy_and_execution_info_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>
+    ) -> Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployAndMetadata {
+            |responder| StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash,
                 responder,
             },
@@ -1923,13 +1922,13 @@ impl<REv> EffectBuilder<REv> {
         self,
         state_root_hash: Digest,
         account_key: Key,
-    ) -> Option<Account>
+    ) -> Option<StoredValue>
     where
         REv: From<ContractRuntimeRequest>,
     {
         let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
+            Ok(QueryResult::Success { value, .. }) => Some(*value),
             Ok(_) | Err(_) => None,
         }
     }
@@ -1961,7 +1960,7 @@ impl<REv> EffectBuilder<REv> {
         state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<Box<Contract>>
+    ) -> Option<Box<AddressableEntity>>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -1969,7 +1968,7 @@ impl<REv> EffectBuilder<REv> {
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
                 // TODO: Extending `StoredValue` with an `into_contract` would reduce cloning here.
-                value.as_contract().map(|c| Box::new(c.clone()))
+                value.as_addressable_entity().map(|c| Box::new(c.clone()))
             }
             Ok(_) | Err(_) => None,
         }
@@ -1981,7 +1980,7 @@ impl<REv> EffectBuilder<REv> {
         state_root_hash: Digest,
         query_key: Key,
         path: Vec<String>,
-    ) -> Option<Box<ContractPackage>>
+    ) -> Option<Box<Package>>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -2210,7 +2209,7 @@ impl<REv> EffectBuilder<REv> {
         self,
         execution_prestate: SpeculativeExecutionState,
         deploy: Arc<Deploy>,
-    ) -> Result<Option<ExecutionResult>, engine_state::Error>
+    ) -> Result<Option<ExecutionResultV2>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
@@ -2231,7 +2230,7 @@ impl<REv> EffectBuilder<REv> {
         id: BlockExecutionResultsOrChunkId,
     ) -> Option<BlockExecutionResultsOrChunk>
     where
-        REv: From<StorageRequest>, // TODO: Extract to a separate component for caching.
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockExecutionResultsOrChunk { id, responder },

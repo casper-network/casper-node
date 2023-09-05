@@ -12,18 +12,19 @@
 )]
 #![doc(html_root_url = "https://docs.rs/casper-types/3.0.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
+    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
 )]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 #[cfg_attr(not(test), macro_use)]
 extern crate alloc;
+extern crate core;
 
 mod access_rights;
 pub mod account;
+pub mod addressable_entity;
 pub mod api_error;
 mod block;
 mod block_time;
@@ -36,12 +37,11 @@ mod cl_value;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
-mod deploy;
 mod deploy_info;
 mod digest;
 mod display_iter;
 mod era_id;
-mod execution_result;
+pub mod execution;
 #[cfg(any(feature = "std", test))]
 pub mod file_utils;
 mod gas;
@@ -50,8 +50,7 @@ pub mod gens;
 mod json_pretty_printer;
 mod key;
 mod motes;
-mod named_key;
-mod past_finality_signatures;
+pub mod package;
 mod phase;
 mod protocol_version;
 mod semver;
@@ -62,6 +61,7 @@ mod tagged;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 mod timestamp;
+mod transaction;
 mod transfer;
 mod transfer_result;
 mod uint;
@@ -77,6 +77,11 @@ pub use access_rights::{
     AccessRights, ContextAccessRights, GrantedAccess, ACCESS_RIGHTS_SERIALIZED_LENGTH,
 };
 #[doc(inline)]
+pub use addressable_entity::{
+    AddressableEntity, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    Parameter,
+};
+#[doc(inline)]
 pub use api_error::ApiError;
 pub use block::{
     Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
@@ -86,17 +91,21 @@ pub use block::{
 };
 
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use block::JsonBlockWithSignatures;
+pub use block::{
+    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
+    JsonValidatorWeight,
+};
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
-    AccountConfig, AccountsConfig, ActivationPoint, AuctionCosts, BrTableCost, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName, ControlFlowCosts, CoreConfig,
-    DelegatorConfig, DeployConfig, GenesisAccount, GenesisValidator, GlobalStateUpdate,
-    GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
-    HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MintCosts,
-    NetworkConfig, OpcodeCosts, ProtocolConfig, StandardPaymentCosts, StorageCosts, SystemConfig,
-    UpgradeConfig, ValidatorConfig, WasmConfig,
+    AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
+    BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
+    ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
+    GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
+    HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
+    LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
+    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionV1Config, UpgradeConfig,
+    ValidatorConfig, WasmConfig,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{
@@ -119,20 +128,8 @@ pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
-pub use contracts::{
-    Contract, ContractHash, ContractPackage, ContractPackageHash, ContractVersion,
-    ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Group,
-    Parameter,
-};
+pub use contracts::Contract;
 pub use crypto::*;
-pub use deploy::{
-    runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployFootprint, DeployHash, DeployHeader, DeployId, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
-};
-#[cfg(any(feature = "std", test))]
-pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use deploy_info::DeployInfo;
 pub use digest::{
     ChunkWithProof, ChunkWithProofVerificationError, Digest, DigestError, IndexedMerkleProof,
@@ -140,9 +137,6 @@ pub use digest::{
 };
 pub use display_iter::DisplayIter;
 pub use era_id::EraId;
-pub use execution_result::{
-    ExecutionEffect, ExecutionResult, OpKind, Operation, Transform, TransformEntry,
-};
 pub use gas::Gas;
 pub use json_pretty_printer::json_pretty_print;
 #[doc(inline)]
@@ -151,17 +145,36 @@ pub use key::{
     DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_DICTIONARY_LENGTH, KEY_HASH_LENGTH,
 };
 pub use motes::Motes;
-pub use named_key::NamedKey;
+pub use package::{
+    ContractPackageHash, ContractVersion, ContractVersionKey, ContractVersions, Group, Groups,
+    Package,
+};
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
-#[doc(inline)]
-pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+#[doc(inline)]
+pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub use transaction::TestTransactionV1Builder;
+pub use transaction::{
+    runtime_args, Approval, ApprovalsHash, AuctionTransactionV1, ContractIdentifier,
+    ContractPackageIdentifier, Deploy, DeployConfigurationFailure, DeployDecodeFromJsonError,
+    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
+    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1,
+    PricingModeV1, Transaction, TransactionHash, TransactionV1, TransactionV1Approval,
+    TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
+    TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransactionV1Kind,
+    TransferTarget, UserlandTransactionV1,
+};
+#[cfg(any(feature = "std", test))]
+pub use transaction::{
+    DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
+};
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
 };

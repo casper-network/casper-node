@@ -1,4 +1,4 @@
-use casper_types::contracts::DEFAULT_ENTRY_POINT_NAME;
+use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
 use parity_wasm::{
     builder,
     elements::{Instruction, Instructions},

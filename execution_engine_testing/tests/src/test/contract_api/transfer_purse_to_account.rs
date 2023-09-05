@@ -12,7 +12,7 @@ use casper_types::{
         auction::ARG_AMOUNT,
         mint::{self, ARG_TARGET},
     },
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -28,7 +28,9 @@ fn should_run_purse_to_account_transfer() {
 
     let account_1_account_hash = ACCOUNT_1_ADDR;
     assert!(
-        builder.get_account(account_1_account_hash).is_none(),
+        builder
+            .get_entity_by_account_hash(account_1_account_hash)
+            .is_none(),
         "new account shouldn't exist yet"
     );
 
@@ -42,7 +44,7 @@ fn should_run_purse_to_account_transfer() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let new_account = builder
-        .get_account(account_1_account_hash)
+        .get_entity_by_account_hash(account_1_account_hash)
         .expect("new account should exist now");
 
     let balance = builder.get_purse_balance(new_account.main_purse());
@@ -73,7 +75,7 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
 
     // Get transforms output for genesis account
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get genesis account");
 
     let final_balance = builder.get_purse_balance(default_account.main_purse());
@@ -81,7 +83,8 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     // When trying to send too much coins the balance is left unchanged
     assert_eq!(
         final_balance,
-        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - *DEFAULT_PAYMENT,
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - *DEFAULT_PAYMENT
+            + builder.calculate_refund_amount(*DEFAULT_PAYMENT),
         "final balance incorrect"
     );
 

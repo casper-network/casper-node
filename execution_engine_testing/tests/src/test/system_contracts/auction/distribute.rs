@@ -15,12 +15,12 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{
-        self, Bid, Bids, DelegationRate, Delegator, EraInfo, SeigniorageAllocation,
-        SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        self, BidsExt, DelegationRate, Delegator, EraInfo, SeigniorageAllocation,
+        SeigniorageRecipientsSnapshot, ValidatorBid, ARG_AMOUNT, ARG_DELEGATION_RATE,
+        ARG_DELEGATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
+        METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
-    EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
+    EraId, Key, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 const ARG_ENTRY_POINT: &str = "entry_point";
@@ -69,9 +69,12 @@ static GENESIS_ROUND_SEIGNIORAGE_RATE: Lazy<Ratio<U512>> = Lazy::new(|| {
     )
 });
 
-fn get_validator_bid(builder: &mut LmdbWasmTestBuilder, validator: PublicKey) -> Option<Bid> {
-    let mut bids: Bids = builder.get_bids();
-    bids.remove(&validator)
+fn get_validator_bid(
+    builder: &mut LmdbWasmTestBuilder,
+    validator_public_key: PublicKey,
+) -> Option<ValidatorBid> {
+    let bids = builder.get_bids();
+    bids.validator_bid(&validator_public_key)
 }
 
 fn get_delegator_bid(
@@ -79,8 +82,8 @@ fn get_delegator_bid(
     validator: PublicKey,
     delegator: PublicKey,
 ) -> Option<Delegator> {
-    let validator_bid = get_validator_bid(builder, validator)?;
-    validator_bid.delegators().get(&delegator).cloned()
+    let bids = builder.get_bids();
+    bids.delegator_by_public_keys(&validator, &delegator)
 }
 
 fn withdraw_bid(
@@ -129,22 +132,15 @@ fn undelegate(
 
 fn get_delegator_staked_amount(
     builder: &mut LmdbWasmTestBuilder,
-    validator: PublicKey,
-    delegator: PublicKey,
+    validator_public_key: PublicKey,
+    delegator_public_key: PublicKey,
 ) -> U512 {
-    let bids: Bids = builder.get_bids();
-    let validator_bid = bids.get(&validator).expect("should have validator entry");
+    let bids = builder.get_bids();
+    let delegator = bids
+        .delegator_by_public_keys(&validator_public_key, &delegator_public_key)
+        .expect("bid should exist for validator-{validator_public_key}, delegator-{delegator_public_key}");
 
-    let delegator_entry = validator_bid
-        .delegators()
-        .get(&delegator)
-        .unwrap_or_else(|| {
-            panic!(
-                "should have delegator entry delegator={:?} bid={:?}",
-                delegator, validator_bid
-            )
-        });
-    *delegator_entry.staked_amount()
+    delegator.staked_amount()
 }
 
 fn get_era_info(builder: &mut LmdbWasmTestBuilder) -> EraInfo {
@@ -338,7 +334,7 @@ fn should_distribute_delegation_rate_zero() {
 
     let validator_1_actual_payout = {
         let vaildator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
 
@@ -375,9 +371,7 @@ fn should_distribute_delegation_rate_zero() {
             VALIDATOR_1.clone(),
             validator_1_actual_payout + U512::from(VALIDATOR_1_STAKE),
         );
-        let validator_1_bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
-        assert!(validator_1_bid.inactive());
-        assert!(validator_1_bid.staked_amount().is_zero());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
         U512::zero()
     };
     assert_eq!(validator_1_balance, U512::zero());
@@ -557,7 +551,7 @@ fn should_withdraw_bids_after_distribute() {
 
     let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
 
@@ -692,9 +686,7 @@ fn should_withdraw_bids_after_distribute() {
             withdraw_bid_amount,
         );
 
-        let bid = get_validator_bid(&mut builder, VALIDATOR_1.clone()).unwrap();
-        assert!(bid.inactive());
-        assert!(bid.staked_amount().is_zero());
+        assert!(get_validator_bid(&mut builder, VALIDATOR_1.clone()).is_none());
 
         withdraw_bid_amount
     };
@@ -856,7 +848,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     builder.exec(distribute_request).commit().expect_success();
 
-    let validator_1_staked_amount_1 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+    let validator_1_staked_amount_1 = get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
     let delegator_1_staked_amount_1 =
@@ -976,7 +968,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
 
     builder.exec(distribute_request).commit().expect_success();
 
-    let validator_1_staked_amount_2 = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+    let validator_1_staked_amount_2 = get_validator_bid(&mut builder, VALIDATOR_1.clone())
         .expect("should have validator bid")
         .staked_amount();
     let delegator_1_staked_amount_2 =
@@ -1092,7 +1084,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_1.clone())
             .expect("should have delegator bid");
     assert_eq!(
-        *remaining_delegator_1_bid.staked_amount(),
+        remaining_delegator_1_bid.staked_amount(),
         U512::from(DELEGATOR_1_STAKE)
     );
 
@@ -1108,7 +1100,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
         get_delegator_bid(&mut builder, VALIDATOR_1.clone(), DELEGATOR_2.clone())
             .expect("should have delegator bid");
     assert_eq!(
-        *remaining_delegator_2_bid.staked_amount(),
+        remaining_delegator_2_bid.staked_amount(),
         U512::from(DELEGATOR_2_STAKE)
     );
 
@@ -1123,7 +1115,7 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let remaining_validator_1_bid =
         get_validator_bid(&mut builder, VALIDATOR_1.clone()).expect("should have validator bid");
     assert_eq!(
-        *remaining_validator_1_bid.staked_amount(),
+        remaining_validator_1_bid.staked_amount(),
         U512::from(VALIDATOR_1_STAKE)
     );
 }
@@ -1309,7 +1301,7 @@ fn should_distribute_delegation_rate_half() {
 
     let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1482,7 +1474,7 @@ fn should_distribute_delegation_rate_full() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1714,7 +1706,7 @@ fn should_distribute_uneven_delegation_rate_zero() {
 
     let validator_1_updated_stake = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -1969,7 +1961,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_1_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2025,7 +2017,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_2_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2068,7 +2060,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
 
     let validator_3_actual_payout = {
         let validator_stake_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -2342,7 +2334,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_1_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_balance_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
@@ -2379,7 +2371,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_2_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_2_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_2.clone())
+        let validator_balance_after = get_validator_bid(&mut builder, VALIDATOR_2.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
@@ -2415,7 +2407,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
 
     let validator_3_actual_payout = {
         let validator_balance_before = U512::from(VALIDATOR_3_STAKE);
-        let validator_balance_after = *get_validator_bid(&mut builder, VALIDATOR_3.clone())
+        let validator_balance_after = get_validator_bid(&mut builder, VALIDATOR_3.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_balance_after - validator_balance_before
@@ -2994,26 +2986,23 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
     }
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
+        builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
+    builder
+        .distribute(
+            None,
+            ProtocolVersion::V1_0_0,
+            VALIDATOR_1.clone(),
+            5,
+            timestamp_millis,
+        )
+        .expect("must distribute");
 
     let validator_1_stake_before = {
         let validator_stake_before = U512::from(VALIDATOR_1_STAKE);
-        let validator_stake_after = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_stake_after = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_stake_after - validator_stake_before
@@ -3066,39 +3055,34 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     let initial_supply = builder.total_supply(None);
 
     for _ in 0..5 {
-        builder.run_auction(timestamp_millis, Vec::new());
+        builder.advance_era();
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .with_protocol_version(new_protocol_version)
-    .build();
+    builder
+        .distribute(
+            None,
+            new_protocol_version,
+            VALIDATOR_1.clone(),
+            10,
+            timestamp_millis,
+        )
+        .expect("must distribute");
 
     let new_round_seigniorage_rate = {
         let (numer, denom) = new_round_seigniorage_rate.into();
         Ratio::new(numer.into(), denom.into())
     };
 
-    builder.exec(distribute_request).commit().expect_success();
-
     let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
 
     let validator_1_balance_after = {
-        let validator_staked_amount = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
+        let validator_staked_amount = get_validator_bid(&mut builder, VALIDATOR_1.clone())
             .expect("should have validator bid")
             .staked_amount();
         validator_staked_amount - validator_1_stake_before - U512::from(VALIDATOR_1_STAKE)
@@ -3249,7 +3233,7 @@ fn should_not_restake_after_full_unbond() {
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
-        .get(&VALIDATOR_1_ADDR)
+        .get(&DELEGATOR_1_ADDR)
         .expect("should have validator entry");
     let delegator_unbond_amount = unbonding_purses
         .iter()
@@ -3400,7 +3384,7 @@ fn delegator_full_unbond_during_first_reward_era() {
 
     let withdraws = builder.get_unbonds();
     let unbonding_purses = withdraws
-        .get(&VALIDATOR_1_ADDR)
+        .get(&DELEGATOR_1_ADDR)
         .expect("should have validator entry");
     let delegator_unbond_amount = unbonding_purses
         .iter()

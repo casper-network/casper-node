@@ -1,20 +1,13 @@
 use std::collections::BTreeMap;
 
+use casper_execution_engine::engine_state::EngineConfigBuilder;
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_execution_engine::engine_state::{
-    engine_config::{
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-    },
-    EngineConfig, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-};
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     runtime_args,
@@ -24,10 +17,9 @@ use casper_types::{
         },
         mint::ROUND_SEIGNIORAGE_RATE_KEY,
     },
-    AuctionCosts, BrTableCost, CLValue, ControlFlowCosts, EraId, HandlePaymentCosts,
-    HostFunctionCosts, MintCosts, OpcodeCosts, ProtocolVersion, RuntimeArgs, StandardPaymentCosts,
-    StorageCosts, StoredValue, SystemConfig, WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST,
-    DEFAULT_CONST_COST, DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
+    BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunctionCosts, OpcodeCosts, ProtocolVersion,
+    StorageCosts, StoredValue, WasmConfig, DEFAULT_ADD_COST, DEFAULT_BIT_COST, DEFAULT_CONST_COST,
+    DEFAULT_CONTROL_FLOW_BLOCK_OPCODE, DEFAULT_CONTROL_FLOW_BR_IF_OPCODE,
     DEFAULT_CONTROL_FLOW_BR_OPCODE, DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
     DEFAULT_CONTROL_FLOW_BR_TABLE_OPCODE, DEFAULT_CONTROL_FLOW_CALL_INDIRECT_OPCODE,
     DEFAULT_CONTROL_FLOW_CALL_OPCODE, DEFAULT_CONTROL_FLOW_DROP_OPCODE,
@@ -37,8 +29,7 @@ use casper_types::{
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DIV_COST, DEFAULT_GLOBAL_COST,
     DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST,
     DEFAULT_LOCAL_COST, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NOP_COST,
-    DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST,
-    DEFAULT_WASM_MAX_MEMORY, U256, U512,
+    DEFAULT_STORE_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASM_MAX_MEMORY, U256, U512,
 };
 
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
@@ -114,7 +105,7 @@ fn should_upgrade_only_protocol_version() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -147,20 +138,12 @@ fn should_allow_only_wasm_costs_patch_version() {
             .build()
     };
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        new_wasm_config,
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(new_wasm_config)
+        .build();
 
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -193,20 +176,12 @@ fn should_allow_only_wasm_costs_minor_version() {
             .build()
     };
 
-    let engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        new_wasm_config,
-        SystemConfig::default(),
-    );
+    let engine_config = EngineConfigBuilder::default()
+        .with_wasm_config(new_wasm_config)
+        .build();
 
     builder
-        .upgrade_with_upgrade_request(engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(Some(engine_config), &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -238,7 +213,7 @@ fn should_not_downgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let upgraded_engine_config = builder.get_engine_state().config();
@@ -257,8 +232,7 @@ fn should_not_downgrade() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut downgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut downgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(1).expect("should have response");
 
@@ -289,8 +263,7 @@ fn should_not_skip_major_versions() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -318,8 +291,7 @@ fn should_allow_skip_minor_versions() {
             .build()
     };
 
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     let maybe_upgrade_result = builder.get_upgrade_result(0).expect("should have response");
 
@@ -337,10 +309,12 @@ fn should_upgrade_only_validator_slots() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let validator_slot_key = builder
-        .get_contract(builder.get_auction_contract_hash())
+    let validator_slot_key = *builder
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[VALIDATOR_SLOTS_KEY];
+        .named_keys()
+        .get(VALIDATOR_SLOTS_KEY)
+        .unwrap();
 
     let before_validator_slots: u32 = builder
         .query(None, validator_slot_key, &[])
@@ -363,7 +337,7 @@ fn should_upgrade_only_validator_slots() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_validator_slots: u32 = builder
@@ -392,10 +366,12 @@ fn should_upgrade_only_auction_delay() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let auction_delay_key = builder
-        .get_contract(builder.get_auction_contract_hash())
+    let auction_delay_key = *builder
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[AUCTION_DELAY_KEY];
+        .named_keys()
+        .get(AUCTION_DELAY_KEY)
+        .unwrap();
 
     let before_auction_delay: u64 = builder
         .query(None, auction_delay_key, &[])
@@ -418,7 +394,7 @@ fn should_upgrade_only_auction_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_auction_delay: u64 = builder
@@ -447,10 +423,12 @@ fn should_upgrade_only_locked_funds_period() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let locked_funds_period_key = builder
-        .get_contract(builder.get_auction_contract_hash())
+    let locked_funds_period_key = *builder
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[LOCKED_FUNDS_PERIOD_KEY];
+        .named_keys()
+        .get(LOCKED_FUNDS_PERIOD_KEY)
+        .unwrap();
 
     let before_locked_funds_period_millis: u64 = builder
         .query(None, locked_funds_period_key, &[])
@@ -473,7 +451,7 @@ fn should_upgrade_only_locked_funds_period() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_locked_funds_period_millis: u64 = builder
@@ -502,10 +480,12 @@ fn should_upgrade_only_round_seigniorage_rate() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let round_seigniorage_rate_key = builder
-        .get_contract(builder.get_mint_contract_hash())
-        .expect("auction should exist")
-        .named_keys()[ROUND_SEIGNIORAGE_RATE_KEY];
+    let round_seigniorage_rate_key = *builder
+        .get_addressable_entity(builder.get_mint_contract_hash())
+        .expect("mint should exist")
+        .named_keys()
+        .get(ROUND_SEIGNIORAGE_RATE_KEY)
+        .unwrap();
 
     let before_round_seigniorage_rate: Ratio<U512> = builder
         .query(None, round_seigniorage_rate_key, &[])
@@ -528,7 +508,7 @@ fn should_upgrade_only_round_seigniorage_rate() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_round_seigniorage_rate: Ratio<U512> = builder
@@ -564,10 +544,12 @@ fn should_upgrade_only_unbonding_delay() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let unbonding_delay_key = builder
-        .get_contract(builder.get_auction_contract_hash())
+    let unbonding_delay_key = *builder
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[UNBONDING_DELAY_KEY];
+        .named_keys()
+        .get(UNBONDING_DELAY_KEY)
+        .unwrap();
 
     let before_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
@@ -590,7 +572,7 @@ fn should_upgrade_only_unbonding_delay() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
@@ -622,10 +604,12 @@ fn should_apply_global_state_upgrade() {
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
     // We'll try writing directly to this key.
-    let unbonding_delay_key = builder
-        .get_contract(builder.get_auction_contract_hash())
+    let unbonding_delay_key = *builder
+        .get_addressable_entity(builder.get_auction_contract_hash())
         .expect("auction should exist")
-        .named_keys()[UNBONDING_DELAY_KEY];
+        .named_keys()
+        .get(UNBONDING_DELAY_KEY)
+        .unwrap();
 
     let before_unbonding_delay: u64 = builder
         .query(None, unbonding_delay_key, &[])
@@ -654,7 +638,7 @@ fn should_apply_global_state_upgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(None, &mut upgrade_request)
         .expect_upgrade_success();
 
     let after_unbonding_delay: u64 = builder
@@ -685,25 +669,9 @@ fn should_increase_max_associated_keys_after_upgrade() {
     let new_protocol_version =
         ProtocolVersion::from_parts(sem_ver.major, sem_ver.minor, sem_ver.patch + 1);
 
-    let new_system_config = SystemConfig::new(
-        DEFAULT_WASMLESS_TRANSFER_COST,
-        AuctionCosts::default(),
-        MintCosts::default(),
-        HandlePaymentCosts::default(),
-        StandardPaymentCosts::default(),
-    );
-
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        DEFAULT_MAX_ASSOCIATED_KEYS + 1,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        *DEFAULT_WASM_CONFIG,
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(DEFAULT_MAX_ASSOCIATED_KEYS + 1)
+        .build();
 
     let mut upgrade_request = {
         UpgradeRequestBuilder::new()
@@ -714,7 +682,10 @@ fn should_increase_max_associated_keys_after_upgrade() {
     };
 
     builder
-        .upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request)
+        .upgrade_with_upgrade_request_and_config(
+            Some(new_engine_config.clone()),
+            &mut upgrade_request,
+        )
         .expect_upgrade_success();
 
     for n in (0..DEFAULT_MAX_ASSOCIATED_KEYS).map(U256::from) {
@@ -738,7 +709,7 @@ fn should_increase_max_associated_keys_after_upgrade() {
     }
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     assert!(account.associated_keys().len() > DEFAULT_MAX_ASSOCIATED_KEYS as usize);

@@ -2,7 +2,7 @@
 #![no_main]
 
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{runtime_args, RuntimeArgs};
+use casper_types::runtime_args;
 
 const SET_REFUND_PURSE: &str = "set_refund_purse";
 const ARG_PURSE: &str = "purse";

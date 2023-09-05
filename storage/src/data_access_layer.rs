@@ -1,10 +1,9 @@
-use casper_types::{Digest, EraId};
+use casper_types::{execution::Effects, Digest, EraId};
 
 use crate::global_state::{
-    shared,
     state::{CommitProvider, StateProvider},
     trie::TrieRaw,
-    trie_store::operations::DeleteResult,
+    trie_store::operations::PruneResult,
 };
 
 pub struct Block {
@@ -69,12 +68,12 @@ where
         self.state.missing_children(trie_raw)
     }
 
-    fn delete_keys(
+    fn prune_keys(
         &self,
         root: Digest,
-        keys_to_delete: &[casper_types::Key],
-    ) -> Result<DeleteResult, Self::Error> {
-        self.state.delete_keys(root, keys_to_delete)
+        keys_to_prune: &[casper_types::Key],
+    ) -> Result<PruneResult, Self::Error> {
+        self.state.prune_keys(root, keys_to_prune)
     }
 }
 
@@ -82,11 +81,7 @@ impl<S> CommitProvider for DataAccessLayer<S>
 where
     S: CommitProvider,
 {
-    fn commit(
-        &self,
-        state_hash: Digest,
-        effects: shared::AdditiveMap<casper_types::Key, shared::transform::Transform>,
-    ) -> Result<Digest, Self::Error> {
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
         self.state.commit(state_hash, effects)
     }
 }

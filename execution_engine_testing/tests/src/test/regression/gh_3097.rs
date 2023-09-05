@@ -39,17 +39,26 @@ fn should_run_regression() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let disabled_contract_hash = account.named_keys()[DISABLED_CONTRACT_HASH_KEY]
+    let disabled_contract_hash = account
+        .named_keys()
+        .get(DISABLED_CONTRACT_HASH_KEY)
+        .unwrap()
         .into_hash()
         .map(ContractHash::new)
         .unwrap();
-    let enabled_contract_hash = account.named_keys()[ENABLED_CONTRACT_HASH_KEY]
+    let enabled_contract_hash = account
+        .named_keys()
+        .get(ENABLED_CONTRACT_HASH_KEY)
+        .unwrap()
         .into_hash()
         .map(ContractHash::new)
         .unwrap();
-    let contract_package_hash = account.named_keys()[CONTRACT_PACKAGE_HASH_KEY]
+    let contract_package_hash = account
+        .named_keys()
+        .get(CONTRACT_PACKAGE_HASH_KEY)
+        .unwrap()
         .into_hash()
         .map(ContractPackageHash::new)
         .unwrap();

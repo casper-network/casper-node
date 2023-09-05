@@ -1,6 +1,6 @@
 use hyper::server::{conn::AddrIncoming, Builder};
 
-use casper_json_rpc::RequestHandlersBuilder;
+use casper_json_rpc::{CorsOrigin, RequestHandlersBuilder};
 use casper_types::ProtocolVersion;
 
 use super::{
@@ -33,6 +33,7 @@ pub(super) async fn run<REv: ReactorEventT>(
     api_version: ProtocolVersion,
     qps_limit: u64,
     max_body_bytes: u32,
+    cors_origin: String,
 ) {
     let mut handlers = RequestHandlersBuilder::new();
     PutDeploy::register_as_handler(effect_builder, api_version, &mut handlers);
@@ -57,13 +58,41 @@ pub(super) async fn run<REv: ReactorEventT>(
     QueryBalance::register_as_handler(effect_builder, api_version, &mut handlers);
     let handlers = handlers.build();
 
-    super::rpcs::run(
-        builder,
-        handlers,
-        qps_limit,
-        max_body_bytes,
-        RPC_API_PATH,
-        RPC_API_SERVER_NAME,
-    )
-    .await;
+    match cors_origin.as_str() {
+        "" => {
+            super::rpcs::run(
+                builder,
+                handlers,
+                qps_limit,
+                max_body_bytes,
+                RPC_API_PATH,
+                RPC_API_SERVER_NAME,
+            )
+            .await
+        }
+        "*" => {
+            super::rpcs::run_with_cors(
+                builder,
+                handlers,
+                qps_limit,
+                max_body_bytes,
+                RPC_API_PATH,
+                RPC_API_SERVER_NAME,
+                CorsOrigin::Any,
+            )
+            .await
+        }
+        _ => {
+            super::rpcs::run_with_cors(
+                builder,
+                handlers,
+                qps_limit,
+                max_body_bytes,
+                RPC_API_PATH,
+                RPC_API_SERVER_NAME,
+                CorsOrigin::Specified(cors_origin),
+            )
+            .await
+        }
+    }
 }

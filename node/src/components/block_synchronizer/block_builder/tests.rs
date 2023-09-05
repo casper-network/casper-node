@@ -3,14 +3,17 @@ use std::{collections::BTreeMap, thread, time::Duration};
 use casper_types::{testing::TestRng, BlockV2};
 use num_rational::Ratio;
 
-use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
+use crate::{
+    components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
+    types::TestBlockBuilder,
+};
 
 use super::*;
 
 #[test]
-fn handle_acceptance() {
+fn handle_acceptance_promotes_and_disqualifies_peers() {
     let mut rng = TestRng::new();
-    let block = BlockV2::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     let mut builder = BlockBuilder::new(
         *block.hash(),
         false,
@@ -25,38 +28,38 @@ fn handle_acceptance() {
 
     // Builder acceptance for needed signature from ourselves.
     assert!(builder
-        .handle_acceptance(None, Ok(Some(Acceptance::NeededIt)))
+        .handle_acceptance(None, Ok(Some(Acceptance::NeededIt)), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for existent signature from ourselves.
     assert!(builder
-        .handle_acceptance(None, Ok(Some(Acceptance::HadIt)))
+        .handle_acceptance(None, Ok(Some(Acceptance::HadIt)), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for no signature from ourselves.
-    assert!(builder.handle_acceptance(None, Ok(None)).is_ok());
+    assert!(builder.handle_acceptance(None, Ok(None), true).is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for no signature from a peer.
     // Peer shouldn't be registered.
     assert!(builder
-        .handle_acceptance(Some(honest_peer), Ok(None))
+        .handle_acceptance(Some(honest_peer), Ok(None), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for existent signature from a peer.
     // Peer shouldn't be registered.
     assert!(builder
-        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::HadIt)))
+        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::HadIt)), true)
         .is_ok());
     assert!(builder.peer_list().qualified_peers(&mut rng).is_empty());
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for needed signature from a peer.
     // Peer should be registered as honest.
     assert!(builder
-        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::NeededIt)))
+        .handle_acceptance(Some(honest_peer), Ok(Some(Acceptance::NeededIt)), true)
         .is_ok());
     assert!(builder
         .peer_list()
@@ -65,7 +68,11 @@ fn handle_acceptance() {
     assert!(builder.peer_list().dishonest_peers().is_empty());
     // Builder acceptance for error on signature handling from ourselves.
     assert!(builder
-        .handle_acceptance(None, Err(BlockAcquisitionError::InvalidStateTransition))
+        .handle_acceptance(
+            None,
+            Err(BlockAcquisitionError::InvalidStateTransition),
+            true
+        )
         .is_err());
     assert!(builder
         .peer_list()
@@ -77,7 +84,8 @@ fn handle_acceptance() {
     assert!(builder
         .handle_acceptance(
             Some(dishonest_peer),
-            Err(BlockAcquisitionError::InvalidStateTransition)
+            Err(BlockAcquisitionError::InvalidStateTransition),
+            true
         )
         .is_err());
     assert!(builder
@@ -91,9 +99,74 @@ fn handle_acceptance() {
 }
 
 #[test]
-fn register_era_validator_weights() {
+fn handle_acceptance_unlatches_builder() {
     let mut rng = TestRng::new();
     let block = BlockV2::random(&mut rng);
+    let mut builder = BlockBuilder::new(
+        block.header().block_hash(),
+        false,
+        1,
+        TimeDiff::from_seconds(1),
+        LegacyRequiredFinality::Strict,
+        ProtocolVersion::V1_0_0,
+    );
+
+    // Check that if a valid element was received, the latch is reset
+    builder.latch_by(2);
+    assert!(builder
+        .handle_acceptance(None, Ok(Some(Acceptance::NeededIt)), true)
+        .is_ok());
+    assert_eq!(builder.latch.count(), 0);
+    builder.latch_by(2);
+    assert!(builder
+        .handle_acceptance(None, Ok(Some(Acceptance::NeededIt)), false)
+        .is_ok());
+    assert_eq!(builder.latch.count(), 0);
+
+    // Check that if a element that was previously received,
+    // the latch is not decremented since this is a late response
+    builder.latch_by(2);
+    assert!(builder
+        .handle_acceptance(None, Ok(Some(Acceptance::HadIt)), true)
+        .is_ok());
+    assert_eq!(builder.latch.count(), 2);
+    assert!(builder
+        .handle_acceptance(None, Ok(Some(Acceptance::HadIt)), false)
+        .is_ok());
+    assert_eq!(builder.latch.count(), 2);
+
+    // Check that the latch is decremented if a response lead to an error,
+    // but only if the builder was waiting for that element in its current state
+    assert!(builder
+        .handle_acceptance(
+            None,
+            Err(BlockAcquisitionError::InvalidStateTransition),
+            true
+        )
+        .is_err());
+    assert_eq!(builder.latch.count(), 1);
+    assert!(builder
+        .handle_acceptance(
+            None,
+            Err(BlockAcquisitionError::InvalidStateTransition),
+            false
+        )
+        .is_err());
+    assert_eq!(builder.latch.count(), 1);
+
+    // Check that the latch is decremented if a valid response was received that did not produce any
+    // side effect, but only if the builder was waiting for that element in its current state
+    builder.latch_by(1);
+    assert!(builder.handle_acceptance(None, Ok(None), false).is_ok());
+    assert_eq!(builder.latch.count(), 2);
+    assert!(builder.handle_acceptance(None, Ok(None), true).is_ok());
+    assert_eq!(builder.latch.count(), 1);
+}
+
+#[test]
+fn register_era_validator_weights() {
+    let mut rng = TestRng::new();
+    let block = TestBlockBuilder::new().build(&mut rng);
     let mut builder = BlockBuilder::new(
         *block.hash(),
         false,
@@ -141,7 +214,7 @@ fn register_era_validator_weights() {
 fn register_finalized_block() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = BlockV2::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),
@@ -209,7 +282,7 @@ fn register_finalized_block() {
 fn register_block_execution() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = BlockV2::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),
@@ -286,7 +359,7 @@ fn register_block_execution() {
 fn register_block_executed() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = BlockV2::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),
@@ -351,7 +424,7 @@ fn register_block_executed() {
 fn register_block_marked_complete() {
     let mut rng = TestRng::new();
     // Create a random block.
-    let block = BlockV2::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     // Create a builder for the block.
     let mut builder = BlockBuilder::new(
         *block.hash(),

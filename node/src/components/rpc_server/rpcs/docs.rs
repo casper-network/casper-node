@@ -1,8 +1,5 @@
 //! RPCs related to finding information about currently supported RPCs.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::{
@@ -30,19 +27,19 @@ use super::{
 use crate::effect::EffectBuilder;
 
 pub(crate) const DOCS_EXAMPLE_PROTOCOL_VERSION: ProtocolVersion =
-    ProtocolVersion::from_parts(1, 5, 1);
+    ProtocolVersion::from_parts(1, 5, 2);
 
 const DEFINITIONS_PATH: &str = "#/components/schemas/";
 
 // As per https://spec.open-rpc.org/#service-discovery-method.
 pub(crate) static OPEN_RPC_SCHEMA: Lazy<OpenRpcSchema> = Lazy::new(|| {
     let contact = OpenRpcContactField {
-        name: "CasperLabs".to_string(),
+        name: "Casper Labs".to_string(),
         url: "https://casperlabs.io".to_string(),
     };
     let license = OpenRpcLicenseField {
-        name: "CasperLabs Open Source License Version 1.0".to_string(),
-        url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE".to_string(),
+        name: "APACHE LICENSE, VERSION 2.0".to_string(),
+        url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
     };
     let info = OpenRpcInfoField {
         version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),
@@ -459,13 +456,34 @@ impl RpcWithoutParams for ListRpcs {
 }
 
 mod doc_example_impls {
-    use casper_types::{Deploy, EraEnd, EraReport, PublicKey, Timestamp};
+    use casper_types::{
+        account::Account, Deploy, EraEnd, EraReport, JsonBlock, JsonBlockHeader, PublicKey,
+        Timestamp,
+    };
 
     use super::DocExample;
+
+    impl DocExample for JsonBlock {
+        fn doc_example() -> &'static Self {
+            JsonBlock::example()
+        }
+    }
+
+    impl DocExample for JsonBlockHeader {
+        fn doc_example() -> &'static Self {
+            &JsonBlock::example().header
+        }
+    }
 
     impl DocExample for Deploy {
         fn doc_example() -> &'static Self {
             Deploy::example()
+        }
+    }
+
+    impl DocExample for Account {
+        fn doc_example() -> &'static Self {
+            Account::example()
         }
     }
 
@@ -507,13 +525,12 @@ mod tests {
 
     fn check_optional_params_fields<T: RpcWithOptionalParams>() -> Vec<SchemaParam> {
         let contact = OpenRpcContactField {
-            name: "CasperLabs".to_string(),
+            name: "Casper Labs".to_string(),
             url: "https://casperlabs.io".to_string(),
         };
         let license = OpenRpcLicenseField {
-            name: "CasperLabs Open Source License Version 1.0".to_string(),
-            url: "https://raw.githubusercontent.com/CasperLabs/casper-node/master/LICENSE"
-                .to_string(),
+            name: "APACHE LICENSE, VERSION 2.0".to_string(),
+            url: "https://www.apache.org/licenses/LICENSE-2.0".to_string(),
         };
         let info = OpenRpcInfoField {
             version: DOCS_EXAMPLE_PROTOCOL_VERSION.to_string(),

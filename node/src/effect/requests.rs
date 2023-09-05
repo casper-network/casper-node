@@ -24,10 +24,12 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    bytesrepr::Bytes, system::auction::EraValidators, Block, BlockHash, BlockHeader,
-    BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash, DeployHeader, DeployId,
-    Digest, DisplayIter, EraId, ExecutionResult, FinalitySignature, FinalitySignatureId, Key,
-    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    bytesrepr::Bytes,
+    execution::{ExecutionResult, ExecutionResultV2},
+    system::auction::EraValidators,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash,
+    DeployHeader, DeployId, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId,
+    Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
 };
 
 use super::GossipTarget;
@@ -52,7 +54,7 @@ use crate::{
     rpcs::docs::OpenRpcSchema,
     types::{
         appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployMetadataExt,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, DeployExecutionInfo,
         DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock, LegacyDeploy,
         MetaBlockState, NodeId, SignedBlock, StatusFeed, TrieOrChunk, TrieOrChunkId,
     },
@@ -405,6 +407,7 @@ pub(crate) enum StorageRequest {
     PutExecutionResults {
         /// Hash of block.
         block_hash: Box<BlockHash>,
+        block_height: u64,
         /// Mapping of deploys to execution results of the block.
         execution_results: HashMap<DeployHash, ExecutionResult>,
         /// Responder to call when done storing.
@@ -421,12 +424,12 @@ pub(crate) enum StorageRequest {
         /// None is returned when we don't have the block in the storage.
         responder: Responder<Option<BlockExecutionResultsOrChunk>>,
     },
-    /// Retrieve deploy and its metadata.
-    GetDeployAndMetadata {
+    /// Retrieve deploy and its execution info.
+    GetDeployAndExecutionInfo {
         /// Hash of deploy to be retrieved.
         deploy_hash: DeployHash,
         /// Responder to call with the results.
-        responder: Responder<Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>>,
+        responder: Responder<Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>>,
     },
     /// Retrieve block and its signatures by its hash.
     GetSignedBlockByHash {
@@ -579,7 +582,7 @@ impl Display for StorageRequest {
                 write!(formatter, "get block execution results or chunk for {}", id)
             }
 
-            StorageRequest::GetDeployAndMetadata { deploy_hash, .. } => {
+            StorageRequest::GetDeployAndExecutionInfo { deploy_hash, .. } => {
                 write!(formatter, "get deploy and metadata for {}", deploy_hash)
             }
             StorageRequest::GetFinalitySignature { id, .. } => {
@@ -751,15 +754,6 @@ pub(crate) enum RpcRequest {
         /// Responder to call with the result.
         responder: Responder<Result<BalanceResult, engine_state::Error>>,
     },
-    /// Return the specified deploy and metadata if it exists, else `None`.
-    GetDeploy {
-        /// The hash of the deploy to be retrieved.
-        hash: DeployHash,
-        /// Whether to return finalized approvals.
-        finalized_approvals: bool,
-        /// Responder to call with the result.
-        responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
-    },
     /// Return the connected peers.
     GetPeers {
         /// Responder to call with the result.
@@ -810,15 +804,6 @@ impl Display for RpcRequest {
                 formatter,
                 "balance {}, purse_uref: {}",
                 state_root_hash, purse_uref
-            ),
-            RpcRequest::GetDeploy {
-                hash,
-                finalized_approvals,
-                ..
-            } => write!(
-                formatter,
-                "get {} (finalized approvals: {})",
-                hash, finalized_approvals
             ),
             RpcRequest::GetPeers { .. } => write!(formatter, "get peers"),
             RpcRequest::GetStatus { .. } => write!(formatter, "get status"),
@@ -936,14 +921,14 @@ pub(crate) enum ContractRuntimeRequest {
         /// Responder to call with the result. Contains the hash of the stored trie.
         responder: Responder<Result<Digest, engine_state::Error>>,
     },
-    /// Execute deploys without commiting results
+    /// Execute deploys without committing results
     SpeculativeDeployExecution {
         /// Hash of a block on top of which to execute the deploy.
         execution_prestate: SpeculativeExecutionState,
         /// Deploy to execute.
         deploy: Arc<Deploy>,
         /// Results
-        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
+        responder: Responder<Result<Option<ExecutionResultV2>, engine_state::Error>>,
     },
 }
 

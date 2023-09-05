@@ -827,15 +827,12 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::CommitStepSuccess {
-                    era_id,
-                    execution_effect,
-                },
+                ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
             ) => {
                 let reactor_event =
                     MainEvent::EventStreamServer(event_stream_server::Event::Step {
                         era_id,
-                        execution_effect,
+                        execution_effects: effects,
                     });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
@@ -1034,7 +1031,7 @@ impl reactor::Reactor for MainReactor {
             protocol_version,
             chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
-            chainspec.deploy_config.max_ttl,
+            chainspec.deploy_config.max_ttl.into(),
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
@@ -1062,6 +1059,11 @@ impl reactor::Reactor for MainReactor {
             chainspec.core_config.vesting_schedule_period.millis(),
             max_delegators_per_validator,
             registry,
+            chainspec.core_config.administrators.clone(),
+            chainspec.core_config.allow_auction_bids,
+            chainspec.core_config.allow_unrestricted_transfers,
+            chainspec.core_config.refund_handling,
+            chainspec.core_config.fee_handling,
         )?;
 
         let network = Network::new(

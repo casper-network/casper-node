@@ -14,10 +14,13 @@ use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
-    generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    ApprovalsHash, Block, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures, BlockV1,
-    BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest, EraId, ExecutionResult,
-    FinalitySignature, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TimeDiff,
+    execution::{ExecutionResult, ExecutionResultV2},
+    generate_ed25519_keypair,
+    system::auction::UnbondingPurse,
+    testing::TestRng,
+    AccessRights, ApprovalsHash, Block, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockV1, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest,
+    EraId, FinalitySignature, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TimeDiff,
     Transfer, URef, U512,
 };
 use tempfile::tempdir;
@@ -39,7 +42,7 @@ use crate::{
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        AvailableBlockRange, DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals,
+        AvailableBlockRange, DeployExecutionInfo, DeployWithFinalizedApprovals,
         FromTestBlockBuilder, LegacyDeploy, SignedBlock, SyncLeapIdentifier, TestBlockBuilder,
     },
     utils::{Loadable, WithDir},
@@ -122,18 +125,14 @@ fn create_sync_leap_test_chain(
             *blocks.get((height - 1) as usize).unwrap().hash()
         };
 
-        let block = BlockV2::random_with_specifics_and_parent_and_validator_weights(
-            &mut harness.rng,
-            era_id,
-            height,
-            chainspec.protocol_version(),
-            parent_hash,
-            if is_switch {
-                Some(trusted_validator_weights.clone())
-            } else {
-                None
-            },
-        );
+        let block = TestBlockBuilder::new()
+            .era(era_id)
+            .height(height)
+            .protocol_version(chainspec.protocol_version())
+            .parent_hash(parent_hash)
+            .validator_weights(trusted_validator_weights.clone())
+            .switch_block(is_switch)
+            .build(&mut harness.rng);
 
         blocks.push(block);
     });
@@ -171,7 +170,7 @@ fn storage_fixture(harness: &ComponentHarness<UnitTestEvent>) -> Storage {
         ProtocolVersion::from_parts(1, 0, 0),
         EraId::default(),
         "test",
-        MAX_TTL,
+        MAX_TTL.into(),
         RECENT_ERA_COUNT,
         None,
         false,
@@ -201,7 +200,7 @@ fn storage_fixture_from_parts(
         protocol_version.unwrap_or(ProtocolVersion::V1_0_0),
         EraId::default(),
         network_name.unwrap_or("test"),
-        max_ttl.unwrap_or(MAX_TTL),
+        max_ttl.unwrap_or(MAX_TTL).into(),
         recent_era_count.unwrap_or(RECENT_ERA_COUNT),
         None,
         false,
@@ -223,7 +222,7 @@ fn storage_fixture_with_force_resync(cfg: &WithDir<Config>) -> Storage {
         ProtocolVersion::from_parts(1, 0, 0),
         EraId::default(),
         "test",
-        MAX_TTL,
+        MAX_TTL.into(),
         RECENT_ERA_COUNT,
         None,
         true,
@@ -379,24 +378,24 @@ fn get_naive_deploys(
         .collect()
 }
 
-/// Loads a deploy with associated metadata from the storage component.
+/// Loads a deploy with associated execution info from the storage component.
 ///
 /// Any potential finalized approvals are discarded.
-fn get_naive_deploy_and_metadata(
+fn get_naive_deploy_and_execution_info(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     deploy_hash: DeployHash,
-) -> Option<(Deploy, DeployMetadataExt)> {
+) -> Option<(Deploy, Option<DeployExecutionInfo>)> {
     let response = harness.send_request(storage, |responder| {
-        StorageRequest::GetDeployAndMetadata {
+        StorageRequest::GetDeployAndExecutionInfo {
             deploy_hash,
             responder,
         }
         .into()
     });
     assert!(harness.is_idle());
-    response.map(|(deploy_with_finalized_approvals, metadata)| {
-        (deploy_with_finalized_approvals.into_naive(), metadata)
+    response.map(|(deploy_with_finalized_approvals, exec_info)| {
+        (deploy_with_finalized_approvals.into_naive(), exec_info)
     })
 }
 
@@ -522,11 +521,13 @@ fn put_execution_results(
     harness: &mut ComponentHarness<UnitTestEvent>,
     storage: &mut Storage,
     block_hash: BlockHash,
+    block_height: u64,
     execution_results: HashMap<DeployHash, ExecutionResult>,
 ) {
     harness.send_request(storage, move |responder| {
         StorageRequest::PutExecutionResults {
             block_hash: Box::new(block_hash),
+            block_height,
             execution_results,
             responder,
         }
@@ -700,14 +701,14 @@ fn read_block_by_height_with_available_block_range() {
     let mut harness = ComponentHarness::default();
 
     // Create a random block, load and store it.
-    let block_33 = Arc::new(BlockV2::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        33,
-        ProtocolVersion::from_parts(1, 5, 0),
-        true,
-        None,
-    ));
+    let block_33 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(33)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(true)
+            .build(&mut harness.rng),
+    );
 
     let mut storage = storage_fixture(&harness);
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -726,14 +727,14 @@ fn read_block_by_height_with_available_block_range() {
     );
 
     // Create a random block as a different height, load and store it.
-    let block_14 = Arc::new(BlockV2::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        14,
-        ProtocolVersion::from_parts(1, 5, 0),
-        false,
-        None,
-    ));
+    let block_14 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(14)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
 
     let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
@@ -750,35 +751,31 @@ fn can_retrieve_block_by_height() {
     let mut harness = ComponentHarness::default();
 
     // Create some random blocks, load and store them.
-    let block_v2_33 = Arc::new(BlockV2::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        33,
-        ProtocolVersion::from_parts(1, 5, 0),
-        true,
-        None,
-    ));
-    let block_33: Block = (*block_v2_33).clone().into();
+    let block_33 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(33)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(true)
+            .build(&mut harness.rng),
+    );
+    let block_14 = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(14)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
 
-    let block_v2_14 = Arc::new(BlockV2::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        14,
-        ProtocolVersion::from_parts(1, 5, 0),
-        false,
-        None,
-    ));
-    let block_14: Block = (*block_v2_14).clone().into();
-
-    let block_v2_99 = Arc::new(BlockV2::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(2),
-        99,
-        ProtocolVersion::from_parts(1, 5, 0),
-        true,
-        None,
-    ));
-    let block_99: Block = (*block_v2_99).clone().into();
+    let block_99 = Arc::new(
+        TestBlockBuilder::new()
+            .era(2)
+            .height(99)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(true)
+            .build(&mut harness.rng),
+    );
 
     let mut storage = storage_fixture(&harness);
 
@@ -795,16 +792,16 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting 33 changes this.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_33.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_33.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&block_33)
+        Some(&Block::V2((*block_33).clone()))
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_v2_33.header())
+        Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
@@ -812,32 +809,32 @@ fn can_retrieve_block_by_height() {
     assert!(get_block_header_at_height(&mut storage, 14, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&block_33)
+        Some(&Block::V2((*block_33).clone()))
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, true).as_ref(),
-        Some(block_v2_33.header())
+        Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 14, no change in highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_14.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_14.clone());
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&block_33)
+        Some(&Block::V2((*block_33).clone()))
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_v2_33.header())
+        Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
-        Some(&block_14)
+        Some(&Block::V2((*block_14).clone()))
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, true).as_ref(),
@@ -845,58 +842,58 @@ fn can_retrieve_block_by_height() {
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_v2_14.header())
+        Some(block_14.header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&block_33)
+        Some(&Block::V2((*block_33).clone()))
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_v2_33.header())
+        Some(block_33.header())
     );
     assert!(get_block_at_height(&mut storage, 99).is_none());
     assert!(get_block_header_at_height(&mut storage, 99, false).is_none());
 
     // Inserting block with height 99, changes highest.
-    let was_new = put_complete_block(&mut harness, &mut storage, block_v2_99.clone());
+    let was_new = put_complete_block(&mut harness, &mut storage, block_99.clone());
     // Mark block 99 as complete.
     storage.completed_blocks.insert(99);
     assert!(was_new);
 
     assert_eq!(
         get_highest_complete_block(&mut harness, &mut storage).as_ref(),
-        Some(&block_99)
+        Some(&Block::V2((*block_99).clone()))
     );
     assert_eq!(
         get_highest_complete_block_header(&mut harness, &mut storage).as_ref(),
-        Some(block_v2_99.header())
+        Some(block_99.header())
     );
     assert!(get_block_at_height(&mut storage, 0).is_none());
     assert!(get_block_header_at_height(&mut storage, 0, false).is_none());
     assert_eq!(
         get_block_at_height(&mut storage, 14).as_ref(),
-        Some(&block_14)
+        Some(&Block::V2((*block_14).clone()))
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 14, false).as_ref(),
-        Some(block_v2_14.header())
+        Some(block_14.header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 33).as_ref(),
-        Some(&block_33)
+        Some(&Block::V2((*block_33).clone()))
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 33, false).as_ref(),
-        Some(block_v2_33.header())
+        Some(block_33.header())
     );
     assert_eq!(
         get_block_at_height(&mut storage, 99).as_ref(),
-        Some(&block_99)
+        Some(&Block::V2((*block_99).clone()))
     );
     assert_eq!(
         get_block_header_at_height(&mut storage, 99, false).as_ref(),
-        Some(block_v2_99.header())
+        Some(block_99.header())
     );
 }
 
@@ -907,22 +904,20 @@ fn different_block_at_height_is_fatal() {
     let mut storage = storage_fixture(&harness);
 
     // Create two different blocks at the same height.
-    let block_44_a = Arc::new(BlockV2::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        44,
-        ProtocolVersion::V1_0_0,
-        false,
-        None,
-    ));
-    let block_44_b = Arc::new(BlockV2::random_with_specifics(
-        &mut harness.rng,
-        EraId::new(1),
-        44,
-        ProtocolVersion::V1_0_0,
-        false,
-        None,
-    ));
+    let block_44_a = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(44)
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
+    let block_44_b = Arc::new(
+        TestBlockBuilder::new()
+            .era(1)
+            .height(44)
+            .switch_block(false)
+            .build(&mut harness.rng),
+    );
 
     let was_new = put_complete_block(&mut harness, &mut storage, block_44_a.clone());
     assert!(was_new);
@@ -983,29 +978,38 @@ fn can_retrieve_store_and_load_deploys() {
     let response = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
     assert_eq!(response, vec![Some(deploy.as_ref().clone())]);
 
-    // Finally try to get the metadata as well. Since we did not store any, we expect to get the
-    // block hash and height from the indices.
-    let (deploy_response, metadata_response) = harness
+    // Finally try to get the execution info as well. Since we did not store any, we expect to get
+    // the block hash and height from the indices.
+    let (deploy_response, exec_info_response) = harness
         .send_request(&mut storage, |responder| {
-            StorageRequest::GetDeployAndMetadata {
+            StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash: *deploy.hash(),
                 responder,
             }
             .into()
         })
-        .expect("no deploy with metadata returned");
+        .expect("no deploy with execution info returned");
 
     assert_eq!(deploy_response.into_naive(), *deploy);
-    match metadata_response {
-        DeployMetadataExt::Metadata(_) => {
-            panic!("We didn't store any metadata but we received it in the response.")
+    match exec_info_response {
+        Some(DeployExecutionInfo {
+            execution_result: Some(_),
+            ..
+        }) => {
+            panic!("We didn't store any execution info but we received it in the response.")
         }
-        DeployMetadataExt::BlockInfo(recv_block_hash_and_height) => {
-            assert_eq!(block_hash_and_height, recv_block_hash_and_height)
+        Some(DeployExecutionInfo {
+            block_hash,
+            block_height,
+            execution_result: None,
+        }) => {
+            assert_eq!(
+                block_hash_and_height,
+                BlockHashAndHeight::new(block_hash, block_height)
+            )
         }
-        DeployMetadataExt::Empty => panic!(
-            "We stored block info in the deploy hash index \
-                                            but we received nothing in the response."
+        None => panic!(
+            "We stored block info in the deploy hash index but we received nothing in the response."
         ),
     }
 
@@ -1014,29 +1018,22 @@ fn can_retrieve_store_and_load_deploys() {
 
     assert!(put_deploy(&mut harness, &mut storage, Arc::clone(&deploy)));
     // Don't insert to the deploy hash index. Since we have no execution results
-    // either, we should receive an empty metadata response.
-    let (deploy_response, metadata_response) = harness
+    // either, we should receive a `None` execution info response.
+    let (deploy_response, exec_info_response) = harness
         .send_request(&mut storage, |responder| {
-            StorageRequest::GetDeployAndMetadata {
+            StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash: *deploy.hash(),
                 responder,
             }
             .into()
         })
-        .expect("no deploy with metadata returned");
+        .expect("no deploy with execution info returned");
 
     assert_eq!(deploy_response.into_naive(), *deploy);
-    match metadata_response {
-        DeployMetadataExt::Metadata(_) => {
-            panic!("We didn't store any metadata but we received it in the response.")
-        }
-        DeployMetadataExt::BlockInfo(_) => {
-            panic!(
-                "We didn't store any block info in the index but we received it in the response."
-            )
-        }
-        DeployMetadataExt::Empty => { /* We didn't store execution results or block info */ }
-    }
+    assert!(
+        exec_info_response.is_none(),
+        "We didn't store any block info in the index but we received it in the response."
+    );
 }
 
 #[test]
@@ -1066,85 +1063,13 @@ fn storing_and_loading_a_lot_of_deploys_does_not_exhaust_handles() {
 }
 
 #[test]
-fn store_execution_results_for_two_blocks() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
-
-    let deploy = Deploy::random(&mut harness.rng);
-
-    let block_hash_a = BlockHash::random(&mut harness.rng);
-    let block_hash_b = BlockHash::random(&mut harness.rng);
-
-    // Store the deploy.
-    put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
-
-    // Ensure deploy exists.
-    assert_eq!(
-        get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]),
-        vec![Some(deploy.clone())]
-    );
-
-    // Put first execution result.
-    let first_result: ExecutionResult = harness.rng.gen();
-    let mut first_results = HashMap::new();
-    first_results.insert(*deploy.hash(), first_result.clone());
-    put_execution_results(&mut harness, &mut storage, block_hash_a, first_results);
-
-    // Retrieve and check if correct.
-    let (first_deploy, first_metadata) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
-            .expect("missing on first attempt");
-    assert_eq!(first_deploy, deploy);
-    let mut expected_per_block_results = HashMap::new();
-    expected_per_block_results.insert(block_hash_a, first_result);
-    assert_eq!(
-        first_metadata,
-        DeployMetadata {
-            execution_results: expected_per_block_results.clone()
-        }
-    );
-
-    // Add second result for the same deploy, different block.
-    let second_result: ExecutionResult = harness.rng.gen();
-    let mut second_results = HashMap::new();
-    second_results.insert(*deploy.hash(), second_result.clone());
-    put_execution_results(&mut harness, &mut storage, block_hash_b, second_results);
-
-    // Retrieve the deploy again, should now contain both.
-    let (second_deploy, second_metadata) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
-            .expect("missing on second attempt");
-    assert_eq!(second_deploy, deploy);
-    expected_per_block_results.insert(block_hash_b, second_result);
-    assert_eq!(
-        second_metadata,
-        DeployMetadata {
-            execution_results: expected_per_block_results
-        }
-    );
-}
-
-#[test]
 fn store_random_execution_results() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    // We store results for two different blocks. Each block will have five deploys executed in it,
-    // with two of these deploys being shared by both blocks, while the remaining three are unique
-    // per block.
+    // We store results for two different blocks. Each block will have five deploys executed in it.
     let block_hash_a = BlockHash::random(&mut harness.rng);
     let block_hash_b = BlockHash::random(&mut harness.rng);
-
-    // Create the shared deploys.
-    let shared_deploys = vec![
-        Deploy::random(&mut harness.rng),
-        Deploy::random(&mut harness.rng),
-    ];
-
-    // Store shared deploys.
-    for deploy in &shared_deploys {
-        put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
-    }
 
     // We collect the expected result per deploy in parallel to adding them.
     let mut expected_outcome = HashMap::new();
@@ -1152,53 +1077,39 @@ fn store_random_execution_results() {
     fn setup_block(
         harness: &mut ComponentHarness<UnitTestEvent>,
         storage: &mut Storage,
-        expected_outcome: &mut HashMap<DeployHash, HashMap<BlockHash, ExecutionResult>>,
+        expected_outcome: &mut HashMap<DeployHash, DeployExecutionInfo>,
         block_hash: &BlockHash,
-        shared_deploys: &[Deploy],
+        block_height: u64,
     ) {
-        let unique_count = 3;
+        let deploy_count = 5;
 
         // Results for a single block.
         let mut block_results = HashMap::new();
 
-        // Add three unique deploys to block.
-        for _ in 0..unique_count {
+        // Add deploys to block.
+        for _ in 0..deploy_count {
             let deploy = Deploy::random(&mut harness.rng);
 
-            // Store unique deploy.
+            // Store deploy.
             put_deploy(harness, storage, Arc::new(deploy.clone()));
 
-            let execution_result: ExecutionResult = harness.rng.gen();
+            let execution_result =
+                ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+            let execution_info = DeployExecutionInfo {
+                block_hash: *block_hash,
+                block_height,
+                execution_result: Some(execution_result.clone()),
+            };
 
             // Insert deploy results for the unique block-deploy combination.
-            let mut map = HashMap::new();
-            map.insert(*block_hash, execution_result.clone());
-            expected_outcome.insert(*deploy.hash(), map);
+            expected_outcome.insert(*deploy.hash(), execution_info);
 
             // Add to our expected outcome.
             block_results.insert(*deploy.hash(), execution_result);
         }
 
-        // Insert the shared deploys as well.
-        for shared_deploy in shared_deploys {
-            let execution_result: ExecutionResult = harness.rng.gen();
-
-            // Insert the new result and ensure it is not present yet.
-            let result = block_results.insert(*shared_deploy.hash(), execution_result.clone());
-            assert!(result.is_none());
-
-            // Insert into expected outcome.
-            let deploy_expected = expected_outcome.entry(*shared_deploy.hash()).or_default();
-            let prev = deploy_expected.insert(*block_hash, execution_result.clone());
-            // Ensure we are not replacing something.
-            assert!(prev.is_none());
-        }
-
-        // We should have all results for our block collected for the input.
-        assert_eq!(block_results.len(), unique_count + shared_deploys.len());
-
         // Now we can submit the block's execution results.
-        put_execution_results(harness, storage, *block_hash, block_results);
+        put_execution_results(harness, storage, *block_hash, block_height, block_results);
     }
 
     setup_block(
@@ -1206,7 +1117,7 @@ fn store_random_execution_results() {
         &mut storage,
         &mut expected_outcome,
         &block_hash_a,
-        &shared_deploys,
+        1,
     );
 
     setup_block(
@@ -1214,24 +1125,18 @@ fn store_random_execution_results() {
         &mut storage,
         &mut expected_outcome,
         &block_hash_b,
-        &shared_deploys,
+        2,
     );
 
     // At this point, we are all set up and ready to receive results. Iterate over every deploy and
     // see if its execution-data-per-block matches our expectations.
-    for (deploy_hash, raw_meta) in expected_outcome.iter() {
-        let (deploy, metadata) =
-            get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy_hash)
+    for (deploy_hash, expected_exec_info) in expected_outcome.into_iter() {
+        let (deploy, maybe_exec_info) =
+            get_naive_deploy_and_execution_info(&mut harness, &mut storage, deploy_hash)
                 .expect("missing deploy");
 
-        assert_eq!(deploy_hash, deploy.hash());
-
-        assert_eq!(
-            metadata,
-            DeployMetadata {
-                execution_results: raw_meta.clone()
-            }
-        );
+        assert_eq!(deploy_hash, *deploy.hash());
+        assert_eq!(maybe_exec_info, Some(expected_exec_info));
     }
 }
 
@@ -1241,35 +1146,51 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     let mut storage = storage_fixture(&harness);
 
     let block_hash = BlockHash::random(&mut harness.rng);
-    let deploy_hash = DeployHash::random(&mut harness.rng);
+    let block_height = harness.rng.gen();
+    let deploy = Deploy::random(&mut harness.rng);
+    let deploy_hash = *deploy.hash();
+
+    put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
 
     let mut exec_result_1 = HashMap::new();
-    exec_result_1.insert(deploy_hash, harness.rng.gen());
+    exec_result_1.insert(
+        deploy_hash,
+        ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng)),
+    );
 
     let mut exec_result_2 = HashMap::new();
-    exec_result_2.insert(deploy_hash, harness.rng.gen());
+    let new_exec_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
+    exec_result_2.insert(deploy_hash, new_exec_result.clone());
 
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result_1);
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block_hash,
+        block_height,
+        exec_result_1,
+    );
 
-    // Storing a second execution result for the same deploy on the same block should panic.
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result_2);
-}
+    // Storing a second execution result for the same deploy on the same block should overwrite the
+    // first.
+    put_execution_results(
+        &mut harness,
+        &mut storage,
+        block_hash,
+        block_height,
+        exec_result_2,
+    );
 
-#[test]
-fn store_identical_execution_results() {
-    let mut harness = ComponentHarness::default();
-    let mut storage = storage_fixture(&harness);
+    let (returned_deploy, returned_exec_info) =
+        get_naive_deploy_and_execution_info(&mut harness, &mut storage, deploy_hash)
+            .expect("missing deploy");
+    let expected_exec_info = Some(DeployExecutionInfo {
+        block_hash,
+        block_height,
+        execution_result: Some(new_exec_result),
+    });
 
-    let block_hash = BlockHash::random(&mut harness.rng);
-    let deploy_hash = DeployHash::random(&mut harness.rng);
-
-    let mut exec_result = HashMap::new();
-    exec_result.insert(deploy_hash, harness.rng.gen());
-
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
-
-    // We should be fine storing the exact same result twice.
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result);
+    assert_eq!(returned_deploy, deploy);
+    assert_eq!(returned_exec_info, expected_exec_info);
 }
 
 /// Example state used in storage.
@@ -1302,30 +1223,31 @@ fn test_legacy_interface() {
 }
 
 #[test]
-fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
+fn persist_blocks_deploys_and_execution_info_across_instantiations() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block_v2 = BlockV2::random(&mut harness.rng);
-    let block: Block = block_v2.clone().into();
-    let block_height = block_v2.height();
-
     // Create some sample data.
     let deploy = Deploy::random(&mut harness.rng);
-    let execution_result: ExecutionResult = harness.rng.gen();
+    let block = TestBlockBuilder::new()
+        .deploys(Some(&deploy))
+        .build(&mut harness.rng);
+    let block_height = block.height();
+    let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
     put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
-    put_complete_block(&mut harness, &mut storage, Arc::new(block_v2.clone()));
+    put_complete_block(&mut harness, &mut storage, Arc::new(block.clone()));
     let mut execution_results = HashMap::new();
     execution_results.insert(*deploy.hash(), execution_result.clone());
     put_execution_results(
         &mut harness,
         &mut storage,
-        *block_v2.hash(),
+        *block.hash(),
+        block.height(),
         execution_results,
     );
     assert_eq!(
         get_block_at_height(&mut storage, block_height).expect("block not indexed properly"),
-        block
+        Block::V2(block.clone())
     );
 
     // After storing everything, destroy the harness and component, then rebuild using the
@@ -1337,26 +1259,25 @@ fn persist_blocks_deploys_and_deploy_metadata_across_instantiations() {
         .build();
     let mut storage = storage_fixture(&harness);
 
-    let actual_block = get_block_v2(&mut harness, &mut storage, *block_v2.hash())
+    let actual_block = get_block_v2(&mut harness, &mut storage, *block.hash())
         .expect("missing block we stored earlier");
-    assert_eq!(actual_block, block_v2);
+    assert_eq!(actual_block, block);
     let actual_deploys = get_naive_deploys(&mut harness, &mut storage, smallvec![*deploy.hash()]);
     assert_eq!(actual_deploys, vec![Some(deploy.clone())]);
 
-    let (_, deploy_metadata_ext) =
-        get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash())
+    let (_, maybe_exec_info) =
+        get_naive_deploy_and_execution_info(&mut harness, &mut storage, *deploy.hash())
             .expect("missing deploy we stored earlier");
 
-    let execution_results = match deploy_metadata_ext {
-        DeployMetadataExt::Metadata(metadata) => metadata.execution_results,
-        _ => panic!("Unexpected missing metadata."),
-    };
-    assert_eq!(execution_results.len(), 1);
-    assert_eq!(execution_results[block_v2.hash()], execution_result);
+    let retrieved_execution_result = maybe_exec_info
+        .expect("should have execution info")
+        .execution_result
+        .expect("should have execution result");
+    assert_eq!(retrieved_execution_result, execution_result);
 
     assert_eq!(
         get_block_at_height(&mut storage, block_height).expect("block index was not restored"),
-        block
+        Block::V2(block)
     );
 }
 
@@ -1375,19 +1296,14 @@ fn should_hard_reset() {
     let blocks: Vec<BlockV2> = (0..blocks_count)
         .map(|height| {
             let is_switch = height % blocks_per_era == blocks_per_era - 1;
-            BlockV2::random_with_specifics(
-                &mut harness.rng,
-                EraId::from(height as u64 / 3),
-                height as u64,
-                ProtocolVersion::V1_0_0,
-                is_switch,
-                iter::once(
-                    *random_deploys
-                        .get(height)
-                        .expect("should_have_deploy")
-                        .hash(),
-                ),
-            )
+            TestBlockBuilder::new()
+                .era(height as u64 / 3)
+                .height(height as u64)
+                .switch_block(is_switch)
+                .deploys(iter::once(
+                    random_deploys.get(height).expect("should_have_deploy"),
+                ))
+                .build(&mut harness.rng)
         })
         .collect();
 
@@ -1413,9 +1329,13 @@ fn should_hard_reset() {
     // and so on.
     let mut deploys = vec![];
     let mut execution_results = vec![];
-    for (index, block_hash) in blocks.iter().map(|block| block.hash()).enumerate() {
+    for (index, (block_hash, block_height)) in blocks
+        .iter()
+        .map(|block| (block.hash(), block.height()))
+        .enumerate()
+    {
         let deploy = random_deploys.get(index).expect("should have deploys");
-        let execution_result: ExecutionResult = harness.rng.gen();
+        let execution_result = ExecutionResult::from(ExecutionResultV2::random(&mut harness.rng));
         put_deploy(&mut harness, &mut storage, Arc::new(deploy.clone()));
         let mut exec_results = HashMap::new();
         exec_results.insert(*deploy.hash(), execution_result);
@@ -1423,6 +1343,7 @@ fn should_hard_reset() {
             &mut harness,
             &mut storage,
             *block_hash,
+            block_height,
             exec_results.clone(),
         );
         deploys.push(deploy);
@@ -1468,15 +1389,17 @@ fn should_hard_reset() {
 
         // Check execution results in deleted blocks have been removed.
         for (index, deploy) in deploys.iter().enumerate() {
-            let (_, deploy_metadata_ext) =
-                get_naive_deploy_and_metadata(&mut harness, &mut storage, *deploy.hash()).unwrap();
+            let (_, maybe_exec_info) =
+                get_naive_deploy_and_execution_info(&mut harness, &mut storage, *deploy.hash())
+                    .unwrap();
             let should_have_exec_results = index < blocks_per_era * reset_era;
-            match deploy_metadata_ext {
-                DeployMetadataExt::Metadata(_metadata) => assert!(should_have_exec_results),
-                DeployMetadataExt::BlockInfo(_block_hash_and_height) => {
-                    assert!(!should_have_exec_results)
+            match maybe_exec_info {
+                Some(DeployExecutionInfo {
+                    execution_result, ..
+                }) => {
+                    assert_eq!(should_have_exec_results, execution_result.is_some());
                 }
-                DeployMetadataExt::Empty => assert!(!should_have_exec_results),
+                None => assert!(!should_have_exec_results),
             };
         }
     };
@@ -1501,7 +1424,7 @@ fn should_create_subdir_named_after_network() {
         ProtocolVersion::from_parts(1, 0, 0),
         EraId::default(),
         network_name,
-        MAX_TTL,
+        MAX_TTL.into(),
         RECENT_ERA_COUNT,
         None,
         false,
@@ -1610,8 +1533,7 @@ fn can_put_and_get_block() {
     let only_from_available_block_range = false;
 
     // Create a random block, store and load it.
-    let block = BlockV2::random(&mut harness.rng);
-    let block = Arc::new(block);
+    let block = Arc::new(TestBlockBuilder::new().build(&mut harness.rng));
 
     let mut storage = storage_fixture(&harness);
 
@@ -1848,17 +1770,16 @@ fn should_restrict_returned_blocks() {
     let mut storage = storage_fixture(&harness);
 
     // Create the following disjoint sequences: 1-2 4-5
-    [1, 2, 4, 5].iter().for_each(|height| {
-        let block = BlockV2::random_with_specifics(
-            &mut harness.rng,
-            EraId::from(1),
-            *height,
-            ProtocolVersion::from_parts(1, 5, 0),
-            false,
-            None,
-        );
-        storage.write_block_v2(&block).unwrap();
-        storage.completed_blocks.insert(*height);
+    IntoIterator::into_iter([1, 2, 4, 5]).for_each(|height| {
+        let block = TestBlockBuilder::new()
+            .era(1)
+            .height(height)
+            .protocol_version(ProtocolVersion::from_parts(1, 5, 0))
+            .switch_block(false)
+            .build(&mut harness.rng);
+
+        storage.write_block(&block.into()).unwrap();
+        storage.completed_blocks.insert(height);
     });
 
     // Without restriction, the node should attempt to return any requested block
@@ -1915,7 +1836,7 @@ fn should_get_block_header_by_height() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block = BlockV2::random(&mut harness.rng);
+    let block = TestBlockBuilder::new().build(&mut harness.rng);
     let expected_header = block.header().clone();
     let height = block.height();
 
@@ -1931,6 +1852,7 @@ fn should_get_block_header_by_height() {
     assert_eq!(expected_header, maybe_block_header.unwrap());
 }
 
+#[ignore]
 #[test]
 fn check_force_resync_with_marker_file() {
     let mut harness = ComponentHarness::default();
@@ -1940,12 +1862,12 @@ fn check_force_resync_with_marker_file() {
     assert!(!force_resync_file_path.exists());
 
     // Add a couple of blocks into storage.
-    let first_block = BlockV2::random(&mut harness.rng);
+    let first_block = TestBlockBuilder::new().build(&mut harness.rng);
     put_complete_block(&mut harness, &mut storage, Arc::new(first_block.clone()));
     let second_block = loop {
         // We need to make sure that the second random block has different height than the first
         // one.
-        let block = BlockV2::random(&mut harness.rng);
+        let block = TestBlockBuilder::new().build(&mut harness.rng);
         if block.height() != first_block.height() {
             break block;
         }

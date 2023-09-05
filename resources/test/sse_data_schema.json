@@ -34,7 +34,7 @@
               "$ref": "#/definitions/BlockHash"
             },
             "block": {
-              "$ref": "#/definitions/Block"
+              "$ref": "#/definitions/JsonBlock"
             }
           }
         }
@@ -189,14 +189,14 @@
           "type": "object",
           "required": [
             "era_id",
-            "execution_effect"
+            "execution_effects"
           ],
           "properties": {
             "era_id": {
               "$ref": "#/definitions/EraId"
             },
-            "execution_effect": {
-              "$ref": "#/definitions/ExecutionEffect"
+            "execution_effects": {
+              "$ref": "#/definitions/Effects"
             }
           }
         }
@@ -218,54 +218,16 @@
     },
     "BlockHash": {
       "description": "Hex-encoded cryptographic hash of a block.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Digest"
-        }
-      ]
-    },
-    "Digest": {
-      "description": "Hex-encoded hash digest.",
       "type": "string"
     },
-    "Block": {
-      "description": "A block after execution.",
-      "oneOf": [
-        {
-          "description": "The legacy, initial version of the block.",
-          "type": "object",
-          "required": [
-            "Version1"
-          ],
-          "properties": {
-            "Version1": {
-              "$ref": "#/definitions/BlockV1"
-            }
-          },
-          "additionalProperties": false
-        },
-        {
-          "description": "The version 2 of the block.",
-          "type": "object",
-          "required": [
-            "Version2"
-          ],
-          "properties": {
-            "Version2": {
-              "$ref": "#/definitions/BlockV2"
-            }
-          },
-          "additionalProperties": false
-        }
-      ]
-    },
-    "BlockV1": {
-      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 1.",
+    "JsonBlock": {
+      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain",
       "type": "object",
       "required": [
         "body",
         "hash",
-        "header"
+        "header",
+        "proofs"
       ],
       "properties": {
         "hash": {
@@ -280,7 +242,7 @@
           "description": "The header portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/BlockHeader"
+              "$ref": "#/definitions/JsonBlockHeader"
             }
           ]
         },
@@ -288,13 +250,21 @@
           "description": "The body portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/BlockBodyV1"
+              "$ref": "#/definitions/JsonBlockBody"
             }
           ]
+        },
+        "proofs": {
+          "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JsonProof"
+          }
         }
-      }
+      },
+      "additionalProperties": false
     },
-    "BlockHeader": {
+    "JsonBlockHeader": {
       "description": "The header portion of a block.",
       "type": "object",
       "required": [
@@ -349,7 +319,7 @@
           "description": "The `EraEnd` of a block if it is a switch block.",
           "anyOf": [
             {
-              "$ref": "#/definitions/EraEnd"
+              "$ref": "#/definitions/JsonEraEnd"
             },
             {
               "type": "null"
@@ -386,9 +356,14 @@
             }
           ]
         }
-      }
+      },
+      "additionalProperties": false
     },
-    "EraEnd": {
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
+      "type": "string"
+    },
+    "JsonEraEnd": {
       "description": "Information related to the end of an era, and validator weights for the following era.",
       "type": "object",
       "required": [
@@ -400,21 +375,21 @@
           "description": "Equivocation, reward and validator inactivity information.",
           "allOf": [
             {
-              "$ref": "#/definitions/EraReport_for_PublicKey"
+              "$ref": "#/definitions/JsonEraReport"
             }
           ]
         },
         "next_era_validator_weights": {
           "description": "The validators for the upcoming era and their respective weights.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Array_of_ValidatorWeight"
-            }
-          ]
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JsonValidatorWeight"
+          }
         }
-      }
+      },
+      "additionalProperties": false
     },
-    "EraReport_for_PublicKey": {
+    "JsonEraReport": {
       "description": "Equivocation, reward and validator inactivity information.",
       "type": "object",
       "required": [
@@ -432,11 +407,10 @@
         },
         "rewards": {
           "description": "Rewards for finalization of earlier blocks.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Array_of_EraReward"
-            }
-          ]
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/JsonReward"
+          }
         },
         "inactive_validators": {
           "description": "Validators that haven't produced any unit during the era.",
@@ -445,19 +419,14 @@
             "$ref": "#/definitions/PublicKey"
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "PublicKey": {
       "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
       "type": "string"
     },
-    "Array_of_EraReward": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/EraReward"
-      }
-    },
-    "EraReward": {
+    "JsonReward": {
       "description": "A validator's public key paired with a measure of the value of its contribution to consensus, as a fraction of the configured maximum block reward.",
       "type": "object",
       "required": [
@@ -479,15 +448,10 @@
           "format": "uint64",
           "minimum": 0.0
         }
-      }
+      },
+      "additionalProperties": false
     },
-    "Array_of_ValidatorWeight": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/ValidatorWeight"
-      }
-    },
-    "ValidatorWeight": {
+    "JsonValidatorWeight": {
       "description": "A validator's public key paired with its weight, i.e. the total number of motes staked by it and its delegators.",
       "type": "object",
       "required": [
@@ -511,7 +475,8 @@
             }
           ]
         }
-      }
+      },
+      "additionalProperties": false
     },
     "U512": {
       "description": "Decimal representation of a 512-bit integer.",
@@ -529,8 +494,8 @@
       "format": "uint64",
       "minimum": 0.0
     },
-    "BlockBodyV1": {
-      "description": "The body portion of a block. Version 1.",
+    "JsonBlockBody": {
+      "description": "The body portion of a block.",
       "type": "object",
       "required": [
         "deploy_hashes",
@@ -560,101 +525,43 @@
             "$ref": "#/definitions/DeployHash"
           }
         }
-      }
+      },
+      "additionalProperties": false
     },
     "DeployHash": {
       "description": "Hex-encoded deploy hash.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Digest"
-        }
-      ]
+      "type": "string"
     },
-    "BlockV2": {
-      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
+    "JsonProof": {
+      "description": "A validator's public key paired with a corresponding signature of a given block hash.",
       "type": "object",
       "required": [
-        "body",
-        "hash",
-        "header"
+        "public_key",
+        "signature"
       ],
       "properties": {
-        "hash": {
-          "description": "The block hash identifying this block.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/BlockHash"
-            }
-          ]
-        },
-        "header": {
-          "description": "The header portion of the block.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/BlockHeader"
-            }
-          ]
-        },
-        "body": {
-          "description": "The body portion of the block.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/BlockBodyV2"
-            }
-          ]
-        }
-      }
-    },
-    "BlockBodyV2": {
-      "description": "The body portion of a block. Version 2.",
-      "type": "object",
-      "required": [
-        "deploy_hashes",
-        "past_finality_signatures",
-        "proposer",
-        "transfer_hashes"
-      ],
-      "properties": {
-        "proposer": {
-          "description": "The public key of the validator which proposed the block.",
+        "public_key": {
+          "description": "The validator's public key.",
           "allOf": [
             {
               "$ref": "#/definitions/PublicKey"
             }
           ]
         },
-        "deploy_hashes": {
-          "description": "The deploy hashes of the non-transfer deploys within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/DeployHash"
-          }
-        },
-        "transfer_hashes": {
-          "description": "The deploy hashes of the transfers within the block.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/DeployHash"
-          }
-        },
-        "past_finality_signatures": {
-          "description": "The past finality signatures.",
+        "signature": {
+          "description": "The validator's signature.",
           "allOf": [
             {
-              "$ref": "#/definitions/PastFinalitySignatures"
+              "$ref": "#/definitions/Signature"
             }
           ]
         }
-      }
+      },
+      "additionalProperties": false
     },
-    "PastFinalitySignatures": {
-      "description": "TODO[RC]: This is a placeholder and should be replaced with the real `PastFinalitySignatures` structure which is being implemented on the separate branch for the Zug consensus rewards. Also, the target file location may be different.",
-      "type": "array",
-      "items": {
-        "type": "integer",
-        "format": "uint8",
-        "minimum": 0.0
-      }
+    "Signature": {
+      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
+      "type": "string"
     },
     "Deploy": {
       "description": "A signed smart contract.",
@@ -1280,11 +1187,38 @@
       },
       "additionalProperties": false
     },
-    "Signature": {
-      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
-      "type": "string"
-    },
     "ExecutionResult": {
+      "description": "The versioned result of executing a single deploy.",
+      "oneOf": [
+        {
+          "description": "Version 1 of execution result type.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/ExecutionResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Version 2 of execution result type.",
+          "type": "object",
+          "required": [
+            "Version2"
+          ],
+          "properties": {
+            "Version2": {
+              "$ref": "#/definitions/ExecutionResultV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExecutionResultV1": {
       "description": "The result of executing a single deploy.",
       "oneOf": [
         {
@@ -1383,7 +1317,7 @@
       ]
     },
     "ExecutionEffect": {
-      "description": "The journal of execution transforms from a single deploy.",
+      "description": "The sequence of execution transforms from a single deploy.",
       "type": "object",
       "required": [
         "operations",
@@ -1398,7 +1332,7 @@
           }
         },
         "transforms": {
-          "description": "The journal of execution transforms.",
+          "description": "The sequence of execution transforms.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransformEntry"
@@ -1459,6 +1393,13 @@
           "type": "string",
           "enum": [
             "NoOp"
+          ]
+        },
+        {
+          "description": "A prune operation.",
+          "type": "string",
+          "enum": [
+            "Prune"
           ]
         }
       ]
@@ -1723,11 +1664,44 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Writes the addressable entity to global state.",
+          "type": "string",
+          "enum": [
+            "WriteAddressableEntity"
+          ]
+        },
+        {
+          "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
+          "type": "object",
+          "required": [
+            "Prune"
+          ],
+          "properties": {
+            "Prune": {
+              "$ref": "#/definitions/Key"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given BidKind to global state.",
+          "type": "object",
+          "required": [
+            "WriteBidKind"
+          ],
+          "properties": {
+            "WriteBidKind": {
+              "$ref": "#/definitions/BidKind"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
     "AccountHash": {
-      "description": "Hex-encoded account hash.",
+      "description": "Account hash as a formatted string.",
       "type": "string"
     },
     "DeployInfo": {
@@ -1989,7 +1963,7 @@
       ],
       "properties": {
         "validator_public_key": {
-          "description": "Validator public key",
+          "description": "Validator public key.",
           "allOf": [
             {
               "$ref": "#/definitions/PublicKey"
@@ -2013,7 +1987,7 @@
           ]
         },
         "delegation_rate": {
-          "description": "Delegation rate",
+          "description": "Delegation rate.",
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0
@@ -2030,14 +2004,15 @@
           ]
         },
         "delegators": {
-          "description": "This validator's delegators, indexed by their public keys",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/Delegator"
-          }
+          "description": "This validator's delegators, indexed by their public keys.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_PublicKeyAndDelegator"
+            }
+          ]
         },
         "inactive": {
-          "description": "`true` if validator has been \"evicted\"",
+          "description": "`true` if validator has been \"evicted\".",
           "type": "boolean"
         }
       },
@@ -2067,6 +2042,38 @@
         }
       },
       "additionalProperties": false
+    },
+    "Array_of_PublicKeyAndDelegator": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PublicKeyAndDelegator"
+      }
+    },
+    "PublicKeyAndDelegator": {
+      "description": "A delegator associated with the given validator.",
+      "type": "object",
+      "required": [
+        "delegator",
+        "delegator_public_key"
+      ],
+      "properties": {
+        "delegator_public_key": {
+          "description": "The public key of the delegator.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "delegator": {
+          "description": "The delegator details.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Delegator"
+            }
+          ]
+        }
+      }
     },
     "Delegator": {
       "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
@@ -2166,7 +2173,7 @@
       "type": "string"
     },
     "NamedKey": {
-      "description": "A named key.",
+      "description": "A key with a name.",
       "type": "object",
       "required": [
         "key",
@@ -2248,6 +2255,218 @@
         }
       },
       "additionalProperties": false
+    },
+    "Key": {
+      "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+      "type": "string"
+    },
+    "BidKind": {
+      "description": "Auction bid variants.",
+      "oneOf": [
+        {
+          "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
+          "type": "object",
+          "required": [
+            "Unified"
+          ],
+          "properties": {
+            "Unified": {
+              "$ref": "#/definitions/Bid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bid record containing only validator data.",
+          "type": "object",
+          "required": [
+            "Validator"
+          ],
+          "properties": {
+            "Validator": {
+              "$ref": "#/definitions/ValidatorBid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bid record containing only delegator data.",
+          "type": "object",
+          "required": [
+            "Delegator"
+          ],
+          "properties": {
+            "Delegator": {
+              "$ref": "#/definitions/Delegator"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ValidatorBid": {
+      "description": "An entry in the validator map.",
+      "type": "object",
+      "required": [
+        "bonding_purse",
+        "delegation_rate",
+        "inactive",
+        "staked_amount",
+        "validator_public_key"
+      ],
+      "properties": {
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "bonding_purse": {
+          "description": "The purse that was used for bonding.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "staked_amount": {
+          "description": "The amount of tokens staked by a validator (not including delegators).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "delegation_rate": {
+          "description": "Delegation rate",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "vesting_schedule": {
+          "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VestingSchedule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inactive": {
+          "description": "`true` if validator has been \"evicted\"",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExecutionResultV2": {
+      "description": "The result of executing a single deploy.",
+      "oneOf": [
+        {
+          "description": "The result of a failed execution.",
+          "type": "object",
+          "required": [
+            "Failure"
+          ],
+          "properties": {
+            "Failure": {
+              "type": "object",
+              "required": [
+                "cost",
+                "effects",
+                "error_message",
+                "transfers"
+              ],
+              "properties": {
+                "effects": {
+                  "description": "The effects of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Effects"
+                    }
+                  ]
+                },
+                "transfers": {
+                  "description": "A record of transfers performed while executing the deploy.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TransferAddr"
+                  }
+                },
+                "cost": {
+                  "description": "The cost in Motes of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                },
+                "error_message": {
+                  "description": "The error message associated with executing the deploy.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The result of a successful execution.",
+          "type": "object",
+          "required": [
+            "Success"
+          ],
+          "properties": {
+            "Success": {
+              "type": "object",
+              "required": [
+                "cost",
+                "effects",
+                "transfers"
+              ],
+              "properties": {
+                "effects": {
+                  "description": "The effects of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Effects"
+                    }
+                  ]
+                },
+                "transfers": {
+                  "description": "A record of transfers performed while executing the deploy.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TransferAddr"
+                  }
+                },
+                "cost": {
+                  "description": "The cost in Motes of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Effects": {
+      "description": "A log of all transforms produced during execution.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Transform"
+      }
     },
     "FinalitySignature": {
       "description": "A validator's signature of a block, confirming it is finalized.",

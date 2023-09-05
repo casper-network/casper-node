@@ -9,12 +9,16 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(any(feature = "once_cell", test))]
+use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     DeployHash,
 };
+
+use super::JsonBlockBody;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
@@ -53,8 +57,8 @@ impl BlockBody {
         }
     }
 
-    /// Returns deploy hashes of transactions in an order in which they were executed.
-    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> {
+    /// Returns the deploy and transfer hashes in the order in which they were executed.
+    pub fn deploy_and_transfer_hashes(&self) -> impl Iterator<Item = &DeployHash> + Clone {
         self.deploy_hashes()
             .iter()
             .chain(self.transfer_hashes().iter())
@@ -124,6 +128,18 @@ impl FromBytes for BlockBody {
     }
 }
 
+#[cfg(all(feature = "std", feature = "json-schema"))]
+impl From<JsonBlockBody> for BlockBodyV2 {
+    fn from(json_body: JsonBlockBody) -> Self {
+        BlockBodyV2 {
+            proposer: json_body.proposer,
+            deploy_hashes: json_body.deploy_hashes,
+            transfer_hashes: json_body.transfer_hashes,
+            #[cfg(any(feature = "once_cell", test))]
+            hash: OnceCell::new(),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{

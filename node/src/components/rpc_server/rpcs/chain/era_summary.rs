@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     system::auction::{EraInfo, SeigniorageAllocation},
-    AsymmetricType, BlockHash, BlockV2, Digest, EraId, PublicKey, U512,
+    AsymmetricType, BlockHash, BlockV2, Digest, EraId, PublicKey, StoredValue, U512,
 };
 
-use crate::{rpcs::common::MERKLE_PROOF, types::json_compatibility::StoredValue};
+use crate::rpcs::common::MERKLE_PROOF;
 
 pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let delegator_amount = U512::from(1000);

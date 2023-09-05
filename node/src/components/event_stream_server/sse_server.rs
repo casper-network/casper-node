@@ -33,14 +33,15 @@ use warp::{
 };
 
 #[cfg(test)]
-use casper_types::{testing::TestRng, BlockV2};
+use casper_types::{execution::ExecutionResultV2, testing::TestRng};
 use casper_types::{
-    Block, BlockHash, Deploy, DeployHash, EraId, ExecutionEffect, ExecutionResult,
-    FinalitySignature, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    execution::{Effects, ExecutionResult},
+    BlockHash, Deploy, DeployHash, EraId, FinalitySignature, JsonBlock, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp,
 };
 
 #[cfg(test)]
-use crate::testing;
+use crate::{testing, types::TestBlockBuilder};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -80,7 +81,8 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block: Box<Block>,
+        // TODO[RC]: Handle both Block::V1 and Block::V2 here
+        block: Box<JsonBlock>,
     },
     /// The given deploy has been newly-accepted by this node.
     DeployAccepted {
@@ -111,8 +113,7 @@ pub enum SseData {
     /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
-        #[data_size(skip)]
-        execution_effect: ExecutionEffect,
+        execution_effects: Effects,
     },
     /// The node is about to shut down.
     Shutdown,
@@ -147,10 +148,10 @@ impl SseData {
 
     /// Returns a random `SseData::BlockAdded`.
     pub(super) fn random_block_added(rng: &mut TestRng) -> Self {
-        let block = BlockV2::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(block.into()),
+            block: Box::new(JsonBlock::new(block.into(), None)),
         }
     }
 
@@ -173,7 +174,7 @@ impl SseData {
             ttl: deploy.header().ttl(),
             dependencies: deploy.header().dependencies().clone(),
             block_hash: Box::new(BlockHash::random(rng)),
-            execution_result: Box::new(rng.gen()),
+            execution_result: Box::new(ExecutionResult::from(ExecutionResultV2::random(rng))),
         }
     }
 
@@ -205,14 +206,13 @@ impl SseData {
 
     /// Returns a random `SseData::Step`.
     pub(super) fn random_step(rng: &mut TestRng) -> Self {
-        let execution_effect = match rng.gen::<ExecutionResult>() {
-            ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
-                effect
-            }
+        let execution_effects = match ExecutionResultV2::random(rng) {
+            ExecutionResultV2::Success { effects, .. }
+            | ExecutionResultV2::Failure { effects, .. } => effects,
         };
         SseData::Step {
             era_id: EraId::new(rng.gen()),
-            execution_effect,
+            execution_effects,
         }
     }
 }

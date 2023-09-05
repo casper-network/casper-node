@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::vec::Vec;
 use core::{
     fmt::{self, Debug, Display, Formatter},
@@ -54,6 +51,14 @@ impl EraId {
     pub fn iter_inclusive(&self, num_eras: u64) -> impl Iterator<Item = EraId> {
         let current_era_id = self.0;
         (current_era_id..=current_era_id + num_eras).map(EraId)
+    }
+
+    /// Increments the era.
+    ///
+    /// For `u64::MAX`, this returns `u64::MAX` again: We want to make sure this doesn't panic, and
+    /// that era number will never be reached in practice.
+    pub fn increment(&mut self) {
+        self.0 = self.0.saturating_add(1);
     }
 
     /// Returns a successor to current era.
@@ -230,6 +235,14 @@ mod tests {
         let expected_initial_era_id = EraId::from(0);
         assert!(expected_initial_era_id.is_genesis());
         assert!(!expected_initial_era_id.successor().is_genesis())
+    }
+
+    #[test]
+    fn should_increment_era_id() {
+        let mut era = EraId::from(0);
+        assert!(era.is_genesis());
+        era.increment();
+        assert_eq!(era.value(), 1, "should have incremented to 1");
     }
 
     proptest! {

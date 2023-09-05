@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use super::BlockV2;
-use super::{BlockHash, EraEnd};
+use super::{BlockHash, EraEnd, JsonBlockHeader};
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest, EraId, ProtocolVersion, PublicKey, Timestamp, U512,
@@ -370,6 +370,25 @@ impl FromBytes for BlockHeader {
             block_hash: OnceCell::new(),
         };
         Ok((block_header, remainder))
+    }
+}
+
+#[cfg(all(feature = "std", feature = "json-schema"))]
+impl From<JsonBlockHeader> for BlockHeader {
+    fn from(block_header: JsonBlockHeader) -> Self {
+        BlockHeader {
+            parent_hash: block_header.parent_hash,
+            state_root_hash: block_header.state_root_hash,
+            body_hash: block_header.body_hash,
+            random_bit: block_header.random_bit,
+            accumulated_seed: block_header.accumulated_seed,
+            era_end: block_header.era_end.map(EraEnd::from),
+            timestamp: block_header.timestamp,
+            era_id: block_header.era_id,
+            height: block_header.height,
+            protocol_version: block_header.protocol_version,
+            block_hash: OnceCell::new(),
+        }
     }
 }
 

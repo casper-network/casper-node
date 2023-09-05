@@ -1,8 +1,5 @@
 //! RPCs related to the state.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::str;
 
 use async_trait::async_trait;
@@ -15,10 +12,10 @@ use casper_execution_engine::engine_state::{self, BalanceResult, GetBidsResult, 
 use casper_json_rpc::ReservedErrorCode;
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
-    BlockHash, BlockHeader, BlockV2, CLValue, Digest, Key, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue as DomainStoredValue, URef, U512,
+    BlockHash, BlockHeader, CLValue, Digest, JsonBlock, JsonBlockHeader, Key, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -30,12 +27,15 @@ use crate::{
         docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
         Error, ErrorCode, ReactorEventT, RpcRequest, RpcWithOptionalParams, RpcWithParams,
     },
-    types::json_compatibility::{Account as JsonAccount, AuctionState, StoredValue},
+    types::json_compatibility::AuctionState,
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
-    state_root_hash: *BlockHeader::example().state_root_hash(),
-    key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+    state_root_hash: JsonBlock::doc_example().header.state_root_hash,
+    key: Key::from_formatted_str(
+        "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+    )
+    .unwrap(),
     path: vec!["inner".to_string()],
 });
 static GET_ITEM_RESULT: Lazy<GetItemResult> = Lazy::new(|| GetItemResult {
@@ -64,13 +64,13 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     let secret_key = SecretKey::ed25519_from_bytes([0; 32]).unwrap();
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
-        public_key,
-        block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
+        account_identifier: AccountIdentifier::PublicKey(public_key),
+        block_identifier: Some(BlockIdentifier::Hash(JsonBlock::doc_example().hash)),
     }
 });
 static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    account: JsonAccount::doc_example().clone(),
+    account: Account::doc_example().clone(),
     merkle_proof: MERKLE_PROOF.clone(),
 });
 static GET_DICTIONARY_ITEM_PARAMS: Lazy<GetDictionaryItemParams> =
@@ -93,15 +93,20 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
     });
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
-        state_identifier: GlobalStateIdentifier::BlockHash(*BlockV2::example().hash()),
-        key: "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1".to_string(),
+        state_identifier: Some(GlobalStateIdentifier::BlockHash(
+            JsonBlock::doc_example().hash,
+        )),
+        key: Key::from_formatted_str(
+            "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
+        )
+        .unwrap(),
         path: vec![],
     });
 static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
     Lazy::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        block_header: Some(BlockHeader::example().clone()),
-        stored_value: StoredValue::Account(JsonAccount::doc_example().clone()),
+        block_header: Some(JsonBlockHeader::doc_example().clone()),
+        stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
 static GET_TRIE_PARAMS: Lazy<GetTrieParams> = Lazy::new(|| GetTrieParams {
@@ -126,8 +131,8 @@ static QUERY_BALANCE_RESULT: Lazy<QueryBalanceResult> = Lazy::new(|| QueryBalanc
 pub struct GetItemParams {
     /// Hash of the state root.
     pub state_root_hash: Digest,
-    /// `casper_types::Key` as formatted string.
-    pub key: String,
+    /// The key under which to query.
+    pub key: Key,
     /// The path components starting from the key as base.
     #[serde(default)]
     pub path: Vec<String>,
@@ -172,22 +177,10 @@ impl RpcWithParams for GetItem {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        // Try to parse a `casper_types::Key` from the params.
-        let base_key = match Key::from_formatted_str(&params.key)
-            .map_err(|error| format!("failed to parse key: {}", error))
-        {
-            Ok(key) => key,
-            Err(error_msg) => {
-                info!("{}", error_msg);
-                return Err(Error::new(ErrorCode::FailedToParseQueryKey, error_msg));
-            }
-        };
-
-        // Run the query.
         let (stored_value, merkle_proof) = common::run_query_and_encode(
             effect_builder,
             params.state_root_hash,
-            base_key,
+            params.key,
             params.path,
         )
         .await?;
@@ -458,12 +451,23 @@ impl RpcWithOptionalParams for GetAuctionInfo {
     }
 }
 
+/// Identifier of an account.
+#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema)]
+#[serde(deny_unknown_fields, untagged)]
+pub enum AccountIdentifier {
+    /// The public key of an account
+    PublicKey(PublicKey),
+    /// The account hash of an account
+    AccountHash(AccountHash),
+}
+
 /// Params for "state_get_account_info" RPC request
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GetAccountInfoParams {
     /// The public key of the Account.
-    pub public_key: PublicKey,
+    #[serde(alias = "public_key")]
+    pub account_identifier: AccountIdentifier,
     /// The block identifier.
     pub block_identifier: Option<BlockIdentifier>,
 }
@@ -482,7 +486,7 @@ pub struct GetAccountInfoResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The account.
-    pub account: JsonAccount,
+    pub account: Account,
     /// The Merkle proof.
     pub merkle_proof: String,
 }
@@ -520,7 +524,10 @@ impl RpcWithParams for GetAccountInfo {
 
         let state_root_hash = *block.state_root_hash();
         let base_key = {
-            let account_hash = params.public_key.to_account_hash();
+            let account_hash = match params.account_identifier {
+                AccountIdentifier::PublicKey(public_key) => public_key.to_account_hash(),
+                AccountIdentifier::AccountHash(account_hash) => account_hash,
+            };
             Key::Account(account_hash)
         };
         let (stored_value, merkle_proof) =
@@ -579,7 +586,7 @@ pub enum DictionaryIdentifier {
 impl DictionaryIdentifier {
     fn get_dictionary_address(
         &self,
-        maybe_stored_value: Option<DomainStoredValue>,
+        maybe_stored_value: Option<StoredValue>,
     ) -> Result<Key, Error> {
         match self {
             DictionaryIdentifier::AccountNamedKey {
@@ -593,8 +600,8 @@ impl DictionaryIdentifier {
                 ..
             } => {
                 let named_keys = match &maybe_stored_value {
-                    Some(DomainStoredValue::Account(account)) => account.named_keys(),
-                    Some(DomainStoredValue::Contract(contract)) => contract.named_keys(),
+                    Some(StoredValue::Account(account)) => account.named_keys(),
+                    Some(StoredValue::AddressableEntity(contract)) => contract.named_keys(),
                     Some(other) => {
                         return Err(Error::new(
                             ErrorCode::FailedToGetDictionaryURef,
@@ -765,10 +772,10 @@ pub enum GlobalStateIdentifier {
 #[derive(Serialize, Deserialize, Debug, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct QueryGlobalStateParams {
-    /// The identifier used for the query.
-    pub state_identifier: GlobalStateIdentifier,
-    /// `casper_types::Key` as formatted string.
-    pub key: String,
+    /// The identifier used for the query. If not provided, the tip of the chain will be used.
+    pub state_identifier: Option<GlobalStateIdentifier>,
+    /// The key under which to query.
+    pub key: Key,
     /// The path components starting from the key as base.
     #[serde(default)]
     pub path: Vec<String>,
@@ -788,7 +795,7 @@ pub struct QueryGlobalStateResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The block header if a Block hash was provided.
-    pub block_header: Option<BlockHeader>,
+    pub block_header: Option<JsonBlockHeader>,
     /// The stored value.
     pub stored_value: StoredValue,
     /// The Merkle proof.
@@ -815,22 +822,32 @@ impl RpcWithParams for QueryGlobalState {
         api_version: ProtocolVersion,
         params: Self::RequestParams,
     ) -> Result<Self::ResponseResult, Error> {
-        let (state_root_hash, maybe_block_header) =
-            get_state_root_hash_and_optional_header(effect_builder, params.state_identifier)
-                .await?;
-
-        let base_key = match Key::from_formatted_str(&params.key)
-            .map_err(|error| format!("failed to parse key: {}", error))
-        {
-            Ok(key) => key,
-            Err(error_msg) => {
-                info!("{}", error_msg);
-                return Err(Error::new(ErrorCode::FailedToParseQueryKey, error_msg));
+        let (state_root_hash, maybe_block_header) = match params.state_identifier {
+            None => match effect_builder
+                .get_highest_complete_block_header_from_storage()
+                .await
+            {
+                None => {
+                    return Err(Error::new(
+                        ErrorCode::NoSuchBlock,
+                        "query-global-state failed to retrieve highest block header",
+                    ))
+                }
+                Some(block_header) => (
+                    *block_header.state_root_hash(),
+                    Some(JsonBlockHeader::from(block_header.clone())),
+                ),
+            },
+            Some(state_identifier) => {
+                let (state_root_hash, maybe_block_header) =
+                    get_state_root_hash_and_optional_header(effect_builder, state_identifier)
+                        .await?;
+                (state_root_hash, maybe_block_header)
             }
         };
 
         let (stored_value, merkle_proof) =
-            common::run_query_and_encode(effect_builder, state_root_hash, base_key, params.path)
+            common::run_query_and_encode(effect_builder, state_root_hash, params.key, params.path)
                 .await?;
 
         let result = Self::ResponseResult {
@@ -1053,10 +1070,7 @@ impl RpcWithParams for GetTrie {
     }
 }
 
-type QuerySuccess = (
-    DomainStoredValue,
-    Vec<TrieMerkleProof<Key, DomainStoredValue>>,
-);
+type QuerySuccess = (StoredValue, Vec<TrieMerkleProof<Key, StoredValue>>);
 
 /// Runs a global state query and returns a tuple of the domain stored value and Merkle proof of the
 /// value.
@@ -1123,7 +1137,7 @@ async fn get_account<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
     account_hash: AccountHash,
-) -> Result<JsonAccount, Error> {
+) -> Result<Account, Error> {
     let (stored_value, _) = common::run_query_and_encode(
         effect_builder,
         state_root_hash,
@@ -1144,7 +1158,7 @@ async fn get_account<REv: ReactorEventT>(
 pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_identifier: GlobalStateIdentifier,
-) -> Result<(Digest, Option<BlockHeader>), Error> {
+) -> Result<(Digest, Option<JsonBlockHeader>), Error> {
     // This RPC request is restricted by the block availability index.
     let only_from_available_block_range = true;
     match state_identifier {
@@ -1158,7 +1172,10 @@ pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
                         format!("failed to retrieve specified block header {}", block_hash);
                     Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
                 }
-                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
+                Some(block_header) => {
+                    let json_block_header = JsonBlockHeader::from(block_header.clone());
+                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
+                }
             }
         }
         GlobalStateIdentifier::BlockHeight(block_height) => {
@@ -1174,7 +1191,10 @@ pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
                         format!("failed to retrieve block header at height {}", block_height);
                     Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
                 }
-                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
+                Some(block_header) => {
+                    let json_block_header = JsonBlockHeader::from(block_header.clone());
+                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
+                }
             }
         }
         GlobalStateIdentifier::StateRootHash(state_root_hash) => Ok((state_root_hash, None)),

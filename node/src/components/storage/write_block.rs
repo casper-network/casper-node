@@ -2,7 +2,9 @@ use std::{collections::HashMap, rc::Rc};
 
 use lmdb::{Database, RwTransaction, Transaction};
 
-use casper_types::{Block, BlockBody, BlockBodyV1, BlockV2, DeployHash, Digest, ExecutionResult};
+use casper_types::{
+    execution::ExecutionResult, Block, BlockBody, BlockBodyV1, BlockV2, DeployHash, Digest,
+};
 use tracing::error;
 
 use crate::types::ApprovalsHashes;
@@ -210,8 +212,8 @@ impl Storage {
             Self::insert_block_body_to_deploy_index(
                 &mut self.deploy_hash_index,
                 *block.hash(),
-                &block.body(),
-                block.header().height(),
+                block.height(),
+                block.body().deploy_and_transfer_hashes(),
             )?;
         }
         Ok(true)
@@ -254,7 +256,12 @@ impl Storage {
         }
 
         let _ = self.write_approvals_hashes(&mut txn, approvals_hashes)?;
-        let _ = self.write_execution_results(&mut txn, block.hash(), execution_results)?;
+        let _ = self.write_execution_results(
+            &mut txn,
+            block.hash(),
+            block.height(),
+            execution_results,
+        )?;
         txn.commit()?;
 
         Ok(true)

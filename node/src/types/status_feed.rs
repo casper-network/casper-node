@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{
     collections::BTreeMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -12,8 +9,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use casper_types::{
-    ActivationPoint, Block, BlockHash, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff,
-    Timestamp,
+    ActivationPoint, Block, BlockHash, BlockV2, Digest, EraId, JsonBlock, ProtocolVersion,
+    PublicKey, TimeDiff, Timestamp,
 };
 
 use crate::{
@@ -44,8 +41,9 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let socket_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321);
     let mut peers = BTreeMap::new();
     peers.insert(*node_id, socket_addr.to_string());
+    let block_v2 = BlockV2::from(JsonBlock::doc_example().clone());
     let status_feed = StatusFeed {
-        last_added_block: Some(Block::example().clone()),
+        last_added_block: Some(block_v2.into()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
         our_public_signing_key: Some(PublicKey::example().clone()),

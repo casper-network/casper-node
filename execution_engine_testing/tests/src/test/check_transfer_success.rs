@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
 };
 use casper_execution_engine::engine_state::run_genesis_request::RunGenesisRequest;
-use casper_types::{runtime_args, GenesisAccount, Key, Motes, RuntimeArgs, U512};
+use casper_types::{runtime_args, GenesisAccount, Key, Motes, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_DESTINATION: &str = "destination";
@@ -65,7 +65,7 @@ fn test_check_transfer_success_with_source_only() {
 
     // Getting main purse URef to verify transfer
     let source_purse = builder
-        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
     builder.exec(exec_request).commit().expect_success();
@@ -126,7 +126,7 @@ fn test_check_transfer_success_with_source_only_errors() {
     // compare proposer balance before and after the transaction to get the tx fee.
     let proposer_starting_balance = builder.get_proposer_purse_balance();
     let source_purse = builder
-        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
     builder.exec(exec_request).commit().expect_success();
@@ -184,7 +184,7 @@ fn test_check_transfer_success_with_source_and_target() {
 
     // Getting main purse URef to verify transfer
     let source_purse = builder
-        .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
     builder.exec(exec_request).commit().expect_success();
@@ -207,7 +207,8 @@ fn test_check_transfer_success_with_source_and_target() {
         .expect("new purse should exist");
 
     // let target_purse = builder
-    let default_account = builder.get_expected_account(*DEFAULT_ACCOUNT_ADDR);
+    let default_account =
+        builder.get_expected_addressable_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR);
     let target_purse = default_account
         .named_keys()
         .get(NEW_PURSE_NAME)

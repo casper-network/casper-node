@@ -4,11 +4,12 @@ use parity_wasm::elements::Module;
 use wasmi::{ImportsBuilder, MemoryRef, ModuleInstance, ModuleRef};
 
 use casper_types::{
-    contracts::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
-    RuntimeArgs, URef, URefAddr, WasmConfig, U128, U256, U512,
+    addressable_entity::NamedKeys, AccessRights, CLType, CLValue, Key, ProtocolVersion, PublicKey,
+    RuntimeArgs, URef, URefAddr, U128, U256, U512,
 };
 
 use crate::{
+    engine_state::EngineConfig,
     execution::Error,
     resolvers::{self, memory_resolver::MemoryResolver},
 };
@@ -25,10 +26,10 @@ use crate::{
 pub(super) fn instance_and_memory(
     parity_module: Module,
     protocol_version: ProtocolVersion,
-    wasm_config: &WasmConfig,
+    engine_config: &EngineConfig,
 ) -> Result<(ModuleRef, MemoryRef), Error> {
     let module = wasmi::Module::from_parity_wasm_module(parity_module)?;
-    let resolver = resolvers::create_module_resolver(protocol_version, wasm_config)?;
+    let resolver = resolvers::create_module_resolver(protocol_version, engine_config)?;
     let mut imports = ImportsBuilder::new();
     imports.push_resolver("env", &resolver);
     let not_started_module = ModuleInstance::new(&module, &imports)?;
@@ -882,7 +883,7 @@ fn rewrite_urefs(cl_value: CLValue, mut func: impl FnMut(&mut URef)) -> Result<C
             }
             (CLType::String, CLType::Key) => {
                 let mut map: NamedKeys = cl_value.to_owned().into_t()?;
-                map.values_mut().filter_map(Key::as_uref_mut).for_each(func);
+                map.keys_mut().filter_map(Key::as_uref_mut).for_each(func);
                 CLValue::from_t(map)?
             }
             (CLType::PublicKey, CLType::Key) => {
@@ -1181,8 +1182,7 @@ mod tests {
     };
 
     use casper_types::{
-        gens::*, runtime_args, AccessRights, CLType, CLValue, Key, PublicKey, RuntimeArgs,
-        SecretKey, URef,
+        gens::*, runtime_args, AccessRights, CLType, CLValue, Key, PublicKey, SecretKey, URef,
     };
 
     use super::*;

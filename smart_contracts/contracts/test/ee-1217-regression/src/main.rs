@@ -9,7 +9,7 @@ use alloc::{string::ToString, vec};
 use casper_contract::contract_api::{runtime, storage, system};
 use casper_types::{
     runtime_args, system::auction, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, PublicKey, RuntimeArgs, U512,
+    EntryPoints, PublicKey, U512,
 };
 
 const PACKAGE_NAME: &str = "call_auction";

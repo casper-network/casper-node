@@ -6,8 +6,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
-    account::AccountHash, bytesrepr::FromBytes, runtime_args, system::mint, CLTyped, Contract,
-    ContractHash, Key, PublicKey, RuntimeArgs, URef, U512,
+    account::AccountHash, bytesrepr::FromBytes, runtime_args, system::mint, AddressableEntity,
+    CLTyped, ContractHash, Key, PublicKey, URef, U512,
 };
 
 use super::{
@@ -382,7 +382,7 @@ pub fn get_faucet_contract_hash(
     installer_account: AccountHash,
 ) -> ContractHash {
     builder
-        .get_expected_account(installer_account)
+        .get_expected_addressable_entity_by_account_hash(installer_account)
         .named_keys()
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
@@ -394,9 +394,9 @@ pub fn get_faucet_contract_hash(
 pub fn get_faucet_contract(
     builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
-) -> Contract {
+) -> AddressableEntity {
     builder
-        .get_contract(get_faucet_contract_hash(builder, installer_account))
+        .get_addressable_entity(get_faucet_contract_hash(builder, installer_account))
         .expect("failed to find faucet contract")
 }
 

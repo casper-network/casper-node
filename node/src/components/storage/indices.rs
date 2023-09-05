@@ -1,8 +1,6 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
-use casper_types::{
-    BlockBody, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash, EraId,
-};
+use casper_types::{BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash, EraId};
 
 use super::{FatalStorageError, Storage};
 
@@ -50,13 +48,16 @@ impl Storage {
     /// Inserts the relevant entries to the index.
     ///
     /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_block_body_to_deploy_index(
+    /// Inserts the relevant entries to the index.
+    ///
+    /// If a duplicate entry is encountered, index is not updated and an error is returned.
+    pub(crate) fn insert_block_body_to_deploy_index<'a>(
         deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
         block_hash: BlockHash,
-        block_body: &BlockBody,
         block_height: u64,
+        deploy_hash_iter: impl Iterator<Item = &'a DeployHash> + Clone,
     ) -> Result<(), FatalStorageError> {
-        if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
+        if let Some(hash) = deploy_hash_iter.clone().find(|hash| {
             deploy_hash_index
                 .get(hash)
                 .map_or(false, |old_block_hash_and_height| {
@@ -70,7 +71,7 @@ impl Storage {
             });
         }
 
-        for hash in block_body.deploy_and_transfer_hashes() {
+        for hash in deploy_hash_iter {
             deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
         }
 
