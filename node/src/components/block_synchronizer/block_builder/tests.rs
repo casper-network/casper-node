@@ -1,12 +1,9 @@
 use std::{collections::BTreeMap, thread, time::Duration};
 
-use casper_types::{testing::TestRng, BlockV2};
+use casper_types::{testing::TestRng, TestBlockBuilder};
 use num_rational::Ratio;
 
-use crate::{
-    components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY},
-    types::TestBlockBuilder,
-};
+use crate::components::consensus::tests::utils::{ALICE_PUBLIC_KEY, ALICE_SECRET_KEY};
 
 use super::*;
 
@@ -101,7 +98,7 @@ fn handle_acceptance_promotes_and_disqualifies_peers() {
 #[test]
 fn handle_acceptance_unlatches_builder() {
     let mut rng = TestRng::new();
-    let block = BlockV2::random(&mut rng);
+    let block = TestBlockBuilder::new().build(&mut rng);
     let mut builder = BlockBuilder::new(
         block.header().block_hash(),
         false,

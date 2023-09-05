@@ -2,13 +2,15 @@ use std::iter;
 
 use rand::Rng;
 
-use casper_types::{
-    system::auction::ValidatorWeights, testing::TestRng, BlockHash, BlockV1, BlockV2,
-    Deploy, DeployHash, Digest, EraEnd, EraId, EraReport, ProtocolVersion, PublicKey, Timestamp,
-    U512,
+use crate::testing::TestRng;
+
+use crate::{
+    system::auction::ValidatorWeights, BlockHash, BlockV1, BlockV2, Deploy, DeployHash, Digest,
+    EraEnd, EraId, EraReport, ProtocolVersion, PublicKey, Timestamp, U512,
 };
 
-pub(crate) struct TestBlockBuilder {
+/// A helper to build the blocks with various properties required for tests.
+pub struct TestBlockBuilder {
     parent_hash: Option<BlockHash>,
     state_root_hash: Option<Digest>,
     timestamp: Option<Timestamp>,
@@ -35,8 +37,15 @@ struct BlockParameters {
     transfer_hashes: Vec<DeployHash>,
 }
 
+impl Default for TestBlockBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TestBlockBuilder {
-    pub(crate) fn new() -> Self {
+    /// Creates new `TestBlockBuilder`.
+    pub fn new() -> Self {
         Self {
             parent_hash: None,
             state_root_hash: None,
@@ -50,7 +59,8 @@ impl TestBlockBuilder {
         }
     }
 
-    pub(crate) fn parent_hash(mut self, parent_hash: BlockHash) -> Self {
+    /// Sets the parent hash for the block.
+    pub fn parent_hash(mut self, parent_hash: BlockHash) -> Self {
         self.parent_hash = Some(parent_hash);
         self
     }
@@ -67,34 +77,36 @@ impl TestBlockBuilder {
         self
     }
 
-    pub(crate) fn era(self, era: impl Into<EraId>) -> Self {
+    /// Sets the era for the block
+    pub fn era(self, era: impl Into<EraId>) -> Self {
         Self {
             era: Some(era.into()),
             ..self
         }
     }
 
-    pub(crate) fn height(mut self, height: u64) -> Self {
+    /// Sets the height for the block.
+    pub fn height(mut self, height: u64) -> Self {
         self.height = Some(height);
         self
     }
 
-    pub(crate) fn protocol_version(self, protocol_version: ProtocolVersion) -> Self {
+    /// Sets the protocol version for the block.
+    pub fn protocol_version(self, protocol_version: ProtocolVersion) -> Self {
         Self {
             protocol_version,
             ..self
         }
     }
 
-    pub(crate) fn deploys<'a, I: IntoIterator<Item = &'a Deploy>>(
-        mut self,
-        deploys_iter: I,
-    ) -> Self {
+    /// Associates the given deploys with the created block.
+    pub fn deploys<'a, I: IntoIterator<Item = &'a Deploy>>(mut self, deploys_iter: I) -> Self {
         self.deploys = deploys_iter.into_iter().cloned().collect();
         self
     }
 
-    pub(crate) fn random_deploys(mut self, count: usize, rng: &mut TestRng) -> Self {
+    /// Associates a number of random deploys with the created block.
+    pub fn random_deploys(mut self, count: usize, rng: &mut TestRng) -> Self {
         self.deploys = iter::repeat(())
             .take(count)
             .map(|_| Deploy::random(rng))
@@ -102,12 +114,14 @@ impl TestBlockBuilder {
         self
     }
 
-    pub(crate) fn switch_block(mut self, is_switch: bool) -> Self {
+    /// Allows setting the created block to be switch block or not.
+    pub fn switch_block(mut self, is_switch: bool) -> Self {
         self.is_switch = Some(is_switch);
         self
     }
 
-    pub(crate) fn validator_weights(self, validator_weights: ValidatorWeights) -> Self {
+    /// Sets the validator weights for the block.
+    pub fn validator_weights(self, validator_weights: ValidatorWeights) -> Self {
         Self {
             validator_weights: Some(validator_weights),
             ..self
@@ -186,7 +200,8 @@ impl TestBlockBuilder {
         }
     }
 
-    pub(crate) fn build(self, rng: &mut TestRng) -> BlockV2 {
+    /// Builds a block.
+    pub fn build(self, rng: &mut TestRng) -> BlockV2 {
         let BlockParameters {
             parent_hash,
             parent_seed,
@@ -218,12 +233,15 @@ impl TestBlockBuilder {
         )
     }
 
-    pub(crate) fn build_invalid(self, rng: &mut TestRng) -> BlockV2 {
+    /// Builds a block that is invalid.
+    pub fn build_invalid(self, rng: &mut TestRng) -> BlockV2 {
         self.build(rng).make_invalid(rng)
     }
 }
 
-pub(crate) trait FromTestBlockBuilder {
+/// Utility trait that supports building test objects from `TestBlockBuilder` instance.
+pub trait FromTestBlockBuilder {
+    /// Builds `Self` from the given `TestBlockBuilder`.
     fn build_for_test(builder: TestBlockBuilder, rng: &mut TestRng) -> Self;
 }
 

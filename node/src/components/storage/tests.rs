@@ -20,8 +20,8 @@ use casper_types::{
     testing::TestRng,
     AccessRights, ApprovalsHash, Block, BlockHash, BlockHashAndHeight, BlockHeader,
     BlockSignatures, BlockV1, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, Digest,
-    EraId, FinalitySignature, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TimeDiff,
-    Transfer, URef, U512,
+    EraId, FinalitySignature, FromTestBlockBuilder, ProtocolVersion, PublicKey, SecretKey,
+    SignedBlockHeader, TestBlockBuilder, TimeDiff, Transfer, URef, U512,
 };
 use tempfile::tempdir;
 
@@ -42,8 +42,8 @@ use crate::{
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, ApprovalsHashes,
-        AvailableBlockRange, DeployExecutionInfo, DeployWithFinalizedApprovals,
-        FromTestBlockBuilder, LegacyDeploy, SignedBlock, SyncLeapIdentifier, TestBlockBuilder,
+        AvailableBlockRange, DeployExecutionInfo, DeployWithFinalizedApprovals, LegacyDeploy,
+        SignedBlock, SyncLeapIdentifier,
     },
     utils::{Loadable, WithDir},
 };

@@ -7,8 +7,6 @@ use core::iter;
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -18,14 +16,14 @@ use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use crate::JsonEraReport;
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest, DisplayIter, PublicKey,
 };
-
-use super::JsonEraReport;
 
 #[cfg(feature = "json-schema")]
 static ERA_REPORT: Lazy<EraReport<PublicKey>> = Lazy::new(|| {
@@ -203,6 +201,8 @@ impl EraReport<PublicKey> {
     /// Returns a random `EraReport`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
+        use rand::Rng;
+
         let equivocators_count = rng.gen_range(0..5);
         let rewards_count = rng.gen_range(0..5);
         let inactive_count = rng.gen_range(0..5);

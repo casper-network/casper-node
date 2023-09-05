@@ -16,7 +16,7 @@ use tokio::time;
 
 use casper_types::{
     generate_ed25519_keypair, testing::TestRng, ActivationPoint, BlockV2, Chainspec,
-    ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, Signature, TestBlockBuilder, U512,
 };
 use reactor::ReactorEvent;
 
@@ -35,7 +35,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Reactor, Runner, TryCrankOutcome},
-    types::{EraValidatorWeights, TestBlockBuilder},
+    types::EraValidatorWeights,
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -552,12 +552,7 @@ fn acceptor_register_block() {
 
     {
         // Invalid block case.
-        let invalid_block: Arc<BlockV2> = Arc::new(
-            TestBlockBuilder::new()
-                .build_invalid(&mut rng)
-                .try_into()
-                .unwrap(),
-        );
+        let invalid_block: Arc<BlockV2> = Arc::new(TestBlockBuilder::new().build_invalid(&mut rng));
 
         let mut invalid_block_acceptor = BlockAcceptor::new(*invalid_block.hash(), vec![]);
         let invalid_meta_block = meta_block_with_default_state(invalid_block);

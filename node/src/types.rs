@@ -58,9 +58,3 @@ pub type NodeRng = ChaCha20Rng;
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
 pub type NodeRng = casper_types::testing::TestRng;
-
-#[cfg(test)]
-pub(crate) use block::test_block_builder::TestBlockBuilder;
-
-#[cfg(test)]
-pub(crate) use block::test_block_builder::FromTestBlockBuilder;

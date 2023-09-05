@@ -6,19 +6,19 @@ pub use block_body_v2::BlockBodyV2;
 
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use once_cell::sync::OnceCell;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-#[cfg(any(feature = "once_cell", test))]
-use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use crate::JsonBlockBody;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     DeployHash,
 };
-
-use super::JsonBlockBody;
 
 const TAG_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
@@ -135,7 +135,6 @@ impl From<JsonBlockBody> for BlockBodyV2 {
             proposer: json_body.proposer,
             deploy_hashes: json_body.deploy_hashes,
             transfer_hashes: json_body.transfer_hashes,
-            #[cfg(any(feature = "once_cell", test))]
             hash: OnceCell::new(),
         }
     }
@@ -143,7 +142,10 @@ impl From<JsonBlockBody> for BlockBodyV2 {
 #[cfg(test)]
 mod tests {
     use crate::{
-        block::{block_v1::BlockV1, block_v2::BlockV2},
+        block::{
+            block_v1::BlockV1,
+            test_block_builder::{FromTestBlockBuilder, TestBlockBuilder},
+        },
         bytesrepr,
         testing::TestRng,
     };
@@ -153,11 +155,13 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block_body_v1 = BlockV1::random(rng).body().clone();
+        let block_body_v1 = BlockV1::build_for_test(TestBlockBuilder::new(), rng)
+            .body()
+            .clone();
         let block_body = BlockBody::V1(block_body_v1);
         bytesrepr::test_serialization_roundtrip(&block_body);
 
-        let block_body_v2 = BlockV2::random(rng).body().clone();
+        let block_body_v2 = TestBlockBuilder::new().build(rng).body().clone();
         let block_body = BlockBody::V2(block_body_v2);
         bytesrepr::test_serialization_roundtrip(&block_body);
     }

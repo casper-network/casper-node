@@ -26,7 +26,7 @@ use casper_types::{
     addressable_entity::NamedKeys,
     testing::TestRng,
     BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, PublicKey, SecretKey,
-    StoredValue, URef, U512,
+    StoredValue, TestBlockBuilder, URef, U512,
 };
 
 use super::*;
@@ -47,7 +47,7 @@ use crate::{
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Runner, TryCrankOutcome},
     testing::ConditionCheckReactor,
-    types::{NodeId, TestBlockBuilder},
+    types::NodeId,
     utils::{Loadable, WithDir},
     NodeRng,
 };

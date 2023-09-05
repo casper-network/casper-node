@@ -440,9 +440,10 @@ mod tests {
     use rand::Rng;
 
     use casper_types::{
-        crypto, testing::TestRng, ActivationPoint, Block, BlockHash, BlockHeader, BlockSignatures,
+        crypto, testing::TestRng, ActivationPoint, BlockHash, BlockHeader, BlockSignatures,
         BlockV2, DeployHash, EraEnd, EraId, EraReport, FinalitySignature, GlobalStateUpdate,
-        ProtocolConfig, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, Timestamp, U512,
+        ProtocolConfig, ProtocolVersion, PublicKey, SecretKey, SignedBlockHeader, TestBlockBuilder,
+        Timestamp, U512,
     };
 
     use super::SyncLeap;
@@ -451,27 +452,10 @@ mod tests {
         types::{
             sync_leap::SyncLeapValidationError,
             sync_leap_validation_metadata::SyncLeapValidationMetaData, EraValidatorWeights,
-            SyncLeapIdentifier, TestBlockBuilder,
+            SyncLeapIdentifier,
         },
         utils::BlockSignatureError,
     };
-
-    // TODO[RC]: Not needed!
-    fn random_switch_block_at_height_and_era_and_version(
-        rng: &mut TestRng,
-        height: u64,
-        era_id: EraId,
-        protocol_version: ProtocolVersion,
-    ) -> Block {
-        Block::V2(
-            TestBlockBuilder::new()
-                .era(era_id)
-                .height(height)
-                .protocol_version(protocol_version)
-                .switch_block(true)
-                .build(rng),
-        )
-    }
 
     fn make_signed_block_header_from_height(
         height: usize,
@@ -1972,24 +1956,24 @@ mod tests {
         (era_2, height_2, version_2): (u64, u64, ProtocolVersion),
         (era_3, height_3, version_3): (u64, u64, ProtocolVersion),
     ) -> (SignedBlockHeader, SignedBlockHeader, SignedBlockHeader) {
-        let signed_block_1 = random_switch_block_at_height_and_era_and_version(
-            rng,
-            height_1,
-            era_1.into(),
-            version_1,
-        );
-        let signed_block_2 = random_switch_block_at_height_and_era_and_version(
-            rng,
-            height_2,
-            era_2.into(),
-            version_2,
-        );
-        let signed_block_3 = random_switch_block_at_height_and_era_and_version(
-            rng,
-            height_3,
-            era_3.into(),
-            version_3,
-        );
+        let signed_block_1 = TestBlockBuilder::new()
+            .height(height_1)
+            .era(era_1)
+            .protocol_version(version_1)
+            .switch_block(true)
+            .build(rng);
+        let signed_block_2 = TestBlockBuilder::new()
+            .height(height_2)
+            .era(era_2)
+            .protocol_version(version_2)
+            .switch_block(true)
+            .build(rng);
+        let signed_block_3 = TestBlockBuilder::new()
+            .height(height_3)
+            .era(era_3)
+            .protocol_version(version_3)
+            .switch_block(true)
+            .build(rng);
 
         let signed_block_header_1 =
             make_signed_block_header_from_header(signed_block_1.header(), &[], false);

@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
-use super::{EraReport, JsonEraEnd};
+use super::EraReport;
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use crate::JsonEraEnd;
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
 use crate::{
@@ -159,13 +161,13 @@ impl From<JsonEraEnd> for EraEnd {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, BlockV2};
+    use crate::{testing::TestRng, TestBlockBuilder};
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         let block = {
-            let mut block = BlockV2::random(rng);
+            let mut block = TestBlockBuilder::new().build(rng);
 
             let next_era_weights = (0..6)
                 .map(|index| (PublicKey::random(rng), U512::from(index)))

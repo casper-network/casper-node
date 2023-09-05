@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use super::BlockV2;
-use super::{BlockHash, EraEnd, JsonBlockHeader};
+use super::{BlockHash, EraEnd};
+#[cfg(all(feature = "std", feature = "json-schema"))]
+use crate::JsonBlockHeader;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest, EraId, ProtocolVersion, PublicKey, Timestamp, U512,
@@ -395,12 +397,12 @@ impl From<JsonBlockHeader> for BlockHeader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, BlockV2};
+    use crate::{block::test_block_builder::TestBlockBuilder, testing::TestRng};
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = BlockV2::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         bytesrepr::test_serialization_roundtrip(block.header());
     }
 }

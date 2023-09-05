@@ -104,7 +104,6 @@ impl PartialEq for BlockBodyV2 {
             proposer,
             deploy_hashes,
             transfer_hashes,
-            past_finality_signatures,
         } = self;
         *proposer == other.proposer
             && *deploy_hashes == other.deploy_hashes

@@ -604,8 +604,6 @@ impl LargestSpecimen for BlockV2 {
 
 impl LargestSpecimen for Block {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        // TODO[RC]: When 2.0 rewards are merged, we need to take into consideration the largest
-        // specimen for the `PastFinalitySignatures`.
         let deploy_hashes = vec![
             DeployHash::largest_specimen(estimator, cache);
             estimator.parameter::<usize>("max_deploys_per_block")

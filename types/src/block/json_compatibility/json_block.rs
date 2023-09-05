@@ -67,6 +67,7 @@ static JSON_BLOCK: Lazy<JsonBlock> = Lazy::new(|| {
     the core component of the Casper linear blockchain"
 )]
 #[serde(deny_unknown_fields)]
+// TODO[RC]: Should be able to represent both V1 and V2
 pub struct JsonBlock {
     /// The block hash identifying this block.
     pub hash: BlockHash,
@@ -105,14 +106,14 @@ impl JsonBlock {
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::TestRng;
+    use crate::{testing::TestRng, TestBlockBuilder};
 
     use super::*;
 
     #[test]
     fn block_to_and_from_json_block() {
         let rng = &mut TestRng::new();
-        let block = BlockV2::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         let empty_signatures = BlockSignatures::new(*block.hash(), block.era_id());
         let json_block = JsonBlock::new(block.clone().into(), Some(empty_signatures));
         let recovered_block = BlockV2::from(json_block);
@@ -122,7 +123,7 @@ mod tests {
     #[test]
     fn json_block_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = BlockV2::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         let json_string = serde_json::to_string_pretty(&block).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(block, decoded);

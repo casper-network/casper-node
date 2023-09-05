@@ -33,15 +33,12 @@ use warp::{
 };
 
 #[cfg(test)]
-use casper_types::{execution::ExecutionResultV2, testing::TestRng};
+use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 use casper_types::{
     execution::{Effects, ExecutionResult},
     BlockHash, Deploy, DeployHash, EraId, FinalitySignature, JsonBlock, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
-
-#[cfg(test)]
-use crate::{testing, types::TestBlockBuilder};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -81,7 +78,6 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        // TODO[RC]: Handle both Block::V1 and Block::V2 here
         block: Box<JsonBlock>,
     },
     /// The given deploy has been newly-accepted by this node.
@@ -180,7 +176,7 @@ impl SseData {
 
     /// Returns a random `SseData::DeployExpired`
     pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
-        let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
+        let deploy = crate::testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
             deploy_hash: *deploy.hash(),
         }

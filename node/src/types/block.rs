@@ -1,6 +1,3 @@
-#[cfg(test)]
-pub(crate) mod test_block_builder;
-
 mod approvals_hashes;
 mod block_execution_results_or_chunk;
 mod block_execution_results_or_chunk_id;

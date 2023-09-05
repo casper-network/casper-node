@@ -15,8 +15,8 @@ use rand::{seq::IteratorRandom, Rng};
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, DeployId, EraId, Key,
-    LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef,
-    U512,
+    LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder,
+    TimeDiff, URef, U512,
 };
 
 use super::*;
@@ -28,7 +28,7 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{BlockExecutionResultsOrChunkId, TestBlockBuilder, ValueOrChunk},
+    types::{BlockExecutionResultsOrChunkId, ValueOrChunk},
     utils,
 };
 

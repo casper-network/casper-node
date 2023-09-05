@@ -211,55 +211,6 @@ impl BlockV1 {
         Ok(())
     }
 
-    /// Returns a random block.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random(rng: &mut TestRng) -> Self {
-        let era_id = EraId::random(rng);
-        let height = rng.gen();
-        let is_switch = rng.gen_bool(0.1);
-
-        BlockV1::random_with_specifics(
-            rng,
-            era_id,
-            height,
-            ProtocolVersion::default(),
-            is_switch,
-            None,
-        )
-    }
-
-    /// Returns a random switch block.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_switch_block(rng: &mut TestRng) -> Self {
-        let era_id = EraId::random(rng);
-        let height = rng.gen();
-
-        BlockV1::random_with_specifics(
-            rng,
-            era_id,
-            height,
-            ProtocolVersion::default(),
-            true,
-            iter::empty(),
-        )
-    }
-
-    /// Returns a random non-switch block.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_non_switch_block(rng: &mut TestRng) -> Self {
-        let era_id = EraId::random(rng);
-        let height = rng.gen();
-
-        BlockV1::random_with_specifics(
-            rng,
-            era_id,
-            height,
-            ProtocolVersion::default(),
-            false,
-            iter::empty(),
-        )
-    }
-
     /// Returns a random block, but using the provided values.
     ///
     /// If `deploy_hashes_iter` is empty, a few random deploy hashes will be added to the
@@ -314,71 +265,6 @@ impl BlockV1 {
             deploy_hashes,
             transfer_hashes,
         )
-    }
-
-    /// Returns a random block, but using the provided values.
-    ///
-    /// If `validator_weights` is `Some`, a switch block is created and includes the provided
-    /// weights in the era end's `next_era_validator_weights` field.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_with_specifics_and_parent_and_validator_weights(
-        rng: &mut TestRng,
-        era_id: EraId,
-        height: u64,
-        protocol_version: ProtocolVersion,
-        parent_hash: BlockHash,
-        validator_weights: Option<BTreeMap<PublicKey, U512>>,
-    ) -> Self {
-        let parent_seed = Digest::random(rng);
-        let state_root_hash = Digest::random(rng);
-        let random_bit = rng.gen();
-        let era_end = validator_weights.map(|weights| EraEnd::new(EraReport::random(rng), weights));
-        let timestamp = Timestamp::now();
-        let proposer = PublicKey::random(rng);
-        let count = rng.gen_range(0..6);
-        let deploy_hashes = iter::repeat_with(|| DeployHash::random(rng))
-            .take(count)
-            .collect();
-        let count = rng.gen_range(0..6);
-        let transfer_hashes = iter::repeat_with(|| DeployHash::random(rng))
-            .take(count)
-            .collect();
-
-        BlockV1::new(
-            parent_hash,
-            parent_seed,
-            state_root_hash,
-            random_bit,
-            era_end,
-            timestamp,
-            era_id,
-            height,
-            protocol_version,
-            proposer,
-            deploy_hashes,
-            transfer_hashes,
-        )
-    }
-
-    /// Returns a random block, but with the block hash generated randomly rather than derived by
-    /// hashing the correct input data, rendering the block invalid.
-    #[cfg(any(all(feature = "std", feature = "testing"), test))]
-    pub fn random_invalid(rng: &mut TestRng) -> Self {
-        let era = rng.gen_range(0..6);
-        let height = era * 10 + rng.gen_range(0..10);
-        let is_switch = rng.gen_bool(0.1);
-
-        let mut block = BlockV1::random_with_specifics(
-            rng,
-            EraId::from(era),
-            height,
-            ProtocolVersion::V1_0_0,
-            is_switch,
-            None,
-        );
-        block.hash = BlockHash::random(rng);
-        assert!(block.verify().is_err());
-        block
     }
 }
 
@@ -437,14 +323,14 @@ impl FromBytes for BlockV1 {
 
 #[cfg(test)]
 mod tests {
-    use crate::Block;
+    use crate::{Block, FromTestBlockBuilder, TestBlockBuilder};
 
     use super::*;
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block = BlockV1::random(rng);
+        let block = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
         bytesrepr::test_serialization_roundtrip(&block);
     }
 
@@ -452,7 +338,7 @@ mod tests {
     fn block_check_bad_body_hash_sad_path() {
         let rng = &mut TestRng::new();
 
-        let mut block = BlockV1::random(rng);
+        let mut block = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
         let bogus_block_body_hash = Digest::hash([0xde, 0xad, 0xbe, 0xef]);
         block.header.set_body_hash(bogus_block_body_hash);
         block.hash = block.header.block_hash();
@@ -468,7 +354,7 @@ mod tests {
     fn block_check_bad_block_hash_sad_path() {
         let rng = &mut TestRng::new();
 
-        let mut block = BlockV1::random(rng);
+        let mut block = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
         let bogus_block_hash = BlockHash::from(Digest::hash([0xde, 0xad, 0xbe, 0xef]));
         block.hash = bogus_block_hash;
 

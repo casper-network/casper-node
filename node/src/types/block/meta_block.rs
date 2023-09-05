@@ -78,10 +78,9 @@ impl MetaBlock {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{execution::ExecutionResultV2, testing::TestRng, Deploy};
+    use casper_types::{execution::ExecutionResultV2, testing::TestRng, Deploy, TestBlockBuilder};
 
     use super::*;
-    use crate::types::TestBlockBuilder;
 
     #[test]
     fn should_merge_when_same_non_empty_execution_results() {

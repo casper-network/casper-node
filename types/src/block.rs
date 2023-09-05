@@ -11,6 +11,8 @@ mod finality_signature;
 mod finality_signature_id;
 mod json_compatibility;
 mod signed_block_header;
+#[cfg(any(feature = "testing", test))]
+pub mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
@@ -48,6 +50,8 @@ pub use json_compatibility::{
     JsonValidatorWeight,
 };
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
+#[cfg(any(feature = "testing", test))]
+pub use test_block_builder::{FromTestBlockBuilder, TestBlockBuilder};
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -428,8 +432,6 @@ impl From<BlockV1> for Block {
     }
 }
 
-// TODO[RC]: impl From<JsonBlock> for BlockV2 {
-
 #[cfg(all(feature = "std", feature = "json-schema"))]
 impl From<JsonBlock> for BlockV2 {
     fn from(block: JsonBlock) -> Self {
@@ -450,11 +452,11 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
-        let block_v1 = BlockV1::random(rng);
+        let block_v1 = BlockV1::build_for_test(TestBlockBuilder::new(), rng);
         let block = Block::V1(block_v1);
         bytesrepr::test_serialization_roundtrip(&block);
 
-        let block_v2 = BlockV2::random(rng);
+        let block_v2 = TestBlockBuilder::new().build(rng);
         let block = Block::V2(block_v2);
         bytesrepr::test_serialization_roundtrip(&block);
     }

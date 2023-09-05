@@ -759,12 +759,9 @@ fn is_timestamp_at_ttl(
 mod tests {
     use std::str::FromStr;
 
-    use casper_types::{testing::TestRng, TimeDiff, Timestamp};
+    use casper_types::{testing::TestRng, TestBlockBuilder, TimeDiff, Timestamp};
 
-    use crate::{
-        reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
-        types::TestBlockBuilder,
-    };
+    use crate::reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl};
 
     const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
     const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);

@@ -1,13 +1,13 @@
 use prometheus::Registry;
 use rand::Rng;
 
-use casper_types::{testing::TestRng, EraId, TimeDiff};
+use casper_types::{testing::TestRng, EraId, TestBlockBuilder, TimeDiff};
 
 use super::*;
 use crate::{
     effect::announcements::DeployBufferAnnouncement::{self, DeploysExpired},
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::{FinalizedBlock, TestBlockBuilder},
+    types::FinalizedBlock,
     utils,
 };
 
