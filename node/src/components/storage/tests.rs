@@ -8,18 +8,21 @@ use std::{
     sync::Arc,
 };
 
+use lmdb::Transaction;
 use rand::{prelude::SliceRandom, Rng};
 use serde::{Deserialize, Serialize};
 use smallvec::smallvec;
 
 use casper_types::{
     generate_ed25519_keypair, system::auction::UnbondingPurse, testing::TestRng, AccessRights,
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, SecretKey, TimeDiff, URef, U512,
+    EraId, ExecutionEffect, ExecutionResult, Key, ProtocolVersion, PublicKey, SecretKey, TimeDiff,
+    Transfer, Transform, TransformEntry, URef, U512,
 };
 
 use super::{
+    lmdb_ext::{deserialize_internal, serialize_internal, TransactionExt, WriteTransactionExt},
     move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
-    Storage,
+    Storage, FORCE_RESYNC_FILE_NAME,
 };
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
@@ -27,16 +30,13 @@ use crate::{
         requests::{MarkBlockCompletedRequest, StorageRequest},
         Multiple,
     },
-    storage::{
-        lmdb_ext::{deserialize_internal, serialize_internal},
-        FORCE_RESYNC_FILE_NAME,
-    },
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange, Block,
         BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
         Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
         DeployWithFinalizedApprovals, FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
+        TestBlockBuilder,
     },
     utils::{Loadable, WithDir},
 };
@@ -1056,21 +1056,168 @@ fn store_execution_results_twice_for_same_block_deploy_pair() {
     put_execution_results(&mut harness, &mut storage, block_hash, exec_result_2);
 }
 
+fn prepare_exec_result_with_transfer(
+    rng: &mut TestRng,
+    deploy_hash: &DeployHash,
+) -> (ExecutionResult, Transfer) {
+    let transfer = Transfer::new(
+        (*deploy_hash).into(),
+        rng.gen(),
+        Some(rng.gen()),
+        rng.gen(),
+        rng.gen(),
+        rng.gen(),
+        rng.gen(),
+        Some(rng.gen()),
+    );
+    let transform = TransformEntry {
+        key: Key::DeployInfo((*deploy_hash).into()).to_formatted_string(),
+        transform: Transform::WriteTransfer(transfer),
+    };
+    let effect = ExecutionEffect::new(vec![transform]);
+    let exec_result = ExecutionResult::Success {
+        effect,
+        transfers: vec![],
+        cost: rng.gen(),
+    };
+    (exec_result, transfer)
+}
+
 #[test]
 fn store_identical_execution_results() {
     let mut harness = ComponentHarness::default();
     let mut storage = storage_fixture(&harness);
 
-    let block_hash = BlockHash::random(&mut harness.rng);
-    let deploy_hash = DeployHash::random(&mut harness.rng);
+    let deploy = Deploy::random_valid_native_transfer(&mut harness.rng);
+    let deploy_hash = *deploy.hash();
+    let block = Block::random_with_deploys(&mut harness.rng, Some(&deploy));
+    storage.write_block(&block).unwrap();
+    let block_hash = *block.hash();
 
-    let mut exec_result = HashMap::new();
-    exec_result.insert(deploy_hash, harness.rng.gen());
+    let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
+    let mut exec_results = HashMap::new();
+    exec_results.insert(deploy_hash, exec_result.clone());
 
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result.clone());
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_results.clone());
+    {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let retrieved_results = storage
+            .get_execution_results(&mut txn, &block_hash)
+            .expect("should execute get")
+            .expect("should return Some");
+        assert_eq!(retrieved_results.len(), 1);
+        assert_eq!(retrieved_results[0].0, deploy_hash);
+        assert_eq!(retrieved_results[0].1, exec_result);
+    }
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert_eq!(retrieved_transfers.len(), 1);
+    assert_eq!(retrieved_transfers[0], transfer);
 
     // We should be fine storing the exact same result twice.
-    put_execution_results(&mut harness, &mut storage, block_hash, exec_result);
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_results);
+    {
+        let mut txn = storage.env.begin_ro_txn().unwrap();
+        let retrieved_results = storage
+            .get_execution_results(&mut txn, &block_hash)
+            .expect("should execute get")
+            .expect("should return Some");
+        assert_eq!(retrieved_results.len(), 1);
+        assert_eq!(retrieved_results[0].0, deploy_hash);
+        assert_eq!(retrieved_results[0].1, exec_result);
+    }
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert_eq!(retrieved_transfers.len(), 1);
+    assert_eq!(retrieved_transfers[0], transfer);
+}
+
+/// This is a regression test for the issue where `Transfer`s under a block with no deploys could be
+/// returned as `None` rather than the expected `Some(vec![])`.  The fix should ensure that if no
+/// Transfers are found, storage will respond with an empty collection and store the correct value
+/// for future requests.
+///
+/// See https://github.com/casper-network/casper-node/issues/4255 for further info.
+#[test]
+fn should_provide_transfers_if_not_stored() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let block = TestBlockBuilder::new()
+        .deploys(None)
+        .build(&mut harness.rng);
+    assert_eq!(block.body().deploy_and_transfer_hashes().count(), 0);
+    storage.write_block(&block).unwrap();
+    let block_hash = *block.hash();
+
+    // Check an empty collection is returned.
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert!(retrieved_transfers.is_empty());
+
+    // Check the empty collection has been stored.
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    let maybe_transfers = txn
+        .get_value::<_, Vec<Transfer>>(storage.transfer_db, &block_hash)
+        .unwrap();
+    assert_eq!(Some(vec![]), maybe_transfers);
+}
+
+/// This is a regression test for the issue where a valid collection of `Transfer`s under a given
+/// block could be erroneously replaced with an empty collection.  The fix should ensure that if an
+/// empty collection of Transfers is found, storage will replace it with the correct collection and
+/// store the correct value for future requests.
+///
+/// See https://github.com/casper-network/casper-node/issues/4268 for further info.
+#[test]
+fn should_provide_transfers_after_emptied() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let deploy = Deploy::random_valid_native_transfer(&mut harness.rng);
+    let deploy_hash = *deploy.hash();
+    let block = Block::random_with_deploys(&mut harness.rng, Some(&deploy));
+    storage.write_block(&block).unwrap();
+    let block_hash = *block.hash();
+
+    let (exec_result, transfer) = prepare_exec_result_with_transfer(&mut harness.rng, &deploy_hash);
+    let mut exec_results = HashMap::new();
+    exec_results.insert(deploy_hash, exec_result);
+
+    put_execution_results(&mut harness, &mut storage, block_hash, exec_results.clone());
+    // Replace the valid collection with an empty one.
+    {
+        let mut txn = storage.env.begin_rw_txn().unwrap();
+        txn.put_value(
+            storage.transfer_db,
+            &block_hash,
+            &Vec::<Transfer>::new(),
+            true,
+        )
+        .unwrap();
+        txn.commit().unwrap();
+    }
+
+    // Check the correct value is returned.
+    let retrieved_transfers = storage
+        .get_transfers(&block_hash)
+        .expect("should execute get")
+        .expect("should return Some");
+    assert_eq!(retrieved_transfers.len(), 1);
+    assert_eq!(retrieved_transfers[0], transfer);
+
+    // Check the correct value has been stored.
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    let maybe_transfers = txn
+        .get_value::<_, Vec<Transfer>>(storage.transfer_db, &block_hash)
+        .unwrap();
+    assert_eq!(Some(vec![transfer]), maybe_transfers);
 }
 
 /// Example state used in storage.

@@ -11,6 +11,14 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## 1.5.2-alt
+
+### Fixed
+* Fix issue in `chain_get_block_transfers` JSON-RPC where blocks with no deploys could be reported as having `null` transfers rather than `[]`.
+* Fix issue in `chain_get_block_transfers` JSON-RPC where blocks containing successful transfers could erroneously be reported as having none.
+
+
+
 ## 1.5.2
 
 ### Added
