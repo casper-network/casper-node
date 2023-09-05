@@ -42,7 +42,7 @@ mod tests;
 use std::collections::BTreeSet;
 use std::{
     borrow::Cow,
-    collections::{btree_map::Entry, BTreeMap, HashMap, HashSet},
+    collections::{btree_map, hash_map, BTreeMap, HashMap, HashSet},
     convert::{TryFrom, TryInto},
     fmt::{self, Display, Formatter},
     fs::{self, OpenOptions},
@@ -71,7 +71,7 @@ use tracing::{debug, error, info, trace, warn};
 use casper_hashing::Digest;
 use casper_types::{
     bytesrepr::{FromBytes, ToBytes},
-    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, Transform,
+    EraId, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer,
 };
 
 use crate::{
@@ -853,10 +853,8 @@ impl Storage {
                 block_hash,
                 responder,
             } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                responder
-                    .respond(self.get_transfers(&mut txn, &block_hash)?)
-                    .ignore()
+                let maybe_transfers = self.get_transfers(&block_hash)?;
+                responder.respond(maybe_transfers).ignore()
             }
             StorageRequest::PutDeploy { deploy, responder } => {
                 responder.respond(self.put_deploy(&deploy)?).ignore()
@@ -1466,37 +1464,25 @@ impl Storage {
     ) -> Result<bool, FatalStorageError> {
         let mut transfers: Vec<Transfer> = vec![];
         for (deploy_hash, execution_result) in execution_results {
+            transfers.extend(execution_result.successful_transfers());
+
             let mut metadata = self
                 .get_deploy_metadata(txn, &deploy_hash)?
                 .unwrap_or_default();
 
             // If we have a previous execution result, we can continue if it is the same.
-            if let Some(prev) = metadata.execution_results.get(block_hash) {
-                if prev == &execution_result {
-                    continue;
-                } else {
-                    debug!(%deploy_hash, %block_hash, "different execution result");
-                }
-            }
-
-            if let ExecutionResult::Success { effect, .. } = execution_result.clone() {
-                for transform_entry in effect.transforms {
-                    if let Transform::WriteTransfer(transfer) = transform_entry.transform {
-                        transfers.push(transfer);
+            match metadata.execution_results.entry(*block_hash) {
+                hash_map::Entry::Occupied(entry) => {
+                    if *entry.get() == execution_result {
+                        continue;
                     }
+                    *entry.into_mut() = execution_result;
+                }
+                hash_map::Entry::Vacant(vacant) => {
+                    vacant.insert(execution_result);
                 }
             }
 
-            // TODO: this is currently done like this because rpc get_deploy returns the
-            // data, but the organization of deploy, block_hash, and
-            // execution_result is incorrectly represented. it should be
-            // inverted; for a given block_hash 0n deploys and each deploy has exactly 1
-            // result (aka deploy_metadata in this context).
-
-            // Update metadata and write back to db.
-            metadata
-                .execution_results
-                .insert(*block_hash, execution_result);
             let was_written =
                 txn.put_value(self.deploy_metadata_db, &deploy_hash, &metadata, true)?;
             if !was_written {
@@ -2175,16 +2161,40 @@ impl Storage {
         Ok(txn.get_value(self.deploy_metadata_db, deploy_hash)?)
     }
 
-    /// Retrieves transfers associated with block.
+    /// Retrieves successful transfers associated with block.
     ///
-    /// If no transfers are stored for the block, an empty transfers instance will be
-    /// created, but not stored.
-    fn get_transfers<Tx: Transaction>(
+    /// If there is no record of successful transfers for this block, then the list will be built
+    /// from the execution results and stored to `transfer_db`.  The record could have been missing
+    /// or incorrectly set to an empty collection due to previous synchronization and storage
+    /// issues.  See https://github.com/casper-network/casper-node/issues/4255 and
+    /// https://github.com/casper-network/casper-node/issues/4268 for further info.
+    fn get_transfers(
         &self,
-        txn: &mut Tx,
         block_hash: &BlockHash,
     ) -> Result<Option<Vec<Transfer>>, FatalStorageError> {
-        Ok(txn.get_value(self.transfer_db, block_hash)?)
+        let mut txn = self.env.begin_rw_txn()?;
+        if let Some(transfers) = txn.get_value::<_, Vec<Transfer>>(self.transfer_db, block_hash)? {
+            if !transfers.is_empty() {
+                return Ok(Some(transfers));
+            }
+        }
+
+        let block = match self.get_single_block(&mut txn, block_hash)? {
+            Some(block) => block,
+            None => return Ok(None),
+        };
+
+        let mut transfers: Vec<Transfer> = vec![];
+        for deploy_hash in block.deploy_and_transfer_hashes() {
+            let metadata = self
+                .get_deploy_metadata(&mut txn, deploy_hash)?
+                .unwrap_or_default();
+
+            transfers.extend(metadata.successful_transfers(block_hash));
+        }
+        txn.put_value(self.transfer_db, block_hash, &transfers, true)?;
+        txn.commit()?;
+        Ok(Some(transfers))
     }
 
     /// Retrieves block signatures for a block with a given block hash.
@@ -2614,10 +2624,10 @@ fn insert_to_block_header_indices(
 
     if block_header.is_switch_block() {
         match switch_block_era_id_index.entry(block_header.era_id()) {
-            Entry::Vacant(entry) => {
+            btree_map::Entry::Vacant(entry) => {
                 let _ = entry.insert(block_hash);
             }
-            Entry::Occupied(entry) => {
+            btree_map::Entry::Occupied(entry) => {
                 if *entry.get() != block_hash {
                     return Err(FatalStorageError::DuplicateEraIdIndex {
                         era_id: block_header.era_id(),
