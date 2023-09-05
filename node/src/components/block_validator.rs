@@ -473,15 +473,10 @@ impl BlockValidator {
             })
             .collect();
 
-        let block_hashes: BTreeMap<_, _> = past_blocks_with_metadata
-            .iter()
+        let blocks_by_height: BTreeMap<_, _> = past_blocks_with_metadata
+            .into_iter()
             .flatten()
-            .map(|metadata| {
-                (
-                    metadata.block.header().height(),
-                    metadata.block.header().block_hash(),
-                )
-            })
+            .map(|metadata| (metadata.block.header().height(), metadata))
             .collect();
 
         let era_ids: BTreeSet<_> = era_ids_vec.iter().copied().collect();
@@ -496,8 +491,9 @@ impl BlockValidator {
             })
             .collect();
 
-        // This will be a vector of signature IDs of the signatures included in the block.
-        let included_sigs: HashSet<_> = rewarded_signatures
+        // This will be a vector of signature IDs of the signatures included in the block, but not
+        // found in metadata in storage.
+        let missing_sigs: HashSet<_> = rewarded_signatures
             .iter()
             .zip(era_ids_vec)
             .enumerate()
@@ -510,23 +506,30 @@ impl BlockValidator {
                 let public_keys = single_block_rewarded_sigs
                     .clone()
                     .into_validator_set(all_validators.iter().cloned());
-                let block_hashes = &block_hashes; // hack for `move` below to work
+                let block_with_metadata = blocks_by_height.get(&block_height).unwrap();
+                let block_hash = *block_with_metadata.block.hash();
                 public_keys
                     .into_iter()
+                    .filter(move |public_key| {
+                        !block_with_metadata
+                            .block_signatures
+                            .proofs
+                            .contains_key(public_key)
+                    })
                     .map(move |public_key| FinalitySignatureId {
-                        block_hash: *block_hashes.get(&block_height).unwrap(),
+                        block_hash,
                         era_id,
                         public_key,
                     })
             })
             .collect();
         trace!(
-            ?included_sigs,
+            ?missing_sigs,
             "handle_got_past_blocks_with_metadata included_sigs"
         );
 
         let mut in_flight = KeyedCounter::default();
-        let effects = included_sigs
+        let effects = missing_sigs
             .iter()
             .flat_map(|sig_id| {
                 // For every request, increase the number of in-flight...
@@ -543,7 +546,7 @@ impl BlockValidator {
 
         block_validation_state
             .signatures_validation_state
-            .require_signatures(included_sigs, in_flight);
+            .require_signatures(missing_sigs, in_flight);
 
         effects
     }
