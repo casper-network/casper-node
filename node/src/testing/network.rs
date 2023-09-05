@@ -11,7 +11,7 @@ use std::{
 use fake_instant::FakeClock as Instant;
 use futures::future::{BoxFuture, FutureExt};
 use serde::Serialize;
-use tokio::time;
+use tokio::time::{self, error::Elapsed};
 use tracing::{debug, error_span};
 use tracing_futures::Instrument;
 
@@ -336,6 +336,19 @@ where
         time::timeout(within, self.settle_on_indefinitely(rng, condition))
             .await
             .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
+    }
+
+    /// Non-panicking version of `settle_on`.
+    pub(crate) async fn try_settle_on<F>(
+        &mut self,
+        rng: &mut TestRng,
+        condition: F,
+        within: Duration,
+    ) -> Result<(), Elapsed>
+    where
+        F: Fn(&Nodes<R>) -> bool,
+    {
+        time::timeout(within, self.settle_on_indefinitely(rng, condition)).await
     }
 
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)

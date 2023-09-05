@@ -38,7 +38,7 @@ const LOG_FIELD_LINE: &str = "log.line";
 static RELOAD_HANDLE: OnceCell<ReloadHandle> = OnceCell::new();
 
 /// Logging configuration.
-#[derive(DataSize, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, DataSize, Debug, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct LoggingConfig {
     /// Output format for log.
@@ -72,7 +72,7 @@ impl LoggingConfig {
 /// Logging output format.
 ///
 /// Defaults to "text"".
-#[derive(DataSize, Debug, Deserialize, Serialize)]
+#[derive(Clone, DataSize, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LoggingFormat {
     /// Text format.

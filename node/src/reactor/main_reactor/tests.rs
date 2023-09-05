@@ -1,11 +1,11 @@
-use std::{collections::BTreeMap, iter, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, iter, net::SocketAddr, str::FromStr, sync::Arc, time::Duration};
 
 use either::Either;
 use num::Zero;
 use num_rational::Ratio;
 use rand::Rng;
 use tempfile::TempDir;
-use tokio::time;
+use tokio::time::{self, error::Elapsed};
 use tracing::{error, info};
 
 use casper_execution_engine::core::engine_state::GetBidsRequest;
@@ -214,6 +214,212 @@ impl TestChain {
         }
 
         Ok(network)
+    }
+}
+
+enum InitialStakes<T: Into<U512>> {
+    FromVec(Vec<T>),
+    Random { count: usize },
+    AllEqual { count: usize, stake: T },
+}
+
+struct NodeContext {
+    id: NodeId,
+    secret_key: Arc<SecretKey>,
+    config: Config,
+    storage_dir: TempDir,
+}
+
+struct TestFixture {
+    node_contexts: Vec<NodeContext>,
+    network: TestingNetwork<FilterReactor<MainReactor>>,
+    chainspec: Arc<Chainspec>,
+    chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+}
+
+impl TestFixture {
+    /// Instantiates a new test chain configuration.
+    ///
+    /// Generates secret keys for `size` validators and creates a matching chainspec.
+    async fn new<T: Into<U512>>(rng: &mut TestRng, initial_stakes: InitialStakes<T>) -> Self {
+        let stake_values = match initial_stakes {
+            InitialStakes::FromVec(stakes) => {
+                stakes.into_iter().map(|stake| stake.into()).collect()
+            }
+            InitialStakes::Random { count } => {
+                // By default we use very large stakes so we would catch overflow issues.
+                iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
+                    .take(count)
+                    .collect()
+            }
+            InitialStakes::AllEqual { count, stake } => {
+                vec![stake.into(); count]
+            }
+        };
+
+        let secret_keys: Vec<Arc<SecretKey>> = (0..stake_values.len())
+            .map(|_| Arc::new(SecretKey::random(rng)))
+            .collect();
+
+        let stakes = secret_keys
+            .iter()
+            .zip(stake_values)
+            .map(|(secret_key, stake)| (PublicKey::from(secret_key.as_ref()), stake))
+            .collect();
+        Self::new_with_keys(rng, secret_keys, stakes).await
+    }
+
+    async fn new_with_keys(
+        rng: &mut TestRng,
+        secret_keys: Vec<Arc<SecretKey>>,
+        stakes: BTreeMap<PublicKey, U512>,
+    ) -> Self {
+        // Load the `local` chainspec.
+        let (mut chainspec, chainspec_raw_bytes) =
+            <(Chainspec, ChainspecRawBytes)>::from_resources("local");
+
+        // Override accounts with those generated from the keys.
+        let accounts = stakes
+            .into_iter()
+            .map(|(public_key, bonded_amount)| {
+                let validator_config =
+                    ValidatorConfig::new(Motes::new(bonded_amount), DelegationRate::zero());
+                AccountConfig::new(
+                    public_key,
+                    Motes::new(U512::from(rng.gen_range(10000..99999999))),
+                    Some(validator_config),
+                )
+            })
+            .collect();
+        let delegators = vec![];
+        let administrators = vec![];
+        chainspec.network_config.accounts_config =
+            AccountsConfig::new(accounts, delegators, administrators);
+
+        // Allow 2 seconds startup time per validator.
+        let genesis_time = Timestamp::now() + TimeDiff::from_seconds(secret_keys.len() as u32 * 2);
+        info!(
+            "creating test chain configuration, genesis: {}",
+            genesis_time
+        );
+        chainspec.protocol_config.activation_point = ActivationPoint::Genesis(genesis_time);
+        chainspec.core_config.minimum_era_height = 2;
+        chainspec.core_config.finality_threshold_fraction = Ratio::new(34, 100);
+        chainspec.core_config.era_duration = TimeDiff::from_millis(0);
+        chainspec.core_config.auction_delay = 1;
+        chainspec.core_config.unbonding_delay = 3;
+        chainspec.core_config.minimum_block_time = "1second".parse().unwrap();
+        chainspec.core_config.validator_slots = 100;
+
+        let mut fixture = TestFixture {
+            node_contexts: vec![],
+            network: TestingNetwork::new(),
+            chainspec: Arc::new(chainspec),
+            chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
+        };
+
+        for (idx, secret_key) in secret_keys.into_iter().enumerate() {
+            info!("creating node {}", idx);
+            let (config, storage_dir) = fixture.create_node_config(secret_key.as_ref());
+            fixture.add_node(rng, secret_key, config, storage_dir).await;
+        }
+
+        fixture
+    }
+
+    /// Creates a validator configuration for the `idx`th validator.
+    fn create_node_config(&mut self, secret_key: &SecretKey) -> (Config, TempDir) {
+        // Set the network configuration.
+        let network_cfg = match self.node_contexts.first() {
+            Some(first_node) => {
+                let known_address =
+                    SocketAddr::from_str(&first_node.config.network.bind_address).unwrap();
+                network::Config::default_local_net(known_address.port())
+            }
+            None => {
+                let port = testing::unused_port_on_localhost();
+                network::Config::default_local_net_first_node(port)
+            }
+        };
+        let mut cfg = Config {
+            network: network_cfg,
+            gossip: gossiper::Config::new_with_small_timeouts(),
+            ..Default::default()
+        };
+
+        // Additionally set up storage in a temporary directory.
+        let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+        // ...and the secret key for our validator.
+        {
+            let secret_key_path = temp_dir.path().join("secret_key");
+            secret_key
+                .to_file(secret_key_path.clone())
+                .expect("could not write secret key");
+            cfg.consensus.secret_key_path = External::Path(secret_key_path);
+        }
+        cfg.storage = storage_cfg;
+        (cfg, temp_dir)
+    }
+
+    async fn add_node(
+        &mut self,
+        rng: &mut NodeRng,
+        secret_key: Arc<SecretKey>,
+        config: Config,
+        storage_dir: TempDir,
+    ) {
+        let (id, _) = self
+            .network
+            .add_node_with_config_and_chainspec(
+                WithDir::new(RESOURCES_PATH.join("local"), config.clone()),
+                Arc::clone(&self.chainspec),
+                Arc::clone(&self.chainspec_raw_bytes),
+                rng,
+            )
+            .await
+            .expect("could not add node to reactor");
+        let node_context = NodeContext {
+            id,
+            secret_key,
+            config,
+            storage_dir,
+        };
+        self.node_contexts.push(node_context)
+    }
+
+    fn remove_and_stop_node(&mut self, index: usize) -> NodeContext {
+        let node_context = self.node_contexts.remove(index);
+        let runner = self.network.remove_node(&node_context.id).unwrap();
+        runner.is_shutting_down.set();
+        node_context
+    }
+
+    /// Crank the network until all nodes reach the given completed block height.
+    async fn crank_until_block_height(
+        &mut self,
+        rng: &mut TestRng,
+        block_height: u64,
+        within: Duration,
+    ) -> Result<(), Elapsed> {
+        self.network
+            .try_settle_on(
+                rng,
+                move |nodes: &Nodes| {
+                    nodes.values().all(|runner| {
+                        match runner
+                            .main_reactor()
+                            .storage()
+                            .read_highest_complete_block()
+                            .expect("should not error reading db")
+                        {
+                            Some(highest) => highest.height() >= block_height,
+                            None => false,
+                        }
+                    })
+                },
+                within,
+            )
+            .await
     }
 }
 
@@ -1188,4 +1394,54 @@ async fn empty_block_validation_regression() {
         [inactive_validator] if malicious_validator == *inactive_validator => {}
         inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
+}
+
+#[tokio::test]
+async fn network_should_recover_from_stall() {
+    testing::init_logging();
+    let rng = &mut crate::new_rng();
+
+    // Set up a network with three nodes.
+    let initial_stakes = InitialStakes::AllEqual {
+        count: 3,
+        stake: 100_u64,
+    };
+    let mut fixture = TestFixture::new(rng, initial_stakes).await;
+
+    // Let all nodes progress until block 2 is marked complete.
+    fixture
+        .crank_until_block_height(rng, 2, Duration::from_secs(60))
+        .await
+        .expect("should not time out");
+
+    // Kill all nodes except for node 0.
+    let mut stopped_nodes = vec![];
+    for _ in 1..fixture.node_contexts.len() {
+        let node_context = fixture.remove_and_stop_node(1);
+        stopped_nodes.push(node_context);
+    }
+
+    // Expect node 0 can't produce more blocks, i.e. the network has stalled.
+    fixture
+        .crank_until_block_height(rng, 3, Duration::from_secs(10))
+        .await
+        .expect_err("should time out");
+
+    // Restart the stopped nodes.
+    for node_context in stopped_nodes {
+        fixture
+            .add_node(
+                rng,
+                node_context.secret_key,
+                node_context.config,
+                node_context.storage_dir,
+            )
+            .await;
+    }
+
+    // Ensure all nodes progress until block 3 is marked complete.
+    fixture
+        .crank_until_block_height(rng, 3, Duration::from_secs(10))
+        .await
+        .expect("should not time out");
 }
