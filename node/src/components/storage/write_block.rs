@@ -2,9 +2,7 @@ use std::{collections::HashMap, rc::Rc};
 
 use lmdb::{Database, RwTransaction, Transaction};
 
-use casper_types::{
-    execution::ExecutionResult, Block, BlockBody, BlockBodyV1, BlockV2, DeployHash, Digest,
-};
+use casper_types::{execution::ExecutionResult, Block, BlockBody, BlockBodyV1, DeployHash, Digest};
 use tracing::error;
 
 use crate::types::ApprovalsHashes;
@@ -15,39 +13,6 @@ use super::{
 };
 
 impl Storage {
-    /// Verifies a block and writes it to a block to storage, updating indices as necessary.
-    ///
-    /// Returns `Ok(true)` if the block has been successfully written, `Ok(false)` if a part of it
-    /// couldn't be written because it already existed, and `Err(_)` if there was an error.
-    #[cfg_attr(doc, aquamarine::aquamarine)]
-    /// ```mermaid
-    /// flowchart TD
-    ///     style Start fill:#66ccff,stroke:#333,stroke-width:4px
-    ///     style End fill:#66ccff,stroke:#333,stroke-width:4px
-    ///     style B fill:#00FF00,stroke:#333,stroke-width:4px
-    ///     
-    ///     Start --> A[Block needs to be stored]
-    ///     A --> put_block_to_storage
-    ///     put_block_to_storage --> StorageRequest::PutBlock
-    ///     StorageRequest::PutBlock --> B["write_block<br>(current version)"]
-    ///     B --> write_validated_block
-    ///     write_validated_block --> C[convert into BlockBody]
-    ///     C --> put_single_block_body
-    ///     put_single_block_body --> write_block_header
-    ///     write_block_header --> D[update indices]
-    ///     D --> End
-    /// ```
-    pub fn write_block_v2(&mut self, block: &BlockV2) -> Result<bool, FatalStorageError> {
-        block.verify()?;
-        let env = Rc::clone(&self.env);
-        let mut txn = env.begin_rw_txn()?;
-        let wrote = self.write_validated_block_v2(&mut txn, block)?;
-        if wrote {
-            txn.commit()?;
-        }
-        Ok(wrote)
-    }
-
     /// Verifies a block and writes it to a block to storage, updating indices as
     /// necessary. This function should only be used by components that deal with historical blocks,
     /// for example: `Fetcher`.
@@ -107,55 +72,6 @@ impl Storage {
     ///     write_block_header --> D[update indices]
     ///     D --> End
     /// ```
-    fn write_validated_block_v2(
-        &mut self,
-        txn: &mut RwTransaction,
-        block: &BlockV2,
-    ) -> Result<bool, FatalStorageError> {
-        {
-            let block_body_hash = block.body_hash();
-            let block_body_v2 = block.body();
-            let block_body: BlockBody = block_body_v2.into();
-            if !Self::put_single_block_body(
-                txn,
-                block_body_hash,
-                &block_body,
-                self.block_body_dbs.current,
-            )? {
-                error!("could not insert body for: {}", block);
-                return Ok(false);
-            }
-        }
-
-        let overwrite = true;
-
-        if !txn.put_value(
-            self.block_header_db,
-            block.hash(),
-            block.header(),
-            overwrite,
-        )? {
-            error!("could not insert block header for block: {}", block);
-            return Ok(false);
-        }
-
-        {
-            Self::insert_to_block_header_indices(
-                &mut self.block_height_index,
-                &mut self.switch_block_era_id_index,
-                block.header(),
-            )?;
-            Self::insert_block_body_v2_to_deploy_index(
-                &mut self.deploy_hash_index,
-                *block.hash(),
-                block.body(),
-                block.height(),
-            )?;
-        }
-        Ok(true)
-    }
-
-    // TODO[RC]: Dedup with the above, generic?
     fn write_validated_block(
         &mut self,
         txn: &mut RwTransaction,
@@ -209,7 +125,7 @@ impl Storage {
                 &mut self.switch_block_era_id_index,
                 block.header(),
             )?;
-            Self::insert_block_body_to_deploy_index(
+            Self::insert_to_deploy_index(
                 &mut self.deploy_hash_index,
                 *block.hash(),
                 block.height(),
@@ -244,13 +160,13 @@ impl Storage {
 
     pub(crate) fn put_executed_block(
         &mut self,
-        block: &BlockV2,
+        block: &Block,
         approvals_hashes: &ApprovalsHashes,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
         let env = Rc::clone(&self.env);
         let mut txn = env.begin_rw_txn()?;
-        let wrote = self.write_validated_block_v2(&mut txn, block)?;
+        let wrote = self.write_validated_block(&mut txn, block)?;
         if !wrote {
             return Err(FatalStorageError::FailedToOverwriteBlock);
         }

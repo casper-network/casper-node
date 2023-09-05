@@ -76,10 +76,10 @@ use casper_types::{
     execution::{
         execution_result_v1, ExecutionResult, ExecutionResultV1, ExecutionResultV2, TransformKind,
     },
-    ApprovalsHash, Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight,
-    BlockHeader, BlockSignatures, BlockV2, Deploy, DeployHash, DeployHeader, DeployId, Digest,
-    EraId, FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader, StoredValue,
-    Timestamp, Transfer,
+    ApprovalsHash, Block, BlockBody, BlockBodyV1, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockV2, Deploy, DeployHash, DeployHeader, DeployId, Digest, EraId,
+    FinalitySignature, ProtocolVersion, PublicKey, SignedBlockHeader, StoredValue, Timestamp,
+    Transfer,
 };
 
 use crate::{
@@ -494,7 +494,7 @@ impl Storage {
             )?;
 
             if let Some(block_body) = maybe_block_body? {
-                Self::insert_block_body_to_deploy_index(
+                Self::insert_to_deploy_index(
                     &mut deploy_hash_index,
                     block_header.block_hash(),
                     block_header.height(),
@@ -834,9 +834,6 @@ impl Storage {
         // The rationale is that long IO operations are very rare and cache misses frequent, so on
         // average the actual execution time will be very low.
         Ok(match req {
-            StorageRequest::PutBlockV2 { block, responder } => {
-                responder.respond(self.write_block_v2(&block)?).ignore()
-            }
             StorageRequest::PutBlock { block, responder } => {
                 responder.respond(self.write_block(&block)?).ignore()
             }
@@ -850,10 +847,6 @@ impl Storage {
                 txn.commit()?;
                 responder.respond(result).ignore()
             }
-            StorageRequest::GetBlockV2 {
-                block_hash,
-                responder,
-            } => responder.respond(self.read_block_v2(&block_hash)?).ignore(),
             StorageRequest::GetBlock {
                 block_hash,
                 responder,
@@ -1242,9 +1235,16 @@ impl Storage {
                 approvals_hashes,
                 execution_results,
                 responder,
-            } => responder
-                .respond(self.put_executed_block(&block, &approvals_hashes, execution_results)?)
-                .ignore(),
+            } => {
+                let block: Block = (*block).clone().into();
+                responder
+                    .respond(self.put_executed_block(
+                        &block,
+                        &approvals_hashes,
+                        execution_results,
+                    )?)
+                    .ignore()
+            }
             StorageRequest::GetKeyBlockHeightForActivationPoint { responder } => {
                 // If we haven't already cached the height, try to retrieve the key block header.
                 if self.key_block_height_for_activation_point.is_none() {
@@ -1323,14 +1323,6 @@ impl Storage {
     /// Retrieves a block by hash.
     pub fn read_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, FatalStorageError> {
         self.get_single_block(&mut self.env.begin_ro_txn()?, block_hash)
-    }
-
-    /// Retrieves a block v2 by hash.
-    pub fn read_block_v2(
-        &self,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockV2>, FatalStorageError> {
-        self.get_single_block_v2(&mut self.env.begin_ro_txn()?, block_hash)
     }
 
     /// Returns `true` if the given block's header and body are stored.
@@ -1483,7 +1475,7 @@ impl Storage {
         block_height: u64,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> Result<bool, FatalStorageError> {
-        Self::insert_block_body_to_deploy_index(
+        Self::insert_to_deploy_index(
             &mut self.deploy_hash_index,
             *block_hash,
             block_height,
@@ -1727,17 +1719,25 @@ impl Storage {
         block_hash: BlockHash,
     ) -> Result<Option<(BlockV2, Vec<Deploy>)>, FatalStorageError> {
         let mut txn = self.env.begin_ro_txn()?;
-        let block = match self.get_single_block_v2(&mut txn, &block_hash)? {
-            Some(block) => block,
-            None => {
-                debug!(
-                    ?block_hash,
-                    "Storage: read_block_and_finalized_deploys_by_hash failed to get block for {}",
-                    block_hash
-                );
-                return Ok(None);
-            }
+
+        let Some(block) = self.get_single_block(&mut txn, &block_hash)? else {
+            debug!(
+                ?block_hash,
+                "Storage: read_block_and_finalized_deploys_by_hash failed to get block for {}",
+                block_hash
+            );
+            return Ok(None);
         };
+
+        let Block::V2(block) = block else {
+            debug!(
+                ?block_hash,
+                "Storage: read_block_and_finalized_deploys_by_hash expected block V2 {}",
+                block_hash
+            );
+            return Ok(None);
+        };
+
         let deploy_hashes = block.deploy_and_transfer_hashes().copied().collect_vec();
         Ok(self
             .get_deploys_with_finalized_approvals(&mut txn, &deploy_hashes)?
@@ -2109,40 +2109,6 @@ impl Storage {
         Ok(maybe_block_header)
     }
 
-    /// Retrieves a single block v2 from storage.
-    fn get_single_block_v2(
-        &self,
-        txn: &mut RoTransaction,
-        block_hash: &BlockHash,
-    ) -> Result<Option<BlockV2>, FatalStorageError> {
-        let block_header: BlockHeader = match self.get_single_block_header(txn, block_hash)? {
-            Some(block_header) => block_header,
-            None => {
-                debug!(
-                    ?block_hash,
-                    "get_single_block_v2: missing block header for {}", block_hash
-                );
-                return Ok(None);
-            }
-        };
-
-        let maybe_block_body =
-            get_body_v2_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
-        let block_body = match maybe_block_body? {
-            Some(block_body) => block_body,
-            None => {
-                debug!(
-                    ?block_header,
-                    "get_single_block_v2: missing block body for {}",
-                    block_header.block_hash()
-                );
-                return Ok(None);
-            }
-        };
-        let block = BlockV2::new_from_header_and_body(block_header, block_body);
-        Ok(Some(block))
-    }
-
     /// Retrieves a single block from storage.
     fn get_single_block<Tx: Transaction>(
         &self,
@@ -2504,10 +2470,18 @@ impl Storage {
                             .env
                             .begin_ro_txn()
                             .expect("Could not start transaction for lmdb");
-                        if let Ok(Some(block)) = self.get_single_block_v2(&mut txn, &block_hash) {
-                            HighestOrphanedBlockResult::Orphan(block.header().clone())
-                        } else {
-                            HighestOrphanedBlockResult::MissingHeader(block_hash)
+                        match self.get_single_block(&mut txn, &block_hash) {
+                            Ok(Some(block)) => match block {
+                                Block::V1(_) => {
+                                    HighestOrphanedBlockResult::MissingHeader(block_hash)
+                                }
+                                Block::V2(_) => {
+                                    HighestOrphanedBlockResult::Orphan(block.header().clone())
+                                }
+                            },
+                            Ok(None) | Err(_) => {
+                                HighestOrphanedBlockResult::MissingHeader(block_hash)
+                            }
                         }
                     }
                 }
@@ -2525,16 +2499,22 @@ impl Storage {
             None => return Ok(None),
         };
         let maybe_block_body =
-            get_body_v2_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
-        let block_body = match maybe_block_body? {
-            Some(block_body) => block_body,
-            None => {
-                debug!(
-                    %block_hash,
-                    "retrieved block header but block body is absent"
-                );
-                return Ok(None);
-            }
+            get_body_for_block_header(txn, block_header.body_hash(), &self.block_body_dbs);
+
+        let Some(block_body) = maybe_block_body? else {
+            debug!(
+                %block_hash,
+                "retrieved block header but block body is absent"
+            );
+            return Ok(None);
+        };
+
+        let BlockBody::V2(block_body) = block_body else {
+            debug!(
+                %block_hash,
+                "retrieved block body but it is not V2"
+            );
+            return Ok(None);
         };
 
         let mut execution_results = vec![];
@@ -2894,22 +2874,6 @@ where
     txn.commit()?;
     info!("block body database initialized");
     Ok(())
-}
-
-/// Retrieves the block body v2 for the given block header.
-fn get_body_v2_for_block_header(
-    txn: &mut RoTransaction,
-    block_body_hash: &Digest,
-    block_body_dbs: &BlockBodyDatabases,
-) -> Result<Option<BlockBodyV2>, LmdbExtError> {
-    Ok(
-        get_body_for_block_header(txn, block_body_hash, block_body_dbs)?.and_then(
-            |body| match body {
-                BlockBody::V1(_) => None,
-                BlockBody::V2(inner) => Some(inner),
-            },
-        ),
-    )
 }
 
 /// Retrieves the block body for the given block header.

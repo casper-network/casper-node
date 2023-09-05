@@ -25,7 +25,7 @@ use casper_types::{
     account::{Account, ActionThresholds, AssociatedKeys, Weight},
     addressable_entity::NamedKeys,
     testing::TestRng,
-    BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, PublicKey, SecretKey,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Deploy, EraId, PublicKey, SecretKey,
     StoredValue, TestBlockBuilder, URef, U512,
 };
 
@@ -704,7 +704,8 @@ fn put_block_to_storage_and_mark_complete(
     |effect_builder: EffectBuilder<Event>| {
         async move {
             let block_height = block.height();
-            let result = effect_builder.put_block_v2_to_storage(block).await;
+            let block: Block = (*block).clone().into();
+            let result = effect_builder.put_block_to_storage(Arc::new(block)).await;
             effect_builder.mark_block_completed(block_height).await;
             result_sender
                 .send(result)

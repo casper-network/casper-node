@@ -1,6 +1,6 @@
 use std::collections::{btree_map::Entry, BTreeMap};
 
-use casper_types::{BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader, DeployHash, EraId};
+use casper_types::{BlockHash, BlockHashAndHeight, BlockHeader, DeployHash, EraId};
 
 use super::{FatalStorageError, Storage};
 
@@ -51,7 +51,7 @@ impl Storage {
     /// Inserts the relevant entries to the index.
     ///
     /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_block_body_to_deploy_index<'a>(
+    pub(crate) fn insert_to_deploy_index<'a>(
         deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
         block_hash: BlockHash,
         block_height: u64,
@@ -72,36 +72,6 @@ impl Storage {
         }
 
         for hash in deploy_hash_iter {
-            deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
-        }
-
-        Ok(())
-    }
-
-    /// Inserts the relevant entries to the index.
-    ///
-    /// If a duplicate entry is encountered, index is not updated and an error is returned.
-    pub(crate) fn insert_block_body_v2_to_deploy_index(
-        deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
-        block_hash: BlockHash,
-        block_body: &BlockBodyV2,
-        block_height: u64,
-    ) -> Result<(), FatalStorageError> {
-        if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
-            deploy_hash_index
-                .get(hash)
-                .map_or(false, |old_block_hash_and_height| {
-                    *old_block_hash_and_height.block_hash() != block_hash
-                })
-        }) {
-            return Err(FatalStorageError::DuplicateDeployIndex {
-                deploy_hash: *hash,
-                first: deploy_hash_index[hash],
-                second: BlockHashAndHeight::new(block_hash, block_height),
-            });
-        }
-
-        for hash in block_body.deploy_and_transfer_hashes() {
             deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
         }
 

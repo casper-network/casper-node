@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use casper_types::{BlockHash, BlockV2};
+use casper_types::{Block, BlockHash, BlockV2};
 
 use crate::{
     components::gossiper::{GossipItem, GossipTarget, Gossiper, ItemProvider, LargeGossipItem},
@@ -38,9 +38,13 @@ impl ItemProvider<BlockV2> for Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV
         item_id: BlockHash,
     ) -> Option<Box<BlockV2>> {
         // TODO: Make `get_block_from_storage` return a boxed block instead of boxing here.
-        effect_builder
-            .get_block_v2_from_storage(item_id)
-            .await
-            .map(Box::new)
+        if let Some(block) = effect_builder.get_block_from_storage(item_id).await {
+            match block {
+                Block::V1(_) => None,
+                Block::V2(block_v2) => Some(Box::new(block_v2)),
+            }
+        } else {
+            None
+        }
     }
 }

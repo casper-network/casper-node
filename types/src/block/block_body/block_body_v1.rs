@@ -30,7 +30,7 @@ pub struct BlockBodyV1 {
         all(any(feature = "once_cell", test), feature = "datasize"),
         data_size(skip)
     )]
-    #[cfg(any(feature = "once_cell", test))] // ?
+    #[cfg(any(feature = "once_cell", test))]
     pub(super) hash: OnceCell<Digest>,
 }
 

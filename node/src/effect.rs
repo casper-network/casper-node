@@ -1056,18 +1056,6 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Puts the given block into the linear block store.
-    pub(crate) async fn put_block_v2_to_storage(self, block: Arc<BlockV2>) -> bool
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::PutBlockV2 { block, responder },
-            QueueKind::ToStorage,
-        )
-        .await
-    }
-
-    /// Puts the given block into the linear block store.
     pub(crate) async fn put_block_to_storage(self, block: Arc<Block>) -> bool
     where
         REv: From<StorageRequest>,
@@ -1115,21 +1103,6 @@ impl<REv> EffectBuilder<REv> {
                 responder,
             },
             QueueKind::ToStorage,
-        )
-        .await
-    }
-
-    /// Gets the requested block v2 from the linear block store.
-    pub(crate) async fn get_block_v2_from_storage(self, block_hash: BlockHash) -> Option<BlockV2>
-    where
-        REv: From<StorageRequest>,
-    {
-        self.make_request(
-            |responder| StorageRequest::GetBlockV2 {
-                block_hash,
-                responder,
-            },
-            QueueKind::FromStorage,
         )
         .await
     }

@@ -1519,10 +1519,10 @@ async fn block_accumulator_reactor_flow() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block_v2(block_1.hash())
+            .read_block(block_1.hash())
             .unwrap()
             .unwrap();
-        assert_eq!(expected_block, block_1);
+        assert_eq!(expected_block, block_1.clone().into());
         let expected_block_signatures = runner
             .reactor()
             .storage
@@ -1571,10 +1571,10 @@ async fn block_accumulator_reactor_flow() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block_v2(block_2.hash())
+            .read_block(block_2.hash())
             .unwrap()
             .unwrap();
-        assert_eq!(expected_block, block_2);
+        assert_eq!(expected_block, block_2.clone().into());
         let expected_block_signatures = runner
             .reactor()
             .storage
@@ -1907,10 +1907,10 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
         let expected_block = runner
             .reactor()
             .storage
-            .read_block_v2(block_1.hash())
+            .read_block(block_1.hash())
             .unwrap()
             .unwrap();
-        assert_eq!(expected_block, block_1);
+        assert_eq!(expected_block, block_1.clone().into());
         let expected_block_signatures = runner
             .reactor()
             .storage
