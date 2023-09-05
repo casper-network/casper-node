@@ -277,7 +277,7 @@ pub fn add_and_remove_bids<T: StateReader>(
         validators_diff.removed.clone()
     };
 
-    for (pub_key, seigniorage_recipient) in new_snapshot.values().rev().next_back().unwrap() {
+    for (pub_key, seigniorage_recipient) in new_snapshot.values().next_back().unwrap() {
         create_or_update_bid(state, pub_key, seigniorage_recipient, slash);
     }
 
