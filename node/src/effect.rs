@@ -679,7 +679,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| NetworkRequest::SendMessage {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
-                respond_after_queueing: false,
+                respond_early: false,
                 auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
@@ -699,7 +699,7 @@ impl<REv> EffectBuilder<REv> {
             |responder| NetworkRequest::SendMessage {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
-                respond_after_queueing: true,
+                respond_early: true,
                 auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
             },
             QueueKind::Network,
@@ -809,15 +809,18 @@ impl<REv> EffectBuilder<REv> {
     /// Announces an incoming network message.
     pub(crate) async fn announce_incoming<P>(self, sender: NodeId, payload: P, ticket: Ticket)
     where
-        REv: FromIncoming<P> + Send,
-        P: 'static,
+        REv: FromIncoming<P> + From<NetworkRequest<P>> + Send,
+        P: 'static + Send,
     {
         // TODO: Remove demands entirely as they are no longer needed with tickets.
         let reactor_event =
             match <REv as FromIncoming<P>>::try_demand_from_incoming(self, sender, payload) {
                 Ok((rev, demand_has_been_satisfied)) => {
                     tokio::spawn(async move {
-                        demand_has_been_satisfied.await;
+                        if let Some(answer) = demand_has_been_satisfied.await {
+                            self.send_message(sender, answer).await;
+                        }
+
                         drop(ticket);
                     });
                     rev
@@ -826,7 +829,7 @@ impl<REv> EffectBuilder<REv> {
             };
 
         self.event_queue
-            .schedule(reactor_event, QueueKind::MessageIncoming)
+            .schedule::<REv>(reactor_event, QueueKind::MessageIncoming)
             .await
     }
 

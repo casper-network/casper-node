@@ -99,7 +99,7 @@ pub(crate) enum NetworkRequest<P> {
         payload: Box<P>,
         /// If `true`, the responder will be called early after the message has been queued, not
         /// waiting until it has passed to the kernel.
-        respond_after_queueing: bool,
+        respond_early: bool,
         /// Responder to be called when the message has been *buffered for sending*.
         #[serde(skip_serializing)]
         auto_closing_responder: AutoClosingResponder<()>,
@@ -143,12 +143,12 @@ impl<P> NetworkRequest<P> {
             NetworkRequest::SendMessage {
                 dest,
                 payload,
-                respond_after_queueing,
+                respond_early,
                 auto_closing_responder,
             } => NetworkRequest::SendMessage {
                 dest,
                 payload: Box::new(wrap_payload(*payload)),
-                respond_after_queueing,
+                respond_early,
                 auto_closing_responder,
             },
             NetworkRequest::ValidatorBroadcast {

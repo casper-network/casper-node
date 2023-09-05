@@ -519,6 +519,7 @@ impl Drop for RequestGuard {
 /// If dropped, [`IncomingRequest::cancel()`] is called automatically, which will cause a
 /// cancellation to be sent.
 #[derive(Debug)]
+#[must_use]
 pub struct IncomingRequest {
     /// Channel the request was sent on.
     channel: ChannelId,

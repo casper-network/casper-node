@@ -49,6 +49,7 @@ use crate::{
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
+    dead_metrics::DeadMetrics,
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
@@ -71,7 +72,7 @@ use crate::{
     },
     types::{
         Block, BlockHash, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature, MetaBlock,
-        MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        MetaBlockState, SyncHandling, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -173,6 +174,9 @@ pub(crate) struct MainReactor {
     memory_metrics: MemoryMetrics,
     #[data_size(skip)]
     event_queue_metrics: EventQueueMetrics,
+    #[data_size(skip)]
+    #[allow(dead_code)]
+    dead_metrics: DeadMetrics,
 
     //   ambient settings / data / load-bearing config
     validator_matrix: ValidatorMatrix,
@@ -191,7 +195,7 @@ pub(crate) struct MainReactor {
     shutdown_for_upgrade_timeout: TimeDiff,
     switched_to_shutdown_for_upgrade: Timestamp,
     upgrade_timeout: TimeDiff,
-    sync_to_genesis: bool,
+    sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
 }
 
@@ -1005,6 +1009,7 @@ impl reactor::Reactor for MainReactor {
         let metrics = Metrics::new(registry.clone());
         let memory_metrics = MemoryMetrics::new(registry.clone())?;
         let event_queue_metrics = EventQueueMetrics::new(registry.clone(), event_queue)?;
+        let dead_metrics = DeadMetrics::new(registry)?;
 
         let protocol_version = chainspec.protocol_config.version;
 
@@ -1191,6 +1196,7 @@ impl reactor::Reactor for MainReactor {
             metrics,
             memory_metrics,
             event_queue_metrics,
+            dead_metrics,
 
             state: ReactorState::Initialize {},
             attempts: 0,
@@ -1200,7 +1206,7 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            sync_to_genesis: config.node.sync_to_genesis,
+            sync_handling: config.node.sync_handling,
             signature_gossip_tracker: SignatureGossipTracker::new(),
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
@@ -1222,8 +1228,19 @@ impl reactor::Reactor for MainReactor {
     #[cfg(test)]
     fn get_component_state(&self, name: &str) -> Option<&ComponentState> {
         match name {
+            "diagnostics_port" => Some(
+                <DiagnosticsPort as InitializedComponent<MainEvent>>::state(&self.diagnostics_port),
+            ),
+            "event_stream_server" => Some(
+                <EventStreamServer as InitializedComponent<MainEvent>>::state(
+                    &self.event_stream_server,
+                ),
+            ),
             "rest_server" => Some(<RestServer as InitializedComponent<MainEvent>>::state(
                 &self.rest_server,
+            )),
+            "rpc_server" => Some(<RpcServer as InitializedComponent<MainEvent>>::state(
+                &self.rpc_server,
             )),
             _ => None,
         }

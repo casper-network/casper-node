@@ -26,6 +26,7 @@ pub mod cli;
 pub(crate) mod components;
 mod config_migration;
 mod data_migration;
+mod dead_metrics;
 pub(crate) mod effect;
 pub mod logging;
 pub(crate) mod protocol;

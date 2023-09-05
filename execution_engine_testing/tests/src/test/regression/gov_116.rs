@@ -5,17 +5,13 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+    DEFAULT_VALIDATOR_SLOTS, MINIMUM_ACCOUNT_CREATION_BALANCE,
 };
 use casper_execution_engine::core::engine_state::{
-    engine_config::{DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING},
-    genesis::GenesisValidator,
-    EngineConfig, ExecConfig, GenesisAccount, RunGenesisRequest, DEFAULT_MAX_QUERY_DEPTH,
-    DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
+    genesis::{ExecConfigBuilder, GenesisValidator},
+    EngineConfigBuilder, GenesisAccount, RunGenesisRequest,
 };
 use casper_types::{
     runtime_args,
@@ -253,41 +249,16 @@ fn should_retain_genesis_validator_slot_protection() {
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS;
 
     let mut builder = {
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_ASSOCIATED_KEYS,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            DEFAULT_STRICT_ARGUMENT_CHECKING,
-            CASPER_VESTING_SCHEDULE_PERIOD_MILLIS,
-            None,
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-        );
+        let engine_config = EngineConfigBuilder::default()
+            .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+            .build();
 
         let run_genesis_request = {
             let accounts = GENESIS_ACCOUNTS.clone();
-            let exec_config = {
-                let wasm_config = *DEFAULT_WASM_CONFIG;
-                let system_config = *DEFAULT_SYSTEM_CONFIG;
-                let validator_slots = DEFAULT_VALIDATOR_SLOTS;
-                let auction_delay = DEFAULT_AUCTION_DELAY;
-                let locked_funds_period_millis = CASPER_LOCKED_FUNDS_PERIOD_MILLIS;
-                let round_seigniorage_rate = DEFAULT_ROUND_SEIGNIORAGE_RATE;
-                let unbonding_delay = DEFAULT_UNBONDING_DELAY;
-                let genesis_timestamp_millis = DEFAULT_GENESIS_TIMESTAMP_MILLIS;
-                ExecConfig::new(
-                    accounts,
-                    wasm_config,
-                    system_config,
-                    validator_slots,
-                    auction_delay,
-                    locked_funds_period_millis,
-                    round_seigniorage_rate,
-                    unbonding_delay,
-                    genesis_timestamp_millis,
-                )
-            };
+            let exec_config = ExecConfigBuilder::default()
+                .with_accounts(accounts)
+                .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+                .build();
 
             RunGenesisRequest::new(
                 *DEFAULT_GENESIS_CONFIG_HASH,

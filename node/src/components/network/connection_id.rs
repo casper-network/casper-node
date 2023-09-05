@@ -84,7 +84,7 @@ impl TlsRandomData {
 
         ssl.client_random(&mut client_random);
 
-        if server_random == ZERO_RANDOMNESS {
+        if client_random == ZERO_RANDOMNESS {
             warn!("TLS client random is all zeros");
         }
 

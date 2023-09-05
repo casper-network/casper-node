@@ -218,7 +218,17 @@ where
             }
             ComponentState::Initializing => match event {
                 Event::Initialize => {
-                    let (effects, state) = self.bind(self.config.enable_server, effect_builder);
+                    let (effects, mut state) = self.bind(self.config.enable_server, effect_builder);
+
+                    if matches!(state, ComponentState::Initializing) {
+                        // Our current code does not support storing the bound port, so we skip the
+                        // second step and go straight to `Initialized`. If new tests are written
+                        // that rely on an initialized RPC server with a port being available, this
+                        // needs to be refactored. Compare with the REST server on how this could be
+                        // done.
+                        state = ComponentState::Initialized;
+                    }
+
                     <Self as InitializedComponent<MainEvent>>::set_state(self, state);
                     effects
                 }

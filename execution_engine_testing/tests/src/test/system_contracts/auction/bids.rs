@@ -5,10 +5,10 @@ use num_traits::{One, Zero};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
-    UpgradeRequestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
-    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG,
-    DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_MAX_ASSOCIATED_KEYS,
+    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_AUCTION_DELAY,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_EXEC_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_MAX_ASSOCIATED_KEYS,
     DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, DEFAULT_PROTOCOL_VERSION,
     DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
     DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG, MINIMUM_ACCOUNT_CREATION_BALANCE,
@@ -735,7 +735,9 @@ fn should_get_first_seigniorage_recipients() {
     let exec_config = ExecConfigBuilder::new()
         .with_accounts(accounts)
         .with_auction_delay(auction_delay)
+        .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
         .build();
+
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
@@ -743,7 +745,13 @@ fn should_get_first_seigniorage_recipients() {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let mut builder = InMemoryWasmTestBuilder::default();
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+        .build();
+
+    let global_state = InMemoryGlobalState::empty().expect("should create global state");
+
+    let mut builder = InMemoryWasmTestBuilder::new(global_state, custom_engine_config, None);
 
     builder.run_genesis(&run_genesis_request);
 
@@ -820,6 +828,8 @@ fn should_get_first_seigniorage_recipients() {
 #[ignore]
 #[test]
 fn should_release_founder_stake() {
+    const NEW_MINIMUM_DELEGATION_AMOUNT: u64 = 0;
+
     // ACCOUNT_1_BOND / 14 = 7_142
     const EXPECTED_WEEKLY_RELEASE: u64 = 7_142;
 
@@ -892,7 +902,30 @@ fn should_release_founder_stake() {
         tmp
     };
 
-    let mut builder = setup(accounts);
+    let run_genesis_request = {
+        let exec_config = ExecConfigBuilder::default()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+            .build();
+
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
+        )
+    };
+
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+        .build();
+
+    let global_state = InMemoryGlobalState::empty().expect("should create global state");
+
+    let mut builder = InMemoryWasmTestBuilder::new(global_state, custom_engine_config, None);
+
+    builder.run_genesis(&run_genesis_request);
 
     let fund_system_account = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -2423,7 +2456,29 @@ fn should_not_undelegate_vfta_holder_stake() {
         tmp
     };
 
-    let mut builder = setup(accounts);
+    let run_genesis_request = {
+        let exec_config = ExecConfigBuilder::default()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+            .build();
+
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
+        )
+    };
+
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+        .build();
+
+    let global_state = InMemoryGlobalState::empty().expect("should create global state");
+
+    let mut builder = InMemoryWasmTestBuilder::new(global_state, custom_engine_config, None);
+
+    builder.run_genesis(&run_genesis_request);
 
     let post_genesis_requests = {
         let fund_delegator_account = ExecuteRequestBuilder::standard(
@@ -2491,7 +2546,11 @@ fn should_not_undelegate_vfta_holder_stake() {
         let vesting_schedule = delegator
             .vesting_schedule()
             .expect("should have vesting schedule");
-        assert!(matches!(vesting_schedule.locked_amounts(), Some(_)));
+        assert!(
+            matches!(vesting_schedule.locked_amounts(), Some(_)),
+            "{:?}",
+            vesting_schedule
+        );
     }
 
     builder.exec(partial_unbond).commit();
@@ -2537,9 +2596,9 @@ fn should_release_vfta_holder_stake() {
             *DELEGATOR_1_ADDR,
             CONTRACT_UNDELEGATE,
             runtime_args! {
-                auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
-                auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
-                ARG_AMOUNT => U512::from(amount),
+                    auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
+                    auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
+                    ARG_AMOUNT => U512::from(amount),
             },
         )
         .build();
@@ -2604,10 +2663,23 @@ fn should_release_vfta_holder_stake() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let run_genesis_request = {
+        let exec_config = ExecConfigBuilder::default()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+            .build();
+
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
+        )
+    };
 
     let custom_engine_config = EngineConfigBuilder::default()
         .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
         .build();
 
     let global_state = InMemoryGlobalState::empty().expect("should create global state");

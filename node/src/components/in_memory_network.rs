@@ -537,7 +537,7 @@ where
             NetworkRequest::SendMessage {
                 dest,
                 payload,
-                respond_after_queueing: _,
+                respond_early: _,
                 auto_closing_responder,
             } => {
                 if *dest == self.node_id {
