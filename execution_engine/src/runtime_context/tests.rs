@@ -715,6 +715,16 @@ fn action_thresholds_management() {
     // making sure `account_dirty` mutated
     let named_keys = NamedKeys::new();
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
+        let entity_hash_by_account_hash =
+            CLValue::from_t(Key::Hash([2; 32])).expect("must convert to cl_value");
+
+        runtime_context
+            .metered_write_gs_unsafe(
+                Key::Account(AccountHash::new([42; 32])),
+                entity_hash_by_account_hash,
+            )
+            .expect("must write key to gs");
+
         runtime_context
             .add_associated_key(AccountHash::new([42; 32]), Weight::new(254))
             .expect("Unable to add associated key with maximum weight");
@@ -757,6 +767,20 @@ fn should_verify_ownership_before_adding_key() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
+        let entity_hash_by_account_hash =
+            CLValue::from_t(Key::Hash([2; 32])).expect("must convert to cl_value");
+
+        runtime_context
+            .metered_write_gs_unsafe(
+                Key::Account(AccountHash::new([84; 32])),
+                entity_hash_by_account_hash,
+            )
+            .expect("must write key to gs");
+
+        runtime_context
+            .metered_write_gs_unsafe(Key::Hash([1; 32]), AddressableEntity::default())
+            .expect("must write key to gs");
+
         runtime_context.entity_address = Key::Hash([1; 32]);
 
         let err = runtime_context

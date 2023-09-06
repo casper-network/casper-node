@@ -13,7 +13,7 @@ use casper_contract::{
 };
 use casper_types::{
     runtime_args, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Parameter, RuntimeArgs, URef,
+    Parameter, URef,
 };
 
 const ACCESS_UREF: &str = "access_uref";

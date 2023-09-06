@@ -999,10 +999,10 @@ where
     ) -> Result<(), Error> {
         let entity_key = match self.entry_point_type {
             EntryPointType::Contract => self.entity_address,
-            EntryPointType::Session | EntryPointType::Install => self.get_entity_address(),
+            EntryPointType::Session | EntryPointType::Install => {
+                self.get_entity_address_for_account_hash(self.account_hash)?
+            }
         };
-
-        // let entity_key = self.get_entity_address_for_account_hash(self.account_hash)?;
 
         // Check permission to modify associated keys
         if !self.is_valid_context(entity_key) {
