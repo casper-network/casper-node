@@ -778,9 +778,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
         .get_entity_by_account_hash(entity_account_hash)
         .expect("should have entity");
 
-    assert!(other_entity
-        .named_keys()
-        .contains_key("purse_holder_access"));
+    assert!(other_entity.named_keys().contains("purse_holder_access"));
 
     let exec_request = {
         let contract_name = format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME);
@@ -978,7 +976,7 @@ fn setup_upgrade_threshold_state() -> (LmdbWasmTestBuilder, ProtocolVersion, Acc
 
     builder
         .upgrade_with_upgrade_request_using_scratch(
-            *builder.get_engine_state().config(),
+            builder.get_engine_state().config().clone(),
             &mut upgrade_request,
         )
         .expect_upgrade_success();

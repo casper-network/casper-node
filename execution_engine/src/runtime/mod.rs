@@ -1737,8 +1737,8 @@ where
                 }
 
                 // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
-                let mut previous_named_keys = previous_entity.named_keys().clone();
-                named_keys.append(&mut previous_named_keys);
+                let previous_named_keys = previous_entity.named_keys().clone();
+                named_keys.append(previous_named_keys);
                 (
                     previous_entity.main_purse(),
                     previous_entity.associated_keys().clone(),

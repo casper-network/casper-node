@@ -220,7 +220,7 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
     builder.exec(exec_request).commit().expect_success();
 
     let account_entity_hash = builder
-        .get_contract_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
     let account = builder
         .get_addressable_entity(account_entity_hash)
