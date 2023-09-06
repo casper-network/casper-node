@@ -34,7 +34,7 @@
               "$ref": "#/definitions/BlockHash"
             },
             "block": {
-              "$ref": "#/definitions/JsonBlock"
+              "$ref": "#/definitions/Block"
             }
           }
         }
@@ -220,14 +220,44 @@
       "description": "Hex-encoded cryptographic hash of a block.",
       "type": "string"
     },
-    "JsonBlock": {
-      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain",
+    "Block": {
+      "description": "A block after execution.",
+      "oneOf": [
+        {
+          "description": "The legacy, initial version of the block.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/BlockV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The version 2 of the block.",
+          "type": "object",
+          "required": [
+            "Version2"
+          ],
+          "properties": {
+            "Version2": {
+              "$ref": "#/definitions/BlockV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "BlockV1": {
+      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 1.",
       "type": "object",
       "required": [
         "body",
         "hash",
-        "header",
-        "proofs"
+        "header"
       ],
       "properties": {
         "hash": {
@@ -242,7 +272,7 @@
           "description": "The header portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/JsonBlockHeader"
+              "$ref": "#/definitions/BlockHeader"
             }
           ]
         },
@@ -250,21 +280,13 @@
           "description": "The body portion of the block.",
           "allOf": [
             {
-              "$ref": "#/definitions/JsonBlockBody"
+              "$ref": "#/definitions/BlockBodyV1"
             }
           ]
-        },
-        "proofs": {
-          "description": "The proofs of the block, i.e. a collection of validators' signatures of the block hash.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/JsonProof"
-          }
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "JsonBlockHeader": {
+    "BlockHeader": {
       "description": "The header portion of a block.",
       "type": "object",
       "required": [
@@ -319,7 +341,7 @@
           "description": "The `EraEnd` of a block if it is a switch block.",
           "anyOf": [
             {
-              "$ref": "#/definitions/JsonEraEnd"
+              "$ref": "#/definitions/EraEnd"
             },
             {
               "type": "null"
@@ -356,14 +378,13 @@
             }
           ]
         }
-      },
-      "additionalProperties": false
+      }
     },
     "Digest": {
       "description": "Hex-encoded hash digest.",
       "type": "string"
     },
-    "JsonEraEnd": {
+    "EraEnd": {
       "description": "Information related to the end of an era, and validator weights for the following era.",
       "type": "object",
       "required": [
@@ -375,21 +396,21 @@
           "description": "Equivocation, reward and validator inactivity information.",
           "allOf": [
             {
-              "$ref": "#/definitions/JsonEraReport"
+              "$ref": "#/definitions/EraReport_for_PublicKey"
             }
           ]
         },
         "next_era_validator_weights": {
           "description": "The validators for the upcoming era and their respective weights.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/JsonValidatorWeight"
-          }
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_ValidatorWeight"
+            }
+          ]
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "JsonEraReport": {
+    "EraReport_for_PublicKey": {
       "description": "Equivocation, reward and validator inactivity information.",
       "type": "object",
       "required": [
@@ -407,10 +428,11 @@
         },
         "rewards": {
           "description": "Rewards for finalization of earlier blocks.",
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/JsonReward"
-          }
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_EraReward"
+            }
+          ]
         },
         "inactive_validators": {
           "description": "Validators that haven't produced any unit during the era.",
@@ -419,14 +441,19 @@
             "$ref": "#/definitions/PublicKey"
           }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "PublicKey": {
       "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
       "type": "string"
     },
-    "JsonReward": {
+    "Array_of_EraReward": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/EraReward"
+      }
+    },
+    "EraReward": {
       "description": "A validator's public key paired with a measure of the value of its contribution to consensus, as a fraction of the configured maximum block reward.",
       "type": "object",
       "required": [
@@ -448,10 +475,15 @@
           "format": "uint64",
           "minimum": 0.0
         }
-      },
-      "additionalProperties": false
+      }
     },
-    "JsonValidatorWeight": {
+    "Array_of_ValidatorWeight": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/ValidatorWeight"
+      }
+    },
+    "ValidatorWeight": {
       "description": "A validator's public key paired with its weight, i.e. the total number of motes staked by it and its delegators.",
       "type": "object",
       "required": [
@@ -475,8 +507,7 @@
             }
           ]
         }
-      },
-      "additionalProperties": false
+      }
     },
     "U512": {
       "description": "Decimal representation of a 512-bit integer.",
@@ -494,8 +525,8 @@
       "format": "uint64",
       "minimum": 0.0
     },
-    "JsonBlockBody": {
-      "description": "The body portion of a block.",
+    "BlockBodyV1": {
+      "description": "The body portion of a block. Version 1.",
       "type": "object",
       "required": [
         "deploy_hashes",
@@ -525,43 +556,79 @@
             "$ref": "#/definitions/DeployHash"
           }
         }
-      },
-      "additionalProperties": false
+      }
     },
     "DeployHash": {
       "description": "Hex-encoded deploy hash.",
       "type": "string"
     },
-    "JsonProof": {
-      "description": "A validator's public key paired with a corresponding signature of a given block hash.",
+    "BlockV2": {
+      "description": "A block after execution, with the resulting global state root hash. This is the core component of the Casper linear blockchain. Version 2.",
       "type": "object",
       "required": [
-        "public_key",
-        "signature"
+        "body",
+        "hash",
+        "header"
       ],
       "properties": {
-        "public_key": {
-          "description": "The validator's public key.",
+        "hash": {
+          "description": "The block hash identifying this block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHash"
+            }
+          ]
+        },
+        "header": {
+          "description": "The header portion of the block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockHeader"
+            }
+          ]
+        },
+        "body": {
+          "description": "The body portion of the block.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/BlockBodyV2"
+            }
+          ]
+        }
+      }
+    },
+    "BlockBodyV2": {
+      "description": "The body portion of a block. Version 2.",
+      "type": "object",
+      "required": [
+        "deploy_hashes",
+        "proposer",
+        "transfer_hashes"
+      ],
+      "properties": {
+        "proposer": {
+          "description": "The public key of the validator which proposed the block.",
           "allOf": [
             {
               "$ref": "#/definitions/PublicKey"
             }
           ]
         },
-        "signature": {
-          "description": "The validator's signature.",
-          "allOf": [
-            {
-              "$ref": "#/definitions/Signature"
-            }
-          ]
+        "deploy_hashes": {
+          "description": "The deploy hashes of the non-transfer deploys within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
+        },
+        "transfer_hashes": {
+          "description": "The deploy hashes of the transfers within the block.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DeployHash"
+          }
         }
-      },
-      "additionalProperties": false
-    },
-    "Signature": {
-      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
-      "type": "string"
+      }
     },
     "Deploy": {
       "description": "A signed smart contract.",
@@ -1186,6 +1253,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "Signature": {
+      "description": "Hex-encoded cryptographic signature, including the algorithm tag prefix.",
+      "type": "string"
     },
     "ExecutionResult": {
       "description": "The versioned result of executing a single deploy.",

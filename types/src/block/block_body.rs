@@ -6,15 +6,11 @@ pub use block_body_v2::BlockBodyV2;
 
 use alloc::vec::Vec;
 use core::fmt::{self, Display, Formatter};
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use once_cell::sync::OnceCell;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use crate::JsonBlockBody;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     DeployHash,
@@ -128,17 +124,6 @@ impl FromBytes for BlockBody {
     }
 }
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonBlockBody> for BlockBodyV2 {
-    fn from(json_body: JsonBlockBody) -> Self {
-        BlockBodyV2 {
-            proposer: json_body.proposer,
-            deploy_hashes: json_body.deploy_hashes,
-            transfer_hashes: json_body.transfer_hashes,
-            hash: OnceCell::new(),
-        }
-    }
-}
 #[cfg(test)]
 mod tests {
     use crate::{

@@ -16,8 +16,6 @@ use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use crate::JsonEraReport;
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
 use crate::{
@@ -239,24 +237,6 @@ impl KeyValueJsonSchema for EraRewardsLabels {
     );
     const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> = Some("The validator's public key.");
     const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The reward amount.");
-}
-
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonEraReport> for EraReport<PublicKey> {
-    fn from(era_report: JsonEraReport) -> Self {
-        let equivocators = era_report.equivocators;
-        let rewards = era_report
-            .rewards
-            .into_iter()
-            .map(|reward| (reward.validator, reward.amount))
-            .collect();
-        let inactive_validators = era_report.inactive_validators;
-        EraReport {
-            equivocators,
-            rewards,
-            inactive_validators,
-        }
-    }
 }
 
 #[cfg(test)]

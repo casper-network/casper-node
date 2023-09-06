@@ -13,8 +13,6 @@ use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use super::EraReport;
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use crate::JsonEraEnd;
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
 use crate::{
@@ -143,19 +141,6 @@ impl KeyValueJsonSchema for NextEraValidatorLabels {
     );
     const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> = Some("The validator's public key.");
     const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The validator's weight.");
-}
-
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonEraEnd> for EraEnd {
-    fn from(json_data: JsonEraEnd) -> Self {
-        let era_report = EraReport::from(json_data.era_report);
-        let validator_weights = json_data
-            .next_era_validator_weights
-            .iter()
-            .map(|validator_weight| (validator_weight.validator.clone(), validator_weight.weight))
-            .collect();
-        EraEnd::new(era_report, validator_weights)
-    }
 }
 
 #[cfg(test)]

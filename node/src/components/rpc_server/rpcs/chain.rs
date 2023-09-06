@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::{self, QueryResult};
 use casper_types::{
-    Block, BlockHash, BlockHeader, Digest, DigestError, JsonBlock, Key, ProtocolVersion, Transfer,
+    Block, BlockHash, BlockHeader, Digest, DigestError, JsonBlockWithSignatures, Key,
+    ProtocolVersion, Transfer,
 };
 
 use super::{
@@ -28,11 +29,11 @@ pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
-    block_identifier: BlockIdentifier::Hash(JsonBlock::doc_example().hash),
+    block_identifier: BlockIdentifier::Hash(*JsonBlockWithSignatures::example().block.hash()),
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    block_with_signatures: Some(JsonBlock::example().clone()),
+    block_with_signatures: Some(JsonBlockWithSignatures::example().clone()),
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     Lazy::new(|| GetBlockTransfersParams {
@@ -135,7 +136,7 @@ pub struct GetBlockResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The block, if found.
-    pub block_with_signatures: Option<JsonBlock>,
+    pub block_with_signatures: Option<JsonBlockWithSignatures>,
 }
 
 impl DocExample for GetBlockResult {
@@ -173,7 +174,7 @@ impl RpcWithOptionalParams for GetBlock {
         )
         .await?;
 
-        let json_block = JsonBlock::new(block, Some(block_signatures));
+        let json_block = JsonBlockWithSignatures::new(block, Some(block_signatures));
 
         // Return the result.
         let result = Self::ResponseResult {

@@ -16,6 +16,8 @@ pub mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
+#[cfg(feature = "once_cell")]
+use once_cell::sync::Lazy;
 #[cfg(feature = "std")]
 use std::error::Error as StdError;
 
@@ -45,13 +47,13 @@ pub use era_report::EraReport;
 pub use finality_signature::FinalitySignature;
 pub use finality_signature_id::FinalitySignatureId;
 #[cfg(all(feature = "std", feature = "json-schema"))]
-pub use json_compatibility::{
-    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
-    JsonValidatorWeight,
-};
+pub use json_compatibility::JsonBlockWithSignatures;
 pub use signed_block_header::{SignedBlockHeader, SignedBlockHeaderValidationError};
 #[cfg(any(feature = "testing", test))]
 pub use test_block_builder::{FromTestBlockBuilder, TestBlockBuilder};
+
+#[cfg(feature = "json-schema")]
+static BLOCK: Lazy<Block> = Lazy::new(|| BlockV2::example().into());
 
 /// An error that can arise when validating a block's cryptographic integrity using its hashes.
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -341,6 +343,13 @@ impl Block {
             Block::V2(v2) => v2.header.state_root_hash(),
         }
     }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &BLOCK
+    }
 }
 
 impl Display for Block {
@@ -433,13 +442,9 @@ impl From<BlockV1> for Block {
 }
 
 #[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonBlock> for BlockV2 {
-    fn from(block: JsonBlock) -> Self {
-        BlockV2 {
-            hash: block.hash,
-            header: BlockHeader::from(block.header),
-            body: BlockBodyV2::from(block.body),
-        }
+impl From<JsonBlockWithSignatures> for Block {
+    fn from(block_with_signatures: JsonBlockWithSignatures) -> Self {
+        block_with_signatures.block
     }
 }
 

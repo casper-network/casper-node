@@ -14,8 +14,8 @@ use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
     account::{Account, AccountHash},
     bytesrepr::{Bytes, ToBytes},
-    BlockHash, BlockHeader, CLValue, Digest, JsonBlock, JsonBlockHeader, Key, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, URef, U512,
+    BlockHash, BlockHeader, BlockV2, CLValue, Digest, Key, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, URef, U512,
 };
 
 use crate::{
@@ -31,7 +31,7 @@ use crate::{
 };
 
 static GET_ITEM_PARAMS: Lazy<GetItemParams> = Lazy::new(|| GetItemParams {
-    state_root_hash: JsonBlock::doc_example().header.state_root_hash,
+    state_root_hash: *BlockHeader::example().state_root_hash(),
     key: Key::from_formatted_str(
         "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
     )
@@ -65,7 +65,7 @@ static GET_ACCOUNT_INFO_PARAMS: Lazy<GetAccountInfoParams> = Lazy::new(|| {
     let public_key = PublicKey::from(&secret_key);
     GetAccountInfoParams {
         account_identifier: AccountIdentifier::PublicKey(public_key),
-        block_identifier: Some(BlockIdentifier::Hash(JsonBlock::doc_example().hash)),
+        block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     }
 });
 static GET_ACCOUNT_INFO_RESULT: Lazy<GetAccountInfoResult> = Lazy::new(|| GetAccountInfoResult {
@@ -93,9 +93,7 @@ static GET_DICTIONARY_ITEM_RESULT: Lazy<GetDictionaryItemResult> =
     });
 static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
     Lazy::new(|| QueryGlobalStateParams {
-        state_identifier: Some(GlobalStateIdentifier::BlockHash(
-            JsonBlock::doc_example().hash,
-        )),
+        state_identifier: Some(GlobalStateIdentifier::BlockHash(*BlockV2::example().hash())),
         key: Key::from_formatted_str(
             "deploy-af684263911154d26fa05be9963171802801a0b6aff8f199b7391eacb8edc9e1",
         )
@@ -105,7 +103,7 @@ static QUERY_GLOBAL_STATE_PARAMS: Lazy<QueryGlobalStateParams> =
 static QUERY_GLOBAL_STATE_RESULT: Lazy<QueryGlobalStateResult> =
     Lazy::new(|| QueryGlobalStateResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        block_header: Some(JsonBlockHeader::doc_example().clone()),
+        block_header: Some(BlockHeader::example().clone()),
         stored_value: StoredValue::Account(Account::doc_example().clone()),
         merkle_proof: MERKLE_PROOF.clone(),
     });
@@ -795,7 +793,7 @@ pub struct QueryGlobalStateResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The block header if a Block hash was provided.
-    pub block_header: Option<JsonBlockHeader>,
+    pub block_header: Option<BlockHeader>,
     /// The stored value.
     pub stored_value: StoredValue,
     /// The Merkle proof.
@@ -833,10 +831,7 @@ impl RpcWithParams for QueryGlobalState {
                         "query-global-state failed to retrieve highest block header",
                     ))
                 }
-                Some(block_header) => (
-                    *block_header.state_root_hash(),
-                    Some(JsonBlockHeader::from(block_header.clone())),
-                ),
+                Some(block_header) => (*block_header.state_root_hash(), Some(block_header)),
             },
             Some(state_identifier) => {
                 let (state_root_hash, maybe_block_header) =
@@ -1158,7 +1153,7 @@ async fn get_account<REv: ReactorEventT>(
 pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_identifier: GlobalStateIdentifier,
-) -> Result<(Digest, Option<JsonBlockHeader>), Error> {
+) -> Result<(Digest, Option<BlockHeader>), Error> {
     // This RPC request is restricted by the block availability index.
     let only_from_available_block_range = true;
     match state_identifier {
@@ -1172,10 +1167,7 @@ pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
                         format!("failed to retrieve specified block header {}", block_hash);
                     Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
                 }
-                Some(block_header) => {
-                    let json_block_header = JsonBlockHeader::from(block_header.clone());
-                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
-                }
+                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
             }
         }
         GlobalStateIdentifier::BlockHeight(block_height) => {
@@ -1191,10 +1183,7 @@ pub(super) async fn get_state_root_hash_and_optional_header<REv: ReactorEventT>(
                         format!("failed to retrieve block header at height {}", block_height);
                     Err(Error::new(ErrorCode::NoSuchBlock, error_msg))
                 }
-                Some(block_header) => {
-                    let json_block_header = JsonBlockHeader::from(block_header.clone());
-                    Ok((*block_header.state_root_hash(), Some(json_block_header)))
-                }
+                Some(block_header) => Ok((*block_header.state_root_hash(), Some(block_header))),
             }
         }
         GlobalStateIdentifier::StateRootHash(state_root_hash) => Ok((state_root_hash, None)),

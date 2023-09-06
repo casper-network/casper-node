@@ -36,7 +36,7 @@ use warp::{
 use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 use casper_types::{
     execution::{Effects, ExecutionResult},
-    BlockHash, Deploy, DeployHash, EraId, FinalitySignature, JsonBlock, ProtocolVersion, PublicKey,
+    Block, BlockHash, Deploy, DeployHash, EraId, FinalitySignature, ProtocolVersion, PublicKey,
     TimeDiff, Timestamp,
 };
 
@@ -78,7 +78,7 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block: Box<JsonBlock>,
+        block: Box<Block>,
     },
     /// The given deploy has been newly-accepted by this node.
     DeployAccepted {
@@ -147,7 +147,7 @@ impl SseData {
         let block = TestBlockBuilder::new().build(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(block.into(), None)),
+            block: Box::new(block.into()),
         }
     }
 
