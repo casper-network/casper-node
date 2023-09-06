@@ -2506,14 +2506,6 @@ impl Storage {
             return Ok(None);
         };
 
-        let BlockBody::V2(block_body) = block_body else {
-            debug!(
-                %block_hash,
-                "retrieved block body but it is not V2"
-            );
-            return Ok(None);
-        };
-
         let mut execution_results = vec![];
         for deploy_hash in block_body.deploy_and_transfer_hashes() {
             match self.get_execution_result(txn, deploy_hash)? {
