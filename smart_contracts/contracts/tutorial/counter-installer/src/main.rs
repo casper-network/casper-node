@@ -7,7 +7,6 @@ compile_error!("target arch should be wasm32: compile with '--target wasm32-unkn
 extern crate alloc;
 
 use alloc::{
-    collections::BTreeMap,
     string::{String, ToString},
     vec::Vec,
 };
@@ -16,9 +15,9 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints},
+    addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     api_error::ApiError,
-    CLType, CLValue, Key, URef,
+    CLType, CLValue, URef,
 };
 
 const COUNT_KEY: &str = "count";
@@ -55,7 +54,7 @@ pub extern "C" fn call() {
     let counter_local_key = storage::new_uref(0_i32);
 
     // Create initial named keys of the contract.
-    let mut counter_named_keys: BTreeMap<String, Key> = BTreeMap::new();
+    let mut counter_named_keys = NamedKeys::new();
     let key_name = String::from(COUNT_KEY);
     counter_named_keys.insert(key_name, counter_local_key.into());
 

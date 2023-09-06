@@ -10,7 +10,7 @@ mod types;
 
 use std::{
     cmp::Ordering,
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     convert::TryInto,
     fmt::{self, Debug, Display, Formatter},
     path::Path,
@@ -27,8 +27,11 @@ use serde::Serialize;
 use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
+#[cfg(test)]
+use casper_execution_engine::engine_state::{GetBidsRequest, GetBidsResult};
+
 use casper_execution_engine::engine_state::{
-    self, genesis::GenesisError, DeployItem, EngineConfig, EngineState, GenesisSuccess,
+    self, genesis::GenesisError, DeployItem, EngineConfigBuilder, EngineState, GenesisSuccess,
     SystemContractRegistry, UpgradeSuccess,
 };
 use casper_storage::{
@@ -40,8 +43,8 @@ use casper_storage::{
 };
 use casper_types::{
     bytesrepr::Bytes, ActivationPoint, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes,
-    ChainspecRegistry, Deploy, Digest, EraId, ProtocolVersion, SystemConfig, Timestamp,
-    UpgradeConfig, WasmConfig,
+    ChainspecRegistry, Deploy, Digest, EraId, FeeHandling, ProtocolVersion, PublicKey,
+    RefundHandling, SystemConfig, Timestamp, UpgradeConfig, WasmConfig,
 };
 
 use crate::{
@@ -63,10 +66,12 @@ use crate::{
 pub(crate) use config::Config;
 pub(crate) use error::{BlockExecutionError, ConfigError};
 use metrics::Metrics;
+#[cfg(test)]
+pub(crate) use operations::compute_execution_results_checksum;
 pub use operations::execute_finalized_block;
 use operations::execute_only;
 pub(crate) use types::{
-    BlockAndExecutionResults, EraValidatorsRequest, StepEffectAndUpcomingEraValidators,
+    BlockAndExecutionResults, EraValidatorsRequest, StepEffectsAndUpcomingEraValidators,
 };
 
 const COMPONENT_NAME: &str = "contract_runtime";
@@ -592,6 +597,11 @@ impl ContractRuntime {
         vesting_schedule_period_millis: u64,
         max_delegators_per_validator: Option<u32>,
         registry: &Registry,
+        administrative_accounts: BTreeSet<PublicKey>,
+        allow_auction_bids: bool,
+        allow_unrestricted_transfers: bool,
+        refund_handling: RefundHandling,
+        fee_handling: FeeHandling,
     ) -> Result<Self, ConfigError> {
         // TODO: This is bogus, get rid of this
         let execution_pre_state = Arc::new(Mutex::new(ExecutionPreState {
@@ -625,17 +635,22 @@ impl ContractRuntime {
             }
         };
 
-        let engine_config = EngineConfig::new(
-            contract_runtime_config.max_query_depth_or_default(),
-            max_associated_keys,
-            max_runtime_call_stack_height,
-            minimum_delegation_amount,
-            strict_argument_checking,
-            vesting_schedule_period_millis,
-            max_delegators_per_validator,
-            wasm_config,
-            system_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(contract_runtime_config.max_query_depth_or_default())
+            .with_max_associated_keys(max_associated_keys)
+            .with_max_runtime_call_stack_height(max_runtime_call_stack_height)
+            .with_minimum_delegation_amount(minimum_delegation_amount)
+            .with_strict_argument_checking(strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+            .with_max_delegators_per_validator(max_delegators_per_validator)
+            .with_wasm_config(wasm_config)
+            .with_system_config(system_config)
+            .with_administrative_accounts(administrative_accounts)
+            .with_allow_auction_bids(allow_auction_bids)
+            .with_allow_unrestricted_transfers(allow_unrestricted_transfers)
+            .with_refund_handling(refund_handling)
+            .with_fee_handling(fee_handling)
+            .build();
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
 
@@ -757,7 +772,7 @@ impl ContractRuntime {
             block,
             approvals_hashes,
             execution_results,
-            maybe_step_effect_and_upcoming_era_validators,
+            maybe_step_effects_and_upcoming_era_validators,
         } = match run_intensive_task(move || {
             debug!("ContractRuntime: execute_finalized_block");
             execute_finalized_block(
@@ -805,13 +820,13 @@ impl ContractRuntime {
 
         let current_era_id = block.era_id();
 
-        if let Some(StepEffectAndUpcomingEraValidators {
-            step_execution_journal,
+        if let Some(StepEffectsAndUpcomingEraValidators {
+            step_effects,
             mut upcoming_era_validators,
-        }) = maybe_step_effect_and_upcoming_era_validators
+        }) = maybe_step_effects_and_upcoming_era_validators
         {
             effect_builder
-                .announce_commit_step_success(current_era_id, step_execution_journal)
+                .announce_commit_step_success(current_era_id, step_effects)
                 .await;
 
             if current_era_id.is_genesis() {
@@ -846,7 +861,6 @@ impl ContractRuntime {
             .cloned()
             .map(|(deploy_hash, _, execution_result)| (deploy_hash, execution_result))
             .collect();
-
         if meta_block_state.register_as_stored().was_updated() {
             effect_builder
                 .put_executed_block_to_storage(
@@ -860,7 +874,11 @@ impl ContractRuntime {
                 .put_approvals_hashes_to_storage(approvals_hashes)
                 .await;
             effect_builder
-                .put_execution_results_to_storage(*block.hash(), execution_results_map)
+                .put_execution_results_to_storage(
+                    *block.hash(),
+                    block.height(),
+                    execution_results_map,
+                )
                 .await;
         }
         if meta_block_state
@@ -935,12 +953,6 @@ impl ContractRuntime {
         result.map(|option| option.map(|trie_raw| trie_raw.into_inner()))
     }
 
-    /// Returns the engine state, for testing only.
-    #[cfg(test)]
-    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
-        &self.engine_state
-    }
-
     #[inline]
     fn try_init_system_contract_registry_cache(&mut self) {
         // The system contract registry is stable so we can use the latest state root hash that we
@@ -959,29 +971,51 @@ impl ContractRuntime {
                 .ok();
         };
     }
+
+    /// Returns the engine state, for testing only.
+    #[cfg(test)]
+    pub(crate) fn engine_state(&self) -> &Arc<EngineState<DataAccessLayer<LmdbGlobalState>>> {
+        &self.engine_state
+    }
+
+    /// Returns auction state, for testing only.
+    #[cfg(test)]
+    pub(crate) fn auction_state(
+        &self,
+        root_hash: Digest,
+    ) -> Result<GetBidsResult, engine_state::Error> {
+        let engine_state = Arc::clone(&self.engine_state);
+        let get_bids_request = GetBidsRequest::new(root_hash);
+        engine_state.get_bids(get_bids_request)
+    }
 }
 
 #[cfg(test)]
 mod trie_chunking_tests {
-    use prometheus::Registry;
-    use tempfile::tempdir;
-
+    use casper_execution_engine::engine_state::engine_config::{
+        DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING,
+    };
     use casper_storage::global_state::{
-        shared::{transform::Transform, AdditiveMap},
         state::StateProvider,
         trie::{Pointer, Trie},
     };
     use casper_types::{
-        account::AccountHash, bytesrepr, ActivationPoint, CLValue, ChunkWithProof, Digest, EraId,
-        Key, ProtocolVersion, StoredValue, SystemConfig, WasmConfig,
+        account::AccountHash,
+        bytesrepr,
+        execution::{Transform, TransformKind},
+        ActivationPoint, CLValue, ChunkWithProof, Digest, EraId, Key, ProtocolVersion, StoredValue,
+        SystemConfig, WasmConfig,
     };
+    use prometheus::Registry;
+    use tempfile::tempdir;
 
-    use super::ContractRuntimeError;
     use crate::{
         components::fetcher::FetchResponse,
-        contract_runtime::{Config as ContractRuntimeConfig, ContractRuntime},
+        contract_runtime::ContractRuntimeError,
         types::{ChunkingError, TrieOrChunk, TrieOrChunkId, ValueOrChunk},
     };
+
+    use super::{Config as ContractRuntimeConfig, ContractRuntime};
 
     #[derive(Debug, Clone)]
     struct TestPair(Key, StoredValue);
@@ -1047,16 +1081,21 @@ mod trie_chunking_tests {
             1,
             None,
             &Registry::default(),
+            Default::default(),
+            true,
+            true,
+            DEFAULT_REFUND_HANDLING,
+            DEFAULT_FEE_HANDLING,
         )
         .unwrap();
         let empty_state_root = contract_runtime.engine_state().get_state().empty_root();
-        let mut effects: AdditiveMap<Key, Transform> = AdditiveMap::new();
+        let mut effects = casper_types::execution::Effects::new();
         for TestPair(key, value) in test_pair {
-            assert!(effects.insert(key, Transform::Write(value)).is_none());
+            effects.push(Transform::new(key, TransformKind::Write(value)));
         }
         let post_state_hash = contract_runtime
             .engine_state()
-            .apply_effect(empty_state_root, effects)
+            .commit_effects(empty_state_root, effects)
             .expect("applying effects to succeed");
         (contract_runtime, post_state_hash)
     }

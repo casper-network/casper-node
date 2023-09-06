@@ -3,10 +3,10 @@ use casper_storage::global_state;
 use parity_wasm::elements;
 use thiserror::Error;
 
-use casper_storage::global_state::shared::transform;
 use casper_types::{
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
+    execution::TransformError,
     package::ContractPackageKind,
     system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
     ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
@@ -128,6 +128,9 @@ pub enum Error {
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
+    /// Contract does
+    #[error("Error calling an abstract entry point: {}", _0)]
+    TemplateMethod(String),
     /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(PreprocessingError),
@@ -178,13 +181,16 @@ pub enum Error {
     DisabledContract(ContractHash),
     /// Transform error.
     #[error(transparent)]
-    Transform(transform::Error),
+    Transform(TransformError),
     /// Invalid key
     #[error("Invalid key {0}")]
     UnexpectedKeyVariant(Key),
     /// Invalid Contract package kind.
     #[error("Invalid contract package kind: {0}")]
     InvalidContractPackageKind(ContractPackageKind),
+    /// Failed to transfer tokens on a private chain.
+    #[error("Failed to transfer with unrestricted transfers disabled")]
+    DisabledUnrestrictedTransfers,
     /// Weight of all used associated keys does not meet entity's upgrade threshold.
     #[error("Deployment authorization failure")]
     UpgradeAuthorizationFailure,

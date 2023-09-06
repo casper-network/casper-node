@@ -17,7 +17,7 @@ use casper_types::{
         DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_VALIDATOR,
     },
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -244,7 +244,10 @@ fn should_fail_to_mint_transfer_over_the_limit() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    let test_purse_2 = default_account.named_keys()[TEST_PURSE]
+    let test_purse_2 = default_account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should have test purse 2");
 

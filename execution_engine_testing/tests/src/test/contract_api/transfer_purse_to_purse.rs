@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use casper_types::{runtime_args, system::mint, ApiError, CLValue, RuntimeArgs, U512};
+use casper_types::{runtime_args, system::mint, ApiError, CLValue, U512};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
@@ -42,8 +42,11 @@ fn should_run_purse_to_purse_transfer() {
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given
-    let purse_transfer_result_key =
-        default_account.named_keys()["purse_transfer_result"].normalize();
+    let purse_transfer_result_key = default_account
+        .named_keys()
+        .get("purse_transfer_result")
+        .unwrap()
+        .normalize();
     let purse_transfer_result = CLValue::try_from(
         builder
             .query(None, purse_transfer_result_key, &[])
@@ -58,7 +61,11 @@ fn should_run_purse_to_purse_transfer() {
         format!("{:?}", Result::<_, ApiError>::Ok(()),)
     );
 
-    let main_purse_balance_key = default_account.named_keys()["main_purse_balance"].normalize();
+    let main_purse_balance_key = default_account
+        .named_keys()
+        .get("main_purse_balance")
+        .unwrap()
+        .normalize();
     let main_purse_balance = CLValue::try_from(
         builder
             .query(None, main_purse_balance_key, &[])
@@ -69,7 +76,7 @@ fn should_run_purse_to_purse_transfer() {
     .expect("should be U512");
 
     // Assert secondary purse value after successful transfer
-    let purse_secondary_key = default_account.named_keys()["purse:secondary"];
+    let purse_secondary_key = default_account.named_keys().get("purse:secondary").unwrap();
     let purse_secondary_uref = purse_secondary_key.into_uref().unwrap();
     let purse_secondary_balance = builder.get_purse_balance(purse_secondary_uref);
 
@@ -106,8 +113,11 @@ fn should_run_purse_to_purse_transfer_with_error() {
         .expect("should get genesis account");
 
     // Get the `purse_transfer_result` for a given
-    let purse_transfer_result_key =
-        default_account.named_keys()["purse_transfer_result"].normalize();
+    let purse_transfer_result_key = default_account
+        .named_keys()
+        .get("purse_transfer_result")
+        .unwrap()
+        .normalize();
     let purse_transfer_result = CLValue::try_from(
         builder
             .query(None, purse_transfer_result_key, &[])
@@ -126,7 +136,11 @@ fn should_run_purse_to_purse_transfer_with_error() {
     );
 
     // Obtain main purse's balance
-    let main_purse_balance_key = default_account.named_keys()["main_purse_balance"].normalize();
+    let main_purse_balance_key = default_account
+        .named_keys()
+        .get("main_purse_balance")
+        .unwrap()
+        .normalize();
     let main_purse_balance = CLValue::try_from(
         builder
             .query(None, main_purse_balance_key, &[])
@@ -137,7 +151,7 @@ fn should_run_purse_to_purse_transfer_with_error() {
     .expect("should be U512");
 
     // Assert secondary purse value after successful transfer
-    let purse_secondary_key = default_account.named_keys()["purse:secondary"];
+    let purse_secondary_key = default_account.named_keys().get("purse:secondary").unwrap();
     let purse_secondary_uref = purse_secondary_key.into_uref().unwrap();
     let purse_secondary_balance = builder.get_purse_balance(purse_secondary_uref);
 

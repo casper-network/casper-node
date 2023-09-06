@@ -1,6 +1,4 @@
 //! Units of execution.
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
 
 use std::{cell::RefCell, rc::Rc};
 

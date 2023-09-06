@@ -140,9 +140,9 @@ impl MainReactor {
             Some(weights) => weights,
         };
         if !highest_era_weights.contains_key(self.consensus.public_key()) {
-            info!(
-                "{}: highest_era_weights does not contain signing_public_key",
-                self.state
+            debug!(
+                era = highest_switch_block_header.era_id().successor().value(),
+                "{}: this is not a validating node in this era", self.state
             );
             return Ok(None);
         }
@@ -154,7 +154,7 @@ impl MainReactor {
             if max_ttl.synced_to_ttl(
                 highest_switch_block_header.timestamp(),
                 &highest_orphaned_block_header,
-            )? {
+            ) {
                 debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
             } else {
                 info!(

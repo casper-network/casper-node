@@ -1,4 +1,4 @@
-//! A tool to update versions of all published CasperLabs packages.
+//! A tool to update versions of all published Casper packages.
 
 #![warn(unused, missing_copy_implementations, missing_docs)]
 #![deny(

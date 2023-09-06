@@ -15,10 +15,17 @@ use std::any::TypeId;
 use lmdb::{Database, RwTransaction, Transaction, WriteFlags};
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
+use tracing::warn;
 
+use crate::{
+    storage::deploy_metadata_v1::DeployMetadataV1,
+    types::{ApprovalsHashes, FinalizedApprovals},
+};
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
+    execution::ExecutionResult,
     system::auction::UnbondingPurse,
+    BlockBody, BlockHeader, BlockSignatures, Deploy, DeployHash, Transfer,
 };
 
 const UNBONDING_PURSE_V2_MAGIC_BYTES: &[u8] = &[121, 17, 133, 179, 91, 63, 69, 222];
@@ -261,8 +268,40 @@ impl WriteTransactionExt for RwTransaction<'_> {
 
 /// Deserializes from a buffer.
 #[inline(always)]
-pub(super) fn deserialize<T: DeserializeOwned>(raw: &[u8]) -> Result<T, LmdbExtError> {
-    bincode::deserialize(raw).map_err(|err| LmdbExtError::DataCorrupted(Box::new(err)))
+pub(super) fn deserialize<T: DeserializeOwned + 'static>(raw: &[u8]) -> Result<T, LmdbExtError> {
+    match bincode::deserialize(raw) {
+        Ok(value) => Ok(value),
+        Err(err) => {
+            // unfortunately, type_name is unstable
+            let type_name = {
+                if TypeId::of::<DeployMetadataV1>() == TypeId::of::<T>() {
+                    "DeployMetadataV1".to_string()
+                } else if TypeId::of::<BlockHeader>() == TypeId::of::<T>() {
+                    "BlockHeader".to_string()
+                } else if TypeId::of::<BlockBody>() == TypeId::of::<T>() {
+                    "BlockBody".to_string()
+                } else if TypeId::of::<BlockSignatures>() == TypeId::of::<T>() {
+                    "BlockSignatures".to_string()
+                } else if TypeId::of::<DeployHash>() == TypeId::of::<T>() {
+                    "DeployHash".to_string()
+                } else if TypeId::of::<Deploy>() == TypeId::of::<T>() {
+                    "Deploy".to_string()
+                } else if TypeId::of::<ApprovalsHashes>() == TypeId::of::<T>() {
+                    "ApprovalsHashes".to_string()
+                } else if TypeId::of::<FinalizedApprovals>() == TypeId::of::<T>() {
+                    "FinalizedApprovals".to_string()
+                } else if TypeId::of::<ExecutionResult>() == TypeId::of::<T>() {
+                    "ExecutionResult".to_string()
+                } else if TypeId::of::<Vec<Transfer>>() == TypeId::of::<T>() {
+                    "Transfers".to_string()
+                } else {
+                    format!("{:?}", TypeId::of::<T>())
+                }
+            };
+            warn!(?err, ?raw, "{}: bincode deserialization failed", type_name);
+            Err(LmdbExtError::DataCorrupted(Box::new(err)))
+        }
+    }
 }
 
 /// Returns `true` if the specified bytes represent the legacy version of `UnbondingPurse`.
@@ -278,7 +317,7 @@ fn is_legacy(raw: &[u8]) -> bool {
 /// In order for the latter scenario to work, the raw bytes stream is extended with
 /// bytes that represent the `None` serialized with `bincode` - these bytes simulate
 /// the existence of the `new_validator` field added to the `UnbondingPurse` struct.
-pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned>(
+pub(super) fn deserialize_unbonding_purse<T: DeserializeOwned + 'static>(
     raw: &[u8],
 ) -> Result<T, LmdbExtError> {
     const BINCODE_ENCODED_NONE: [u8; 4] = [0; 4];

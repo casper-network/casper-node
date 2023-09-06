@@ -2,6 +2,9 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,13 +15,16 @@ use crate::{
 /// The number of bytes in a serialized [`Weight`].
 pub const WEIGHT_SERIALIZED_LENGTH: usize = U8_SERIALIZED_LENGTH;
 
-/// The weight attributed to a given [`AccountHash`](super::AccountHash) in an account's associated
-/// keys.
+/// The weight associated with public keys in an account's associated keys.
 #[derive(PartialOrd, Ord, PartialEq, Eq, Clone, Copy, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Weight(u8);
 
 impl Weight {
+    /// Maximum possible weight.
+    pub const MAX: Weight = Weight(u8::MAX);
+
     /// Constructs a new `Weight`.
     pub const fn new(weight: u8) -> Weight {
         Weight(weight)

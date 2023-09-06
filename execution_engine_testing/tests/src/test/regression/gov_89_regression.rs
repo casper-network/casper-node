@@ -11,10 +11,10 @@ use casper_engine_test_support::{
     utils, LmdbWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
 };
 use casper_execution_engine::engine_state::{SlashItem, StepSuccess};
-use casper_storage::global_state::shared::transform::Transform;
 use casper_types::{
+    execution::TransformKind,
     system::auction::{
-        Bids, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        BidsExt, DelegationRate, SeigniorageRecipientsSnapshot, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey,
     SecretKey, StoredValue, U512,
@@ -68,6 +68,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
 #[test]
 fn should_not_create_any_purse() {
     let mut builder = initialize_builder();
+    let auction_hash = builder.get_auction_contract_hash();
 
     let mut now = SystemTime::now();
     let eras_end_timestamp_millis_1 = now.duration_since(UNIX_EPOCH).expect("Time went backwards");
@@ -85,36 +86,43 @@ fn should_not_create_any_purse() {
         .with_era_end_timestamp_millis(eras_end_timestamp_millis_1.as_millis().try_into().unwrap())
         .build();
 
-    let auction_hash = builder.get_auction_contract_hash();
-
     let before_auction_seigniorage: SeigniorageRecipientsSnapshot =
         builder.get_value(auction_hash, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY);
 
-    let bids_before_slashing: Bids = builder.get_bids();
+    let bids_before_slashing = builder.get_bids();
     assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PUBLIC_KEY),
+        bids_before_slashing.contains_validator_public_key(&ACCOUNT_1_PUBLIC_KEY),
         "should have entry in the genesis bids table {:?}",
         bids_before_slashing
     );
 
-    let bids_before_slashing: Bids = builder.get_bids();
-    assert!(
-        bids_before_slashing.contains_key(&ACCOUNT_1_PUBLIC_KEY),
-        "should have entry in bids table before slashing {:?}",
-        bids_before_slashing
-    );
-
     let StepSuccess {
-        execution_journal: journal_1,
-        ..
+        effects: effects_1, ..
     } = builder.step(step_request_1).expect("should execute step");
 
-    let bids_after_slashing: Bids = builder.get_bids();
-    let account_1_bid = bids_after_slashing.get(&ACCOUNT_1_PUBLIC_KEY).unwrap();
-    assert!(account_1_bid.inactive());
-    assert!(account_1_bid.staked_amount().is_zero());
+    assert!(
+        builder
+            .query(
+                None,
+                Key::Unbond(ACCOUNT_1_PUBLIC_KEY.to_account_hash()),
+                &[],
+            )
+            .is_err(),
+        "slash does not unbond"
+    );
 
-    let bids_after_slashing: Bids = builder.get_bids();
+    let bids_after_slashing = builder.get_bids();
+    assert!(
+        !bids_after_slashing.contains_validator_public_key(&ACCOUNT_1_PUBLIC_KEY),
+        "should not have entry after slashing {:?}",
+        bids_after_slashing
+    );
+
+    let bids_after_slashing = builder.get_bids();
+    let account_1_bid = bids_after_slashing.validator_bid(&ACCOUNT_1_PUBLIC_KEY);
+    assert!(account_1_bid.is_none());
+
+    let bids_after_slashing = builder.get_bids();
     assert_ne!(
         bids_before_slashing, bids_after_slashing,
         "bids table should be different before and after slashing"
@@ -139,19 +147,19 @@ fn should_not_create_any_purse() {
         .build();
 
     let StepSuccess {
-        execution_journal: journal_2,
-        ..
+        effects: effects_2, ..
     } = builder.step(step_request_2).expect("should execute step");
 
     let cl_u512_zero = CLValue::from_t(U512::zero()).unwrap();
 
-    let balances_1: BTreeSet<Key> = journal_1
-        .into_iter()
-        .filter_map(|(key, transform)| match transform {
-            Transform::Write(StoredValue::CLValue(cl_value))
-                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
+    let balances_1: BTreeSet<Key> = effects_1
+        .transforms()
+        .iter()
+        .filter_map(|transform| match transform.kind() {
+            TransformKind::Write(StoredValue::CLValue(cl_value))
+                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
             {
-                Some(key)
+                Some(*transform.key())
             }
             _ => None,
         })
@@ -159,13 +167,14 @@ fn should_not_create_any_purse() {
 
     assert_eq!(balances_1.len(), 0, "distribute should not create purses");
 
-    let balances_2: BTreeSet<Key> = journal_2
-        .into_iter()
-        .filter_map(|(key, transform)| match transform {
-            Transform::Write(StoredValue::CLValue(cl_value))
-                if key.as_balance().is_some() && cl_value == cl_u512_zero =>
+    let balances_2: BTreeSet<Key> = effects_2
+        .transforms()
+        .iter()
+        .filter_map(|transform| match transform.kind() {
+            TransformKind::Write(StoredValue::CLValue(cl_value))
+                if transform.key().as_balance().is_some() && *cl_value == cl_u512_zero =>
             {
-                Some(key)
+                Some(*transform.key())
             }
             _ => None,
         })

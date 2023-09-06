@@ -1,8 +1,5 @@
 //! RPC related to speculative execution.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{str, sync::Arc};
 
 use async_trait::async_trait;
@@ -12,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use casper_execution_engine::engine_state::Error as EngineStateError;
 use casper_json_rpc::ReservedErrorCode;
-use casper_types::{BlockHash, Deploy, ExecutionResult, JsonBlock, ProtocolVersion};
+use casper_types::{execution::ExecutionResultV2, BlockHash, Deploy, JsonBlock, ProtocolVersion};
 
 use super::{
     chain::BlockIdentifier,
@@ -29,7 +26,7 @@ static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| Specu
 static SPECULATIVE_EXEC_RESULT: Lazy<SpeculativeExecResult> = Lazy::new(|| SpeculativeExecResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     block_hash: JsonBlock::doc_example().hash,
-    execution_result: ExecutionResult::example().clone(),
+    execution_result: ExecutionResultV2::example().clone(),
 });
 
 /// Params for "speculative_exec" RPC request.
@@ -58,7 +55,7 @@ pub struct SpeculativeExecResult {
     /// Hash of the block on top of which the deploy was executed.
     pub block_hash: BlockHash,
     /// Result of the execution.
-    pub execution_result: ExecutionResult,
+    pub execution_result: ExecutionResultV2,
 }
 
 impl DocExample for SpeculativeExecResult {
@@ -156,7 +153,7 @@ impl RpcWithParams for SpeculativeExec {
                     | EngineStateError::MissingSystemContractRegistry
                     | EngineStateError::MissingSystemContractHash(_)
                     | EngineStateError::RuntimeStackOverflow
-                    | EngineStateError::FailedToGetWithdrawKeys
+                    | EngineStateError::FailedToGetKeys(_)
                     | EngineStateError::FailedToGetStoredWithdraws
                     | EngineStateError::FailedToGetWithdrawPurses
                     | EngineStateError::FailedToRetrieveUnbondingDelay

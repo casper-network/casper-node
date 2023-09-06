@@ -1,6 +1,6 @@
 # Faucet Contract
 
-The Faucet is a contract that is designed to allow users to create a new account or to allow existing users to fund their account easily. 
+The Faucet is a contract that is designed to allow users to create a new account or to allow existing users to fund their account easily.
 
 ## Install Session
 The install session is responsible for creating the faucet's stored contract package and setting up a few named keys in the account used to perform the install. The installer performs the following actions.
@@ -35,7 +35,7 @@ If you try to invoke the contract before these variables are set, then you'll ge
 
 | feature                  | cost             |
 |--------------------------|------------------|
-| faucet install           | `75_274_115_930` |
-| faucet set variables     | `579_464_060`    |
-| faucet call by installer | `3_174_961_320`  |
-| faucet call by user      | `3_242_199_690`  |
+| faucet install           | `83_985_809_270` |
+| faucet set variables     | `648_705_070`    |
+| faucet call by installer | `3_244_975_770`  |
+| faucet call by user      | `3_364_807_470`  |

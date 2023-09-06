@@ -279,7 +279,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
         .expect("should have account");
 
     assert!(
-        account.named_keys().contains_key(VERSION),
+        account.named_keys().contains(VERSION),
         "version uref should exist on install"
     );
 
@@ -416,7 +416,7 @@ fn should_support_extending_functionality() {
         .get_addressable_entity(stored_hash)
         .expect("should have contract");
     assert!(
-        contract.named_keys().contains_key(PURSE_1),
+        contract.named_keys().contains(PURSE_1),
         "purse uref should exist in contract's named_keys before upgrade"
     );
 
@@ -443,7 +443,7 @@ fn should_support_extending_functionality() {
         .expect("should have contract");
 
     assert!(
-        contract.named_keys().contains_key(PURSE_1),
+        contract.named_keys().contains(PURSE_1),
         "PURSE_1 uref should still exist in contract's named_keys after upgrade"
     );
 
@@ -487,7 +487,7 @@ fn should_support_extending_functionality() {
         .expect("should have contract");
 
     assert!(
-        !contract.named_keys().contains_key(PURSE_1),
+        !contract.named_keys().contains(PURSE_1),
         "PURSE_1 uref should no longer exist in contract's named_keys after remove"
     );
 }
@@ -559,7 +559,7 @@ fn should_maintain_named_keys_across_upgrade() {
             .get_addressable_entity(stored_hash.into())
             .expect("should have contract");
         assert!(
-            contract.named_keys().contains_key(purse_name),
+            contract.named_keys().contains(purse_name),
             "purse uref should exist in contract's named_keys before upgrade"
         );
     }
@@ -589,7 +589,7 @@ fn should_maintain_named_keys_across_upgrade() {
     for index in 0..TOTAL_PURSES {
         let purse_name: &str = &format!("purse_{}", index);
         assert!(
-            contract.named_keys().contains_key(purse_name),
+            contract.named_keys().contains(purse_name),
             "{} uref should still exist in contract's named_keys after upgrade",
             index
         );

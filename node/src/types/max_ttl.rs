@@ -16,13 +16,9 @@ impl MaxTtl {
         self.0
     }
 
-    /// Determine if two timestamps are more than max_ttl apart.
-    pub fn ttl_elapsed(&self, higher: Timestamp, lower: Timestamp) -> Result<bool, String> {
-        if lower > higher {
-            Err("invalid timestamp chronology".to_string())
-        } else {
-            Ok(lower < higher.saturating_sub(self.0))
-        }
+    /// If rearview is earlier than (vantage - ttl duration), ttl has elapsed.
+    pub fn ttl_elapsed(&self, vantage: Timestamp, rearview: Timestamp) -> bool {
+        rearview < vantage.saturating_sub(self.0)
     }
 
     /// Determine if orphaned block header is older than ttl requires.
@@ -30,9 +26,9 @@ impl MaxTtl {
         &self,
         latest_switch_block_timestamp: Timestamp,
         highest_orphaned_block_header: &BlockHeader,
-    ) -> Result<bool, String> {
+    ) -> bool {
         if highest_orphaned_block_header.is_genesis() {
-            Ok(true)
+            true
         } else {
             self.ttl_elapsed(
                 latest_switch_block_timestamp,
@@ -66,9 +62,7 @@ mod tests {
         msg: &str,
     ) {
         let max_ttl: MaxTtl = max_ttl.into();
-        let elapsed = max_ttl
-            .ttl_elapsed(higher, lower)
-            .expect("should not error");
+        let elapsed = max_ttl.ttl_elapsed(higher, lower);
         assert_eq!(elapsed, elapsed_expected, "{}", msg);
     }
 
@@ -120,13 +114,14 @@ mod tests {
     }
 
     #[test]
-    fn should_err() {
+    fn should_not_err() {
         let higher = Timestamp::now();
         let lower = higher.saturating_sub(SUB_MAX_TTL);
         let max_ttl: MaxTtl = MAX_TTL.into();
+        let elapsed = max_ttl.ttl_elapsed(lower, higher);
         assert!(
-            max_ttl.ttl_elapsed(lower, higher).is_err(),
-            "should have errored because timestamps are chronologically reversed (programmer error)"
+            !elapsed,
+            "can't have elapsed because timestamps are chronologically reversed (programmer error)"
         );
     }
 
@@ -157,12 +152,10 @@ mod tests {
             }
             (timestamp, block.header().clone())
         };
-        let synced = max_ttl
-            .synced_to_ttl(
-                latest_switch_block_timestamp,
-                &highest_orphaned_block_header,
-            )
-            .expect("should not error");
+        let synced = max_ttl.synced_to_ttl(
+            latest_switch_block_timestamp,
+            &highest_orphaned_block_header,
+        );
         assert_eq!(synced, ttl_synced_expected, "{}", msg);
     }
 

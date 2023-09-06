@@ -15,6 +15,8 @@ pub const METHOD_SET_REFUND_PURSE: &str = "set_refund_purse";
 pub const METHOD_GET_REFUND_PURSE: &str = "get_refund_purse";
 /// Named constant for method `finalize_payment`.
 pub const METHOD_FINALIZE_PAYMENT: &str = "finalize_payment";
+/// Named constant for method `distribute_accumulated_fees`.
+pub const METHOD_DISTRIBUTE_ACCUMULATED_FEES: &str = "distribute_accumulated_fees";
 
 /// Storage for handle payment contract hash.
 pub const CONTRACT_HASH_KEY: &str = "contract_hash";
@@ -28,3 +30,8 @@ pub const PAYMENT_PURSE_KEY: &str = "payment_purse";
 /// The uref name where the Handle Payment will refund unused payment back to the user. The uref
 /// this name corresponds to is set by the user.
 pub const REFUND_PURSE_KEY: &str = "refund_purse";
+/// Storage for handle payment accumulation purse key.
+///
+/// This purse is used when `fee_elimination` config is set to `Accumulate` which makes sense for
+/// some private chains.
+pub const ACCUMULATION_PURSE_KEY: &str = "accumulation_purse";

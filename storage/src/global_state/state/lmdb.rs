@@ -3,9 +3,13 @@ use std::{collections::HashMap, ops::Deref, sync::Arc};
 use lmdb::DatabaseFlags;
 use tempfile::TempDir;
 
+use casper_types::{
+    execution::{Effects, Transform, TransformKind},
+    Digest, Key, StoredValue,
+};
+
 use crate::global_state::{
     error,
-    shared::{transform::Transform, AdditiveMap},
     state::{
         commit, put_stored_values, scratch::ScratchGlobalState, CommitProvider, StateProvider,
         StateReader,
@@ -16,13 +20,12 @@ use crate::global_state::{
     trie_store::{
         lmdb::{LmdbTrieStore, ScratchTrieStore},
         operations::{
-            delete, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
-            DeleteResult, ReadResult,
+            keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
+            PruneResult, ReadResult,
         },
     },
     DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
 };
-use casper_types::{Digest, Key, StoredValue};
 
 /// Global state implemented against LMDB as a backing data store.
 pub struct LmdbGlobalState {
@@ -191,12 +194,8 @@ impl StateReader<Key, StoredValue> for LmdbGlobalStateView {
 }
 
 impl CommitProvider for LmdbGlobalState {
-    fn commit(
-        &self,
-        prestate_hash: Digest,
-        effects: AdditiveMap<Key, Transform>,
-    ) -> Result<Digest, Self::Error> {
-        commit::<LmdbEnvironment, LmdbTrieStore, _, Self::Error>(
+    fn commit(&self, prestate_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
+        commit::<LmdbEnvironment, LmdbTrieStore, Self::Error>(
             &self.environment,
             &self.trie_store,
             prestate_hash,
@@ -261,25 +260,25 @@ impl StateProvider for LmdbGlobalState {
         Ok(missing_hashes)
     }
 
-    /// Delete keys.
-    fn delete_keys(
+    /// Prune keys.
+    fn prune_keys(
         &self,
         mut state_root_hash: Digest,
         keys: &[Key],
-    ) -> Result<DeleteResult, Self::Error> {
+    ) -> Result<PruneResult, Self::Error> {
         let scratch_trie_store = self.get_scratch_store();
 
         let mut txn = scratch_trie_store.create_read_write_txn()?;
 
         for key in keys {
-            let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
+            let prune_results = prune::<Key, StoredValue, _, _, Self::Error>(
                 &mut txn,
                 &scratch_trie_store,
                 &state_root_hash,
                 key,
             );
-            match delete_result? {
-                DeleteResult::Deleted(root) => {
+            match prune_results? {
+                PruneResult::Pruned(root) => {
                     state_root_hash = root;
                 }
                 other => return Ok(other),
@@ -289,7 +288,7 @@ impl StateProvider for LmdbGlobalState {
         txn.commit()?;
 
         scratch_trie_store.write_root_to_db(state_root_hash)?;
-        Ok(DeleteResult::Deleted(state_root_hash))
+        Ok(PruneResult::Pruned(state_root_hash))
     }
 }
 
@@ -317,16 +316,15 @@ pub fn make_temporary_global_state(
 
     let mut root_hash = lmdb_global_state.empty_root_hash;
 
-    let mut m = AdditiveMap::new();
+    let mut effects = Effects::new();
 
     for (key, stored_value) in initial_data {
-        let normalized_key = key.normalize();
-        let transform = Transform::Write(stored_value);
-        m.insert(normalized_key, transform);
+        let transform = Transform::new(key.normalize(), TransformKind::Write(stored_value));
+        effects.push(transform);
     }
 
     root_hash = lmdb_global_state
-        .commit(root_hash, m)
+        .commit(root_hash, effects)
         .expect("Creation of account should be a success.");
 
     (lmdb_global_state, root_hash, tempdir)
@@ -334,7 +332,7 @@ pub fn make_temporary_global_state(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{account::AccountHash, CLValue, Digest};
+    use casper_types::{account::AccountHash, execution::TransformKind, CLValue, Digest};
 
     use crate::global_state::state::scratch::tests::TestPair;
 
@@ -394,10 +392,11 @@ mod tests {
 
         let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
 
-        let effects: AdditiveMap<Key, Transform> = {
-            let mut tmp = AdditiveMap::new();
+        let effects = {
+            let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                tmp.insert(*key, Transform::Write(value.to_owned()));
+                let transform = Transform::new(*key, TransformKind::Write(value.clone()));
+                tmp.push(transform);
             }
             tmp
         };
@@ -417,10 +416,11 @@ mod tests {
 
         let (state, root_hash, _tempdir) = make_temporary_global_state(create_test_pairs());
 
-        let effects: AdditiveMap<Key, Transform> = {
-            let mut tmp = AdditiveMap::new();
+        let effects = {
+            let mut tmp = Effects::new();
             for TestPair { key, value } in &test_pairs_updated {
-                tmp.insert(*key, Transform::Write(value.to_owned()));
+                let transform = Transform::new(*key, TransformKind::Write(value.clone()));
+                tmp.push(transform);
             }
             tmp
         };

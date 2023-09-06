@@ -8,6 +8,8 @@ use crate::{
     CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Parameter,
 };
 
+use super::METHOD_DISTRIBUTE_ACCUMULATED_FEES;
+
 /// Creates handle payment contract entry points.
 pub fn handle_payment_entry_points() -> EntryPoints {
     let mut entry_points = EntryPoints::new();
@@ -50,6 +52,15 @@ pub fn handle_payment_entry_points() -> EntryPoints {
         EntryPointType::Contract,
     );
     entry_points.add_entry_point(finalize_payment);
+
+    let distribute_accumulated_fees = EntryPoint::new(
+        METHOD_DISTRIBUTE_ACCUMULATED_FEES,
+        vec![],
+        CLType::Unit,
+        EntryPointAccess::Public,
+        EntryPointType::Contract,
+    );
+    entry_points.add_entry_point(distribute_accumulated_fees);
 
     entry_points
 }

@@ -9,15 +9,17 @@ use core::{convert::TryFrom, fmt::Debug};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
 use crate::{
     account::Account,
-    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     contracts::Contract,
     package::Package,
-    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
+    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
     AddressableEntity, CLValue, ContractWasm, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
@@ -37,37 +39,45 @@ enum Tag {
     Withdraw = 9,
     Unbonding = 10,
     AddressableEntity = 11,
+    BidKind = 12,
 }
 
+/// A value stored in Global State.
 #[allow(clippy::large_enum_variant)]
 #[derive(Eq, PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-/// StoredValue represents all possible variants of values stored in Global State.
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(with = "serde_helpers::BinarySerHelper")
+)]
 pub enum StoredValue {
-    /// Variant that stores [`CLValue`].
+    /// A CLValue.
     CLValue(CLValue),
-    /// Variant that stores [`Account`].
+    /// An account.
     Account(Account),
-    /// Variant that stores [`ContractWasm`].
+    /// A contract Wasm.
     ContractWasm(ContractWasm),
-    /// Variant that stores [`Contract`].
+    /// A contract.
     Contract(Contract),
-    /// Variant that stores [`Package`].
+    /// A `Package`.
     ContractPackage(Package),
-    /// Variant that stores [`Transfer`].
+    /// A `Transfer`.
     Transfer(Transfer),
-    /// Variant that stores [`DeployInfo`].
+    /// Info about a deploy.
     DeployInfo(DeployInfo),
-    /// Variant that stores [`EraInfo`].
+    /// Info about an era.
     EraInfo(EraInfo),
     /// Variant that stores [`Bid`].
     Bid(Box<Bid>),
     /// Variant that stores withdraw information.
     Withdraw(Vec<WithdrawPurse>),
-    /// Variant that stores unbonding information.
+    /// Unbonding information.
     Unbonding(Vec<UnbondingPurse>),
-    /// Variant that stores [`AddressableEntity`].
+    /// An `AddressableEntity`.
     AddressableEntity(AddressableEntity),
+    /// Variant that stores [`BidKind`].
+    BidKind(BidKind),
 }
 
 impl StoredValue {
@@ -128,9 +138,9 @@ impl StoredValue {
     }
 
     /// Returns a wrapped [`Bid`] if this is a `Bid` variant.
-    pub fn as_bid(&self) -> Option<&Bid> {
+    pub fn as_bid_kind(&self) -> Option<&BidKind> {
         match self {
-            StoredValue::Bid(bid) => Some(bid),
+            StoredValue::BidKind(bid) => Some(bid),
             _ => None,
         }
     }
@@ -168,6 +178,7 @@ impl StoredValue {
             StoredValue::Withdraw(_) => "Withdraw".to_string(),
             StoredValue::Unbonding(_) => "Unbonding".to_string(),
             StoredValue::AddressableEntity(_) => "AddressableEntity".to_string(),
+            StoredValue::BidKind(_) => "BidKind".to_string(),
         }
     }
 
@@ -185,6 +196,23 @@ impl StoredValue {
             StoredValue::Withdraw(_) => Tag::Withdraw,
             StoredValue::Unbonding(_) => Tag::Unbonding,
             StoredValue::AddressableEntity(_) => Tag::AddressableEntity,
+            StoredValue::BidKind(_) => Tag::BidKind,
+        }
+    }
+
+    /// Returns a wrapped [`Account`]s if this is a `Account` variant.
+    pub fn into_account(self) -> Option<Account> {
+        match self {
+            StoredValue::Account(account) => Some(account),
+            _ => None,
+        }
+    }
+
+    /// Returns a wrapped [`Contract`]s if this is a `Contract` variant.
+    pub fn into_contract(self) -> Option<Contract> {
+        match self {
+            StoredValue::Contract(contract) => Some(contract),
+            _ => None,
         }
     }
 }
@@ -222,9 +250,16 @@ impl From<Package> for StoredValue {
         StoredValue::ContractPackage(value)
     }
 }
+
 impl From<Bid> for StoredValue {
     fn from(bid: Bid) -> StoredValue {
         StoredValue::Bid(Box::new(bid))
+    }
+}
+
+impl From<BidKind> for StoredValue {
+    fn from(bid_kind: BidKind) -> StoredValue {
+        StoredValue::BidKind(bid_kind)
     }
 }
 
@@ -264,6 +299,20 @@ impl TryFrom<StoredValue> for ContractWasm {
             StoredValue::ContractWasm(contract_wasm) => Ok(contract_wasm),
             _ => Err(TypeMismatch::new(
                 "ContractWasm".to_string(),
+                stored_value.type_name(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<StoredValue> for Contract {
+    type Error = TypeMismatch;
+
+    fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
+        match stored_value {
+            StoredValue::Contract(contract) => Ok(contract),
+            _ => Err(TypeMismatch::new(
+                "Contract".to_string(),
                 stored_value.type_name(),
             )),
         }
@@ -334,32 +383,33 @@ impl TryFrom<StoredValue> for EraInfo {
     }
 }
 
+impl TryFrom<StoredValue> for Bid {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::Bid(bid) => Ok(*bid),
+            _ => Err(TypeMismatch::new("Bid".to_string(), value.type_name())),
+        }
+    }
+}
+
+impl TryFrom<StoredValue> for BidKind {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::BidKind(bid_kind) => Ok(bid_kind),
+            _ => Err(TypeMismatch::new("BidKind".to_string(), value.type_name())),
+        }
+    }
+}
+
 impl ToBytes for StoredValue {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        let (tag, mut serialized_data) = match self {
-            StoredValue::CLValue(cl_value) => (Tag::CLValue, cl_value.to_bytes()?),
-            StoredValue::Account(account) => (Tag::Account, account.to_bytes()?),
-            StoredValue::ContractWasm(contract_wasm) => {
-                (Tag::ContractWasm, contract_wasm.to_bytes()?)
-            }
-            StoredValue::Contract(contract_header) => (Tag::Contract, contract_header.to_bytes()?),
-            StoredValue::ContractPackage(contract_package) => {
-                (Tag::ContractPackage, contract_package.to_bytes()?)
-            }
-            StoredValue::Transfer(transfer) => (Tag::Transfer, transfer.to_bytes()?),
-            StoredValue::DeployInfo(deploy_info) => (Tag::DeployInfo, deploy_info.to_bytes()?),
-            StoredValue::EraInfo(era_info) => (Tag::EraInfo, era_info.to_bytes()?),
-            StoredValue::Bid(bid) => (Tag::Bid, bid.to_bytes()?),
-            StoredValue::Withdraw(withdraw_purses) => (Tag::Withdraw, withdraw_purses.to_bytes()?),
-            StoredValue::Unbonding(unbonding_purses) => {
-                (Tag::Unbonding, unbonding_purses.to_bytes()?)
-            }
-            StoredValue::AddressableEntity(entity) => (Tag::AddressableEntity, entity.to_bytes()?),
-        };
-        result.push(tag as u8);
-        result.append(&mut serialized_data);
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -379,6 +429,7 @@ impl ToBytes for StoredValue {
                 StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
                 StoredValue::AddressableEntity(entity) => entity.serialized_length(),
+                StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
             }
     }
 
@@ -399,6 +450,7 @@ impl ToBytes for StoredValue {
             StoredValue::Withdraw(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::AddressableEntity(entity) => entity.write_bytes(writer)?,
+            StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -406,7 +458,7 @@ impl ToBytes for StoredValue {
 
 impl FromBytes for StoredValue {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (tag, remainder): (u8, &[u8]) = FromBytes::from_bytes(bytes)?;
+        let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
             tag if tag == Tag::CLValue as u8 => CLValue::from_bytes(remainder)
                 .map(|(cl_value, remainder)| (StoredValue::CLValue(cl_value), remainder)),
@@ -432,6 +484,8 @@ impl FromBytes for StoredValue {
                 .map(|(deploy_info, remainder)| (StoredValue::EraInfo(deploy_info), remainder)),
             tag if tag == Tag::Bid as u8 => Bid::from_bytes(remainder)
                 .map(|(bid, remainder)| (StoredValue::Bid(Box::new(bid)), remainder)),
+            tag if tag == Tag::BidKind as u8 => BidKind::from_bytes(remainder)
+                .map(|(bid_kind, remainder)| (StoredValue::BidKind(bid_kind), remainder)),
             tag if tag == Tag::Withdraw as u8 => {
                 Vec::<WithdrawPurse>::from_bytes(remainder).map(|(withdraw_purses, remainder)| {
                     (StoredValue::Withdraw(withdraw_purses), remainder)
@@ -444,27 +498,144 @@ impl FromBytes for StoredValue {
             }
             tag if tag == Tag::AddressableEntity as u8 => AddressableEntity::from_bytes(remainder)
                 .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
-            _ => Err(bytesrepr::Error::Formatting),
+            _ => Err(Error::Formatting),
+        }
+    }
+}
+
+mod serde_helpers {
+    use super::*;
+
+    #[derive(Serialize)]
+    pub(super) enum BinarySerHelper<'a> {
+        /// A CLValue.
+        CLValue(&'a CLValue),
+        /// An account.
+        Account(&'a Account),
+        /// A contract Wasm.
+        ContractWasm(&'a ContractWasm),
+        /// A contract.
+        Contract(&'a Contract),
+        /// A `Package`.
+        ContractPackage(&'a Package),
+        /// A `Transfer`.
+        Transfer(&'a Transfer),
+        /// Info about a deploy.
+        DeployInfo(&'a DeployInfo),
+        /// Info about an era.
+        EraInfo(&'a EraInfo),
+        /// Variant that stores [`Bid`].
+        Bid(&'a Bid),
+        /// Variant that stores withdraw information.
+        Withdraw(&'a Vec<WithdrawPurse>),
+        /// Unbonding information.
+        Unbonding(&'a Vec<UnbondingPurse>),
+        /// An `AddressableEntity`.
+        AddressableEntity(&'a AddressableEntity),
+        /// Variant that stores [`BidKind`].
+        BidKind(&'a BidKind),
+    }
+
+    #[derive(Deserialize)]
+    pub(super) enum BinaryDeserHelper {
+        /// A CLValue.
+        CLValue(CLValue),
+        /// An account.
+        Account(Account),
+        /// A contract Wasm.
+        ContractWasm(ContractWasm),
+        /// A contract.
+        Contract(Contract),
+        /// A `Package`.
+        ContractPackage(Package),
+        /// A `Transfer`.
+        Transfer(Transfer),
+        /// Info about a deploy.
+        DeployInfo(DeployInfo),
+        /// Info about an era.
+        EraInfo(EraInfo),
+        /// Variant that stores [`Bid`].
+        Bid(Box<Bid>),
+        /// Variant that stores withdraw information.
+        Withdraw(Vec<WithdrawPurse>),
+        /// Unbonding information.
+        Unbonding(Vec<UnbondingPurse>),
+        /// An `AddressableEntity`.
+        AddressableEntity(AddressableEntity),
+        /// Variant that stores [`BidKind`].
+        BidKind(BidKind),
+    }
+
+    impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
+        fn from(stored_value: &'a StoredValue) -> Self {
+            match stored_value {
+                StoredValue::CLValue(payload) => BinarySerHelper::CLValue(payload),
+                StoredValue::Account(payload) => BinarySerHelper::Account(payload),
+                StoredValue::ContractWasm(payload) => BinarySerHelper::ContractWasm(payload),
+                StoredValue::Contract(payload) => BinarySerHelper::Contract(payload),
+                StoredValue::ContractPackage(payload) => BinarySerHelper::ContractPackage(payload),
+                StoredValue::Transfer(payload) => BinarySerHelper::Transfer(payload),
+                StoredValue::DeployInfo(payload) => BinarySerHelper::DeployInfo(payload),
+                StoredValue::EraInfo(payload) => BinarySerHelper::EraInfo(payload),
+                StoredValue::Bid(payload) => BinarySerHelper::Bid(payload),
+                StoredValue::Withdraw(payload) => BinarySerHelper::Withdraw(payload),
+                StoredValue::Unbonding(payload) => BinarySerHelper::Unbonding(payload),
+                StoredValue::AddressableEntity(payload) => {
+                    BinarySerHelper::AddressableEntity(payload)
+                }
+                StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
+            }
+        }
+    }
+
+    impl From<BinaryDeserHelper> for StoredValue {
+        fn from(helper: BinaryDeserHelper) -> Self {
+            match helper {
+                BinaryDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
+                BinaryDeserHelper::Account(payload) => StoredValue::Account(payload),
+                BinaryDeserHelper::ContractWasm(payload) => StoredValue::ContractWasm(payload),
+                BinaryDeserHelper::Contract(payload) => StoredValue::Contract(payload),
+                BinaryDeserHelper::ContractPackage(payload) => {
+                    StoredValue::ContractPackage(payload)
+                }
+                BinaryDeserHelper::Transfer(payload) => StoredValue::Transfer(payload),
+                BinaryDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
+                BinaryDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
+                BinaryDeserHelper::Bid(bid) => StoredValue::Bid(bid),
+                BinaryDeserHelper::Withdraw(payload) => StoredValue::Withdraw(payload),
+                BinaryDeserHelper::Unbonding(payload) => StoredValue::Unbonding(payload),
+                BinaryDeserHelper::AddressableEntity(payload) => {
+                    StoredValue::AddressableEntity(payload)
+                }
+                BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
+            }
         }
     }
 }
 
 impl Serialize for StoredValue {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // The JSON representation of a StoredValue is just its bytesrepr
-        // While this makes it harder to inspect, it makes deterministic representation simple.
-        let bytes = self
-            .to_bytes()
-            .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
-        ByteBuf::from(bytes).serialize(serializer)
+        if serializer.is_human_readable() {
+            serde_helpers::BinarySerHelper::from(self).serialize(serializer)
+        } else {
+            let bytes = self
+                .to_bytes()
+                .map_err(|error| ser::Error::custom(format!("{:?}", error)))?;
+            ByteBuf::from(bytes).serialize(serializer)
+        }
     }
 }
 
 impl<'de> Deserialize<'de> for StoredValue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
-        bytesrepr::deserialize::<StoredValue>(bytes)
-            .map_err(|error| de::Error::custom(format!("{:?}", error)))
+        if deserializer.is_human_readable() {
+            let json_helper = serde_helpers::BinaryDeserHelper::deserialize(deserializer)?;
+            Ok(StoredValue::from(json_helper))
+        } else {
+            let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+            bytesrepr::deserialize::<StoredValue>(bytes)
+                .map_err(|error| de::Error::custom(format!("{:?}", error)))
+        }
     }
 }
 

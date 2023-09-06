@@ -23,26 +23,25 @@ use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    account::AccountHash,
+    account::{Account, AccountHash},
     addressable_entity::{
-        self, ActionThresholds, ActionType, AddressableEntity, AssociatedKeys, EntryPoint,
-        EntryPointAccess, EntryPoints, NamedKeys, Weight, DEFAULT_ENTRY_POINT_NAME,
+        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity, AssociatedKeys,
+        ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
+        Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
+        DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersion, ContractVersions,
-        DisabledVersions, Group, Groups, Package,
-    },
+    package::{ContractPackageKind, ContractPackageStatus},
     system::{
         self,
         auction::{self, EraInfo},
         handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractVersionKey, ContractWasm, DeployHash, EntryPointType, Gas,
-    GrantedAccess, HostFunction, HostFunctionCost, Key, NamedArg, Parameter, Phase, PublicKey,
-    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractPackageHash,
+    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Gas,
+    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, Phase,
+    PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
@@ -50,7 +49,7 @@ use crate::{
     engine_state::ACCOUNT_WASM_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
-    runtime_context::{self, RuntimeContext},
+    runtime_context::RuntimeContext,
     system::{
         auction::Auction, handle_payment::HandlePayment, mint::Mint,
         standard_payment::StandardPayment,
@@ -342,7 +341,7 @@ where
     }
 
     /// Gets the immediate caller of the current execution
-    fn get_immediate_caller(&self) -> Option<&CallStackElement> {
+    fn get_immediate_caller(&self) -> Option<&RuntimeStackFrame> {
         self.stack.as_ref().and_then(|stack| stack.previous_frame())
     }
 
@@ -413,7 +412,7 @@ where
             return Ok(Ok(()));
         }
 
-        let call_stack_cl_value = CLValue::from_t(call_stack.clone()).map_err(Error::CLValue)?;
+        let call_stack_cl_value = CLValue::from_t(call_stack).map_err(Error::CLValue)?;
 
         let call_stack_cl_value_bytes_len: u32 =
             match call_stack_cl_value.inner_bytes().len().try_into() {
@@ -716,6 +715,14 @@ where
 
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
+            handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES => (|| {
+                runtime.charge_system_contract_call(handle_payment_costs.finalize_payment)?;
+                runtime
+                    .distribute_accumulated_fees()
+                    .map_err(Self::reverter)?;
+                CLValue::from_t(()).map_err(Self::reverter)
+            })(),
+
             _ => CLValue::from_t(()).map_err(Self::reverter),
         };
 
@@ -893,12 +900,15 @@ where
 
                 let max_delegators_per_validator =
                     self.context.engine_config().max_delegators_per_validator();
+                let minimum_delegation_amount =
+                    self.context.engine_config().minimum_delegation_amount();
 
                 runtime
                     .run_auction(
                         era_end_timestamp_millis,
                         evicted_validators,
                         max_delegators_per_validator,
+                        minimum_delegation_amount,
                     )
                     .map_err(Self::reverter)?;
 
@@ -994,7 +1004,7 @@ where
         let wasm_config = engine_config.wasm_config();
         let module = wasm_prep::preprocess(*wasm_config, module_bytes)?;
         let (instance, memory) =
-            utils::instance_and_memory(module.clone(), protocol_version, wasm_config)?;
+            utils::instance_and_memory(module.clone(), protocol_version, engine_config)?;
         self.memory = Some(memory);
         self.module = Some(module);
         self.stack = Some(stack);
@@ -1075,12 +1085,20 @@ where
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
+            (EntryPointType::Install, EntryPointType::Session) => {
+                // Session code can't be called from Installer code for security reasons.
+                Err(Error::InvalidContext)
+            }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
                 Ok(self.context.get_entity_address())
             }
             (EntryPointType::Session, EntryPointType::Contract)
             | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
+            _ => {
+                // Any other combination (installer, normal, etc.) is a contract context.
+                Ok(contract_hash.into())
+            }
         }
     }
 
@@ -1180,7 +1198,12 @@ where
         // Get contract entry point hash
         // if public, allowed
         // if not public, restricted to user group access
-        self.validate_group_membership(&contract_package, entry_point.access())?;
+        // if abstract, not allowed
+        self.validate_entry_point_access(
+            &contract_package,
+            entry_point_name,
+            entry_point.access(),
+        )?;
 
         if self.context.engine_config().strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
@@ -1210,6 +1233,18 @@ where
                 }
             }
         }
+
+        if !self
+            .context
+            .engine_config()
+            .administrative_accounts()
+            .is_empty()
+            && !contract_package.is_contract_enabled(&contract_hash)
+            && !self.context.is_system_contract(&contract_hash)?
+        {
+            return Err(Error::DisabledContract(contract_hash));
+        }
+
         // if session the caller's context
         // else the called contract's context
         let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
@@ -1228,7 +1263,7 @@ where
                 self.context.entity().named_keys().clone(),
                 self.context.entity().extract_access_rights(contract_hash),
             ),
-            EntryPointType::Contract => (
+            EntryPointType::Contract | EntryPointType::Install => (
                 contract.named_keys().clone(),
                 contract.extract_access_rights(contract_hash),
             ),
@@ -1248,6 +1283,10 @@ where
                     )
                 }
                 EntryPointType::Contract => CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                ),
+                EntryPointType::Install => CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 ),
@@ -1355,7 +1394,7 @@ where
         let (instance, memory) = utils::instance_and_memory(
             module.clone(),
             protocol_version,
-            self.context.engine_config().wasm_config(),
+            self.context.engine_config(),
         )?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
 
@@ -1551,9 +1590,9 @@ where
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
             access_key,
-            ContractVersions::default(),
-            DisabledVersions::default(),
-            Groups::default(),
+            ContractVersions::new(),
+            BTreeSet::new(),
+            Groups::new(),
             is_locked,
             contract_package_kind,
         );
@@ -1589,7 +1628,7 @@ where
         let new_group = Group::new(label);
 
         // Ensure group does not already exist
-        if groups.get(&new_group).is_some() {
+        if groups.contains(&new_group) {
             return Ok(Err(addressable_entity::Error::GroupAlreadyExists.into()));
         }
 
@@ -1599,9 +1638,8 @@ where
         }
 
         // Ensure there are not too many urefs
-        let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum::<usize>()
-            + (num_new_urefs as usize)
-            + existing_urefs.len();
+        let total_urefs: usize =
+            groups.total_urefs() + (num_new_urefs as usize) + existing_urefs.len();
         if total_urefs > addressable_entity::MAX_TOTAL_UREFS {
             let err = addressable_entity::Error::MaxTotalURefsExceeded;
             return Ok(Err(ApiError::ContractHeader(err as u8)));
@@ -1793,12 +1831,36 @@ where
         let mut contract_package: Package =
             self.context.get_validated_package(contract_package_hash)?;
 
-        // Return an error in trying to disable the (singular) version of a locked contract.
         if contract_package.is_locked() {
             return Err(Error::LockedContract(contract_package_hash));
         }
 
         if let Err(err) = contract_package.disable_contract_version(contract_hash) {
+            return Ok(Err(err.into()));
+        }
+
+        self.context
+            .metered_write_gs_unsafe(contract_package_key, contract_package)?;
+
+        Ok(Ok(()))
+    }
+
+    fn enable_contract_version(
+        &mut self,
+        contract_package_hash: ContractPackageHash,
+        contract_hash: ContractHash,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let contract_package_key = contract_package_hash.into();
+        self.context.validate_key(&contract_package_key)?;
+
+        let mut contract_package: Package =
+            self.context.get_validated_package(contract_package_hash)?;
+
+        if contract_package.is_locked() {
+            return Err(Error::LockedContract(contract_package_hash));
+        }
+
+        if let Err(err) = contract_package.enable_version(contract_hash) {
             return Ok(Err(err.into()));
         }
 
@@ -1875,7 +1937,7 @@ where
     }
 
     /// Records given auction info at a given era id
-    fn record_era_summary(&mut self, era_info: EraInfo) -> Result<(), Error> {
+    fn record_era_info(&mut self, era_info: EraInfo) -> Result<(), Error> {
         if self.context.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidContext);
         }
@@ -1954,6 +2016,37 @@ where
         Error::Revert(status.into()).into()
     }
 
+    /// Checks if a caller can manage its own associated keys and thresholds.
+    ///
+    /// On some private chains with administrator keys configured this requires that the caller is
+    /// an admin to be able to manage its own keys. If the caller is not an administrator then the
+    /// deploy has to be signed by an administrator.
+    fn can_manage_keys(&self) -> bool {
+        if self
+            .context
+            .engine_config()
+            .administrative_accounts()
+            .is_empty()
+        {
+            // Public chain
+            return self
+                .context
+                .entity()
+                .can_manage_keys_with(self.context.authorization_keys());
+        }
+
+        if self
+            .context
+            .engine_config()
+            .is_administrator(&self.context.get_caller())
+        {
+            return true;
+        }
+
+        // If caller is not an admin, check if deploy was co-signed by admin account.
+        self.context.is_authorized_by_admin()
+    }
+
     fn add_associated_key(
         &mut self,
         account_hash_ptr: u32,
@@ -1969,6 +2062,10 @@ where
             source
         };
         let weight = Weight::new(weight_value);
+
+        if !self.can_manage_keys() {
+            return Ok(AddKeyFailure::PermissionDenied as i32);
+        }
 
         match self.context.add_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
@@ -1995,6 +2092,11 @@ where
                 bytesrepr::deserialize(source_serialized).map_err(Error::BytesRepr)?;
             source
         };
+
+        if !self.can_manage_keys() {
+            return Ok(RemoveKeyFailure::PermissionDenied as i32);
+        }
+
         match self.context.remove_associated_key(account_hash) {
             Ok(_) => Ok(0),
             Err(Error::RemoveKeyFailure(e)) => Ok(e as i32),
@@ -2018,6 +2120,10 @@ where
         };
         let weight = Weight::new(weight_value);
 
+        if !self.can_manage_keys() {
+            return Ok(UpdateKeyFailure::PermissionDenied as i32);
+        }
+
         match self.context.update_associated_key(account_hash, weight) {
             Ok(_) => Ok(0),
             // This relies on the fact that `UpdateKeyFailure` is represented as
@@ -2035,13 +2141,17 @@ where
         action_type_value: u32,
         threshold_value: u8,
     ) -> Result<i32, Trap> {
+        if !self.can_manage_keys() {
+            return Ok(SetThresholdFailure::PermissionDeniedError as i32);
+        }
+
         match ActionType::try_from(action_type_value) {
             Ok(action_type) => {
                 let threshold = Weight::new(threshold_value);
                 match self.context.set_action_threshold(action_type, threshold) {
                     Ok(_) => Ok(0),
                     Err(Error::SetThresholdFailure(e)) => Ok(e as i32),
-                    Err(e) => Err(e.into()),
+                    Err(error) => Err(error.into()),
                 }
             }
             Err(_) => Err(Trap::new(TrapKind::Unreachable)),
@@ -2190,6 +2300,17 @@ where
     ) -> Result<TransferResult, Error> {
         let mint_contract_hash = self.get_mint_contract()?;
 
+        if !self.context.engine_config().allow_unrestricted_transfers()
+            && self.context.get_caller() != PublicKey::System.to_account_hash()
+            && !self
+                .context
+                .engine_config()
+                .is_administrator(&self.context.get_caller())
+            && !self.context.engine_config().is_administrator(&target)
+        {
+            return Err(Error::DisabledUnrestrictedTransfers);
+        }
+
         // A precondition check that verifies that the transfer can be done
         // as the source purse has enough funds to cover the transfer.
         if amount > self.get_balance(source)?.unwrap_or_default() {
@@ -2226,7 +2347,7 @@ where
                     ContractPackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
-                let named_keys = NamedKeys::default();
+                let named_keys = NamedKeys::new();
                 let entry_points = EntryPoints::new();
 
                 let contract = AddressableEntity::new(
@@ -2245,7 +2366,7 @@ where
                     let mut contract_package = Package::new(
                         access_key,
                         ContractVersions::default(),
-                        DisabledVersions::default(),
+                        BTreeSet::default(),
                         Groups::default(),
                         ContractPackageStatus::Locked,
                         ContractPackageKind::Account(target),
@@ -2312,12 +2433,12 @@ where
         id: Option<u64>,
     ) -> Result<TransferResult, Error> {
         let source = self.context.get_main_purse()?;
-        self.transfer_from_purse_to_account(source, target, amount, id)
+        self.transfer_from_purse_to_account_hash(source, target, amount, id)
     }
 
     /// Transfers `amount` of motes from `source` purse to `target` account.
     /// If that account does not exist, creates one.
-    fn transfer_from_purse_to_account(
+    fn transfer_from_purse_to_account_hash(
         &mut self,
         source: URef,
         target: AccountHash,
@@ -2326,6 +2447,7 @@ where
     ) -> Result<TransferResult, Error> {
         let _scoped_host_function_flag = self.host_function_flag.enter_host_function_scope();
         let target_key = Key::Account(target);
+
         // Look up the account at the given public key's address
         match self.context.read_gs(&target_key)? {
             None => {
@@ -2379,6 +2501,9 @@ where
                 }
                 transfer_result
             }
+            Some(StoredValue::Account(account)) => {
+                self.transfer_from_purse_to_account(source, &account, amount, id)
+            }
             Some(_) => {
                 // If some other value exists, return an error
                 Err(Error::AccountNotFound(target_key))
@@ -2386,43 +2511,55 @@ where
         }
     }
 
+    fn transfer_from_purse_to_account(
+        &mut self,
+        source: URef,
+        target_account: &Account,
+        amount: U512,
+        id: Option<u64>,
+    ) -> Result<TransferResult, Error> {
+        // Attenuate the target main purse
+        let target_uref = target_account.main_purse_add_only();
+
+        if source.with_access_rights(AccessRights::ADD) == target_uref {
+            return Ok(Ok(TransferredTo::ExistingAccount));
+        }
+
+        // Grant ADD access to caller on target allowing deposit of motes; this will be
+        // revoked after the transfer is completed if caller did not already have ADD access
+        let granted_access = self.context.grant_access(target_uref);
+
+        // If an account exists, transfer the amount to its purse
+        let transfer_result = self.transfer_to_existing_account(
+            Some(target_account.account_hash()),
+            source,
+            target_uref,
+            amount,
+            id,
+        );
+
+        // Remove from caller temporarily granted ADD access on target.
+        if let GrantedAccess::Granted {
+            uref_addr,
+            newly_granted_access_rights,
+        } = granted_access
+        {
+            self.context
+                .remove_access(uref_addr, newly_granted_access_rights)
+        }
+        transfer_result
+    }
+
     /// Transfers `amount` of motes from `source` purse to `target` purse.
-    #[allow(clippy::too_many_arguments)]
     fn transfer_from_purse_to_purse(
         &mut self,
-        source_ptr: u32,
-        source_size: u32,
-        target_ptr: u32,
-        target_size: u32,
-        amount_ptr: u32,
-        amount_size: u32,
-        id_ptr: u32,
-        id_size: u32,
+        source: URef,
+        target: URef,
+        amount: U512,
+        id: Option<u64>,
     ) -> Result<Result<(), mint::Error>, Error> {
-        let source: URef = {
-            let bytes = self.bytes_from_mem(source_ptr, source_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let target: URef = {
-            let bytes = self.bytes_from_mem(target_ptr, target_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let amount: U512 = {
-            let bytes = self.bytes_from_mem(amount_ptr, amount_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
-        let id: Option<u64> = {
-            let bytes = self.bytes_from_mem(id_ptr, id_size as usize)?;
-            bytesrepr::deserialize(bytes).map_err(Error::BytesRepr)?
-        };
-
         self.context.validate_uref(&source)?;
-
         let mint_contract_key = self.get_mint_contract()?;
-
         match self.mint_transfer(mint_contract_key, None, source, target, amount, id)? {
             Ok(()) => Ok(Ok(())),
             Err(mint_error) => Ok(Err(mint_error)),
@@ -2639,14 +2776,41 @@ where
     }
 
     /// Enforce group access restrictions (if any) on attempts to call an `EntryPoint`.
-    fn validate_group_membership(
+    fn validate_entry_point_access(
         &self,
         package: &Package,
+        name: &str,
         access: &EntryPointAccess,
     ) -> Result<(), Error> {
-        runtime_context::validate_group_membership(package, access, |uref| {
-            self.context.validate_uref(uref).is_ok()
-        })
+        match access {
+            EntryPointAccess::Public => Ok(()),
+            EntryPointAccess::Groups(group_names) => {
+                if group_names.is_empty() {
+                    // Exits early in a special case of empty list of groups regardless of the group
+                    // checking logic below it.
+                    return Err(Error::InvalidContext);
+                }
+
+                let find_result = group_names.iter().find(|&group_name| {
+                    package
+                        .groups()
+                        .get(group_name)
+                        .and_then(|urefs| {
+                            urefs
+                                .iter()
+                                .find(|&uref| self.context.validate_uref(uref).is_ok())
+                        })
+                        .is_some()
+                });
+
+                if find_result.is_none() {
+                    return Err(Error::InvalidContext);
+                }
+
+                Ok(())
+            }
+            EntryPointAccess::Template => Err(Error::TemplateMethod(name.to_string())),
+        }
     }
 
     /// Remove a user group from access to a contract
@@ -2661,13 +2825,13 @@ where
         let groups = package.groups_mut();
 
         // Ensure group exists in groups
-        if groups.get(&group_to_remove).is_none() {
+        if !groups.contains(&group_to_remove) {
             return Ok(Err(addressable_entity::Error::GroupDoesNotExist.into()));
         }
 
         // Remove group if it is not referenced by at least one entry_point in active versions.
         let versions = package.versions();
-        for contract_hash in versions.values() {
+        for contract_hash in versions.contract_hashes() {
             let entry_points = {
                 let contract: AddressableEntity =
                     self.context.read_gs_typed(&Key::from(*contract_hash))?;
@@ -2675,7 +2839,7 @@ where
             };
             for entry_point in entry_points {
                 match entry_point.access() {
-                    EntryPointAccess::Public => {
+                    EntryPointAccess::Public | EntryPointAccess::Template => {
                         continue;
                     }
                     EntryPointAccess::Groups(groups) => {
@@ -2713,9 +2877,7 @@ where
         let group_label = Group::new(label);
 
         // Ensure there are not too many urefs
-        let total_urefs: usize = groups.values().map(|urefs| urefs.len()).sum();
-
-        if total_urefs + 1 > addressable_entity::MAX_TOTAL_UREFS {
+        if groups.total_urefs() + 1 > addressable_entity::MAX_TOTAL_UREFS {
             return Ok(Err(addressable_entity::Error::MaxTotalURefsExceeded.into()));
         }
 
@@ -3030,6 +3192,10 @@ where
         }
 
         Ok(Ok(()))
+    }
+
+    fn prune(&mut self, key: Key) {
+        self.context.prune_gs_unsafe(key);
     }
 
     pub(crate) fn migrate_contract_and_contract_package(

@@ -6,6 +6,7 @@ pub mod action_thresholds;
 mod action_type;
 pub mod associated_keys;
 mod error;
+mod named_keys;
 mod weight;
 
 use alloc::{
@@ -20,12 +21,17 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
     iter,
 };
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 pub use self::{
     action_thresholds::ActionThresholds,
@@ -35,6 +41,7 @@ pub use self::{
         FromAccountHashStrError, SetThresholdFailure, TryFromIntError,
         TryFromSliceForAccountHashError,
     },
+    named_keys::NamedKeys,
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
@@ -44,8 +51,7 @@ use crate::{
     checksummed_hex,
     contract_wasm::ContractWasmHash,
     contracts::Contract,
-    uref,
-    uref::URef,
+    uref::{self, URef},
     AccessRights, CLType, CLTyped, ContextAccessRights, ContractPackageHash, Group, HashAddr, Key,
     ProtocolVersion, KEY_HASH_LENGTH,
 };
@@ -202,11 +208,7 @@ impl Display for FromStrError {
         match self {
             FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
             FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
-            // FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
             FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
-            // FromStrError::AccountHash(error) => {
-            //     write!(f, "account hash from string error: {:?}", error)
-            // }
             FromStrError::URef(error) => write!(f, "uref from string error: {:?}", error),
             FromStrError::Account(error) => {
                 write!(f, "account hash from string error: {:?}", error)
@@ -215,10 +217,17 @@ impl Display for FromStrError {
     }
 }
 
-/// A newtype wrapping a `HashAddr` which references a [`AddressableEntity`] in the global state.
+/// A newtype wrapping a `HashAddr` which references an [`AddressableEntity`] in the global state.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractHash(HashAddr);
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The hex-encoded address of the addressable entity.")
+)]
+pub struct ContractHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
+);
 
 impl ContractHash {
     /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
@@ -350,21 +359,6 @@ impl TryFrom<&Vec<u8>> for ContractHash {
         HashAddr::try_from(bytes as &[u8])
             .map(ContractHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
-    }
-}
-
-#[cfg(feature = "json-schema")]
-impl JsonSchema for ContractHash {
-    fn schema_name() -> String {
-        String::from("ContractHash")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("The hex-encoded hash address of the contract".to_string());
-        schema_object.into()
     }
 }
 
@@ -511,48 +505,49 @@ impl TryFrom<i32> for UpdateKeyFailure {
     }
 }
 
-/// Type alias for a container used inside [`EntryPoints`].
-pub type EntryPointsMap = BTreeMap<String, EntryPoint>;
-
-/// Collection of named entry points
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+/// Collection of named entry points.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct EntryPoints(EntryPointsMap);
-
-impl Default for EntryPoints {
-    fn default() -> Self {
-        let mut entry_points = EntryPoints::new();
-        let entry_point = EntryPoint::default();
-        entry_points.add_entry_point(entry_point);
-        entry_points
-    }
-}
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(transparent, deny_unknown_fields)]
+pub struct EntryPoints(
+    #[serde(with = "BTreeMapToArray::<String, EntryPoint, EntryPointLabels>")]
+    BTreeMap<String, EntryPoint>,
+);
 
 impl ToBytes for EntryPoints {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
+
     fn serialized_length(&self) -> usize {
         self.0.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)?;
-        Ok(())
+        self.0.write_bytes(writer)
     }
 }
 
 impl FromBytes for EntryPoints {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (entry_points_map, rem) = EntryPointsMap::from_bytes(bytes)?;
-        Ok((EntryPoints(entry_points_map), rem))
+        let (entry_points_map, remainder) = BTreeMap::<String, EntryPoint>::from_bytes(bytes)?;
+        Ok((EntryPoints(entry_points_map), remainder))
     }
 }
 
 impl EntryPoints {
-    /// Creates empty instance of [`EntryPoints`].
-    pub fn new() -> EntryPoints {
-        EntryPoints(EntryPointsMap::new())
+    /// Constructs a new, empty `EntryPoints`.
+    pub const fn new() -> EntryPoints {
+        EntryPoints(BTreeMap::<String, EntryPoint>::new())
+    }
+
+    /// Constructs a new `EntryPoints` with a single entry for the default `EntryPoint`.
+    pub fn new_with_default_entry_point() -> Self {
+        let mut entry_points = EntryPoints::new();
+        let entry_point = EntryPoint::default();
+        entry_points.add_entry_point(entry_point);
+        entry_points
     }
 
     /// Adds new [`EntryPoint`].
@@ -601,12 +596,22 @@ impl From<Vec<EntryPoint>> for EntryPoints {
     }
 }
 
-/// Collection of named keys
-pub type NamedKeys = BTreeMap<String, Key>;
+struct EntryPointLabels;
+
+impl KeyValueLabels for EntryPointLabels {
+    const KEY: &'static str = "name";
+    const VALUE: &'static str = "entry_point";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for EntryPointLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedEntryPoint");
+}
 
 /// Methods and type signatures supported by a contract.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct AddressableEntity {
     contract_package_hash: ContractPackageHash,
     contract_wasm_hash: ContractWasmHash,
@@ -804,6 +809,21 @@ impl AddressableEntity {
         self.action_thresholds.set_threshold(action_type, weight)
     }
 
+    /// Sets a new action threshold for a given action type for the account without checking against
+    /// the total weight of the associated keys.
+    ///
+    /// This should only be called when authorized by an administrator account.
+    ///
+    /// Returns an error if setting the action would cause the `ActionType::Deployment` threshold to
+    /// be greater than any of the other action types.
+    pub fn set_action_threshold_unchecked(
+        &mut self,
+        action_type: ActionType,
+        threshold: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        self.action_thresholds.set_threshold(action_type, threshold)
+    }
+
     /// Verifies if user can set action threshold.
     pub fn can_set_threshold(&self, new_threshold: Weight) -> Result<(), SetThresholdFailure> {
         let total_weight = self.associated_keys.total_keys_weight();
@@ -877,18 +897,13 @@ impl AddressableEntity {
     }
 
     /// Appends `keys` to `named_keys`
-    pub fn named_keys_append(&mut self, keys: &mut NamedKeys) {
+    pub fn named_keys_append(&mut self, keys: NamedKeys) {
         self.named_keys.append(keys);
     }
 
     /// Removes given named key.
     pub fn remove_named_key(&mut self, key: &str) -> Option<Key> {
         self.named_keys.remove(key)
-    }
-
-    /// Returns a mutable reference to named keys.
-    pub fn named_keys_mut(&mut self) -> &mut NamedKeys {
-        &mut self.named_keys
     }
 
     /// Set protocol_version.
@@ -905,7 +920,7 @@ impl AddressableEntity {
     pub fn extract_access_rights(&self, contract_hash: ContractHash) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
-            .values()
+            .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
         ContextAccessRights::new(contract_hash.into(), urefs_iter)
@@ -952,8 +967,8 @@ impl ToBytes for AddressableEntity {
 
 impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (contract_package_hash, bytes) = FromBytes::from_bytes(bytes)?;
-        let (contract_wasm_hash, bytes) = FromBytes::from_bytes(bytes)?;
+        let (contract_package_hash, bytes) = ContractPackageHash::from_bytes(bytes)?;
+        let (contract_wasm_hash, bytes) = ContractWasmHash::from_bytes(bytes)?;
         let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
         let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
@@ -979,8 +994,8 @@ impl FromBytes for AddressableEntity {
 impl Default for AddressableEntity {
     fn default() -> Self {
         AddressableEntity {
-            named_keys: NamedKeys::default(),
-            entry_points: EntryPoints::default(),
+            named_keys: NamedKeys::new(),
+            entry_points: EntryPoints::new_with_default_entry_point(),
             contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
             contract_package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
@@ -1022,20 +1037,41 @@ impl From<Account> for AddressableEntity {
 }
 
 /// Context of method execution
-#[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Most significant bit represents version i.e.
+/// - 0b0 -> 0.x/1.x (session & contracts)
+/// - 0b1 -> 2.x and later (introduced installer, utility entry points)
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, FromPrimitive)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
-    Session = 0,
+    Session = 0b00000000,
     /// Runs within contract's context
-    Contract = 1,
+    Contract = 0b00000001,
+    /// Installer entry point.
+    Install = 0b10000000,
+}
+
+impl EntryPointType {
+    /// Checks if entry point type is introduced before 2.0.
+    ///
+    /// This method checks if there is a bit pattern for entry point types introduced in 2.0.
+    ///
+    /// If this bit is missing, that means given entry point type was defined in pre-2.0 world.
+    pub fn is_legacy_pattern(&self) -> bool {
+        (*self as u8) & 0b10000000 == 0
+    }
+
+    /// Get the bit pattern.
+    pub fn bits(self) -> u8 {
+        self as u8
+    }
 }
 
 impl ToBytes for EntryPointType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        (*self as u8).to_bytes()
+        self.bits().to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -1043,7 +1079,7 @@ impl ToBytes for EntryPointType {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(*self as u8);
+        writer.push(self.bits());
         Ok(())
     }
 }
@@ -1051,11 +1087,9 @@ impl ToBytes for EntryPointType {
 impl FromBytes for EntryPointType {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (value, bytes) = u8::from_bytes(bytes)?;
-        match value {
-            0 => Ok((EntryPointType::Session, bytes)),
-            1 => Ok((EntryPointType::Contract, bytes)),
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        let entry_point_type =
+            EntryPointType::from_u8(value).ok_or(bytesrepr::Error::Formatting)?;
+        Ok((entry_point_type, bytes))
     }
 }
 
@@ -1224,10 +1258,13 @@ pub enum EntryPointAccess {
     /// list is empty then this method is not callable from outside the
     /// contract.
     Groups(Vec<Group>),
+    /// Can't be accessed directly but are kept in the derived wasm bytes.
+    Template,
 }
 
 const ENTRYPOINTACCESS_PUBLIC_TAG: u8 = 1;
 const ENTRYPOINTACCESS_GROUPS_TAG: u8 = 2;
+const ENTRYPOINTACCESS_ABSTRACT_TAG: u8 = 3;
 
 impl EntryPointAccess {
     /// Constructor for access granted to only listed groups.
@@ -1252,6 +1289,9 @@ impl ToBytes for EntryPointAccess {
                 result.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 result.append(&mut groups.to_bytes()?);
             }
+            EntryPointAccess::Template => {
+                result.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
+            }
         }
         Ok(result)
     }
@@ -1260,6 +1300,7 @@ impl ToBytes for EntryPointAccess {
         match self {
             EntryPointAccess::Public => 1,
             EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
+            EntryPointAccess::Template => 1,
         }
     }
 
@@ -1271,6 +1312,9 @@ impl ToBytes for EntryPointAccess {
             EntryPointAccess::Groups(groups) => {
                 writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 groups.write_bytes(writer)?;
+            }
+            EntryPointAccess::Template => {
+                writer.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
             }
         }
         Ok(())
@@ -1288,6 +1332,7 @@ impl FromBytes for EntryPointAccess {
                 let result = EntryPointAccess::Groups(groups);
                 Ok((result, bytes))
             }
+            ENTRYPOINTACCESS_ABSTRACT_TAG => Ok((EntryPointAccess::Template, bytes)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -1426,7 +1471,7 @@ mod tests {
             ContractPackageHash::new([254; 32]),
             ContractWasmHash::new([253; 32]),
             named_keys,
-            EntryPoints::default(),
+            EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
             MAIN_PURSE,
             associated_keys,
@@ -1457,7 +1502,5 @@ mod prop_tests {
         fn test_value_contract(contract in gens::addressable_entity_arb()) {
             bytesrepr::test_serialization_roundtrip(&contract);
         }
-
-
     }
 }

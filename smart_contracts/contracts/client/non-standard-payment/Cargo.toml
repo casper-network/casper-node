@@ -1,0 +1,16 @@
+[package]
+name = "non-standard-payment"
+version = "0.1.0"
+authors = ["Ed Hastings <ed@gmail.com>", "Michał Papierski <michal@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "non_standard_payment"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

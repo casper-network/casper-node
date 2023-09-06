@@ -13,8 +13,11 @@ use core::{
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
-use schemars::{gen::SchemaGenerator, schema::Schema, JsonSchema};
+use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     account::AccountHash,
@@ -111,9 +114,15 @@ pub const CONTRACT_INITIAL_VERSION: ContractVersion = 1;
 pub type ProtocolVersionMajor = u32;
 
 /// Major element of `ProtocolVersion` combined with `ContractVersion`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractVersionKey(ProtocolVersionMajor, ContractVersion);
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub struct ContractVersionKey {
+    /// Major element of `ProtocolVersion` a `ContractVersion` is compatible with.
+    protocol_version_major: ProtocolVersionMajor,
+    /// Automatically incremented value for a contract version within a major `ProtocolVersion`.
+    contract_version: ContractVersion,
+}
 
 impl ContractVersionKey {
     /// Returns a new instance of ContractVersionKey with provided values.
@@ -121,36 +130,37 @@ impl ContractVersionKey {
         protocol_version_major: ProtocolVersionMajor,
         contract_version: ContractVersion,
     ) -> Self {
-        Self(protocol_version_major, contract_version)
+        Self {
+            protocol_version_major,
+            contract_version,
+        }
     }
 
     /// Returns the major element of the protocol version this contract is compatible with.
     pub fn protocol_version_major(self) -> ProtocolVersionMajor {
-        self.0
+        self.protocol_version_major
     }
 
     /// Returns the contract version within the protocol major version.
     pub fn contract_version(self) -> ContractVersion {
-        self.1
+        self.contract_version
     }
 }
 
 impl From<ContractVersionKey> for (ProtocolVersionMajor, ContractVersion) {
     fn from(contract_version_key: ContractVersionKey) -> Self {
-        (contract_version_key.0, contract_version_key.1)
+        (
+            contract_version_key.protocol_version_major,
+            contract_version_key.contract_version,
+        )
     }
 }
 
-/// Serialized length of `ContractVersionKey`.
-pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
-    U32_SERIALIZED_LENGTH + U32_SERIALIZED_LENGTH;
-
 impl ToBytes for ContractVersionKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut ret = bytesrepr::unchecked_allocate_buffer(self);
-        ret.append(&mut self.0.to_bytes()?);
-        ret.append(&mut self.1.to_bytes()?);
-        Ok(ret)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -158,40 +168,217 @@ impl ToBytes for ContractVersionKey {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)?;
-        self.1.write_bytes(writer)?;
-        Ok(())
+        self.protocol_version_major.write_bytes(writer)?;
+        self.contract_version.write_bytes(writer)
     }
 }
 
 impl FromBytes for ContractVersionKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (major, rem): (u32, &[u8]) = FromBytes::from_bytes(bytes)?;
-        let (contract, rem): (ContractVersion, &[u8]) = FromBytes::from_bytes(rem)?;
-        Ok((ContractVersionKey::new(major, contract), rem))
+        let (protocol_version_major, remainder) = ProtocolVersionMajor::from_bytes(bytes)?;
+        let (contract_version, remainder) = ContractVersion::from_bytes(remainder)?;
+        Ok((
+            ContractVersionKey {
+                protocol_version_major,
+                contract_version,
+            },
+            remainder,
+        ))
     }
 }
 
-impl fmt::Display for ContractVersionKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}.{}", self.0, self.1)
+impl Display for ContractVersionKey {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}.{}",
+            self.protocol_version_major, self.contract_version
+        )
     }
 }
+
+/// Serialized length of `ContractVersionKey`.
+pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
+    U32_SERIALIZED_LENGTH + U32_SERIALIZED_LENGTH;
 
 /// Collection of contract versions.
-pub type ContractVersions = BTreeMap<ContractVersionKey, ContractHash>;
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(transparent, deny_unknown_fields)]
+pub struct ContractVersions(
+    #[serde(with = "BTreeMapToArray::<ContractVersionKey, ContractHash, ContractVersionLabels>")]
+    BTreeMap<ContractVersionKey, ContractHash>,
+);
 
-/// Collection of disabled contract versions. The runtime will not permit disabled
-/// contract versions to be executed.
-pub type DisabledVersions = BTreeSet<ContractVersionKey>;
+impl ContractVersions {
+    /// Constructs a new, empty `ContractVersions`.
+    pub const fn new() -> Self {
+        ContractVersions(BTreeMap::new())
+    }
 
+    /// Returns an iterator over the `ContractHash`s (i.e. the map's values).
+    pub fn contract_hashes(&self) -> impl Iterator<Item = &ContractHash> {
+        self.0.values()
+    }
+
+    /// Returns the `ContractHash` under the key
+    pub fn get(&self, key: &ContractVersionKey) -> Option<&ContractHash> {
+        self.0.get(key)
+    }
+}
+
+impl ToBytes for ContractVersions {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for ContractVersions {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (versions, remainder) =
+            BTreeMap::<ContractVersionKey, ContractHash>::from_bytes(bytes)?;
+        Ok((ContractVersions(versions), remainder))
+    }
+}
+
+#[cfg(any(feature = "testing", feature = "gens", test))]
+impl From<BTreeMap<ContractVersionKey, ContractHash>> for ContractVersions {
+    fn from(value: BTreeMap<ContractVersionKey, ContractHash>) -> Self {
+        ContractVersions(value)
+    }
+}
+
+struct ContractVersionLabels;
+
+impl KeyValueLabels for ContractVersionLabels {
+    const KEY: &'static str = "contract_version_key";
+    const VALUE: &'static str = "contract_hash";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for ContractVersionLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
+}
 /// Collection of named groups.
-pub type Groups = BTreeMap<Group, BTreeSet<URef>>;
+#[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+#[serde(transparent, deny_unknown_fields)]
+pub struct Groups(
+    #[serde(with = "BTreeMapToArray::<Group, BTreeSet::<URef>, GroupLabels>")]
+    BTreeMap<Group, BTreeSet<URef>>,
+);
+
+impl Groups {
+    /// Constructs a new, empty `Groups`.
+    pub const fn new() -> Self {
+        Groups(BTreeMap::new())
+    }
+
+    /// Inserts a named group.
+    ///
+    /// If the map did not have this name present, `None` is returned.  If the map did have this
+    /// name present, its collection of `URef`s is overwritten, and the collection is returned.
+    pub fn insert(&mut self, name: Group, urefs: BTreeSet<URef>) -> Option<BTreeSet<URef>> {
+        self.0.insert(name, urefs)
+    }
+
+    /// Returns `true` if the named group exists in the collection.
+    pub fn contains(&self, name: &Group) -> bool {
+        self.0.contains_key(name)
+    }
+
+    /// Returns a reference to the collection of `URef`s under the given `name` if any.
+    pub fn get(&self, name: &Group) -> Option<&BTreeSet<URef>> {
+        self.0.get(name)
+    }
+
+    /// Returns a mutable reference to the collection of `URef`s under the given `name` if any.
+    pub fn get_mut(&mut self, name: &Group) -> Option<&mut BTreeSet<URef>> {
+        self.0.get_mut(name)
+    }
+
+    /// Returns the number of named groups.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if there are no named groups.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    /// Returns an iterator over the `Key`s (i.e. the map's values).
+    pub fn keys(&self) -> impl Iterator<Item = &BTreeSet<URef>> {
+        self.0.values()
+    }
+
+    /// Returns the total number of `URef`s contained in all the groups.
+    pub fn total_urefs(&self) -> usize {
+        self.0.values().map(|urefs| urefs.len()).sum()
+    }
+}
+
+impl ToBytes for Groups {
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        self.0.write_bytes(writer)
+    }
+}
+
+impl FromBytes for Groups {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (groups, remainder) = BTreeMap::<Group, BTreeSet<URef>>::from_bytes(bytes)?;
+        Ok((Groups(groups), remainder))
+    }
+}
+
+struct GroupLabels;
+
+impl KeyValueLabels for GroupLabels {
+    const KEY: &'static str = "group_name";
+    const VALUE: &'static str = "group_users";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for GroupLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("NamedUserGroup");
+}
+
+#[cfg(any(feature = "testing", feature = "gens", test))]
+impl From<BTreeMap<Group, BTreeSet<URef>>> for Groups {
+    fn from(value: BTreeMap<Group, BTreeSet<URef>>) -> Self {
+        Groups(value)
+    }
+}
 
 /// A newtype wrapping a `HashAddr` which references a [`Package`] in the global state.
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractPackageHash(HashAddr);
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The hex-encoded address of the contract package.")
+)]
+pub struct ContractPackageHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
+);
 
 impl ContractPackageHash {
     /// Constructs a new `ContractPackageHash` from the raw bytes of the contract package hash.
@@ -362,21 +549,6 @@ impl From<&PublicKey> for ContractPackageHash {
     }
 }
 
-#[cfg(feature = "json-schema")]
-impl JsonSchema for ContractPackageHash {
-    fn schema_name() -> String {
-        String::from("ContractPackageHash")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description =
-            Some("The hex-encoded hash address of the contract package".to_string());
-        schema_object.into()
-    }
-}
-
 /// A enum to determine the lock status of the contract package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -439,8 +611,9 @@ impl FromBytes for ContractPackageStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 /// The type of contract package.
 pub enum ContractPackageKind {
     /// Contract Packages associated with Wasm stored on chain.
@@ -502,24 +675,9 @@ impl ContractPackageKind {
 
 impl ToBytes for ContractPackageKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        match self {
-            ContractPackageKind::Wasm => {
-                result.insert(0, PACKAGE_KIND_WASM_TAG);
-            }
-            ContractPackageKind::System(system_contract_type) => {
-                result.insert(0, PACKAGE_KIND_SYSTEM_CONTRACT_TAG);
-                result.extend_from_slice(&system_contract_type.to_bytes()?);
-            }
-            ContractPackageKind::Account(account_hash) => {
-                result.insert(0, PACKAGE_KIND_ACCOUNT_TAG);
-                result.extend_from_slice(&account_hash.to_bytes()?);
-            }
-            ContractPackageKind::Legacy => {
-                result.insert(0, PACKAGE_KIND_LEGACY_TAG);
-            }
-        }
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -531,6 +689,21 @@ impl ToBytes for ContractPackageKind {
                 }
                 ContractPackageKind::Account(account_hash) => account_hash.serialized_length(),
             }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        match self {
+            ContractPackageKind::Wasm => PACKAGE_KIND_WASM_TAG.write_bytes(writer),
+            ContractPackageKind::System(system_contract_type) => {
+                PACKAGE_KIND_SYSTEM_CONTRACT_TAG.write_bytes(writer)?;
+                system_contract_type.write_bytes(writer)
+            }
+            ContractPackageKind::Account(account_hash) => {
+                PACKAGE_KIND_ACCOUNT_TAG.write_bytes(writer)?;
+                account_hash.write_bytes(writer)
+            }
+            ContractPackageKind::Legacy => PACKAGE_KIND_LEGACY_TAG.write_bytes(writer),
+        }
     }
 }
 
@@ -573,23 +746,24 @@ impl Display for ContractPackageKind {
 }
 
 /// Contract definition, metadata, and security container.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Package {
-    /// Key used to add or disable versions
+    /// Key used to add or disable versions.
     access_key: URef,
-    /// All versions (enabled & disabled)
+    /// All versions (enabled & disabled).
     versions: ContractVersions,
-    /// Disabled versions
-    disabled_versions: DisabledVersions,
-    /// Mapping maintaining the set of URefs associated with each "user
-    /// group". This can be used to control access to methods in a particular
-    /// version of the contract. A method is callable by any context which
-    /// "knows" any of the URefs associated with the method's user group.
+    /// Collection of disabled contract versions. The runtime will not permit disabled contract
+    /// versions to be executed.
+    disabled_versions: BTreeSet<ContractVersionKey>,
+    /// Mapping maintaining the set of URefs associated with each "user group". This can be used to
+    /// control access to methods in a particular version of the contract. A method is callable by
+    /// any context which "knows" any of the URefs associated with the method's user group.
     groups: Groups,
     /// A flag that determines whether a contract is locked
     lock_status: ContractPackageStatus,
-
+    /// The kind of package.
     contract_package_kind: ContractPackageKind,
 }
 
@@ -600,11 +774,11 @@ impl CLTyped for Package {
 }
 
 impl Package {
-    /// Create new `ContractPackage` (with no versions) from given access key.
+    /// Create new `Package` (with no versions) from given access key.
     pub fn new(
         access_key: URef,
         versions: ContractVersions,
-        disabled_versions: DisabledVersions,
+        disabled_versions: BTreeSet<ContractVersionKey>,
         groups: Groups,
         lock_status: ContractPackageStatus,
         contract_package_kind: ContractPackageKind,
@@ -617,6 +791,18 @@ impl Package {
             lock_status,
             contract_package_kind,
         }
+    }
+
+    /// Enable the contract version corresponding to the given hash (if it exists).
+    pub fn enable_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+        let contract_version_key = self
+            .find_contract_version_key_by_hash(&contract_hash)
+            .copied()
+            .ok_or(Error::ContractNotFound)?;
+
+        self.disabled_versions.remove(&contract_version_key);
+
+        Ok(())
     }
 
     /// Get the access key for this contract.
@@ -636,7 +822,7 @@ impl Package {
 
     /// Adds new group to this contract.
     pub fn add_group(&mut self, group: Group, urefs: BTreeSet<URef>) {
-        let v = self.groups.entry(group).or_insert_with(Default::default);
+        let v = self.groups.0.entry(group).or_insert_with(Default::default);
         v.extend(urefs)
     }
 
@@ -648,13 +834,13 @@ impl Package {
         if !self.is_version_enabled(contract_version_key) {
             return None;
         }
-        self.versions.get(&contract_version_key)
+        self.versions.0.get(&contract_version_key)
     }
 
     /// Checks if the given contract version exists and is available for use.
     pub fn is_version_enabled(&self, contract_version_key: ContractVersionKey) -> bool {
         !self.disabled_versions.contains(&contract_version_key)
-            && self.versions.contains_key(&contract_version_key)
+            && self.versions.0.contains_key(&contract_version_key)
     }
 
     /// Returns `true` if the given contract hash exists and is enabled.
@@ -673,7 +859,7 @@ impl Package {
     ) -> ContractVersionKey {
         let contract_version = self.next_contract_version_for(protocol_version_major);
         let key = ContractVersionKey::new(protocol_version_major, contract_version);
-        self.versions.insert(key, contract_hash);
+        self.versions.0.insert(key, contract_hash);
         key
     }
 
@@ -681,6 +867,7 @@ impl Package {
     pub fn disable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
         let contract_version_key = self
             .versions
+            .0
             .iter()
             .filter_map(|(k, v)| if *v == contract_hash { Some(*k) } else { None })
             .next()
@@ -698,6 +885,7 @@ impl Package {
         contract_hash: &ContractHash,
     ) -> Option<&ContractVersionKey> {
         self.versions
+            .0
             .iter()
             .filter_map(|(k, v)| if v == contract_hash { Some(k) } else { None })
             .next()
@@ -711,11 +899,11 @@ impl Package {
     /// Returns all of this contract's enabled contract versions.
     pub fn enabled_versions(&self) -> ContractVersions {
         let mut ret = ContractVersions::new();
-        for version in &self.versions {
+        for version in &self.versions.0 {
             if !self.is_version_enabled(*version.0) {
                 continue;
             }
-            ret.insert(*version.0, *version.1);
+            ret.0.insert(*version.0, *version.1);
         }
         ret
     }
@@ -731,24 +919,25 @@ impl Package {
     }
 
     /// Returns all of this contract's disabled versions.
-    pub fn disabled_versions(&self) -> &DisabledVersions {
+    pub fn disabled_versions(&self) -> &BTreeSet<ContractVersionKey> {
         &self.disabled_versions
     }
 
     /// Returns mut reference to all of this contract's disabled versions.
-    pub fn disabled_versions_mut(&mut self) -> &mut DisabledVersions {
+    pub fn disabled_versions_mut(&mut self) -> &mut BTreeSet<ContractVersionKey> {
         &mut self.disabled_versions
     }
 
     /// Removes a group from this contract (if it exists).
     pub fn remove_group(&mut self, group: &Group) -> bool {
-        self.groups.remove(group).is_some()
+        self.groups.0.remove(group).is_some()
     }
 
     /// Gets the next available contract version for the given protocol version
     fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
         let current_version = self
             .versions
+            .0
             .keys()
             .rev()
             .find_map(|&contract_version_key| {
@@ -765,12 +954,12 @@ impl Package {
 
     /// Return the contract version key for the newest enabled contract version.
     pub fn current_contract_version(&self) -> Option<ContractVersionKey> {
-        self.enabled_versions().keys().next_back().copied()
+        self.enabled_versions().0.keys().next_back().copied()
     }
 
     /// Return the contract hash for the newest enabled contract version.
     pub fn current_contract_hash(&self) -> Option<ContractHash> {
-        self.enabled_versions().values().next_back().copied()
+        self.enabled_versions().0.values().next_back().copied()
     }
 
     /// Return the lock status of the contract package.
@@ -804,14 +993,9 @@ impl Package {
 
 impl ToBytes for Package {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        self.access_key().write_bytes(&mut result)?;
-        self.versions().write_bytes(&mut result)?;
-        self.disabled_versions().write_bytes(&mut result)?;
-        self.groups().write_bytes(&mut result)?;
-        self.lock_status.write_bytes(&mut result)?;
-        self.contract_package_kind.write_bytes(&mut result)?;
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -838,7 +1022,7 @@ impl FromBytes for Package {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (access_key, bytes) = URef::from_bytes(bytes)?;
         let (versions, bytes) = ContractVersions::from_bytes(bytes)?;
-        let (disabled_versions, bytes) = DisabledVersions::from_bytes(bytes)?;
+        let (disabled_versions, bytes) = BTreeSet::<ContractVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
         let (contract_package_kind, bytes) =
@@ -858,23 +1042,23 @@ impl FromBytes for Package {
 
 #[cfg(test)]
 mod tests {
+    use core::iter::FromIterator;
+
     use super::*;
     use crate::{
-        addressable_entity::NamedKeys,
-        package::{
-            ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-            Package,
-        },
         AccessRights, ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Parameter,
         ProtocolVersion, URef,
     };
     use alloc::borrow::ToOwned;
 
-    fn make_contract_package() -> Package {
+    const CONTRACT_HASH_V1: ContractHash = ContractHash::new([42; 32]);
+    const CONTRACT_HASH_V2: ContractHash = ContractHash::new([84; 32]);
+
+    fn make_contract_package_with_two_versions() -> Package {
         let mut contract_package = Package::new(
             URef::new([0; 32], AccessRights::NONE),
             ContractVersions::default(),
-            DisabledVersions::default(),
+            BTreeSet::new(),
             Groups::default(),
             ContractPackageStatus::default(),
             ContractPackageKind::Wasm,
@@ -919,14 +1103,13 @@ mod tests {
             ret
         };
 
-        let _contract_package_hash = [41; 32];
-        let contract_hash = [42; 32];
-        let _contract_wasm_hash = [43; 32];
-        let _named_keys = NamedKeys::new();
         let protocol_version = ProtocolVersion::V1_0_0;
 
-        contract_package
-            .insert_contract_version(protocol_version.value().major, contract_hash.into());
+        let v1 = contract_package
+            .insert_contract_version(protocol_version.value().major, CONTRACT_HASH_V1);
+        let v2 = contract_package
+            .insert_contract_version(protocol_version.value().major, CONTRACT_HASH_V2);
+        assert!(v2 > v1);
 
         contract_package
     }
@@ -937,7 +1120,7 @@ mod tests {
         let mut contract_package = Package::new(
             URef::new([0; 32], AccessRights::NONE),
             ContractVersions::default(),
-            DisabledVersions::default(),
+            BTreeSet::default(),
             Groups::default(),
             ContractPackageStatus::default(),
             ContractPackageKind::Wasm,
@@ -958,7 +1141,7 @@ mod tests {
 
     #[test]
     fn roundtrip_serialization() {
-        let contract_package = make_contract_package();
+        let contract_package = make_contract_package_with_two_versions();
         let bytes = contract_package.to_bytes().expect("should serialize");
         let (decoded_package, rem) = Package::from_bytes(&bytes).expect("should deserialize");
         assert_eq!(contract_package, decoded_package);
@@ -967,7 +1150,7 @@ mod tests {
 
     #[test]
     fn should_remove_group() {
-        let mut contract_package = make_contract_package();
+        let mut contract_package = make_contract_package_with_two_versions();
 
         assert!(!contract_package.remove_group(&Group::new("Non-existent group")));
         assert!(contract_package.remove_group(&Group::new("Group 1")));
@@ -975,14 +1158,41 @@ mod tests {
     }
 
     #[test]
-    fn should_disable_contract_version() {
+    fn should_disable_and_enable_contract_version() {
         const CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
-        let mut contract_package = make_contract_package();
+
+        let mut contract_package = make_contract_package_with_two_versions();
 
         assert!(
             !contract_package.is_contract_enabled(&CONTRACT_HASH),
             "nonexisting contract contract should return false"
         );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 2))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+
+        assert_eq!(
+            contract_package.versions(),
+            &ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2)
+            ])),
+        );
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2)
+            ])),
+        );
+
+        assert!(!contract_package.is_contract_enabled(&CONTRACT_HASH));
 
         assert_eq!(
             contract_package.disable_contract_version(CONTRACT_HASH),
@@ -1000,6 +1210,7 @@ mod tests {
             contract_package.is_version_enabled(next_version),
             "version should exist and be enabled"
         );
+        assert!(contract_package.is_contract_enabled(&CONTRACT_HASH));
 
         assert!(
             contract_package.is_contract_enabled(&CONTRACT_HASH),
@@ -1011,21 +1222,139 @@ mod tests {
             Ok(()),
             "should be able to disable version"
         );
+        assert!(!contract_package.is_contract_enabled(&CONTRACT_HASH));
 
         assert!(
             !contract_package.is_contract_enabled(&CONTRACT_HASH),
             "contract should be disabled"
         );
-
         assert_eq!(
             contract_package.lookup_contract_hash(next_version),
             None,
             "should not return disabled contract version"
         );
-
         assert!(
             !contract_package.is_version_enabled(next_version),
             "version should not be enabled"
+        );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 2))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+        assert_eq!(
+            contract_package.versions(),
+            &ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+                (next_version, CONTRACT_HASH),
+            ])),
+        );
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+            ])),
+        );
+        assert_eq!(
+            contract_package.disabled_versions(),
+            &BTreeSet::from_iter([next_version]),
+        );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 2))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+
+        assert_eq!(
+            contract_package.disable_contract_version(CONTRACT_HASH_V2),
+            Ok(()),
+            "should be able to disable version 2"
+        );
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([(
+                ContractVersionKey::new(1, 1),
+                CONTRACT_HASH_V1
+            ),])),
+        );
+
+        assert_eq!(
+            contract_package.current_contract_version(),
+            Some(ContractVersionKey::new(1, 1))
+        );
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V1)
+        );
+
+        assert_eq!(
+            contract_package.disabled_versions(),
+            &BTreeSet::from_iter([next_version, ContractVersionKey::new(1, 2)]),
+        );
+
+        assert_eq!(contract_package.enable_version(CONTRACT_HASH_V2), Ok(()),);
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+            ])),
+        );
+
+        assert_eq!(
+            contract_package.disabled_versions(),
+            &BTreeSet::from_iter([next_version])
+        );
+
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH_V2)
+        );
+
+        assert_eq!(contract_package.enable_version(CONTRACT_HASH), Ok(()),);
+
+        assert_eq!(
+            contract_package.enable_version(CONTRACT_HASH),
+            Ok(()),
+            "enabling a contract twice should be a noop"
+        );
+
+        assert_eq!(
+            contract_package.enabled_versions(),
+            ContractVersions::from(BTreeMap::from_iter([
+                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
+                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+                (next_version, CONTRACT_HASH),
+            ])),
+        );
+
+        assert_eq!(contract_package.disabled_versions(), &BTreeSet::new(),);
+
+        assert_eq!(
+            contract_package.current_contract_hash(),
+            Some(CONTRACT_HASH)
+        );
+    }
+
+    #[test]
+    fn should_not_allow_to_enable_non_existing_version() {
+        let mut contract_package = make_contract_package_with_two_versions();
+
+        assert_eq!(
+            contract_package.enable_version(ContractHash::default()),
+            Err(Error::ContractNotFound),
         );
     }
 
@@ -1122,13 +1451,6 @@ mod prop_tests {
     use crate::{bytesrepr, gens};
 
     proptest! {
-        // #![proptest_config(ProptestConfig {
-        //     cases: 1024,
-        //     .. ProptestConfig::default()
-        // })]
-
-
-
         #[test]
         fn test_value_contract_package(contract_pkg in gens::contract_package_arb()) {
             bytesrepr::test_serialization_roundtrip(&contract_pkg);

@@ -6,14 +6,14 @@ use casper_engine_test_support::{
     DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
-use casper_execution_engine::engine_state::{EngineConfig, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT};
+use casper_execution_engine::engine_state::DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT;
 use casper_types::{
     runtime_args,
     system::{
         auction::{self, DelegationRate, INITIAL_ERA_ID},
         mint,
     },
-    EraId, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    EraId, ProtocolVersion, PublicKey, SecretKey, U256, U512,
 };
 
 const VALIDATOR_STAKE: u64 = 1_000_000_000;
@@ -70,8 +70,8 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_new_protocol_version(*NEW_PROTOCOL_VERSION)
         .with_activation_point(DEFAULT_ACTIVATION_POINT)
         .build();
-    let engine_config = EngineConfig::default();
-    builder.upgrade_with_upgrade_request(engine_config, &mut upgrade_request);
+
+    builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
     builder.exec(fund_request).expect_success().commit();
 

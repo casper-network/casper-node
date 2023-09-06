@@ -1,90 +1,164 @@
 {
-    "Account": {
-        "input": [
-            [
-                "Key",
-                {
-                    "Account": "account-hash-d8236074747d4745d7033adf47dc4b79850acb3f29173eefdb0f25f52ee01ab3"
-                }
-            ]
-        ],
-        "output": "00d8236074747d4745d7033adf47dc4b79850acb3f29173eefdb0f25f52ee01ab3"
-    },
-    "URef": {
-        "input": [
-            [
-                "Key",
-                {
-                    "URef": "uref-b1c836c0205e03c53a806e1d7a013fcda10b333fc924bbb7db1c215ad1bef243-000"
-                }
-            ]
-        ],
-        "output": "02b1c836c0205e03c53a806e1d7a013fcda10b333fc924bbb7db1c215ad1bef24300"
-    },
-    "Transfer": {
-        "input": [
-            [
-                "Key",
-                {
-                    "Transfer": "transfer-1f3dfafe6cd430b3aa21dc94ab4e23d69da136d49d752a8b6c078c7409783097"
-                }
-            ]
-        ],
-        "output": "031f3dfafe6cd430b3aa21dc94ab4e23d69da136d49d752a8b6c078c7409783097"
-    },
-    "DeployInfo": {
-        "input": [
-            [
-                "Key",
-                {
-                    "DeployInfo": "deploy-20e87bf66de220bbae46c638c53ed5b1772a8431f52a53f76b59d8b84904fe3f"
-                }
-            ]
-        ],
-        "output": "0420e87bf66de220bbae46c638c53ed5b1772a8431f52a53f76b59d8b84904fe3f"
-    },
-    "EraInfo": {
-        "input": [
-            [
-                "Key",
-                {
-                    "EraInfo": "era-126402"
-                }
-            ]
-        ],
-        "output": "05c2ed010000000000"
-    },
-    "Balance": {
-        "input": [
-            [
-                "Key",
-                {
-                    "Balance": "balance-0a55eff764d397fea51e66daff6781f8ab4e69cc1deb19b9f27241f9b7f0e56c"
-                }
-            ]
-        ],
-        "output": "060a55eff764d397fea51e66daff6781f8ab4e69cc1deb19b9f27241f9b7f0e56c"
-    },
-    "Bid": {
-        "input": [
-            [
-                "Key",
-                {
-                    "Bid": "bid-a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a22"
-                }
-            ]
-        ],
-        "output": "07a622007bc001943b2de83e34c442a6487d395127b6b9d964df712e0023957a22"
-    },
-    "Withdraw": {
-        "input": [
-            [
-                "Key",
-                {
-                    "Withdraw": "withdraw-f9f141d6bcc49e4e140ca2ce03ab0dff35b3754e6438a905a875e66e009b8ed9"
-                }
-            ]
-        ],
-        "output": "08f9f141d6bcc49e4e140ca2ce03ab0dff35b3754e6438a905a875e66e009b8ed9"
-    }
+  "Account": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "account-hash-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "002a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "Balance": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "balance-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "062a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "ChainspecRegistry": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "chainspec-registry-0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "output": "0d0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "ChecksumRegistry": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "checksum-registry-0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "output": "0e0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "DeployInfo": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "deploy-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "042a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "Dictionary": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "dictionary-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "092a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "EraInfo": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "era-42"
+      }
+    ],
+    "output": "052a00000000000000"
+  },
+  "EraSummary": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "era-summary-0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "output": "0b0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "Hash": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "hash-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "012a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "SystemContractRegistry": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "system-contract-registry-0000000000000000000000000000000000000000000000000000000000000000"
+      }
+    ],
+    "output": "0a0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "Transfer": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "transfer-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "032a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "URef": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "uref-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a-001"
+      }
+    ],
+    "output": "022a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a01"
+  },
+  "Unbond": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "unbond-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "0c2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "Withdraw": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "withdraw-2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+      }
+    ],
+    "output": "082a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a"
+  },
+  "WriteBid": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "bid-306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+      }
+    ],
+    "output": "07306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+  },
+  "WriteDelegatorBid": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "bid-addr-02306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1b27960a454670985e9072683f779602413d6ebf738ba0dc4200534c57de17e12"
+      }
+    ],
+    "output": "0f02306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1b27960a454670985e9072683f779602413d6ebf738ba0dc4200534c57de17e12"
+  },
+  "WriteUnifiedBid": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "bid-addr-00306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+      }
+    ],
+    "output": "0f306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+  },
+  "WriteValidatorBid": {
+    "input": [
+      {
+        "type": "Key",
+        "value": "bid-addr-01306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+      }
+    ],
+    "output": "0f01306633f962155a7d46658adb36143f28668f530454fe788c927cecf62e5964a1"
+  }
 }

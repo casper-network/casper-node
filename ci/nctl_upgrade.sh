@@ -34,10 +34,12 @@ function main() {
     fi
 
     if [ -z "$TEST_ID" ]; then
+        log "tooling needs to be updated to deal with AddressableEntity after 2.0 upgrade"
+        log "disabling for now"
         # PR CI tests
         start_upgrade_scenario_1
-        start_upgrade_scenario_3
-        start_upgrade_scenario_11
+#        start_upgrade_scenario_3
+#        start_upgrade_scenario_11
     else
         start_upgrade_scenario_"$TEST_ID"
     fi
@@ -216,6 +218,26 @@ function start_upgrade_scenario_13() {
 
     log "... Starting Upgrade Scenario 13"
     nctl-exec-upgrade-scenario-13
+}
+
+function start_upgrade_scenario_14() {
+    log "... Setting up custom starting version"
+    local PATH_TO_STAGE
+
+    PATH_TO_STAGE="$(get_path_to_stage 1)"
+
+    log "... downloading remote for 1.4.13"
+    nctl-stage-set-remotes "1.4.13"
+
+    log "... tearing down old stages"
+    nctl-stage-teardown
+
+    log "... creating new stage"
+    dev_branch_settings "$PATH_TO_STAGE" "1.4.13"
+    build_from_settings_file
+
+    log "... Starting Upgrade Scenario 14"
+    nctl-exec-upgrade-scenario-14
 }
 
 # ----------------------------------------------------------------

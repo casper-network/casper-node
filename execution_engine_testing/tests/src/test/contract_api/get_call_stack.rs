@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
     runtime_args, system::CallStackElement, AddressableEntity, CLValue, ContractHash,
-    ContractPackageHash, EntryPointType, HashAddr, Key, RuntimeArgs, StoredValue, U512,
+    ContractPackageHash, EntryPointType, HashAddr, Key, StoredValue, U512,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -200,10 +200,11 @@ fn assert_each_context_has_correct_call_stack_info(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract => builder.get_call_stack_from_contract_context(
-                &stored_call_stack_key,
-                current_contract_package_hash,
-            ),
+            EntryPointType::Contract | EntryPointType::Install => builder
+                .get_call_stack_from_contract_context(
+                    &stored_call_stack_key,
+                    current_contract_package_hash,
+                ),
             EntryPointType::Session => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
@@ -261,10 +262,11 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract => builder.get_call_stack_from_contract_context(
-                &stored_call_stack_key,
-                current_contract_package_hash,
-            ),
+            EntryPointType::Contract | EntryPointType::Install => builder
+                .get_call_stack_from_contract_context(
+                    &stored_call_stack_key,
+                    current_contract_package_hash,
+                ),
             EntryPointType::Session => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
@@ -353,8 +355,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 
 mod session {
     use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
-    use casper_storage::global_state::shared::transform::Transform;
-    use casper_types::{runtime_args, system::mint, Key, RuntimeArgs};
+    use casper_types::{execution::TransformKind, runtime_args, system::mint, Key};
 
     use super::{
         approved_amount, AccountExt, ARG_CALLS, ARG_CURRENT_DEPTH, CONTRACT_CALL_RECURSIVE_SUBCALL,
@@ -1040,12 +1041,12 @@ mod session {
 
             builder.exec(execute_request).commit().expect_success();
 
-            let transforms = builder.get_execution_journals().last().unwrap().clone();
+            let effects = builder.get_effects().last().unwrap().clone();
 
             assert!(
-                transforms.iter().any(|(key, transform)| key
+                effects.transforms().iter().any(|transform| transform.key()
                     == &Key::Hash(current_contract_package_hash)
-                    && transform == &Transform::Identity),
+                    && transform.kind() == &TransformKind::Identity),
                 "Missing `Identity` transform for a contract package being called."
             );
 
@@ -1197,13 +1198,12 @@ mod session {
 
             builder.exec(execute_request).commit().expect_success();
 
-            let transforms = builder.get_execution_journals().last().unwrap().clone();
+            let effects = builder.get_effects().last().unwrap().clone();
 
             assert!(
-                transforms
-                    .iter()
-                    .any(|(key, transform)| key == &Key::Hash(current_contract_hash)
-                        && transform == &Transform::Identity),
+                effects.transforms().iter().any(|transform| transform.key()
+                    == &Key::Hash(current_contract_hash)
+                    && transform.kind() == &TransformKind::Identity),
                 "Missing `Identity` transform for a contract being called."
             );
 

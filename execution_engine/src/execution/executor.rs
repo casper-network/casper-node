@@ -115,13 +115,13 @@ impl Executor {
 
         match result {
             Ok(_) => ExecutionResult::Success {
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
             Err(error) => ExecutionResult::Failure {
                 error: error.into(),
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
@@ -184,7 +184,7 @@ impl Executor {
             EntryPointType::Session,
         );
 
-        let execution_journal = tracking_copy.borrow().execution_journal();
+        let effects = tracking_copy.borrow().effects();
 
         // Standard payment is executed in the calling account's context; the stack already
         // captures that.
@@ -192,12 +192,12 @@ impl Executor {
 
         match runtime.call_host_standard_payment(stack) {
             Ok(()) => ExecutionResult::Success {
-                execution_journal: runtime.context().execution_journal(),
+                effects: runtime.context().effects(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
             },
             Err(error) => ExecutionResult::Failure {
-                execution_journal,
+                effects,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
@@ -245,7 +245,7 @@ impl Executor {
 
         // Snapshot of effects before execution, so in case of error only nonce update
         // can be returned.
-        let execution_journal = tracking_copy.borrow().execution_journal();
+        let effects = tracking_copy.borrow().effects();
 
         let entry_point_name = direct_system_contract_call.entry_point_name();
 
@@ -265,7 +265,8 @@ impl Executor {
                 *mint_hash
             }
             DirectSystemContractCall::FinalizePayment
-            | DirectSystemContractCall::GetPaymentPurse => {
+            | DirectSystemContractCall::GetPaymentPurse
+            | DirectSystemContractCall::DistributeAccumulatedFees => {
                 let handle_payment_hash = system_contract_registry
                     .get(HANDLE_PAYMENT)
                     .expect("should have handle payment");
@@ -315,13 +316,13 @@ impl Executor {
         match result {
             Ok(value) => match value.into_t() {
                 Ok(ret) => ExecutionResult::Success {
-                    execution_journal: runtime.context().execution_journal(),
+                    effects: runtime.context().effects(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
                 }
                 .take_with_ret(ret),
                 Err(error) => ExecutionResult::Failure {
-                    execution_journal,
+                    effects,
                     error: Error::CLValue(error).into(),
                     transfers: runtime.context().transfers().to_owned(),
                     cost: runtime.context().gas_counter(),
@@ -329,7 +330,7 @@ impl Executor {
                 .take_without_ret(),
             },
             Err(error) => ExecutionResult::Failure {
-                execution_journal,
+                effects,
                 error: error.into(),
                 transfers: runtime.context().transfers().to_owned(),
                 cost: runtime.context().gas_counter(),
@@ -377,7 +378,7 @@ impl Executor {
             account_hash,
             address_generator,
             tracking_copy,
-            self.config,
+            self.config.clone(),
             blocktime,
             protocol_version,
             deploy_hash,
@@ -406,8 +407,10 @@ pub(crate) enum DirectSystemContractCall {
     CreatePurse,
     /// Calls mint's `transfer` entry point.
     Transfer,
-    /// Calls handle payment's `
+    /// Calls handle payment's `get_payment_purse` entry point.
     GetPaymentPurse,
+    /// Calls handle payment's `distribute_accumulated_fees` entry point.
+    DistributeAccumulatedFees,
 }
 
 impl DirectSystemContractCall {
@@ -420,6 +423,9 @@ impl DirectSystemContractCall {
             DirectSystemContractCall::CreatePurse => mint::METHOD_CREATE,
             DirectSystemContractCall::Transfer => mint::METHOD_TRANSFER,
             DirectSystemContractCall::GetPaymentPurse => handle_payment::METHOD_GET_PAYMENT_PURSE,
+            DirectSystemContractCall::DistributeAccumulatedFees => {
+                handle_payment::METHOD_DISTRIBUTE_ACCUMULATED_FEES
+            }
         }
     }
 }

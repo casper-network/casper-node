@@ -7,8 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, RuntimeArgs,
-    SecretKey, U512,
+    account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, SecretKey, U512,
 };
 
 // test constants.
@@ -870,10 +869,10 @@ fn faucet_costs() {
     // This test will fail if execution costs vary.  The expected costs should not be updated
     // without understanding why the cost has changed.  If the costs do change, it should be
     // reflected in the "Costs by Entry Point" section of the faucet crate's README.md.
-    const EXPECTED_FAUCET_INSTALL_COST: u64 = 75_274_115_930;
-    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 579_464_060;
-    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 3_174_961_320;
-    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 3_242_199_690;
+    const EXPECTED_FAUCET_INSTALL_COST: u64 = 83_985_809_270;
+    const EXPECTED_FAUCET_SET_VARIABLES_COST: u64 = 648_705_070;
+    const EXPECTED_FAUCET_CALL_BY_INSTALLER_COST: u64 = 3_244_975_770;
+    const EXPECTED_FAUCET_CALL_BY_USER_COST: u64 = 3_364_807_470;
 
     let installer_account = AccountHash::new([1u8; 32]);
     let user_account: AccountHash = AccountHash::new([2u8; 32]);
@@ -910,8 +909,6 @@ fn faucet_costs() {
         .commit();
 
     let faucet_install_cost = builder.last_exec_gas_cost();
-    println!("Install cost: {}", faucet_install_cost.value().as_u64());
-
     assert_eq!(
         faucet_install_cost.value().as_u64(),
         EXPECTED_FAUCET_INSTALL_COST
@@ -945,10 +942,6 @@ fn faucet_costs() {
         .commit();
 
     let faucet_set_variables_cost = builder.last_exec_gas_cost();
-    assert_eq!(
-        faucet_set_variables_cost.value().as_u64(),
-        EXPECTED_FAUCET_SET_VARIABLES_COST
-    );
 
     let user_fund_amount = U512::from(10_000_000_000u64);
     let faucet_call_by_installer = {
@@ -973,10 +966,6 @@ fn faucet_costs() {
         .commit();
 
     let faucet_call_by_installer_cost = builder.last_exec_gas_cost();
-    assert_eq!(
-        faucet_call_by_installer_cost.value().as_u64(),
-        EXPECTED_FAUCET_CALL_BY_INSTALLER_COST
-    );
 
     let faucet_contract_hash = get_faucet_contract_hash(&builder, installer_account);
 
@@ -1002,8 +991,42 @@ fn faucet_costs() {
         .commit();
 
     let faucet_call_by_user_cost = builder.last_exec_gas_cost();
-    assert_eq!(
-        faucet_call_by_user_cost.value().as_u64(),
-        EXPECTED_FAUCET_CALL_BY_USER_COST
-    );
+
+    let mut costs_as_expected = true;
+    if faucet_install_cost.value().as_u64() != EXPECTED_FAUCET_INSTALL_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_install_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_INSTALL_COST,
+            faucet_install_cost.value().as_u64()
+        );
+    }
+
+    if faucet_set_variables_cost.value().as_u64() != EXPECTED_FAUCET_SET_VARIABLES_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_set_variables_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_SET_VARIABLES_COST,
+            faucet_set_variables_cost.value().as_u64()
+        );
+    }
+
+    if faucet_call_by_installer_cost.value().as_u64() != EXPECTED_FAUCET_CALL_BY_INSTALLER_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_call_by_installer_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_CALL_BY_INSTALLER_COST,
+            faucet_call_by_installer_cost.value().as_u64()
+        );
+    }
+
+    if faucet_call_by_user_cost.value().as_u64() != EXPECTED_FAUCET_CALL_BY_USER_COST {
+        costs_as_expected = false;
+        eprintln!(
+            "faucet_call_by_user_cost wrong: expected: {}, got: {}",
+            EXPECTED_FAUCET_CALL_BY_USER_COST,
+            faucet_call_by_user_cost.value().as_u64()
+        );
+    }
+    assert!(costs_as_expected);
 }

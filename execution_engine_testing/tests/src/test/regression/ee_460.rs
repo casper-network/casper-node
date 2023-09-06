@@ -2,8 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_storage::global_state::shared::transform::Transform;
-use casper_types::{runtime_args, RuntimeArgs, U512};
+use casper_types::{execution::TransformKind, runtime_args, U512};
 
 const CONTRACT_EE_460_REGRESSION: &str = "ee_460_regression.wasm";
 
@@ -31,12 +30,13 @@ fn should_run_ee_460_no_side_effects_on_error_regression() {
     // mint uref is left untouched.
     let mint_contract_uref = builder.get_mint_contract_hash();
 
-    let transforms = &builder.get_execution_journals()[0];
-    let mint_transforms = transforms
+    let effects = &builder.get_effects()[0];
+    let mint_transforms = effects
+        .transforms()
         .iter()
-        .find(|(key, _transform)| key == &mint_contract_uref.into())
+        .find(|transform| transform.key() == &mint_contract_uref.into())
         // Skips the Identity writes introduced since payment code execution for brevity of the
         // check
-        .filter(|(_, v)| v != &Transform::Identity);
+        .filter(|transform| transform.kind() != &TransformKind::Identity);
     assert!(mint_transforms.is_none());
 }

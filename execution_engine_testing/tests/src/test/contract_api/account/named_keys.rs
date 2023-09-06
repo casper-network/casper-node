@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, RuntimeArgs, U512};
+use casper_types::{bytesrepr::FromBytes, runtime_args, CLTyped, CLValue, Key, U512};
 
 const CONTRACT_NAMED_KEYS: &str = "named_keys.wasm";
 const EXPECTED_UREF_VALUE: u64 = 123_456_789u64;
@@ -51,8 +51,8 @@ fn should_run_named_keys_contract() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    assert!(account.named_keys().contains_key(KEY1));
-    assert!(!account.named_keys().contains_key(KEY2));
+    assert!(account.named_keys().contains(KEY1));
+    assert!(!account.named_keys().contains(KEY2));
 
     run_command(&mut builder, COMMAND_CREATE_UREF2);
 
@@ -73,8 +73,8 @@ fn should_run_named_keys_contract() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    assert!(!account.named_keys().contains_key(KEY1));
-    assert!(account.named_keys().contains_key(KEY2));
+    assert!(!account.named_keys().contains(KEY1));
+    assert!(account.named_keys().contains(KEY2));
 
     run_command(&mut builder, COMMAND_TEST_READ_UREF2);
 
@@ -101,6 +101,6 @@ fn should_run_named_keys_contract() {
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    assert!(!account.named_keys().contains_key(KEY1));
-    assert!(!account.named_keys().contains_key(KEY2));
+    assert!(!account.named_keys().contains(KEY1));
+    assert!(!account.named_keys().contains(KEY2));
 }

@@ -1,25 +1,25 @@
 //! Support for applying upgrades on the execution engine.
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 
 use thiserror::Error;
 
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
-    bytesrepr::{self},
-    package::{
-        ContractPackageKind, ContractPackageStatus, ContractVersions, DisabledVersions, Groups,
-    },
-    system::SystemContractType,
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
-    Digest, EntryPoints, Key, Package, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    bytesrepr::{self, ToBytes},
+    execution::Effects,
+    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemContractType},
+    AccessRights, AddressableEntity, CLValue, CLValueError, ContractHash, ContractPackageHash,
+    ContractWasm, Digest, EntryPoints, FeeHandling, Key, Package, Phase, ProtocolVersion,
+    PublicKey, StoredValue, URef, U512,
 };
 
 use crate::{
-    engine_state::{execution_effect::ExecutionEffect, ACCOUNT_WASM_HASH},
-    execution::AddressGenerator,
-    tracking_copy::TrackingCopy,
+    engine_state::ACCOUNT_WASM_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
 };
+
+use super::EngineConfig;
 
 /// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
@@ -27,16 +27,12 @@ pub struct UpgradeSuccess {
     /// New state root hash generated after effects were applied.
     pub post_state_hash: Digest,
     /// Effects of executing an upgrade request.
-    pub execution_effect: ExecutionEffect,
+    pub effects: Effects,
 }
 
 impl fmt::Display for UpgradeSuccess {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            f,
-            "Success: {} {:?}",
-            self.post_state_hash, self.execution_effect
-        )
+        write!(f, "Success: {} {:?}", self.post_state_hash, self.effects)
     }
 }
 
@@ -69,6 +65,12 @@ pub enum ProtocolUpgradeError {
     CLValue(String),
 }
 
+impl From<CLValueError> for ProtocolUpgradeError {
+    fn from(v: CLValueError) -> Self {
+        Self::CLValue(v.to_string())
+    }
+}
+
 impl From<bytesrepr::Error> for ProtocolUpgradeError {
     fn from(error: bytesrepr::Error) -> Self {
         ProtocolUpgradeError::Bytesrepr(error)
@@ -81,6 +83,7 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
+    old_protocol_version: ProtocolVersion,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -91,10 +94,12 @@ where
     /// Creates new system upgrader instance.
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
+        old_protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
+            old_protocol_version,
             tracking_copy,
         }
     }
@@ -257,7 +262,7 @@ where
         let contract = AddressableEntity::new(
             contract_package_hash,
             contract_wasm_hash,
-            NamedKeys::default(),
+            NamedKeys::new(),
             EntryPoints::new(),
             self.new_protocol_version,
             main_purse,
@@ -271,7 +276,7 @@ where
             let mut contract_package = Package::new(
                 access_key,
                 ContractVersions::default(),
-                DisabledVersions::default(),
+                BTreeSet::default(),
                 Groups::default(),
                 ContractPackageStatus::default(),
                 ContractPackageKind::Account(account_hash),
@@ -302,6 +307,55 @@ where
             Key::Account(account_hash),
             StoredValue::CLValue(contract_by_account),
         );
+
+        Ok(())
+    }
+
+    /// Creates an accumulation purse in the handle payment system contract if its not present.
+    ///
+    /// This can happen on older networks that did not have support for [`FeeHandling::Accumulate`]
+    /// at the genesis. In such cases we have to check the state of handle payment contract and
+    /// create an accumulation purse.
+    pub(crate) fn create_accumulation_purse_if_required(
+        &self,
+        handle_payment_hash: &ContractHash,
+        engine_config: &EngineConfig,
+    ) -> Result<(), ProtocolUpgradeError> {
+        match engine_config.fee_handling() {
+            FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
+            FeeHandling::Accumulate => {}
+        }
+        let mut address_generator = {
+            let seed_bytes = (self.old_protocol_version, self.new_protocol_version).to_bytes()?;
+            let phase = Phase::System;
+            AddressGenerator::new(&seed_bytes, phase)
+        };
+        let system_contract = SystemContractType::HandlePayment;
+
+        let mut addressable_entity =
+            self.retrieve_system_contract(*handle_payment_hash, system_contract)?;
+        if !addressable_entity
+            .named_keys()
+            .contains(ACCUMULATION_PURSE_KEY)
+        {
+            let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
+            let balance_clvalue = CLValue::from_t(U512::zero())?;
+            self.tracking_copy.borrow_mut().write(
+                Key::Balance(purse_uref.addr()),
+                StoredValue::CLValue(balance_clvalue),
+            );
+            self.tracking_copy
+                .borrow_mut()
+                .write(Key::URef(purse_uref), StoredValue::CLValue(CLValue::unit()));
+
+            let mut new_named_keys = NamedKeys::new();
+            new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
+            addressable_entity.named_keys_append(new_named_keys);
+            self.tracking_copy.borrow_mut().write(
+                (*handle_payment_hash).into(),
+                StoredValue::AddressableEntity(addressable_entity),
+            );
+        }
 
         Ok(())
     }

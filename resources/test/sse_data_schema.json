@@ -2,13 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SseData",
   "description": "The \"data\" field of the events sent on the event stream to clients.",
-  "anyOf": [
-    {
-      "type": "string",
-      "enum": [
-        "Shutdown"
-      ]
-    },
+  "oneOf": [
     {
       "description": "The version of this node's API server.  This event will always be the first sent to a new client, and will have no associated event ID provided.",
       "type": "object",
@@ -195,19 +189,26 @@
           "type": "object",
           "required": [
             "era_id",
-            "execution_effect"
+            "execution_effects"
           ],
           "properties": {
             "era_id": {
               "$ref": "#/definitions/EraId"
             },
-            "execution_effect": {
-              "$ref": "#/definitions/ExecutionEffect"
+            "execution_effects": {
+              "$ref": "#/definitions/Effects"
             }
           }
         }
       },
       "additionalProperties": false
+    },
+    {
+      "description": "The node is about to shut down.",
+      "type": "string",
+      "enum": [
+        "Shutdown"
+      ]
     }
   ],
   "definitions": {
@@ -217,14 +218,6 @@
     },
     "BlockHash": {
       "description": "Hex-encoded cryptographic hash of a block.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Digest"
-        }
-      ]
-    },
-    "Digest": {
-      "description": "Hex-encoded hash digest.",
       "type": "string"
     },
     "JsonBlock": {
@@ -365,6 +358,10 @@
         }
       },
       "additionalProperties": false
+    },
+    "Digest": {
+      "description": "Hex-encoded hash digest.",
+      "type": "string"
     },
     "JsonEraEnd": {
       "description": "Information related to the end of an era, and validator weights for the following era.",
@@ -533,11 +530,7 @@
     },
     "DeployHash": {
       "description": "Hex-encoded deploy hash.",
-      "allOf": [
-        {
-          "$ref": "#/definitions/Digest"
-        }
-      ]
+      "type": "string"
     },
     "JsonProof": {
       "description": "A validator's public key paired with a corresponding signature of a given block hash.",
@@ -653,7 +646,7 @@
     },
     "ExecutableDeployItem": {
       "description": "The executable component of a [`Deploy`].",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "Executable specified as raw bytes that represent Wasm code and an instance of [`RuntimeArgs`].",
           "type": "object",
@@ -922,25 +915,103 @@
     },
     "CLType": {
       "description": "Casper types, i.e. types which can be stored and manipulated by smart contracts.\n\nProvides a description of the underlying data type of a [`CLValue`](crate::CLValue).",
-      "anyOf": [
+      "oneOf": [
         {
+          "description": "`bool` primitive.",
           "type": "string",
           "enum": [
-            "Bool",
-            "I32",
-            "I64",
-            "U8",
-            "U32",
-            "U64",
-            "U128",
-            "U256",
-            "U512",
-            "Unit",
-            "String",
-            "Key",
-            "URef",
-            "PublicKey",
-            "Any"
+            "Bool"
+          ]
+        },
+        {
+          "description": "`i32` primitive.",
+          "type": "string",
+          "enum": [
+            "I32"
+          ]
+        },
+        {
+          "description": "`i64` primitive.",
+          "type": "string",
+          "enum": [
+            "I64"
+          ]
+        },
+        {
+          "description": "`u8` primitive.",
+          "type": "string",
+          "enum": [
+            "U8"
+          ]
+        },
+        {
+          "description": "`u32` primitive.",
+          "type": "string",
+          "enum": [
+            "U32"
+          ]
+        },
+        {
+          "description": "`u64` primitive.",
+          "type": "string",
+          "enum": [
+            "U64"
+          ]
+        },
+        {
+          "description": "[`U128`] large unsigned integer type.",
+          "type": "string",
+          "enum": [
+            "U128"
+          ]
+        },
+        {
+          "description": "[`U256`] large unsigned integer type.",
+          "type": "string",
+          "enum": [
+            "U256"
+          ]
+        },
+        {
+          "description": "[`U512`] large unsigned integer type.",
+          "type": "string",
+          "enum": [
+            "U512"
+          ]
+        },
+        {
+          "description": "`()` primitive.",
+          "type": "string",
+          "enum": [
+            "Unit"
+          ]
+        },
+        {
+          "description": "`String` primitive.",
+          "type": "string",
+          "enum": [
+            "String"
+          ]
+        },
+        {
+          "description": "[`Key`] system type.",
+          "type": "string",
+          "enum": [
+            "Key"
+          ]
+        },
+        {
+          "description": "[`URef`] system type.",
+          "type": "string",
+          "enum": [
+            "URef"
+          ]
+        },
+        {
+          "description": "[`PublicKey`](crate::PublicKey) system type.",
+          "type": "string",
+          "enum": [
+            "PublicKey"
           ]
         },
         {
@@ -1089,6 +1160,13 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Unspecified type.",
+          "type": "string",
+          "enum": [
+            "Any"
+          ]
         }
       ]
     },
@@ -1110,8 +1188,39 @@
       "additionalProperties": false
     },
     "ExecutionResult": {
+      "description": "The versioned result of executing a single deploy.",
+      "oneOf": [
+        {
+          "description": "Version 1 of execution result type.",
+          "type": "object",
+          "required": [
+            "Version1"
+          ],
+          "properties": {
+            "Version1": {
+              "$ref": "#/definitions/ExecutionResultV1"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Version 2 of execution result type.",
+          "type": "object",
+          "required": [
+            "Version2"
+          ],
+          "properties": {
+            "Version2": {
+              "$ref": "#/definitions/ExecutionResultV2"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ExecutionResultV1": {
       "description": "The result of executing a single deploy.",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "The result of a failed execution.",
           "type": "object",
@@ -1208,7 +1317,7 @@
       ]
     },
     "ExecutionEffect": {
-      "description": "The journal of execution transforms from a single deploy.",
+      "description": "The sequence of execution transforms from a single deploy.",
       "type": "object",
       "required": [
         "operations",
@@ -1223,7 +1332,7 @@
           }
         },
         "transforms": {
-          "description": "The journal of execution transforms.",
+          "description": "The sequence of execution transforms.",
           "type": "array",
           "items": {
             "$ref": "#/definitions/TransformEntry"
@@ -1257,12 +1366,42 @@
     },
     "OpKind": {
       "description": "The type of operation performed while executing a deploy.",
-      "type": "string",
-      "enum": [
-        "Read",
-        "Write",
-        "Add",
-        "NoOp"
+      "oneOf": [
+        {
+          "description": "A read operation.",
+          "type": "string",
+          "enum": [
+            "Read"
+          ]
+        },
+        {
+          "description": "A write operation.",
+          "type": "string",
+          "enum": [
+            "Write"
+          ]
+        },
+        {
+          "description": "An addition.",
+          "type": "string",
+          "enum": [
+            "Add"
+          ]
+        },
+        {
+          "description": "An operation which has no effect.",
+          "type": "string",
+          "enum": [
+            "NoOp"
+          ]
+        },
+        {
+          "description": "A prune operation.",
+          "type": "string",
+          "enum": [
+            "Prune"
+          ]
+        }
       ]
     },
     "TransformEntry": {
@@ -1290,15 +1429,12 @@
     },
     "Transform": {
       "description": "The actual transformation performed while executing a deploy.",
-      "anyOf": [
+      "oneOf": [
         {
+          "description": "A transform having no effect.",
           "type": "string",
           "enum": [
-            "Identity",
-            "WriteContractWasm",
-            "WriteContract",
-            "WriteContractPackage",
-            "WriteAddressableEntity"
+            "Identity"
           ]
         },
         {
@@ -1326,6 +1462,27 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Writes a smart contract as Wasm to global state.",
+          "type": "string",
+          "enum": [
+            "WriteContractWasm"
+          ]
+        },
+        {
+          "description": "Writes a smart contract to global state.",
+          "type": "string",
+          "enum": [
+            "WriteContract"
+          ]
+        },
+        {
+          "description": "Writes a smart contract package to global state.",
+          "type": "string",
+          "enum": [
+            "WriteContractPackage"
+          ]
         },
         {
           "description": "Writes the given DeployInfo to global state.",
@@ -1507,11 +1664,44 @@
             }
           },
           "additionalProperties": false
+        },
+        {
+          "description": "Writes the addressable entity to global state.",
+          "type": "string",
+          "enum": [
+            "WriteAddressableEntity"
+          ]
+        },
+        {
+          "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
+          "type": "object",
+          "required": [
+            "Prune"
+          ],
+          "properties": {
+            "Prune": {
+              "$ref": "#/definitions/Key"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given BidKind to global state.",
+          "type": "object",
+          "required": [
+            "WriteBidKind"
+          ],
+          "properties": {
+            "WriteBidKind": {
+              "$ref": "#/definitions/BidKind"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
     "AccountHash": {
-      "description": "Hex-encoded account hash.",
+      "description": "Account hash as a formatted string.",
       "type": "string"
     },
     "DeployInfo": {
@@ -1593,7 +1783,7 @@
     },
     "SeigniorageAllocation": {
       "description": "Information about a seigniorage allocation",
-      "anyOf": [
+      "oneOf": [
         {
           "description": "Info about a seigniorage allocation for a validator",
           "type": "object",
@@ -1773,7 +1963,7 @@
       ],
       "properties": {
         "validator_public_key": {
-          "description": "Validator public key",
+          "description": "Validator public key.",
           "allOf": [
             {
               "$ref": "#/definitions/PublicKey"
@@ -1797,7 +1987,7 @@
           ]
         },
         "delegation_rate": {
-          "description": "Delegation rate",
+          "description": "Delegation rate.",
           "type": "integer",
           "format": "uint8",
           "minimum": 0.0
@@ -1814,14 +2004,15 @@
           ]
         },
         "delegators": {
-          "description": "This validator's delegators, indexed by their public keys",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/Delegator"
-          }
+          "description": "This validator's delegators, indexed by their public keys.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Array_of_PublicKeyAndDelegator"
+            }
+          ]
         },
         "inactive": {
-          "description": "`true` if validator has been \"evicted\"",
+          "description": "`true` if validator has been \"evicted\".",
           "type": "boolean"
         }
       },
@@ -1851,6 +2042,38 @@
         }
       },
       "additionalProperties": false
+    },
+    "Array_of_PublicKeyAndDelegator": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PublicKeyAndDelegator"
+      }
+    },
+    "PublicKeyAndDelegator": {
+      "description": "A delegator associated with the given validator.",
+      "type": "object",
+      "required": [
+        "delegator",
+        "delegator_public_key"
+      ],
+      "properties": {
+        "delegator_public_key": {
+          "description": "The public key of the delegator.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "delegator": {
+          "description": "The delegator details.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/Delegator"
+            }
+          ]
+        }
+      }
     },
     "Delegator": {
       "description": "Represents a party delegating their stake to a validator (or \"delegatee\")",
@@ -1950,7 +2173,7 @@
       "type": "string"
     },
     "NamedKey": {
-      "description": "A named key.",
+      "description": "A key with a name.",
       "type": "object",
       "required": [
         "key",
@@ -2032,6 +2255,218 @@
         }
       },
       "additionalProperties": false
+    },
+    "Key": {
+      "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+      "type": "string"
+    },
+    "BidKind": {
+      "description": "Auction bid variants.",
+      "oneOf": [
+        {
+          "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
+          "type": "object",
+          "required": [
+            "Unified"
+          ],
+          "properties": {
+            "Unified": {
+              "$ref": "#/definitions/Bid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bid record containing only validator data.",
+          "type": "object",
+          "required": [
+            "Validator"
+          ],
+          "properties": {
+            "Validator": {
+              "$ref": "#/definitions/ValidatorBid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bid record containing only delegator data.",
+          "type": "object",
+          "required": [
+            "Delegator"
+          ],
+          "properties": {
+            "Delegator": {
+              "$ref": "#/definitions/Delegator"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ValidatorBid": {
+      "description": "An entry in the validator map.",
+      "type": "object",
+      "required": [
+        "bonding_purse",
+        "delegation_rate",
+        "inactive",
+        "staked_amount",
+        "validator_public_key"
+      ],
+      "properties": {
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "bonding_purse": {
+          "description": "The purse that was used for bonding.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "staked_amount": {
+          "description": "The amount of tokens staked by a validator (not including delegators).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "delegation_rate": {
+          "description": "Delegation rate",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "vesting_schedule": {
+          "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VestingSchedule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inactive": {
+          "description": "`true` if validator has been \"evicted\"",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExecutionResultV2": {
+      "description": "The result of executing a single deploy.",
+      "oneOf": [
+        {
+          "description": "The result of a failed execution.",
+          "type": "object",
+          "required": [
+            "Failure"
+          ],
+          "properties": {
+            "Failure": {
+              "type": "object",
+              "required": [
+                "cost",
+                "effects",
+                "error_message",
+                "transfers"
+              ],
+              "properties": {
+                "effects": {
+                  "description": "The effects of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Effects"
+                    }
+                  ]
+                },
+                "transfers": {
+                  "description": "A record of transfers performed while executing the deploy.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TransferAddr"
+                  }
+                },
+                "cost": {
+                  "description": "The cost in Motes of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                },
+                "error_message": {
+                  "description": "The error message associated with executing the deploy.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "The result of a successful execution.",
+          "type": "object",
+          "required": [
+            "Success"
+          ],
+          "properties": {
+            "Success": {
+              "type": "object",
+              "required": [
+                "cost",
+                "effects",
+                "transfers"
+              ],
+              "properties": {
+                "effects": {
+                  "description": "The effects of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/Effects"
+                    }
+                  ]
+                },
+                "transfers": {
+                  "description": "A record of transfers performed while executing the deploy.",
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/definitions/TransferAddr"
+                  }
+                },
+                "cost": {
+                  "description": "The cost in Motes of executing the deploy.",
+                  "allOf": [
+                    {
+                      "$ref": "#/definitions/U512"
+                    }
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Effects": {
+      "description": "A log of all transforms produced during execution.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/Transform"
+      }
     },
     "FinalitySignature": {
       "description": "A validator's signature of a block, confirming it is finalized.",

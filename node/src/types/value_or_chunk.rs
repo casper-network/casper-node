@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    ChunkWithProof, ChunkWithProofVerificationError, Digest, ExecutionResult,
+    execution::ExecutionResult, ChunkWithProof, ChunkWithProofVerificationError, Digest,
     MerkleConstructionError,
 };
 
