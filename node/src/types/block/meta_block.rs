@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use casper_types::{
     execution::ExecutionResult, ActivationPoint, Block, BlockHash, BlockV2, DeployHash,
-    DeployHeader,
+    DeployHeader, EraId,
 };
 
 pub(crate) use merge_mismatch_error::MergeMismatchError;
@@ -56,6 +56,20 @@ impl MetaBlock {
         match &self {
             MetaBlock::Forward(meta_block) => meta_block.block.height(),
             MetaBlock::Historical(meta_block) => meta_block.block.height(),
+        }
+    }
+
+    pub(crate) fn era_id(&self) -> EraId {
+        match &self {
+            MetaBlock::Forward(meta_block) => meta_block.block.era_id(),
+            MetaBlock::Historical(meta_block) => meta_block.block.era_id(),
+        }
+    }
+
+    pub(crate) fn is_switch_block(&self) -> bool {
+        match &self {
+            MetaBlock::Forward(meta_block) => meta_block.block.is_switch_block(),
+            MetaBlock::Historical(meta_block) => meta_block.block.is_switch_block(),
         }
     }
 

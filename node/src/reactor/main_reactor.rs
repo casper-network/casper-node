@@ -48,7 +48,7 @@ use crate::{
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         rpc_server::RpcServer,
-        shutdown_trigger::{self, ShutdownTrigger},
+        shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
         storage::Storage,
         sync_leaper::SyncLeaper,
         upgrade_watcher::{self, UpgradeWatcher},
@@ -1431,8 +1431,21 @@ impl MainReactor {
                         ),
                     ));
                 }
-                MetaBlock::Historical(_historical_meta_block) => {
-                    todo!();
+                MetaBlock::Historical(historical_meta_block) => {
+                    // Header type is the same for now so we can use the same `BlockAdded` event;
+                    // When the header will be versioned, a new event will be needed for the
+                    // consensus component.
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Consensus,
+                        self.consensus.handle_event(
+                            effect_builder,
+                            rng,
+                            consensus::Event::BlockAdded {
+                                header: Box::new(historical_meta_block.block.header().clone()),
+                                header_hash: *historical_meta_block.block.hash(),
+                            },
+                        ),
+                    ));
                 }
             }
         }
@@ -1586,21 +1599,18 @@ impl MainReactor {
             meta_block.height(),
             meta_block.hash(),
         );
-        match &meta_block {
-            MetaBlock::Forward(fwd_meta_block) => {
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::ShutdownTrigger,
-                    self.shutdown_trigger.handle_event(
-                        effect_builder,
-                        rng,
-                        shutdown_trigger::Event::CompletedBlock(Arc::clone(&fwd_meta_block.block)),
-                    ),
-                ));
-            }
-            MetaBlock::Historical(_historical_meta_block) => {
-                todo!();
-            }
-        }
+        effects.extend(reactor::wrap_effects(
+            MainEvent::ShutdownTrigger,
+            self.shutdown_trigger.handle_event(
+                effect_builder,
+                rng,
+                shutdown_trigger::Event::CompletedBlock(CompletedBlockInfo::new(
+                    meta_block.height(),
+                    meta_block.era_id(),
+                    meta_block.is_switch_block(),
+                )),
+            ),
+        ));
 
         effects
     }
