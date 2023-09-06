@@ -2472,10 +2472,7 @@ impl Storage {
                             .expect("Could not start transaction for lmdb");
                         match self.get_single_block(&mut txn, &block_hash) {
                             Ok(Some(block)) => match block {
-                                Block::V1(_) => {
-                                    HighestOrphanedBlockResult::MissingHeader(block_hash)
-                                }
-                                Block::V2(_) => {
+                                Block::V1(_) | Block::V2(_) => {
                                     HighestOrphanedBlockResult::Orphan(block.header().clone())
                                 }
                             },
