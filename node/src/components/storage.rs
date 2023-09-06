@@ -2804,7 +2804,7 @@ impl Storage {
         for (deploy_hash, execution_result) in execution_results {
             match txn.get_value::<_, Deploy>(self.deploy_db, &deploy_hash)? {
                 None => {
-                    error!(
+                    warn!(
                         %block_hash,
                         %deploy_hash,
                         "missing deploy"

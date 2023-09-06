@@ -65,9 +65,9 @@ function assert_error_count() {
     TOTAL='0'
     for i in $(seq 1 "$(get_count_of_nodes)"); do
         if [ -z ${IGNORE_PATTERN+x} ]; then
-            COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w '"level":"ERROR"' | wc -l)
+            COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'ERROR' | wc -l)
         else
-            COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w '"level":"ERROR"' | grep -v "$IGNORE_PATTERN" | wc -l)
+            COUNT=$(cat "$NCTL"/assets/net-1/nodes/node-"$i"/logs/stdout.log 2>/dev/null | grep -w 'ERROR' | grep -v "$IGNORE_PATTERN" | wc -l)
         fi
 
         TOTAL=$((TOTAL + COUNT))
