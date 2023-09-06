@@ -18,13 +18,15 @@ use serde::Serialize;
 use strum::{EnumIter, IntoEnumIterator};
 
 use casper_types::{
+    account::AccountHash,
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
-    AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures, ChunkWithProof,
+    AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures, ChunkWithProof,
     ContractPackageHash, Deploy, DeployApproval, DeployApprovalsHash, DeployHash, DeployId, Digest,
     EraEnd, EraId, EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId,
     ProtocolVersion, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff, Timestamp,
-    KEY_HASH_LENGTH, U512,
+    Transaction, TransactionId, TransactionV1, TransactionV1ApprovalsHash, TransactionV1Builder,
+    TransactionV1Hash, TransactionV1Kind, URef, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -376,6 +378,21 @@ where
 impl LargestSpecimen for ProtocolVersion {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         ProtocolVersion::new(LargestSpecimen::largest_specimen(estimator, cache))
+    }
+}
+
+impl LargestSpecimen for URef {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        URef::new(
+            [LargestSpecimen::largest_specimen(estimator, cache); 32],
+            AccessRights::READ_ADD_WRITE,
+        )
+    }
+}
+
+impl LargestSpecimen for AccountHash {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        AccountHash::new([LargestSpecimen::largest_specimen(estimator, cache); 32])
     }
 }
 
@@ -771,6 +788,73 @@ impl LargestSpecimen for DeployApprovalsHash {
     fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
         DeployApprovalsHash::compute(&Default::default())
             .expect("empty approvals hash should compute")
+    }
+}
+
+impl LargestSpecimen for TransactionV1Hash {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        TransactionV1Hash::new(LargestSpecimen::largest_specimen(estimator, cache))
+    }
+}
+
+impl LargestSpecimen for TransactionV1 {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        let body = TransactionV1Kind::new_transfer(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            U512::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+        )
+        .unwrap();
+        TransactionV1Builder::new()
+            .with_secret_key(&LargestSpecimen::largest_specimen(estimator, cache))
+            .with_timestamp(LargestSpecimen::largest_specimen(estimator, cache))
+            .with_ttl(LargestSpecimen::largest_specimen(estimator, cache))
+            .with_chain_name(largest_chain_name(estimator))
+            .with_payment(LargestSpecimen::largest_specimen(estimator, cache))
+            .with_body(body)
+            .build()
+            .unwrap()
+    }
+}
+
+impl LargestSpecimen for TransactionV1ApprovalsHash {
+    fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
+        TransactionV1ApprovalsHash::compute(&Default::default())
+            .expect("empty approvals hash should compute")
+    }
+}
+
+impl LargestSpecimen for TransactionId {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        let deploy = TransactionId::new_deploy(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+        );
+        let v1 = TransactionId::new_v1(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+        );
+
+        if estimator.estimate(&deploy) >= estimator.estimate(&v1) {
+            deploy
+        } else {
+            v1
+        }
+    }
+}
+
+impl LargestSpecimen for Transaction {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        let deploy = Transaction::Deploy(LargestSpecimen::largest_specimen(estimator, cache));
+        let v1 = Transaction::V1(LargestSpecimen::largest_specimen(estimator, cache));
+
+        if estimator.estimate(&deploy) >= estimator.estimate(&v1) {
+            deploy
+        } else {
+            v1
+        }
     }
 }
 

@@ -26,8 +26,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockHash, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature, PublicKey,
-    TimeDiff, Timestamp, Transaction, U512,
+    Block, BlockHash, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature, PublicKey,
+    TimeDiff, Timestamp, Transaction, TransactionId, U512,
 };
 
 #[cfg(test)]
@@ -154,7 +154,7 @@ pub(crate) struct MainReactor {
 
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
-    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
+    transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
     block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
     finality_signature_gossiper:
         Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
@@ -720,19 +720,19 @@ impl reactor::Reactor for MainReactor {
                         ));
                     }
                     Source::Client | Source::PeerGossiped(_) => {
+                        // we must attempt to gossip onwards
+                        effects.extend(self.dispatch_event(
+                            effect_builder,
+                            rng,
+                            MainEvent::TransactionGossiper(gossiper::Event::ItemReceived {
+                                item_id: transaction.gossip_id(),
+                                source,
+                                target: transaction.gossip_target(),
+                            }),
+                        ));
+                        // notify event stream
                         match &*transaction {
                             Transaction::Deploy(deploy) => {
-                                // we must attempt to gossip onwards
-                                effects.extend(self.dispatch_event(
-                                    effect_builder,
-                                    rng,
-                                    MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                                        item_id: deploy.gossip_id(),
-                                        source,
-                                        target: deploy.gossip_target(),
-                                    }),
-                                ));
-                                // notify event stream
                                 effects.extend(self.dispatch_event(
                                     effect_builder,
                                     rng,
@@ -744,10 +744,7 @@ impl reactor::Reactor for MainReactor {
                                 ));
                             }
                             Transaction::V1(_txn) => {
-                                todo!(
-                                    "avoid matching on `&*transaction` once gossiper and sse can \
-                                    handle transactions"
-                                );
+                                todo!("avoid match on `transaction` once sse handles transactions");
                             }
                         }
                     }
@@ -767,29 +764,29 @@ impl reactor::Reactor for MainReactor {
                     source: _,
                 },
             ) => Effects::new(),
-            MainEvent::DeployGossiper(event) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
+            MainEvent::TransactionGossiper(event) => reactor::wrap_effects(
+                MainEvent::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
+            MainEvent::TransactionGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
                 ..
             }) => {
                 // Ignore the announcement.
                 Effects::new()
             }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {
-                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                error!(%gossiped_deploy_id, "gossiper should not announce new transaction");
                 Effects::new()
             }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
             }) => reactor::wrap_effects(
@@ -798,20 +795,29 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     transaction_acceptor::Event::Accept {
-                        transaction: Transaction::from(*item),
+                        transaction: *item,
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },
                 ),
             ),
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                gossiped_deploy_id,
-            )) => {
-                let reactor_event = MainEvent::DeployBuffer(
-                    deploy_buffer::Event::ReceiveDeployGossiped(gossiped_deploy_id),
-                );
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
+            MainEvent::TransactionGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(gossiped_txn_id),
+            ) => match gossiped_txn_id {
+                TransactionId::Deploy {
+                    deploy_hash,
+                    approvals_hash,
+                } => {
+                    let deploy_id = DeployId::new(deploy_hash, approvals_hash);
+                    let reactor_event = MainEvent::DeployBuffer(
+                        deploy_buffer::Event::ReceiveDeployGossiped(deploy_id),
+                    );
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+                TransactionId::V1 { .. } => {
+                    todo!("avoid match `gossiped_txn_id` once deploy buffer handles transactions");
+                }
+            },
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,
                 self.deploy_buffer.handle_event(effect_builder, rng, event),
@@ -1126,8 +1132,8 @@ impl reactor::Reactor for MainReactor {
             config.gossip,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
-            "deploy_gossiper",
+        let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(
+            "transaction_gossiper",
             config.gossip,
             registry,
         )?;
@@ -1188,7 +1194,7 @@ impl reactor::Reactor for MainReactor {
             fetchers,
 
             block_gossiper,
-            deploy_gossiper,
+            transaction_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,

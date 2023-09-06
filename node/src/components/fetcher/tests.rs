@@ -123,7 +123,7 @@ enum Event {
     #[from]
     ContractRuntimeRequest(ContractRuntimeRequest),
     #[from]
-    GossiperIncomingDeploy(GossiperIncoming<Deploy>),
+    GossiperIncomingTransaction(GossiperIncoming<Transaction>),
     #[from]
     GossiperIncomingBlock(GossiperIncoming<Block>),
     #[from]
@@ -259,7 +259,7 @@ impl ReactorTrait for Reactor {
             | Event::ContractRuntimeRequest(_)
             | Event::BlockAccumulatorRequest(_)
             | Event::BlocklistAnnouncement(_)
-            | Event::GossiperIncomingDeploy(_)
+            | Event::GossiperIncomingTransaction(_)
             | Event::GossiperIncomingBlock(_)
             | Event::GossiperIncomingFinalitySignature(_)
             | Event::GossiperIncomingGossipedAddress(_)

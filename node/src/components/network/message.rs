@@ -325,8 +325,8 @@ pub(crate) enum MessageKind {
     Protocol,
     /// Messages directly related to consensus.
     Consensus,
-    /// Deploys being gossiped.
-    DeployGossip,
+    /// Transactions being gossiped.
+    TransactionGossip,
     /// Blocks being gossiped.
     BlockGossip,
     /// Finality signatures being gossiped.
@@ -348,7 +348,7 @@ impl Display for MessageKind {
         match self {
             MessageKind::Protocol => f.write_str("protocol"),
             MessageKind::Consensus => f.write_str("consensus"),
-            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::TransactionGossip => f.write_str("transaction_gossip"),
             MessageKind::BlockGossip => f.write_str("block_gossip"),
             MessageKind::FinalitySignatureGossip => f.write_str("finality_signature_gossip"),
             MessageKind::AddressGossip => f.write_str("address_gossip"),
@@ -416,7 +416,7 @@ pub(crate) trait FromIncoming<P> {
 pub struct EstimatorWeights {
     pub consensus: u32,
     pub block_gossip: u32,
-    pub deploy_gossip: u32,
+    pub transaction_gossip: u32,
     pub finality_signature_gossip: u32,
     pub address_gossip: u32,
     pub finality_signature_broadcasts: u32,

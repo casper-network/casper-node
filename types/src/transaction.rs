@@ -15,11 +15,12 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    PublicKey, Timestamp,
+    Digest, PublicKey, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
 use account_and_secret_key::AccountAndSecretKey;
@@ -70,6 +71,29 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
+        }
+    }
+
+    /// Returns the computed `TransactionId` uniquely identifying this transaction and its
+    /// approvals.
+    pub fn compute_id(&self) -> TransactionId {
+        match self {
+            Transaction::Deploy(deploy) => {
+                let deploy_hash = *deploy.hash();
+                let approvals_hash = deploy.compute_approvals_hash().unwrap_or_else(|error| {
+                    error!(%error, "failed to serialize deploy approvals");
+                    DeployApprovalsHash::from(Digest::default())
+                });
+                TransactionId::new_deploy(deploy_hash, approvals_hash)
+            }
+            Transaction::V1(txn) => {
+                let txn_hash = *txn.hash();
+                let approvals_hash = txn.compute_approvals_hash().unwrap_or_else(|error| {
+                    error!(%error, "failed to serialize transaction approvals");
+                    TransactionV1ApprovalsHash::from(Digest::default())
+                });
+                TransactionId::new_v1(txn_hash, approvals_hash)
+            }
         }
     }
 
