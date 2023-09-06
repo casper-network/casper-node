@@ -300,6 +300,7 @@ pub fn entry_point_access_arb() -> impl Strategy<Value = EntryPointAccess> {
     prop_oneof![
         Just(EntryPointAccess::Public),
         collection::vec(group_arb(), 0..32).prop_map(EntryPointAccess::Groups),
+        Just(EntryPointAccess::Template),
     ]
 }
 
@@ -307,6 +308,7 @@ pub fn entry_point_type_arb() -> impl Strategy<Value = EntryPointType> {
     prop_oneof![
         Just(EntryPointType::Session),
         Just(EntryPointType::Contract),
+        Just(EntryPointType::Install),
     ]
 }
 
