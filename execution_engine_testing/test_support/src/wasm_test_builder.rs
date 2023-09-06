@@ -697,9 +697,8 @@ where
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
             .expect("must get mint stored value")
-            .as_addressable_entity()
-            .expect("must convert to mint contract")
-            .clone();
+            .into_addressable_entity()
+            .expect("must convert to mint contract");
 
         let mint_named_keys = mint_contract.named_keys().clone();
 
@@ -716,18 +715,16 @@ where
         let total_supply = self
             .query(maybe_post_state, Key::URef(total_supply_uref), &[])
             .expect("must read value under total supply URef")
-            .as_cl_value()
+            .into_cl_value()
             .expect("must convert into CL value")
-            .clone()
             .into_t::<U512>()
             .expect("must convert into U512");
 
         let rate = self
             .query(maybe_post_state, round_seigniorage_rate_uref, &[])
             .expect("must read value")
-            .as_cl_value()
+            .into_cl_value()
             .expect("must conver to cl value")
-            .clone()
             .into_t::<Ratio<U512>>()
             .expect("must conver to ratio");
 
@@ -1386,10 +1383,7 @@ where
             .get(name)
             .expect("should have named key");
         let stored_value = self.query(None, *key, &[]).expect("should query");
-        let cl_value = stored_value
-            .as_cl_value()
-            .cloned()
-            .expect("should be cl value");
+        let cl_value = stored_value.into_cl_value().expect("should be cl value");
         let result: T = cl_value.into_t().expect("should convert");
         result
     }

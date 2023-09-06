@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{Approval, Deploy, DeployHash};
+use casper_types::{Deploy, DeployApproval, DeployHash};
 
 /// The hash of a deploy (or transfer) together with signatures approving it for execution.
 #[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -11,12 +11,12 @@ pub(crate) struct DeployHashWithApprovals {
     /// The hash of the deploy.
     deploy_hash: DeployHash,
     /// The approvals for the deploy.
-    approvals: BTreeSet<Approval>,
+    approvals: BTreeSet<DeployApproval>,
 }
 
 impl DeployHashWithApprovals {
     /// Creates a new `DeployWithApprovals`.
-    pub(crate) fn new(deploy_hash: DeployHash, approvals: BTreeSet<Approval>) -> Self {
+    pub(crate) fn new(deploy_hash: DeployHash, approvals: BTreeSet<DeployApproval>) -> Self {
         Self {
             deploy_hash,
             approvals,
@@ -29,7 +29,7 @@ impl DeployHashWithApprovals {
     }
 
     /// Returns the approvals.
-    pub(crate) fn approvals(&self) -> &BTreeSet<Approval> {
+    pub(crate) fn approvals(&self) -> &BTreeSet<DeployApproval> {
         &self.approvals
     }
 }

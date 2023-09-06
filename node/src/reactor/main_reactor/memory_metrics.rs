@@ -179,7 +179,7 @@ impl MemoryMetrics {
         let deploy_buffer = reactor.deploy_buffer.estimate_heap_size() as i64;
         let block_validator = reactor.block_validator.estimate_heap_size() as i64;
         let sync_leaper = reactor.sync_leaper.estimate_heap_size() as i64;
-        let deploy_acceptor = reactor.deploy_acceptor.estimate_heap_size() as i64;
+        let deploy_acceptor = reactor.transaction_acceptor.estimate_heap_size() as i64;
         let block_synchronizer = reactor.block_synchronizer.estimate_heap_size() as i64;
         let block_accumulator = reactor.block_accumulator.estimate_heap_size() as i64;
         let diagnostics_port = reactor.diagnostics_port.estimate_heap_size() as i64;

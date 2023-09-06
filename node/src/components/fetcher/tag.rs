@@ -53,4 +53,7 @@ pub enum Tag {
     /// The execution results for a single block.
     #[display(fmt = "block execution results")]
     BlockExecutionResults,
+    /// A transaction identified by its hash and its approvals hash.
+    #[display(fmt = "transaction")]
+    Transaction,
 }

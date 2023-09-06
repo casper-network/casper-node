@@ -515,8 +515,8 @@ impl<'a> NetworkMessageEstimator<'a> {
             "network_name_limit" => self.chainspec.network_config.name.len() as i64,
             // These limits are making deploys bigger than they actually are, since many items
             // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
-            "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "contract_name_limit" => self.chainspec.transaction_config.max_transaction_size as i64,
+            "entry_point_limit" => self.chainspec.transaction_config.max_transaction_size as i64,
             "recent_era_count" => {
                 (self.chainspec.core_config.unbonding_delay
                     - self.chainspec.core_config.auction_delay) as i64
@@ -530,18 +530,21 @@ impl<'a> NetworkMessageEstimator<'a> {
                 .minimum_block_time
                 .millis()
                 .max(1) as i64,
-            "max_deploy_size" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "max_deploy_size" => self.chainspec.transaction_config.max_transaction_size as i64,
             "approvals_hashes" => {
-                (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count) as i64
+                (self.chainspec.transaction_config.block_max_deploy_count
+                    + self.chainspec.transaction_config.block_max_native_count)
+                    as i64
             }
-            "max_deploys_per_block" => self.chainspec.deploy_config.block_max_deploy_count as i64,
+            "max_deploys_per_block" => {
+                self.chainspec.transaction_config.block_max_deploy_count as i64
+            }
             "max_transfers_per_block" => {
-                self.chainspec.deploy_config.block_max_transfer_count as i64
+                self.chainspec.transaction_config.block_max_native_count as i64
             }
             "average_approvals_per_deploy_in_block" => {
-                let max_total_deploys = (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count)
+                let max_total_deploys = (self.chainspec.transaction_config.block_max_deploy_count
+                    + self.chainspec.transaction_config.block_max_native_count)
                     as i64;
 
                 // Note: The +1 is to overestimate, as depending on the serialization format chosen,
@@ -550,7 +553,8 @@ impl<'a> NetworkMessageEstimator<'a> {
                 //       in a smaller size if variable size integer encoding it used. In a format
                 //       using separators without trailing separators (e.g. commas in JSON),
                 //       spreading out will reduce the total number of bytes.
-                ((self.chainspec.deploy_config.block_max_approval_count as i64 + max_total_deploys
+                ((self.chainspec.transaction_config.block_max_approval_count as i64
+                    + max_total_deploys
                     - 1)
                     / max_total_deploys)
                     .max(0)

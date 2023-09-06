@@ -128,36 +128,32 @@ reduced_reward_multiplier = [1, 5]
 max_ttl = '18hours'
 # Maximum Transaction size in bytes.  Size is of the Transaction when serialized via ToBytes.
 max_transaction_size = 1_048_576
-# The maximum number of approvals permitted in a single block.
-block_max_approval_count = 2600
-# The maximum length in bytes of runtime args per Transaction.
-max_args_length = 1024
-
-[deploys]
-# The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
-max_payment_cost = '0'
-# The duration after the deploy timestamp that it can be included in a block.
-max_ttl = '18hours'
-# The maximum number of other deploys a deploy can depend on (require to have been executed before it can execute).
-max_dependencies = 10
-# Maximum block size in bytes including deploys contained by the block.  0 means unlimited.
-max_block_size = 10_485_760
-# Maximum deploy size in bytes.  Size is of the deploy when serialized via ToBytes.
-max_deploy_size = 1_048_576
 # The maximum number of non-transfer deploys permitted in a single block.
 block_max_deploy_count = 50
-# The maximum number of wasm-less transfer deploys permitted in a single block.
-block_max_transfer_count = 1250
+# The maximum number of native Transactions, including wasm-less transfer deploys, permitted in a single block.
+block_max_native_count = 1250
 # The maximum number of approvals permitted in a single block.
 block_max_approval_count = 2600
-# The upper limit of total gas of all deploys in a block.
+# Maximum block size in bytes including deploys contained by the block.  0 means unlimited.
+max_block_size = 10_485_760
+# The upper limit of total gas of all Transactions in a block.
 block_gas_limit = 10_000_000_000_000
+# The minimum amount in motes for a valid native transfer.
+native_transfer_minimum_motes = 2_500_000_000
+
+[transactions.v1]
+# The maximum length in bytes of runtime args per V1 Transaction.
+max_args_length = 1024
+
+[transactions.deploy]
+# The maximum number of Motes allowed to be spent during payment.  0 means unlimited.
+max_payment_cost = '0'
+# The maximum number of other deploys a deploy can depend on (require to have been executed before it can execute).
+max_dependencies = 10
 # The limit of length of serialized payment code arguments.
 payment_args_max_length = 1024
 # The limit of length of serialized session code arguments.
 session_args_max_length = 1024
-# The minimum amount in motes for a valid native transfer.
-native_transfer_minimum_motes = 2_500_000_000
 
 [wasm]
 # Amount of free memory (in 64kB pages) each contract can use for stack.

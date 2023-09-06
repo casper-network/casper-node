@@ -5,8 +5,6 @@ use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
@@ -19,19 +17,11 @@ use crate::{
     Digest,
 };
 
-/// The cryptographic hash of the bytesrepr-encoded set of approvals for a single [`Transaction`].
+/// The cryptographic hash of the bytesrepr-encoded set of approvals for a single [`TransactionV1`].
 #[derive(
     Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug, Default,
 )]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-#[cfg_attr(
-    feature = "json-schema",
-    derive(JsonSchema),
-    schemars(
-        with = "String",
-        description = "Hex-encoded cryptographic hash of set of approvals for a single transaction."
-    )
-)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionV1ApprovalsHash(Digest);
 

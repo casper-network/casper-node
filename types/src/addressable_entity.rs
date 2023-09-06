@@ -1083,13 +1083,13 @@ impl FromBytes for EntryPointType {
     }
 }
 
-/// Default name for an entry point
+/// Default name for an entry point.
 pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
 
-/// Default name for an installer entry point
-pub const ENTRY_POINT_NAME_INSTALL: &str = "install";
+/// Name for an installer entry point.
+pub const INSTALL_ENTRY_POINT_NAME: &str = "install";
 
-/// Default name for an upgrade entry point
+/// Name for an upgrade entry point.
 pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
 
 /// Collection of entry point parameters.
@@ -1187,14 +1187,9 @@ impl Default for EntryPoint {
 
 impl ToBytes for EntryPoint {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.name.to_bytes()?);
-        result.append(&mut self.args.to_bytes()?);
-        self.ret.append_bytes(&mut result)?;
-        result.append(&mut self.access.to_bytes()?);
-        result.append(&mut self.entry_point_type.to_bytes()?);
-
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -1206,11 +1201,11 @@ impl ToBytes for EntryPoint {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.name().write_bytes(writer)?;
+        self.name.write_bytes(writer)?;
         self.args.write_bytes(writer)?;
         self.ret.append_bytes(writer)?;
-        self.access().write_bytes(writer)?;
-        self.entry_point_type().write_bytes(writer)?;
+        self.access.write_bytes(writer)?;
+        self.entry_point_type.write_bytes(writer)?;
         Ok(())
     }
 }

@@ -1,90 +1,78 @@
-use std::{
-    fmt::{self, Display, Formatter},
-    sync::Arc,
-};
+use std::fmt::{self, Display, Formatter};
 
 use serde::Serialize;
 
 use casper_types::{
-    account::AccountHash, AddressableEntity, BlockHeader, ContractHash, ContractPackageHash,
-    ContractVersion, Deploy, Package, StoredValue, Timestamp, U512,
+    addressable_entity::AddressableEntity, package::Package, BlockHeader, ContractHash,
+    ContractPackageHash, ContractVersion, Timestamp, Transaction, U512,
 };
 
-use super::Source;
-use crate::{components::deploy_acceptor::Error, effect::Responder};
+use super::{Error, Source};
+use crate::effect::Responder;
 
 /// A utility struct to hold duplicated information across events.
 #[derive(Debug, Serialize)]
 pub(crate) struct EventMetadata {
-    pub(crate) deploy: Arc<Deploy>,
+    pub(crate) transaction: Transaction,
     pub(crate) source: Source,
     pub(crate) maybe_responder: Option<Responder<Result<(), Error>>>,
+    pub(crate) verification_start_timestamp: Timestamp,
 }
 
 impl EventMetadata {
     pub(crate) fn new(
-        deploy: Arc<Deploy>,
+        transaction: Transaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Self {
         EventMetadata {
-            deploy,
+            transaction,
             source,
             maybe_responder,
+            verification_start_timestamp: Timestamp::now(),
         }
     }
 }
 
-/// `DeployAcceptor` events.
+/// `TransactionAcceptor` events.
 #[derive(Debug, Serialize)]
 pub(crate) enum Event {
-    /// The initiating event to accept a new `Deploy`.
+    /// The initiating event to accept a new `Transaction`.
     Accept {
-        deploy: Arc<Deploy>,
+        transaction: Transaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     },
-    /// The result of the `DeployAcceptor` putting a `Deploy` to the storage component.
+    /// The result of the `TransactionAcceptor` putting a `Transaction` to the storage
+    /// component.
     PutToStorageResult {
         event_metadata: Box<EventMetadata>,
         is_new: bool,
-        verification_start_timestamp: Timestamp,
     },
-    /// The result of the `DeployAcceptor` storing the approvals from a `Deploy` provided by a
-    /// peer.
+    /// The result of the `TransactionAcceptor` storing the approvals from a `Transaction`
+    /// provided by a peer.
     StoredFinalizedApprovals {
         event_metadata: Box<EventMetadata>,
         is_new: bool,
-        verification_start_timestamp: Timestamp,
     },
     /// The result of querying the highest available `BlockHeader` from the storage component.
     GetBlockHeaderResult {
         event_metadata: Box<EventMetadata>,
         maybe_block_header: Option<Box<BlockHeader>>,
-        verification_start_timestamp: Timestamp,
     },
-    /// The result of querying global state for the `Account` associated with the `Deploy`.
-    GetAccountResult {
+    /// The result of querying global state for the `AddressableEntity` associated with the
+    /// `Transaction`'s execution context (previously known as the account).
+    GetAddressableEntityResult {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
-        account_hash: AccountHash,
-        maybe_account: Option<StoredValue>,
-        verification_start_timestamp: Timestamp,
+        maybe_entity: Option<AddressableEntity>,
     },
-    GetEntityResult {
-        event_metadata: Box<EventMetadata>,
-        block_header: Box<BlockHeader>,
-        account_hash: AccountHash,
-        maybe_entity: Option<Box<AddressableEntity>>,
-        verification_start_timestamp: Timestamp,
-    },
-    /// The result of querying the balance of the `Account` associated with the `Deploy`.
+    /// The result of querying the balance of the `AddressableEntity` associated with the
+    /// `Transaction`.
     GetBalanceResult {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
-        maybe_balance_value: Option<U512>,
-        account_hash: AccountHash,
-        verification_start_timestamp: Timestamp,
+        maybe_balance: Option<U512>,
     },
     /// The result of querying global state for a `Contract` to verify the executable logic.
     GetContractResult {
@@ -92,26 +80,28 @@ pub(crate) enum Event {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         contract_hash: ContractHash,
-        maybe_contract: Option<Box<AddressableEntity>>,
-        verification_start_timestamp: Timestamp,
+        maybe_contract: Option<AddressableEntity>,
     },
-    /// The result of querying global state for a `ContractPackage` to verify the executable logic.
-    GetContractPackageResult {
+    /// The result of querying global state for a `Package` to verify the executable logic.
+    GetPackageResult {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_package_hash: ContractPackageHash,
-        maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<Box<Package>>,
-        verification_start_timestamp: Timestamp,
+        package_hash: ContractPackageHash,
+        maybe_contract_version: Option<ContractVersion>,
+        maybe_package: Option<Package>,
     },
 }
 
 impl Display for Event {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Event::Accept { deploy, source, .. } => {
-                write!(formatter, "accept {} from {}", deploy.hash(), source)
+            Event::Accept {
+                transaction,
+                source,
+                ..
+            } => {
+                write!(formatter, "accept {} from {}", transaction.hash(), source)
             }
             Event::PutToStorageResult {
                 event_metadata,
@@ -122,13 +112,13 @@ impl Display for Event {
                     write!(
                         formatter,
                         "put new {} to storage",
-                        event_metadata.deploy.hash()
+                        event_metadata.transaction.hash()
                     )
                 } else {
                     write!(
                         formatter,
                         "had already stored {}",
-                        event_metadata.deploy.hash()
+                        event_metadata.transaction.hash()
                     )
                 }
             }
@@ -141,42 +131,35 @@ impl Display for Event {
                     write!(
                         formatter,
                         "put new finalized approvals {} to storage",
-                        event_metadata.deploy.hash()
+                        event_metadata.transaction.hash()
                     )
                 } else {
                     write!(
                         formatter,
                         "had already stored finalized approvals for {}",
-                        event_metadata.deploy.hash()
+                        event_metadata.transaction.hash()
                     )
                 }
             }
             Event::GetBlockHeaderResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "received highest block from storage to validate deploy with hash {}",
-                    event_metadata.deploy.hash()
+                    "received highest block from storage to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
                 )
             }
-            Event::GetAccountResult { event_metadata, .. } => {
+            Event::GetAddressableEntityResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "verifying account to validate deploy with hash {}",
-                    event_metadata.deploy.hash()
-                )
-            }
-            Event::GetEntityResult { event_metadata, .. } => {
-                write!(
-                    formatter,
-                    "verifying addressable entity to validate deploy with hash {}",
-                    event_metadata.deploy.hash()
+                    "verifying addressable entity to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
                 )
             }
             Event::GetBalanceResult { event_metadata, .. } => {
                 write!(
                     formatter,
-                    "verifying account balance to validate deploy with hash {}",
-                    event_metadata.deploy.hash()
+                    "verifying account balance to validate transaction with hash {}",
+                    event_metadata.transaction.hash()
                 )
             }
             Event::GetContractResult {
@@ -186,20 +169,20 @@ impl Display for Event {
             } => {
                 write!(
                     formatter,
-                    "verifying contract to validate deploy with hash {} with state hash {}",
-                    event_metadata.deploy.hash(),
+                    "verifying contract to validate transaction with hash {} with state hash {}",
+                    event_metadata.transaction.hash(),
                     block_header.state_root_hash()
                 )
             }
-            Event::GetContractPackageResult {
+            Event::GetPackageResult {
                 event_metadata,
                 block_header,
                 ..
             } => {
                 write!(
                     formatter,
-                    "verifying contract package to validate deploy with hash {} with state hash {}",
-                    event_metadata.deploy.hash(),
+                    "verifying package to validate transaction with hash {} with state hash {}",
+                    event_metadata.transaction.hash(),
                     block_header.state_root_hash()
                 )
             }

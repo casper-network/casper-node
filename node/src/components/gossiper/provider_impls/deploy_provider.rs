@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use tracing::error;
 
-use casper_types::{ApprovalsHash, Deploy, DeployId, Digest};
+use casper_types::{Deploy, DeployApprovalsHash, DeployId, Digest, Transaction, TransactionId};
 
 use crate::{
     components::gossiper::{GossipItem, GossipTarget, Gossiper, ItemProvider, LargeGossipItem},
@@ -18,7 +18,7 @@ impl GossipItem for Deploy {
         let deploy_hash = *self.hash();
         let approvals_hash = self.compute_approvals_hash().unwrap_or_else(|error| {
             error!(%error, "failed to serialize approvals");
-            ApprovalsHash::from(Digest::default())
+            DeployApprovalsHash::from(Digest::default())
         });
         DeployId::new(deploy_hash, approvals_hash)
     }
@@ -36,17 +36,26 @@ impl ItemProvider<Deploy> for Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy> 
         effect_builder: EffectBuilder<REv>,
         item_id: DeployId,
     ) -> bool {
-        effect_builder.is_deploy_stored(item_id).await
+        effect_builder
+            .is_transaction_stored(TransactionId::from(item_id))
+            .await
     }
 
     async fn get_from_storage<REv: From<StorageRequest> + Send>(
         effect_builder: EffectBuilder<REv>,
         item_id: DeployId,
     ) -> Option<Box<Deploy>> {
-        // TODO: Make `get_stored_deploy` return a boxed value instead of boxing here.
         effect_builder
-            .get_stored_deploy(item_id)
+            .get_stored_transaction(TransactionId::from(item_id))
             .await
-            .map(Box::new)
+            .map(|txn| match txn {
+                Transaction::Deploy(deploy) => Box::new(deploy),
+                Transaction::V1(_) => {
+                    todo!(
+                        "unreachable, but this code path will be removed as part of \
+                        https://github.com/casper-network/roadmap/issues/188"
+                    )
+                }
+            })
     }
 }

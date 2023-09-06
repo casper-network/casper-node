@@ -557,6 +557,19 @@ impl ContractRuntime {
                     });
                 responder.respond(result).ignore()
             }
+            ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                responder,
+            } => {
+                let engine_state = Arc::clone(&self.engine_state);
+                async move {
+                    let result =
+                        operations::get_addressable_entity(&engine_state, state_root_hash, key);
+                    responder.respond(result).await
+                }
+                .ignore()
+            }
             ContractRuntimeRequest::SpeculativeDeployExecution {
                 execution_prestate,
                 deploy,

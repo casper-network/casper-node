@@ -18,7 +18,8 @@ use casper_types::{
     testing::TestRng,
     AccountConfig, AccountsConfig, ActivationPoint, Block, BlockHash, BlockHeader, CLValue,
     Chainspec, ChainspecRawBytes, ContractHash, Deploy, DeployHash, EraId, Key, Motes,
-    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, ValidatorConfig, U512,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -42,7 +43,10 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeId, NodeRng},
+    types::{
+        BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals, ExitCode, NodeId,
+        NodeRng, TransactionWithFinalizedApprovals,
+    },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -925,14 +929,17 @@ async fn should_store_finalized_approvals() {
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_deploy_to_storage(Arc::new(deploy.clone()))
+                    .put_transaction_to_storage(Transaction::from(deploy.clone()))
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_deploy_accepted(Arc::new(deploy), Source::Client)
+                    .announce_new_transaction_accepted(
+                        Arc::new(Transaction::from(deploy)),
+                        Source::Client,
+                    )
                     .ignore()
             })
             .await;
@@ -960,7 +967,14 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_deploy_with_finalized_approvals_by_hash(&deploy_hash);
+            .get_transaction_with_finalized_approvals_by_hash(&TransactionHash::from(deploy_hash))
+            .map(|transaction_wfa| match transaction_wfa {
+                TransactionWithFinalizedApprovals::Deploy {
+                    deploy,
+                    finalized_approvals,
+                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+                _ => panic!("should receive deploy with finalized approvals"),
+            });
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())
@@ -1230,17 +1244,18 @@ async fn settle_deploy(net: &mut TestingNetwork<FilterReactor<MainReactor>>, dep
     // saturate the network with the deploy via just making them all store and accept it
     // they're all validators so one of them should propose it
     for runner in net.runners_mut() {
+        let txn = Transaction::from(deploy.clone());
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_deploy_to_storage(Arc::new(deploy.clone()))
+                    .put_transaction_to_storage(txn.clone())
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_deploy_accepted(Arc::new(deploy.clone()), Source::Client)
+                    .announce_new_transaction_accepted(Arc::new(txn), Source::Client)
                     .ignore()
             })
             .await;

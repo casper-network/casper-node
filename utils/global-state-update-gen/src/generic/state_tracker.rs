@@ -39,10 +39,7 @@ impl<T: StateReader> StateTracker<T> {
 
         // Read the total supply.
         let total_supply_sv = reader.query(total_supply_key).expect("should query");
-        let total_supply = total_supply_sv
-            .as_cl_value()
-            .cloned()
-            .expect("should be cl value");
+        let total_supply = total_supply_sv.into_cl_value().expect("should be cl value");
 
         let protocol_version = reader.get_protocol_version();
 
@@ -270,10 +267,7 @@ impl<T: StateReader> StateTracker<T> {
 
         // Decode the old snapshot.
         let stored_value = self.reader.query(validators_key).expect("should query");
-        let cl_value = stored_value
-            .as_cl_value()
-            .cloned()
-            .expect("should be cl value");
+        let cl_value = stored_value.into_cl_value().expect("should be cl value");
         let snapshot: SeigniorageRecipientsSnapshot = cl_value.into_t().expect("should convert");
         self.seigniorage_recipients = Some((validators_key, snapshot.clone()));
         (validators_key, snapshot)

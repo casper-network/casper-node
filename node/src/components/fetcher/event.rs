@@ -3,11 +3,11 @@ use std::fmt::{self, Debug, Display, Formatter};
 use serde::Serialize;
 use tracing::error;
 
-use casper_types::Deploy;
+use casper_types::{Deploy, Transaction};
 
 use super::{FetchItem, FetchResponder, FetchResponse};
 use crate::{
-    effect::{announcements::DeployAcceptorAnnouncement, requests::FetcherRequest},
+    effect::{announcements::TransactionAcceptorAnnouncement, requests::FetcherRequest},
     types::NodeId,
     utils::Source,
 };
@@ -33,6 +33,9 @@ pub(crate) enum Event<T: FetchItem> {
     /// A different component rejected an item.
     // TODO: If having this event is not desirable, the `DeployAcceptorAnnouncement` needs to be
     //       split in two instead.
+    //
+    // TODO: Remove `allow` as part of https://github.com/casper-network/roadmap/issues/189
+    #[allow(dead_code)]
     GotInvalidRemotely { id: T::Id, source: Source },
     /// An item was not available on the remote peer.
     AbsentRemotely { id: T::Id, peer: NodeId },
@@ -68,23 +71,33 @@ impl<T: FetchItem> From<FetcherRequest<T>> for Event<T> {
     }
 }
 
-// A deploy fetcher knows how to update its state if deploys are coming in via the deploy acceptor.
-impl From<DeployAcceptorAnnouncement> for Event<Deploy> {
-    #[inline]
-    fn from(announcement: DeployAcceptorAnnouncement) -> Self {
+// A deploy fetcher knows how to update its state if deploys are coming in via the transaction
+// acceptor.
+impl Event<Deploy> {
+    // TODO: Remove `allow` as part of https://github.com/casper-network/roadmap/issues/189
+    #[allow(dead_code)]
+    pub(crate) fn maybe_from(announcement: TransactionAcceptorAnnouncement) -> Option<Self> {
         match announcement {
-            DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => {
-                Event::GotRemotely {
-                    item: Box::new((*deploy).clone()),
+            TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                transaction,
+                source,
+            } => match &*transaction {
+                Transaction::Deploy(deploy) => Some(Event::GotRemotely {
+                    item: Box::new(deploy.clone()),
                     source,
-                }
-            }
-            DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
-                Event::GotInvalidRemotely {
+                }),
+                Transaction::V1(_) => None,
+            },
+            TransactionAcceptorAnnouncement::InvalidTransaction {
+                transaction,
+                source,
+            } => match &transaction {
+                Transaction::Deploy(deploy) => Some(Event::GotInvalidRemotely {
                     id: deploy.fetch_id(),
                     source,
-                }
-            }
+                }),
+                Transaction::V1(_) => None,
+            },
         }
     }
 }
