@@ -661,6 +661,13 @@ fn should_fail_upgrade_for_locked_contract() {
 fn should_only_allow_upgrade_based_on_action_threshold() {
     const ACCESS_UREF: &str = "access_uref";
     const SHARING_HASH_KEY_NAME: &str = "ret_uref_contract_hash";
+    const ENTRY_POINT_INSERT_UREF: &str = "insert_uref";
+    const ENTRY_POINT_PUT_UREF: &str = "put_uref";
+
+    const ARG_CONTRACT_HASH: &str = "contract_hash";
+    const ARG_NAME: &str = "name";
+    const NAMED_KEY_ENTRY: &str = "purse_holder_access";
+
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
@@ -745,7 +752,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
     let put_access_uref = ExecuteRequestBuilder::contract_call_by_hash(
         *DEFAULT_ACCOUNT_ADDR,
         uref_sharing_contract_hash,
-        "put_uref",
+        ENTRY_POINT_PUT_UREF,
         runtime_args! {
             ACCESS_UREF => access_uref
         },
@@ -757,10 +764,10 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
     let insert_access_uref = ExecuteRequestBuilder::contract_call_by_hash(
         entity_account_hash,
         uref_sharing_contract_hash,
-        "insert_uref",
+        ENTRY_POINT_INSERT_UREF,
         runtime_args! {
-            "contract_hash" => uref_sharing_contract_hash,
-            "name" => "purse_holder_access".to_string()
+            ARG_CONTRACT_HASH => uref_sharing_contract_hash,
+            ARG_NAME => NAMED_KEY_ENTRY.to_string()
         },
     )
     .build();
