@@ -28,7 +28,6 @@ const RESERVED_TAG: u8 = 2;
     schemars(description = "Pricing mode of a TransactionV1.")
 )]
 #[serde(deny_unknown_fields)]
-#[non_exhaustive]
 pub enum PricingModeV1 {
     /// Multiplies the gas used by the given amount.
     ///

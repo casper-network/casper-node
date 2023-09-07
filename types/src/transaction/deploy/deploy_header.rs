@@ -18,7 +18,7 @@ use crate::{
     Digest, DisplayIter, PublicKey, TimeDiff, Timestamp,
 };
 #[cfg(any(feature = "std", test))]
-use crate::{DeployConfig, DeployConfigurationFailure};
+use crate::{DeployConfigurationFailure, TransactionConfig};
 
 /// The header portion of a [`Deploy`].
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -108,20 +108,19 @@ impl DeployHeader {
     #[cfg(any(feature = "std", test))]
     pub fn is_valid(
         &self,
-        config: &DeployConfig,
+        config: &TransactionConfig,
         at: Timestamp,
         deploy_hash: &DeployHash,
     ) -> Result<(), DeployConfigurationFailure> {
-        #[allow(deprecated)]
-        if self.dependencies.len() > config.max_dependencies as usize {
+        if self.dependencies.len() > config.deploy_config.max_dependencies as usize {
             debug!(
                 %deploy_hash,
                 deploy_header = %self,
-                max_dependencies = %config.max_dependencies,
+                max_dependencies = %config.deploy_config.max_dependencies,
                 "deploy dependency ceiling exceeded"
             );
             return Err(DeployConfigurationFailure::ExcessiveDependencies {
-                max_dependencies: config.max_dependencies,
+                max_dependencies: config.deploy_config.max_dependencies,
                 got: self.dependencies().len(),
             });
         }

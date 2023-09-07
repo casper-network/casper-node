@@ -1,10 +1,11 @@
 //! Wasm helpers.
-use std::fmt::Write;
+use std::{collections::BTreeSet, fmt::Write};
 
 use parity_wasm::{
     builder,
     elements::{Instruction, Instructions},
 };
+use walrus::Module;
 
 use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
 
@@ -78,4 +79,14 @@ pub fn make_n_arg_call_bytes(
     );
     let module_bytes = wabt::wat2wasm(wat)?;
     Ok(module_bytes)
+}
+
+/// Returns a set of exports for a given wasm module bytes
+pub fn get_wasm_exports(module_bytes: &[u8]) -> BTreeSet<String> {
+    let module = Module::from_buffer(module_bytes).expect("should have walid wasm bytes");
+    module
+        .exports
+        .iter()
+        .map(|export| export.name.clone())
+        .collect()
 }

@@ -15,8 +15,8 @@ use itertools::Itertools;
 use serde::Serialize;
 
 use casper_types::{
-    execution::Effects, Block, Deploy, DeployHash, EraId, FinalitySignature, PublicKey, Timestamp,
-    U512,
+    execution::Effects, Block, DeployHash, EraId, FinalitySignature, PublicKey, Timestamp,
+    Transaction, U512,
 };
 
 use crate::{
@@ -168,40 +168,46 @@ impl QueueDumpFormat {
     }
 }
 
-/// A `DeployAcceptor` announcement.
+/// A `TransactionAcceptor` announcement.
 #[derive(Debug, Serialize)]
-pub(crate) enum DeployAcceptorAnnouncement {
-    /// A deploy which wasn't previously stored on this node has been accepted and stored.
-    AcceptedNewDeploy {
-        /// The new deploy.
-        deploy: Arc<Deploy>,
-        /// The source (peer or client) of the deploy.
+pub(crate) enum TransactionAcceptorAnnouncement {
+    /// A transaction which wasn't previously stored on this node has been accepted and stored.
+    AcceptedNewTransaction {
+        /// The new transaction.
+        transaction: Arc<Transaction>,
+        /// The source (peer or client) of the transaction.
         source: Source,
     },
 
-    /// An invalid deploy was received.
-    InvalidDeploy {
-        /// The invalid deploy.
-        deploy: Arc<Deploy>,
-        /// The source (peer or client) of the deploy.
+    /// An invalid transaction was received.
+    InvalidTransaction {
+        /// The invalid transaction.
+        transaction: Transaction,
+        /// The source (peer or client) of the transaction.
         source: Source,
     },
 }
 
-impl Display for DeployAcceptorAnnouncement {
+impl Display for TransactionAcceptorAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => write!(
+            TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                transaction,
+                source,
+            } => write!(
                 formatter,
-                "accepted new deploy {} from {}",
-                deploy.hash(),
+                "accepted new transaction {} from {}",
+                transaction.hash(),
                 source
             ),
-            DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
+            TransactionAcceptorAnnouncement::InvalidTransaction {
+                transaction,
+                source,
+            } => {
                 write!(
                     formatter,
-                    "invalid deploy {} from {}",
-                    deploy.hash(),
+                    "invalid transaction {} from {}",
+                    transaction.hash(),
                     source
                 )
             }

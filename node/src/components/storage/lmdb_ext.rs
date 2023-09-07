@@ -107,11 +107,17 @@ pub(super) trait TransactionExt {
 
     /// Helper function to load a value from a database using the `bytesrepr` `ToBytes`/`FromBytes`
     /// serialization.
-    fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
+    fn get_value_bytesrepr<K: ToBytes, V: FromBytes>(
         &mut self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError>;
+
+    fn value_exists_bytesrepr<K: ToBytes>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<bool, LmdbExtError>;
 }
 
 /// Additional methods on write transactions.
@@ -135,7 +141,7 @@ pub(super) trait WriteTransactionExt {
     /// Returns `true` if the value has actually been written, `false` if the key already existed.
     ///
     /// Setting `overwrite` to true will cause the value to always be written instead.
-    fn put_value_bytesrepr<K: AsRef<[u8]>, V: ToBytes>(
+    fn put_value_bytesrepr<K: ToBytes, V: ToBytes>(
         &mut self,
         db: Database,
         key: &K,
@@ -179,15 +185,30 @@ where
     }
 
     #[inline]
-    fn get_value_bytesrepr<K: AsRef<[u8]>, V: FromBytes>(
+    fn get_value_bytesrepr<K: ToBytes, V: FromBytes>(
         &mut self,
         db: Database,
         key: &K,
     ) -> Result<Option<V>, LmdbExtError> {
-        match self.get(db, key) {
+        let serialized_key = serialize_bytesrepr(key)?;
+        match self.get(db, &serialized_key) {
             // Deserialization failures are likely due to storage corruption.
             Ok(raw) => deserialize_bytesrepr(raw).map(Some),
             Err(lmdb::Error::NotFound) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    #[inline]
+    fn value_exists_bytesrepr<K: ToBytes>(
+        &mut self,
+        db: Database,
+        key: &K,
+    ) -> Result<bool, LmdbExtError> {
+        let serialized_key = serialize_bytesrepr(key)?;
+        match self.get(db, &serialized_key) {
+            Ok(_raw) => Ok(true),
+            Err(lmdb::Error::NotFound) => Ok(false),
             Err(err) => Err(err.into()),
         }
     }
@@ -247,14 +268,15 @@ impl WriteTransactionExt for RwTransaction<'_> {
         }
     }
 
-    fn put_value_bytesrepr<K: AsRef<[u8]>, V: ToBytes>(
+    fn put_value_bytesrepr<K: ToBytes, V: ToBytes>(
         &mut self,
         db: Database,
         key: &K,
         value: &V,
         overwrite: bool,
     ) -> Result<bool, LmdbExtError> {
-        let buffer = serialize_bytesrepr(value)?;
+        let serialized_key = serialize_bytesrepr(key)?;
+        let serialized_value = serialize_bytesrepr(value)?;
 
         let flags = if overwrite {
             WriteFlags::empty()
@@ -262,7 +284,7 @@ impl WriteTransactionExt for RwTransaction<'_> {
             WriteFlags::NO_OVERWRITE
         };
 
-        match self.put(db, key, &buffer, flags) {
+        match self.put(db, &serialized_key, &serialized_value, flags) {
             Ok(()) => Ok(true),
             // If we did not add the value due to it already existing, just return `false`.
             Err(lmdb::Error::KeyExist) => Ok(false),

@@ -1085,12 +1085,20 @@ where
                 // Session code can't be called from Contract code for security reasons.
                 Err(Error::InvalidContext)
             }
+            (EntryPointType::Install, EntryPointType::Session) => {
+                // Session code can't be called from Installer code for security reasons.
+                Err(Error::InvalidContext)
+            }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
                 Ok(self.context.get_entity_address())
             }
             (EntryPointType::Session, EntryPointType::Contract)
             | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
+            _ => {
+                // Any other combination (installer, normal, etc.) is a contract context.
+                Ok(contract_hash.into())
+            }
         }
     }
 
@@ -1180,7 +1188,12 @@ where
         // Get contract entry point hash
         // if public, allowed
         // if not public, restricted to user group access
-        self.validate_group_membership(&contract_package, entry_point.access())?;
+        // if abstract, not allowed
+        self.validate_entry_point_access(
+            &contract_package,
+            entry_point_name,
+            entry_point.access(),
+        )?;
 
         if self.context.engine_config().strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
@@ -1240,7 +1253,7 @@ where
                 self.context.entity().named_keys().clone(),
                 self.context.entity().extract_access_rights(contract_hash),
             ),
-            EntryPointType::Contract => (
+            EntryPointType::Contract | EntryPointType::Install => (
                 contract.named_keys().clone(),
                 contract.extract_access_rights(contract_hash),
             ),
@@ -1260,6 +1273,10 @@ where
                     )
                 }
                 EntryPointType::Contract => CallStackElement::stored_contract(
+                    contract.contract_package_hash(),
+                    contract_hash,
+                ),
+                EntryPointType::Install => CallStackElement::stored_contract(
                     contract.contract_package_hash(),
                     contract_hash,
                 ),
@@ -2736,45 +2753,41 @@ where
     }
 
     /// Enforce group access restrictions (if any) on attempts to call an `EntryPoint`.
-    ///
-    /// If `access` is a `Groups` variant, then this function returns:
-    ///   * `Error::InvalidContext` if there are no groups specified, as such an entry point is
-    ///     uncallable
-    ///   * `Error::InvalidContext` if none of the groups specified in `access` has a `URef` which
-    ///     is valid in this context
-    ///   * `Ok` otherwise
-    ///
-    /// If `access` is a `Public` variant, then the entry point is considered callable and `Ok` is
-    /// returned.
-    fn validate_group_membership(
+    fn validate_entry_point_access(
         &self,
         package: &Package,
+        name: &str,
         access: &EntryPointAccess,
     ) -> Result<(), Error> {
-        if let EntryPointAccess::Groups(group_names) = access {
-            if group_names.is_empty() {
-                // Exits early in a special case of empty list of groups regardless of the group
-                // checking logic below it.
-                return Err(Error::InvalidContext);
-            }
+        match access {
+            EntryPointAccess::Public => Ok(()),
+            EntryPointAccess::Groups(group_names) => {
+                if group_names.is_empty() {
+                    // Exits early in a special case of empty list of groups regardless of the group
+                    // checking logic below it.
+                    return Err(Error::InvalidContext);
+                }
 
-            let find_result = group_names.iter().find(|&group_name| {
-                package
-                    .groups()
-                    .get(group_name)
-                    .and_then(|urefs| {
-                        urefs
-                            .iter()
-                            .find(|&uref| self.context.validate_uref(uref).is_ok())
-                    })
-                    .is_some()
-            });
+                let find_result = group_names.iter().find(|&group_name| {
+                    package
+                        .groups()
+                        .get(group_name)
+                        .and_then(|urefs| {
+                            urefs
+                                .iter()
+                                .find(|&uref| self.context.validate_uref(uref).is_ok())
+                        })
+                        .is_some()
+                });
 
-            if find_result.is_none() {
-                return Err(Error::InvalidContext);
+                if find_result.is_none() {
+                    return Err(Error::InvalidContext);
+                }
+
+                Ok(())
             }
+            EntryPointAccess::Template => Err(Error::TemplateMethod(name.to_string())),
         }
-        Ok(())
     }
 
     /// Remove a user group from access to a contract
@@ -2803,7 +2816,7 @@ where
             };
             for entry_point in entry_points {
                 match entry_point.access() {
-                    EntryPointAccess::Public => {
+                    EntryPointAccess::Public | EntryPointAccess::Template => {
                         continue;
                     }
                     EntryPointAccess::Groups(groups) => {

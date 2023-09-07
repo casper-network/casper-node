@@ -38,7 +38,7 @@ use crate::{
     },
     effect::{
         requests::{
-            AcceptDeployRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
+            AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, MetricsRequest, NetworkInfoRequest,
             ReactorStatusRequest, RpcRequest, StorageRequest, UpgradeWatcherRequest,
         },
@@ -59,7 +59,7 @@ const COMPONENT_NAME: &str = "rpc_server";
 pub(crate) trait ReactorEventT:
     From<Event>
     + From<RpcRequest>
-    + From<AcceptDeployRequest>
+    + From<AcceptTransactionRequest>
     + From<ChainspecRawBytesRequest>
     + From<UpgradeWatcherRequest>
     + From<ContractRuntimeRequest>
@@ -76,7 +76,7 @@ pub(crate) trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RpcRequest>
-        + From<AcceptDeployRequest>
+        + From<AcceptTransactionRequest>
         + From<ChainspecRawBytesRequest>
         + From<UpgradeWatcherRequest>
         + From<ContractRuntimeRequest>

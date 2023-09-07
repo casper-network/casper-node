@@ -138,8 +138,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .unwrap();
 
         cl_value
-            .as_cl_value()
-            .cloned()
+            .into_cl_value()
             .map(CLValue::into_t::<Vec<CallStackElement>>)
             .unwrap()
             .unwrap()
@@ -170,8 +169,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .unwrap();
 
         cl_value
-            .as_cl_value()
-            .cloned()
+            .into_cl_value()
             .map(CLValue::into_t::<Vec<CallStackElement>>)
             .unwrap()
             .unwrap()
@@ -200,10 +198,11 @@ fn assert_each_context_has_correct_call_stack_info(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract => builder.get_call_stack_from_contract_context(
-                &stored_call_stack_key,
-                current_contract_package_hash,
-            ),
+            EntryPointType::Contract | EntryPointType::Install => builder
+                .get_call_stack_from_contract_context(
+                    &stored_call_stack_key,
+                    current_contract_package_hash,
+                ),
             EntryPointType::Session => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }
@@ -261,10 +260,11 @@ fn assert_each_context_has_correct_call_stack_info_module_bytes(
         let stored_call_stack_key = format!("call_stack-{}", i);
         // we need to know where to look for the call stack information
         let call_stack = match call.entry_point_type {
-            EntryPointType::Contract => builder.get_call_stack_from_contract_context(
-                &stored_call_stack_key,
-                current_contract_package_hash,
-            ),
+            EntryPointType::Contract | EntryPointType::Install => builder
+                .get_call_stack_from_contract_context(
+                    &stored_call_stack_key,
+                    current_contract_package_hash,
+                ),
             EntryPointType::Session => {
                 builder.get_call_stack_from_session_context(&stored_call_stack_key)
             }

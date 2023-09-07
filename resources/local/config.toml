@@ -245,7 +245,7 @@ blocklist_retain_duration = '1min'
 [network.estimator_weights]
 consensus = 0
 block_gossip = 1
-deploy_gossip = 0
+transaction_gossip = 0
 finality_signature_gossip = 1
 address_gossip = 0
 finality_signature_broadcasts = 0

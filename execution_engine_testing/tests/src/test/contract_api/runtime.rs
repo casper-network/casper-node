@@ -31,8 +31,7 @@ fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) ->
     builder
         .query(None, *uref, &[])
         .expect("should query")
-        .as_cl_value()
-        .cloned()
+        .into_cl_value()
         .expect("should be CLValue")
         .into_t()
         .expect("should convert")

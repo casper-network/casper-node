@@ -94,6 +94,8 @@ mod relaxed {
 }
 pub(crate) use relaxed::{Content, ContentDiscriminants, Message, MessageDiscriminants};
 
+use super::registered_sync::RandomId;
+
 impl<C: Context> Content<C> {
     /// Returns whether the two contents contradict each other. A correct validator is expected to
     /// never sign two contradictory contents in the same round.
@@ -222,6 +224,7 @@ where
     /// A bit field with 1 for every validator the sender has evidence against.
     pub(crate) faulty: u128,
     pub(crate) instance_id: C::InstanceId,
+    pub(crate) sync_id: RandomId,
 }
 
 impl<C: Context> ConsensusNetworkMessage for SyncRequest<C> {}
@@ -234,6 +237,7 @@ impl<C: Context> SyncRequest<C> {
         faulty: u128,
         active: u128,
         instance_id: C::InstanceId,
+        sync_id: RandomId,
     ) -> Self {
         SyncRequest {
             round_id,
@@ -246,6 +250,7 @@ impl<C: Context> SyncRequest<C> {
             active,
             faulty,
             instance_id,
+            sync_id,
         }
     }
 }
@@ -277,6 +282,7 @@ where
     /// Evidence against faulty validators.
     pub(crate) evidence: Vec<(SignedMessage<C>, Content<C>, C::Signature)>,
     pub(crate) instance_id: C::InstanceId,
+    pub(crate) sync_id: RandomId,
 }
 
 impl<C: Context> Message<C> {

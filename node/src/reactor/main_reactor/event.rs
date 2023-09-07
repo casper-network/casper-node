@@ -9,24 +9,27 @@ use serde::Serialize;
 
 use casper_types::{
     system::auction::EraValidators, Block, BlockHeader, BlockV2, Deploy, EraId, FinalitySignature,
+    Transaction,
 };
 
 use crate::{
     components::{
         block_accumulator,
         block_synchronizer::{self, GlobalStateSynchronizerEvent, TrieAccumulatorEvent},
-        block_validator, consensus, contract_runtime, deploy_acceptor, deploy_buffer,
-        diagnostics_port, event_stream_server, fetcher, gossiper,
+        block_validator, consensus, contract_runtime, deploy_buffer, diagnostics_port,
+        event_stream_server, fetcher, gossiper,
         network::{self, GossipedAddress},
-        rest_server, rpc_server, shutdown_trigger, storage, sync_leaper, upgrade_watcher,
+        rest_server, rpc_server, shutdown_trigger, storage, sync_leaper, transaction_acceptor,
+        upgrade_watcher,
     },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            FatalAnnouncement, FetchedNewBlockAnnouncement,
-            FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
-            PeerBehaviorAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
+            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
+            GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
+            TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         diagnostics_port::DumpConsensusStateRequest,
         incoming::{
@@ -35,7 +38,7 @@ use crate::{
             TrieResponseIncoming,
         },
         requests::{
-            AcceptDeployRequest, BeginGossipRequest, BlockAccumulatorRequest,
+            AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
             BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest,
             ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest, FetcherRequest,
             MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
@@ -182,17 +185,17 @@ pub(crate) enum MainEvent {
         #[serde(skip_serializing)] FetchedNewFinalitySignatureAnnouncement,
     ),
     #[from]
-    DeployAcceptor(#[serde(skip_serializing)] deploy_acceptor::Event),
+    TransactionAcceptor(#[serde(skip_serializing)] transaction_acceptor::Event),
     #[from]
-    AcceptDeployRequest(AcceptDeployRequest),
+    AcceptTransactionRequest(AcceptTransactionRequest),
     #[from]
-    DeployAcceptorAnnouncement(#[serde(skip_serializing)] DeployAcceptorAnnouncement),
+    TransactionAcceptorAnnouncement(#[serde(skip_serializing)] TransactionAcceptorAnnouncement),
     #[from]
-    DeployGossiper(#[serde(skip_serializing)] gossiper::Event<Deploy>),
+    TransactionGossiper(#[serde(skip_serializing)] gossiper::Event<Transaction>),
     #[from]
-    DeployGossiperIncoming(GossiperIncoming<Deploy>),
+    TransactionGossiperIncoming(GossiperIncoming<Transaction>),
     #[from]
-    DeployGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Deploy>),
+    TransactionGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Transaction>),
     #[from]
     DeployBuffer(#[serde(skip_serializing)] deploy_buffer::Event),
     #[from]
@@ -274,11 +277,11 @@ impl ReactorEvent for MainEvent {
             MainEvent::EventStreamServer(_) => "EventStreamServer",
             MainEvent::UpgradeWatcher(_) => "UpgradeWatcher",
             MainEvent::Consensus(_) => "Consensus",
-            MainEvent::DeployAcceptor(_) => "DeployAcceptor",
-            MainEvent::AcceptDeployRequest(_) => "AcceptDeployRequest",
+            MainEvent::TransactionAcceptor(_) => "DeployAcceptor",
+            MainEvent::AcceptTransactionRequest(_) => "AcceptTransactionRequest",
             MainEvent::LegacyDeployFetcher(_) => "LegacyDeployFetcher",
             MainEvent::DeployFetcher(_) => "DeployFetcher",
-            MainEvent::DeployGossiper(_) => "DeployGossiper",
+            MainEvent::TransactionGossiper(_) => "DeployGossiper",
             MainEvent::FinalitySignatureGossiper(_) => "FinalitySignatureGossiper",
             MainEvent::AddressGossiper(_) => "AddressGossiper",
             MainEvent::BlockValidator(_) => "BlockValidator",
@@ -315,10 +318,10 @@ impl ReactorEvent for MainEvent {
             MainEvent::DumpConsensusStateRequest(_) => "DumpConsensusStateRequest",
             MainEvent::ControlAnnouncement(_) => "ControlAnnouncement",
             MainEvent::FatalAnnouncement(_) => "FatalAnnouncement",
-            MainEvent::DeployAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
+            MainEvent::TransactionAcceptorAnnouncement(_) => "DeployAcceptorAnnouncement",
             MainEvent::ConsensusAnnouncement(_) => "ConsensusAnnouncement",
             MainEvent::ContractRuntimeAnnouncement(_) => "ContractRuntimeAnnouncement",
-            MainEvent::DeployGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
+            MainEvent::TransactionGossiperAnnouncement(_) => "DeployGossiperAnnouncement",
             MainEvent::AddressGossiperAnnouncement(_) => "AddressGossiperAnnouncement",
             MainEvent::UpgradeWatcherAnnouncement(_) => "UpgradeWatcherAnnouncement",
             MainEvent::NetworkPeerBehaviorAnnouncement(_) => "BlocklistAnnouncement",
@@ -329,7 +332,7 @@ impl ReactorEvent for MainEvent {
             MainEvent::AddressGossiperCrank(_) => "BeginAddressGossipRequest",
             MainEvent::ConsensusMessageIncoming(_) => "ConsensusMessageIncoming",
             MainEvent::ConsensusDemand(_) => "ConsensusDemand",
-            MainEvent::DeployGossiperIncoming(_) => "DeployGossiperIncoming",
+            MainEvent::TransactionGossiperIncoming(_) => "DeployGossiperIncoming",
             MainEvent::FinalitySignatureGossiperIncoming(_) => "FinalitySignatureGossiperIncoming",
             MainEvent::AddressGossiperIncoming(_) => "AddressGossiperIncoming",
             MainEvent::NetworkPeerRequestingData(_) => "NetRequestIncoming",
@@ -380,11 +383,11 @@ impl Display for MainEvent {
             }
             MainEvent::UpgradeWatcher(event) => write!(f, "upgrade watcher: {}", event),
             MainEvent::Consensus(event) => write!(f, "consensus: {}", event),
-            MainEvent::DeployAcceptor(event) => write!(f, "deploy acceptor: {}", event),
-            MainEvent::AcceptDeployRequest(req) => write!(f, "{}", req),
+            MainEvent::TransactionAcceptor(event) => write!(f, "deploy acceptor: {}", event),
+            MainEvent::AcceptTransactionRequest(req) => write!(f, "{}", req),
             MainEvent::LegacyDeployFetcher(event) => write!(f, "legacy deploy fetcher: {}", event),
             MainEvent::DeployFetcher(event) => write!(f, "deploy fetcher: {}", event),
-            MainEvent::DeployGossiper(event) => write!(f, "deploy gossiper: {}", event),
+            MainEvent::TransactionGossiper(event) => write!(f, "deploy gossiper: {}", event),
             MainEvent::FinalitySignatureGossiper(event) => {
                 write!(f, "block signature gossiper: {}", event)
             }
@@ -485,7 +488,7 @@ impl Display for MainEvent {
             MainEvent::DumpConsensusStateRequest(req) => {
                 write!(f, "dump consensus state: {}", req)
             }
-            MainEvent::DeployAcceptorAnnouncement(ann) => {
+            MainEvent::TransactionAcceptorAnnouncement(ann) => {
                 write!(f, "deploy acceptor announcement: {}", ann)
             }
             MainEvent::ConsensusAnnouncement(ann) => {
@@ -494,7 +497,7 @@ impl Display for MainEvent {
             MainEvent::ContractRuntimeAnnouncement(ann) => {
                 write!(f, "block-executor announcement: {}", ann)
             }
-            MainEvent::DeployGossiperAnnouncement(ann) => {
+            MainEvent::TransactionGossiperAnnouncement(ann) => {
                 write!(f, "deploy gossiper announcement: {}", ann)
             }
             MainEvent::FinalitySignatureGossiperAnnouncement(ann) => {
@@ -517,7 +520,7 @@ impl Display for MainEvent {
             }
             MainEvent::ConsensusMessageIncoming(inner) => Display::fmt(inner, f),
             MainEvent::ConsensusDemand(inner) => Display::fmt(inner, f),
-            MainEvent::DeployGossiperIncoming(inner) => Display::fmt(inner, f),
+            MainEvent::TransactionGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::FinalitySignatureGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::AddressGossiperIncoming(inner) => Display::fmt(inner, f),
             MainEvent::NetworkPeerRequestingData(inner) => Display::fmt(inner, f),
@@ -597,8 +600,8 @@ impl From<NetworkRequest<consensus::ConsensusMessage>> for MainEvent {
     }
 }
 
-impl From<NetworkRequest<gossiper::Message<Deploy>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<Deploy>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<Transaction>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<Transaction>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }

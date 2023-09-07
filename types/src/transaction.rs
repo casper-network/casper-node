@@ -1,10 +1,12 @@
 #[cfg(any(feature = "std", test))]
 mod account_and_secret_key;
 mod deploy;
+mod transaction_approvals_hash;
 mod transaction_hash;
+mod transaction_id;
 mod transaction_v1;
 
-use alloc::vec::Vec;
+use alloc::{collections::BTreeSet, vec::Vec};
 use core::fmt::{self, Debug, Display, Formatter};
 
 #[cfg(feature = "datasize")]
@@ -13,19 +15,26 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
-use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
+use crate::{
+    account::AccountHash,
+    bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
+    Digest, PublicKey, Timestamp,
+};
 #[cfg(any(feature = "std", test))]
 use account_and_secret_key::AccountAndSecretKey;
 pub use deploy::{
-    runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployFootprint, DeployHash, DeployHeader, DeployId, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
+    runtime_args, ContractIdentifier, ContractPackageIdentifier, Deploy, DeployApproval,
+    DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError,
+    DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};
+pub use transaction_approvals_hash::TransactionApprovalsHash;
 pub use transaction_hash::TransactionHash;
+pub use transaction_id::TransactionId;
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use transaction_v1::TestTransactionV1Builder;
 pub use transaction_v1::{
@@ -62,6 +71,69 @@ impl Transaction {
         match self {
             Transaction::Deploy(deploy) => TransactionHash::from(*deploy.hash()),
             Transaction::V1(txn) => TransactionHash::from(*txn.hash()),
+        }
+    }
+
+    /// Returns the computed `TransactionId` uniquely identifying this transaction and its
+    /// approvals.
+    pub fn compute_id(&self) -> TransactionId {
+        match self {
+            Transaction::Deploy(deploy) => {
+                let deploy_hash = *deploy.hash();
+                let approvals_hash = deploy.compute_approvals_hash().unwrap_or_else(|error| {
+                    error!(%error, "failed to serialize deploy approvals");
+                    DeployApprovalsHash::from(Digest::default())
+                });
+                TransactionId::new_deploy(deploy_hash, approvals_hash)
+            }
+            Transaction::V1(txn) => {
+                let txn_hash = *txn.hash();
+                let approvals_hash = txn.compute_approvals_hash().unwrap_or_else(|error| {
+                    error!(%error, "failed to serialize transaction approvals");
+                    TransactionV1ApprovalsHash::from(Digest::default())
+                });
+                TransactionId::new_v1(txn_hash, approvals_hash)
+            }
+        }
+    }
+
+    /// Returns the public key of the account providing the context in which to run the transaction.
+    pub fn account(&self) -> &PublicKey {
+        match self {
+            Transaction::Deploy(deploy) => deploy.account(),
+            Transaction::V1(txn) => txn.account(),
+        }
+    }
+
+    /// Returns `true` if the transaction has expired.
+    pub fn expired(&self, current_instant: Timestamp) -> bool {
+        match self {
+            Transaction::Deploy(deploy) => deploy.expired(current_instant),
+            Transaction::V1(txn) => txn.expired(current_instant),
+        }
+    }
+
+    /// Returns the timestamp of when the transaction expires, i.e. `self.timestamp + self.ttl`.
+    pub fn expires(&self) -> Timestamp {
+        match self {
+            Transaction::Deploy(deploy) => deploy.header().expires(),
+            Transaction::V1(txn) => txn.header().expires(),
+        }
+    }
+
+    /// Returns the set of account hashes corresponding to the public keys of the approvals.
+    pub fn signers(&self) -> BTreeSet<AccountHash> {
+        match self {
+            Transaction::Deploy(deploy) => deploy
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
+            Transaction::V1(txn) => txn
+                .approvals()
+                .iter()
+                .map(|approval| approval.signer().to_account_hash())
+                .collect(),
         }
     }
 }

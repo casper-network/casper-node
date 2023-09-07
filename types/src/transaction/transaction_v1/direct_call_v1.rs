@@ -35,7 +35,6 @@ const STORED_VERSIONED_CONTRACT_BY_NAME_TAG: u8 = 3;
     schemars(description = "A TransactionV1 targeting a stored contract.")
 )]
 #[serde(deny_unknown_fields)]
-#[non_exhaustive]
 pub enum DirectCallV1 {
     /// Stored contract referenced by its hash.
     StoredContractByHash {
@@ -196,6 +195,15 @@ impl DirectCallV1 {
         let cl_value = self.args().get(ARG_AMOUNT)?;
         let motes = cl_value.clone().into_t::<U512>().ok()?;
         Gas::from_motes(Motes::new(motes), conv_rate)
+    }
+
+    pub(super) fn args_mut(&mut self) -> &mut RuntimeArgs {
+        match self {
+            DirectCallV1::StoredContractByHash { args, .. }
+            | DirectCallV1::StoredContractByName { args, .. }
+            | DirectCallV1::StoredVersionedContractByHash { args, .. }
+            | DirectCallV1::StoredVersionedContractByName { args, .. } => args,
+        }
     }
 
     /// Returns a random `DirectCallV1`.

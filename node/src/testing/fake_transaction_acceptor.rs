@@ -1,49 +1,49 @@
 #![allow(clippy::boxed_local)] // We use boxed locals to pass on event data unchanged.
 
-//! The `FakeDeployAcceptor` behaves as per the real `DeployAcceptor` but without any deploy
-//! verification being performed.
+//! The `FakeTransactionAcceptor` behaves as per the real `TransactionAcceptor` but without any
+//! transaction verification being performed.
 //!
-//! When a new deploy is passed in, it is unconditionally accepted.  This means that the
-//! `FakeDeployAcceptor` puts the deploy to storage, and once that has completed, announces the
-//! deploy if the storage result indicates it's a new deploy.
+//! When a new transaction is passed in, it is unconditionally accepted.  This means that the
+//! `FakeTransactionAcceptor` puts the transaction to storage, and once that has completed,
+//! announces the transaction if the storage result indicates it's a new transaction.
 
 use std::sync::Arc;
 
 use tracing::debug;
 
-use casper_types::{Deploy, Timestamp};
+use casper_types::Transaction;
 
-pub(crate) use crate::components::deploy_acceptor::{Error, Event};
+pub(crate) use crate::components::transaction_acceptor::{Error, Event};
 use crate::{
-    components::{deploy_acceptor::EventMetadata, Component},
+    components::{transaction_acceptor::EventMetadata, Component},
     effect::{
-        announcements::DeployAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
+        announcements::TransactionAcceptorAnnouncement, requests::StorageRequest, EffectBuilder,
         EffectExt, Effects, Responder,
     },
     utils::Source,
     NodeRng,
 };
 
-const COMPONENT_NAME: &str = "fake_deploy_acceptor";
+const COMPONENT_NAME: &str = "fake_transaction_acceptor";
 
 pub(crate) trait ReactorEventT:
-    From<Event> + From<DeployAcceptorAnnouncement> + From<StorageRequest> + Send
+    From<Event> + From<TransactionAcceptorAnnouncement> + From<StorageRequest> + Send
 {
 }
 
 impl<REv> ReactorEventT for REv where
-    REv: From<Event> + From<DeployAcceptorAnnouncement> + From<StorageRequest> + Send
+    REv: From<Event> + From<TransactionAcceptorAnnouncement> + From<StorageRequest> + Send
 {
 }
 
 #[derive(Debug)]
-pub struct FakeDeployAcceptor {
+pub struct FakeTransactionAcceptor {
     is_active: bool,
 }
 
-impl FakeDeployAcceptor {
+impl FakeTransactionAcceptor {
     pub(crate) fn new() -> Self {
-        FakeDeployAcceptor { is_active: true }
+        FakeTransactionAcceptor { is_active: true }
     }
 
     pub(crate) fn set_active(&mut self, new_setting: bool) {
@@ -53,22 +53,20 @@ impl FakeDeployAcceptor {
     fn accept<REv: ReactorEventT>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        deploy: Arc<Deploy>,
+        transaction: Transaction,
         source: Source,
         maybe_responder: Option<Responder<Result<(), Error>>>,
     ) -> Effects<Event> {
-        let verification_start_timestamp = Timestamp::now();
         let event_metadata = Box::new(EventMetadata::new(
-            Arc::clone(&deploy),
+            transaction.clone(),
             source,
             maybe_responder,
         ));
         effect_builder
-            .put_deploy_to_storage(Arc::clone(&deploy))
+            .put_transaction_to_storage(transaction)
             .event(move |is_new| Event::PutToStorageResult {
                 event_metadata,
                 is_new,
-                verification_start_timestamp,
             })
     }
 
@@ -79,15 +77,16 @@ impl FakeDeployAcceptor {
         is_new: bool,
     ) -> Effects<Event> {
         let EventMetadata {
-            deploy,
+            transaction,
             source,
             maybe_responder,
+            verification_start_timestamp: _,
         } = *event_metadata;
         let mut effects = Effects::new();
         if is_new {
             effects.extend(
                 effect_builder
-                    .announce_new_deploy_accepted(deploy, source)
+                    .announce_new_transaction_accepted(Arc::new(transaction), source)
                     .ignore(),
             );
         }
@@ -99,7 +98,7 @@ impl FakeDeployAcceptor {
     }
 }
 
-impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
+impl<REv: ReactorEventT> Component<REv> for FakeTransactionAcceptor {
     type Event = Event;
 
     fn handle_event(
@@ -109,16 +108,19 @@ impl<REv: ReactorEventT> Component<REv> for FakeDeployAcceptor {
         event: Self::Event,
     ) -> Effects<Self::Event> {
         if !self.is_active {
-            debug!(?event, "FakeDeployAcceptor: not active - ignoring event");
+            debug!(
+                ?event,
+                "FakeTransactionAcceptor: not active - ignoring event"
+            );
             return Effects::new();
         }
-        debug!(?event, "FakeDeployAcceptor: handling event");
+        debug!(?event, "FakeTransactionAcceptor: handling event");
         match event {
             Event::Accept {
-                deploy,
+                transaction,
                 source,
                 maybe_responder,
-            } => self.accept(effect_builder, deploy, source, maybe_responder),
+            } => self.accept(effect_builder, transaction, source, maybe_responder),
             Event::PutToStorageResult {
                 event_metadata,
                 is_new,

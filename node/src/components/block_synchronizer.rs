@@ -486,10 +486,7 @@ impl BlockSynchronizer {
                                         effect_builder.announce_meta_block(meta_block).await;
                                     }
                                     None => {
-                                        error!(
-                                            "should have execution results for {}",
-                                            block.hash()
-                                        );
+                                        warn!("should have execution results for {}", block.hash());
                                     }
                                 }
                             })

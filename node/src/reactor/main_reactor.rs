@@ -26,8 +26,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, Deploy, EraId, FinalitySignature,
-    PublicKey, TimeDiff, Timestamp, U512,
+    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionId, U512,
 };
 
 #[cfg(test)]
@@ -39,7 +39,6 @@ use crate::{
         block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::ContractRuntime,
-        deploy_acceptor::{self, DeployAcceptor},
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
@@ -51,19 +50,20 @@ use crate::{
         shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
         storage::Storage,
         sync_leaper::SyncLeaper,
+        transaction_acceptor::{self, TransactionAcceptor},
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
-            GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            ControlAnnouncement, DeployBufferAnnouncement, FetchedNewBlockAnnouncement,
+            FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
+            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::{AcceptDeployRequest, ChainspecRawBytesRequest},
+        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
@@ -148,13 +148,13 @@ pub(crate) struct MainReactor {
     block_accumulator: BlockAccumulator,
     block_synchronizer: BlockSynchronizer,
 
-    // deploy handling
-    deploy_acceptor: DeployAcceptor,
+    // transaction handling
+    transaction_acceptor: TransactionAcceptor,
     deploy_buffer: DeployBuffer,
 
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
-    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
+    transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
     block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
         Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
@@ -677,13 +677,13 @@ impl reactor::Reactor for MainReactor {
             ),
 
             // DEPLOYS
-            MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
-                MainEvent::DeployAcceptor,
-                self.deploy_acceptor
+            MainEvent::TransactionAcceptor(event) => reactor::wrap_effects(
+                MainEvent::TransactionAcceptor,
+                self.transaction_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::AcceptDeployRequest(AcceptDeployRequest {
-                deploy,
+            MainEvent::AcceptTransactionRequest(AcceptTransactionRequest {
+                transaction,
                 speculative_exec_at_block,
                 responder,
             }) => {
@@ -692,19 +692,22 @@ impl reactor::Reactor for MainReactor {
                 } else {
                     Source::Client
                 };
-                let event = deploy_acceptor::Event::Accept {
-                    deploy,
+                let event = transaction_acceptor::Event::Accept {
+                    transaction,
                     source,
                     maybe_responder: Some(responder),
                 };
                 reactor::wrap_effects(
-                    MainEvent::DeployAcceptor,
-                    self.deploy_acceptor
+                    MainEvent::TransactionAcceptor,
+                    self.transaction_acceptor
                         .handle_event(effect_builder, rng, event),
                 )
             }
-            MainEvent::DeployAcceptorAnnouncement(
-                DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+            MainEvent::TransactionAcceptorAnnouncement(
+                TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                    transaction,
+                    source,
+                },
             ) => {
                 let mut effects = Effects::new();
 
@@ -715,8 +718,11 @@ impl reactor::Reactor for MainReactor {
                         effects.extend(self.fetchers.dispatch_fetcher_event(
                             effect_builder,
                             rng,
-                            MainEvent::DeployAcceptorAnnouncement(
-                                DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+                            MainEvent::TransactionAcceptorAnnouncement(
+                                TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                                    transaction,
+                                    source,
+                                },
                             ),
                         ));
                     }
@@ -725,80 +731,100 @@ impl reactor::Reactor for MainReactor {
                         effects.extend(self.dispatch_event(
                             effect_builder,
                             rng,
-                            MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                                item_id: deploy.gossip_id(),
+                            MainEvent::TransactionGossiper(gossiper::Event::ItemReceived {
+                                item_id: transaction.gossip_id(),
                                 source,
-                                target: deploy.gossip_target(),
+                                target: transaction.gossip_target(),
                             }),
                         ));
                         // notify event stream
-                        effects.extend(self.dispatch_event(
-                            effect_builder,
-                            rng,
-                            MainEvent::EventStreamServer(
-                                event_stream_server::Event::DeployAccepted(deploy),
-                            ),
-                        ));
+                        match &*transaction {
+                            Transaction::Deploy(deploy) => {
+                                effects.extend(self.dispatch_event(
+                                    effect_builder,
+                                    rng,
+                                    MainEvent::EventStreamServer(
+                                        event_stream_server::Event::DeployAccepted(Arc::new(
+                                            deploy.clone(),
+                                        )),
+                                    ),
+                                ));
+                            }
+                            Transaction::V1(_txn) => {
+                                todo!("avoid match on `transaction` once sse handles transactions");
+                            }
+                        }
                     }
                     Source::SpeculativeExec(_) => {
                         error!(
-                            ?deploy,
-                            "deploy acceptor should not announce speculative exec deploys"
+                            %transaction,
+                            "transaction acceptor should not announce speculative exec transactions"
                         );
                     }
                 }
 
                 effects
             }
-            MainEvent::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
-                deploy: _,
-                source: _,
-            }) => Effects::new(),
-            MainEvent::DeployGossiper(event) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
+            MainEvent::TransactionAcceptorAnnouncement(
+                TransactionAcceptorAnnouncement::InvalidTransaction {
+                    transaction: _,
+                    source: _,
+                },
+            ) => Effects::new(),
+            MainEvent::TransactionGossiper(event) => reactor::wrap_effects(
+                MainEvent::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
+            MainEvent::TransactionGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
                 ..
             }) => {
                 // Ignore the announcement.
                 Effects::new()
             }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {
-                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                error!(%gossiped_deploy_id, "gossiper should not announce new transaction");
                 Effects::new()
             }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
             }) => reactor::wrap_effects(
-                MainEvent::DeployAcceptor,
-                self.deploy_acceptor.handle_event(
+                MainEvent::TransactionAcceptor,
+                self.transaction_acceptor.handle_event(
                     effect_builder,
                     rng,
-                    deploy_acceptor::Event::Accept {
-                        deploy: Arc::new(*item),
+                    transaction_acceptor::Event::Accept {
+                        transaction: *item,
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },
                 ),
             ),
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                gossiped_deploy_id,
-            )) => {
-                let reactor_event = MainEvent::DeployBuffer(
-                    deploy_buffer::Event::ReceiveDeployGossiped(gossiped_deploy_id),
-                );
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
+            MainEvent::TransactionGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(gossiped_txn_id),
+            ) => match gossiped_txn_id {
+                TransactionId::Deploy {
+                    deploy_hash,
+                    approvals_hash,
+                } => {
+                    let deploy_id = DeployId::new(deploy_hash, approvals_hash);
+                    let reactor_event = MainEvent::DeployBuffer(
+                        deploy_buffer::Event::ReceiveDeployGossiped(deploy_id),
+                    );
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+                TransactionId::V1 { .. } => {
+                    todo!("avoid match `gossiped_txn_id` once deploy buffer handles transactions");
+                }
+            },
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,
                 self.deploy_buffer.handle_event(effect_builder, rng, event),
@@ -1031,7 +1057,7 @@ impl reactor::Reactor for MainReactor {
             protocol_version,
             chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
-            chainspec.deploy_config.max_ttl.into(),
+            chainspec.transaction_config.max_ttl.into(),
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
@@ -1113,8 +1139,8 @@ impl reactor::Reactor for MainReactor {
             config.gossip,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
-            "deploy_gossiper",
+        let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(
+            "transaction_gossiper",
             config.gossip,
             registry,
         )?;
@@ -1155,9 +1181,9 @@ impl reactor::Reactor for MainReactor {
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
+        let transaction_acceptor = TransactionAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_buffer =
-            DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer, registry)?;
+            DeployBuffer::new(chainspec.transaction_config, config.deploy_buffer, registry)?;
 
         let reactor = MainReactor {
             chainspec,
@@ -1171,11 +1197,11 @@ impl reactor::Reactor for MainReactor {
             rpc_server,
             rest_server,
             event_stream_server,
-            deploy_acceptor,
+            transaction_acceptor,
             fetchers,
 
             block_gossiper,
-            deploy_gossiper,
+            transaction_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,

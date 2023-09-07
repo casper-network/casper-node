@@ -9,13 +9,16 @@ use rand::Rng;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use super::RequiredArg;
 #[cfg(doc)]
 use super::TransactionV1;
+#[cfg(any(feature = "std", test))]
+use super::{TransactionConfig, TransactionV1ConfigFailure};
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    RuntimeArgs,
+    CLValueError, PublicKey, RuntimeArgs, U512,
 };
 
 const ADD_BID_TAG: u8 = 0;
@@ -26,6 +29,26 @@ const REDELEGATE_TAG: u8 = 4;
 const GET_ERA_VALIDATORS_TAG: u8 = 5;
 const READ_ERA_ID_TAG: u8 = 6;
 
+const ADD_BID_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
+const ADD_BID_ARG_DELEGATION_RATE: RequiredArg<u8> = RequiredArg::new("delegation_rate");
+const ADD_BID_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
+
+const WITHDRAW_BID_ARG_PUBLIC_KEY: RequiredArg<PublicKey> = RequiredArg::new("public_key");
+const WITHDRAW_BID_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
+
+const DELEGATE_ARG_DELEGATOR: RequiredArg<PublicKey> = RequiredArg::new("delegator");
+const DELEGATE_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("validator");
+const DELEGATE_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
+
+const UNDELEGATE_ARG_DELEGATOR: RequiredArg<PublicKey> = RequiredArg::new("delegator");
+const UNDELEGATE_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("validator");
+const UNDELEGATE_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
+
+const REDELEGATE_ARG_DELEGATOR: RequiredArg<PublicKey> = RequiredArg::new("delegator");
+const REDELEGATE_ARG_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("validator");
+const REDELEGATE_ARG_AMOUNT: RequiredArg<U512> = RequiredArg::new("amount");
+const REDELEGATE_ARG_NEW_VALIDATOR: RequiredArg<PublicKey> = RequiredArg::new("new_validator");
+
 /// A [`TransactionV1`] targeting the auction.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
@@ -35,7 +58,6 @@ const READ_ERA_ID_TAG: u8 = 6;
     schemars(description = "A TransactionV1 targeting the auction.")
 )]
 #[serde(deny_unknown_fields)]
-#[non_exhaustive]
 pub enum AuctionTransactionV1 {
     /// Calls the `add_bid` entry point to create or top off a bid purse.
     ///
@@ -139,6 +161,81 @@ pub enum AuctionTransactionV1 {
 }
 
 impl AuctionTransactionV1 {
+    /// Returns a new `AuctionTransactionV1::AddBid`.
+    pub fn new_add_bid<A: Into<U512>>(
+        public_key: PublicKey,
+        delegation_rate: u8,
+        amount: A,
+    ) -> Result<Self, CLValueError> {
+        let mut args = RuntimeArgs::new();
+        ADD_BID_ARG_PUBLIC_KEY.insert(&mut args, public_key)?;
+        ADD_BID_ARG_DELEGATION_RATE.insert(&mut args, delegation_rate)?;
+        ADD_BID_ARG_AMOUNT.insert(&mut args, amount.into())?;
+        Ok(AuctionTransactionV1::AddBid(args))
+    }
+
+    /// Returns a new `AuctionTransactionV1::WithdrawBid`.
+    pub fn new_withdraw_bid<A: Into<U512>>(
+        public_key: PublicKey,
+        amount: A,
+    ) -> Result<Self, CLValueError> {
+        let mut args = RuntimeArgs::new();
+        WITHDRAW_BID_ARG_PUBLIC_KEY.insert(&mut args, public_key)?;
+        WITHDRAW_BID_ARG_AMOUNT.insert(&mut args, amount.into())?;
+        Ok(AuctionTransactionV1::WithdrawBid(args))
+    }
+
+    /// Returns a new `AuctionTransactionV1::Delegate`.
+    pub fn new_delegate<A: Into<U512>>(
+        delegator: PublicKey,
+        validator: PublicKey,
+        amount: A,
+    ) -> Result<Self, CLValueError> {
+        let mut args = RuntimeArgs::new();
+        DELEGATE_ARG_DELEGATOR.insert(&mut args, delegator)?;
+        DELEGATE_ARG_VALIDATOR.insert(&mut args, validator)?;
+        DELEGATE_ARG_AMOUNT.insert(&mut args, amount.into())?;
+        Ok(AuctionTransactionV1::Delegate(args))
+    }
+
+    /// Returns a new `AuctionTransactionV1::Undelegate`.
+    pub fn new_undelegate<A: Into<U512>>(
+        delegator: PublicKey,
+        validator: PublicKey,
+        amount: A,
+    ) -> Result<Self, CLValueError> {
+        let mut args = RuntimeArgs::new();
+        UNDELEGATE_ARG_DELEGATOR.insert(&mut args, delegator)?;
+        UNDELEGATE_ARG_VALIDATOR.insert(&mut args, validator)?;
+        UNDELEGATE_ARG_AMOUNT.insert(&mut args, amount.into())?;
+        Ok(AuctionTransactionV1::Undelegate(args))
+    }
+
+    /// Returns a new `AuctionTransactionV1::Redelegate`.
+    pub fn new_redelegate<A: Into<U512>>(
+        delegator: PublicKey,
+        validator: PublicKey,
+        amount: A,
+        new_validator: PublicKey,
+    ) -> Result<Self, CLValueError> {
+        let mut args = RuntimeArgs::new();
+        REDELEGATE_ARG_DELEGATOR.insert(&mut args, delegator)?;
+        REDELEGATE_ARG_VALIDATOR.insert(&mut args, validator)?;
+        REDELEGATE_ARG_AMOUNT.insert(&mut args, amount.into())?;
+        REDELEGATE_ARG_NEW_VALIDATOR.insert(&mut args, new_validator)?;
+        Ok(AuctionTransactionV1::Redelegate(args))
+    }
+
+    /// Returns a new `AuctionTransactionV1::GetEraValidators`.
+    pub fn new_get_era_validators() -> Self {
+        AuctionTransactionV1::GetEraValidators(RuntimeArgs::new())
+    }
+
+    /// Returns a new `AuctionTransactionV1::ReadEraId`.
+    pub fn new_read_era_id() -> Self {
+        AuctionTransactionV1::ReadEraId(RuntimeArgs::new())
+    }
+
     /// Returns the runtime arguments.
     pub fn args(&self) -> &RuntimeArgs {
         match self {
@@ -152,15 +249,91 @@ impl AuctionTransactionV1 {
         }
     }
 
+    pub(super) fn args_mut(&mut self) -> &mut RuntimeArgs {
+        match self {
+            AuctionTransactionV1::AddBid(args)
+            | AuctionTransactionV1::WithdrawBid(args)
+            | AuctionTransactionV1::Delegate(args)
+            | AuctionTransactionV1::Undelegate(args)
+            | AuctionTransactionV1::Redelegate(args)
+            | AuctionTransactionV1::GetEraValidators(args)
+            | AuctionTransactionV1::ReadEraId(args) => args,
+        }
+    }
+
+    #[cfg(any(feature = "std", test))]
+    pub(super) fn has_valid_args(
+        &self,
+        _config: &TransactionConfig,
+    ) -> Result<(), TransactionV1ConfigFailure> {
+        match self {
+            AuctionTransactionV1::AddBid(args) => {
+                let _public_key = ADD_BID_ARG_PUBLIC_KEY.get(args)?;
+                let _delegation_rate = ADD_BID_ARG_DELEGATION_RATE.get(args)?;
+                let _amount = ADD_BID_ARG_AMOUNT.get(args)?;
+                Ok(())
+            }
+            AuctionTransactionV1::WithdrawBid(args) => {
+                let _public_key = WITHDRAW_BID_ARG_PUBLIC_KEY.get(args)?;
+                let _amount = WITHDRAW_BID_ARG_AMOUNT.get(args)?;
+                Ok(())
+            }
+            AuctionTransactionV1::Delegate(args) => {
+                let _delegator = DELEGATE_ARG_DELEGATOR.get(args)?;
+                let _validator = DELEGATE_ARG_VALIDATOR.get(args)?;
+                let _amount = DELEGATE_ARG_AMOUNT.get(args)?;
+                Ok(())
+            }
+            AuctionTransactionV1::Undelegate(args) => {
+                let _delegator = UNDELEGATE_ARG_DELEGATOR.get(args)?;
+                let _validator = UNDELEGATE_ARG_VALIDATOR.get(args)?;
+                let _amount = UNDELEGATE_ARG_AMOUNT.get(args)?;
+                Ok(())
+            }
+            AuctionTransactionV1::Redelegate(args) => {
+                let _delegator = REDELEGATE_ARG_DELEGATOR.get(args)?;
+                let _validator = REDELEGATE_ARG_VALIDATOR.get(args)?;
+                let _amount = REDELEGATE_ARG_AMOUNT.get(args)?;
+                let _new_validator = REDELEGATE_ARG_NEW_VALIDATOR.get(args)?;
+                Ok(())
+            }
+            AuctionTransactionV1::GetEraValidators(_) | AuctionTransactionV1::ReadEraId(_) => {
+                Ok(())
+            }
+        }
+    }
+
     /// Returns a random `AuctionTransactionV1`.
     #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         match rng.gen_range(0..7) {
-            0 => AuctionTransactionV1::AddBid(RuntimeArgs::random(rng)),
-            1 => AuctionTransactionV1::WithdrawBid(RuntimeArgs::random(rng)),
-            2 => AuctionTransactionV1::Delegate(RuntimeArgs::random(rng)),
-            3 => AuctionTransactionV1::Undelegate(RuntimeArgs::random(rng)),
-            4 => AuctionTransactionV1::Redelegate(RuntimeArgs::random(rng)),
+            0 => AuctionTransactionV1::new_add_bid(
+                PublicKey::random(rng),
+                rng.gen(),
+                rng.gen::<u64>(),
+            )
+            .unwrap(),
+            1 => AuctionTransactionV1::new_withdraw_bid(PublicKey::random(rng), rng.gen::<u64>())
+                .unwrap(),
+            2 => AuctionTransactionV1::new_delegate(
+                PublicKey::random(rng),
+                PublicKey::random(rng),
+                rng.gen::<u64>(),
+            )
+            .unwrap(),
+            3 => AuctionTransactionV1::new_undelegate(
+                PublicKey::random(rng),
+                PublicKey::random(rng),
+                rng.gen::<u64>(),
+            )
+            .unwrap(),
+            4 => AuctionTransactionV1::new_redelegate(
+                PublicKey::random(rng),
+                PublicKey::random(rng),
+                rng.gen::<u64>(),
+                PublicKey::random(rng),
+            )
+            .unwrap(),
             5 => AuctionTransactionV1::GetEraValidators(RuntimeArgs::random(rng)),
             6 => AuctionTransactionV1::ReadEraId(RuntimeArgs::random(rng)),
             _ => unreachable!(),
