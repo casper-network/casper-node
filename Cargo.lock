@@ -3163,7 +3163,7 @@ dependencies = [
 [[package]]
 name = "parity-wasm"
 version = "0.45.0"
-source = "git+ssh://git@github.com/casper-network/casper-wasm.git?branch=casper-0.45.0#49752a84f34d2f8748133cdd95e3064d1158b0af"
+source = "git+https://github.com/casper-network/casper-wasm.git?branch=casper-0.45.0#49752a84f34d2f8748133cdd95e3064d1158b0af"
 
 [[package]]
 name = "parking_lot"
