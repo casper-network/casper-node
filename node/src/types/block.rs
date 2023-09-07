@@ -1887,7 +1887,7 @@ impl BlockExecutionResultsOrChunk {
         num_results: usize,
     ) -> Self {
         let execution_results: Vec<casper_types::ExecutionResult> =
-            (0..num_results).into_iter().map(|_| rng.gen()).collect();
+            (0..num_results).map(|_| rng.gen()).collect();
 
         Self {
             block_hash,

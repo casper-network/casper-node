@@ -467,7 +467,7 @@ pub(super) async fn server<P, REv>(
 /// Juliet-based message receiver.
 pub(super) async fn message_receiver<REv, P>(
     context: Arc<NetworkContext<REv>>,
-    validator_status: Option<Arc<AtomicBool>>,
+    validator_status: Arc<AtomicBool>,
     mut rpc_server: RpcServer,
     shutdown: ObservableFuse,
     peer_id: NodeId,
@@ -532,11 +532,7 @@ where
             });
         }
 
-        let queue_kind = if validator_status
-            .as_ref()
-            .map(|arc| arc.load(Ordering::Relaxed))
-            .unwrap_or_default()
-        {
+        let queue_kind = if validator_status.load(Ordering::Relaxed) {
             QueueKind::MessageValidator
         } else if msg.is_low_priority() {
             QueueKind::MessageLowPriority
