@@ -17,7 +17,7 @@ pub(crate) use block_execution_results_or_chunk_id::BlockExecutionResultsOrChunk
 pub(crate) use block_payload::BlockPayload;
 pub use finalized_block::FinalizedBlock;
 pub(crate) use meta_block::{
-    MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
+    ForwardMetaBlock, MergeMismatchError as MetaBlockMergeError, MetaBlock, State as MetaBlockState,
 };
 pub use signed_block::SignedBlock;
 

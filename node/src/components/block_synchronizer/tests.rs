@@ -2130,10 +2130,10 @@ async fn historical_sync_announces_meta_block() {
     let event = mock_reactor.crank().await;
     match event {
         MockReactorEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
-            assert_eq!(*meta_block.block.hash(), *block.hash());
+            assert_eq!(meta_block.hash(), *block.hash());
             // The deploy buffer is supposed to get notified
             assert!(meta_block
-                .state
+                .mut_state()
                 .register_as_sent_to_deploy_buffer()
                 .was_updated());
         }

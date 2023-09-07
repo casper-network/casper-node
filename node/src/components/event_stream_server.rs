@@ -286,7 +286,7 @@ where
                 }
                 Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
-                    block: Box::new((*block).clone().into()),
+                    block: Box::new((*block).clone()),
                 }),
                 Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
                 Event::DeployProcessed {

@@ -7,14 +7,14 @@ use itertools::Itertools;
 
 use casper_types::{
     execution::{Effects, ExecutionResult},
-    BlockHash, BlockV2, Deploy, DeployHash, DeployHeader, EraId, FinalitySignature, PublicKey,
+    Block, BlockHash, Deploy, DeployHash, DeployHeader, EraId, FinalitySignature, PublicKey,
     Timestamp,
 };
 
 #[derive(Debug)]
 pub enum Event {
     Initialize,
-    BlockAdded(Arc<BlockV2>),
+    BlockAdded(Arc<Block>),
     DeployAccepted(Arc<Deploy>),
     DeployProcessed {
         deploy_hash: DeployHash,
