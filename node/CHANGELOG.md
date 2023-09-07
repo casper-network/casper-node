@@ -11,6 +11,18 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
+## Unreleased
+
+### Added
+
+### Changed
+* Changed the limit of the `core_config.simultaneous_peer_requests` chainspec parameter to 255.
+
+### Removed
+* Removed the `block_synchronizer.stall_limit` node config parameter since it is no longer needed.
+
+
+
 ## 1.5.2
 
 ### Added

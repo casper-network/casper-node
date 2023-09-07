@@ -10,7 +10,7 @@ use crate::types::{
 
 use super::execution_results_acquisition::ExecutionResultsChecksum;
 
-#[derive(DataSize, Debug, Clone, Display)]
+#[derive(DataSize, Debug, Clone, Display, PartialEq)]
 pub(crate) enum NeedNext {
     #[display(fmt = "need next for {}: nothing", _0)]
     Nothing(BlockHash),
