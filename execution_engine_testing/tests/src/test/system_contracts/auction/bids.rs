@@ -24,6 +24,7 @@ use casper_execution_engine::{
             },
             genesis::{GenesisAccount, GenesisValidator},
             run_genesis_request::RunGenesisRequest,
+            step::EvictItem,
             EngineConfig, Error, RewardItem,
         },
         execution,
@@ -3228,7 +3229,7 @@ fn should_delegate_and_redelegate() {
         builder.exec(request).commit().expect_success();
     }
 
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay(vec![], vec![]);
 
     let delegator_1_undelegate_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
@@ -3275,7 +3276,7 @@ fn should_delegate_and_redelegate() {
             delegator_1_redelegate_purse_balance
         );
 
-        builder.advance_era(rewards.clone())
+        builder.advance_era(rewards.clone(), vec![]);
     }
 
     // Since a redelegation has been processed no funds should have transferred back to the purse.
@@ -3453,7 +3454,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         builder.exec(request).commit().expect_success();
     }
 
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay(vec![], vec![]);
 
     let delegator_1_main_purse = builder
         .get_account(*DELEGATOR_1_ADDR)
@@ -3482,10 +3483,13 @@ fn should_handle_redelegation_to_inactive_validator() {
         .expect_success()
         .commit();
 
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
-    ]);
+    builder.advance_era(
+        vec![
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone(), 1),
+        ],
+        vec![],
+    );
 
     let valid_redelegate_request = ExecuteRequestBuilder::standard(
         *DELEGATOR_2_ADDR,
@@ -3516,7 +3520,7 @@ fn should_handle_redelegation_to_inactive_validator() {
         let delegator_2_purse_balance = builder.get_purse_balance(delegator_2_main_purse);
         assert_eq!(delegator_2_purse_balance, delegator_2_purse_balance_before);
 
-        builder.advance_era(rewards.clone());
+        builder.advance_era(rewards.clone(), vec![]);
     }
 
     // The invalid redelegation will force an unbond which will transfer funds to
@@ -3609,11 +3613,14 @@ fn should_continue_auction_state_from_release_1_4_x() {
     let delegator_3_purse_balance_pre_step =
         builder.get_purse_balance(delegator_3_undelegate_purse);
 
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-    ]);
+    builder.advance_era(
+        vec![
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ],
+        vec![],
+    );
 
     let delegator_1_purse_balance_post_step =
         builder.get_purse_balance(delegator_1_undelegate_purse);
@@ -3705,11 +3712,14 @@ fn should_continue_auction_state_from_release_1_4_x() {
             delegator_4_purse_balance_before
         );
 
-        builder.advance_era(vec![
-            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-        ]);
+        builder.advance_era(
+            vec![
+                RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+                RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+                RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+            ],
+            vec![],
+        );
     }
 
     let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
@@ -3794,11 +3804,14 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     let delegator_1_purse_balance_pre_step =
         builder.get_purse_balance(delegator_1_undelegate_purse);
 
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-    ]);
+    builder.advance_era(
+        vec![
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ],
+        vec![],
+    );
 
     let delegator_1_purse_balance_post_step =
         builder.get_purse_balance(delegator_1_undelegate_purse);
@@ -3816,11 +3829,14 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     let delegator_2_purse_balance_pre_step =
         builder.get_purse_balance(delegator_2_undelegate_purse);
 
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-    ]);
+    builder.advance_era(
+        vec![
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ],
+        vec![],
+    );
 
     let delegator_2_purse_balance_post_step =
         builder.get_purse_balance(delegator_2_undelegate_purse);
@@ -3838,11 +3854,14 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
     let delegator_3_purse_balance_pre_step =
         builder.get_purse_balance(delegator_3_undelegate_purse);
 
-    builder.advance_era(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-    ]);
+    builder.advance_era(
+        vec![
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ],
+        vec![],
+    );
 
     let delegator_3_purse_balance_post_step =
         builder.get_purse_balance(delegator_3_undelegate_purse);
@@ -3912,11 +3931,14 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
 
     builder.exec(withdraw_request).expect_success().commit();
 
-    builder.advance_eras_by_default_auction_delay(vec![
-        RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
-        RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
-    ]);
+    builder.advance_eras_by_default_auction_delay(
+        vec![
+            RewardItem::new(NON_FOUNDER_VALIDATOR_1_PK.clone(), 1),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_1_PUBLIC_KEY.clone(), 0),
+            RewardItem::new(GENESIS_VALIDATOR_ACCOUNT_2_PUBLIC_KEY.clone(), 0),
+        ],
+        vec![],
+    );
 
     let delegator_4_purse = builder
         .get_account(*DELEGATOR_2_ADDR)
@@ -3937,7 +3959,7 @@ fn should_transfer_to_main_purse_when_validator_is_no_longer_active() {
             delegator_4_purse_balance_before
         );
 
-        builder.advance_era(rewards.clone());
+        builder.advance_era(rewards.clone(), vec![]);
     }
 
     let delegator_4_purse_balance_after = builder.get_purse_balance(delegator_4_purse);
@@ -4470,7 +4492,7 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
         builder.exec(request).expect_success().commit();
     }
 
-    builder.advance_eras_by_default_auction_delay(vec![]);
+    builder.advance_eras_by_default_auction_delay(vec![], vec![]);
 
     let delegator_1_main_purse = builder
         .get_account(*BID_ACCOUNT_1_ADDR)
@@ -4517,7 +4539,7 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
             delegator_1_redelegate_purse_balance
         );
 
-        builder.advance_era(rewards.clone())
+        builder.advance_era(rewards.clone(), vec![])
     }
 
     let delegator_1_purse_balance_after = builder.get_purse_balance(delegator_1_main_purse);
@@ -4527,4 +4549,135 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
             + U512::from(UNDELEGATE_AMOUNT_1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT),
         delegator_1_purse_balance_after
     )
+}
+
+#[ignore]
+#[test]
+fn should_delegate_and_redelegat_with_eviction_regression_test() {
+    let system_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *SYSTEM_ADDR,
+            ARG_AMOUNT => U512::from(SYSTEM_TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_2_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *NON_FOUNDER_VALIDATOR_2_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let delegator_1_fund_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_TRANSFER_TO_ACCOUNT,
+        runtime_args! {
+            ARG_TARGET => *BID_ACCOUNT_1_ADDR,
+            ARG_AMOUNT => U512::from(TRANSFER_AMOUNT)
+        },
+    )
+    .build();
+
+    let validator_1_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_1_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_1),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let validator_2_add_bid_request = ExecuteRequestBuilder::standard(
+        *NON_FOUNDER_VALIDATOR_2_ADDR,
+        CONTRACT_ADD_BID,
+        runtime_args! {
+            ARG_PUBLIC_KEY => NON_FOUNDER_VALIDATOR_2_PK.clone(),
+            ARG_AMOUNT => U512::from(ADD_BID_AMOUNT_2),
+            ARG_DELEGATION_RATE => ADD_BID_DELEGATION_RATE_1,
+        },
+    )
+    .build();
+
+    let delegator_1_validator_1_delegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_DELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+        },
+    )
+    .build();
+
+    let post_genesis_requests = vec![
+        system_fund_request,
+        delegator_1_fund_request,
+        validator_1_fund_request,
+        validator_2_fund_request,
+        validator_1_add_bid_request,
+        validator_2_add_bid_request,
+        delegator_1_validator_1_delegate_request,
+    ];
+
+    let mut builder = InMemoryWasmTestBuilder::default();
+
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    for request in post_genesis_requests {
+        builder.exec(request).commit().expect_success();
+    }
+
+    let delegator_1_redelegate_request = ExecuteRequestBuilder::standard(
+        *BID_ACCOUNT_1_ADDR,
+        CONTRACT_REDELEGATE,
+        runtime_args! {
+            ARG_AMOUNT => U512::from(DELEGATE_AMOUNT_1),
+            ARG_VALIDATOR => NON_FOUNDER_VALIDATOR_1_PK.clone(),
+            ARG_DELEGATOR => BID_ACCOUNT_1_PK.clone(),
+            ARG_NEW_VALIDATOR => NON_FOUNDER_VALIDATOR_2_PK.clone()
+        },
+    )
+    .build();
+
+    builder
+        .exec(delegator_1_redelegate_request)
+        .commit()
+        .expect_success();
+
+    builder.advance_eras_by(DEFAULT_UNBONDING_DELAY, vec![], vec![]);
+
+    // Advance one more era, this is the point where the redelegate request is processed (era >=
+    // unbonding_delay + 1)
+    builder.advance_era(
+        vec![],
+        vec![
+            // NOTE: This is not the same validator as the one we're redelegating into
+            EvictItem::new(NON_FOUNDER_VALIDATOR_2_PK.clone()),
+        ],
+    );
+
+    let bids: Bids = builder.get_bids();
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_1_PK].delegators();
+    assert!(!delegators.contains_key(&BID_ACCOUNT_1_PK));
+
+    let delegators = bids[&NON_FOUNDER_VALIDATOR_2_PK].delegators();
+    assert!(delegators.contains_key(&BID_ACCOUNT_1_PK));
 }
