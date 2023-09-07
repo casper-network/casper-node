@@ -634,36 +634,39 @@ where
                 }
 
                 // If given a key, determine validator status.
-                let validator_status = peer_consensus_public_key.as_ref().map(|public_key| {
-                    let status = self
-                        .validator_matrix
-                        .is_active_or_upcoming_validator(public_key);
+                let validator_status = peer_consensus_public_key
+                    .as_ref()
+                    .map(|public_key| {
+                        let status = self
+                            .validator_matrix
+                            .is_active_or_upcoming_validator(public_key);
 
-                    // Find the shared `Arc` that holds the validator status for this specific key.
-                    match self.incoming_validator_status.entry((**public_key).clone()) {
-                        // TODO: Use `Arc` for public key-key.
-                        Entry::Occupied(mut occupied) => {
-                            match occupied.get().upgrade() {
-                                Some(arc) => {
-                                    arc.store(status, Ordering::Relaxed);
-                                    arc
-                                }
-                                None => {
-                                    // Failed to ugprade, the weak pointer is just a leftover that
-                                    // has not been cleaned up yet. We can replace it.
-                                    let arc = Arc::new(AtomicBool::new(status));
-                                    occupied.insert(Arc::downgrade(&arc));
-                                    arc
+                        // Find the shared `Arc` that holds validator status for this specific key.
+                        match self.incoming_validator_status.entry((**public_key).clone()) {
+                            // TODO: Use `Arc` for public key-key.
+                            Entry::Occupied(mut occupied) => {
+                                match occupied.get().upgrade() {
+                                    Some(arc) => {
+                                        arc.store(status, Ordering::Relaxed);
+                                        arc
+                                    }
+                                    None => {
+                                        // Failed to ugprade, the weak pointer is just a leftover
+                                        // that has not been cleaned up yet. We can replace it.
+                                        let arc = Arc::new(AtomicBool::new(status));
+                                        occupied.insert(Arc::downgrade(&arc));
+                                        arc
+                                    }
                                 }
                             }
+                            Entry::Vacant(vacant) => {
+                                let arc = Arc::new(AtomicBool::new(status));
+                                vacant.insert(Arc::downgrade(&arc));
+                                arc
+                            }
                         }
-                        Entry::Vacant(vacant) => {
-                            let arc = Arc::new(AtomicBool::new(status));
-                            vacant.insert(Arc::downgrade(&arc));
-                            arc
-                        }
-                    }
-                });
+                    })
+                    .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
 
                 let (read_half, write_half) = tokio::io::split(transport);
 
