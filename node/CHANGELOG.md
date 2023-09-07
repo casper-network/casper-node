@@ -11,12 +11,19 @@ All notable changes to this project will be documented in this file.  The format
 
 
 
-## 1.5.2-alt
+## Unreleased
+
+### Added
+
+### Changed
+* Changed the limit of the `core_config.simultaneous_peer_requests` chainspec parameter to 255.
 
 ### Fixed
 * Fix issue in `chain_get_block_transfers` JSON-RPC where blocks with no deploys could be reported as having `null` transfers rather than `[]`.
 * Fix issue in `chain_get_block_transfers` JSON-RPC where blocks containing successful transfers could erroneously be reported as having none.
 
+### Removed
+* Removed the `block_synchronizer.stall_limit` node config parameter since it is no longer needed.
 
 
 ## 1.5.2

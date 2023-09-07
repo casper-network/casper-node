@@ -30,12 +30,12 @@ pub(super) enum PeersStatus {
 pub(super) struct PeerList {
     peer_list: BTreeMap<NodeId, PeerQuality>,
     keep_fresh: Timestamp,
-    max_simultaneous_peers: u32,
+    max_simultaneous_peers: u8,
     peer_refresh_interval: TimeDiff,
 }
 
 impl PeerList {
-    pub(super) fn new(max_simultaneous_peers: u32, peer_refresh_interval: TimeDiff) -> Self {
+    pub(super) fn new(max_simultaneous_peers: u8, peer_refresh_interval: TimeDiff) -> Self {
         PeerList {
             peer_list: BTreeMap::new(),
             keep_fresh: Timestamp::now(),

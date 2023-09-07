@@ -320,7 +320,7 @@ impl BlockAcquisitionState {
         validator_weights: &EraValidatorWeights,
         rng: &mut NodeRng,
         is_historical: bool,
-        max_simultaneous_peers: usize,
+        max_simultaneous_peers: u8,
     ) -> Result<BlockAcquisitionAction, BlockAcquisitionError> {
         // self is the resting state we are in, ret is the next action that should be taken
         // to acquire the necessary data to get us to the next step (if any), or an error
@@ -668,6 +668,53 @@ impl BlockAcquisitionState {
         };
     }
 
+    pub(super) fn actively_acquiring_signatures(&self, is_historical: bool) -> bool {
+        match self {
+            BlockAcquisitionState::HaveBlockHeader(..) => true,
+            BlockAcquisitionState::Initialized(..)
+            | BlockAcquisitionState::HaveWeakFinalitySignatures(..)
+            | BlockAcquisitionState::HaveStrictFinalitySignatures(..)
+            | BlockAcquisitionState::HaveFinalizedBlock(..)
+            | BlockAcquisitionState::Failed(..)
+            | BlockAcquisitionState::Complete(..) => false,
+            BlockAcquisitionState::HaveBlock(_, acquired_signatures, acquired_deploys) => {
+                !is_historical
+                    && acquired_deploys.needs_deploy().is_none()
+                    && acquired_signatures.signature_weight() != SignatureWeight::Strict
+            }
+            BlockAcquisitionState::HaveGlobalState(
+                _,
+                acquired_signatures,
+                acquired_deploys,
+                ..,
+            ) => {
+                acquired_deploys.needs_deploy().is_none()
+                    && acquired_signatures.signature_weight() != SignatureWeight::Strict
+            }
+            BlockAcquisitionState::HaveApprovalsHashes(
+                _,
+                acquired_signatures,
+                acquired_deploys,
+            ) => {
+                acquired_deploys.needs_deploy().is_none()
+                    && acquired_signatures.signature_weight() != SignatureWeight::Strict
+            }
+            BlockAcquisitionState::HaveAllExecutionResults(
+                _,
+                acquired_signatures,
+                acquired_deploys,
+                ..,
+            ) => {
+                acquired_signatures.is_legacy()
+                    && acquired_deploys.needs_deploy().is_none()
+                    && acquired_signatures.signature_weight() != SignatureWeight::Strict
+            }
+            BlockAcquisitionState::HaveAllDeploys(_, acquired_signatures) => {
+                acquired_signatures.signature_weight() != SignatureWeight::Strict
+            }
+        }
+    }
+
     /// Register a finality signature for this block.
     pub(super) fn register_finality_signature(
         &mut self,
@@ -682,7 +729,7 @@ impl BlockAcquisitionState {
         let signer = signature.public_key.clone();
         let acceptance: Acceptance;
         let maybe_block_hash: Option<BlockHash>;
-        let currently_acquiring_sigs: bool;
+        let currently_acquiring_sigs = self.actively_acquiring_signatures(is_historical);
         let maybe_new_state: Option<BlockAcquisitionState> = match self {
             BlockAcquisitionState::HaveBlockHeader(header, acquired_signatures) => {
                 // we are attempting to acquire at least ~1/3 signature weight before
@@ -692,7 +739,6 @@ impl BlockAcquisitionState {
                 // signature.
                 maybe_block_hash = Some(header.block_hash());
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
-                currently_acquiring_sigs = true;
                 if acquired_signatures.has_sufficient_finality(is_historical, false) {
                     Some(BlockAcquisitionState::HaveWeakFinalitySignatures(
                         header.clone(),
@@ -704,9 +750,6 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveBlock(block, acquired_signatures, acquired_deploys) => {
                 maybe_block_hash = Some(*block.hash());
-                currently_acquiring_sigs = !is_historical
-                    && acquired_deploys.needs_deploy().is_none()
-                    && acquired_signatures.signature_weight() != SignatureWeight::Strict;
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 if !is_historical
                     && acquired_deploys.needs_deploy().is_none()
@@ -730,8 +773,6 @@ impl BlockAcquisitionState {
                 ..,
             ) => {
                 maybe_block_hash = Some(*block.hash());
-                currently_acquiring_sigs = acquired_deploys.needs_deploy().is_none()
-                    && acquired_signatures.signature_weight() != SignatureWeight::Strict;
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 if acquired_deploys.needs_deploy().is_none()
                     && acquired_signatures.has_sufficient_finality(is_historical, true)
@@ -744,14 +785,8 @@ impl BlockAcquisitionState {
                     None
                 }
             }
-            BlockAcquisitionState::HaveApprovalsHashes(
-                block,
-                acquired_signatures,
-                acquired_deploys,
-            ) => {
+            BlockAcquisitionState::HaveApprovalsHashes(block, acquired_signatures, ..) => {
                 maybe_block_hash = Some(*block.hash());
-                currently_acquiring_sigs = acquired_deploys.needs_deploy().is_none()
-                    && acquired_signatures.signature_weight() != SignatureWeight::Strict;
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 None
             }
@@ -762,9 +797,6 @@ impl BlockAcquisitionState {
                 ..,
             ) => {
                 maybe_block_hash = Some(*block.hash());
-                currently_acquiring_sigs = acquired_signatures.is_legacy()
-                    && acquired_deploys.needs_deploy().is_none()
-                    && acquired_signatures.signature_weight() != SignatureWeight::Strict;
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 if acquired_signatures.is_legacy()
                     && acquired_deploys.needs_deploy().is_none()
@@ -780,8 +812,6 @@ impl BlockAcquisitionState {
             }
             BlockAcquisitionState::HaveAllDeploys(block, acquired_signatures) => {
                 maybe_block_hash = Some(*block.hash());
-                currently_acquiring_sigs =
-                    acquired_signatures.signature_weight() != SignatureWeight::Strict;
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
                 if acquired_signatures.has_sufficient_finality(is_historical, true) {
                     Some(BlockAcquisitionState::HaveStrictFinalitySignatures(
@@ -795,7 +825,6 @@ impl BlockAcquisitionState {
             BlockAcquisitionState::HaveStrictFinalitySignatures(block, acquired_signatures) => {
                 maybe_block_hash = Some(*block.hash());
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
-                currently_acquiring_sigs = false;
                 None
             }
             BlockAcquisitionState::HaveWeakFinalitySignatures(header, acquired_signatures) => {
@@ -805,7 +834,6 @@ impl BlockAcquisitionState {
                 // will accept late comers while resting in this state
                 maybe_block_hash = Some(header.block_hash());
                 acceptance = acquired_signatures.apply_signature(signature, validator_weights);
-                currently_acquiring_sigs = false;
                 None
             }
             BlockAcquisitionState::Initialized(..)
@@ -1352,7 +1380,7 @@ impl BlockAcquisitionState {
 pub(super) fn signatures_from_missing_validators(
     validator_weights: &EraValidatorWeights,
     signatures: &mut SignatureAcquisition,
-    max_simultaneous_peers: usize,
+    max_simultaneous_peers: u8,
     peer_list: &PeerList,
     rng: &mut NodeRng,
     block_header: &BlockHeader,
@@ -1362,7 +1390,7 @@ pub(super) fn signatures_from_missing_validators(
         .cloned()
         .collect();
     // If there are too few, retry any in Pending state.
-    if missing_signatures_in_random_order.len() < max_simultaneous_peers {
+    if (missing_signatures_in_random_order.len() as u8) < max_simultaneous_peers {
         missing_signatures_in_random_order.extend(
             validator_weights
                 .missing_validators(signatures.not_pending())

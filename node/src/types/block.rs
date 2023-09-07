@@ -1876,16 +1876,29 @@ impl BlockExecutionResultsOrChunk {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_mock_value(block_hash: BlockHash) -> Self {
+    pub(crate) fn new_mock_value(rng: &mut TestRng, block_hash: BlockHash) -> Self {
+        Self::new_mock_value_with_multiple_random_results(rng, block_hash, 1)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_mock_value_with_multiple_random_results(
+        rng: &mut TestRng,
+        block_hash: BlockHash,
+        num_results: usize,
+    ) -> Self {
+        let execution_results: Vec<casper_types::ExecutionResult> =
+            (0..num_results).into_iter().map(|_| rng.gen()).collect();
+
         Self {
             block_hash,
-            value: ValueOrChunk::Value(vec![casper_types::ExecutionResult::Success {
-                effect: Default::default(),
-                transfers: vec![],
-                cost: U512::from(123),
-            }]),
+            value: ValueOrChunk::new(execution_results, 0).unwrap(),
             is_valid: OnceCell::with_value(Ok(true)),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value(&self) -> &ValueOrChunk<Vec<casper_types::ExecutionResult>> {
+        &self.value
     }
 }
 
