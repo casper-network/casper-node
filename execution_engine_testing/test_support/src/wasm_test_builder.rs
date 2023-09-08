@@ -23,7 +23,7 @@ use casper_execution_engine::{
             execute_request::ExecuteRequest,
             execution_result::ExecutionResult,
             run_genesis_request::RunGenesisRequest,
-            step::{StepRequest, StepSuccess},
+            step::{EvictItem, StepRequest, StepSuccess},
             BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
             PruneConfig, PruneResult, QueryRequest, QueryResult, RewardItem, StepError,
             SystemContractRegistry, UpgradeConfig, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
@@ -1376,10 +1376,12 @@ where
         &mut self,
         num_eras: u64,
         reward_items: impl IntoIterator<Item = RewardItem>,
+        evict_items: impl IntoIterator<Item = EvictItem>,
     ) {
         let step_request_builder = StepRequestBuilder::new()
             .with_protocol_version(ProtocolVersion::V1_0_0)
             .with_reward_items(reward_items)
+            .with_evict_items(evict_items)
             .with_run_auction(true);
 
         for _ in 0..num_eras {
@@ -1398,14 +1400,19 @@ where
     pub fn advance_eras_by_default_auction_delay(
         &mut self,
         reward_items: impl IntoIterator<Item = RewardItem>,
+        evict_items: impl IntoIterator<Item = EvictItem>,
     ) {
         let auction_delay = self.get_auction_delay();
-        self.advance_eras_by(auction_delay + 1, reward_items);
+        self.advance_eras_by(auction_delay + 1, reward_items, evict_items);
     }
 
     /// Advances by a single era.
-    pub fn advance_era(&mut self, reward_items: impl IntoIterator<Item = RewardItem>) {
-        self.advance_eras_by(1, reward_items);
+    pub fn advance_era(
+        &mut self,
+        reward_items: impl IntoIterator<Item = RewardItem>,
+        evict_items: impl IntoIterator<Item = EvictItem>,
+    ) {
+        self.advance_eras_by(1, reward_items, evict_items);
     }
 
     /// Returns a trie by hash.
