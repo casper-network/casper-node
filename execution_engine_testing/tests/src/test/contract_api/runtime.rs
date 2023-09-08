@@ -7,7 +7,7 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{runtime_context::RANDOM_BYTES_COUNT, ADDRESS_LENGTH};
-use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
+use casper_types::{crypto, runtime_args, BLAKE2B_DIGEST_LENGTH};
 
 const ARG_BYTES: &str = "bytes";
 const ARG_AMOUNT: &str = "amount";
@@ -31,8 +31,7 @@ fn get_value<const COUNT: usize>(builder: &LmdbWasmTestBuilder, result: &str) ->
     builder
         .query(None, *uref, &[])
         .expect("should query")
-        .as_cl_value()
-        .cloned()
+        .into_cl_value()
         .expect("should be CLValue")
         .into_t()
         .expect("should convert")

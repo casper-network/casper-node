@@ -8,7 +8,7 @@ use casper_engine_test_support::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
-    ContractHash, DeployHash, PublicKey, RuntimeArgs, SecretKey, Transfer, TransferAddr,
+    ContractHash, DeployHash, PublicKey, SecretKey, Transfer, TransferAddr,
     DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 

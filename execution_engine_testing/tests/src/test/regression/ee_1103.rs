@@ -10,7 +10,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{DelegationRate, ARG_DELEGATOR, ARG_VALIDATOR},
-    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const ARG_TARGET: &str = "target";

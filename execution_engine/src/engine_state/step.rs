@@ -24,6 +24,25 @@ impl SlashItem {
     }
 }
 
+/// The definition of a reward item.
+#[derive(Debug, Clone)]
+pub struct RewardItem {
+    /// The public key of the validator that will be rewarded.
+    pub validator_id: PublicKey,
+    /// Amount of motes that will be distributed as rewards.
+    pub value: u64,
+}
+
+impl RewardItem {
+    /// Creates new reward item.
+    pub fn new(validator_id: PublicKey, value: u64) -> Self {
+        Self {
+            validator_id,
+            value,
+        }
+    }
+}
+
 /// The definition of an evict item.
 #[derive(Debug, Clone)]
 pub struct EvictItem {
@@ -117,6 +136,9 @@ pub enum StepError {
     /// Error executing a distribute operation.
     #[error("Distribute error: {0}")]
     DistributeError(Error),
+    /// Error executing a distribute accumulated fees operation.
+    #[error("Distribute accumulated fees error: {0}")]
+    DistributeAccumulatedFeesError(Error),
     /// Invalid protocol version.
     #[error("Invalid protocol version: {0}")]
     InvalidProtocolVersion(ProtocolVersion),

@@ -147,6 +147,8 @@ impl<C: Context> Debug for ActiveValidator<C> {
     }
 }
 
+struct FaultySender(NodeId);
+
 /// Contains the state required for the protocol.
 #[derive(Debug, DataSize)]
 pub(crate) struct Zug<C>
@@ -199,6 +201,9 @@ where
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
     write_wal: Option<WriteWal<C>>,
+    /// A map of random IDs -> tipmestamp of when it has been created, allowing to
+    /// verify that a response has been asked for.
+    sent_sync_requests: registered_sync::RegisteredSync,
 }
 
 impl<C: Context + 'static> Zug<C> {
@@ -263,6 +268,7 @@ impl<C: Context + 'static> Zug<C> {
             paused: false,
             next_scheduled_update: Timestamp::MAX,
             write_wal: None,
+            sent_sync_requests: Default::default(),
         }
     }
 
@@ -414,7 +420,7 @@ impl<C: Context + 'static> Zug<C> {
     }
 
     /// Request the latest state from a random peer.
-    fn handle_sync_peer_timer(&self, now: Timestamp, rng: &mut NodeRng) -> ProtocolOutcomes<C> {
+    fn handle_sync_peer_timer(&mut self, now: Timestamp, rng: &mut NodeRng) -> ProtocolOutcomes<C> {
         if self.evidence_only || self.finalized_switch_block() {
             return vec![]; // Era has ended. No further progress is expected.
         }
@@ -428,7 +434,7 @@ impl<C: Context + 'static> Zug<C> {
         let round_id = (self.first_non_finalized_round_id..=self.current_round)
             .choose(rng)
             .unwrap_or(self.current_round);
-        let payload = self.create_sync_request(first_validator_idx, round_id);
+        let payload = self.create_sync_request(rng, first_validator_idx, round_id);
         let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(
             SerializedMessage::from_message(&payload),
         )];
@@ -474,7 +480,8 @@ impl<C: Context + 'static> Zug<C> {
     /// If there are more than 128 validators, the information only covers echoes and votes of
     /// validators with index in `first_validator_idx..=(first_validator_idx + 127)`.
     fn create_sync_request(
-        &self,
+        &mut self,
+        rng: &mut NodeRng,
         first_validator_idx: ValidatorIndex,
         round_id: RoundId,
     ) -> SyncRequest<C> {
@@ -489,6 +496,7 @@ impl<C: Context + 'static> Zug<C> {
                     faulty,
                     active,
                     *self.instance_id(),
+                    self.sent_sync_requests.create_and_register_new_id(rng),
                 );
             }
         };
@@ -510,6 +518,10 @@ impl<C: Context + 'static> Zug<C> {
         if let Some(echo_map) = proposal_hash.and_then(|hash| round.echoes().get(&hash)) {
             echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
         }
+
+        // We create a new ID that the responder will use to show it's allowed to do so:
+        let sync_id = self.sent_sync_requests.create_and_register_new_id(rng);
+
         SyncRequest {
             round_id,
             proposal_hash,
@@ -521,6 +533,7 @@ impl<C: Context + 'static> Zug<C> {
             active,
             faulty,
             instance_id: *self.instance_id(),
+            sync_id,
         }
     }
 
@@ -785,6 +798,7 @@ impl<C: Context + 'static> Zug<C> {
             active,
             faulty,
             instance_id,
+            sync_id,
         } = sync_request;
         if first_validator_idx.0 >= self.validators.len() as u32 {
             info!(
@@ -916,6 +930,7 @@ impl<C: Context + 'static> Zug<C> {
             signed_messages,
             evidence,
             instance_id,
+            sync_id,
         };
         (
             outcomes,
@@ -941,7 +956,13 @@ impl<C: Context + 'static> Zug<C> {
             signed_messages,
             evidence,
             instance_id,
+            sync_id,
         } = sync_response;
+
+        // We have not asked for any sync response:
+        if self.sent_sync_requests.try_remove_id(sync_id).is_none() {
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
 
         // `echo_sigs`, `true_vote_sigs` and `false_vote_sigs` ought not to have more items than the
         // amount of validators. In such a case, the sender is malicious.
@@ -2450,8 +2471,6 @@ fn outcomes_or_disconnect<C: Context>(
     result.unwrap_or_else(|sender| vec![ProtocolOutcome::Disconnect(sender.0)])
 }
 
-struct FaultySender(NodeId);
-
 mod specimen_support {
     use std::collections::BTreeSet;
 
@@ -2512,6 +2531,7 @@ mod specimen_support {
                 active: LargestSpecimen::largest_specimen(estimator, cache),
                 faulty: LargestSpecimen::largest_specimen(estimator, cache),
                 instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                sync_id: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
@@ -2542,6 +2562,7 @@ mod specimen_support {
                 signed_messages: vec_prop_specimen(estimator, "validator_count", cache),
                 evidence: vec_prop_specimen(estimator, "validator_count", cache),
                 instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                sync_id: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
@@ -2596,6 +2617,69 @@ mod specimen_support {
                 }
             });
             *cache.set(item)
+        }
+    }
+}
+
+mod registered_sync {
+    use crate::{
+        types::{DataSize, NodeRng},
+        utils::specimen::{Cache, LargestSpecimen, SizeEstimator},
+    };
+    use casper_types::{TimeDiff, Timestamp};
+    use rand::Rng as _;
+    use serde::{Deserialize, Serialize};
+    use std::collections::BTreeMap;
+
+    #[derive(Default, DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+    pub struct RegisteredSync(BTreeMap<RandomId, Timestamp>);
+
+    #[derive(
+        DataSize, Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Ord, PartialOrd,
+    )]
+    pub struct RandomId(u64);
+
+    impl RegisteredSync {
+        /// Prunes entries older than one minute.
+        fn prune_old(&mut self) {
+            const ONE_MIN: TimeDiff = TimeDiff::from_seconds(60);
+
+            self.0.retain(|_, timestamp| timestamp.elapsed() < ONE_MIN);
+        }
+
+        pub fn create_and_register_new_id(&mut self, rng: &mut NodeRng) -> RandomId {
+            self.prune_old();
+
+            let id = loop {
+                let id = RandomId::new(rng);
+
+                if self.0.contains_key(&id) == false {
+                    break id;
+                }
+            };
+
+            self.0.insert(id, Timestamp::now());
+
+            id
+        }
+
+        /// Tries and remove the random ID from the stored IDs and returns it if it was present.
+        pub fn try_remove_id(&mut self, id: RandomId) -> Option<RandomId> {
+            self.0.remove(&id)?;
+
+            Some(id)
+        }
+    }
+
+    impl RandomId {
+        pub fn new(rng: &mut NodeRng) -> Self {
+            RandomId(rng.gen())
+        }
+    }
+
+    impl LargestSpecimen for RandomId {
+        fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
+            RandomId(u64::MAX)
         }
     }
 }

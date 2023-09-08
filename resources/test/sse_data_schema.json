@@ -589,7 +589,7 @@
         "approvals": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/Approval"
+            "$ref": "#/definitions/DeployApproval"
           },
           "uniqueItems": true
         }
@@ -1170,7 +1170,7 @@
         }
       ]
     },
-    "Approval": {
+    "DeployApproval": {
       "description": "A struct containing a signature of a deploy hash and the public key of the signer.",
       "type": "object",
       "required": [
@@ -1393,6 +1393,13 @@
           "type": "string",
           "enum": [
             "NoOp"
+          ]
+        },
+        {
+          "description": "A prune operation.",
+          "type": "string",
+          "enum": [
+            "Prune"
           ]
         }
       ]
@@ -1664,6 +1671,32 @@
           "enum": [
             "WriteAddressableEntity"
           ]
+        },
+        {
+          "description": "Removes pathing to keyed value within global state. This is a form of soft delete; the underlying value remains in global state and is reachable from older global state root hashes where it was included in the hash up.",
+          "type": "object",
+          "required": [
+            "Prune"
+          ],
+          "properties": {
+            "Prune": {
+              "$ref": "#/definitions/Key"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "Writes the given BidKind to global state.",
+          "type": "object",
+          "required": [
+            "WriteBidKind"
+          ],
+          "properties": {
+            "WriteBidKind": {
+              "$ref": "#/definitions/BidKind"
+            }
+          },
+          "additionalProperties": false
         }
       ]
     },
@@ -2219,6 +2252,113 @@
               "type": "null"
             }
           ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Key": {
+      "description": "The key as a formatted string, under which data (e.g. `CLValue`s, smart contracts, user accounts) are stored in global state.",
+      "type": "string"
+    },
+    "BidKind": {
+      "description": "Auction bid variants.",
+      "oneOf": [
+        {
+          "description": "A unified record indexed on validator data, with an embedded collection of all delegator bids assigned to that validator. The Unified variant is for legacy retrograde support, new instances will not be created going forward.",
+          "type": "object",
+          "required": [
+            "Unified"
+          ],
+          "properties": {
+            "Unified": {
+              "$ref": "#/definitions/Bid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bid record containing only validator data.",
+          "type": "object",
+          "required": [
+            "Validator"
+          ],
+          "properties": {
+            "Validator": {
+              "$ref": "#/definitions/ValidatorBid"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "description": "A bid record containing only delegator data.",
+          "type": "object",
+          "required": [
+            "Delegator"
+          ],
+          "properties": {
+            "Delegator": {
+              "$ref": "#/definitions/Delegator"
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ValidatorBid": {
+      "description": "An entry in the validator map.",
+      "type": "object",
+      "required": [
+        "bonding_purse",
+        "delegation_rate",
+        "inactive",
+        "staked_amount",
+        "validator_public_key"
+      ],
+      "properties": {
+        "validator_public_key": {
+          "description": "Validator public key",
+          "allOf": [
+            {
+              "$ref": "#/definitions/PublicKey"
+            }
+          ]
+        },
+        "bonding_purse": {
+          "description": "The purse that was used for bonding.",
+          "allOf": [
+            {
+              "$ref": "#/definitions/URef"
+            }
+          ]
+        },
+        "staked_amount": {
+          "description": "The amount of tokens staked by a validator (not including delegators).",
+          "allOf": [
+            {
+              "$ref": "#/definitions/U512"
+            }
+          ]
+        },
+        "delegation_rate": {
+          "description": "Delegation rate",
+          "type": "integer",
+          "format": "uint8",
+          "minimum": 0.0
+        },
+        "vesting_schedule": {
+          "description": "Vesting schedule for a genesis validator. `None` if non-genesis validator.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/VestingSchedule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "inactive": {
+          "description": "`true` if validator has been \"evicted\"",
+          "type": "boolean"
         }
       },
       "additionalProperties": false

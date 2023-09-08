@@ -128,6 +128,9 @@ pub enum Error {
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
+    /// Contract does
+    #[error("Error calling an abstract entry point: {}", _0)]
+    TemplateMethod(String),
     /// Error processing WASM bytes.
     #[error("Wasm preprocessing error: {}", _0)]
     WasmPreprocessing(PreprocessingError),
@@ -185,6 +188,9 @@ pub enum Error {
     /// Invalid Contract package kind.
     #[error("Invalid contract package kind: {0}")]
     InvalidContractPackageKind(ContractPackageKind),
+    /// Failed to transfer tokens on a private chain.
+    #[error("Failed to transfer with unrestricted transfers disabled")]
+    DisabledUnrestrictedTransfers,
 }
 
 impl From<PreprocessingError> for Error {

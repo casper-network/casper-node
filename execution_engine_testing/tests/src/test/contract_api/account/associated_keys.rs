@@ -4,9 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{
-    account::AccountHash, addressable_entity::Weight, runtime_args, RuntimeArgs, U512,
-};
+use casper_types::{account::AccountHash, addressable_entity::Weight, runtime_args, U512};
 
 const CONTRACT_ADD_UPDATE_ASSOCIATED_KEY: &str = "add_update_associated_key.wasm";
 const CONTRACT_REMOVE_ASSOCIATED_KEY: &str = "remove_associated_key.wasm";

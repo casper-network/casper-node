@@ -14,7 +14,7 @@ use casper_types::{
         auction::{self, DelegationRate, EraValidators, VESTING_SCHEDULE_LENGTH_MILLIS},
         mint,
     },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U256, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U256, U512,
 };
 
 const MINIMUM_BONDED_AMOUNT: u64 = 1_000;

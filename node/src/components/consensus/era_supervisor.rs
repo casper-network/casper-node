@@ -56,7 +56,9 @@ use crate::{
         AutoClosingResponder, EffectBuilder, EffectExt, Effects, Responder,
     },
     fatal, protocol,
-    types::{DeployOrTransferHash, FinalizedApprovals, FinalizedBlock, MetaBlockState, NodeId},
+    types::{
+        DeployOrTransferHash, FinalizedBlock, FinalizedDeployApprovals, MetaBlockState, NodeId,
+    },
     NodeRng,
 };
 
@@ -1055,7 +1057,18 @@ impl EraSupervisor {
                 era.add_accusations(value.accusations());
                 // If this is the era's last block, it contains rewards. Everyone who is accused in
                 // the block or seen as equivocating via the consensus protocol gets faulty.
+
+                // TODO - add support for the `compute_rewards` chainspec parameter coming from
+                // private chain implementation in the 2.0 rewards scheme.
+                let _compute_rewards = self.chainspec.core_config.compute_rewards;
                 let report = terminal_block_data.map(|tbd| {
+                    // If block rewards are disabled, zero them.
+                    // if !compute_rewards {
+                    //     for reward in tbd.rewards.values_mut() {
+                    //         *reward = 0;
+                    //     }
+                    // }
+
                     EraReport::new(era.accusations(), BTreeMap::new(), tbd.inactive_validators)
                 });
                 let proposed_block = Arc::try_unwrap(value).unwrap_or_else(|arc| (*arc).clone());
@@ -1066,7 +1079,7 @@ impl EraSupervisor {
                     .map(|dwa| {
                         (
                             *dwa.deploy_hash(),
-                            FinalizedApprovals::new(dwa.approvals().clone()),
+                            FinalizedDeployApprovals::new(dwa.approvals().clone()),
                         )
                     })
                     .collect();
@@ -1304,14 +1317,14 @@ where
 
 async fn execute_finalized_block<REv>(
     effect_builder: EffectBuilder<REv>,
-    finalized_approvals: HashMap<DeployHash, FinalizedApprovals>,
+    finalized_approvals: HashMap<DeployHash, FinalizedDeployApprovals>,
     finalized_block: FinalizedBlock,
 ) where
     REv: From<StorageRequest> + From<FatalAnnouncement> + From<ContractRuntimeRequest>,
 {
     for (deploy_hash, finalized_approvals) in finalized_approvals {
         effect_builder
-            .store_finalized_approvals(deploy_hash, finalized_approvals)
+            .store_finalized_approvals(deploy_hash.into(), finalized_approvals.into())
             .await;
     }
     // Get all deploys in order they appear in the finalized block.

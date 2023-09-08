@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state, execution};
-use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
+use casper_types::{account::AccountHash, runtime_args, U512};
 
 const ALICE_ADDR: AccountHash = AccountHash::new([42; 32]);
 

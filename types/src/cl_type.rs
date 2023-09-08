@@ -1,10 +1,13 @@
 use alloc::{
     boxed::Box,
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     string::String,
     vec::Vec,
 };
-use core::mem;
+use core::{
+    fmt::{self, Display, Formatter},
+    mem,
+};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -205,6 +208,36 @@ impl CLType {
             CLType::Any => stream.push(CL_TYPE_TAG_ANY),
         }
         Ok(())
+    }
+}
+
+impl Display for CLType {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            CLType::Bool => write!(formatter, "bool"),
+            CLType::I32 => write!(formatter, "i32"),
+            CLType::I64 => write!(formatter, "i64"),
+            CLType::U8 => write!(formatter, "u8"),
+            CLType::U32 => write!(formatter, "u32"),
+            CLType::U64 => write!(formatter, "u64"),
+            CLType::U128 => write!(formatter, "u128"),
+            CLType::U256 => write!(formatter, "u256"),
+            CLType::U512 => write!(formatter, "u512"),
+            CLType::Unit => write!(formatter, "unit"),
+            CLType::String => write!(formatter, "string"),
+            CLType::Key => write!(formatter, "key"),
+            CLType::URef => write!(formatter, "uref"),
+            CLType::PublicKey => write!(formatter, "public-key"),
+            CLType::Option(t) => write!(formatter, "option<{t}>"),
+            CLType::List(t) => write!(formatter, "list<{t}>"),
+            CLType::ByteArray(len) => write!(formatter, "byte-array[{len}]"),
+            CLType::Result { ok, err } => write!(formatter, "result<{ok}, {err}>"),
+            CLType::Map { key, value } => write!(formatter, "map<{key}, {value}>"),
+            CLType::Tuple1([t1]) => write!(formatter, "({t1},)"),
+            CLType::Tuple2([t1, t2]) => write!(formatter, "({t1}, {t2})"),
+            CLType::Tuple3([t1, t2, t3]) => write!(formatter, "({t1}, {t2}, {t3})"),
+            CLType::Any => write!(formatter, "any"),
+        }
     }
 }
 
@@ -436,6 +469,18 @@ impl<T: CLTyped> CLTyped for Option<T> {
 impl<T: CLTyped> CLTyped for Vec<T> {
     fn cl_type() -> CLType {
         CLType::List(Box::new(T::cl_type()))
+    }
+}
+
+impl<T: CLTyped> CLTyped for BTreeSet<T> {
+    fn cl_type() -> CLType {
+        CLType::List(Box::new(T::cl_type()))
+    }
+}
+
+impl<T: CLTyped> CLTyped for &T {
+    fn cl_type() -> CLType {
+        T::cl_type()
     }
 }
 
@@ -755,5 +800,10 @@ mod tests {
 
         let any = Any("Any test".to_string());
         round_trip(&any);
+    }
+
+    #[test]
+    fn should_have_cltype_of_ref_to_cltyped() {
+        assert_eq!(<Vec<&u64>>::cl_type(), <Vec<u64>>::cl_type())
     }
 }

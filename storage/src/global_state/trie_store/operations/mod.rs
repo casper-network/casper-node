@@ -435,19 +435,19 @@ where
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum DeleteResult {
-    Deleted(Digest),
+pub enum PruneResult {
+    Pruned(Digest),
     DoesNotExist,
     RootNotFound,
 }
 
 /// Delete provided key from a global state so it is not reachable from a resulting state root hash.
-pub(crate) fn delete<K, V, T, S, E>(
+pub(crate) fn prune<K, V, T, S, E>(
     txn: &mut T,
     store: &S,
     root: &Digest,
-    key_to_delete: &K,
-) -> Result<DeleteResult, E>
+    keys_to_prune: &K,
+) -> Result<PruneResult, E>
 where
     K: ToBytes + FromBytes + Clone + PartialEq + std::fmt::Debug,
     V: ToBytes + FromBytes + Clone,
@@ -457,11 +457,11 @@ where
     E: From<S::Error> + From<bytesrepr::Error>,
 {
     let root_trie_bytes = match store.get_raw(txn, root)? {
-        None => return Ok(DeleteResult::RootNotFound),
+        None => return Ok(PruneResult::RootNotFound),
         Some(root_trie) => root_trie,
     };
 
-    let key_bytes = key_to_delete.to_bytes()?;
+    let key_bytes = keys_to_prune.to_bytes()?;
     let TrieScanRaw { tip, mut parents } =
         scan_raw::<_, _, _, _, E>(txn, store, &key_bytes, root_trie_bytes)?;
 
@@ -480,9 +480,9 @@ where
                     "Tip should contain leaf bytes, but has tag {:?}",
                     trie_tag
                 );
-                key == *key_to_delete
+                key == *keys_to_prune
             } => {}
-        _ => return Ok(DeleteResult::DoesNotExist),
+        _ => return Ok(PruneResult::DoesNotExist),
     }
 
     let mut new_elements: Vec<(Digest, Trie<K, V>)> = Vec::new();
@@ -663,7 +663,7 @@ where
         .map(|(hash, _)| hash)
         .unwrap_or_else(|| root.to_owned());
 
-    Ok(DeleteResult::Deleted(new_root))
+    Ok(PruneResult::Pruned(new_root))
 }
 
 #[allow(clippy::type_complexity)]
@@ -1057,7 +1057,6 @@ where
         }) = self.visited.pop()
         {
             let mut maybe_next_trie: Option<Trie<K, V>> = None;
-
             match trie {
                 Trie::Leaf { key, .. } => {
                     let key_bytes = match key.to_bytes() {

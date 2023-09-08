@@ -14,4 +14,4 @@ pub use execution_result_v1::ExecutionResultV1;
 pub use execution_result_v2::ExecutionResultV2;
 pub use transform::Transform;
 pub use transform_error::TransformError;
-pub use transform_kind::TransformKind;
+pub use transform_kind::{TransformInstruction, TransformKind};

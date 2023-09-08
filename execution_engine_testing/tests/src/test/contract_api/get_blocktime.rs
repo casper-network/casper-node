@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{runtime_args, RuntimeArgs};
+use casper_types::runtime_args;
 
 const CONTRACT_GET_BLOCKTIME: &str = "get_blocktime.wasm";
 const ARG_KNOWN_BLOCK_TIME: &str = "known_block_time";

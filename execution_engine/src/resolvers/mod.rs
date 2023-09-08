@@ -6,9 +6,10 @@ mod v1_resolver;
 
 use wasmi::ModuleImportResolver;
 
-use casper_types::{ProtocolVersion, WasmConfig};
+use casper_types::ProtocolVersion;
 
 use self::error::ResolverError;
+use super::engine_state::EngineConfig;
 use crate::resolvers::memory_resolver::MemoryResolver;
 
 /// Creates a module resolver for given protocol version.
@@ -16,12 +17,12 @@ use crate::resolvers::memory_resolver::MemoryResolver;
 /// * `protocol_version` Version of the protocol. Can't be lower than 1.
 pub(crate) fn create_module_resolver(
     protocol_version: ProtocolVersion,
-    wasm_config: &WasmConfig,
+    engine_config: &EngineConfig,
 ) -> Result<impl ModuleImportResolver + MemoryResolver, ResolverError> {
     // TODO: revisit how protocol_version check here is meant to combine with upgrade
     if protocol_version >= ProtocolVersion::V1_0_0 {
         return Ok(v1_resolver::RuntimeModuleImportResolver::new(
-            wasm_config.max_memory,
+            engine_config.wasm_config().max_memory,
         ));
     }
     Err(ResolverError::UnknownProtocolVersion(protocol_version))
@@ -29,19 +30,19 @@ pub(crate) fn create_module_resolver(
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{ProtocolVersion, WasmConfig};
+    use casper_types::ProtocolVersion;
 
     use super::*;
 
     #[test]
     fn resolve_invalid_module() {
         assert!(
-            create_module_resolver(ProtocolVersion::default(), &WasmConfig::default()).is_err()
+            create_module_resolver(ProtocolVersion::default(), &EngineConfig::default()).is_err()
         );
     }
 
     #[test]
     fn protocol_version_1_always_resolves() {
-        assert!(create_module_resolver(ProtocolVersion::V1_0_0, &WasmConfig::default()).is_ok());
+        assert!(create_module_resolver(ProtocolVersion::V1_0_0, &EngineConfig::default()).is_ok());
     }
 }

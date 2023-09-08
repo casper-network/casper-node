@@ -1,11 +1,11 @@
-use std::{io, path::PathBuf};
+use std::{fmt::Debug, io, path::PathBuf};
 
 use thiserror::Error;
 use tracing::error;
 
 use casper_types::{
     bytesrepr, crypto, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockValidationError,
-    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId,
+    DeployHash, Digest, EraId, FinalitySignature, FinalitySignatureId, TransactionHash,
 };
 
 use super::lmdb_ext::LmdbExtError;
@@ -133,13 +133,11 @@ pub enum FatalStorageError {
     /// Failed to serialize an item that was found in local storage.
     #[error("failed to serialized stored item")]
     StoredItemSerializationFailure(#[source] bincode::Error),
-    /// We tried to store finalized approvals for a nonexistent deploy.
-    #[error(
-        "Tried to store FinalizedApprovals for a nonexistent deploy. Deploy hash: {deploy_hash:?}"
-    )]
+    /// We tried to store finalized approvals for a nonexistent transaction.
+    #[error("Tried to store FinalizedApprovals for a nonexistent transaction {transaction_hash}")]
     UnexpectedFinalizedApprovals {
-        /// The missing deploy hash.
-        deploy_hash: DeployHash,
+        /// The missing transaction hash.
+        transaction_hash: TransactionHash,
     },
     /// `ToBytes` serialization failure of an item that should never fail to serialize.
     #[error("unexpected serialization failure: {0}")]
@@ -174,6 +172,9 @@ pub enum FatalStorageError {
     /// Error initializing metrics.
     #[error("failed to initialize metrics for storage: {0}")]
     Prometheus(#[from] prometheus::Error),
+    /// Type mismatch indicating programmer error.
+    #[error(transparent)]
+    VariantMismatch(#[from] VariantMismatch),
 }
 
 // We wholesale wrap lmdb errors and treat them as internal errors here.
@@ -212,3 +213,8 @@ pub(super) enum GetRequestError {
         finality_signature: Box<FinalitySignature>,
     },
 }
+
+/// The variants in the given types are expected to all be the same.
+#[derive(Debug, Error)]
+#[error("mismatch in variants: {0:?}")]
+pub struct VariantMismatch(pub(super) Box<dyn Debug + Send + Sync>);

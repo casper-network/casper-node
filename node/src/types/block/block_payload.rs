@@ -10,7 +10,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[cfg(any(feature = "testing", test))]
-use casper_types::{testing::TestRng, Approval};
+use casper_types::{testing::TestRng, DeployApproval};
 use casper_types::{DeployHash, PublicKey};
 
 use crate::types::{DeployHashWithApprovals, DeployOrTransferHash};
@@ -136,7 +136,9 @@ impl BlockPayload {
                 total_approvals_left -= n_approvals;
                 DeployHashWithApprovals::new(
                     DeployHash::random(rng),
-                    (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                    (0..n_approvals)
+                        .map(|_| DeployApproval::random(rng))
+                        .collect(),
                 )
             })
             .collect();
@@ -156,7 +158,9 @@ impl BlockPayload {
                 total_approvals_left -= n_approvals;
                 DeployHashWithApprovals::new(
                     DeployHash::random(rng),
-                    (0..n_approvals).map(|_| Approval::random(rng)).collect(),
+                    (0..n_approvals)
+                        .map(|_| DeployApproval::random(rng))
+                        .collect(),
                 )
             })
             .collect();

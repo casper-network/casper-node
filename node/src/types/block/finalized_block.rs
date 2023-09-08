@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    Approval, Block, Deploy, DeployHash, EraId, EraReport, PublicKey, SecretKey, Timestamp,
+    Block, Deploy, DeployApproval, DeployHash, EraId, EraReport, PublicKey, SecretKey, Timestamp,
 };
 
 use super::BlockPayload;
@@ -31,7 +31,7 @@ static FINALIZED_BLOCK: Lazy<FinalizedBlock> = Lazy::new(|| {
         transfer_hashes
             .into_iter()
             .map(|hash| {
-                let approval = Approval::create(&hash, secret_key);
+                let approval = DeployApproval::create(&hash, secret_key);
                 let mut approvals = BTreeSet::new();
                 approvals.insert(approval);
                 DeployHashWithApprovals::new(hash, approvals)
