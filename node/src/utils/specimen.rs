@@ -21,8 +21,8 @@ use casper_types::{
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
     Approval, ApprovalsHash, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures,
-    ChunkWithProof, ContractPackageHash, Deploy, DeployHash, DeployId, Digest, EraEnd, EraId,
-    EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId, ProtocolVersion,
+    ChunkWithProof, Deploy, DeployHash, DeployId, Digest, EraEnd, EraId, EraReport,
+    ExecutableDeployItem, FinalitySignature, FinalitySignatureId, PackageHash, ProtocolVersion,
     RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff, Timestamp, KEY_HASH_LENGTH, U512,
 };
 
@@ -805,11 +805,9 @@ impl LargestSpecimen for U512 {
     }
 }
 
-impl LargestSpecimen for ContractPackageHash {
+impl LargestSpecimen for PackageHash {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
-        ContractPackageHash::new(
-            [LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH],
-        )
+        PackageHash::new([LargestSpecimen::largest_specimen(estimator, cache); KEY_HASH_LENGTH])
     }
 }
 

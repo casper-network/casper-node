@@ -15,10 +15,10 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{
     account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, BlockHash, BlockHeader,
-    CLValue, Chainspec, ContractHash, ContractIdentifier, ContractPackageHash,
-    ContractPackageIdentifier, ContractVersion, ContractVersionKey, CoreConfig, Deploy,
-    DeployConfig, DeployConfigurationFailure, Digest, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, Key, Package, ProtocolVersion, StoredValue, Timestamp, U512,
+    CLValue, Chainspec, ContractHash, ContractVersionKey, CoreConfig, Deploy, DeployConfig,
+    DeployConfigurationFailure, Digest, EntityIdentifier, EntityVersion, ExecutableDeployItem,
+    ExecutableDeployItemIdentifier, Key, Package, PackageHash, PackageIdentifier, ProtocolVersion,
+    StoredValue, Timestamp, U512,
 };
 
 use crate::{
@@ -97,18 +97,16 @@ pub(crate) enum DeployParameterFailure {
     NonexistentAccount { account_hash: AccountHash },
     /// Nonexistent contract at hash.
     #[error("contract at {contract_hash} does not exist")]
-    NonexistentContractAtHash { contract_hash: ContractHash },
+    NonexistentEntityAtHash { contract_hash: ContractHash },
     /// Nonexistent contract entrypoint.
-    #[error("contract does not have {entry_point}")]
-    NonexistentContractEntryPoint { entry_point: String },
-    /// Contract Package does not exist.
-    #[error("contract package at {contract_package_hash} does not exist")]
-    NonexistentContractPackageAtHash {
-        contract_package_hash: ContractPackageHash,
-    },
-    /// Invalid contract at given version.
-    #[error("invalid contract at version: {contract_version}")]
-    InvalidContractAtVersion { contract_version: ContractVersion },
+    #[error("entity does not have {entry_point}")]
+    NonexistentEntityEntryPoint { entry_point: String },
+    /// Package does not exist.
+    #[error("contract package at {package_hash} does not exist")]
+    NonexistentPackageAtHash { package_hash: PackageHash },
+    /// Invalid entity at given version.
+    #[error("invalid entity at version: {entity_version}")]
+    InvalidEntityAtVersion { entity_version: EntityVersion },
     /// Invalid associated keys.
     #[error("account authorization invalid")]
     InvalidAssociatedKeys,
@@ -628,16 +626,15 @@ impl DeployAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(_))
-            | ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name { .. }) => {
-                self.verify_session_logic(
+            | ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Name(_))
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => self
+                .verify_session_logic(
                     effect_builder,
                     event_metadata,
                     block_header,
                     verification_start_timestamp,
-                )
-            }
-            ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(contract_hash)) => {
+                ),
+            ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Hash(contract_hash)) => {
                 let query_key = Key::from(contract_hash);
                 let path = vec![];
                 effect_builder
@@ -652,31 +649,22 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
+                ref package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
-                let query_key = Key::from(contract_package_hash);
+                let query_key = Key::from(package_hash);
                 let path = vec![];
-                let maybe_package_version = contract_package_identifier.version();
+                let maybe_package_version = package_identifier.version();
                 effect_builder
-                    .get_contract_package_for_validation(
-                        *block_header.state_root_hash(),
-                        query_key,
-                        path,
-                    )
-                    .event(
-                        move |maybe_contract_package| Event::GetContractPackageResult {
-                            event_metadata,
-                            block_header,
-                            is_payment: true,
-                            contract_package_hash,
-                            maybe_package_version,
-                            maybe_contract_package,
-                            verification_start_timestamp,
-                        },
-                    )
+                    .get_package_for_validation(*block_header.state_root_hash(), query_key, path)
+                    .event(move |maybe_package| Event::GetPackageResult {
+                        event_metadata,
+                        block_header,
+                        is_payment: true,
+                        package_hash,
+                        maybe_package_version,
+                        maybe_package,
+                        verification_start_timestamp,
+                    })
             }
         }
     }
@@ -737,15 +725,14 @@ impl DeployAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Name(_))
-            | ExecutableDeployItemIdentifier::Package(ContractPackageIdentifier::Name { .. }) => {
-                self.validate_deploy_cryptography(
+            | ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Name(_))
+            | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => self
+                .validate_deploy_cryptography(
                     effect_builder,
                     event_metadata,
                     verification_start_timestamp,
-                )
-            }
-            ExecutableDeployItemIdentifier::Contract(ContractIdentifier::Hash(contract_hash)) => {
+                ),
+            ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Hash(contract_hash)) => {
                 let query_key = Key::from(contract_hash);
                 let path = vec![];
                 effect_builder
@@ -760,31 +747,22 @@ impl DeployAcceptor {
                     })
             }
             ExecutableDeployItemIdentifier::Package(
-                ref contract_package_identifier @ ContractPackageIdentifier::Hash {
-                    contract_package_hash,
-                    ..
-                },
+                ref package_identifier @ PackageIdentifier::Hash { package_hash, .. },
             ) => {
-                let query_key = Key::from(contract_package_hash);
+                let query_key = Key::from(package_hash);
                 let path = vec![];
-                let maybe_package_version = contract_package_identifier.version();
+                let maybe_package_version = package_identifier.version();
                 effect_builder
-                    .get_contract_package_for_validation(
-                        *block_header.state_root_hash(),
-                        query_key,
-                        path,
-                    )
-                    .event(
-                        move |maybe_contract_package| Event::GetContractPackageResult {
-                            event_metadata,
-                            block_header,
-                            is_payment: false,
-                            contract_package_hash,
-                            maybe_package_version,
-                            maybe_contract_package,
-                            verification_start_timestamp,
-                        },
-                    )
+                    .get_package_for_validation(*block_header.state_root_hash(), query_key, path)
+                    .event(move |maybe_package| Event::GetPackageResult {
+                        event_metadata,
+                        block_header,
+                        is_payment: false,
+                        package_hash,
+                        maybe_package_version,
+                        maybe_package,
+                        verification_start_timestamp,
+                    })
             }
         }
     }
@@ -811,7 +789,7 @@ impl DeployAcceptor {
                 );
                 let error = Error::parameter_failure(
                     &block_header,
-                    DeployParameterFailure::NonexistentContractEntryPoint { entry_point },
+                    DeployParameterFailure::NonexistentEntityEntryPoint { entry_point },
                 );
                 return self.handle_invalid_deploy_result(
                     effect_builder,
@@ -838,7 +816,7 @@ impl DeployAcceptor {
         debug!(?contract_hash, "nonexistent contract with hash");
         let error = Error::parameter_failure(
             &block_header,
-            DeployParameterFailure::NonexistentContractAtHash { contract_hash },
+            DeployParameterFailure::NonexistentEntityAtHash { contract_hash },
         );
         self.handle_invalid_deploy_result(
             effect_builder,
@@ -849,28 +827,23 @@ impl DeployAcceptor {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn handle_get_contract_package_result<REv: ReactorEventT>(
+    fn handle_get_package_result<REv: ReactorEventT>(
         &self,
         effect_builder: EffectBuilder<REv>,
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_package_hash: ContractPackageHash,
-        maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<Box<Package>>,
+        package_hash: PackageHash,
+        maybe_package_version: Option<EntityVersion>,
+        maybe_package: Option<Box<Package>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {
-        match maybe_contract_package {
+        match maybe_package {
             None => {
-                debug!(
-                    ?contract_package_hash,
-                    "nonexistent contract package with hash"
-                );
+                debug!(?package_hash, "nonexistent package with hash");
                 let error = Error::parameter_failure(
                     &block_header,
-                    DeployParameterFailure::NonexistentContractPackageAtHash {
-                        contract_package_hash,
-                    },
+                    DeployParameterFailure::NonexistentPackageAtHash { package_hash },
                 );
                 self.handle_invalid_deploy_result(
                     effect_builder,
@@ -879,13 +852,13 @@ impl DeployAcceptor {
                     verification_start_timestamp,
                 )
             }
-            Some(contract_package) => match maybe_package_version {
+            Some(package) => match maybe_package_version {
                 Some(contract_version) => {
                     let contract_version_key = ContractVersionKey::new(
                         self.protocol_version.value().major,
                         contract_version,
                     );
-                    match contract_package.lookup_contract_hash(contract_version_key) {
+                    match package.lookup_contract_hash(contract_version_key) {
                         Some(&contract_hash) => {
                             let query_key = contract_hash.into();
                             effect_builder
@@ -907,8 +880,8 @@ impl DeployAcceptor {
                             debug!(?contract_version, "invalid contract at version");
                             let error = Error::parameter_failure(
                                 &block_header,
-                                DeployParameterFailure::InvalidContractAtVersion {
-                                    contract_version,
+                                DeployParameterFailure::InvalidEntityAtVersion {
+                                    entity_version: contract_version,
                                 },
                             );
                             self.handle_invalid_deploy_result(
@@ -1206,15 +1179,15 @@ impl<REv: ReactorEventT> Component<REv> for DeployAcceptor {
                     verification_start_timestamp,
                 )
             }
-            Event::GetContractPackageResult {
+            Event::GetPackageResult {
                 event_metadata,
                 block_header,
                 is_payment,
-                contract_package_hash,
+                package_hash: contract_package_hash,
                 maybe_package_version,
-                maybe_contract_package,
+                maybe_package: maybe_contract_package,
                 verification_start_timestamp,
-            } => self.handle_get_contract_package_result(
+            } => self.handle_get_package_result(
                 effect_builder,
                 event_metadata,
                 block_header,

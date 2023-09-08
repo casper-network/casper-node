@@ -13,7 +13,7 @@ use core::convert::TryInto;
 
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    CLType, CLTyped, ContractPackageHash, Key, Parameter, URef,
+    CLType, CLTyped, Key, PackageHash, Parameter, URef,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "delegate";
@@ -46,12 +46,11 @@ pub extern "C" fn call() {
         entry_points
     };
 
-    let do_nothing_package_hash: ContractPackageHash =
-        runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
-            .unwrap_or_revert()
-            .into_hash()
-            .unwrap()
-            .into();
+    let do_nothing_package_hash: PackageHash = runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
+        .unwrap_or_revert()
+        .into_hash()
+        .unwrap()
+        .into();
 
     let _do_nothing_uref: URef = runtime::get_key(DO_NOTHING_ACCESS_KEY_NAME)
         .unwrap_or_revert()

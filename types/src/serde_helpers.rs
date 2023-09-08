@@ -26,10 +26,10 @@ pub(crate) mod contract_hash_as_digest {
 
 pub(crate) mod contract_package_hash_as_digest {
     use super::*;
-    use crate::ContractPackageHash;
+    use crate::PackageHash;
 
     pub(crate) fn serialize<S: Serializer>(
-        contract_package_hash: &ContractPackageHash,
+        contract_package_hash: &PackageHash,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
         Digest::from(contract_package_hash.value()).serialize(serializer)
@@ -37,9 +37,9 @@ pub(crate) mod contract_package_hash_as_digest {
 
     pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
-    ) -> Result<ContractPackageHash, D::Error> {
+    ) -> Result<PackageHash, D::Error> {
         let digest = Digest::deserialize(deserializer)?;
-        Ok(ContractPackageHash::new(digest.value()))
+        Ok(PackageHash::new(digest.value()))
     }
 }
 

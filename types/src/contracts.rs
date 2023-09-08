@@ -15,7 +15,7 @@ use crate::{
     addressable_entity::{EntryPoint, NamedKeys},
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     contract_wasm::ContractWasmHash,
-    ContractPackageHash, EntryPoints, ProtocolVersion, KEY_HASH_LENGTH,
+    EntryPoints, PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -138,7 +138,7 @@ pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Contract {
-    contract_package_hash: ContractPackageHash,
+    contract_package_hash: PackageHash,
     contract_wasm_hash: ContractWasmHash,
     named_keys: NamedKeys,
     entry_points: EntryPoints,
@@ -148,7 +148,7 @@ pub struct Contract {
 impl Contract {
     /// `Contract` constructor.
     pub fn new(
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
         contract_wasm_hash: ContractWasmHash,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
@@ -164,7 +164,7 @@ impl Contract {
     }
 
     /// Hash for accessing contract package
-    pub fn contract_package_hash(&self) -> ContractPackageHash {
+    pub fn contract_package_hash(&self) -> PackageHash {
         self.contract_package_hash
     }
 

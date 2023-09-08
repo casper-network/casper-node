@@ -18,10 +18,10 @@ use crate::bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 use account_and_secret_key::AccountAndSecretKey;
 pub use deploy::{
-    runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployFootprint, DeployHash, DeployHeader, DeployId, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
+    runtime_args, Approval, ApprovalsHash, Deploy, DeployConfigurationFailure,
+    DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash,
+    DeployHeader, DeployId, EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier,
+    PackageIdentifier, TransferTarget,
 };
 #[cfg(any(feature = "std", test))]
 pub use deploy::{DeployBuilder, DeployBuilderError};

@@ -22,7 +22,7 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, ContractHash, ContractPackageHash, GenesisAccount, Key, Package,
+    ApiError, CLType, CLValue, ContractHash, GenesisAccount, Key, Package, PackageHash,
     RuntimeArgs, U512,
 };
 use tempfile::TempDir;
@@ -496,7 +496,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
     let do_nothing_contract_package_hash = do_nothing_contract_package_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .expect("should be package hash");
 
     let contract_package_before = Package::try_from(
@@ -692,7 +692,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
 
     let test_payment_stored_package_hash = test_payment_stored_package_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .expect("should have contract package");
 
     let contract_package_before = Package::try_from(

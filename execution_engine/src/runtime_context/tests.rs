@@ -18,12 +18,12 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     execution::TransformKind,
-    package::ContractPackageKind,
+    package::PackageKind,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
     AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH,
-    U256, U512,
+    ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key, PackageHash, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH, U256,
+    U512,
 };
 use tempfile::TempDir;
 
@@ -75,7 +75,7 @@ fn new_addressable_entity_with_purse(
 ) -> (Key, Key, AddressableEntity) {
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let entity = AddressableEntity::new(
-        ContractPackageHash::default(),
+        PackageHash::default(),
         ContractWasmHash::default(),
         named_keys,
         EntryPoints::new_with_default_entry_point(),
@@ -152,7 +152,7 @@ fn new_runtime_context<'a>(
         entity_address,
         BTreeSet::from_iter(vec![account_hash]),
         access_rights,
-        ContractPackageKind::Account(account_hash),
+        PackageKind::Account(account_hash),
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::new(RefCell::new(tracking_copy)),
@@ -417,7 +417,7 @@ fn contract_key_addable_valid() {
         contract_key,
         authorization_keys,
         access_rights,
-        ContractPackageKind::Wasm,
+        PackageKind::Wasm,
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
@@ -490,7 +490,7 @@ fn contract_key_addable_invalid() {
         other_contract_key,
         authorization_keys,
         access_rights,
-        ContractPackageKind::Account(account_hash),
+        PackageKind::Account(account_hash),
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),

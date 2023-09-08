@@ -25,7 +25,7 @@ use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH, U8_SERIALIZED_LENGTH},
     checksummed_hex,
     crypto::{self, PublicKey},
-    system::SystemContractType,
+    system::SystemEntityType,
     uref::URef,
     CLType, CLTyped, ContractHash, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
@@ -105,10 +105,10 @@ impl FromBytes for Group {
 }
 
 /// Automatically incremented value for a contract version within a major `ProtocolVersion`.
-pub type ContractVersion = u32;
+pub type EntityVersion = u32;
 
 /// Within each discrete major `ProtocolVersion`, contract version resets to this value.
-pub const CONTRACT_INITIAL_VERSION: ContractVersion = 1;
+pub const CONTRACT_INITIAL_VERSION: EntityVersion = 1;
 
 /// Major element of `ProtocolVersion` a `ContractVersion` is compatible with.
 pub type ProtocolVersionMajor = u32;
@@ -121,14 +121,14 @@ pub struct ContractVersionKey {
     /// Major element of `ProtocolVersion` a `ContractVersion` is compatible with.
     protocol_version_major: ProtocolVersionMajor,
     /// Automatically incremented value for a contract version within a major `ProtocolVersion`.
-    contract_version: ContractVersion,
+    contract_version: EntityVersion,
 }
 
 impl ContractVersionKey {
     /// Returns a new instance of ContractVersionKey with provided values.
     pub fn new(
         protocol_version_major: ProtocolVersionMajor,
-        contract_version: ContractVersion,
+        contract_version: EntityVersion,
     ) -> Self {
         Self {
             protocol_version_major,
@@ -142,12 +142,12 @@ impl ContractVersionKey {
     }
 
     /// Returns the contract version within the protocol major version.
-    pub fn contract_version(self) -> ContractVersion {
+    pub fn contract_version(self) -> EntityVersion {
         self.contract_version
     }
 }
 
-impl From<ContractVersionKey> for (ProtocolVersionMajor, ContractVersion) {
+impl From<ContractVersionKey> for (ProtocolVersionMajor, EntityVersion) {
     fn from(contract_version_key: ContractVersionKey) -> Self {
         (
             contract_version_key.protocol_version_major,
@@ -176,7 +176,7 @@ impl ToBytes for ContractVersionKey {
 impl FromBytes for ContractVersionKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (protocol_version_major, remainder) = ProtocolVersionMajor::from_bytes(bytes)?;
-        let (contract_version, remainder) = ContractVersion::from_bytes(remainder)?;
+        let (contract_version, remainder) = EntityVersion::from_bytes(remainder)?;
         Ok((
             ContractVersionKey {
                 protocol_version_major,
@@ -374,16 +374,16 @@ impl From<BTreeMap<Group, BTreeSet<URef>>> for Groups {
 #[cfg_attr(
     feature = "json-schema",
     derive(JsonSchema),
-    schemars(description = "The hex-encoded address of the contract package.")
+    schemars(description = "The hex-encoded address of the Package.")
 )]
-pub struct ContractPackageHash(
+pub struct PackageHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
 );
 
-impl ContractPackageHash {
+impl PackageHash {
     /// Constructs a new `ContractPackageHash` from the raw bytes of the contract package hash.
-    pub const fn new(value: HashAddr) -> ContractPackageHash {
-        ContractPackageHash(value)
+    pub const fn new(value: HashAddr) -> PackageHash {
+        PackageHash(value)
     }
 
     /// Returns the raw bytes of the contract hash as an array.
@@ -396,13 +396,13 @@ impl ContractPackageHash {
         &self.0
     }
 
-    /// Formats the `ContractPackageHash` for users getting and putting.
+    /// Formats the `PackageHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
         format!("{}{}", PACKAGE_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
-    /// `ContractPackageHash`.
+    /// `PackageHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
             .strip_prefix(PACKAGE_STRING_PREFIX)
@@ -413,7 +413,7 @@ impl ContractPackageHash {
             .unwrap_or(remainder);
 
         let bytes = HashAddr::try_from(checksummed_hex::decode(hex_addr)?.as_ref())?;
-        Ok(ContractPackageHash(bytes))
+        Ok(PackageHash(bytes))
     }
 
     /// Parses a `PublicKey` and outputs the corresponding account hash.
@@ -446,25 +446,25 @@ impl ContractPackageHash {
     }
 }
 
-impl Display for ContractPackageHash {
+impl Display for PackageHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
-impl Debug for ContractPackageHash {
+impl Debug for PackageHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         write!(f, "ContractPackageHash({})", base16::encode_lower(&self.0))
     }
 }
 
-impl CLTyped for ContractPackageHash {
+impl CLTyped for PackageHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
     }
 }
 
-impl ToBytes for ContractPackageHash {
+impl ToBytes for PackageHash {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
@@ -482,20 +482,20 @@ impl ToBytes for ContractPackageHash {
     }
 }
 
-impl FromBytes for ContractPackageHash {
+impl FromBytes for PackageHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((ContractPackageHash::new(bytes), rem))
+        Ok((PackageHash::new(bytes), rem))
     }
 }
 
-impl From<[u8; 32]> for ContractPackageHash {
+impl From<[u8; 32]> for PackageHash {
     fn from(bytes: [u8; 32]) -> Self {
-        ContractPackageHash(bytes)
+        PackageHash(bytes)
     }
 }
 
-impl Serialize for ContractPackageHash {
+impl Serialize for PackageHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
             self.to_formatted_string().serialize(serializer)
@@ -505,108 +505,108 @@ impl Serialize for ContractPackageHash {
     }
 }
 
-impl<'de> Deserialize<'de> for ContractPackageHash {
+impl<'de> Deserialize<'de> for PackageHash {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let formatted_string = String::deserialize(deserializer)?;
-            ContractPackageHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+            PackageHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
             let bytes = HashAddr::deserialize(deserializer)?;
-            Ok(ContractPackageHash(bytes))
+            Ok(PackageHash(bytes))
         }
     }
 }
 
-impl AsRef<[u8]> for ContractPackageHash {
+impl AsRef<[u8]> for PackageHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl TryFrom<&[u8]> for ContractPackageHash {
+impl TryFrom<&[u8]> for PackageHash {
     type Error = TryFromSliceForPackageHashError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForPackageHashError> {
         HashAddr::try_from(bytes)
-            .map(ContractPackageHash::new)
+            .map(PackageHash::new)
             .map_err(|_| TryFromSliceForPackageHashError(()))
     }
 }
 
-impl TryFrom<&Vec<u8>> for ContractPackageHash {
+impl TryFrom<&Vec<u8>> for PackageHash {
     type Error = TryFromSliceForPackageHashError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
         HashAddr::try_from(bytes as &[u8])
-            .map(ContractPackageHash::new)
+            .map(PackageHash::new)
             .map_err(|_| TryFromSliceForPackageHashError(()))
     }
 }
 
-impl From<&PublicKey> for ContractPackageHash {
+impl From<&PublicKey> for PackageHash {
     fn from(public_key: &PublicKey) -> Self {
-        ContractPackageHash::from_public_key(public_key, crypto::blake2b)
+        PackageHash::from_public_key(public_key, crypto::blake2b)
     }
 }
 
-/// A enum to determine the lock status of the contract package.
+/// A enum to determine the lock status of the package.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub enum ContractPackageStatus {
+pub enum PackageStatus {
     /// The package is locked and cannot be versioned.
     Locked,
     /// The package is unlocked and can be versioned.
     Unlocked,
 }
 
-impl ContractPackageStatus {
+impl PackageStatus {
     /// Create a new status flag based on a boolean value
     pub fn new(is_locked: bool) -> Self {
         if is_locked {
-            ContractPackageStatus::Locked
+            PackageStatus::Locked
         } else {
-            ContractPackageStatus::Unlocked
+            PackageStatus::Unlocked
         }
     }
 }
 
-impl Default for ContractPackageStatus {
+impl Default for PackageStatus {
     fn default() -> Self {
         Self::Unlocked
     }
 }
 
-impl ToBytes for ContractPackageStatus {
+impl ToBytes for PackageStatus {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         match self {
-            ContractPackageStatus::Unlocked => result.append(&mut false.to_bytes()?),
-            ContractPackageStatus::Locked => result.append(&mut true.to_bytes()?),
+            PackageStatus::Unlocked => result.append(&mut false.to_bytes()?),
+            PackageStatus::Locked => result.append(&mut true.to_bytes()?),
         }
         Ok(result)
     }
 
     fn serialized_length(&self) -> usize {
         match self {
-            ContractPackageStatus::Unlocked => false.serialized_length(),
-            ContractPackageStatus::Locked => true.serialized_length(),
+            PackageStatus::Unlocked => false.serialized_length(),
+            PackageStatus::Locked => true.serialized_length(),
         }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            ContractPackageStatus::Locked => writer.push(u8::from(true)),
-            ContractPackageStatus::Unlocked => writer.push(u8::from(false)),
+            PackageStatus::Locked => writer.push(u8::from(true)),
+            PackageStatus::Unlocked => writer.push(u8::from(false)),
         }
         Ok(())
     }
 }
 
-impl FromBytes for ContractPackageStatus {
+impl FromBytes for PackageStatus {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (val, bytes) = bool::from_bytes(bytes)?;
-        let status = ContractPackageStatus::new(val);
+        let status = PackageStatus::new(val);
         Ok((status, bytes))
     }
 }
@@ -614,12 +614,12 @@ impl FromBytes for ContractPackageStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-/// The type of contract package.
-pub enum ContractPackageKind {
+/// The type of Package.
+pub enum PackageKind {
     /// Contract Packages associated with Wasm stored on chain.
     Wasm,
     /// Contract Package associated with a native contract implementation.
-    System(SystemContractType),
+    System(SystemEntityType),
     /// Contract Package associated with an Account hash.
     Account(AccountHash),
     /// Contract Packages from the previous format.
@@ -627,7 +627,7 @@ pub enum ContractPackageKind {
     Legacy,
 }
 
-impl ContractPackageKind {
+impl PackageKind {
     /// Returns the Account hash associated with a Contract Package based on the package kind.
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
@@ -651,12 +651,12 @@ impl ContractPackageKind {
 
     /// Returns if the current package is the system mint.
     pub fn is_system_mint(&self) -> bool {
-        matches!(self, Self::System(SystemContractType::Mint))
+        matches!(self, Self::System(SystemEntityType::Mint))
     }
 
     /// Returns if the current package is the system auction.
     pub fn is_system_auction(&self) -> bool {
-        matches!(self, Self::System(SystemContractType::Auction))
+        matches!(self, Self::System(SystemEntityType::Auction))
     }
 
     /// Returns if the current package is associated with the system addressable entity.
@@ -673,7 +673,7 @@ impl ContractPackageKind {
     }
 }
 
-impl ToBytes for ContractPackageKind {
+impl ToBytes for PackageKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -683,62 +683,62 @@ impl ToBytes for ContractPackageKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                ContractPackageKind::Wasm | ContractPackageKind::Legacy => 0,
-                ContractPackageKind::System(system_contract_type) => {
+                PackageKind::Wasm | PackageKind::Legacy => 0,
+                PackageKind::System(system_contract_type) => {
                     system_contract_type.serialized_length()
                 }
-                ContractPackageKind::Account(account_hash) => account_hash.serialized_length(),
+                PackageKind::Account(account_hash) => account_hash.serialized_length(),
             }
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            ContractPackageKind::Wasm => PACKAGE_KIND_WASM_TAG.write_bytes(writer),
-            ContractPackageKind::System(system_contract_type) => {
+            PackageKind::Wasm => PACKAGE_KIND_WASM_TAG.write_bytes(writer),
+            PackageKind::System(system_contract_type) => {
                 PACKAGE_KIND_SYSTEM_CONTRACT_TAG.write_bytes(writer)?;
                 system_contract_type.write_bytes(writer)
             }
-            ContractPackageKind::Account(account_hash) => {
+            PackageKind::Account(account_hash) => {
                 PACKAGE_KIND_ACCOUNT_TAG.write_bytes(writer)?;
                 account_hash.write_bytes(writer)
             }
-            ContractPackageKind::Legacy => PACKAGE_KIND_LEGACY_TAG.write_bytes(writer),
+            PackageKind::Legacy => PACKAGE_KIND_LEGACY_TAG.write_bytes(writer),
         }
     }
 }
 
-impl FromBytes for ContractPackageKind {
+impl FromBytes for PackageKind {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
-            PACKAGE_KIND_WASM_TAG => Ok((ContractPackageKind::Wasm, remainder)),
+            PACKAGE_KIND_WASM_TAG => Ok((PackageKind::Wasm, remainder)),
             PACKAGE_KIND_SYSTEM_CONTRACT_TAG => {
-                let (system_contract_type, remainder) = SystemContractType::from_bytes(remainder)?;
-                Ok((ContractPackageKind::System(system_contract_type), remainder))
+                let (system_contract_type, remainder) = SystemEntityType::from_bytes(remainder)?;
+                Ok((PackageKind::System(system_contract_type), remainder))
             }
             PACKAGE_KIND_ACCOUNT_TAG => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
-                Ok((ContractPackageKind::Account(account_hash), remainder))
+                Ok((PackageKind::Account(account_hash), remainder))
             }
-            PACKAGE_KIND_LEGACY_TAG => Ok((ContractPackageKind::Legacy, remainder)),
+            PACKAGE_KIND_LEGACY_TAG => Ok((PackageKind::Legacy, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
 }
 
-impl Display for ContractPackageKind {
+impl Display for PackageKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ContractPackageKind::Wasm => {
+            PackageKind::Wasm => {
                 write!(f, "ContractPackageKind:Wasm")
             }
-            ContractPackageKind::System(system_contract) => {
+            PackageKind::System(system_contract) => {
                 write!(f, "ContractPackageKind:System({})", system_contract)
             }
-            ContractPackageKind::Account(account_hash) => {
+            PackageKind::Account(account_hash) => {
                 write!(f, "ContractPackageKind:Account({})", account_hash)
             }
-            ContractPackageKind::Legacy => {
+            PackageKind::Legacy => {
                 write!(f, "ContractPackageKind:Legacy")
             }
         }
@@ -762,9 +762,9 @@ pub struct Package {
     /// any context which "knows" any of the URefs associated with the method's user group.
     groups: Groups,
     /// A flag that determines whether a contract is locked
-    lock_status: ContractPackageStatus,
+    lock_status: PackageStatus,
     /// The kind of package.
-    contract_package_kind: ContractPackageKind,
+    package_kind: PackageKind,
 }
 
 impl CLTyped for Package {
@@ -780,8 +780,8 @@ impl Package {
         versions: ContractVersions,
         disabled_versions: BTreeSet<ContractVersionKey>,
         groups: Groups,
-        lock_status: ContractPackageStatus,
-        contract_package_kind: ContractPackageKind,
+        lock_status: PackageStatus,
+        package_kind: PackageKind,
     ) -> Self {
         Package {
             access_key,
@@ -789,7 +789,7 @@ impl Package {
             disabled_versions,
             groups,
             lock_status,
-            contract_package_kind,
+            package_kind,
         }
     }
 
@@ -934,7 +934,7 @@ impl Package {
     }
 
     /// Gets the next available contract version for the given protocol version
-    fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> ContractVersion {
+    fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> EntityVersion {
         let current_version = self
             .versions
             .0
@@ -965,29 +965,29 @@ impl Package {
     /// Return the lock status of the contract package.
     pub fn is_locked(&self) -> bool {
         match self.lock_status {
-            ContractPackageStatus::Unlocked => false,
-            ContractPackageStatus::Locked => true,
+            PackageStatus::Unlocked => false,
+            PackageStatus::Locked => true,
         }
     }
 
     /// Return the package status itself
-    pub fn get_lock_status(&self) -> ContractPackageStatus {
+    pub fn get_lock_status(&self) -> PackageStatus {
         self.lock_status.clone()
     }
 
     /// Returns the kind of Contract Package.
-    pub fn get_package_kind(&self) -> ContractPackageKind {
-        self.contract_package_kind.clone()
+    pub fn get_package_kind(&self) -> PackageKind {
+        self.package_kind.clone()
     }
 
     /// Returns whether the contract package is of the legacy format.
     pub fn is_legacy(&self) -> bool {
-        matches!(self.contract_package_kind, ContractPackageKind::Legacy)
+        matches!(self.package_kind, PackageKind::Legacy)
     }
 
     /// Update the contract package kind.
-    pub fn update_package_kind(&mut self, new_package_kind: ContractPackageKind) {
-        self.contract_package_kind = new_package_kind
+    pub fn update_package_kind(&mut self, new_package_kind: PackageKind) {
+        self.package_kind = new_package_kind
     }
 }
 
@@ -1004,7 +1004,7 @@ impl ToBytes for Package {
             + self.disabled_versions.serialized_length()
             + self.groups.serialized_length()
             + self.lock_status.serialized_length()
-            + self.contract_package_kind.serialized_length()
+            + self.package_kind.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
@@ -1013,7 +1013,7 @@ impl ToBytes for Package {
         self.disabled_versions().write_bytes(writer)?;
         self.groups().write_bytes(writer)?;
         self.lock_status.write_bytes(writer)?;
-        self.contract_package_kind.write_bytes(writer)?;
+        self.package_kind.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -1024,16 +1024,15 @@ impl FromBytes for Package {
         let (versions, bytes) = ContractVersions::from_bytes(bytes)?;
         let (disabled_versions, bytes) = BTreeSet::<ContractVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
-        let (lock_status, bytes) = ContractPackageStatus::from_bytes(bytes)?;
-        let (contract_package_kind, bytes) =
-            ContractPackageKind::from_bytes(bytes).unwrap_or_default();
+        let (lock_status, bytes) = PackageStatus::from_bytes(bytes)?;
+        let (contract_package_kind, bytes) = PackageKind::from_bytes(bytes).unwrap_or_default();
         let result = Package {
             access_key,
             versions,
             disabled_versions,
             groups,
             lock_status,
-            contract_package_kind,
+            package_kind: contract_package_kind,
         };
 
         Ok((result, bytes))
@@ -1060,8 +1059,8 @@ mod tests {
             ContractVersions::default(),
             BTreeSet::new(),
             Groups::default(),
-            ContractPackageStatus::default(),
-            ContractPackageKind::Wasm,
+            PackageStatus::default(),
+            PackageKind::Wasm,
         );
 
         // add groups
@@ -1122,8 +1121,8 @@ mod tests {
             ContractVersions::default(),
             BTreeSet::default(),
             Groups::default(),
-            ContractPackageStatus::default(),
-            ContractPackageKind::Wasm,
+            PackageStatus::default(),
+            PackageKind::Wasm,
         );
         assert_eq!(contract_package.next_contract_version_for(major), 1);
 
@@ -1362,52 +1361,52 @@ mod tests {
     fn contract_package_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
         let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
-        let contract_hash = ContractPackageHash::new(contract_hash);
+        let contract_hash = PackageHash::new(contract_hash);
         assert_eq!(&bytes, &contract_hash.as_bytes());
     }
 
     #[test]
     fn contract_package_hash_from_str() {
-        let contract_package_hash = ContractPackageHash::new([3; 32]);
+        let contract_package_hash = PackageHash::new([3; 32]);
         let encoded = contract_package_hash.to_formatted_string();
-        let decoded = ContractPackageHash::from_formatted_str(&encoded).unwrap();
+        let decoded = PackageHash::from_formatted_str(&encoded).unwrap();
         assert_eq!(contract_package_hash, decoded);
 
         let invalid_prefix =
             "contract-package0000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
+            PackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
             FromStrError::InvalidPrefix
         ));
 
         let short_addr =
             "contract-package-00000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(short_addr).unwrap_err(),
+            PackageHash::from_formatted_str(short_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let long_addr =
             "contract-package-000000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(long_addr).unwrap_err(),
+            PackageHash::from_formatted_str(long_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let invalid_hex =
             "contract-package-000000000000000000000000000000000000000000000000000000000000000g";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(invalid_hex).unwrap_err(),
+            PackageHash::from_formatted_str(invalid_hex).unwrap_err(),
             FromStrError::Hex(_)
         ));
     }
 
     #[test]
     fn contract_package_hash_from_legacy_str() {
-        let contract_package_hash = ContractPackageHash([3; 32]);
+        let contract_package_hash = PackageHash([3; 32]);
         let hex_addr = contract_package_hash.to_string();
         let legacy_encoded = format!("contract-package-wasm{}", hex_addr);
-        let decoded_from_legacy = ContractPackageHash::from_formatted_str(&legacy_encoded)
+        let decoded_from_legacy = PackageHash::from_formatted_str(&legacy_encoded)
             .expect("should accept legacy prefixed string");
         assert_eq!(
             contract_package_hash, decoded_from_legacy,
@@ -1417,28 +1416,28 @@ mod tests {
         let invalid_prefix =
             "contract-packagewasm0000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
+            PackageHash::from_formatted_str(invalid_prefix).unwrap_err(),
             FromStrError::InvalidPrefix
         ));
 
         let short_addr =
             "contract-package-wasm00000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(short_addr).unwrap_err(),
+            PackageHash::from_formatted_str(short_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let long_addr =
             "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000000";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(long_addr).unwrap_err(),
+            PackageHash::from_formatted_str(long_addr).unwrap_err(),
             FromStrError::Hash(_)
         ));
 
         let invalid_hex =
             "contract-package-wasm000000000000000000000000000000000000000000000000000000000000000g";
         assert!(matches!(
-            ContractPackageHash::from_formatted_str(invalid_hex).unwrap_err(),
+            PackageHash::from_formatted_str(invalid_hex).unwrap_err(),
             FromStrError::Hex(_)
         ));
     }
@@ -1452,7 +1451,7 @@ mod prop_tests {
 
     proptest! {
         #[test]
-        fn test_value_contract_package(contract_pkg in gens::contract_package_arb()) {
+        fn test_value_contract_package(contract_pkg in gens::package_arb()) {
             bytesrepr::test_serialization_roundtrip(&contract_pkg);
         }
     }

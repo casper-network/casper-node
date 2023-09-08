@@ -16,7 +16,7 @@ use crate::{
     account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
     addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
-    package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
+    package::{ContractVersionKey, ContractVersions, Groups, PackageStatus},
     system::auction::{
         gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
@@ -34,7 +34,7 @@ use crate::{
     },
     contracts::Contract,
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
-    package::ContractPackageKind,
+    package::PackageKind,
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
@@ -450,7 +450,7 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
         .prop_map(Groups::from)
 }
 
-pub fn contract_package_arb() -> impl Strategy<Value = Package> {
+pub fn package_arb() -> impl Strategy<Value = Package> {
     (
         uref_arb(),
         contract_versions_arb(),
@@ -463,8 +463,8 @@ pub fn contract_package_arb() -> impl Strategy<Value = Package> {
                 versions,
                 disabled_versions,
                 groups,
-                ContractPackageStatus::default(),
-                ContractPackageKind::default(),
+                PackageStatus::default(),
+                PackageKind::default(),
             )
         })
 }
@@ -627,7 +627,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         contract_wasm_arb().prop_map(StoredValue::ContractWasm),
         contract_arb().prop_map(StoredValue::Contract),
         addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
-        contract_package_arb().prop_map(StoredValue::ContractPackage),
+        package_arb().prop_map(StoredValue::Package),
         transfer_arb().prop_map(StoredValue::Transfer),
         deploy_info_arb().prop_map(StoredValue::DeployInfo),
         era_info_arb(1..10).prop_map(StoredValue::EraInfo),
@@ -645,7 +645,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Account(_) => stored_value,
             StoredValue::ContractWasm(_) => stored_value,
             StoredValue::Contract(_) => stored_value,
-            StoredValue::ContractPackage(_) => stored_value,
+            StoredValue::Package(_) => stored_value,
             StoredValue::Transfer(_) => stored_value,
             StoredValue::DeployInfo(_) => stored_value,
             StoredValue::EraInfo(_) => stored_value,

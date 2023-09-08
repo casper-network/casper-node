@@ -48,7 +48,7 @@ use casper_types::{
     addressable_entity::{AssociatedKeys, NamedKeys},
     bytesrepr::ToBytes,
     execution::Effects,
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    package::{ContractVersions, Groups, PackageKind, PackageStatus},
     system::{
         auction::{
             BidAddr, BidKind, EraValidators, UnbondingPurse, ValidatorBid, WithdrawPurse,
@@ -61,9 +61,9 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, AddressableEntity, ApiError, BlockTime, CLValue, ChainspecRegistry, ContractHash,
-    ContractPackageHash, ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
-    ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, Phase, ProtocolVersion,
-    PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId, ExecutableDeployItem,
+    FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -863,7 +863,7 @@ where
 
         let contract_wasm_hash = *ACCOUNT_WASM_HASH;
         let contract_hash = ContractHash::new(generator.new_hash_address());
-        let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
+        let contract_package_hash = PackageHash::new(generator.new_hash_address());
 
         let entry_points = EntryPoints::new();
 
@@ -888,8 +888,8 @@ where
                 ContractVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
-                ContractPackageStatus::Locked,
-                ContractPackageKind::Account(account_hash),
+                PackageStatus::Locked,
+                PackageKind::Account(account_hash),
             );
             contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
             contract_package
@@ -960,15 +960,15 @@ where
     pub fn get_entity_package_kind(
         &self,
 
-        entity_package_address: ContractPackageHash,
+        entity_package_address: PackageHash,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
-    ) -> Result<ContractPackageKind, Error> {
+    ) -> Result<PackageKind, Error> {
         let entity_package = match tracking_copy
             .borrow_mut()
             .read(&entity_package_address.into())
             .map_err(Into::into)?
         {
-            Some(StoredValue::ContractPackage(entity_package)) => entity_package,
+            Some(StoredValue::Package(entity_package)) => entity_package,
             Some(_) | None => return Err(Error::MissingEntityPackage(entity_package_address)),
         };
 
@@ -1470,7 +1470,7 @@ where
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    ContractPackageKind::Account(PublicKey::System.to_account_hash()),
+                    PackageKind::Account(PublicKey::System.to_account_hash()),
                     authorization_keys,
                     PublicKey::System.to_account_hash(),
                     blocktime,
@@ -2079,7 +2079,7 @@ where
                     DirectSystemContractCall::FinalizePayment,
                     handle_payment_args,
                     &system_addressable_entity,
-                    ContractPackageKind::Account(system_account_hash),
+                    PackageKind::Account(system_account_hash),
                     authorization_keys,
                     system_account_hash,
                     blocktime,
@@ -2339,7 +2339,7 @@ where
             DirectSystemContractCall::DistributeAccumulatedFees,
             RuntimeArgs::default(),
             &virtual_system_contract_by_account,
-            ContractPackageKind::Account(system_account_hash),
+            PackageKind::Account(system_account_hash),
             authorization_keys.clone(),
             system_account_hash,
             BlockTime::default(),
@@ -2363,7 +2363,7 @@ where
             DirectSystemContractCall::DistributeRewards,
             runtime_args,
             &virtual_system_contract_by_account,
-            ContractPackageKind::Account(system_account_hash),
+            PackageKind::Account(system_account_hash),
             authorization_keys,
             system_account_hash,
             BlockTime::default(),
@@ -2442,7 +2442,7 @@ where
                     DirectSystemContractCall::Slash,
                     slash_args,
                     &system_addressable_entity,
-                    ContractPackageKind::Account(system_account_hash),
+                    PackageKind::Account(system_account_hash),
                     authorization_keys.clone(),
                     system_account_hash,
                     BlockTime::default(),
@@ -2483,7 +2483,7 @@ where
             DirectSystemContractCall::RunAuction,
             run_auction_args,
             &system_addressable_entity,
-            ContractPackageKind::Account(system_account_hash),
+            PackageKind::Account(system_account_hash),
             authorization_keys,
             system_account_hash,
             BlockTime::default(),
@@ -2791,7 +2791,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::KeyIsNotAURef(_)
                 | ExecError::UnexpectedStoredValueVariant
                 | ExecError::LockedContract(_)
-                | ExecError::InvalidContractPackage(_)
+                | ExecError::InvalidPackage(_)
                 | ExecError::InvalidContract(_)
                 | ExecError::MissingArgument { .. }
                 | ExecError::DictionaryItemKeyExceedsLength
@@ -2802,7 +2802,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::MissingRuntimeStack
                 | ExecError::DisabledContract(_)
                 | ExecError::UnexpectedKeyVariant(_)
-                | ExecError::InvalidContractPackageKind(_)
+                | ExecError::InvalidPackageKind(_)
                 | ExecError::Transform(_) => false,
                 ExecError::DisabledUnrestrictedTransfers => false,
             },

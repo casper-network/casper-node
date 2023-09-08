@@ -11,8 +11,7 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionType, NamedKeys, Weight},
-    CLType, ContractPackageHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
-    Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, PackageHash, Parameter,
 };
 
 const ARG_ENTITY_ACCOUNT_HASH: &str = "entity_account_hash";
@@ -47,7 +46,7 @@ pub extern "C" fn remove_associated_key() {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_package: ContractPackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
+    let contract_package: PackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
     let entry_points = {
         let mut entrypoints = EntryPoints::new();
         let add_associated_key_entry_point = EntryPoint::new(

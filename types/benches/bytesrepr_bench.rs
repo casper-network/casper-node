@@ -9,13 +9,13 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{ContractPackageKind, ContractPackageStatus},
+    package::{PackageKind, PackageStatus},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
-    ContractVersions, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Group, Groups, Key, Package, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH,
-    U128, U256, U512, UREF_ADDR_LENGTH,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractVersionKey, ContractVersions,
+    ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Group, Groups, Key, Package, PackageHash, Parameter, ProtocolVersion, PublicKey,
+    SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH, TRANSFER_ADDR_LENGTH, U128, U256,
+    U512, UREF_ADDR_LENGTH,
 };
 
 static KB: usize = 1024;
@@ -494,7 +494,7 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
     };
 
     casper_types::addressable_entity::AddressableEntity::new(
-        ContractPackageHash::default(),
+        PackageHash::default(),
         ContractWasmHash::default(),
         named_keys,
         entry_points,
@@ -565,8 +565,8 @@ fn sample_contract_package(
         versions,
         disabled_versions,
         groups,
-        ContractPackageStatus::Locked,
-        ContractPackageKind::Wasm,
+        PackageStatus::Locked,
+        PackageKind::Wasm,
     )
 }
 

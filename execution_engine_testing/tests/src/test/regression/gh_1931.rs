@@ -33,5 +33,5 @@ fn should_query_contract_package() {
         .query(None, contract_package_hash, &[])
         .expect("failed to find contract package");
 
-    assert!(matches!(contract_package, StoredValue::ContractPackage(_)));
+    assert!(matches!(contract_package, StoredValue::Package(_)));
 }

@@ -6,8 +6,8 @@ use std::{
 use serde::Serialize;
 
 use casper_types::{
-    account::AccountHash, AddressableEntity, BlockHeader, ContractHash, ContractPackageHash,
-    ContractVersion, Deploy, Package, StoredValue, Timestamp, U512,
+    account::AccountHash, AddressableEntity, BlockHeader, ContractHash, Deploy, EntityVersion,
+    Package, PackageHash, StoredValue, Timestamp, U512,
 };
 
 use super::Source;
@@ -95,14 +95,14 @@ pub(crate) enum Event {
         maybe_contract: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     },
-    /// The result of querying global state for a `ContractPackage` to verify the executable logic.
-    GetContractPackageResult {
+    /// The result of querying global state for a `Package` to verify the executable logic.
+    GetPackageResult {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_package_hash: ContractPackageHash,
-        maybe_package_version: Option<ContractVersion>,
-        maybe_contract_package: Option<Box<Package>>,
+        package_hash: PackageHash,
+        maybe_package_version: Option<EntityVersion>,
+        maybe_package: Option<Box<Package>>,
         verification_start_timestamp: Timestamp,
     },
 }
@@ -191,7 +191,7 @@ impl Display for Event {
                     block_header.state_root_hash()
                 )
             }
-            Event::GetContractPackageResult {
+            Event::GetPackageResult {
                 event_metadata,
                 block_header,
                 ..

@@ -11,8 +11,8 @@ use casper_contract::{
 use casper_types::{
     bytesrepr,
     bytesrepr::{Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    runtime_args, ApiError, CLType, CLTyped, ContractHash, ContractPackageHash, EntryPointType,
-    Key, Phase, RuntimeArgs, Tagged, URef, U512,
+    runtime_args, ApiError, CLType, CLTyped, ContractHash, EntryPointType, Key, PackageHash, Phase,
+    RuntimeArgs, Tagged, URef, U512,
 };
 
 pub const CONTRACT_PACKAGE_NAME: &str = "forwarder";
@@ -36,7 +36,7 @@ enum ContractAddressTag {
 #[derive(Debug, Copy, Clone)]
 pub enum ContractAddress {
     ContractHash(ContractHash),
-    ContractPackageHash(ContractPackageHash),
+    ContractPackageHash(PackageHash),
 }
 
 impl Tagged<u8> for ContractAddress {
@@ -85,8 +85,7 @@ impl FromBytes for ContractAddress {
                 Ok((ContractAddress::ContractHash(contract_hash), remainder))
             }
             tag if tag == ContractAddressTag::ContractPackageHash as u8 => {
-                let (contract_package_hash, remainder) =
-                    ContractPackageHash::from_bytes(remainder)?;
+                let (contract_package_hash, remainder) = PackageHash::from_bytes(remainder)?;
                 Ok((
                     ContractAddress::ContractPackageHash(contract_package_hash),
                     remainder,

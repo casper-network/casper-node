@@ -132,7 +132,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
 
                 Some(CallStackElement::StoredSession {
                     account_hash,
-                    contract_package_hash: _,
+                    package_hash: _,
                     contract_hash: _,
                 }) => {
                     if account_hash != PublicKey::System.to_account_hash()
@@ -207,7 +207,7 @@ pub trait Mint: RuntimeProvider + StorageProvider + SystemProvider {
                 }
 
                 Some(CallStackElement::StoredContract {
-                    contract_package_hash: _,
+                    package_hash: _,
                     contract_hash: _,
                 }) => {
                     if self.get_caller() != PublicKey::System.to_account_hash()

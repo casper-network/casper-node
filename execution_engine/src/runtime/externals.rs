@@ -9,10 +9,10 @@ use casper_types::{
     api_error,
     bytesrepr::{self, ToBytes},
     crypto,
-    package::{ContractPackageKind, ContractPackageStatus},
+    package::{PackageKind, PackageStatus},
     system::auction::EraInfo,
-    ApiError, ContractHash, ContractPackageHash, ContractVersion, EraId, Gas, Group, HostFunction,
-    HostFunctionCost, Key, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
+    ApiError, ContractHash, EntityVersion, EraId, Gas, Group, HostFunction, HostFunctionCost, Key,
+    PackageHash, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
     UREF_SERIALIZED_LENGTH,
 };
 
@@ -545,9 +545,9 @@ where
                     &host_function_costs.create_contract_package_at_hash,
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
-                let package_status = ContractPackageStatus::new(is_locked);
-                let (hash_addr, access_addr) = self
-                    .create_contract_package_at_hash(package_status, ContractPackageKind::Wasm)?;
+                let package_status = PackageStatus::new(is_locked);
+                let (hash_addr, access_addr) =
+                    self.create_contract_package_at_hash(package_status, PackageKind::Wasm)?;
 
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
@@ -587,7 +587,7 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: ContractPackageHash =
+                let contract_package_hash: PackageHash =
                     self.t_from_mem(package_key_ptr, package_key_size)?;
                 let label: String = self.t_from_mem(label_ptr, label_size)?;
                 let existing_urefs: BTreeSet<URef> =
@@ -641,7 +641,7 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: ContractPackageHash =
+                let contract_package_hash: PackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
                 let entry_points: EntryPoints =
                     self.t_from_mem(entry_points_ptr, entry_points_size)?;
@@ -766,9 +766,9 @@ where
                     ],
                 )?;
 
-                let contract_package_hash: ContractPackageHash =
+                let contract_package_hash: PackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
-                let contract_version: Option<ContractVersion> =
+                let contract_version: Option<EntityVersion> =
                     self.t_from_mem(contract_version_ptr, contract_package_size)?;
                 let entry_point_name: String =
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;

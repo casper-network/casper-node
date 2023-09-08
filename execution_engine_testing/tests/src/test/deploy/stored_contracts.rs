@@ -9,7 +9,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    package::{ContractVersion, CONTRACT_INITIAL_VERSION},
+    package::{EntityVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
     AddressableEntity, ApiError, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
@@ -20,7 +20,7 @@ const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const DO_NOTHING_NAME: &str = "do_nothing";
 const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";
-const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
+const INITIAL_VERSION: EntityVersion = CONTRACT_INITIAL_VERSION;
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";

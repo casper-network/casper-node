@@ -15,7 +15,7 @@ use casper_types::{
     package::CONTRACT_INITIAL_VERSION,
     runtime_args,
     system::{handle_payment, standard_payment},
-    CLType, CLTyped, ContractPackageHash, Key, Parameter, RuntimeArgs, URef, U512,
+    CLType, CLTyped, Key, PackageHash, Parameter, RuntimeArgs, URef, U512,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -104,7 +104,7 @@ pub extern "C" fn call_restricted_entry_points() {
     uncallable_contract();
 }
 
-fn create_group(package_hash: ContractPackageHash) -> URef {
+fn create_group(package_hash: PackageHash) -> URef {
     let new_uref_1 = storage::new_uref(());
     runtime::put_key("saved_uref", new_uref_1.into());
 
@@ -238,7 +238,7 @@ fn create_entry_points_1() -> EntryPoints {
     entry_points
 }
 
-fn install_version_1(contract_package_hash: ContractPackageHash, restricted_uref: URef) {
+fn install_version_1(contract_package_hash: PackageHash, restricted_uref: URef) {
     let contract_named_keys = {
         let contract_variable = storage::new_uref(0);
 

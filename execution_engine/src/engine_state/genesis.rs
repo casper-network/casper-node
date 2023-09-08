@@ -19,7 +19,7 @@ use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{ActionThresholds, NamedKeys},
     execution::Effects,
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    package::{ContractVersions, Groups, PackageKind, PackageStatus},
     system::{
         auction::{
             self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
@@ -30,11 +30,11 @@ use casper_types::{
         },
         handle_payment::{self, ACCUMULATION_PURSE_KEY},
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
-        standard_payment, SystemContractType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
+        standard_payment, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, AddressableEntity, AdministratorAccount, CLValue, Chainspec, ChainspecRegistry,
-    ContractHash, ContractPackageHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
-    FeeHandling, GenesisAccount, Key, Motes, Package, Phase, ProtocolVersion, PublicKey,
+    ContractHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId, FeeHandling,
+    GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
     RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
 };
 
@@ -594,7 +594,7 @@ where
         let system_account_addr = PublicKey::System.to_account_hash();
 
         self.store_contract(
-            ContractPackageKind::Account(system_account_addr),
+            PackageKind::Account(system_account_addr),
             NO_WASM,
             None,
             None,
@@ -660,7 +660,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            ContractPackageKind::System(SystemContractType::Mint),
+            PackageKind::System(SystemEntityType::Mint),
         )?;
 
         {
@@ -706,7 +706,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            ContractPackageKind::System(SystemContractType::HandlePayment),
+            PackageKind::System(SystemEntityType::HandlePayment),
         )?;
 
         self.store_system_contract_registry(HANDLE_PAYMENT, contract_hash)?;
@@ -971,7 +971,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            ContractPackageKind::System(SystemContractType::Auction),
+            PackageKind::System(SystemEntityType::Auction),
         )?;
 
         self.store_system_contract_registry(AUCTION, contract_hash)?;
@@ -987,7 +987,7 @@ where
         let contract_hash = self.store_system_contract(
             named_keys,
             entry_points,
-            ContractPackageKind::System(SystemContractType::HandlePayment),
+            PackageKind::System(SystemEntityType::HandlePayment),
         )?;
 
         self.store_system_contract_registry(STANDARD_PAYMENT, contract_hash)?;
@@ -1035,7 +1035,7 @@ where
             };
 
             self.store_contract(
-                ContractPackageKind::Account(account.account_hash()),
+                PackageKind::Account(account.account_hash()),
                 NO_WASM,
                 None,
                 None,
@@ -1107,7 +1107,7 @@ where
         &self,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
-        contract_package_kind: ContractPackageKind,
+        contract_package_kind: PackageKind,
     ) -> Result<ContractHash, Box<GenesisError>> {
         self.store_contract(
             contract_package_kind,
@@ -1120,7 +1120,7 @@ where
 
     fn store_contract(
         &self,
-        contract_package_kind: ContractPackageKind,
+        contract_package_kind: PackageKind,
         no_wasm: bool,
         maybe_named_keys: Option<NamedKeys>,
         maybe_entry_points: Option<EntryPoints>,
@@ -1140,7 +1140,7 @@ where
         };
 
         let contract_package_hash =
-            ContractPackageHash::new(self.address_generator.borrow_mut().new_hash_address());
+            PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
         let associated_keys = contract_package_kind.associated_keys();
@@ -1180,7 +1180,7 @@ where
                 ContractVersions::new(),
                 BTreeSet::default(),
                 Groups::default(),
-                ContractPackageStatus::default(),
+                PackageStatus::default(),
                 contract_package_kind,
             );
             contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
@@ -1196,7 +1196,7 @@ where
             .write(contract_hash.into(), StoredValue::AddressableEntity(entity));
         self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
-            StoredValue::ContractPackage(contract_package),
+            StoredValue::Package(contract_package),
         );
         if let Some(account_hash) = maybe_account_hash {
             let contract_key: Key = contract_hash.into();

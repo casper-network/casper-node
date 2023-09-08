@@ -31,17 +31,17 @@ use casper_types::{
         DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
-    package::{ContractPackageKind, ContractPackageStatus},
+    package::{PackageKind, PackageStatus},
     system::{
         self,
         auction::{self, EraInfo},
-        handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
+        handle_payment, mint, standard_payment, CallStackElement, SystemEntityType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractPackageHash,
-    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Gas,
-    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, Phase,
-    PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractVersionKey,
+    ContractVersions, ContractWasm, DeployHash, EntityVersion, Gas, GrantedAccess, Group, Groups,
+    HostFunction, HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
@@ -67,8 +67,8 @@ enum CallContractIdentifier {
         contract_hash: ContractHash,
     },
     ContractPackage {
-        contract_package_hash: ContractPackageHash,
-        version: Option<ContractVersion>,
+        contract_package_hash: PackageHash,
+        version: Option<EntityVersion>,
     },
 }
 
@@ -1060,8 +1060,8 @@ where
     /// types given in the contract header.
     pub fn call_versioned_contract(
         &mut self,
-        contract_package_hash: ContractPackageHash,
-        contract_version: Option<ContractVersion>,
+        contract_package_hash: PackageHash,
+        contract_version: Option<EntityVersion>,
         entry_point_name: String,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
@@ -1186,7 +1186,7 @@ where
             }
         };
 
-        if let ContractPackageKind::Account(_) = contract_package.get_package_kind() {
+        if let PackageKind::Account(_) = contract_package.get_package_kind() {
             return Err(Error::InvalidContext);
         }
 
@@ -1339,11 +1339,9 @@ where
 
         access_rights.extend(&extended_access_rights);
 
-        if let ContractPackageKind::System(system_contract_type) =
-            contract_package.get_package_kind()
-        {
+        if let PackageKind::System(system_contract_type) = contract_package.get_package_kind() {
             match system_contract_type {
-                SystemContractType::Mint => {
+                SystemEntityType::Mint => {
                     return self.call_host_mint(
                         entry_point.name(),
                         &context_args,
@@ -1351,7 +1349,7 @@ where
                         stack,
                     );
                 }
-                SystemContractType::HandlePayment => {
+                SystemEntityType::HandlePayment => {
                     return self.call_host_handle_payment(
                         entry_point.name(),
                         &context_args,
@@ -1359,8 +1357,8 @@ where
                         stack,
                     );
                 }
-                SystemContractType::StandardPayment => {}
-                SystemContractType::Auction => {
+                SystemEntityType::StandardPayment => {}
+                SystemEntityType::Auction => {
                     return self.call_host_auction(
                         entry_point.name(),
                         &context_args,
@@ -1478,8 +1476,8 @@ where
 
     fn call_versioned_contract_host_buffer(
         &mut self,
-        contract_package_hash: ContractPackageHash,
-        contract_version: Option<ContractVersion>,
+        contract_package_hash: PackageHash,
+        contract_version: Option<EntityVersion>,
         entry_point_name: String,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
@@ -1584,8 +1582,8 @@ where
 
     fn create_contract_package(
         &mut self,
-        is_locked: ContractPackageStatus,
-        contract_package_kind: ContractPackageKind,
+        is_locked: PackageStatus,
+        contract_package_kind: PackageKind,
     ) -> Result<(Package, URef), Error> {
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
@@ -1602,8 +1600,8 @@ where
 
     fn create_contract_package_at_hash(
         &mut self,
-        lock_status: ContractPackageStatus,
-        contract_package_kind: ContractPackageKind,
+        lock_status: PackageStatus,
+        contract_package_kind: PackageKind,
     ) -> Result<([u8; 32], [u8; 32]), Error> {
         let addr = self.context.new_hash_address()?;
         let (contract_package, access_key) =
@@ -1615,7 +1613,7 @@ where
 
     fn create_contract_user_group(
         &mut self,
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
         label: String,
         num_new_urefs: u32,
         mut existing_urefs: BTreeSet<URef>,
@@ -1687,7 +1685,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn add_contract_version(
         &mut self,
-        package_hash: ContractPackageHash,
+        package_hash: PackageHash,
         entry_points: EntryPoints,
         mut named_keys: NamedKeys,
         output_ptr: u32,
@@ -1703,7 +1701,7 @@ where
             .context
             .read_gs_typed::<Package>(&Key::from(package_hash))?;
 
-        if package.get_package_kind() != ContractPackageKind::Wasm {
+        if package.get_package_kind() != PackageKind::Wasm {
             return Err(Error::InvalidContext);
         }
 
@@ -1822,7 +1820,7 @@ where
 
     fn disable_contract_version(
         &mut self,
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
         contract_hash: ContractHash,
     ) -> Result<Result<(), ApiError>, Error> {
         let contract_package_key = contract_package_hash.into();
@@ -1847,7 +1845,7 @@ where
 
     fn enable_contract_version(
         &mut self,
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
         contract_hash: ContractHash,
     ) -> Result<Result<(), ApiError>, Error> {
         let contract_package_key = contract_package_hash.into();
@@ -2343,8 +2341,7 @@ where
                 let protocol_version = self.context.protocol_version();
                 let contract_wasm_hash = *ACCOUNT_WASM_HASH;
                 let contract_hash = ContractHash::new(self.context.new_hash_address()?);
-                let contract_package_hash =
-                    ContractPackageHash::new(self.context.new_hash_address()?);
+                let contract_package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
                 let named_keys = NamedKeys::new();
@@ -2368,8 +2365,8 @@ where
                         ContractVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
-                        ContractPackageStatus::Locked,
-                        ContractPackageKind::Account(target),
+                        PackageStatus::Locked,
+                        PackageKind::Account(target),
                     );
                     contract_package
                         .insert_contract_version(protocol_version.value().major, contract_hash);
@@ -2387,7 +2384,7 @@ where
 
                 self.context.metered_write_gs_unsafe(
                     contract_package_key,
-                    StoredValue::ContractPackage(contract_package),
+                    StoredValue::Package(contract_package),
                 )?;
 
                 let contract_by_account = CLValue::from_t(contract_key)?;
@@ -2629,12 +2626,11 @@ where
         dest_ptr: u32,
         _dest_size: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
-        let contract_hash: ContractHash = match SystemContractType::try_from(system_contract_index)
-        {
-            Ok(SystemContractType::Mint) => self.get_mint_contract()?,
-            Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract()?,
-            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract()?,
-            Ok(SystemContractType::Auction) => self.get_auction_contract()?,
+        let contract_hash: ContractHash = match SystemEntityType::try_from(system_contract_index) {
+            Ok(SystemEntityType::Mint) => self.get_mint_contract()?,
+            Ok(SystemEntityType::HandlePayment) => self.get_handle_payment_contract()?,
+            Ok(SystemEntityType::StandardPayment) => self.get_standard_payment_contract()?,
+            Ok(SystemEntityType::Auction) => self.get_auction_contract()?,
             Err(error) => return Ok(Err(error)),
         };
 
@@ -2816,7 +2812,7 @@ where
     /// Remove a user group from access to a contract
     fn remove_contract_user_group(
         &mut self,
-        package_key: ContractPackageHash,
+        package_key: PackageHash,
         label: Group,
     ) -> Result<Result<(), ApiError>, Error> {
         let mut package: Package = self.context.get_validated_package(package_key)?;
@@ -2934,8 +2930,7 @@ where
         urefs_ptr: u32,
         urefs_size: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let contract_package_hash: ContractPackageHash =
-            self.t_from_mem(package_ptr, package_size)?;
+        let contract_package_hash: PackageHash = self.t_from_mem(package_ptr, package_size)?;
         let label: String = self.t_from_mem(label_ptr, label_size)?;
         let urefs: BTreeSet<URef> = self.t_from_mem(urefs_ptr, urefs_size)?;
 
@@ -3211,14 +3206,14 @@ where
                 let mut legacy_contract_package: Package =
                     self.context.read_gs_typed(&contract_package_key)?;
                 // Update the contract package from Legacy to Wasm
-                legacy_contract_package.update_package_kind(ContractPackageKind::Wasm);
+                legacy_contract_package.update_package_kind(PackageKind::Wasm);
                 legacy_contract_package.insert_contract_version(
                     self.context.protocol_version().value().major,
                     contract_hash,
                 );
 
                 if legacy_contract_package.is_legacy() {
-                    return Err(Error::InvalidContractPackageKind(
+                    return Err(Error::InvalidPackageKind(
                         legacy_contract_package.get_package_kind(),
                     ));
                 }

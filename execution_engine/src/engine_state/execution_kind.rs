@@ -4,8 +4,8 @@ use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractPackageHash,
-    ContractVersionKey, ExecutableDeployItem, Key, Package, Phase, ProtocolVersion, StoredValue,
+    addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractVersionKey,
+    ExecutableDeployItem, Key, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
 };
 
 use crate::{
@@ -96,7 +96,7 @@ impl ExecutionKind {
                 entry_point,
                 ..
             } => {
-                let contract_package_hash: ContractPackageHash = {
+                let contract_package_hash: PackageHash = {
                     named_keys
                         .get(&name)
                         .cloned()

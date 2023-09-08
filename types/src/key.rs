@@ -36,7 +36,7 @@ use crate::{
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
-    package::ContractPackageHash,
+    package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
     DeployHash, Digest, EraId, Tagged, TransferAddr, TransferFromStrError, TRANSFER_ADDR_LENGTH,
@@ -828,8 +828,8 @@ impl From<ContractWasmHash> for Key {
     }
 }
 
-impl From<ContractPackageHash> for Key {
-    fn from(package_hash: ContractPackageHash) -> Key {
+impl From<PackageHash> for Key {
+    fn from(package_hash: PackageHash) -> Key {
         Key::Hash(package_hash.value())
     }
 }

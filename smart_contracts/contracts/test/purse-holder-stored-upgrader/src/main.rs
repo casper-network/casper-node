@@ -11,8 +11,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    addressable_entity::NamedKeys, CLType, CLValue, ContractPackageHash, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Parameter, URef,
+    addressable_entity::NamedKeys, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, PackageHash, Parameter, URef,
 };
 
 pub const METHOD_ADD: &str = "add";
@@ -50,7 +50,7 @@ pub extern "C" fn version() {
 
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_package: ContractPackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
+    let contract_package: PackageHash = runtime::get_named_arg(ARG_CONTRACT_PACKAGE);
     let _access_key: URef = runtime::get_key(ACCESS_KEY_NAME)
         .expect("should have access key")
         .into_uref()

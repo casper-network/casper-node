@@ -278,7 +278,7 @@ pub enum ApiError {
     /// assert_eq!(ApiError::from(28), ApiError::InsufficientTotalWeight);
     /// ```
     InsufficientTotalWeight,
-    /// The given `u32` doesn't map to a [`SystemContractType`](crate::system::SystemContractType).
+    /// The given `u32` doesn't map to a [`SystemContractType`](crate::system::SystemEntityType).
     /// ```
     /// # use casper_types::ApiError;
     /// assert_eq!(ApiError::from(29), ApiError::InvalidSystemContract);

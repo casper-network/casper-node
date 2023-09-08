@@ -4,8 +4,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
-    runtime_args, system::standard_payment::ARG_AMOUNT, ContractHash, ContractPackageHash,
-    RuntimeArgs,
+    runtime_args, system::standard_payment::ARG_AMOUNT, ContractHash, PackageHash, RuntimeArgs,
 };
 
 const GH_1688_REGRESSION: &str = "gh_1688_regression.wasm";
@@ -15,7 +14,7 @@ const NEW_KEY_NAME: &str = "Hello";
 const CONTRACT_PACKAGE_KEY: &str = "contract_package";
 const CONTRACT_HASH_KEY: &str = "contract_hash";
 
-fn setup() -> (LmdbWasmTestBuilder, ContractPackageHash, ContractHash) {
+fn setup() -> (LmdbWasmTestBuilder, PackageHash, ContractHash) {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
@@ -47,7 +46,7 @@ fn setup() -> (LmdbWasmTestBuilder, ContractPackageHash, ContractHash) {
 
     let contract_package_hash = contract_package_hash_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .expect("should be hash");
 
     let contract_hash = contract_hash_key
@@ -58,7 +57,7 @@ fn setup() -> (LmdbWasmTestBuilder, ContractPackageHash, ContractHash) {
     (builder, contract_package_hash, contract_hash)
 }
 
-fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> ExecuteRequest) {
+fn test(request_builder: impl FnOnce(PackageHash, ContractHash) -> ExecuteRequest) {
     let (mut builder, contract_package_hash, contract_hash) = setup();
 
     let exec_request = request_builder(contract_package_hash, contract_hash);

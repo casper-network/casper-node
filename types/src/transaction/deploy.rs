@@ -72,8 +72,8 @@ pub use error::{
     Error as DeployError, ExcessiveSizeError as DeployExcessiveSizeError,
 };
 pub use executable_deploy_item::{
-    ContractIdentifier, ContractPackageIdentifier, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
+    EntityIdentifier, ExecutableDeployItem, ExecutableDeployItemIdentifier, PackageIdentifier,
+    TransferTarget,
 };
 pub use runtime_args::RuntimeArgs;
 

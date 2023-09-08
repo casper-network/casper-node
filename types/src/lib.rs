@@ -144,8 +144,7 @@ pub use key::{
 };
 pub use motes::Motes;
 pub use package::{
-    ContractPackageHash, ContractVersion, ContractVersionKey, ContractVersions, Group, Groups,
-    Package,
+    ContractVersionKey, ContractVersions, EntityVersion, Group, Groups, Package, PackageHash,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
@@ -160,10 +159,10 @@ pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use transaction::TestTransactionV1Builder;
 pub use transaction::{
-    runtime_args, Approval, ApprovalsHash, AuctionTransactionV1, ContractIdentifier,
-    ContractPackageIdentifier, Deploy, DeployConfigurationFailure, DeployDecodeFromJsonError,
-    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
-    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1,
+    runtime_args, Approval, ApprovalsHash, AuctionTransactionV1, Deploy,
+    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
+    DeployFootprint, DeployHash, DeployHeader, DeployId, DirectCallV1, EntityIdentifier,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1, PackageIdentifier,
     PricingModeV1, Transaction, TransactionHash, TransactionV1, TransactionV1Approval,
     TransactionV1ConfigFailure, TransactionV1DecodeFromJsonError, TransactionV1Error,
     TransactionV1ExcessiveSizeError, TransactionV1Hash, TransactionV1Header, TransactionV1Kind,

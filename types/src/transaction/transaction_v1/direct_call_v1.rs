@@ -17,8 +17,8 @@ use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     system::mint::ARG_AMOUNT,
-    ContractHash, ContractIdentifier, ContractPackageHash, ContractPackageIdentifier,
-    ContractVersion, Gas, Motes, RuntimeArgs, U512,
+    ContractHash, EntityIdentifier, EntityVersion, Gas, Motes, PackageHash, PackageIdentifier,
+    RuntimeArgs, U512,
 };
 
 const STORED_CONTRACT_BY_HASH_TAG: u8 = 0;
@@ -58,9 +58,9 @@ pub enum DirectCallV1 {
     /// Stored versioned contract referenced by its hash.
     StoredVersionedContractByHash {
         /// Contract package hash.
-        hash: ContractPackageHash,
+        hash: PackageHash,
         /// Version of the contract to call; defaults to highest enabled version if unspecified.
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         /// Name of the entry point.
         entry_point: String,
         /// Runtime arguments.
@@ -72,7 +72,7 @@ pub enum DirectCallV1 {
         /// Name of the named key.
         name: String,
         /// Version of the contract to call; defaults to highest enabled version if unspecified.
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         /// Name of the entry point.
         entry_point: String,
         /// Runtime arguments.
@@ -109,8 +109,8 @@ impl DirectCallV1 {
 
     /// Returns a new `DirectCallV1::StoredVersionedContractByHash`.
     pub fn new_stored_versioned_contract_by_hash(
-        hash: ContractPackageHash,
-        version: Option<ContractVersion>,
+        hash: PackageHash,
+        version: Option<EntityVersion>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
@@ -125,7 +125,7 @@ impl DirectCallV1 {
     /// Returns a new `DirectCallV1::StoredVersionedContractByName`.
     pub fn new_stored_versioned_contract_by_name(
         name: String,
-        version: Option<ContractVersion>,
+        version: Option<EntityVersion>,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
@@ -148,32 +148,30 @@ impl DirectCallV1 {
     }
 
     /// Returns the identifier of the contract, if present.
-    pub fn contract_identifier(&self) -> Option<ContractIdentifier> {
+    pub fn contract_identifier(&self) -> Option<EntityIdentifier> {
         match self {
             DirectCallV1::StoredVersionedContractByHash { .. }
             | DirectCallV1::StoredVersionedContractByName { .. } => None,
-            DirectCallV1::StoredContractByHash { hash, .. } => {
-                Some(ContractIdentifier::Hash(*hash))
-            }
+            DirectCallV1::StoredContractByHash { hash, .. } => Some(EntityIdentifier::Hash(*hash)),
             DirectCallV1::StoredContractByName { name, .. } => {
-                Some(ContractIdentifier::Name(name.clone()))
+                Some(EntityIdentifier::Name(name.clone()))
             }
         }
     }
 
     /// Returns the identifier of the contract package, if present.
-    pub fn contract_package_identifier(&self) -> Option<ContractPackageIdentifier> {
+    pub fn contract_package_identifier(&self) -> Option<PackageIdentifier> {
         match self {
             DirectCallV1::StoredContractByHash { .. }
             | DirectCallV1::StoredContractByName { .. } => None,
             DirectCallV1::StoredVersionedContractByHash { hash, version, .. } => {
-                Some(ContractPackageIdentifier::Hash {
-                    contract_package_hash: *hash,
+                Some(PackageIdentifier::Hash {
+                    package_hash: *hash,
                     version: *version,
                 })
             }
             DirectCallV1::StoredVersionedContractByName { name, version, .. } => {
-                Some(ContractPackageIdentifier::Name {
+                Some(PackageIdentifier::Name {
                     name: name.clone(),
                     version: *version,
                 })
@@ -215,7 +213,7 @@ impl DirectCallV1 {
                 args,
             },
             2 => DirectCallV1::StoredVersionedContractByHash {
-                hash: ContractPackageHash::new(rng.gen()),
+                hash: PackageHash::new(rng.gen()),
                 version: rng.gen(),
                 entry_point,
                 args,
@@ -475,8 +473,8 @@ impl FromBytes for DirectCallV1 {
                 ))
             }
             STORED_VERSIONED_CONTRACT_BY_HASH_TAG => {
-                let (hash, remainder) = ContractPackageHash::from_bytes(remainder)?;
-                let (version, remainder) = Option::<ContractVersion>::from_bytes(remainder)?;
+                let (hash, remainder) = PackageHash::from_bytes(remainder)?;
+                let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((
@@ -491,7 +489,7 @@ impl FromBytes for DirectCallV1 {
             }
             STORED_VERSIONED_CONTRACT_BY_NAME_TAG => {
                 let (name, remainder) = String::from_bytes(remainder)?;
-                let (version, remainder) = Option::<ContractVersion>::from_bytes(remainder)?;
+                let (version, remainder) = Option::<EntityVersion>::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((

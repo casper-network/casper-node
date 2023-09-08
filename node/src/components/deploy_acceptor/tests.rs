@@ -136,15 +136,15 @@ enum Error {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ContractScenario {
+enum EntityScenario {
     Valid,
-    MissingContractAtHash,
-    MissingContractAtName,
+    MissingEntityAtHash,
+    MissingEntityAtName,
     MissingEntryPoint,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ContractPackageScenario {
+enum PackageScenario {
     Valid,
     MissingPackageAtHash,
     MissingPackageAtName,
@@ -159,10 +159,10 @@ enum TestScenario {
     FromPeerMissingAccount,
     FromPeerAccountWithInsufficientWeight,
     FromPeerAccountWithInvalidAssociatedKeys,
-    FromPeerCustomPaymentContract(ContractScenario),
-    FromPeerCustomPaymentContractPackage(ContractPackageScenario),
-    FromPeerSessionContract(ContractScenario),
-    FromPeerSessionContractPackage(ContractPackageScenario),
+    FromPeerCustomPaymentContract(EntityScenario),
+    FromPeerCustomPaymentPackage(PackageScenario),
+    FromPeerSessionContract(EntityScenario),
+    FromPeerSessionPackage(PackageScenario),
     FromClientInvalidDeploy,
     FromClientMissingAccount,
     FromClientInsufficientBalance,
@@ -171,10 +171,10 @@ enum TestScenario {
     FromClientAccountWithInsufficientWeight,
     FromClientAccountWithInvalidAssociatedKeys,
     AccountWithUnknownBalance,
-    FromClientCustomPaymentContract(ContractScenario),
-    FromClientCustomPaymentContractPackage(ContractPackageScenario),
-    FromClientSessionContract(ContractScenario),
-    FromClientSessionContractPackage(ContractPackageScenario),
+    FromClientCustomPaymentContract(EntityScenario),
+    FromClientCustomPaymentPackage(PackageScenario),
+    FromClientSessionContract(EntityScenario),
+    FromClientSessionPackage(PackageScenario),
     DeployWithNativeTransferInPayment,
     DeployWithEmptySessionModuleBytes,
     DeployWithoutPaymentAmount,
@@ -206,9 +206,9 @@ impl TestScenario {
             | TestScenario::FromPeerAccountWithInsufficientWeight
             | TestScenario::FromPeerAccountWithInvalidAssociatedKeys
             | TestScenario::FromPeerCustomPaymentContract(_)
-            | TestScenario::FromPeerCustomPaymentContractPackage(_)
+            | TestScenario::FromPeerCustomPaymentPackage(_)
             | TestScenario::FromPeerSessionContract(_)
-            | TestScenario::FromPeerSessionContractPackage(_)
+            | TestScenario::FromPeerSessionPackage(_)
             | TestScenario::ShouldAcceptExpiredDeploySentByPeer => {
                 Source::Peer(NodeId::random(rng))
             }
@@ -226,9 +226,9 @@ impl TestScenario {
             | TestScenario::DeployWithoutTransferAmount
             | TestScenario::DeployWithoutTransferTarget
             | TestScenario::FromClientCustomPaymentContract(_)
-            | TestScenario::FromClientCustomPaymentContractPackage(_)
+            | TestScenario::FromClientCustomPaymentPackage(_)
             | TestScenario::FromClientSessionContract(_)
-            | TestScenario::FromClientSessionContractPackage(_)
+            | TestScenario::FromClientSessionPackage(_)
             | TestScenario::DeployWithEmptySessionModuleBytes
             | TestScenario::DeployWithNativeTransferInPayment
             | TestScenario::ShouldNotAcceptExpiredDeploySentByClient
@@ -276,28 +276,27 @@ impl TestScenario {
             TestScenario::FromPeerCustomPaymentContract(contract_scenario)
             | TestScenario::FromClientCustomPaymentContract(contract_scenario) => {
                 match contract_scenario {
-                    ContractScenario::Valid | ContractScenario::MissingContractAtName => {
+                    EntityScenario::Valid | EntityScenario::MissingEntityAtName => {
                         Deploy::random_with_valid_custom_payment_contract_by_name(rng)
                     }
-                    ContractScenario::MissingEntryPoint => {
+                    EntityScenario::MissingEntryPoint => {
                         Deploy::random_with_missing_entry_point_in_payment_contract(rng)
                     }
-                    ContractScenario::MissingContractAtHash => {
+                    EntityScenario::MissingEntityAtHash => {
                         Deploy::random_with_missing_payment_contract_by_hash(rng)
                     }
                 }
             }
-            TestScenario::FromPeerCustomPaymentContractPackage(contract_package_scenario)
-            | TestScenario::FromClientCustomPaymentContractPackage(contract_package_scenario) => {
-                match contract_package_scenario {
-                    ContractPackageScenario::Valid
-                    | ContractPackageScenario::MissingPackageAtName => {
+            TestScenario::FromPeerCustomPaymentPackage(package_scenario)
+            | TestScenario::FromClientCustomPaymentPackage(package_scenario) => {
+                match package_scenario {
+                    PackageScenario::Valid | PackageScenario::MissingPackageAtName => {
                         Deploy::random_with_valid_custom_payment_package_by_name(rng)
                     }
-                    ContractPackageScenario::MissingPackageAtHash => {
+                    PackageScenario::MissingPackageAtHash => {
                         Deploy::random_with_missing_payment_package_by_hash(rng)
                     }
-                    ContractPackageScenario::MissingContractVersion => {
+                    PackageScenario::MissingContractVersion => {
                         Deploy::random_with_nonexistent_contract_version_in_payment_package(rng)
                     }
                 }
@@ -305,31 +304,28 @@ impl TestScenario {
             TestScenario::FromPeerSessionContract(contract_scenario)
             | TestScenario::FromClientSessionContract(contract_scenario) => match contract_scenario
             {
-                ContractScenario::Valid | ContractScenario::MissingContractAtName => {
+                EntityScenario::Valid | EntityScenario::MissingEntityAtName => {
                     Deploy::random_with_valid_session_contract_by_name(rng)
                 }
-                ContractScenario::MissingContractAtHash => {
+                EntityScenario::MissingEntityAtHash => {
                     Deploy::random_with_missing_session_contract_by_hash(rng)
                 }
-                ContractScenario::MissingEntryPoint => {
+                EntityScenario::MissingEntryPoint => {
                     Deploy::random_with_missing_entry_point_in_session_contract(rng)
                 }
             },
-            TestScenario::FromPeerSessionContractPackage(contract_package_scenario)
-            | TestScenario::FromClientSessionContractPackage(contract_package_scenario) => {
-                match contract_package_scenario {
-                    ContractPackageScenario::Valid
-                    | ContractPackageScenario::MissingPackageAtName => {
-                        Deploy::random_with_valid_session_package_by_name(rng)
-                    }
-                    ContractPackageScenario::MissingPackageAtHash => {
-                        Deploy::random_with_missing_session_package_by_hash(rng)
-                    }
-                    ContractPackageScenario::MissingContractVersion => {
-                        Deploy::random_with_nonexistent_contract_version_in_session_package(rng)
-                    }
+            TestScenario::FromPeerSessionPackage(package_scenario)
+            | TestScenario::FromClientSessionPackage(package_scenario) => match package_scenario {
+                PackageScenario::Valid | PackageScenario::MissingPackageAtName => {
+                    Deploy::random_with_valid_session_package_by_name(rng)
                 }
-            }
+                PackageScenario::MissingPackageAtHash => {
+                    Deploy::random_with_missing_session_package_by_hash(rng)
+                }
+                PackageScenario::MissingContractVersion => {
+                    Deploy::random_with_nonexistent_contract_version_in_session_package(rng)
+                }
+            },
             TestScenario::DeployWithEmptySessionModuleBytes => {
                 Deploy::random_with_empty_session_module_bytes(rng)
             }
@@ -387,20 +383,24 @@ impl TestScenario {
             | TestScenario::FromClientCustomPaymentContract(contract_scenario)
             | TestScenario::FromClientSessionContract(contract_scenario) => match contract_scenario
             {
-                ContractScenario::Valid
-                | ContractScenario::MissingContractAtName => true,
-                | ContractScenario::MissingContractAtHash
-                | ContractScenario::MissingEntryPoint => false,
+                EntityScenario::Valid
+                | EntityScenario::MissingEntityAtName => true,
+                | EntityScenario::MissingEntityAtHash
+                | EntityScenario::MissingEntryPoint => false,
             },
-            TestScenario::FromPeerCustomPaymentContractPackage(contract_package_scenario)
-            | TestScenario::FromPeerSessionContractPackage(contract_package_scenario)
-            | TestScenario::FromClientCustomPaymentContractPackage(contract_package_scenario)
-            | TestScenario::FromClientSessionContractPackage(contract_package_scenario) => {
-                match contract_package_scenario {
-                    ContractPackageScenario::Valid
-                    | ContractPackageScenario::MissingPackageAtName => true,
-                    | ContractPackageScenario::MissingPackageAtHash
-                    | ContractPackageScenario::MissingContractVersion => false,
+            TestScenario::FromPeerCustomPaymentPackage(
+                package_scenario)
+            | TestScenario::FromPeerSessionPackage(
+                package_scenario)
+            | TestScenario::FromClientCustomPaymentPackage(
+                package_scenario)
+            | TestScenario::FromClientSessionPackage(
+                package_scenario) => {
+                match package_scenario {
+                    PackageScenario::Valid
+                    | PackageScenario::MissingPackageAtName => true,
+                    | PackageScenario::MissingPackageAtHash
+                    | PackageScenario::MissingContractVersion => false,
                 }
             }
             TestScenario::ShouldAcceptDeployFromAdministrator { .. } => true,
@@ -570,22 +570,20 @@ impl reactor::Reactor for Reactor {
                             }
                         } else {
                             match self.test_scenario {
-                                TestScenario::FromPeerCustomPaymentContractPackage(
+                                TestScenario::FromPeerCustomPaymentPackage(
                                     contract_package_scenario,
                                 )
-                                | TestScenario::FromPeerSessionContractPackage(
+                                | TestScenario::FromPeerSessionPackage(contract_package_scenario)
+                                | TestScenario::FromClientCustomPaymentPackage(
                                     contract_package_scenario,
                                 )
-                                | TestScenario::FromClientCustomPaymentContractPackage(
-                                    contract_package_scenario,
-                                )
-                                | TestScenario::FromClientSessionContractPackage(
+                                | TestScenario::FromClientSessionPackage(
                                     contract_package_scenario,
                                 ) => match contract_package_scenario {
-                                    ContractPackageScenario::Valid
-                                    | ContractPackageScenario::MissingContractVersion => {
+                                    PackageScenario::Valid
+                                    | PackageScenario::MissingContractVersion => {
                                         QueryResult::Success {
-                                            value: Box::new(StoredValue::ContractPackage(
+                                            value: Box::new(StoredValue::Package(
                                                 Package::default(),
                                             )),
                                             proofs: vec![],
@@ -599,13 +597,14 @@ impl reactor::Reactor for Reactor {
                                 | TestScenario::FromClientCustomPaymentContract(
                                     contract_scenario,
                                 ) => match contract_scenario {
-                                    ContractScenario::Valid
-                                    | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::AddressableEntity(
-                                            AddressableEntity::default(),
-                                        )),
-                                        proofs: vec![],
-                                    },
+                                    EntityScenario::Valid | EntityScenario::MissingEntryPoint => {
+                                        QueryResult::Success {
+                                            value: Box::new(StoredValue::AddressableEntity(
+                                                AddressableEntity::default(),
+                                            )),
+                                            proofs: vec![],
+                                        }
+                                    }
                                     _ => QueryResult::ValueNotFound(String::new()),
                                 },
                                 _ => QueryResult::ValueNotFound(String::new()),
@@ -618,42 +617,35 @@ impl reactor::Reactor for Reactor {
                             | TestScenario::FromClientSessionContract(contract_scenario)
                             | TestScenario::FromClientCustomPaymentContract(contract_scenario) => {
                                 match contract_scenario {
-                                    ContractScenario::Valid
-                                    | ContractScenario::MissingEntryPoint => QueryResult::Success {
-                                        value: Box::new(StoredValue::AddressableEntity(
-                                            AddressableEntity::default(),
-                                        )),
-                                        proofs: vec![],
-                                    },
-                                    ContractScenario::MissingContractAtHash
-                                    | ContractScenario::MissingContractAtName => {
+                                    EntityScenario::Valid | EntityScenario::MissingEntryPoint => {
+                                        QueryResult::Success {
+                                            value: Box::new(StoredValue::AddressableEntity(
+                                                AddressableEntity::default(),
+                                            )),
+                                            proofs: vec![],
+                                        }
+                                    }
+                                    EntityScenario::MissingEntityAtHash
+                                    | EntityScenario::MissingEntityAtName => {
                                         QueryResult::ValueNotFound(String::new())
                                     }
                                 }
                             }
-                            TestScenario::FromPeerSessionContractPackage(
+                            TestScenario::FromPeerSessionPackage(contract_package_scenario)
+                            | TestScenario::FromPeerCustomPaymentPackage(
                                 contract_package_scenario,
                             )
-                            | TestScenario::FromPeerCustomPaymentContractPackage(
-                                contract_package_scenario,
-                            )
-                            | TestScenario::FromClientSessionContractPackage(
-                                contract_package_scenario,
-                            )
-                            | TestScenario::FromClientCustomPaymentContractPackage(
+                            | TestScenario::FromClientSessionPackage(contract_package_scenario)
+                            | TestScenario::FromClientCustomPaymentPackage(
                                 contract_package_scenario,
                             ) => match contract_package_scenario {
-                                ContractPackageScenario::Valid
-                                | ContractPackageScenario::MissingContractVersion => {
-                                    QueryResult::Success {
-                                        value: Box::new(StoredValue::ContractPackage(
-                                            Package::default(),
-                                        )),
-                                        proofs: vec![],
-                                    }
-                                }
-                                ContractPackageScenario::MissingPackageAtHash
-                                | ContractPackageScenario::MissingPackageAtName => {
+                                PackageScenario::Valid
+                                | PackageScenario::MissingContractVersion => QueryResult::Success {
+                                    value: Box::new(StoredValue::Package(Package::default())),
+                                    proofs: vec![],
+                                },
+                                PackageScenario::MissingPackageAtHash
+                                | PackageScenario::MissingPackageAtName => {
                                     QueryResult::ValueNotFound(String::new())
                                 }
                             },
@@ -896,13 +888,13 @@ async fn run_deploy_acceptor_without_timeout(
             | TestScenario::FromClientCustomPaymentContract(contract_scenario)
             | TestScenario::FromClientSessionContract(contract_scenario) => match contract_scenario
             {
-                ContractScenario::Valid | ContractScenario::MissingContractAtName => matches!(
+                EntityScenario::Valid | EntityScenario::MissingEntityAtName => matches!(
                     event,
                     Event::DeployAcceptorAnnouncement(
                         DeployAcceptorAnnouncement::AcceptedNewDeploy { .. }
                     )
                 ),
-                ContractScenario::MissingContractAtHash | ContractScenario::MissingEntryPoint => {
+                EntityScenario::MissingEntityAtHash | EntityScenario::MissingEntryPoint => {
                     matches!(
                         event,
                         Event::DeployAcceptorAnnouncement(
@@ -914,20 +906,19 @@ async fn run_deploy_acceptor_without_timeout(
             // Check that executable items with valid contract packages are successfully stored.
             // Conversely, ensure that invalid contract packages will raise the invalid deploy
             // announcement.
-            TestScenario::FromPeerCustomPaymentContractPackage(contract_package_scenario)
-            | TestScenario::FromPeerSessionContractPackage(contract_package_scenario)
-            | TestScenario::FromClientCustomPaymentContractPackage(contract_package_scenario)
-            | TestScenario::FromClientSessionContractPackage(contract_package_scenario) => {
+            TestScenario::FromPeerCustomPaymentPackage(contract_package_scenario)
+            | TestScenario::FromPeerSessionPackage(contract_package_scenario)
+            | TestScenario::FromClientCustomPaymentPackage(contract_package_scenario)
+            | TestScenario::FromClientSessionPackage(contract_package_scenario) => {
                 match contract_package_scenario {
-                    ContractPackageScenario::Valid
-                    | ContractPackageScenario::MissingPackageAtName => matches!(
+                    PackageScenario::Valid | PackageScenario::MissingPackageAtName => matches!(
                         event,
                         Event::DeployAcceptorAnnouncement(
                             DeployAcceptorAnnouncement::AcceptedNewDeploy { .. }
                         )
                     ),
-                    ContractPackageScenario::MissingContractVersion
-                    | ContractPackageScenario::MissingPackageAtHash => matches!(
+                    PackageScenario::MissingContractVersion
+                    | PackageScenario::MissingPackageAtHash => matches!(
                         event,
                         Event::DeployAcceptorAnnouncement(
                             DeployAcceptorAnnouncement::InvalidDeploy { .. }
@@ -1183,7 +1174,7 @@ async fn should_accept_repeated_valid_deploy_from_client() {
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_custom_payment_from_client() {
-    let test_scenario = TestScenario::FromClientCustomPaymentContract(ContractScenario::Valid);
+    let test_scenario = TestScenario::FromClientCustomPaymentContract(EntityScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
@@ -1191,7 +1182,7 @@ async fn should_accept_deploy_with_valid_custom_payment_from_client() {
 #[tokio::test]
 async fn should_accept_deploy_with_missing_custom_payment_contract_by_name_from_client() {
     let test_scenario =
-        TestScenario::FromClientCustomPaymentContract(ContractScenario::MissingContractAtName);
+        TestScenario::FromClientCustomPaymentContract(EntityScenario::MissingEntityAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
@@ -1199,12 +1190,12 @@ async fn should_accept_deploy_with_missing_custom_payment_contract_by_name_from_
 #[tokio::test]
 async fn should_reject_deploy_with_missing_custom_payment_contract_by_hash_from_client() {
     let test_scenario =
-        TestScenario::FromClientCustomPaymentContract(ContractScenario::MissingContractAtHash);
+        TestScenario::FromClientCustomPaymentContract(EntityScenario::MissingEntityAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractAtHash { .. },
+            failure: DeployParameterFailure::NonexistentEntityAtHash { .. },
             ..
         })
     ))
@@ -1213,12 +1204,12 @@ async fn should_reject_deploy_with_missing_custom_payment_contract_by_hash_from_
 #[tokio::test]
 async fn should_reject_deploy_with_missing_entry_point_custom_payment_from_client() {
     let test_scenario =
-        TestScenario::FromClientCustomPaymentContract(ContractScenario::MissingEntryPoint);
+        TestScenario::FromClientCustomPaymentContract(EntityScenario::MissingEntryPoint);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractEntryPoint { .. },
+            failure: DeployParameterFailure::NonexistentEntityEntryPoint { .. },
             ..
         })
     ))
@@ -1226,31 +1217,28 @@ async fn should_reject_deploy_with_missing_entry_point_custom_payment_from_clien
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_payment_contract_package_by_name_from_client() {
-    let test_scenario =
-        TestScenario::FromClientCustomPaymentContractPackage(ContractPackageScenario::Valid);
+    let test_scenario = TestScenario::FromClientCustomPaymentPackage(PackageScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_accept_deploy_with_missing_payment_contract_package_at_name_from_client() {
-    let test_scenario = TestScenario::FromClientCustomPaymentContractPackage(
-        ContractPackageScenario::MissingPackageAtName,
-    );
+    let test_scenario =
+        TestScenario::FromClientCustomPaymentPackage(PackageScenario::MissingPackageAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_payment_contract_package_at_hash_from_client() {
-    let test_scenario = TestScenario::FromClientCustomPaymentContractPackage(
-        ContractPackageScenario::MissingPackageAtHash,
-    );
+    let test_scenario =
+        TestScenario::FromClientCustomPaymentPackage(PackageScenario::MissingPackageAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractPackageAtHash { .. },
+            failure: DeployParameterFailure::NonexistentPackageAtHash { .. },
             ..
         })
     ))
@@ -1258,14 +1246,13 @@ async fn should_reject_deploy_with_missing_payment_contract_package_at_hash_from
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_version_in_payment_contract_package_from_client() {
-    let test_scenario = TestScenario::FromClientCustomPaymentContractPackage(
-        ContractPackageScenario::MissingContractVersion,
-    );
+    let test_scenario =
+        TestScenario::FromClientCustomPaymentPackage(PackageScenario::MissingContractVersion);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::InvalidContractAtVersion { .. },
+            failure: DeployParameterFailure::InvalidEntityAtVersion { .. },
             ..
         })
     ))
@@ -1273,7 +1260,7 @@ async fn should_reject_deploy_with_missing_version_in_payment_contract_package_f
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_session_contract_from_client() {
-    let test_scenario = TestScenario::FromClientSessionContract(ContractScenario::Valid);
+    let test_scenario = TestScenario::FromClientSessionContract(EntityScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
@@ -1281,7 +1268,7 @@ async fn should_accept_deploy_with_valid_session_contract_from_client() {
 #[tokio::test]
 async fn should_accept_deploy_with_missing_session_contract_by_name_from_client() {
     let test_scenario =
-        TestScenario::FromClientSessionContract(ContractScenario::MissingContractAtName);
+        TestScenario::FromClientSessionContract(EntityScenario::MissingEntityAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
@@ -1289,12 +1276,12 @@ async fn should_accept_deploy_with_missing_session_contract_by_name_from_client(
 #[tokio::test]
 async fn should_reject_deploy_with_missing_session_contract_by_hash_from_client() {
     let test_scenario =
-        TestScenario::FromClientSessionContract(ContractScenario::MissingContractAtHash);
+        TestScenario::FromClientSessionContract(EntityScenario::MissingEntityAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractAtHash { .. },
+            failure: DeployParameterFailure::NonexistentEntityAtHash { .. },
             ..
         })
     ))
@@ -1302,13 +1289,12 @@ async fn should_reject_deploy_with_missing_session_contract_by_hash_from_client(
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_entry_point_in_session_contract_from_client() {
-    let test_scenario =
-        TestScenario::FromClientSessionContract(ContractScenario::MissingEntryPoint);
+    let test_scenario = TestScenario::FromClientSessionContract(EntityScenario::MissingEntryPoint);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractEntryPoint { .. },
+            failure: DeployParameterFailure::NonexistentEntityEntryPoint { .. },
             ..
         })
     ))
@@ -1316,31 +1302,28 @@ async fn should_reject_deploy_with_missing_entry_point_in_session_contract_from_
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_session_contract_package_from_client() {
-    let test_scenario =
-        TestScenario::FromClientSessionContractPackage(ContractPackageScenario::Valid);
+    let test_scenario = TestScenario::FromClientSessionPackage(PackageScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_accept_deploy_with_missing_session_contract_package_at_name_from_client() {
-    let test_scenario = TestScenario::FromClientSessionContractPackage(
-        ContractPackageScenario::MissingPackageAtName,
-    );
+    let test_scenario =
+        TestScenario::FromClientSessionPackage(PackageScenario::MissingPackageAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_session_contract_package_at_hash_from_client() {
-    let test_scenario = TestScenario::FromClientSessionContractPackage(
-        ContractPackageScenario::MissingPackageAtHash,
-    );
+    let test_scenario =
+        TestScenario::FromClientSessionPackage(PackageScenario::MissingPackageAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractPackageAtHash { .. },
+            failure: DeployParameterFailure::NonexistentPackageAtHash { .. },
             ..
         })
     ))
@@ -1348,14 +1331,13 @@ async fn should_reject_deploy_with_missing_session_contract_package_at_hash_from
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_version_in_session_contract_package_from_client() {
-    let test_scenario = TestScenario::FromClientCustomPaymentContractPackage(
-        ContractPackageScenario::MissingContractVersion,
-    );
+    let test_scenario =
+        TestScenario::FromClientCustomPaymentPackage(PackageScenario::MissingContractVersion);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::InvalidContractAtVersion { .. },
+            failure: DeployParameterFailure::InvalidEntityAtVersion { .. },
             ..
         })
     ))
@@ -1363,7 +1345,7 @@ async fn should_reject_deploy_with_missing_version_in_session_contract_package_f
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_custom_payment_from_peer() {
-    let test_scenario = TestScenario::FromPeerCustomPaymentContract(ContractScenario::Valid);
+    let test_scenario = TestScenario::FromPeerCustomPaymentContract(EntityScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
@@ -1371,7 +1353,7 @@ async fn should_accept_deploy_with_valid_custom_payment_from_peer() {
 #[tokio::test]
 async fn should_accept_deploy_with_missing_custom_payment_contract_by_name_from_peer() {
     let test_scenario =
-        TestScenario::FromPeerCustomPaymentContract(ContractScenario::MissingContractAtName);
+        TestScenario::FromPeerCustomPaymentContract(EntityScenario::MissingEntityAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
@@ -1379,12 +1361,12 @@ async fn should_accept_deploy_with_missing_custom_payment_contract_by_name_from_
 #[tokio::test]
 async fn should_reject_deploy_with_missing_custom_payment_contract_by_hash_from_peer() {
     let test_scenario =
-        TestScenario::FromPeerCustomPaymentContract(ContractScenario::MissingContractAtHash);
+        TestScenario::FromPeerCustomPaymentContract(EntityScenario::MissingEntityAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractAtHash { .. },
+            failure: DeployParameterFailure::NonexistentEntityAtHash { .. },
             ..
         })
     ))
@@ -1393,12 +1375,12 @@ async fn should_reject_deploy_with_missing_custom_payment_contract_by_hash_from_
 #[tokio::test]
 async fn should_reject_deploy_with_missing_entry_point_custom_payment_from_peer() {
     let test_scenario =
-        TestScenario::FromPeerCustomPaymentContract(ContractScenario::MissingEntryPoint);
+        TestScenario::FromPeerCustomPaymentContract(EntityScenario::MissingEntryPoint);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractEntryPoint { .. },
+            failure: DeployParameterFailure::NonexistentEntityEntryPoint { .. },
             ..
         })
     ))
@@ -1406,31 +1388,28 @@ async fn should_reject_deploy_with_missing_entry_point_custom_payment_from_peer(
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_payment_contract_package_by_name_from_peer() {
-    let test_scenario =
-        TestScenario::FromPeerCustomPaymentContractPackage(ContractPackageScenario::Valid);
+    let test_scenario = TestScenario::FromPeerCustomPaymentPackage(PackageScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_accept_deploy_with_missing_payment_contract_package_at_name_from_peer() {
-    let test_scenario = TestScenario::FromPeerCustomPaymentContractPackage(
-        ContractPackageScenario::MissingPackageAtName,
-    );
+    let test_scenario =
+        TestScenario::FromPeerCustomPaymentPackage(PackageScenario::MissingPackageAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_payment_contract_package_at_hash_from_peer() {
-    let test_scenario = TestScenario::FromPeerCustomPaymentContractPackage(
-        ContractPackageScenario::MissingPackageAtHash,
-    );
+    let test_scenario =
+        TestScenario::FromPeerCustomPaymentPackage(PackageScenario::MissingPackageAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractPackageAtHash { .. },
+            failure: DeployParameterFailure::NonexistentPackageAtHash { .. },
             ..
         })
     ))
@@ -1438,14 +1417,13 @@ async fn should_reject_deploy_with_missing_payment_contract_package_at_hash_from
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_version_in_payment_contract_package_from_peer() {
-    let test_scenario = TestScenario::FromPeerCustomPaymentContractPackage(
-        ContractPackageScenario::MissingContractVersion,
-    );
+    let test_scenario =
+        TestScenario::FromPeerCustomPaymentPackage(PackageScenario::MissingContractVersion);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::InvalidContractAtVersion { .. },
+            failure: DeployParameterFailure::InvalidEntityAtVersion { .. },
             ..
         })
     ))
@@ -1453,28 +1431,26 @@ async fn should_reject_deploy_with_missing_version_in_payment_contract_package_f
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_session_contract_from_peer() {
-    let test_scenario = TestScenario::FromPeerSessionContract(ContractScenario::Valid);
+    let test_scenario = TestScenario::FromPeerSessionContract(EntityScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_accept_deploy_with_missing_session_contract_by_name_from_peer() {
-    let test_scenario =
-        TestScenario::FromPeerSessionContract(ContractScenario::MissingContractAtName);
+    let test_scenario = TestScenario::FromPeerSessionContract(EntityScenario::MissingEntityAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_session_contract_by_hash_from_peer() {
-    let test_scenario =
-        TestScenario::FromPeerSessionContract(ContractScenario::MissingContractAtHash);
+    let test_scenario = TestScenario::FromPeerSessionContract(EntityScenario::MissingEntityAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractAtHash { .. },
+            failure: DeployParameterFailure::NonexistentEntityAtHash { .. },
             ..
         })
     ))
@@ -1482,12 +1458,12 @@ async fn should_reject_deploy_with_missing_session_contract_by_hash_from_peer() 
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_entry_point_in_session_contract_from_peer() {
-    let test_scenario = TestScenario::FromPeerSessionContract(ContractScenario::MissingEntryPoint);
+    let test_scenario = TestScenario::FromPeerSessionContract(EntityScenario::MissingEntryPoint);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractEntryPoint { .. },
+            failure: DeployParameterFailure::NonexistentEntityEntryPoint { .. },
             ..
         })
     ))
@@ -1495,29 +1471,26 @@ async fn should_reject_deploy_with_missing_entry_point_in_session_contract_from_
 
 #[tokio::test]
 async fn should_accept_deploy_with_valid_session_contract_package_from_peer() {
-    let test_scenario =
-        TestScenario::FromPeerSessionContractPackage(ContractPackageScenario::Valid);
+    let test_scenario = TestScenario::FromPeerSessionPackage(PackageScenario::Valid);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_accept_deploy_with_missing_session_contract_package_at_name_from_peer() {
-    let test_scenario =
-        TestScenario::FromPeerSessionContractPackage(ContractPackageScenario::MissingPackageAtName);
+    let test_scenario = TestScenario::FromPeerSessionPackage(PackageScenario::MissingPackageAtName);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(result.is_ok())
 }
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_session_contract_package_at_hash_from_peer() {
-    let test_scenario =
-        TestScenario::FromPeerSessionContractPackage(ContractPackageScenario::MissingPackageAtHash);
+    let test_scenario = TestScenario::FromPeerSessionPackage(PackageScenario::MissingPackageAtHash);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::NonexistentContractPackageAtHash { .. },
+            failure: DeployParameterFailure::NonexistentPackageAtHash { .. },
             ..
         })
     ))
@@ -1525,14 +1498,13 @@ async fn should_reject_deploy_with_missing_session_contract_package_at_hash_from
 
 #[tokio::test]
 async fn should_reject_deploy_with_missing_version_in_session_contract_package_from_peer() {
-    let test_scenario = TestScenario::FromPeerCustomPaymentContractPackage(
-        ContractPackageScenario::MissingContractVersion,
-    );
+    let test_scenario =
+        TestScenario::FromPeerCustomPaymentPackage(PackageScenario::MissingContractVersion);
     let result = run_deploy_acceptor(test_scenario).await;
     assert!(matches!(
         result,
         Err(super::Error::InvalidDeployParameters {
-            failure: DeployParameterFailure::InvalidContractAtVersion { .. },
+            failure: DeployParameterFailure::InvalidEntityAtVersion { .. },
             ..
         })
     ))

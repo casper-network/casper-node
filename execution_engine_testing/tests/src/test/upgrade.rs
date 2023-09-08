@@ -7,11 +7,11 @@ use casper_execution_engine::{engine_state, execution::Error};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
-    package::{ContractVersion, CONTRACT_INITIAL_VERSION},
+    package::{EntityVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
     testing::TestRng,
-    CLValue, ContractHash, ContractPackageHash, EraId, ProtocolVersion, PublicKey, RuntimeArgs,
+    CLValue, ContractHash, EraId, PackageHash, ProtocolVersion, PublicKey, RuntimeArgs,
     StoredValue, U512,
 };
 
@@ -27,8 +27,8 @@ const ENTRY_FUNCTION_NAME: &str = "delegate";
 const DO_NOTHING_CONTRACT_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
 const RET_UREF_NAME: &str = "ret_uref";
-const INITIAL_VERSION: ContractVersion = CONTRACT_INITIAL_VERSION;
-const UPGRADED_VERSION: ContractVersion = INITIAL_VERSION + 1;
+const INITIAL_VERSION: EntityVersion = CONTRACT_INITIAL_VERSION;
+const UPGRADED_VERSION: EntityVersion = INITIAL_VERSION + 1;
 const PURSE_NAME_ARG_NAME: &str = "purse_name";
 const PURSE_1: &str = "purse_1";
 const METHOD_REMOVE: &str = "remove";
@@ -283,7 +283,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
         "version uref should exist on install"
     );
 
-    let stored_package_hash: ContractPackageHash = account
+    let stored_package_hash: PackageHash = account
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored uref")
@@ -624,7 +624,7 @@ fn should_fail_upgrade_for_locked_contract() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let stored_package_hash: ContractPackageHash = account
+    let stored_package_hash: PackageHash = account
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
@@ -633,7 +633,7 @@ fn should_fail_upgrade_for_locked_contract() {
         .into();
 
     let contract_package = builder
-        .get_contract_package(stored_package_hash)
+        .get_package(stored_package_hash)
         .expect("should get package hash");
 
     // Ensure that our current package is indeed locked.
@@ -716,7 +716,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
         .as_uref()
         .expect("must convert to URef");
 
-    let stored_package_hash: ContractPackageHash = entity
+    let stored_package_hash: PackageHash = entity
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
@@ -725,7 +725,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
         .into();
 
     let contract_package = builder
-        .get_contract_package(stored_package_hash)
+        .get_package(stored_package_hash)
         .expect("should get package hash");
 
     assert!(!contract_package.is_locked());
@@ -857,7 +857,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         .get(PACKAGE_HASH_KEY_NAME)
         .expect("must have named key entry for package hash")
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .expect("must get package hash");
 
     let upgrade_threshold_contract_entity = builder
@@ -1117,8 +1117,8 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
 enum InvocationType {
     ByContractHash,
     ByContractName,
-    ByPackageHash(Option<ContractVersion>),
-    ByPackageName(Option<ContractVersion>),
+    ByPackageHash(Option<EntityVersion>),
+    ByPackageName(Option<EntityVersion>),
 }
 
 fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
@@ -1157,7 +1157,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 .get(HASH_KEY_NAME)
                 .expect("must have package named key entry")
                 .into_hash()
-                .map(ContractPackageHash::new)
+                .map(PackageHash::new)
                 .unwrap();
 
             ExecuteRequestBuilder::versioned_contract_call_by_hash(

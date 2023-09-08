@@ -54,9 +54,9 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
-    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Motes, Package, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
+    AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractWasm,
+    DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes,
+    Package, PackageHash, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
     TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
@@ -1180,16 +1180,13 @@ where
         }
     }
 
-    /// Queries for a contract package by `ContractPackageHash`.
-    pub fn get_contract_package(
-        &self,
-        contract_package_hash: ContractPackageHash,
-    ) -> Option<Package> {
+    /// Queries for a contract package by `PackageHash`.
+    pub fn get_package(&self, package_hash: PackageHash) -> Option<Package> {
         let contract_value: StoredValue = self
-            .query(None, contract_package_hash.into(), &[])
+            .query(None, package_hash.into(), &[])
             .expect("should have package value");
 
-        if let StoredValue::ContractPackage(package) = contract_value {
+        if let StoredValue::Package(package) = contract_value {
             Some(package)
         } else {
             None

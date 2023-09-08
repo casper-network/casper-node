@@ -31,7 +31,7 @@ enum Tag {
     Account = 1,
     ContractWasm = 2,
     Contract = 3,
-    ContractPackage = 4,
+    Package = 4,
     Transfer = 5,
     DeployInfo = 6,
     EraInfo = 7,
@@ -61,7 +61,7 @@ pub enum StoredValue {
     /// A contract.
     Contract(Contract),
     /// A `Package`.
-    ContractPackage(Package),
+    Package(Package),
     /// A `Transfer`.
     Transfer(Transfer),
     /// Info about a deploy.
@@ -113,10 +113,10 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`Package`] if this is a `ContractPackage` variant.
-    pub fn as_contract_package(&self) -> Option<&Package> {
+    /// Returns a wrapped [`Package`] if this is a `Package` variant.
+    pub fn as_package(&self) -> Option<&Package> {
         match self {
-            StoredValue::ContractPackage(contract_package) => Some(contract_package),
+            StoredValue::Package(package) => Some(package),
             _ => None,
         }
     }
@@ -170,7 +170,7 @@ impl StoredValue {
             StoredValue::Account(_) => "Account".to_string(),
             StoredValue::ContractWasm(_) => "ContractWasm".to_string(),
             StoredValue::Contract(_) => "Contract".to_string(),
-            StoredValue::ContractPackage(_) => "ContractPackage".to_string(),
+            StoredValue::Package(_) => "Package".to_string(),
             StoredValue::Transfer(_) => "Transfer".to_string(),
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
@@ -188,7 +188,7 @@ impl StoredValue {
             StoredValue::Account(_) => Tag::Account,
             StoredValue::ContractWasm(_) => Tag::ContractWasm,
             StoredValue::Contract(_) => Tag::Contract,
-            StoredValue::ContractPackage(_) => Tag::ContractPackage,
+            StoredValue::Package(_) => Tag::Package,
             StoredValue::Transfer(_) => Tag::Transfer,
             StoredValue::DeployInfo(_) => Tag::DeployInfo,
             StoredValue::EraInfo(_) => Tag::EraInfo,
@@ -247,7 +247,7 @@ impl From<AddressableEntity> for StoredValue {
 }
 impl From<Package> for StoredValue {
     fn from(value: Package) -> StoredValue {
-        StoredValue::ContractPackage(value)
+        StoredValue::Package(value)
     }
 }
 
@@ -270,7 +270,7 @@ impl TryFrom<StoredValue> for CLValue {
         let type_name = stored_value.type_name();
         match stored_value {
             StoredValue::CLValue(cl_value) => Ok(cl_value),
-            StoredValue::ContractPackage(contract_package) => Ok(CLValue::from_t(contract_package)
+            StoredValue::Package(contract_package) => Ok(CLValue::from_t(contract_package)
                 .map_err(|_error| TypeMismatch::new("ContractPackage".to_string(), type_name))?),
             _ => Err(TypeMismatch::new("CLValue".to_string(), type_name)),
         }
@@ -324,7 +324,7 @@ impl TryFrom<StoredValue> for Package {
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
         match stored_value {
-            StoredValue::ContractPackage(contract_package) => Ok(contract_package),
+            StoredValue::Package(contract_package) => Ok(contract_package),
             _ => Err(TypeMismatch::new(
                 "ContractPackage".to_string(),
                 stored_value.type_name(),
@@ -419,9 +419,7 @@ impl ToBytes for StoredValue {
                 StoredValue::Account(account) => account.serialized_length(),
                 StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
                 StoredValue::Contract(contract_header) => contract_header.serialized_length(),
-                StoredValue::ContractPackage(contract_package) => {
-                    contract_package.serialized_length()
-                }
+                StoredValue::Package(contract_package) => contract_package.serialized_length(),
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
@@ -440,9 +438,7 @@ impl ToBytes for StoredValue {
             StoredValue::Account(account) => account.write_bytes(writer)?,
             StoredValue::ContractWasm(contract_wasm) => contract_wasm.write_bytes(writer)?,
             StoredValue::Contract(contract_header) => contract_header.write_bytes(writer)?,
-            StoredValue::ContractPackage(contract_package) => {
-                contract_package.write_bytes(writer)?
-            }
+            StoredValue::Package(contract_package) => contract_package.write_bytes(writer)?,
             StoredValue::Transfer(transfer) => transfer.write_bytes(writer)?,
             StoredValue::DeployInfo(deploy_info) => deploy_info.write_bytes(writer)?,
             StoredValue::EraInfo(era_info) => era_info.write_bytes(writer)?,
@@ -469,9 +465,9 @@ impl FromBytes for StoredValue {
                     (StoredValue::ContractWasm(contract_wasm), remainder)
                 })
             }
-            tag if tag == Tag::ContractPackage as u8 => {
+            tag if tag == Tag::Package as u8 => {
                 Package::from_bytes(remainder).map(|(contract_package, remainder)| {
-                    (StoredValue::ContractPackage(contract_package), remainder)
+                    (StoredValue::Package(contract_package), remainder)
                 })
             }
             tag if tag == Tag::Contract as u8 => Contract::from_bytes(remainder)
@@ -573,7 +569,7 @@ mod serde_helpers {
                 StoredValue::Account(payload) => BinarySerHelper::Account(payload),
                 StoredValue::ContractWasm(payload) => BinarySerHelper::ContractWasm(payload),
                 StoredValue::Contract(payload) => BinarySerHelper::Contract(payload),
-                StoredValue::ContractPackage(payload) => BinarySerHelper::ContractPackage(payload),
+                StoredValue::Package(payload) => BinarySerHelper::ContractPackage(payload),
                 StoredValue::Transfer(payload) => BinarySerHelper::Transfer(payload),
                 StoredValue::DeployInfo(payload) => BinarySerHelper::DeployInfo(payload),
                 StoredValue::EraInfo(payload) => BinarySerHelper::EraInfo(payload),
@@ -595,9 +591,7 @@ mod serde_helpers {
                 BinaryDeserHelper::Account(payload) => StoredValue::Account(payload),
                 BinaryDeserHelper::ContractWasm(payload) => StoredValue::ContractWasm(payload),
                 BinaryDeserHelper::Contract(payload) => StoredValue::Contract(payload),
-                BinaryDeserHelper::ContractPackage(payload) => {
-                    StoredValue::ContractPackage(payload)
-                }
+                BinaryDeserHelper::ContractPackage(payload) => StoredValue::Package(payload),
                 BinaryDeserHelper::Transfer(payload) => StoredValue::Transfer(payload),
                 BinaryDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
                 BinaryDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),

@@ -12,7 +12,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, ContractHash, NamedKeys, Weight},
     execution::{Effects, Transform, TransformKind},
     gens::*,
-    package::ContractPackageHash,
+    package::PackageHash,
     AccessRights, AddressableEntity, CLValue, Digest, EntryPoints, HashAddr, Key, KeyTag,
     ProtocolVersion, StoredValue, URef, U256, U512,
 };
@@ -188,7 +188,7 @@ fn tracking_copy_add_named_key() {
     // DB now holds an `Account` so that we can test adding a `NamedKey`
     let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
     let contract = AddressableEntity::new(
-        ContractPackageHash::new([3u8; 32]),
+        PackageHash::new([3u8; 32]),
         *ACCOUNT_WASM_HASH,
         NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
@@ -391,7 +391,7 @@ proptest! {
         let purse = URef::new([0u8; 32], AccessRights::READ_ADD_WRITE);
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let account = AddressableEntity::new(
-            ContractPackageHash::new([1u8;32]),
+            PackageHash::new([1u8;32]),
             *ACCOUNT_WASM_HASH,
             named_keys,
             EntryPoints::new_with_default_entry_point(),
@@ -596,7 +596,7 @@ fn validate_query_proof_should_work() {
     let account_key = Key::Account(account_hash);
 
     let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
-        ContractPackageHash::new([20; 32]),
+        PackageHash::new([20; 32]),
         *ACCOUNT_WASM_HASH,
         NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
@@ -641,7 +641,7 @@ fn validate_query_proof_should_work() {
 
     let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
     let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
-        ContractPackageHash::new([21; 32]),
+        PackageHash::new([21; 32]),
         *ACCOUNT_WASM_HASH,
         named_keys,
         EntryPoints::new_with_default_entry_point(),

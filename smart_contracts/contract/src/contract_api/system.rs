@@ -8,7 +8,7 @@ use casper_types::{
     api_error, bytesrepr,
     system::{
         auction::{self, EraInfo},
-        SystemContractType,
+        SystemEntityType,
     },
     ApiError, ContractHash, EraId, HashAddr, PublicKey, TransferResult, TransferredTo, URef, U512,
     UREF_SERIALIZED_LENGTH,
@@ -20,7 +20,7 @@ use crate::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 
-fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
+fn get_system_contract(system_contract: SystemEntityType) -> ContractHash {
     let system_contract_index = system_contract.into();
     let contract_hash: ContractHash = {
         let result = {
@@ -47,28 +47,28 @@ fn get_system_contract(system_contract: SystemContractType) -> ContractHash {
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_mint() -> ContractHash {
-    get_system_contract(SystemContractType::Mint)
+    get_system_contract(SystemEntityType::Mint)
 }
 
 /// Returns a read-only pointer to the Handle Payment contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_handle_payment() -> ContractHash {
-    get_system_contract(SystemContractType::HandlePayment)
+    get_system_contract(SystemEntityType::HandlePayment)
 }
 
 /// Returns a read-only pointer to the Standard Payment contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with an appropriate [`ApiError`].
 pub fn get_standard_payment() -> ContractHash {
-    get_system_contract(SystemContractType::StandardPayment)
+    get_system_contract(SystemEntityType::StandardPayment)
 }
 
 /// Returns a read-only pointer to the Auction contract.
 ///
 /// Any failure will trigger [`revert`](runtime::revert) with appropriate [`ApiError`].
 pub fn get_auction() -> ContractHash {
-    get_system_contract(SystemContractType::Auction)
+    get_system_contract(SystemEntityType::Auction)
 }
 
 /// Creates a new empty purse and returns its [`URef`].

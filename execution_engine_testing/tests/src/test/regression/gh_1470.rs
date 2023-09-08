@@ -12,8 +12,8 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
-    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
-    ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
+    AccessRights, CLTyped, CLValue, ContractHash, Digest, EraId, Key, PackageHash, ProtocolVersion,
+    RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
 use crate::lmdb_fixture;
@@ -133,7 +133,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .unwrap();
     let contract_package_hash = contract_package_hash_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
@@ -337,7 +337,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .unwrap();
     let contract_package_hash = contract_package_hash_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
@@ -403,7 +403,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .unwrap();
     let contract_package_hash = contract_package_hash_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
@@ -469,7 +469,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .unwrap();
     let contract_package_hash = contract_package_hash_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {
@@ -575,7 +575,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .unwrap();
     let contract_package_hash = contract_package_hash_key
         .into_hash()
-        .map(ContractPackageHash::new)
+        .map(PackageHash::new)
         .unwrap();
 
     let call_contract_request = {

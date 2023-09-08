@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::engine_state::{Error as CoreError, ExecError, ExecuteRequest};
 use casper_types::{
     runtime_args, system::CallStackElement, AddressableEntity, CLValue, ContractHash,
-    ContractPackageHash, EntryPointType, HashAddr, Key, StoredValue, U512,
+    EntryPointType, HashAddr, Key, PackageHash, StoredValue, U512,
 };
 
 use get_call_stack_recursive_subcall::{
@@ -32,7 +32,7 @@ fn stored_session(contract_hash: ContractHash) -> Call {
     }
 }
 
-fn stored_versioned_session(contract_package_hash: ContractPackageHash) -> Call {
+fn stored_versioned_session(contract_package_hash: PackageHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractPackageHash(contract_package_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_SESSION.to_string(),
@@ -48,7 +48,7 @@ fn stored_contract(contract_hash: ContractHash) -> Call {
     }
 }
 
-fn stored_versioned_contract(contract_package_hash: ContractPackageHash) -> Call {
+fn stored_versioned_contract(contract_package_hash: PackageHash) -> Call {
     Call {
         contract_address: ContractAddress::ContractPackageHash(contract_package_hash),
         target_method: CONTRACT_FORWARDER_ENTRYPOINT_CONTRACT.to_string(),
@@ -155,7 +155,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
             .unwrap();
 
         let contract_package = match value {
-            StoredValue::ContractPackage(package) => package,
+            StoredValue::Package(package) => package,
             _ => panic!("unreachable"),
         };
 
@@ -295,7 +295,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                     ..
                 }),
                 CallStackElement::StoredContract {
-                    contract_package_hash,
+                    package_hash: contract_package_hash,
                     ..
                 },
             ) if *entry_point_type == EntryPointType::Contract
@@ -322,7 +322,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                 }),
                 CallStackElement::StoredSession {
                     account_hash,
-                    contract_package_hash,
+                    package_hash: contract_package_hash,
                     ..
                 },
             ) if *entry_point_type == EntryPointType::Session

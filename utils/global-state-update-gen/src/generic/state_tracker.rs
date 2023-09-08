@@ -9,10 +9,10 @@ use rand::Rng;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
+    package::{ContractVersions, Groups, PackageKind, PackageStatus},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasmHash,
-    EntryPoints, Key, Package, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractWasmHash, EntryPoints, Key,
+    Package, PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use super::{config::Transfer, state_reader::StateReader};
@@ -165,7 +165,7 @@ impl<T: StateReader> StateTracker<T> {
         let mut rng = rand::thread_rng();
 
         let contract_hash = ContractHash::new(rng.gen());
-        let contract_package_hash = ContractPackageHash::new(rng.gen());
+        let contract_package_hash = PackageHash::new(rng.gen());
         let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
@@ -186,15 +186,15 @@ impl<T: StateReader> StateTracker<T> {
             ContractVersions::default(),
             BTreeSet::default(),
             Groups::default(),
-            ContractPackageStatus::Locked,
-            ContractPackageKind::Account(account_hash),
+            PackageStatus::Locked,
+            PackageKind::Account(account_hash),
         );
 
         contract_package
             .insert_contract_version(self.protocol_version.value().major, contract_hash);
         self.write_entry(
             contract_package_hash.into(),
-            StoredValue::ContractPackage(contract_package.clone()),
+            StoredValue::Package(contract_package.clone()),
         );
 
         self.write_entry(

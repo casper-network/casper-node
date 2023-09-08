@@ -3,9 +3,9 @@ use std::{collections::BTreeSet, convert::TryInto};
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
 use casper_types::{
     account::AccountHash,
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
-    ContractWasmHash, EntryPoints, Key, Motes, Package, Phase, ProtocolVersion, StoredValue,
+    package::{ContractVersions, Groups, PackageKind, PackageStatus},
+    AccessRights, AddressableEntity, CLValue, ContractHash, ContractWasm, ContractWasmHash,
+    EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
     StoredValueTypeMismatch, URef,
 };
 
@@ -77,7 +77,7 @@ pub trait TrackingCopyExt<R> {
     /// Gets a contract package by Key.
     fn get_contract_package(
         &mut self,
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
     ) -> Result<Package, Self::Error>;
 
     /// Gets the system contract registry.
@@ -133,7 +133,7 @@ where
 
                 let contract_wasm_hash = *ACCOUNT_WASM_HASH;
                 let contract_hash = ContractHash::new(generator.new_hash_address());
-                let contract_package_hash = ContractPackageHash::new(generator.new_hash_address());
+                let contract_package_hash = PackageHash::new(generator.new_hash_address());
 
                 let entry_points = EntryPoints::new();
 
@@ -156,8 +156,8 @@ where
                         ContractVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
-                        ContractPackageStatus::Locked,
-                        ContractPackageKind::Account(account_hash),
+                        PackageStatus::Locked,
+                        PackageKind::Account(account_hash),
                     );
                     contract_package
                         .insert_contract_version(protocol_version.value().major, contract_hash);
@@ -312,11 +312,11 @@ where
 
     fn get_contract_package(
         &mut self,
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
     ) -> Result<Package, Self::Error> {
         let key = contract_package_hash.into();
         match self.read(&key).map_err(Into::into)? {
-            Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package),
+            Some(StoredValue::Package(contract_package)) => Ok(contract_package),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
             )),

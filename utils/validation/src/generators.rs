@@ -9,15 +9,15 @@ use casper_types::{
         AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
     addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
-    package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups, Package},
+    package::{ContractVersions, Groups, Package, PackageKind, PackageStatus},
     system::auction::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
     },
-    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractPackageHash, ContractVersionKey,
-    ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Group, Key, Parameter, ProtocolVersion, PublicKey,
-    SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    AccessRights, CLType, CLTyped, CLValue, ContractHash, ContractVersionKey, ContractWasm,
+    ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -368,7 +368,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         };
 
         let entity = AddressableEntity::new(
-            ContractPackageHash::new([100; 32]),
+            PackageHash::new([100; 32]),
             ContractWasmHash::new([101; 32]),
             contract_named_keys,
             entry_points,
@@ -400,18 +400,18 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             BTreeSet::from_iter(vec![URef::new([55; 32], AccessRights::READ)]),
         );
 
-        let contract_package = Package::new(
+        let package = Package::new(
             URef::new([39; 32], AccessRights::READ),
             active_versions,
             disabled_versions,
             groups,
-            ContractPackageStatus::Locked,
-            ContractPackageKind::Wasm,
+            PackageStatus::Locked,
+            PackageKind::Wasm,
         );
 
         stored_value.insert(
-            "ContractPackage".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::ContractPackage(contract_package).into()])?,
+            "Package".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::Package(package).into()])?,
         );
 
         stored_value.insert(

@@ -52,7 +52,7 @@ use crate::{
     contract_wasm::ContractWasmHash,
     contracts::Contract,
     uref::{self, URef},
-    AccessRights, CLType, CLTyped, ContextAccessRights, ContractPackageHash, Group, HashAddr, Key,
+    AccessRights, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key, PackageHash,
     ProtocolVersion, KEY_HASH_LENGTH,
 };
 
@@ -613,7 +613,7 @@ impl KeyValueJsonSchema for EntryPointLabels {
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct AddressableEntity {
-    contract_package_hash: ContractPackageHash,
+    contract_package_hash: PackageHash,
     contract_wasm_hash: ContractWasmHash,
     named_keys: NamedKeys,
     entry_points: EntryPoints,
@@ -625,7 +625,7 @@ pub struct AddressableEntity {
 
 impl From<AddressableEntity>
     for (
-        ContractPackageHash,
+        PackageHash,
         ContractWasmHash,
         NamedKeys,
         EntryPoints,
@@ -653,7 +653,7 @@ impl AddressableEntity {
     /// `AddressableEntity` constructor.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        contract_package_hash: ContractPackageHash,
+        contract_package_hash: PackageHash,
         contract_wasm_hash: ContractWasmHash,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
@@ -675,7 +675,7 @@ impl AddressableEntity {
     }
 
     /// Hash for accessing contract package
-    pub fn contract_package_hash(&self) -> ContractPackageHash {
+    pub fn contract_package_hash(&self) -> PackageHash {
         self.contract_package_hash
     }
 
@@ -967,7 +967,7 @@ impl ToBytes for AddressableEntity {
 
 impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        let (contract_package_hash, bytes) = ContractPackageHash::from_bytes(bytes)?;
+        let (contract_package_hash, bytes) = PackageHash::from_bytes(bytes)?;
         let (contract_wasm_hash, bytes) = ContractWasmHash::from_bytes(bytes)?;
         let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
         let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
@@ -1024,7 +1024,7 @@ impl From<Contract> for AddressableEntity {
 impl From<Account> for AddressableEntity {
     fn from(value: Account) -> Self {
         AddressableEntity::new(
-            ContractPackageHash::default(),
+            PackageHash::default(),
             ContractWasmHash::new([0u8; 32]),
             value.named_keys().clone(),
             EntryPoints::new(),
@@ -1468,7 +1468,7 @@ mod tests {
         named_keys.insert("d".to_string(), Key::URef(uref));
         let associated_keys = AssociatedKeys::new(AccountHash::new([254; 32]), Weight::new(1));
         let contract = AddressableEntity::new(
-            ContractPackageHash::new([254; 32]),
+            PackageHash::new([254; 32]),
             ContractWasmHash::new([253; 32]),
             named_keys,
             EntryPoints::new_with_default_entry_point(),

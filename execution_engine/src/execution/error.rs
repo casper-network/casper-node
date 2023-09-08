@@ -7,9 +7,9 @@ use casper_types::{
     addressable_entity::{AddKeyFailure, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure},
     bytesrepr,
     execution::TransformError,
-    package::ContractPackageKind,
-    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
+    package::PackageKind,
+    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractVersionKey,
+    ContractWasmHash, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -121,7 +121,7 @@ pub enum Error {
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
-    NoActiveContractVersions(ContractPackageHash),
+    NoActiveContractVersions(PackageHash),
     /// Invalid contract version supplied.
     #[error("Invalid contract version: {}", _0)]
     InvalidContractVersion(ContractVersionKey),
@@ -142,10 +142,10 @@ pub enum Error {
     UnexpectedStoredValueVariant,
     /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
-    LockedContract(ContractPackageHash),
+    LockedContract(PackageHash),
     /// Unable to find a contract package by a specified hash address.
-    #[error("Invalid contract package: {}", _0)]
-    InvalidContractPackage(ContractPackageHash),
+    #[error("Invalid package: {}", _0)]
+    InvalidPackage(PackageHash),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
     InvalidContract(ContractHash),
@@ -187,7 +187,7 @@ pub enum Error {
     UnexpectedKeyVariant(Key),
     /// Invalid Contract package kind.
     #[error("Invalid contract package kind: {0}")]
-    InvalidContractPackageKind(ContractPackageKind),
+    InvalidPackageKind(PackageKind),
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,

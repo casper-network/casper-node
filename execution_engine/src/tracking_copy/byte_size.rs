@@ -30,9 +30,7 @@ impl ByteSize for StoredValue {
                 StoredValue::AddressableEntity(contract_header) => {
                     contract_header.serialized_length()
                 }
-                StoredValue::ContractPackage(contract_package) => {
-                    contract_package.serialized_length()
-                }
+                StoredValue::Package(contract_package) => contract_package.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),

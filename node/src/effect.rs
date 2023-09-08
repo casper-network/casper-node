@@ -1947,8 +1947,8 @@ impl<REv> EffectBuilder<REv> {
         }
     }
 
-    /// Retrieves an `ContractPackage` from global state if present.
-    pub(crate) async fn get_contract_package_for_validation(
+    /// Retrieves an `Package` from global state if present.
+    pub(crate) async fn get_package_for_validation(
         self,
         state_root_hash: Digest,
         query_key: Key,
@@ -1960,7 +1960,7 @@ impl<REv> EffectBuilder<REv> {
         let query_request = QueryRequest::new(state_root_hash, query_key, path);
         match self.query_global_state(query_request).await {
             Ok(QueryResult::Success { value, .. }) => {
-                value.as_contract_package().map(|pkg| Box::new(pkg.clone()))
+                value.as_package().map(|pkg| Box::new(pkg.clone()))
             }
             Ok(_) | Err(_) => None,
         }

@@ -536,7 +536,7 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                         return Ok(query.into_not_found_result(&msg_prefix));
                     }
                 }
-                StoredValue::ContractPackage(_) => {
+                StoredValue::Package(_) => {
                     return Ok(query.into_not_found_result("ContractPackage value found."));
                 }
                 StoredValue::ContractWasm(_) => {

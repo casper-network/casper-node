@@ -23,12 +23,12 @@ use casper_types::{
     },
     bytesrepr::ToBytes,
     execution::Effects,
-    package::ContractPackageKind,
+    package::PackageKind,
     system::auction::{BidKind, EraInfo},
     AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
-    Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr,
-    URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package, PackageHash,
+    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
+    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -67,7 +67,7 @@ pub struct RuntimeContext<'a, R> {
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
     entity_address: Key,
-    package_kind: ContractPackageKind,
+    package_kind: PackageKind,
     account_hash: AccountHash,
 }
 
@@ -86,7 +86,7 @@ where
         entity_address: Key,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
-        package_kind: ContractPackageKind,
+        package_kind: PackageKind,
         account_hash: AccountHash,
         address_generator: Rc<RefCell<AddressGenerator>>,
         tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
@@ -211,7 +211,7 @@ where
     }
 
     /// Returns the package kind associated with the current context.
-    pub fn get_package_kind(&self) -> ContractPackageKind {
+    pub fn get_package_kind(&self) -> PackageKind {
         self.package_kind.clone()
     }
 
@@ -713,7 +713,7 @@ where
                 .keys()
                 .try_for_each(|key| self.validate_key(key)),
             // TODO: anything to validate here?
-            StoredValue::ContractPackage(_) => Ok(()),
+            StoredValue::Package(_) => Ok(()),
             StoredValue::Transfer(_) => Ok(()),
             StoredValue::DeployInfo(_) => Ok(()),
             StoredValue::EraInfo(_) => Ok(()),
@@ -1209,7 +1209,7 @@ where
     /// Gets given contract package with its access_key validated against current context.
     pub(crate) fn get_validated_package(
         &mut self,
-        package_hash: ContractPackageHash,
+        package_hash: PackageHash,
     ) -> Result<Package, Error> {
         let package_hash_key = Key::from(package_hash);
         self.validate_key(&package_hash_key)?;
