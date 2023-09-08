@@ -152,7 +152,7 @@ fn should_install_and_use_factory_pattern() {
         .named_keys()
         .get(NEW_COUNTER_1_NAME)
         .expect("new counter should exist")
-        .into_contract_hash()
+        .into_entity_hash()
         .unwrap();
 
     let new_counter_1_contract = builder
@@ -163,7 +163,7 @@ fn should_install_and_use_factory_pattern() {
         .named_keys()
         .get(NEW_COUNTER_2_NAME)
         .expect("new counter should exist")
-        .into_contract_hash()
+        .into_entity_hash()
         .unwrap();
 
     let _new_counter_2_contract = builder
@@ -231,5 +231,5 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .get("factory_hash")
         .expect("should have factory hash");
 
-    (builder, contract_hash_key.into_contract_hash().unwrap())
+    (builder, contract_hash_key.into_entity_hash().unwrap())
 }

@@ -96,10 +96,8 @@ pub(crate) enum DeployParameterFailure {
     #[error("account with hash {account_hash} does not exist")]
     NonexistentAccount { account_hash: AccountHash },
     /// Nonexistent contract at hash.
-    #[error("contract at {contract_hash} does not exist")]
-    NonexistentEntityAtHash {
-        contract_hash: AddressableEntityHash,
-    },
+    #[error("addressable entity at {entity_hash} does not exist")]
+    NonexistentEntityAtHash { entity_hash: AddressableEntityHash },
     /// Nonexistent contract entrypoint.
     #[error("entity does not have {entry_point}")]
     NonexistentEntityEntryPoint { entry_point: String },
@@ -628,7 +626,7 @@ impl DeployAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Name(_))
+            | ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Name(_))
             | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => self
                 .verify_session_logic(
                     effect_builder,
@@ -636,8 +634,10 @@ impl DeployAcceptor {
                     block_header,
                     verification_start_timestamp,
                 ),
-            ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Hash(contract_hash)) => {
-                let query_key = Key::from(contract_hash);
+            ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
+                entity_hash,
+            )) => {
+                let query_key = Key::from(entity_hash);
                 let path = vec![];
                 effect_builder
                     .get_contract_for_validation(*block_header.state_root_hash(), query_key, path)
@@ -645,7 +645,7 @@ impl DeployAcceptor {
                         event_metadata,
                         block_header,
                         is_payment: true,
-                        contract_hash,
+                        contract_hash: entity_hash,
                         maybe_contract,
                         verification_start_timestamp,
                     })
@@ -727,14 +727,16 @@ impl DeployAcceptor {
             // validation).
             ExecutableDeployItemIdentifier::Module
             | ExecutableDeployItemIdentifier::Transfer
-            | ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Name(_))
+            | ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Name(_))
             | ExecutableDeployItemIdentifier::Package(PackageIdentifier::Name { .. }) => self
                 .validate_deploy_cryptography(
                     effect_builder,
                     event_metadata,
                     verification_start_timestamp,
                 ),
-            ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Hash(contract_hash)) => {
+            ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
+                contract_hash,
+            )) => {
                 let query_key = Key::from(contract_hash);
                 let path = vec![];
                 effect_builder
@@ -818,7 +820,9 @@ impl DeployAcceptor {
         debug!(?contract_hash, "nonexistent contract with hash");
         let error = Error::parameter_failure(
             &block_header,
-            DeployParameterFailure::NonexistentEntityAtHash { contract_hash },
+            DeployParameterFailure::NonexistentEntityAtHash {
+                entity_hash: contract_hash,
+            },
         );
         self.handle_invalid_deploy_result(
             effect_builder,

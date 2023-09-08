@@ -458,9 +458,9 @@ proptest! {
         account_named_keys.insert(contract_name, contract_key);
 
 
-        let contract_hash = AddressableEntityHash::new([10;32]);
-        let new_contract_key: Key = contract_hash.into();
-        let account_value = CLValue::from_t(new_contract_key).unwrap();
+        let entity_hash = AddressableEntityHash::new([10;32]);
+        let new_entity_key: Key = entity_hash.into();
+        let account_value = CLValue::from_t(new_entity_key).unwrap();
         let account_key = Key::Account(address);
 
         let value = dictionary::handle_stored_value_into(k, v.clone()).unwrap();
@@ -591,9 +591,9 @@ fn validate_query_proof_should_work() {
     // create account
     let account_hash = AccountHash::new([3; 32]);
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
-    let account_contract_hash = AddressableEntityHash::new([30; 32]);
-    let account_contract_key: Key = account_contract_hash.into();
-    let cl_value = CLValue::from_t(account_contract_key).unwrap();
+    let account_entity_hash = AddressableEntityHash::new([30; 32]);
+    let account_entity_key: Key = account_entity_hash.into();
+    let cl_value = CLValue::from_t(account_entity_key).unwrap();
     let account_value = StoredValue::CLValue(cl_value);
     let account_key = Key::Account(account_hash);
 
@@ -638,11 +638,11 @@ fn validate_query_proof_should_work() {
         tmp
     };
 
-    let main_contract_hash = AddressableEntityHash::new([81; 32]);
-    let main_contract_key: Key = main_contract_hash.into();
+    let main_entity_hash = AddressableEntityHash::new([81; 32]);
+    let main_entity_key: Key = main_entity_hash.into();
 
-    let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
-    let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
+    let cl_value_2 = CLValue::from_t(main_entity_key).unwrap();
+    let main_entity = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([21; 32]),
         *ACCOUNT_WASM_HASH,
         named_keys,
@@ -664,9 +664,9 @@ fn validate_query_proof_should_work() {
     // persist them
     let (global_state, root_hash, _tempdir) = state::lmdb::make_temporary_global_state([
         (contract_key, contract_value.to_owned()),
-        (account_contract_key, account_contract.to_owned()),
+        (account_entity_key, account_contract.to_owned()),
         (account_key, account_value.to_owned()),
-        (main_contract_key, main_contract.to_owned()),
+        (main_entity_key, main_entity.to_owned()),
         (main_account_key, main_account_value.to_owned()),
         (uref_key, uref_value),
     ]);
@@ -681,7 +681,7 @@ fn validate_query_proof_should_work() {
     let path = &[contract_name, account_name];
 
     let result = tracking_copy
-        .query(&EngineConfig::default(), main_contract_key, path)
+        .query(&EngineConfig::default(), main_entity_key, path)
         .expect("should query");
 
     let proofs = if let TrackingCopyQueryResult::Success { proofs, .. } = result {
@@ -694,7 +694,7 @@ fn validate_query_proof_should_work() {
     tracking_copy::validate_query_proof(
         &root_hash,
         &proofs,
-        &main_contract_key,
+        &main_entity_key,
         path,
         &account_value,
     )
@@ -706,7 +706,7 @@ fn validate_query_proof_should_work() {
         tracking_copy::validate_query_proof(
             &root_hash,
             &proofs,
-            &main_contract_key,
+            &main_entity_key,
             &[],
             &account_value
         ),
@@ -718,7 +718,7 @@ fn validate_query_proof_should_work() {
         tracking_copy::validate_query_proof(
             &root_hash,
             &proofs,
-            &main_contract_key,
+            &main_entity_key,
             path,
             &main_account_value
         ),
@@ -742,7 +742,7 @@ fn validate_query_proof_should_work() {
         tracking_copy::validate_query_proof(
             &Digest::hash([]),
             &proofs,
-            &main_contract_key,
+            &main_entity_key,
             path,
             &account_value
         ),
@@ -754,7 +754,7 @@ fn validate_query_proof_should_work() {
         tracking_copy::validate_query_proof(
             &root_hash,
             &proofs,
-            &main_contract_key,
+            &main_entity_key,
             &[
                 "a non-existent path key 1".to_string(),
                 "a non-existent path key 2".to_string()
@@ -785,7 +785,7 @@ fn validate_query_proof_should_work() {
                 misfit_proof.to_owned(),
                 proofs[2].to_owned()
             ],
-            &main_contract_key,
+            &main_entity_key,
             path,
             &account_contract
         ),
@@ -824,7 +824,7 @@ fn validate_query_proof_should_work() {
         state::lmdb::make_temporary_global_state([
             (account_key, account_value.to_owned()),
             (contract_key, contract_value),
-            (main_contract_key, main_contract),
+            (main_entity_key, main_entity),
             (main_account_key, main_account_value),
         ]);
 
@@ -836,7 +836,7 @@ fn validate_query_proof_should_work() {
     let misfit_tracking_copy = TrackingCopy::new(misfit_view);
 
     let misfit_result = misfit_tracking_copy
-        .query(&EngineConfig::default(), main_contract_key, path)
+        .query(&EngineConfig::default(), main_entity_key, path)
         .expect("should query");
 
     let misfit_proof = if let TrackingCopyQueryResult::Success { proofs, .. } = misfit_result {
@@ -850,7 +850,7 @@ fn validate_query_proof_should_work() {
         tracking_copy::validate_query_proof(
             &root_hash,
             &[proofs[0].to_owned(), misfit_proof, proofs[2].to_owned()],
-            &main_contract_key,
+            &main_entity_key,
             path,
             &account_value
         ),

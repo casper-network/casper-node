@@ -69,7 +69,7 @@ fn new_tracking_copy(
 
 fn new_addressable_entity_with_purse(
     account_hash: AccountHash,
-    contract_hash: AddressableEntityHash,
+    entity_hash: AddressableEntityHash,
     purse: [u8; 32],
     named_keys: NamedKeys,
 ) -> (Key, Key, AddressableEntity) {
@@ -85,17 +85,17 @@ fn new_addressable_entity_with_purse(
         Default::default(),
     );
     let account_key = Key::Account(account_hash);
-    let contract_key = contract_hash.into();
+    let contract_key = entity_hash.into();
 
     (account_key, contract_key, entity)
 }
 
 fn new_addressable_entity(
     account_hash: AccountHash,
-    contract_hash: AddressableEntityHash,
+    entity_hash: AddressableEntityHash,
     named_keys: NamedKeys,
 ) -> (Key, Key, AddressableEntity) {
-    new_addressable_entity_with_purse(account_hash, contract_hash, [0; 32], named_keys)
+    new_addressable_entity_with_purse(account_hash, entity_hash, [0; 32], named_keys)
 }
 
 // create random account key.
@@ -205,16 +205,16 @@ where
         .expect("should create secret key");
     let public_key = PublicKey::from(&secret_key);
     let account_hash = public_key.to_account_hash();
-    let contract_hash = AddressableEntityHash::new([10u8; 32]);
+    let entity_hash = AddressableEntityHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
     let (_, entity_key, addressable_entity) = new_addressable_entity(
         public_key.to_account_hash(),
-        contract_hash,
+        entity_hash,
         named_keys.clone(),
     );
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
-    let access_rights = addressable_entity.extract_access_rights(contract_hash);
+    let access_rights = addressable_entity.extract_access_rights(entity_hash);
     let (runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
         account_hash,
@@ -462,9 +462,9 @@ fn contract_key_addable_valid() {
 #[test]
 fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (_, entity_key, entity) =
-        new_addressable_entity(account_hash, contract_hash, NamedKeys::new());
+        new_addressable_entity(account_hash, entity_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
     let mut address_generator = AddressGenerator::new(&DEPLOY_HASH, PHASE);
     let mut rng = rand::thread_rng();
@@ -887,13 +887,13 @@ fn remove_uref_works() {
     let uref_name = "Foo".to_owned();
     let uref_key = create_uref_as_key(&mut address_generator, AccessRights::READ);
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(uref_name.clone(), uref_key);
     let (_, entity_key, addressable_entity) =
-        new_addressable_entity(account_hash, contract_hash, named_keys.clone());
+        new_addressable_entity(account_hash, entity_hash, named_keys.clone());
 
-    let access_rights = addressable_entity.extract_access_rights(contract_hash);
+    let access_rights = addressable_entity.extract_access_rights(entity_hash);
 
     let (mut runtime_context, _tempdir) = new_runtime_context(
         &addressable_entity,
@@ -918,7 +918,7 @@ fn remove_uref_works() {
     assert!(!entity.named_keys().contains(&uref_name));
     // The next time the account is used, the access right is gone for the removed
     // named key.
-    let next_session_access_rights = entity.extract_access_rights(contract_hash);
+    let next_session_access_rights = entity.extract_access_rights(entity_hash);
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);
     let (runtime_context, _tempdir) = new_runtime_context(
         &entity,
@@ -936,11 +936,11 @@ fn an_accounts_access_rights_should_include_main_purse() {
     let test_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
     // All other access rights except for main purse are extracted from named keys.
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let named_keys = NamedKeys::new();
     let (_base_key, _, entity) = new_addressable_entity_with_purse(
         account_hash,
-        contract_hash,
+        entity_hash,
         test_main_purse.addr(),
         named_keys,
     );
@@ -948,7 +948,7 @@ fn an_accounts_access_rights_should_include_main_purse() {
         entity.named_keys().is_empty(),
         "Named keys does not contain main purse"
     );
-    let access_rights = entity.extract_access_rights(contract_hash);
+    let access_rights = entity.extract_access_rights(entity_hash);
     assert!(
         access_rights.has_access_rights_to_uref(&test_main_purse),
         "Main purse should be included in access rights"
@@ -965,15 +965,15 @@ fn validate_valid_purse_of_an_account() {
 
     let deploy_hash = [1u8; 32];
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = AddressableEntityHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (base_key, _, entity) = new_addressable_entity_with_purse(
         account_hash,
-        contract_hash,
+        entity_hash,
         test_main_purse.addr(),
         named_keys.clone(),
     );
 
-    let mut access_rights = entity.extract_access_rights(contract_hash);
+    let mut access_rights = entity.extract_access_rights(entity_hash);
     access_rights.extend(&[test_main_purse]);
 
     let address_generator = AddressGenerator::new(&deploy_hash, Phase::Session);

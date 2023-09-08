@@ -475,12 +475,12 @@ where
 
     /// Checks if a [`Key`] is a system contract.
     fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
-        let contract_hash = match key.into_hash() {
-            Some(contract_hash_bytes) => AddressableEntityHash::new(contract_hash_bytes),
+        let entity_hash = match key.into_hash() {
+            Some(entity_hash_bytes) => AddressableEntityHash::new(entity_hash_bytes),
             None => return Ok(false),
         };
 
-        self.context.is_system_contract(&contract_hash)
+        self.context.is_system_addressable_entity(&entity_hash)
     }
 
     fn get_named_argument<T: FromBytes + CLTyped>(
@@ -1240,7 +1240,7 @@ where
             .administrative_accounts()
             .is_empty()
             && !contract_package.is_contract_enabled(&contract_hash)
-            && !self.context.is_system_contract(&contract_hash)?
+            && !self.context.is_system_addressable_entity(&contract_hash)?
         {
             return Err(Error::DisabledContract(contract_hash));
         }
@@ -2342,15 +2342,15 @@ where
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
                 let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-                let contract_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
-                let contract_package_hash = PackageHash::new(self.context.new_hash_address()?);
+                let entity_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
+                let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
                 let associated_keys = AssociatedKeys::new(target, Weight::new(1));
                 let named_keys = NamedKeys::new();
                 let entry_points = EntryPoints::new();
 
-                let contract = AddressableEntity::new(
-                    contract_package_hash,
+                let entity = AddressableEntity::new(
+                    package_hash,
                     contract_wasm_hash,
                     named_keys,
                     entry_points,
@@ -2371,18 +2371,18 @@ where
                         PackageKind::Account(target),
                     );
                     contract_package
-                        .insert_contract_version(protocol_version.value().major, contract_hash);
+                        .insert_contract_version(protocol_version.value().major, entity_hash);
                     contract_package
                 };
 
-                let contract_key: Key = contract_hash.into();
+                let contract_key: Key = entity_hash.into();
 
                 self.context.metered_write_gs_unsafe(
                     contract_key,
-                    StoredValue::AddressableEntity(contract),
+                    StoredValue::AddressableEntity(entity),
                 )?;
 
-                let contract_package_key: Key = contract_package_hash.into();
+                let contract_package_key: Key = package_hash.into();
 
                 self.context.metered_write_gs_unsafe(
                     contract_package_key,
@@ -2457,13 +2457,13 @@ where
             }
             Some(StoredValue::CLValue(account)) => {
                 // Attenuate the target main purse
-                let contract_key = CLValue::into_t::<Key>(account)?;
-                let contract_hash = if let Some(contract_hash) =
-                    contract_key.into_hash().map(AddressableEntityHash::new)
+                let entity_key = CLValue::into_t::<Key>(account)?;
+                let contract_hash = if let Some(entity_hash) =
+                    entity_key.into_hash().map(AddressableEntityHash::new)
                 {
-                    contract_hash
+                    entity_hash
                 } else {
-                    return Err(Error::UnexpectedKeyVariant(contract_key));
+                    return Err(Error::UnexpectedKeyVariant(entity_key));
                 };
                 let target_uref = if let Some(StoredValue::AddressableEntity(contract)) =
                     self.context.read_gs(&contract_hash.into())?
@@ -3142,7 +3142,7 @@ where
             }
             CallStackElement::StoredSession { contract_hash, .. }
             | CallStackElement::StoredContract { contract_hash, .. } => {
-                Ok(self.context.is_system_contract(contract_hash)?)
+                Ok(self.context.is_system_addressable_entity(contract_hash)?)
             }
         }
     }

@@ -61,7 +61,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .contains(dictionary::MALICIOUS_KEY_NAME));
     assert!(contract.named_keys().contains(dictionary::DICTIONARY_REF));
 
-    let contract_hash = contract
+    let entity_hash = contract
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
@@ -69,7 +69,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .map(AddressableEntityHash::new)
         .expect("should have hash");
 
-    (builder, contract_hash)
+    (builder, entity_hash)
 }
 
 fn query_dictionary_item(
@@ -87,14 +87,14 @@ fn query_dictionary_item(
             }
             let stored_value = builder.query(None, key, &[])?;
             if let StoredValue::CLValue(cl_value) = stored_value {
-                let contract_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
+                let entity_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
                     .expect("must convert to contract hash")
                     .into_hash()
                     .map(AddressableEntityHash::new)
                     .expect("must convert to contract hash");
                 return query_dictionary_item(
                     builder,
-                    contract_hash.into(),
+                    entity_hash.into(),
                     dictionary_name,
                     dictionary_item_key,
                 );
@@ -586,13 +586,15 @@ fn should_query_dictionary_items_with_test_builder() {
     let default_account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let contract_hash = default_account
+
+    let entity_hash = default_account
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .expect("should have contract")
         .into_hash()
         .map(AddressableEntityHash::new)
         .expect("should have hash");
+
     let dictionary_uref = default_account
         .named_keys()
         .get(dictionary::DICTIONARY_REF)
@@ -632,7 +634,7 @@ fn should_query_dictionary_items_with_test_builder() {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
             &builder,
-            Key::from(contract_hash),
+            Key::from(entity_hash),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
         )

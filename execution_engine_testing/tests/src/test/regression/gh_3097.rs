@@ -5,7 +5,7 @@ use casper_engine_test_support::{
 use casper_types::{
     runtime_args, AddressableEntityHash, ContractVersionKey, PackageHash, RuntimeArgs,
 };
-use gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME;
+use gh_1470_regression::PACKAGE_HASH_NAME;
 
 const GH_3097_REGRESSION_WASM: &str = "gh_3097_regression.wasm";
 const GH_3097_REGRESSION_CALL_WASM: &str = "gh_3097_regression_call.wasm";
@@ -67,7 +67,7 @@ fn should_run_regression() {
 
     let direct_call_latest_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_PACKAGE_HASH_NAME,
+        PACKAGE_HASH_NAME,
         None,
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
@@ -76,7 +76,7 @@ fn should_run_regression() {
 
     let direct_call_v2_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_PACKAGE_HASH_NAME,
+        PACKAGE_HASH_NAME,
         Some(2),
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),
@@ -85,7 +85,7 @@ fn should_run_regression() {
 
     let direct_call_v1_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
         *DEFAULT_ACCOUNT_ADDR,
-        CONTRACT_PACKAGE_HASH_NAME,
+        PACKAGE_HASH_NAME,
         Some(1),
         DO_SOMETHING_ENTRYPOINT,
         RuntimeArgs::new(),

@@ -231,8 +231,8 @@ where
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
         let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-        let contract_hash = AddressableEntityHash::new(address_generator.new_hash_address());
-        let contract_package_hash = PackageHash::new(address_generator.new_hash_address());
+        let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
+        let package_hash = PackageHash::new(address_generator.new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
 
@@ -259,7 +259,7 @@ where
         };
 
         let contract = AddressableEntity::new(
-            contract_package_hash,
+            package_hash,
             contract_wasm_hash,
             NamedKeys::new(),
             EntryPoints::new(),
@@ -281,7 +281,7 @@ where
                 PackageKind::Account(account_hash),
             );
             contract_package
-                .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
+                .insert_contract_version(self.new_protocol_version.value().major, entity_hash);
             contract_package
         };
 
@@ -289,16 +289,14 @@ where
             contract_wasm_hash.into(),
             StoredValue::ContractWasm(contract_wasm),
         );
-        self.tracking_copy.borrow_mut().write(
-            contract_hash.into(),
-            StoredValue::AddressableEntity(contract),
-        );
-        self.tracking_copy.borrow_mut().write(
-            contract_package_hash.into(),
-            StoredValue::Package(contract_package),
-        );
+        self.tracking_copy
+            .borrow_mut()
+            .write(entity_hash.into(), StoredValue::AddressableEntity(contract));
+        self.tracking_copy
+            .borrow_mut()
+            .write(package_hash.into(), StoredValue::Package(contract_package));
 
-        let contract_key: Key = contract_hash.into();
+        let contract_key: Key = entity_hash.into();
         let contract_by_account = CLValue::from_t(contract_key)
             .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
 

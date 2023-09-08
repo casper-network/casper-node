@@ -593,7 +593,7 @@ where
     fn setup_system_account(&mut self) -> Result<(), Box<GenesisError>> {
         let system_account_addr = PublicKey::System.to_account_hash();
 
-        self.store_contract(
+        self.store_addressable_entity(
             PackageKind::Account(system_account_addr),
             NO_WASM,
             None,
@@ -1037,7 +1037,7 @@ where
                 _ => self.create_purse(account_starting_balance)?,
             };
 
-            self.store_contract(
+            self.store_addressable_entity(
                 PackageKind::Account(account.account_hash()),
                 NO_WASM,
                 None,
@@ -1112,7 +1112,7 @@ where
         entry_points: EntryPoints,
         contract_package_kind: PackageKind,
     ) -> Result<AddressableEntityHash, Box<GenesisError>> {
-        self.store_contract(
+        self.store_addressable_entity(
             contract_package_kind,
             NO_WASM,
             Some(named_keys),
@@ -1121,9 +1121,9 @@ where
         )
     }
 
-    fn store_contract(
+    fn store_addressable_entity(
         &self,
-        contract_package_kind: PackageKind,
+        package_kind: PackageKind,
         no_wasm: bool,
         maybe_named_keys: Option<NamedKeys>,
         maybe_entry_points: Option<EntryPoints>,
@@ -1135,7 +1135,7 @@ where
         } else {
             ContractWasmHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
-        let contract_hash = if contract_package_kind.is_system_account() {
+        let entity_hash = if package_kind.is_system_account() {
             let entity_hash_addr = PublicKey::System.to_account_hash().value();
             AddressableEntityHash::new(entity_hash_addr)
         } else {
@@ -1146,8 +1146,8 @@ where
             PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
-        let associated_keys = contract_package_kind.associated_keys();
-        let maybe_account_hash = contract_package_kind.maybe_account_hash();
+        let associated_keys = package_kind.associated_keys();
+        let maybe_account_hash = package_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();
         let entry_points = match maybe_entry_points {
             Some(entry_points) => entry_points,
@@ -1184,9 +1184,9 @@ where
                 BTreeSet::default(),
                 Groups::default(),
                 PackageStatus::default(),
-                contract_package_kind,
+                package_kind,
             );
-            contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
+            contract_package.insert_contract_version(protocol_version.value().major, entity_hash);
             contract_package
         };
 
@@ -1196,13 +1196,13 @@ where
         );
         self.tracking_copy
             .borrow_mut()
-            .write(contract_hash.into(), StoredValue::AddressableEntity(entity));
+            .write(entity_hash.into(), StoredValue::AddressableEntity(entity));
         self.tracking_copy.borrow_mut().write(
             contract_package_hash.into(),
             StoredValue::Package(contract_package),
         );
         if let Some(account_hash) = maybe_account_hash {
-            let contract_key: Key = contract_hash.into();
+            let contract_key: Key = entity_hash.into();
             let contract_by_account = CLValue::from_t(contract_key)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
 
@@ -1212,7 +1212,7 @@ where
             );
         }
 
-        Ok(contract_hash)
+        Ok(entity_hash)
     }
 
     fn store_system_contract_registry(

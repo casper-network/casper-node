@@ -12,7 +12,7 @@ use casper_types::{
 };
 use gh_1470_regression::{
     Arg1Type, Arg2Type, Arg3Type, Arg4Type, Arg5Type, ARG1, ARG2, ARG3, ARG4, ARG5,
-    CONTRACT_HASH_NAME, CONTRACT_PACKAGE_HASH_NAME, GROUP_LABEL, GROUP_UREF_NAME,
+    CONTRACT_HASH_NAME, GROUP_LABEL, GROUP_UREF_NAME, PACKAGE_HASH_NAME,
     RESTRICTED_DO_NOTHING_ENTRYPOINT, RESTRICTED_WITH_EXTRA_ARG_ENTRYPOINT,
 };
 
@@ -81,5 +81,5 @@ pub extern "C" fn call() {
         storage::add_contract_version(contract_package_hash, entry_points, named_keys);
 
     runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
-    runtime::put_key(CONTRACT_PACKAGE_HASH_NAME, contract_package_hash.into());
+    runtime::put_key(PACKAGE_HASH_NAME, contract_package_hash.into());
 }

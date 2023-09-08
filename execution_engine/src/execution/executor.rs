@@ -103,7 +103,7 @@ impl Executor {
                 runtime.execute_module_bytes(&module_bytes, stack)
             }
             ExecutionKind::Contract {
-                contract_hash,
+                entity_hash: contract_hash,
                 entry_point_name,
             } => {
                 // These args are passed through here as they are required to construct the new

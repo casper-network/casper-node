@@ -600,7 +600,7 @@ impl Key {
 
     /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::Hash`], otherwise returns
     /// `None`.
-    pub fn into_contract_hash(self) -> Option<AddressableEntityHash> {
+    pub fn into_entity_hash(self) -> Option<AddressableEntityHash> {
         let hash_addr = self.into_hash()?;
         Some(AddressableEntityHash::new(hash_addr))
     }
@@ -817,8 +817,8 @@ impl From<TransferAddr> for Key {
 }
 
 impl From<AddressableEntityHash> for Key {
-    fn from(contract_hash: AddressableEntityHash) -> Key {
-        Key::Hash(contract_hash.value())
+    fn from(entity_hash: AddressableEntityHash) -> Key {
+        Key::Hash(entity_hash.value())
     }
 }
 

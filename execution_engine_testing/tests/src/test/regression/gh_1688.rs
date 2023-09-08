@@ -12,7 +12,7 @@ const GH_1688_REGRESSION: &str = "gh_1688_regression.wasm";
 
 const METHOD_PUT_KEY: &str = "put_key";
 const NEW_KEY_NAME: &str = "Hello";
-const CONTRACT_PACKAGE_KEY: &str = "contract_package";
+const PACKAGE_KEY: &str = "contract_package";
 const CONTRACT_HASH_KEY: &str = "contract_hash";
 
 fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
@@ -35,27 +35,27 @@ fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .unwrap();
 
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(CONTRACT_PACKAGE_KEY)
+        .get(PACKAGE_KEY)
         .expect("should have package hash");
 
-    let contract_hash_key = account
+    let entity_hash_key = account
         .named_keys()
         .get(CONTRACT_HASH_KEY)
         .expect("should have hash");
 
-    let contract_package_hash = contract_package_hash_key
+    let contract_package_hash = package_hash_key
         .into_hash()
         .map(PackageHash::new)
         .expect("should be hash");
 
-    let contract_hash = contract_hash_key
+    let entity_hash = entity_hash_key
         .into_hash()
         .map(AddressableEntityHash::new)
         .expect("should be hash");
 
-    (builder, contract_package_hash, contract_hash)
+    (builder, contract_package_hash, entity_hash)
 }
 
 fn test(request_builder: impl FnOnce(PackageHash, AddressableEntityHash) -> ExecuteRequest) {
@@ -113,7 +113,7 @@ fn should_run_gh_1688_regression_stored_versioned_contract_by_name() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
-                CONTRACT_PACKAGE_KEY,
+                PACKAGE_KEY,
                 None,
                 METHOD_PUT_KEY,
                 RuntimeArgs::default(),

@@ -873,8 +873,8 @@ where
         }
     }
 
-    /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(
+    /// Checks if we are calling a system addressable entity.
+    pub(crate) fn is_system_addressable_entity(
         &self,
         contract_hash: &AddressableEntityHash,
     ) -> Result<bool, Error> {
@@ -886,8 +886,8 @@ where
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
         if let Some(base_key) = self.get_entity_address().into_hash() {
-            let contract_hash = AddressableEntityHash::new(base_key);
-            if self.is_system_contract(&contract_hash)? {
+            let entity_hash = AddressableEntityHash::new(base_key);
+            if self.is_system_addressable_entity(&entity_hash)? {
                 // Don't charge storage used while executing a system contract.
                 return Ok(());
             }

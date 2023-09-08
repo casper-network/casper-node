@@ -13,7 +13,7 @@ use casper_types::{
 // test constants.
 use super::{
     faucet_test_helpers::{
-        get_available_amount, get_faucet_contract_hash, get_faucet_purse, get_remaining_requests,
+        get_available_amount, get_faucet_entity_hash, get_faucet_purse, get_remaining_requests,
         query_stored_value, FaucetDeployHelper, FaucetInstallSessionRequestBuilder,
         FundAccountRequestBuilder,
     },
@@ -390,7 +390,7 @@ fn should_not_fund_once_exhausted() {
 
     helper.query_and_set_faucet_contract_hash(&builder);
 
-    let faucet_contract_hash = get_faucet_contract_hash(&builder, installer_account);
+    let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
 
@@ -578,7 +578,7 @@ fn should_allow_installer_to_fund_freely() {
 
     helper.query_and_set_faucet_contract_hash(&builder);
 
-    let faucet_contract_hash = get_faucet_contract_hash(&builder, installer_account);
+    let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
@@ -967,7 +967,7 @@ fn faucet_costs() {
 
     let faucet_call_by_installer_cost = builder.last_exec_gas_cost();
 
-    let faucet_contract_hash = get_faucet_contract_hash(&builder, installer_account);
+    let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
 
     let faucet_call_by_user_request = {
         let deploy_item = DeployItemBuilder::new()

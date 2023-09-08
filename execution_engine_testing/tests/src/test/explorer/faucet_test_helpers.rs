@@ -383,7 +383,7 @@ pub fn query_stored_value<T: CLTyped + FromBytes>(
         .expect("must get value")
 }
 
-pub fn get_faucet_contract_hash(
+pub fn get_faucet_entity_hash(
     builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
 ) -> AddressableEntityHash {
@@ -397,17 +397,17 @@ pub fn get_faucet_contract_hash(
         .expect("failed to find faucet contract")
 }
 
-pub fn get_faucet_contract(
+pub fn get_faucet_entity(
     builder: &LmdbWasmTestBuilder,
     installer_account: AccountHash,
 ) -> AddressableEntity {
     builder
-        .get_addressable_entity(get_faucet_contract_hash(builder, installer_account))
+        .get_addressable_entity(get_faucet_entity_hash(builder, installer_account))
         .expect("failed to find faucet contract")
 }
 
 pub fn get_faucet_purse(builder: &LmdbWasmTestBuilder, installer_account: AccountHash) -> URef {
-    get_faucet_contract(builder, installer_account)
+    get_faucet_entity(builder, installer_account)
         .named_keys()
         .get(FAUCET_PURSE_NAMED_KEY)
         .cloned()
@@ -516,7 +516,7 @@ impl FaucetDeployHelper {
         &mut self,
         builder: &LmdbWasmTestBuilder,
     ) -> AddressableEntityHash {
-        let contract_hash = get_faucet_contract_hash(builder, self.installer_account());
+        let contract_hash = get_faucet_entity_hash(builder, self.installer_account());
         self.faucet_contract_hash = Some(contract_hash);
 
         contract_hash

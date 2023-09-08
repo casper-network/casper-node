@@ -15,7 +15,7 @@ const HASH_KEY_NAME: &str = "contract_own_funds_hash";
 const ARG_AMOUNT: &str = "amount";
 
 fn get_payment_purse() -> URef {
-    let contract_hash = get_contract_hash_name();
+    let contract_hash = get_entity_hash_name();
     runtime::call_contract(
         contract_hash,
         GET_PAYMENT_PURSE_NAME,
@@ -23,7 +23,7 @@ fn get_payment_purse() -> URef {
     )
 }
 
-fn get_contract_hash_name() -> AddressableEntityHash {
+fn get_entity_hash_name() -> AddressableEntityHash {
     runtime::get_key(HASH_KEY_NAME)
         .and_then(Key::into_hash)
         .map(AddressableEntityHash::new)

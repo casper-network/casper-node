@@ -35,11 +35,11 @@ const ACCOUNT_2_BOND: u64 = 200_000_000;
 
 fn get_named_key(
     builder: &mut LmdbWasmTestBuilder,
-    contract_hash: AddressableEntityHash,
+    entity_hash: AddressableEntityHash,
     name: &str,
 ) -> Key {
     *builder
-        .get_addressable_entity(contract_hash)
+        .get_addressable_entity(entity_hash)
         .expect("should have contract")
         .named_keys()
         .get(name)

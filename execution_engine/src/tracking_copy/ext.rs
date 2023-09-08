@@ -75,10 +75,7 @@ pub trait TrackingCopyExt<R> {
     ) -> Result<AddressableEntity, Self::Error>;
 
     /// Gets a contract package by Key.
-    fn get_contract_package(
-        &mut self,
-        contract_package_hash: PackageHash,
-    ) -> Result<Package, Self::Error>;
+    fn get_package(&mut self, contract_package_hash: PackageHash) -> Result<Package, Self::Error>;
 
     /// Gets the system contract registry.
     fn get_system_contracts(&mut self) -> Result<SystemContractRegistry, Self::Error>;
@@ -101,13 +98,13 @@ where
         let account_key = Key::Account(account_hash);
         match self.get(&account_key).map_err(Into::into)? {
             Some(StoredValue::CLValue(cl_value)) => {
-                let contract_hash = CLValue::into_t::<Key>(cl_value)?;
-                let contract_hash = contract_hash
+                let entity_key = CLValue::into_t::<Key>(cl_value)?;
+                let entity_hash = entity_key
                     .into_hash()
                     .map(AddressableEntityHash::new)
-                    .expect("must convert to contract hash");
+                    .expect("must convert to addressable entity hash");
 
-                Ok(contract_hash)
+                Ok(entity_hash)
             }
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("CLValue".to_string(), other.type_name()),
@@ -132,13 +129,13 @@ where
                     AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
                 let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-                let contract_hash = AddressableEntityHash::new(generator.new_hash_address());
-                let contract_package_hash = PackageHash::new(generator.new_hash_address());
+                let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+                let package_hash = PackageHash::new(generator.new_hash_address());
 
                 let entry_points = EntryPoints::new();
 
                 let entity = AddressableEntity::new(
-                    contract_package_hash,
+                    package_hash,
                     contract_wasm_hash,
                     account.named_keys().clone(),
                     entry_points,
@@ -160,14 +157,14 @@ where
                         PackageKind::Account(account_hash),
                     );
                     contract_package
-                        .insert_contract_version(protocol_version.value().major, contract_hash);
+                        .insert_contract_version(protocol_version.value().major, entity_hash);
                     contract_package
                 };
 
-                let contract_key: Key = contract_hash.into();
+                let contract_key: Key = entity_hash.into();
 
                 self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
-                self.write(contract_package_hash.into(), contract_package.into());
+                self.write(package_hash.into(), contract_package.into());
 
                 let contract_by_account = match CLValue::from_t(contract_key) {
                     Ok(cl_value) => cl_value,
@@ -310,15 +307,12 @@ where
         }
     }
 
-    fn get_contract_package(
-        &mut self,
-        contract_package_hash: PackageHash,
-    ) -> Result<Package, Self::Error> {
-        let key = contract_package_hash.into();
+    fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {
+        let key = package_hash.into();
         match self.read(&key).map_err(Into::into)? {
             Some(StoredValue::Package(contract_package)) => Ok(contract_package),
             Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+                StoredValueTypeMismatch::new("Package".to_string(), other.type_name()),
             )),
             None => Err(execution::Error::KeyNotFound(key)),
         }

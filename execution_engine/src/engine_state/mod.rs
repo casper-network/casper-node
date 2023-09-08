@@ -862,15 +862,15 @@ where
             AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
         let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-        let contract_hash = AddressableEntityHash::new(generator.new_hash_address());
-        let contract_package_hash = PackageHash::new(generator.new_hash_address());
+        let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
+        let package_hash = PackageHash::new(generator.new_hash_address());
 
         let entry_points = EntryPoints::new();
 
         let associated_keys = AssociatedKeys::from(account.associated_keys().clone());
 
         let entity = AddressableEntity::new(
-            contract_package_hash,
+            package_hash,
             contract_wasm_hash,
             account.named_keys().clone(),
             entry_points,
@@ -891,16 +891,16 @@ where
                 PackageStatus::Locked,
                 PackageKind::Account(account_hash),
             );
-            contract_package.insert_contract_version(protocol_version.value().major, contract_hash);
+            contract_package.insert_contract_version(protocol_version.value().major, entity_hash);
             contract_package
         };
 
-        let entity_key: Key = contract_hash.into();
+        let entity_key: Key = entity_hash.into();
 
         tracking_copy.borrow_mut().write(entity_key, entity.into());
         tracking_copy
             .borrow_mut()
-            .write(contract_package_hash.into(), contract_package.into());
+            .write(package_hash.into(), contract_package.into());
         let contract_by_account = match CLValue::from_t(entity_key) {
             Ok(cl_value) => cl_value,
             Err(_) => return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string())),

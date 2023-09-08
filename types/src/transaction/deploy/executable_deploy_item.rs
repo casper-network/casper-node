@@ -250,10 +250,12 @@ impl ExecutableDeployItem {
         match self {
             ExecutableDeployItem::ModuleBytes { .. } => ExecutableDeployItemIdentifier::Module,
             ExecutableDeployItem::StoredContractByHash { hash, .. } => {
-                ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Hash(*hash))
+                ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(*hash))
             }
             ExecutableDeployItem::StoredContractByName { name, .. } => {
-                ExecutableDeployItemIdentifier::Contract(EntityIdentifier::Name(name.clone()))
+                ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Name(
+                    name.clone(),
+                ))
             }
             ExecutableDeployItem::StoredVersionedContractByHash { hash, version, .. } => {
                 ExecutableDeployItemIdentifier::Package(PackageIdentifier::Hash {

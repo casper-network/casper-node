@@ -164,14 +164,14 @@ impl<T: StateReader> StateTracker<T> {
 
         let mut rng = rand::thread_rng();
 
-        let contract_hash = AddressableEntityHash::new(rng.gen());
-        let contract_package_hash = PackageHash::new(rng.gen());
+        let entity_hash = AddressableEntityHash::new(rng.gen());
+        let package_hash = PackageHash::new(rng.gen());
         let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 
         let addressable_entity = AddressableEntity::new(
-            contract_package_hash,
+            package_hash,
             contract_wasm_hash,
             NamedKeys::default(),
             EntryPoints::new(),
@@ -190,20 +190,19 @@ impl<T: StateReader> StateTracker<T> {
             PackageKind::Account(account_hash),
         );
 
-        contract_package
-            .insert_contract_version(self.protocol_version.value().major, contract_hash);
+        contract_package.insert_contract_version(self.protocol_version.value().major, entity_hash);
         self.write_entry(
-            contract_package_hash.into(),
+            package_hash.into(),
             StoredValue::Package(contract_package.clone()),
         );
 
         self.write_entry(
-            contract_hash.into(),
+            entity_hash.into(),
             StoredValue::AddressableEntity(addressable_entity.clone()),
         );
 
         let addressable_entity_by_account_hash = {
-            let contract_key: Key = contract_hash.into();
+            let contract_key: Key = entity_hash.into();
             CLValue::from_t(contract_key).expect("must convert to cl_value")
         };
 

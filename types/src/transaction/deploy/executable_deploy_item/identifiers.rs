@@ -28,7 +28,7 @@ pub enum ExecutableDeployItemIdentifier {
     /// The deploy item is of the type [`ExecutableDeployItem::ModuleBytes`]
     Module,
     /// The deploy item is a variation of a stored contract.
-    Contract(EntityIdentifier),
+    AddressableEntity(EntityIdentifier),
     /// The deploy item is a variation of a stored contract package.
     Package(PackageIdentifier),
     /// The deploy item is a native transfer.

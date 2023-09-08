@@ -478,18 +478,19 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
-    let stored_contract_key = account_1_genesis
+    let stored_entity_key = account_1_genesis
         .named_keys()
         .get(DO_NOTHING_HASH_NAME)
         .unwrap();
-    let stored_contract_hash = stored_contract_key
+
+    let stored_entity_hash = stored_entity_key
         .into_hash()
         .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
     let do_nothing_contract_package_key = {
         let addressable_entity = builder
-            .get_addressable_entity(stored_contract_hash)
+            .get_addressable_entity(stored_entity_hash)
             .expect("should be entity");
         Key::from(addressable_entity.package_hash())
     };
@@ -506,7 +507,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     )
     .expect("should be contract package");
     assert!(
-        contract_package_before.is_contract_enabled(&stored_contract_hash),
+        contract_package_before.is_contract_enabled(&stored_entity_hash),
         "newly stored contract should be enabled"
     );
 
@@ -524,7 +525,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     let disable_request = {
         let session_args = runtime_args! {
             ARG_CONTRACT_PACKAGE_HASH => do_nothing_contract_package_hash,
-            ARG_CONTRACT_HASH => stored_contract_hash,
+            ARG_CONTRACT_HASH => stored_entity_hash,
         };
 
         ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, DISABLE_CONTRACT, session_args)
@@ -544,7 +545,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         contract_package_before, contract_package_after_disable,
         "contract package should be disabled"
     );
-    assert!(!contract_package_after_disable.is_contract_enabled(&stored_contract_hash),);
+    assert!(!contract_package_after_disable.is_contract_enabled(&stored_entity_hash),);
 
     let call_delegate_requests_1 = {
         // Unable to call disabled stored contract directly
@@ -558,7 +559,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
         let call_delegate_by_hash = ExecuteRequestBuilder::contract_call_by_hash(
             *ACCOUNT_1_ADDR,
-            stored_contract_hash,
+            stored_entity_hash,
             DELEGATE_ENTRYPOINT,
             RuntimeArgs::default(),
         )
@@ -566,7 +567,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
         let call_delegate_from_wasm = make_call_contract_session_request(
             *ACCOUNT_1_ADDR,
-            stored_contract_hash,
+            stored_entity_hash,
             DELEGATE_ENTRYPOINT,
             RuntimeArgs::default(),
         );
@@ -588,7 +589,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
             matches!(
                 error,
                 Error::Exec(execution::Error::DisabledContract(disabled_contract_hash))
-                if disabled_contract_hash == stored_contract_hash
+                if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",
             error
@@ -599,7 +600,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     let enable_request = {
         let session_args = runtime_args! {
             ARG_CONTRACT_PACKAGE_HASH => do_nothing_contract_package_hash,
-            ARG_CONTRACT_HASH => stored_contract_hash,
+            ARG_CONTRACT_HASH => stored_entity_hash,
         };
 
         ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, ENABLE_CONTRACT, session_args)
@@ -620,7 +621,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
         let call_delegate_by_hash = ExecuteRequestBuilder::contract_call_by_hash(
             *ACCOUNT_1_ADDR,
-            stored_contract_hash,
+            stored_entity_hash,
             DELEGATE_ENTRYPOINT,
             RuntimeArgs::default(),
         )
@@ -628,7 +629,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
         let call_delegate_from_wasm = make_call_contract_session_request(
             *ACCOUNT_1_ADDR,
-            stored_contract_hash,
+            stored_entity_hash,
             DELEGATE_ENTRYPOINT,
             RuntimeArgs::default(),
         );
@@ -674,18 +675,19 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should have account 1 after genesis");
 
-    let stored_contract_key = account_1_genesis
+    let stored_entity_key = account_1_genesis
         .named_keys()
         .get(TEST_PAYMENT_STORED_HASH_NAME)
         .unwrap();
-    let stored_contract_hash = stored_contract_key
+
+    let stored_entity_hash = stored_entity_key
         .into_hash()
         .map(AddressableEntityHash::new)
-        .expect("should have stored contract hash");
+        .expect("should have stored entity hash");
 
     let test_payment_stored_package_key = {
         let addressable_entity = builder
-            .get_addressable_entity(stored_contract_hash)
+            .get_addressable_entity(stored_entity_hash)
             .expect("should be addressable entity");
         Key::from(addressable_entity.package_hash())
     };
@@ -702,7 +704,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     )
     .expect("should be contract package");
     assert!(
-        contract_package_before.is_contract_enabled(&stored_contract_hash),
+        contract_package_before.is_contract_enabled(&stored_entity_hash),
         "newly stored contract should be enabled"
     );
 
@@ -736,7 +738,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     let disable_request = {
         let session_args = runtime_args! {
             ARG_CONTRACT_PACKAGE_HASH => test_payment_stored_package_hash,
-            ARG_CONTRACT_HASH => stored_contract_hash,
+            ARG_CONTRACT_HASH => stored_entity_hash,
         };
 
         ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, DISABLE_CONTRACT, session_args)
@@ -756,7 +758,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         contract_package_before, contract_package_after_disable,
         "contract package should be disabled"
     );
-    assert!(!contract_package_after_disable.is_contract_enabled(&stored_contract_hash),);
+    assert!(!contract_package_after_disable.is_contract_enabled(&stored_entity_hash),);
 
     let call_stored_payment_requests_1 = {
         let payment_args = runtime_args! {
@@ -789,7 +791,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-                .with_stored_payment_hash(stored_contract_hash, PAY_ENTRYPOINT, payment_args)
+                .with_stored_payment_hash(stored_entity_hash, PAY_ENTRYPOINT, payment_args)
                 .with_authorization_keys(&[sender])
                 .with_deploy_hash(deploy_hash)
                 .build();
@@ -806,7 +808,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
             matches!(
                 error,
                 Error::Exec(execution::Error::DisabledContract(disabled_contract_hash))
-                if disabled_contract_hash == stored_contract_hash
+                if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",
             error
@@ -817,7 +819,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     let enable_request = {
         let session_args = runtime_args! {
             ARG_CONTRACT_PACKAGE_HASH => test_payment_stored_package_hash,
-            ARG_CONTRACT_HASH => stored_contract_hash,
+            ARG_CONTRACT_HASH => stored_entity_hash,
         };
 
         ExecuteRequestBuilder::standard(*DEFAULT_ADMIN_ACCOUNT_ADDR, ENABLE_CONTRACT, session_args)
@@ -857,7 +859,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
             let deploy = DeployItemBuilder::new()
                 .with_address(sender)
                 .with_session_bytes(wasm_utils::do_minimum_bytes(), session_args)
-                .with_stored_payment_hash(stored_contract_hash, PAY_ENTRYPOINT, payment_args)
+                .with_stored_payment_hash(stored_entity_hash, PAY_ENTRYPOINT, payment_args)
                 .with_authorization_keys(&[sender])
                 .with_deploy_hash(deploy_hash)
                 .build();

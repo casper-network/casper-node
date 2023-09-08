@@ -117,29 +117,26 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
-    let contract_hash_key = account
+    let entity_hash_key = account
         .named_keys()
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
+    let entity_hash = entity_hash_key
         .into_hash()
         .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_DO_NOTHING,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, GH_1470_REGRESSION_CALL, args).build()
     };
@@ -159,7 +156,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(ACCOUNT_1_ADDR, GH_1470_REGRESSION_CALL, args).build()
     };
@@ -326,24 +323,21 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
+    let entity_hash = contract_hash_key
         .into_hash()
         .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_DO_NOTHING_NO_OPTIONALS,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -357,7 +351,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_NO_OPTIONALS,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -392,24 +386,21 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
+    let entity_hash = contract_hash_key
         .into_hash()
         .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_DO_NOTHING_EXTRA,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -423,7 +414,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_EXTRA,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -453,30 +444,27 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have contract");
 
-    let contract_hash_key = account
+    let entity_hash_key = account
         .named_keys()
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
+    let entity_hash = entity_hash_key
         .into_hash()
         .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
                     gh_1470_regression_call::ARG_TEST_METHOD =>
         gh_1470_regression_call::METHOD_CALL_DO_NOTHING_TYPE_MISMATCH,
-        gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,         };
+        gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
     };
@@ -497,7 +485,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         let args = runtime_args! {
                     gh_1470_regression_call::ARG_TEST_METHOD =>
         gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_TYPE_MISMATCH,
-        gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,         };
+        gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
     };
@@ -559,30 +547,27 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default contract package");
 
-    let contract_hash_key = account
+    let entity_hash_key = account
         .named_keys()
         .get(gh_1470_regression::CONTRACT_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_hash = contract_hash_key
+    let entity_hash = entity_hash_key
         .into_hash()
         .map(AddressableEntityHash::new)
         .unwrap();
-    let contract_package_hash_key = account
+    let package_hash_key = account
         .named_keys()
-        .get(gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME)
+        .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let contract_package_hash = contract_package_hash_key
-        .into_hash()
-        .map(PackageHash::new)
-        .unwrap();
+    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD =>
             gh_1470_regression_call::METHOD_CALL_DO_NOTHING_OPTIONAL_TYPE_MISMATCH,
-            gh_1470_regression_call::ARG_CONTRACT_HASH => contract_hash,
+            gh_1470_regression_call::ARG_CONTRACT_HASH => entity_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()
@@ -603,7 +588,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
     let call_versioned_contract_request = {
         let args = runtime_args! {
             gh_1470_regression_call::ARG_TEST_METHOD => gh_1470_regression_call::METHOD_CALL_VERSIONED_DO_NOTHING_OPTIONAL_TYPE_MISMATCH,
-            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => contract_package_hash,
+            gh_1470_regression_call::ARG_CONTRACT_PACKAGE_HASH => package_hash,
         };
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, GH_1470_REGRESSION_CALL, args)
             .build()

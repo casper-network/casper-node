@@ -1046,7 +1046,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
 
-    let contract_hash = default_addressable_entity
+    let entity_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
@@ -1065,7 +1065,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
         &format!("{}.wasm", PURSE_HOLDER_STORED_CALLER_CONTRACT_NAME),
         runtime_args! {
             ENTRY_POINT_NAME => VERSION,
-            HASH_KEY_NAME => contract_hash
+            HASH_KEY_NAME => entity_hash
         },
     )
     .with_protocol_version(new_protocol_version)
@@ -1074,7 +1074,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     builder.exec(exec_request).expect_success().commit();
 
     let purse_holder_as_entity = builder
-        .get_addressable_entity(contract_hash)
+        .get_addressable_entity(entity_hash)
         .expect("must have purse holder entity hash");
 
     let actual_associated_keys = purse_holder_as_entity.associated_keys();
@@ -1132,7 +1132,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
 
-    let contract_hash = default_addressable_entity
+    let entity_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
@@ -1172,7 +1172,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         }
         InvocationType::ByContractHash => ExecuteRequestBuilder::contract_call_by_hash(
             *DEFAULT_ACCOUNT_ADDR,
-            contract_hash,
+            entity_hash,
             ENTRY_POINT_ADD,
             runtime_args,
         )
@@ -1191,7 +1191,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
     builder.exec(execute_request).expect_success().commit();
 
     let updated_purse_entity = builder
-        .get_addressable_entity(contract_hash)
+        .get_addressable_entity(entity_hash)
         .expect("must have purse holder entity hash");
 
     let actual_associated_keys = updated_purse_entity.associated_keys();

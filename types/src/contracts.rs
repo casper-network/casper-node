@@ -1,4 +1,5 @@
 //! Data types for supporting contract headers feature.
+use alloc::string::String;
 use alloc::vec::Vec;
 use core::{
     convert::TryFrom,
