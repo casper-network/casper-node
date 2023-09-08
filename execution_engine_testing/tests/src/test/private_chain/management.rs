@@ -22,7 +22,7 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, ContractHash, GenesisAccount, Key, Package, PackageHash,
+    AddressableEntityHash, ApiError, CLType, CLValue, GenesisAccount, Key, Package, PackageHash,
     RuntimeArgs, U512,
 };
 use tempfile::TempDir;
@@ -484,14 +484,14 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .unwrap();
     let stored_contract_hash = stored_contract_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
     let do_nothing_contract_package_key = {
         let addressable_entity = builder
             .get_addressable_entity(stored_contract_hash)
             .expect("should be entity");
-        Key::from(addressable_entity.contract_package_hash())
+        Key::from(addressable_entity.package_hash())
     };
 
     let do_nothing_contract_package_hash = do_nothing_contract_package_key
@@ -680,14 +680,14 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .unwrap();
     let stored_contract_hash = stored_contract_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
     let test_payment_stored_package_key = {
         let addressable_entity = builder
             .get_addressable_entity(stored_contract_hash)
             .expect("should be addressable entity");
-        Key::from(addressable_entity.contract_package_hash())
+        Key::from(addressable_entity.package_hash())
     };
 
     let test_payment_stored_package_hash = test_payment_stored_package_key
@@ -935,7 +935,7 @@ fn should_not_allow_delegate_on_private_chain() {
 
 fn make_call_contract_session_request(
     account_hash: AccountHash,
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     entrypoint: &str,
     arguments: RuntimeArgs,
 ) -> ExecuteRequest {

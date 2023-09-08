@@ -8,8 +8,8 @@ use casper_types::{
     bytesrepr,
     execution::TransformError,
     package::PackageKind,
-    system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractVersionKey,
-    ContractWasmHash, Key, PackageHash, StoredValueTypeMismatch, URef,
+    system, AccessRights, AddressableEntityHash, ApiError, CLType, CLValueError,
+    ContractVersionKey, ContractWasmHash, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -148,7 +148,7 @@ pub enum Error {
     InvalidPackage(PackageHash),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
-    InvalidContract(ContractHash),
+    InvalidContract(AddressableEntityHash),
     /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
     InvalidContractWasm(ContractWasmHash),
@@ -178,7 +178,7 @@ pub enum Error {
     MissingRuntimeStack,
     /// Contract is disabled.
     #[error("Contract is disabled")]
-    DisabledContract(ContractHash),
+    DisabledContract(AddressableEntityHash),
     /// Transform error.
     #[error(transparent)]
     Transform(TransformError),

@@ -7,7 +7,8 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, ContractHash, RuntimeArgs, U512,
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, runtime_args, AddressableEntityHash, RuntimeArgs,
+    U512,
 };
 
 const CONTRACT_COUNTER_FACTORY: &str = "counter_factory.wasm";
@@ -206,7 +207,7 @@ fn should_install_and_use_factory_pattern() {
     builder.exec(decrement_request).commit().expect_success();
 }
 
-fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
+fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 

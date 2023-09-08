@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    addressable_entity::NamedKeys, bytesrepr::Bytes, ContractHash, ContractVersionKey,
+    addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, ContractVersionKey,
     ExecutableDeployItem, Key, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
 };
 
@@ -22,7 +22,7 @@ pub(crate) enum ExecutionKind {
     /// Stored contract.
     Contract {
         /// Contract's hash.
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         /// Entry point's name.
         entry_point_name: String,
     },
@@ -35,7 +35,7 @@ impl ExecutionKind {
     }
 
     /// Returns a new contract variant of `ExecutionKind`.
-    pub fn new_contract(contract_hash: ContractHash, entry_point_name: String) -> Self {
+    pub fn new_contract(contract_hash: AddressableEntityHash, entry_point_name: String) -> Self {
         ExecutionKind::Contract {
             contract_hash,
             entry_point_name,
@@ -56,7 +56,7 @@ impl ExecutionKind {
         R: StateReader<Key, StoredValue>,
         R::Error: Into<ExecError>,
     {
-        let contract_hash: ContractHash;
+        let contract_hash: AddressableEntityHash;
         let contract_package: Package;
 
         let is_payment_phase = phase == Phase::Payment;
@@ -85,8 +85,9 @@ impl ExecutionKind {
                     Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                 })?;
 
-                contract_hash =
-                    ContractHash::new(contract_key.into_hash().ok_or(Error::InvalidKeyVariant)?);
+                contract_hash = AddressableEntityHash::new(
+                    contract_key.into_hash().ok_or(Error::InvalidKeyVariant)?,
+                );
 
                 Ok(ExecutionKind::new_contract(contract_hash, entry_point))
             }
@@ -130,7 +131,7 @@ impl ExecutionKind {
                     )));
                 }
 
-                let looked_up_contract_hash: ContractHash = contract_package
+                let looked_up_contract_hash: AddressableEntityHash = contract_package
                     .lookup_contract_hash(contract_version_key)
                     .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
                         contract_version_key,

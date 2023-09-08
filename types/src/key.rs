@@ -32,7 +32,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
-    addressable_entity::ContractHash,
+    addressable_entity::AddressableEntityHash,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
     contract_wasm::ContractWasmHash,
@@ -598,11 +598,11 @@ impl Key {
         }
     }
 
-    /// Returns [`ContractHash`] of `self` if `self` is of type [`Key::Hash`], otherwise returns
+    /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::Hash`], otherwise returns
     /// `None`.
-    pub fn into_contract_hash(self) -> Option<ContractHash> {
+    pub fn into_contract_hash(self) -> Option<AddressableEntityHash> {
         let hash_addr = self.into_hash()?;
-        Some(ContractHash::new(hash_addr))
+        Some(AddressableEntityHash::new(hash_addr))
     }
 
     /// Returns a reference to the inner [`URef`] if `self` is of type [`Key::URef`], otherwise
@@ -816,8 +816,8 @@ impl From<TransferAddr> for Key {
     }
 }
 
-impl From<ContractHash> for Key {
-    fn from(contract_hash: ContractHash) -> Key {
+impl From<AddressableEntityHash> for Key {
+    fn from(contract_hash: AddressableEntityHash) -> Key {
         Key::Hash(contract_hash.value())
     }
 }

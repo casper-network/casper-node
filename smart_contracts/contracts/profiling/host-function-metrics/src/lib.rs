@@ -15,8 +15,8 @@ use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionType, NamedKeys, Weight},
     bytesrepr::Bytes,
-    runtime_args, ApiError, BlockTime, CLType, CLValue, ContractHash, EntityVersion, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, U512,
+    runtime_args, AddressableEntityHash, ApiError, BlockTime, CLType, CLValue, EntityVersion,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, Parameter, Phase, U512,
 };
 
 const MIN_FUNCTION_NAME_LENGTH: usize = 1;
@@ -216,7 +216,7 @@ pub extern "C" fn call() {
 fn store_function(
     entry_point_name: &str,
     named_keys: Option<NamedKeys>,
-) -> (ContractHash, EntityVersion) {
+) -> (AddressableEntityHash, EntityVersion) {
     let entry_points = {
         let mut entry_points = EntryPoints::new();
 

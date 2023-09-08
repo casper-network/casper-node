@@ -103,7 +103,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
         .expect("should have mint contract");
     assert_eq!(
         old_contract.contract_package_hash(),
-        new_contract.contract_package_hash()
+        new_contract.package_hash()
     );
     assert_eq!(
         old_contract.contract_wasm_hash(),

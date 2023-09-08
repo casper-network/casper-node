@@ -12,7 +12,7 @@ use casper_contract::{
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     package::CONTRACT_INITIAL_VERSION,
-    runtime_args, CLType, ContractHash, EntityVersion, Key, PackageHash,
+    runtime_args, AddressableEntityHash, CLType, EntityVersion, Key, PackageHash,
 };
 
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -147,7 +147,7 @@ fn create_entrypoints_1() -> EntryPoints {
     entry_points
 }
 
-fn install_version_1(package_hash: PackageHash) -> (ContractHash, EntityVersion) {
+fn install_version_1(package_hash: PackageHash) -> (AddressableEntityHash, EntityVersion) {
     let contract_named_keys = {
         let contract_variable = storage::new_uref(0);
 

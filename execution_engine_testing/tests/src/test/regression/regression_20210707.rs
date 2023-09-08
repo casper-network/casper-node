@@ -8,7 +8,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntity,
-    ContractHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
+    AddressableEntityHash, PublicKey, RuntimeArgs, SecretKey, URef, U512,
 };
 use once_cell::sync::Lazy;
 
@@ -65,14 +65,14 @@ fn transfer(sender: AccountHash, target: AccountHash, amount: u64) -> ExecuteReq
     .build()
 }
 
-fn get_account_contract_hash(contract: &AddressableEntity) -> ContractHash {
+fn get_account_contract_hash(contract: &AddressableEntity) -> AddressableEntityHash {
     contract
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .cloned()
         .expect("should have contract hash")
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap()
 }
 

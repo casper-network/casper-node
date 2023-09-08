@@ -10,8 +10,8 @@ use casper_types::{
     execution::Effects,
     package::{ContractVersions, Groups, PackageKind, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
-    AccessRights, AddressableEntity, CLValue, CLValueError, ContractHash, ContractWasm, Digest,
-    EntryPoints, FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, CLValueError, ContractWasm,
+    Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
     StoredValue, URef, U512,
 };
 
@@ -107,10 +107,10 @@ where
     /// Bump major version and/or update the entry points for system contracts.
     pub(crate) fn refresh_system_contracts(
         &self,
-        mint_hash: &ContractHash,
-        auction_hash: &ContractHash,
-        handle_payment_hash: &ContractHash,
-        standard_payment_hash: &ContractHash,
+        mint_hash: &AddressableEntityHash,
+        auction_hash: &AddressableEntityHash,
+        handle_payment_hash: &AddressableEntityHash,
+        standard_payment_hash: &AddressableEntityHash,
     ) -> Result<(), ProtocolUpgradeError> {
         self.refresh_system_contract_entry_points(*mint_hash, SystemEntityType::Mint)?;
         self.refresh_system_contract_entry_points(*auction_hash, SystemEntityType::Auction)?;
@@ -130,7 +130,7 @@ where
     /// and bump the contract version at a major version upgrade.
     fn refresh_system_contract_entry_points(
         &self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         system_contract_type: SystemEntityType,
     ) -> Result<(), ProtocolUpgradeError> {
         let contract_name = system_contract_type.contract_name();
@@ -138,7 +138,7 @@ where
 
         let mut contract = self.retrieve_system_contract(contract_hash, system_contract_type)?;
 
-        let contract_package_key = Key::Hash(contract.contract_package_hash().value());
+        let contract_package_key = Key::Hash(contract.package_hash().value());
 
         let mut contract_package = if let StoredValue::Package(contract_package) = self
             .tracking_copy
@@ -175,7 +175,7 @@ where
         contract.set_protocol_version(self.new_protocol_version);
 
         let new_entity = AddressableEntity::new(
-            contract.contract_package_hash(),
+            contract.package_hash(),
             contract.contract_wasm_hash(),
             contract.named_keys().clone(),
             entry_points,
@@ -201,7 +201,7 @@ where
 
     fn retrieve_system_contract(
         &self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         system_contract_type: SystemEntityType,
     ) -> Result<AddressableEntity, ProtocolUpgradeError> {
         match self
@@ -231,7 +231,7 @@ where
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
         let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-        let contract_hash = ContractHash::new(address_generator.new_hash_address());
+        let contract_hash = AddressableEntityHash::new(address_generator.new_hash_address());
         let contract_package_hash = PackageHash::new(address_generator.new_hash_address());
 
         let contract_wasm = ContractWasm::new(vec![]);
@@ -317,7 +317,7 @@ where
     /// create an accumulation purse.
     pub(crate) fn create_accumulation_purse_if_required(
         &self,
-        handle_payment_hash: &ContractHash,
+        handle_payment_hash: &AddressableEntityHash,
         engine_config: &EngineConfig,
     ) -> Result<(), ProtocolUpgradeError> {
         match engine_config.fee_handling() {

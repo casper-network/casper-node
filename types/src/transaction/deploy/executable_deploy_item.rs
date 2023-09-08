@@ -24,7 +24,7 @@ use crate::{
     package::{EntityVersion, PackageHash},
     runtime_args, serde_helpers,
     system::mint::ARG_AMOUNT,
-    ContractHash, Gas, Motes, Phase, PublicKey, RuntimeArgs, URef, U512,
+    AddressableEntityHash, Gas, Motes, Phase, PublicKey, RuntimeArgs, URef, U512,
 };
 #[cfg(any(feature = "testing", test))]
 use crate::{testing::TestRng, CLValue};
@@ -60,7 +60,7 @@ pub enum ExecutableDeployItem {
         /// Runtime arguments.
         args: RuntimeArgs,
     },
-    /// Stored contract referenced by its [`ContractHash`], entry point and an instance of
+    /// Stored contract referenced by its [`AddressableEntityHash`], entry point and an instance of
     /// [`RuntimeArgs`].
     StoredContractByHash {
         /// Contract hash.
@@ -69,7 +69,7 @@ pub enum ExecutableDeployItem {
             feature = "json-schema",
             schemars(with = "String", description = "Hex-encoded contract hash.")
         )]
-        hash: ContractHash,
+        hash: AddressableEntityHash,
         /// Name of an entry point.
         entry_point: String,
         /// Runtime arguments.
@@ -142,7 +142,7 @@ impl ExecutableDeployItem {
 
     /// Returns a new `ExecutableDeployItem::StoredContractByHash`.
     pub fn new_stored_contract_by_hash(
-        hash: ContractHash,
+        hash: AddressableEntityHash,
         entry_point: String,
         args: RuntimeArgs,
     ) -> Self {
@@ -530,7 +530,7 @@ impl FromBytes for ExecutableDeployItem {
                 ))
             }
             STORED_CONTRACT_BY_HASH_TAG => {
-                let (hash, remainder) = ContractHash::from_bytes(remainder)?;
+                let (hash, remainder) = AddressableEntityHash::from_bytes(remainder)?;
                 let (entry_point, remainder) = String::from_bytes(remainder)?;
                 let (args, remainder) = RuntimeArgs::from_bytes(remainder)?;
                 Ok((
@@ -741,7 +741,7 @@ impl Distribution<ExecutableDeployItem> for Standard {
                 args,
             },
             1 => ExecutableDeployItem::StoredContractByHash {
-                hash: ContractHash::new(rng.gen()),
+                hash: AddressableEntityHash::new(rng.gen()),
                 entry_point: random_string(rng),
                 args,
             },

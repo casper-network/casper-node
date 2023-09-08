@@ -9,7 +9,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{account::AccountHash, runtime_args, ContractHash, URef, U512};
+use casper_types::{account::AccountHash, runtime_args, AddressableEntityHash, URef, U512};
 
 pub const ARG_AMOUNT: &str = "amount";
 pub const ARG_AMOUNT_SPENT: &str = "amount_spent";
@@ -18,7 +18,7 @@ pub const ARG_PURSE: &str = "purse";
 pub const ARG_ACCOUNT_KEY: &str = "account";
 pub const ARG_PURSE_NAME: &str = "purse_name";
 
-fn set_refund_purse(contract_hash: ContractHash, purse: URef) {
+fn set_refund_purse(contract_hash: AddressableEntityHash, purse: URef) {
     runtime::call_contract(
         contract_hash,
         "set_refund_purse",
@@ -28,17 +28,21 @@ fn set_refund_purse(contract_hash: ContractHash, purse: URef) {
     )
 }
 
-fn get_payment_purse(contract_hash: ContractHash) -> URef {
+fn get_payment_purse(contract_hash: AddressableEntityHash) -> URef {
     runtime::call_contract(contract_hash, "get_payment_purse", runtime_args! {})
 }
 
-fn submit_payment(contract_hash: ContractHash, amount: U512) {
+fn submit_payment(contract_hash: AddressableEntityHash, amount: U512) {
     let payment_purse = get_payment_purse(contract_hash);
     let main_purse = account::get_main_purse();
     system::transfer_from_purse_to_purse(main_purse, payment_purse, amount, None).unwrap_or_revert()
 }
 
-fn finalize_payment(contract_hash: ContractHash, amount_spent: U512, account: AccountHash) {
+fn finalize_payment(
+    contract_hash: AddressableEntityHash,
+    amount_spent: U512,
+    account: AccountHash,
+) {
     runtime::call_contract(
         contract_hash,
         "finalize_payment",

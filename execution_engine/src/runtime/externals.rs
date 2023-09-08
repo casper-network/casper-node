@@ -11,9 +11,9 @@ use casper_types::{
     crypto,
     package::{PackageKind, PackageStatus},
     system::auction::EraInfo,
-    ApiError, ContractHash, EntityVersion, EraId, Gas, Group, HostFunction, HostFunctionCost, Key,
-    PackageHash, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, U512,
-    UREF_SERIALIZED_LENGTH,
+    AddressableEntityHash, ApiError, EntityVersion, EraId, Gas, Group, HostFunction,
+    HostFunctionCost, Key, PackageHash, StoredValue, URef, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
+    U512, UREF_SERIALIZED_LENGTH,
 };
 
 use super::{args::Args, Error, Runtime};
@@ -712,7 +712,7 @@ where
                     ],
                 )?;
 
-                let contract_hash: ContractHash =
+                let contract_hash: AddressableEntityHash =
                     self.t_from_mem(contract_hash_ptr, contract_hash_size)?;
                 let entry_point_name: String =
                     self.t_from_mem(entry_point_name_ptr, entry_point_name_size)?;

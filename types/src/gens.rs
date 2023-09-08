@@ -22,9 +22,9 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
-    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, CLType, CLValue, ContractWasm,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
+    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -435,7 +435,7 @@ pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
 pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
     collection::btree_map(
         contract_version_key_arb(),
-        u8_slice_32().prop_map(ContractHash::new),
+        u8_slice_32().prop_map(AddressableEntityHash::new),
         1..5,
     )
     .prop_map(ContractVersions::from)

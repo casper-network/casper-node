@@ -9,8 +9,8 @@ use casper_execution_engine::{
     execution::Error,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, system::mint, AccessRights, ApiError, CLType, CLValue,
-    ContractHash, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
+    account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
+    ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
 };
 use std::{convert::TryFrom, path::PathBuf};
 
@@ -23,7 +23,7 @@ const DICTIONARY_READ: &str = "dictionary_read.wasm";
 const READ_FROM_KEY: &str = "read_from_key.wasm";
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 
-fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
+fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
@@ -66,7 +66,7 @@ fn setup() -> (LmdbWasmTestBuilder, ContractHash) {
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
         .and_then(Key::into_hash)
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("should have hash");
 
     (builder, contract_hash)
@@ -87,10 +87,10 @@ fn query_dictionary_item(
             }
             let stored_value = builder.query(None, key, &[])?;
             if let StoredValue::CLValue(cl_value) = stored_value {
-                let contract_hash: ContractHash = CLValue::into_t::<Key>(cl_value)
+                let contract_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
                     .expect("must convert to contract hash")
                     .into_hash()
-                    .map(ContractHash::new)
+                    .map(AddressableEntityHash::new)
                     .expect("must convert to contract hash");
                 return query_dictionary_item(
                     builder,
@@ -591,7 +591,7 @@ fn should_query_dictionary_items_with_test_builder() {
         .get(dictionary::CONTRACT_HASH_NAME)
         .expect("should have contract")
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("should have hash");
     let dictionary_uref = default_account
         .named_keys()

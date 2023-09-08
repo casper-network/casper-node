@@ -14,11 +14,11 @@ use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{
-    account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, BlockHash, BlockHeader,
-    CLValue, Chainspec, ContractHash, ContractVersionKey, CoreConfig, Deploy, DeployConfig,
-    DeployConfigurationFailure, Digest, EntityIdentifier, EntityVersion, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, Key, Package, PackageHash, PackageIdentifier, ProtocolVersion,
-    StoredValue, Timestamp, U512,
+    account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, AddressableEntityHash,
+    BlockHash, BlockHeader, CLValue, Chainspec, ContractVersionKey, CoreConfig, Deploy,
+    DeployConfig, DeployConfigurationFailure, Digest, EntityIdentifier, EntityVersion,
+    ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package, PackageHash,
+    PackageIdentifier, ProtocolVersion, StoredValue, Timestamp, U512,
 };
 
 use crate::{
@@ -97,7 +97,9 @@ pub(crate) enum DeployParameterFailure {
     NonexistentAccount { account_hash: AccountHash },
     /// Nonexistent contract at hash.
     #[error("contract at {contract_hash} does not exist")]
-    NonexistentEntityAtHash { contract_hash: ContractHash },
+    NonexistentEntityAtHash {
+        contract_hash: AddressableEntityHash,
+    },
     /// Nonexistent contract entrypoint.
     #[error("entity does not have {entry_point}")]
     NonexistentEntityEntryPoint { entry_point: String },
@@ -775,7 +777,7 @@ impl DeployAcceptor {
         block_header: Box<BlockHeader>,
         is_payment: bool,
         entry_point: String,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         maybe_contract: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     ) -> Effects<Event> {

@@ -7,7 +7,7 @@ use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
     package::PackageHash,
-    CLType, CLTyped, ContractHash,
+    AddressableEntityHash, CLType, CLTyped,
 };
 
 /// Tag representing variants of CallStackElement for purposes of serialization.
@@ -37,14 +37,14 @@ pub enum CallStackElement {
         /// The package hash
         package_hash: PackageHash,
         /// The contract hash
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     },
     /// Contract
     StoredContract {
         /// The package hash
         package_hash: PackageHash,
         /// The contract hash
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     },
 }
 
@@ -57,7 +57,10 @@ impl CallStackElement {
 
     /// Creates a [`'CallStackElement::StoredContract`]. This represents a call into a contract with
     /// `EntryPointType::Contract`.
-    pub fn stored_contract(package_hash: PackageHash, contract_hash: ContractHash) -> Self {
+    pub fn stored_contract(
+        package_hash: PackageHash,
+        contract_hash: AddressableEntityHash,
+    ) -> Self {
         CallStackElement::StoredContract {
             package_hash,
             contract_hash,
@@ -69,7 +72,7 @@ impl CallStackElement {
     pub fn stored_session(
         account_hash: AccountHash,
         package_hash: PackageHash,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Self {
         CallStackElement::StoredSession {
             account_hash,
@@ -87,8 +90,8 @@ impl CallStackElement {
         }
     }
 
-    /// Gets the [`ContractHash`] for both stored session and stored contract variants.
-    pub fn contract_hash(&self) -> Option<&ContractHash> {
+    /// Gets the [`AddressableEntityHash`] for both stored session and stored contract variants.
+    pub fn contract_hash(&self) -> Option<&AddressableEntityHash> {
         match self {
             CallStackElement::Session { .. } => None,
             CallStackElement::StoredSession { contract_hash, .. }
@@ -158,7 +161,7 @@ impl FromBytes for CallStackElement {
             CallStackElementTag::StoredSession => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
-                let (contract_hash, remainder) = ContractHash::from_bytes(remainder)?;
+                let (contract_hash, remainder) = AddressableEntityHash::from_bytes(remainder)?;
                 Ok((
                     CallStackElement::StoredSession {
                         account_hash,
@@ -170,7 +173,7 @@ impl FromBytes for CallStackElement {
             }
             CallStackElementTag::StoredContract => {
                 let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
-                let (contract_hash, remainder) = ContractHash::from_bytes(remainder)?;
+                let (contract_hash, remainder) = AddressableEntityHash::from_bytes(remainder)?;
                 Ok((
                     CallStackElement::StoredContract {
                         package_hash,

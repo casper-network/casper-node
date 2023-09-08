@@ -30,7 +30,6 @@ pub struct TryFromSliceForContractHashError(());
 pub enum FromStrError {
     InvalidPrefix,
     Hex(base16::DecodeError),
-    // Account(TryFromSliceForAccountHashError),
     Hash(TryFromSliceError),
     AccountHash(addressable_entity::FromAccountHashStrError),
     URef(uref::FromStrError),

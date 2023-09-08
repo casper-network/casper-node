@@ -6,8 +6,8 @@ use std::{
 use serde::Serialize;
 
 use casper_types::{
-    account::AccountHash, AddressableEntity, BlockHeader, ContractHash, Deploy, EntityVersion,
-    Package, PackageHash, StoredValue, Timestamp, U512,
+    account::AccountHash, AddressableEntity, AddressableEntityHash, BlockHeader, Deploy,
+    EntityVersion, Package, PackageHash, StoredValue, Timestamp, U512,
 };
 
 use super::Source;
@@ -91,7 +91,7 @@ pub(crate) enum Event {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         maybe_contract: Option<Box<AddressableEntity>>,
         verification_start_timestamp: Timestamp,
     },

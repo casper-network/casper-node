@@ -11,7 +11,7 @@ use casper_contract::{contract_api::runtime, ext_ffi, unwrap_or_revert::UnwrapOr
 use casper_types::{
     api_error,
     bytesrepr::{self, Bytes, ToBytes},
-    ApiError, ContractHash, RuntimeArgs,
+    AddressableEntityHash, ApiError, RuntimeArgs,
 };
 
 const ARG_CONTRACT_HASH: &str = "contract_hash";
@@ -23,7 +23,7 @@ const ARG_ARGUMENTS: &str = "arguments";
 // Accepts entrypoint name, and saves possible return value into URef stored in named keys.
 #[no_mangle]
 pub extern "C" fn call() {
-    let contract_hash: ContractHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
+    let contract_hash: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACT_HASH);
     let entrypoint: String = runtime::get_named_arg(ARG_ENTRYPOINT);
     let arguments: RuntimeArgs = runtime::get_named_arg(ARG_ARGUMENTS);
 
@@ -59,7 +59,7 @@ fn read_host_buffer_into(dest: &mut [u8]) -> Result<usize, ApiError> {
 /// Calls a contract and returns unwrapped [`CLValue`].
 fn call_contract_forward(
     entrypoint: String,
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     arguments: RuntimeArgs,
 ) -> Option<Bytes> {
     let entry_point_name: &str = &entrypoint;

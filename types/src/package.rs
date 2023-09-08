@@ -27,7 +27,7 @@ use crate::{
     crypto::{self, PublicKey},
     system::SystemEntityType,
     uref::URef,
-    CLType, CLTyped, ContractHash, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    AddressableEntityHash, CLType, CLTyped, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -207,8 +207,10 @@ pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(transparent, deny_unknown_fields)]
 pub struct ContractVersions(
-    #[serde(with = "BTreeMapToArray::<ContractVersionKey, ContractHash, ContractVersionLabels>")]
-    BTreeMap<ContractVersionKey, ContractHash>,
+    #[serde(
+        with = "BTreeMapToArray::<ContractVersionKey, AddressableEntityHash, ContractVersionLabels>"
+    )]
+    BTreeMap<ContractVersionKey, AddressableEntityHash>,
 );
 
 impl ContractVersions {
@@ -218,12 +220,12 @@ impl ContractVersions {
     }
 
     /// Returns an iterator over the `ContractHash`s (i.e. the map's values).
-    pub fn contract_hashes(&self) -> impl Iterator<Item = &ContractHash> {
+    pub fn contract_hashes(&self) -> impl Iterator<Item = &AddressableEntityHash> {
         self.0.values()
     }
 
     /// Returns the `ContractHash` under the key
-    pub fn get(&self, key: &ContractVersionKey) -> Option<&ContractHash> {
+    pub fn get(&self, key: &ContractVersionKey) -> Option<&AddressableEntityHash> {
         self.0.get(key)
     }
 }
@@ -245,14 +247,14 @@ impl ToBytes for ContractVersions {
 impl FromBytes for ContractVersions {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (versions, remainder) =
-            BTreeMap::<ContractVersionKey, ContractHash>::from_bytes(bytes)?;
+            BTreeMap::<ContractVersionKey, AddressableEntityHash>::from_bytes(bytes)?;
         Ok((ContractVersions(versions), remainder))
     }
 }
 
 #[cfg(any(feature = "testing", feature = "gens", test))]
-impl From<BTreeMap<ContractVersionKey, ContractHash>> for ContractVersions {
-    fn from(value: BTreeMap<ContractVersionKey, ContractHash>) -> Self {
+impl From<BTreeMap<ContractVersionKey, AddressableEntityHash>> for ContractVersions {
+    fn from(value: BTreeMap<ContractVersionKey, AddressableEntityHash>) -> Self {
         ContractVersions(value)
     }
 }
@@ -381,7 +383,7 @@ pub struct PackageHash(
 );
 
 impl PackageHash {
-    /// Constructs a new `ContractPackageHash` from the raw bytes of the contract package hash.
+    /// Constructs a new `PackageHash` from the raw bytes of the contract package hash.
     pub const fn new(value: HashAddr) -> PackageHash {
         PackageHash(value)
     }
@@ -794,7 +796,7 @@ impl Package {
     }
 
     /// Enable the contract version corresponding to the given hash (if it exists).
-    pub fn enable_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+    pub fn enable_version(&mut self, contract_hash: AddressableEntityHash) -> Result<(), Error> {
         let contract_version_key = self
             .find_contract_version_key_by_hash(&contract_hash)
             .copied()
@@ -830,7 +832,7 @@ impl Package {
     pub fn lookup_contract_hash(
         &self,
         contract_version_key: ContractVersionKey,
-    ) -> Option<&ContractHash> {
+    ) -> Option<&AddressableEntityHash> {
         if !self.is_version_enabled(contract_version_key) {
             return None;
         }
@@ -844,7 +846,7 @@ impl Package {
     }
 
     /// Returns `true` if the given contract hash exists and is enabled.
-    pub fn is_contract_enabled(&self, contract_hash: &ContractHash) -> bool {
+    pub fn is_contract_enabled(&self, contract_hash: &AddressableEntityHash) -> bool {
         match self.find_contract_version_key_by_hash(contract_hash) {
             Some(version_key) => !self.disabled_versions.contains(version_key),
             None => false,
@@ -855,7 +857,7 @@ impl Package {
     pub fn insert_contract_version(
         &mut self,
         protocol_version_major: ProtocolVersionMajor,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> ContractVersionKey {
         let contract_version = self.next_contract_version_for(protocol_version_major);
         let key = ContractVersionKey::new(protocol_version_major, contract_version);
@@ -864,7 +866,10 @@ impl Package {
     }
 
     /// Disable the contract version corresponding to the given hash (if it exists).
-    pub fn disable_contract_version(&mut self, contract_hash: ContractHash) -> Result<(), Error> {
+    pub fn disable_contract_version(
+        &mut self,
+        contract_hash: AddressableEntityHash,
+    ) -> Result<(), Error> {
         let contract_version_key = self
             .versions
             .0
@@ -882,7 +887,7 @@ impl Package {
 
     fn find_contract_version_key_by_hash(
         &self,
-        contract_hash: &ContractHash,
+        contract_hash: &AddressableEntityHash,
     ) -> Option<&ContractVersionKey> {
         self.versions
             .0
@@ -958,7 +963,7 @@ impl Package {
     }
 
     /// Return the contract hash for the newest enabled contract version.
-    pub fn current_contract_hash(&self) -> Option<ContractHash> {
+    pub fn current_contract_hash(&self) -> Option<AddressableEntityHash> {
         self.enabled_versions().0.values().next_back().copied()
     }
 
@@ -1050,8 +1055,8 @@ mod tests {
     };
     use alloc::borrow::ToOwned;
 
-    const CONTRACT_HASH_V1: ContractHash = ContractHash::new([42; 32]);
-    const CONTRACT_HASH_V2: ContractHash = ContractHash::new([84; 32]);
+    const CONTRACT_HASH_V1: AddressableEntityHash = AddressableEntityHash::new([42; 32]);
+    const CONTRACT_HASH_V2: AddressableEntityHash = AddressableEntityHash::new([84; 32]);
 
     fn make_contract_package_with_two_versions() -> Package {
         let mut contract_package = Package::new(
@@ -1158,7 +1163,7 @@ mod tests {
 
     #[test]
     fn should_disable_and_enable_contract_version() {
-        const CONTRACT_HASH: ContractHash = ContractHash::new([123; 32]);
+        const CONTRACT_HASH: AddressableEntityHash = AddressableEntityHash::new([123; 32]);
 
         let mut contract_package = make_contract_package_with_two_versions();
 
@@ -1352,7 +1357,7 @@ mod tests {
         let mut contract_package = make_contract_package_with_two_versions();
 
         assert_eq!(
-            contract_package.enable_version(ContractHash::default()),
+            contract_package.enable_version(AddressableEntityHash::default()),
             Err(Error::ContractNotFound),
         );
     }

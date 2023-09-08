@@ -12,9 +12,9 @@ use casper_execution_engine::engine_state::EngineConfigBuilder;
 use casper_types::DEFAULT_ADD_BID_COST;
 use casper_types::{
     bytesrepr::{Bytes, ToBytes},
-    BrTableCost, CLValue, ContractHash, ControlFlowCosts, EraId, HostFunction, HostFunctionCosts,
-    OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue, WasmConfig,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
+    AddressableEntityHash, BrTableCost, CLValue, ControlFlowCosts, EraId, HostFunction,
+    HostFunctionCosts, OpcodeCosts, ProtocolVersion, RuntimeArgs, StorageCosts, StoredValue,
+    WasmConfig, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_WASM_MAX_MEMORY, U512,
 };
 #[cfg(not(feature = "use-as-wasm"))]
 use casper_types::{
@@ -301,7 +301,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -413,7 +413,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -525,7 +525,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -641,7 +641,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -753,7 +753,7 @@ fn should_verify_new_uref_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -798,7 +798,7 @@ fn should_verify_put_key_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -843,7 +843,7 @@ fn should_verify_remove_key_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -888,7 +888,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -933,7 +933,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
@@ -1012,7 +1012,7 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
 
     let balance_before = builder.get_purse_balance(account.main_purse());
 
-    let contract_hash: ContractHash = account
+    let contract_hash: AddressableEntityHash = account
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")

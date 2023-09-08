@@ -4,9 +4,9 @@ use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieM
 use casper_types::{
     account::AccountHash,
     package::{ContractVersions, Groups, PackageKind, PackageStatus},
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractWasm, ContractWasmHash,
-    EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
-    StoredValueTypeMismatch, URef,
+    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, ContractWasm,
+    ContractWasmHash, EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
+    StoredValue, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -25,7 +25,7 @@ pub trait TrackingCopyExt<R> {
     fn get_entity_hash_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Self::Error>;
+    ) -> Result<AddressableEntityHash, Self::Error>;
 
     /// Gets the entity for a given account by its account address
     fn get_addressable_entity_by_account_hash(
@@ -71,7 +71,7 @@ pub trait TrackingCopyExt<R> {
     /// Gets an addressable entity  by Key.
     fn get_contract(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
     /// Gets a contract package by Key.
@@ -97,14 +97,14 @@ where
     fn get_entity_hash_by_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Self::Error> {
+    ) -> Result<AddressableEntityHash, Self::Error> {
         let account_key = Key::Account(account_hash);
         match self.get(&account_key).map_err(Into::into)? {
             Some(StoredValue::CLValue(cl_value)) => {
                 let contract_hash = CLValue::into_t::<Key>(cl_value)?;
                 let contract_hash = contract_hash
                     .into_hash()
-                    .map(ContractHash::new)
+                    .map(AddressableEntityHash::new)
                     .expect("must convert to contract hash");
 
                 Ok(contract_hash)
@@ -132,7 +132,7 @@ where
                     AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
                 let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-                let contract_hash = ContractHash::new(generator.new_hash_address());
+                let contract_hash = AddressableEntityHash::new(generator.new_hash_address());
                 let contract_package_hash = PackageHash::new(generator.new_hash_address());
 
                 let entry_points = EntryPoints::new();
@@ -288,7 +288,7 @@ where
     /// Gets a contract header by Key
     fn get_contract(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error> {
         let key = contract_hash.into();
 

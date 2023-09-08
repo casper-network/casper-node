@@ -9,19 +9,23 @@ use datasize::DataSize;
 
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::addressable_entity::FromStrError;
 use crate::{
     addressable_entity::{EntryPoint, NamedKeys},
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
+    checksummed_hex,
     contract_wasm::ContractWasmHash,
-    EntryPoints, PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
+    CLType, CLTyped, EntryPoints, HashAddr, PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
 pub const MAX_GROUPS: u8 = 10;
 /// Maximum number of URefs which can be assigned across all user groups.
 pub const MAX_TOTAL_UREFS: usize = 100;
+
+const CONTRACT_STRING_PREFIX: &str = "contract-";
 
 /// Set of errors which may happen when working with contract headers.
 #[derive(Debug, PartialEq, Eq)]
@@ -132,6 +136,151 @@ pub type ProtocolVersionMajor = u32;
 /// Serialized length of `ContractVersionKey`.
 pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
     U32_SERIALIZED_LENGTH + U32_SERIALIZED_LENGTH;
+
+/// A newtype wrapping a `HashAddr` which references an [`Contract`] in the global state.
+#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(
+    feature = "json-schema",
+    derive(JsonSchema),
+    schemars(description = "The hex-encoded address of the addressable entity.")
+)]
+pub struct ContractHash(
+    #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
+);
+
+impl ContractHash {
+    /// Constructs a new `ContractHash` from the raw bytes of the contract hash.
+    pub const fn new(value: HashAddr) -> ContractHash {
+        ContractHash(value)
+    }
+
+    /// Returns the raw bytes of the contract hash as an array.
+    pub fn value(&self) -> HashAddr {
+        self.0
+    }
+
+    /// Returns the raw bytes of the contract hash as a `slice`.
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Formats the `ContractHash` for users getting and putting.
+    pub fn to_formatted_string(self) -> String {
+        format!(
+            "{}{}",
+            CONTRACT_STRING_PREFIX,
+            base16::encode_lower(&self.0),
+        )
+    }
+
+    /// Parses a string formatted as per `Self::to_formatted_string()` into a
+    /// `ContractHash`.
+    pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
+        let remainder = input
+            .strip_prefix(CONTRACT_STRING_PREFIX)
+            .ok_or(FromStrError::InvalidPrefix)?;
+        let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
+        Ok(ContractHash(bytes))
+    }
+}
+
+impl Display for ContractHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", base16::encode_lower(&self.0))
+    }
+}
+
+impl Debug for ContractHash {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        write!(f, "ContractHash({})", base16::encode_lower(&self.0))
+    }
+}
+
+impl CLTyped for ContractHash {
+    fn cl_type() -> CLType {
+        CLType::ByteArray(KEY_HASH_LENGTH as u32)
+    }
+}
+
+impl ToBytes for ContractHash {
+    #[inline(always)]
+    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
+        self.0.to_bytes()
+    }
+
+    #[inline(always)]
+    fn serialized_length(&self) -> usize {
+        self.0.serialized_length()
+    }
+
+    #[inline(always)]
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
+        writer.extend_from_slice(&self.0);
+        Ok(())
+    }
+}
+
+impl FromBytes for ContractHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        let (bytes, rem) = FromBytes::from_bytes(bytes)?;
+        Ok((ContractHash::new(bytes), rem))
+    }
+}
+
+impl From<[u8; 32]> for ContractHash {
+    fn from(bytes: [u8; 32]) -> Self {
+        ContractHash(bytes)
+    }
+}
+
+impl Serialize for ContractHash {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            self.to_formatted_string().serialize(serializer)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ContractHash {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            let formatted_string = String::deserialize(deserializer)?;
+            ContractHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+        } else {
+            let bytes = HashAddr::deserialize(deserializer)?;
+            Ok(ContractHash(bytes))
+        }
+    }
+}
+
+impl AsRef<[u8]> for ContractHash {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl TryFrom<&[u8]> for ContractHash {
+    type Error = TryFromSliceForContractHashError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
+        HashAddr::try_from(bytes)
+            .map(ContractHash::new)
+            .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
+
+impl TryFrom<&Vec<u8>> for ContractHash {
+    type Error = TryFromSliceForContractHashError;
+
+    fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
+        HashAddr::try_from(bytes as &[u8])
+            .map(ContractHash::new)
+            .map_err(|_| TryFromSliceForContractHashError(()))
+    }
+}
 
 /// Methods and type signatures supported by a contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -13,8 +13,8 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{NamedKeys, Parameters},
-    ApiError, CLType, ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
-    RuntimeArgs, URef, U512,
+    AddressableEntityHash, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, Key, RuntimeArgs, URef, U512,
 };
 
 const DONATION_AMOUNT: u64 = 1;
@@ -180,7 +180,7 @@ fn delegate() -> Result<(), ApiError> {
         METHOD_CALL => {
             // This comes from outside i.e. after deploying the contract, this key is queried,
             // and then passed into the call
-            let contract_key: ContractHash = runtime::get_named_arg(ARG_CONTRACTKEY);
+            let contract_key: AddressableEntityHash = runtime::get_named_arg(ARG_CONTRACTKEY);
 
             // This is a method that's gets forwarded into the sub contract
             let subcontract_method: String = runtime::get_named_arg(ARG_SUBCONTRACTMETHODFWD);

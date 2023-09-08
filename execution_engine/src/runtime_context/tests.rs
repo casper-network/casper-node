@@ -20,10 +20,10 @@ use casper_types::{
     execution::TransformKind,
     package::PackageKind,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, BlockTime, CLValue, ContextAccessRights, ContractHash,
-    ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key, PackageHash, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH, U256,
-    U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLValue,
+    ContextAccessRights, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
+    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef,
+    KEY_HASH_LENGTH, U256, U512,
 };
 use tempfile::TempDir;
 
@@ -69,7 +69,7 @@ fn new_tracking_copy(
 
 fn new_addressable_entity_with_purse(
     account_hash: AccountHash,
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     purse: [u8; 32],
     named_keys: NamedKeys,
 ) -> (Key, Key, AddressableEntity) {
@@ -92,7 +92,7 @@ fn new_addressable_entity_with_purse(
 
 fn new_addressable_entity(
     account_hash: AccountHash,
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     named_keys: NamedKeys,
 ) -> (Key, Key, AddressableEntity) {
     new_addressable_entity_with_purse(account_hash, contract_hash, [0; 32], named_keys)
@@ -137,10 +137,13 @@ fn new_runtime_context<'a>(
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
-        registry.insert(MINT.to_string(), ContractHash::default());
-        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(AUCTION.to_string(), ContractHash::default());
+        registry.insert(MINT.to_string(), AddressableEntityHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
+        registry.insert(
+            STANDARD_PAYMENT.to_string(),
+            AddressableEntityHash::default(),
+        );
+        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -202,7 +205,7 @@ where
         .expect("should create secret key");
     let public_key = PublicKey::from(&secret_key);
     let account_hash = public_key.to_account_hash();
-    let contract_hash = ContractHash::new([10u8; 32]);
+    let contract_hash = AddressableEntityHash::new([10u8; 32]);
     let deploy_hash = [1u8; 32];
     let (_, entity_key, addressable_entity) = new_addressable_entity(
         public_key.to_account_hash(),
@@ -369,7 +372,7 @@ fn contract_key_not_writeable() {
 fn contract_key_addable_valid() {
     // Contract key is addable if it is a "base" key - current context of the execution.
     let account_hash = AccountHash::new([0u8; 32]);
-    let entity_hash = ContractHash::new([1u8; 32]);
+    let entity_hash = AddressableEntityHash::new([1u8; 32]);
     let (_account_key, entity_key, entity) =
         new_addressable_entity(account_hash, entity_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
@@ -381,7 +384,7 @@ fn contract_key_addable_valid() {
     let mut access_rights = entity_as_stored_value
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(ContractHash::default());
+        .extract_access_rights(AddressableEntityHash::default());
 
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity);
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
@@ -391,10 +394,13 @@ fn contract_key_addable_valid() {
 
     let default_system_registry = {
         let mut registry = SystemContractRegistry::new();
-        registry.insert(MINT.to_string(), ContractHash::default());
-        registry.insert(HANDLE_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(STANDARD_PAYMENT.to_string(), ContractHash::default());
-        registry.insert(AUCTION.to_string(), ContractHash::default());
+        registry.insert(MINT.to_string(), AddressableEntityHash::default());
+        registry.insert(HANDLE_PAYMENT.to_string(), AddressableEntityHash::default());
+        registry.insert(
+            STANDARD_PAYMENT.to_string(),
+            AddressableEntityHash::default(),
+        );
+        registry.insert(AUCTION.to_string(), AddressableEntityHash::default());
         StoredValue::CLValue(CLValue::from_t(registry).unwrap())
     };
 
@@ -456,7 +462,7 @@ fn contract_key_addable_valid() {
 #[test]
 fn contract_key_addable_invalid() {
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
+    let contract_hash = AddressableEntityHash::new([1u8; 32]);
     let (_, entity_key, entity) =
         new_addressable_entity(account_hash, contract_hash, NamedKeys::new());
     let authorization_keys = BTreeSet::from_iter(vec![account_hash]);
@@ -469,7 +475,7 @@ fn contract_key_addable_invalid() {
     let mut access_rights = contract
         .as_addressable_entity()
         .unwrap()
-        .extract_access_rights(ContractHash::default());
+        .extract_access_rights(AddressableEntityHash::default());
     let (tracking_copy, _tempdir) = new_tracking_copy(account_hash, entity_key, entity.clone());
     let tracking_copy = Rc::new(RefCell::new(tracking_copy));
 
@@ -881,7 +887,7 @@ fn remove_uref_works() {
     let uref_name = "Foo".to_owned();
     let uref_key = create_uref_as_key(&mut address_generator, AccessRights::READ);
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
+    let contract_hash = AddressableEntityHash::new([1u8; 32]);
     let mut named_keys = NamedKeys::new();
     named_keys.insert(uref_name.clone(), uref_key);
     let (_, entity_key, addressable_entity) =
@@ -930,7 +936,7 @@ fn an_accounts_access_rights_should_include_main_purse() {
     let test_main_purse = URef::new([42u8; 32], AccessRights::READ_ADD_WRITE);
     // All other access rights except for main purse are extracted from named keys.
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
+    let contract_hash = AddressableEntityHash::new([1u8; 32]);
     let named_keys = NamedKeys::new();
     let (_base_key, _, entity) = new_addressable_entity_with_purse(
         account_hash,
@@ -959,7 +965,7 @@ fn validate_valid_purse_of_an_account() {
 
     let deploy_hash = [1u8; 32];
     let account_hash = AccountHash::new([0u8; 32]);
-    let contract_hash = ContractHash::new([1u8; 32]);
+    let contract_hash = AddressableEntityHash::new([1u8; 32]);
     let (base_key, _, entity) = new_addressable_entity_with_purse(
         account_hash,
         contract_hash,

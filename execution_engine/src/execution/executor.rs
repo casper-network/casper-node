@@ -7,7 +7,7 @@ use casper_types::{
     bytesrepr::FromBytes,
     package::PackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    AddressableEntity, BlockTime, CLTyped, ContextAccessRights, ContractHash, DeployHash,
+    AddressableEntity, AddressableEntityHash, BlockTime, CLTyped, ContextAccessRights, DeployHash,
     EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
@@ -45,7 +45,7 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entity: &AddressableEntity,
         package_kind: PackageKind,
         named_keys: &mut NamedKeys,

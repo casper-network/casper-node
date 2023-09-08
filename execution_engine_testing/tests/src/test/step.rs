@@ -15,8 +15,8 @@ use casper_types::{
         },
         mint::TOTAL_SUPPLY_KEY,
     },
-    CLValue, ContractHash, EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
-    PublicKey, SecretKey, U512,
+    AddressableEntityHash, CLValue, EraId, GenesisAccount, GenesisValidator, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 static ACCOUNT_1_PK: Lazy<PublicKey> = Lazy::new(|| {
@@ -35,7 +35,7 @@ const ACCOUNT_2_BOND: u64 = 200_000_000;
 
 fn get_named_key(
     builder: &mut LmdbWasmTestBuilder,
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     name: &str,
 ) -> Key {
     *builder

@@ -11,7 +11,7 @@ use casper_types::{
     runtime_args,
     system::mint,
     testing::TestRng,
-    CLValue, ContractHash, EraId, PackageHash, ProtocolVersion, PublicKey, RuntimeArgs,
+    AddressableEntityHash, CLValue, EraId, PackageHash, ProtocolVersion, PublicKey, RuntimeArgs,
     StoredValue, U512,
 };
 
@@ -746,7 +746,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
         .get(SHARING_HASH_KEY_NAME)
         .expect("must have named key entry")
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("must convert to hash");
 
     let put_access_uref = ExecuteRequestBuilder::contract_call_by_hash(
@@ -849,7 +849,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         .get(CONTRACT_HASH_NAME)
         .expect("must have named key entry for contract hash")
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("must get contract hash");
 
     let upgrade_threshold_package_hash = entity
@@ -1009,7 +1009,7 @@ fn should_migrate_with_correct_upgrade_thresholds() {
     let contract_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_hash().map(ContractHash::new))
+        .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must convert to hash");
 
@@ -1049,7 +1049,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     let contract_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_hash().map(ContractHash::new))
+        .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must convert to hash");
 
@@ -1098,7 +1098,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
         .expect("must have entity")
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|key| key.into_hash().map(ContractHash::new))
+        .map(|key| key.into_hash().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must get contract hash");
 
@@ -1135,7 +1135,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
     let contract_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_hash().map(ContractHash::new))
+        .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must convert to hash");
 

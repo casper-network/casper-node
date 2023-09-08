@@ -25,10 +25,10 @@ use casper_types::{
     execution::Effects,
     package::PackageKind,
     system::auction::{BidKind, EraInfo},
-    AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
-    DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package, PackageHash,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
+    ContextAccessRights, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
+    Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -874,7 +874,10 @@ where
     }
 
     /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
+    pub(crate) fn is_system_contract(
+        &self,
+        contract_hash: &AddressableEntityHash,
+    ) -> Result<bool, Error> {
         Ok(self
             .system_contract_registry()?
             .has_contract_hash(contract_hash))
@@ -883,7 +886,7 @@ where
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
         if let Some(base_key) = self.get_entity_address().into_hash() {
-            let contract_hash = ContractHash::new(base_key);
+            let contract_hash = AddressableEntityHash::new(base_key);
             if self.is_system_contract(&contract_hash)? {
                 // Don't charge storage used while executing a system contract.
                 return Ok(());
@@ -1291,7 +1294,7 @@ where
     }
 
     /// Gets system contract by name.
-    pub(crate) fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
+    pub(crate) fn get_system_contract(&self, name: &str) -> Result<AddressableEntityHash, Error> {
         let registry = self.system_contract_registry()?;
         let hash = registry.get(name).ok_or_else(|| {
             error!("Missing system contract hash: {}", name);

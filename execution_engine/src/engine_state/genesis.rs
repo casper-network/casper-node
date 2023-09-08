@@ -32,10 +32,10 @@ use casper_types::{
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, AdministratorAccount, CLValue, Chainspec, ChainspecRegistry,
-    ContractHash, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId, FeeHandling,
-    GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, CLValue,
+    Chainspec, ChainspecRegistry, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
+    FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
+    PublicKey, RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -667,7 +667,7 @@ where
             // Insert a partial registry into global state.
             // This allows for default values to be accessible when the remaining system contracts
             // call the `call_host_mint` function during their creation.
-            let mut partial_registry = BTreeMap::<String, ContractHash>::new();
+            let mut partial_registry = BTreeMap::<String, AddressableEntityHash>::new();
             partial_registry.insert(MINT.to_string(), contract_hash);
             partial_registry.insert(HANDLE_PAYMENT.to_string(), DEFAULT_ADDRESS.into());
             let cl_registry = CLValue::from_t(partial_registry)
@@ -684,7 +684,7 @@ where
     fn create_handle_payment(
         &self,
         handle_payment_payment_purse: URef,
-    ) -> Result<ContractHash, Box<GenesisError>> {
+    ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         let named_keys = {
             let mut named_keys = NamedKeys::new();
             let named_key = Key::URef(handle_payment_payment_purse);
@@ -714,7 +714,10 @@ where
         Ok(contract_hash)
     }
 
-    fn create_auction(&self, total_supply_key: Key) -> Result<ContractHash, Box<GenesisError>> {
+    fn create_auction(
+        &self,
+        total_supply_key: Key,
+    ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         let locked_funds_period_millis = self.exec_config.locked_funds_period_millis();
         let auction_delay: u64 = self.exec_config.auction_delay();
         let genesis_timestamp_millis: u64 = self.exec_config.genesis_timestamp_millis();
@@ -979,7 +982,7 @@ where
         Ok(contract_hash)
     }
 
-    fn create_standard_payment(&self) -> Result<ContractHash, Box<GenesisError>> {
+    fn create_standard_payment(&self) -> Result<AddressableEntityHash, Box<GenesisError>> {
         let named_keys = NamedKeys::new();
 
         let entry_points = standard_payment::standard_payment_entry_points();
@@ -1108,7 +1111,7 @@ where
         named_keys: NamedKeys,
         entry_points: EntryPoints,
         contract_package_kind: PackageKind,
-    ) -> Result<ContractHash, Box<GenesisError>> {
+    ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         self.store_contract(
             contract_package_kind,
             NO_WASM,
@@ -1125,7 +1128,7 @@ where
         maybe_named_keys: Option<NamedKeys>,
         maybe_entry_points: Option<EntryPoints>,
         main_purse: URef,
-    ) -> Result<ContractHash, Box<GenesisError>> {
+    ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         let protocol_version = self.protocol_version;
         let contract_wasm_hash = if no_wasm {
             ContractWasmHash::new(DEFAULT_ADDRESS)
@@ -1134,9 +1137,9 @@ where
         };
         let contract_hash = if contract_package_kind.is_system_account() {
             let entity_hash_addr = PublicKey::System.to_account_hash().value();
-            ContractHash::new(entity_hash_addr)
+            AddressableEntityHash::new(entity_hash_addr)
         } else {
-            ContractHash::new(self.address_generator.borrow_mut().new_hash_address())
+            AddressableEntityHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
 
         let contract_package_hash =
@@ -1215,7 +1218,7 @@ where
     fn store_system_contract_registry(
         &self,
         contract_name: &str,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<(), Box<GenesisError>> {
         let partial_cl_registry = self
             .tracking_copy

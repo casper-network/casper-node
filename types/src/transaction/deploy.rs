@@ -41,7 +41,7 @@ use super::AccountAndSecretKey;
 use crate::bytesrepr::Bytes;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::ContractHash;
+use crate::AddressableEntityHash;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
@@ -956,7 +956,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn withdraw_bid(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         public_key: PublicKey,
         amount: U512,
         timestamp: Timestamp,
@@ -992,7 +992,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn delegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1030,7 +1030,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn undelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1069,7 +1069,7 @@ impl Deploy {
     #[allow(clippy::too_many_arguments)]
     pub fn redelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         redelegate_validator_public_key: PublicKey,

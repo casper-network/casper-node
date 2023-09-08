@@ -9,7 +9,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{runtime_args, ApiError, ContractHash, URef, U512};
+use casper_types::{runtime_args, AddressableEntityHash, ApiError, URef, U512};
 
 #[repr(u16)]
 enum Error {
@@ -27,7 +27,7 @@ const GET_PAYMENT_PURSE: &str = "get_payment_purse";
 const ARG_PURSE_NAME_1: &str = "purse_name_1";
 const ARG_PURSE_NAME_2: &str = "purse_name_2";
 
-fn set_refund_purse(contract_hash: ContractHash, p: &URef) {
+fn set_refund_purse(contract_hash: AddressableEntityHash, p: &URef) {
     runtime::call_contract(
         contract_hash,
         SET_REFUND_PURSE,
@@ -37,15 +37,15 @@ fn set_refund_purse(contract_hash: ContractHash, p: &URef) {
     )
 }
 
-fn get_refund_purse(handle_payment: ContractHash) -> Option<URef> {
+fn get_refund_purse(handle_payment: AddressableEntityHash) -> Option<URef> {
     runtime::call_contract(handle_payment, GET_REFUND_PURSE, runtime_args! {})
 }
 
-fn get_payment_purse(handle_payment: ContractHash) -> URef {
+fn get_payment_purse(handle_payment: AddressableEntityHash) -> URef {
     runtime::call_contract(handle_payment, GET_PAYMENT_PURSE, runtime_args! {})
 }
 
-fn submit_payment(handle_payment: ContractHash, amount: U512) {
+fn submit_payment(handle_payment: AddressableEntityHash, amount: U512) {
     let payment_purse = get_payment_purse(handle_payment);
     let main_purse = account::get_main_purse();
     system::transfer_from_purse_to_purse(main_purse, payment_purse, amount, None).unwrap_or_revert()
