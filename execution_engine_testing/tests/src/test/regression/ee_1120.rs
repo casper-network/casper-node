@@ -4,8 +4,9 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    instrumented, utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    SYSTEM_ADDR,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
@@ -97,7 +98,10 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let transfer_request_2 = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -109,7 +113,10 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(transfer_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let auction = builder.get_auction_contract_hash();
 
@@ -149,17 +156,17 @@ fn should_run_ee_1120_slash_delegators() {
     .build();
 
     builder
-        .exec(delegate_exec_request_1)
+        .exec_instrumented(delegate_exec_request_1, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(delegate_exec_request_2)
+        .exec_instrumented(delegate_exec_request_2, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(delegate_exec_request_3)
+        .exec_instrumented(delegate_exec_request_3, instrumented!())
         .expect_success()
         .commit();
 
@@ -209,9 +216,18 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(undelegate_request_1).commit().expect_success();
-    builder.exec(undelegate_request_2).commit().expect_success();
-    builder.exec(undelegate_request_3).commit().expect_success();
+    builder
+        .exec_instrumented(undelegate_request_1, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(undelegate_request_2, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(undelegate_request_3, instrumented!())
+        .commit()
+        .expect_success();
 
     // Check unbonding purses before slashing
 
@@ -289,7 +305,10 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(slash_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(slash_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // Compare bids after slashing validator 2
     let bids_after: Bids = builder.get_bids();
@@ -346,7 +365,10 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(slash_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(slash_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let bids_after: Bids = builder.get_bids();
     assert_eq!(bids_after.len(), 2);

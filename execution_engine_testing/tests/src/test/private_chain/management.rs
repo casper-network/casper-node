@@ -1,11 +1,11 @@
 use std::convert::TryFrom;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_AUCTION_DELAY,
-    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_AUCTION_DELAY, DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG,
+    DEFAULT_UNBONDING_DELAY, DEFAULT_VALIDATOR_SLOTS, DEFAULT_WASM_CONFIG,
 };
 use casper_execution_engine::core::{
     engine_state::{
@@ -132,7 +132,10 @@ fn genesis_accounts_should_not_update_key_weight() {
         .build()
     };
 
-    builder.exec(exec_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -157,7 +160,10 @@ fn genesis_accounts_should_not_update_key_weight() {
         .build()
     };
 
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_failure()
+        .commit();
 }
 
 #[ignore]
@@ -178,7 +184,10 @@ fn genesis_accounts_should_not_modify_action_thresholds() {
         .build()
     };
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
     let error = builder.get_error().expect("should have error");
     assert!(
         matches!(
@@ -206,7 +215,10 @@ fn genesis_accounts_should_not_add_associated_keys() {
             .build()
     };
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -249,7 +261,7 @@ fn genesis_accounts_should_not_remove_associated_keys() {
     };
 
     builder
-        .exec(add_associated_key_request)
+        .exec_instrumented(add_associated_key_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -266,7 +278,7 @@ fn genesis_accounts_should_not_remove_associated_keys() {
     };
 
     builder
-        .exec(remove_associated_key_request)
+        .exec_instrumented(remove_associated_key_request, instrumented!())
         .expect_failure()
         .commit();
 
@@ -297,7 +309,10 @@ fn administrator_account_should_disable_any_account() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // Disable account 1
     let disable_request_1 = {
@@ -323,7 +338,10 @@ fn administrator_account_should_disable_any_account() {
         }
     };
 
-    builder.exec(disable_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(disable_request_1, instrumented!())
+        .expect_success()
+        .commit();
     // Account 1 can not deploy after freezing
     let exec_request_2 = ExecuteRequestBuilder::module_bytes(
         *ACCOUNT_1_ADDR,
@@ -331,7 +349,10 @@ fn administrator_account_should_disable_any_account() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request_2).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
     assert!(matches!(
@@ -390,8 +411,14 @@ fn administrator_account_should_disable_any_account() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(enable_request_1).expect_success().commit();
-    builder.exec(enable_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(enable_request_1, instrumented!())
+        .expect_success()
+        .commit();
+    builder
+        .exec_instrumented(enable_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     // Account 1 can deploy after unfreezing
     let exec_request_3 = ExecuteRequestBuilder::module_bytes(
@@ -400,7 +427,10 @@ fn administrator_account_should_disable_any_account() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let account_1_unfrozen = builder
         .get_account(*ACCOUNT_1_ADDR)
@@ -425,7 +455,10 @@ fn native_transfer_should_create_new_private_account() {
     let transfer_request =
         ExecuteRequestBuilder::transfer(*DEFAULT_ADMIN_ACCOUNT_ADDR, transfer_args).build();
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let _account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
@@ -449,7 +482,10 @@ fn wasm_transfer_should_create_new_private_account() {
     )
     .build();
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let _account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
@@ -469,7 +505,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     .build();
 
     builder
-        .exec(store_contract_request)
+        .exec_instrumented(store_contract_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -515,7 +551,10 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // Disable stored contract
     let disable_request = {
@@ -528,7 +567,10 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
             .build()
     };
 
-    builder.exec(disable_request).expect_success().commit();
+    builder
+        .exec_instrumented(disable_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let contract_package_after_disable = ContractPackage::try_from(
         builder
@@ -577,7 +619,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
 
     for call_delegate_request in call_delegate_requests_1 {
         builder
-            .exec(call_delegate_request)
+            .exec_instrumented(call_delegate_request, instrumented!())
             .expect_failure()
             .commit();
         let error = builder.get_error().expect("should have error");
@@ -603,7 +645,10 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
             .build()
     };
 
-    builder.exec(enable_request).expect_success().commit();
+    builder
+        .exec_instrumented(enable_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let call_delegate_requests_2 = {
         // Unable to call disabled stored contract directly
@@ -638,7 +683,10 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     };
 
     for exec_request in call_delegate_requests_2 {
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec_instrumented(exec_request, instrumented!())
+            .expect_success()
+            .commit();
     }
 }
 
@@ -662,7 +710,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     .build();
 
     builder
-        .exec(store_contract_request)
+        .exec_instrumented(store_contract_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -724,7 +772,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // Disable payment contract
     let disable_request = {
@@ -737,7 +788,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
             .build()
     };
 
-    builder.exec(disable_request).expect_success().commit();
+    builder
+        .exec_instrumented(disable_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let contract_package_after_disable = ContractPackage::try_from(
         builder
@@ -794,7 +848,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     };
 
     for execute_request in call_stored_payment_requests_1 {
-        builder.exec(execute_request).expect_failure().commit();
+        builder
+            .exec_instrumented(execute_request, instrumented!())
+            .expect_failure()
+            .commit();
         let error = builder.get_error().expect("should have error");
         assert!(
             matches!(
@@ -818,7 +875,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
             .build()
     };
 
-    builder.exec(enable_request).expect_success().commit();
+    builder
+        .exec_instrumented(enable_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let call_stored_payment_requests_2 = {
         let payment_args = runtime_args! {
@@ -862,7 +922,10 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     };
 
     for exec_request in call_stored_payment_requests_2 {
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec_instrumented(exec_request, instrumented!())
+            .expect_success()
+            .commit();
     }
 }
 
@@ -881,7 +944,10 @@ fn should_not_allow_add_bid_on_private_chain() {
     let exec_request =
         ExecuteRequestBuilder::standard(*ACCOUNT_1_ADDR, "add_bid.wasm", session_args).build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
 
@@ -910,7 +976,10 @@ fn should_not_allow_delegate_on_private_chain() {
     let exec_request =
         ExecuteRequestBuilder::standard(*ACCOUNT_1_ADDR, "delegate.wasm", session_args).build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should have error");
 

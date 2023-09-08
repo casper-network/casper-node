@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{Key, RuntimeArgs, StoredValue};
@@ -37,7 +37,10 @@ fn should_run_counter_example() {
     )
     .build();
 
-    builder.exec(install_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(install_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(
@@ -53,7 +56,10 @@ fn should_run_counter_example() {
         panic!("Stored value is not an i32: {:?}", query_result);
     };
 
-    builder.exec(inc_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(inc_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let query_result = builder
         .query(
@@ -72,5 +78,8 @@ fn should_run_counter_example() {
     let counter_diff = counter_after - counter_before;
     assert_eq!(counter_diff, 1);
 
-    builder.exec(call_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(call_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }

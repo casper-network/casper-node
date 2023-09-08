@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{core, core::ValidationError};
@@ -39,7 +39,10 @@ fn get_balance_should_work() {
     )
     .build();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let alice_account = builder
         .get_account(*ALICE_ADDR)
@@ -124,7 +127,10 @@ fn get_balance_using_public_key_should_work() {
     )
     .build();
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let alice_account = builder
         .get_account(*ALICE_ADDR)

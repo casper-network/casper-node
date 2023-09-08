@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs};
 
@@ -14,13 +14,14 @@ const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([1u8; 32]);
 fn should_run_get_caller_contract() {
     InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(
+        .exec_instrumented(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
                 CONTRACT_GET_CALLER,
                 runtime_args! {"account" => *DEFAULT_ACCOUNT_ADDR},
             )
             .build(),
+            instrumented!(),
         )
         .expect_success()
         .commit();
@@ -34,25 +35,27 @@ fn should_run_get_caller_contract_other_account() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(
+        .exec_instrumented(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
                 CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
                 runtime_args! {"target" => ACCOUNT_1_ADDR, "amount"=> *DEFAULT_PAYMENT},
             )
             .build(),
+            instrumented!(),
         )
         .expect_success()
         .commit();
 
     builder
-        .exec(
+        .exec_instrumented(
             ExecuteRequestBuilder::standard(
                 ACCOUNT_1_ADDR,
                 CONTRACT_GET_CALLER,
                 runtime_args! {"account" => ACCOUNT_1_ADDR},
             )
             .build(),
+            instrumented!(),
         )
         .expect_success()
         .commit();
@@ -66,13 +69,14 @@ fn should_run_get_caller_subcall_contract() {
         builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
         builder
-            .exec(
+            .exec_instrumented(
                 ExecuteRequestBuilder::standard(
                     *DEFAULT_ACCOUNT_ADDR,
                     CONTRACT_GET_CALLER_SUBCALL,
                     runtime_args! {"account" => *DEFAULT_ACCOUNT_ADDR},
                 )
                 .build(),
+                instrumented!(),
             )
             .expect_success()
             .commit();
@@ -81,24 +85,26 @@ fn should_run_get_caller_subcall_contract() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(
+        .exec_instrumented(
             ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
                 CONTRACT_TRANSFER_PURSE_TO_ACCOUNT,
                 runtime_args! {"target" => ACCOUNT_1_ADDR, "amount"=>*DEFAULT_PAYMENT},
             )
             .build(),
+            instrumented!(),
         )
         .expect_success()
         .commit();
     builder
-        .exec(
+        .exec_instrumented(
             ExecuteRequestBuilder::standard(
                 ACCOUNT_1_ADDR,
                 CONTRACT_GET_CALLER_SUBCALL,
                 runtime_args! {"account" => ACCOUNT_1_ADDR},
             )
             .build(),
+            instrumented!(),
         )
         .expect_success()
         .commit();

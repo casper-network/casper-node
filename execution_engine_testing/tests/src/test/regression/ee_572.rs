@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue, U512};
 
@@ -49,14 +49,20 @@ fn should_run_ee_572_regression() {
     // Create Accounts
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     // Store the creation contract
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let contract: Key = {
         let account = match builder.query(None, Key::Account(ACCOUNT_1_ADDR), &[]) {
@@ -80,7 +86,7 @@ fn should_run_ee_572_regression() {
 
     // Attempt to forge a new URef with escalated privileges
     let response = builder
-        .exec(exec_request_4)
+        .exec_instrumented(exec_request_4, instrumented!())
         .get_exec_result_owned(3)
         .expect("should have a response");
 

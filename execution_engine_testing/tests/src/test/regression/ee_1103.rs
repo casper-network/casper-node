@@ -2,7 +2,7 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    instrumented, utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
     DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
     MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR, TIMESTAMP_MILLIS_INCREMENT,
 };
@@ -164,7 +164,10 @@ fn validator_scores_should_reflect_delegates() {
     builder.run_genesis(&run_genesis_request);
 
     for request in post_genesis_requests {
-        builder.exec(request).commit().expect_success();
+        builder
+            .exec_instrumented(request, instrumented!())
+            .commit()
+            .expect_success();
     }
 
     let mut era = builder.get_era();
@@ -214,7 +217,7 @@ fn validator_scores_should_reflect_delegates() {
         .build();
 
         builder
-            .exec(delegator_1_delegate_request)
+            .exec_instrumented(delegator_1_delegate_request, instrumented!())
             .commit()
             .expect_success();
 
@@ -264,7 +267,7 @@ fn validator_scores_should_reflect_delegates() {
         .build();
 
         builder
-            .exec(delegator_2_delegate_request)
+            .exec_instrumented(delegator_2_delegate_request, instrumented!())
             .commit()
             .expect_success();
 
@@ -315,7 +318,7 @@ fn validator_scores_should_reflect_delegates() {
         .build();
 
         builder
-            .exec(delegator_3_delegate_request)
+            .exec_instrumented(delegator_3_delegate_request, instrumented!())
             .commit()
             .expect_success();
 

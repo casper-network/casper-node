@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
@@ -60,11 +60,11 @@ fn should_fail_to_add_bid_from_stored_session_code() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(store_call_auction_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(add_bid_request);
+    builder.exec_instrumented(add_bid_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -102,11 +102,11 @@ fn should_fail_to_add_bid_from_stored_contract_code() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(store_call_auction_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(add_bid_request);
+    builder.exec_instrumented(add_bid_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -154,14 +154,17 @@ fn should_fail_to_withdraw_bid_from_stored_session_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
-
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(add_bid_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(withdraw_bid_request);
+    builder
+        .exec_instrumented(store_call_auction_request, instrumented!())
+        .commit()
+        .expect_success();
+
+    builder.exec_instrumented(withdraw_bid_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -209,14 +212,17 @@ fn should_fail_to_withdraw_bid_from_stored_contract_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
-
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(add_bid_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(withdraw_bid_request);
+    builder
+        .exec_instrumented(store_call_auction_request, instrumented!())
+        .commit()
+        .expect_success();
+
+    builder.exec_instrumented(withdraw_bid_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -285,18 +291,21 @@ fn should_fail_to_delegate_from_stored_session_code() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(validator_fund_request)
+        .exec_instrumented(validator_fund_request, instrumented!())
         .commit()
         .expect_success();
-
-    builder.exec(add_bid_request).commit().expect_success();
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(add_bid_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(delegate_request);
+    builder
+        .exec_instrumented(store_call_auction_request, instrumented!())
+        .commit()
+        .expect_success();
+
+    builder.exec_instrumented(delegate_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -365,18 +374,21 @@ fn should_fail_to_delegate_from_stored_contract_code() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(validator_fund_request)
+        .exec_instrumented(validator_fund_request, instrumented!())
         .commit()
         .expect_success();
-
-    builder.exec(add_bid_request).commit().expect_success();
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(add_bid_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(delegate_request);
+    builder
+        .exec_instrumented(store_call_auction_request, instrumented!())
+        .commit()
+        .expect_success();
+
+    builder.exec_instrumented(delegate_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -457,20 +469,28 @@ fn should_fail_to_undelegate_from_stored_session_code() {
     .build();
 
     builder
-        .exec(validator_fund_request)
+        .exec_instrumented(validator_fund_request, instrumented!())
         .commit()
         .expect_success();
-
-    builder.exec(add_bid_request).commit().expect_success();
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(add_bid_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(delegate_request).commit().expect_success();
+    builder
+        .exec_instrumented(store_call_auction_request, instrumented!())
+        .commit()
+        .expect_success();
 
-    builder.exec(undelegate_request).commit();
+    builder
+        .exec_instrumented(delegate_request, instrumented!())
+        .commit()
+        .expect_success();
+
+    builder
+        .exec_instrumented(undelegate_request, instrumented!())
+        .commit();
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -551,20 +571,26 @@ fn should_fail_to_undelegate_from_stored_contract_code() {
     .build();
 
     builder
-        .exec(validator_fund_request)
+        .exec_instrumented(validator_fund_request, instrumented!())
         .commit()
         .expect_success();
-
-    builder.exec(add_bid_request).commit().expect_success();
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(add_bid_request, instrumented!())
         .commit()
         .expect_success();
 
-    builder.exec(delegate_request).commit().expect_success();
+    builder
+        .exec_instrumented(store_call_auction_request, instrumented!())
+        .commit()
+        .expect_success();
 
-    builder.exec(undelegate_request);
+    builder
+        .exec_instrumented(delegate_request, instrumented!())
+        .commit()
+        .expect_success();
+
+    builder.exec_instrumented(undelegate_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -611,11 +637,17 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
-    builder.exec(withdraw_bid_request).commit().expect_success();
+    builder
+        .exec_instrumented(add_bid_request, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(withdraw_bid_request, instrumented!())
+        .commit()
+        .expect_success();
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(store_call_auction_request, instrumented!())
         .commit()
         .expect_success();
 
@@ -630,7 +662,7 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
     )
     .build();
 
-    builder.exec(activate_bid_request);
+    builder.exec_instrumented(activate_bid_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(
@@ -677,11 +709,17 @@ fn should_fail_to_activate_bid_from_stored_contract_code() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(add_bid_request).commit().expect_success();
-    builder.exec(withdraw_bid_request).commit().expect_success();
+    builder
+        .exec_instrumented(add_bid_request, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(withdraw_bid_request, instrumented!())
+        .commit()
+        .expect_success();
 
     builder
-        .exec(store_call_auction_request)
+        .exec_instrumented(store_call_auction_request, instrumented!())
         .commit()
         .expect_success();
 
@@ -696,7 +734,7 @@ fn should_fail_to_activate_bid_from_stored_contract_code() {
     )
     .build();
 
-    builder.exec(activate_bid_request);
+    builder.exec_instrumented(activate_bid_request, instrumented!());
 
     let error = builder.get_error().expect("should have returned an error");
     assert!(

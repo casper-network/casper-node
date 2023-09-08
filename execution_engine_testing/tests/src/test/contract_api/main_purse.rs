@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue};
 
@@ -32,7 +32,10 @@ fn should_run_main_purse_contract_default_account() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -49,7 +52,7 @@ fn should_run_main_purse_contract_account_1() {
 
     let builder = builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit();
 
@@ -64,5 +67,8 @@ fn should_run_main_purse_contract_account_1() {
     )
     .build();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 }

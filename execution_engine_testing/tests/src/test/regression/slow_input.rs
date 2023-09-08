@@ -1,7 +1,7 @@
 use std::mem;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
@@ -72,7 +72,9 @@ fn should_measure_slow_input() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("must have an error");
     assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
 }
@@ -90,7 +92,9 @@ fn should_measure_slow_input_with_infinite_br_loop() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("must have an error");
     assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
 }
@@ -107,7 +111,9 @@ fn should_measure_br_if_cpu_burner_with_br_if_iterations() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("must have an error");
     assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
 }
@@ -125,7 +131,9 @@ fn should_measure_br_table_cpu_burner_with_br_table_iterations() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
     let error = builder.get_error().expect("must have an error");
     assert!(matches!(error, Error::Exec(execution::Error::GasLimit)));
 }
@@ -159,11 +167,17 @@ fn should_charge_extra_per_amount_of_br_table_elements() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_1 = builder.last_exec_gas_cost();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
 

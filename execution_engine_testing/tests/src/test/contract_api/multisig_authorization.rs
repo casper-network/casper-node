@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution};
 use casper_types::{
@@ -162,7 +162,9 @@ fn test_multisig_auth(
             .build();
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     match builder.get_error() {
         Some(Error::Exec(execution::Error::Revert(ApiError::User(
@@ -194,7 +196,10 @@ fn setup() -> InMemoryWasmTestBuilder {
             .build()
         };
 
-        builder.exec(add_key_request).expect_success().commit();
+        builder
+            .exec_instrumented(add_key_request, instrumented!())
+            .expect_success()
+            .commit();
     }
     let install_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -203,7 +208,10 @@ fn setup() -> InMemoryWasmTestBuilder {
     )
     .build();
 
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec_instrumented(install_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder
 }

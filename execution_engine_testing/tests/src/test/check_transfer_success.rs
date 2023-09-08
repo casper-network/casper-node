@@ -2,9 +2,10 @@ use core::convert::TryFrom;
 use std::path::PathBuf;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_CHAINSPEC_REGISTRY,
-    DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_PAYMENT,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_CHAINSPEC_REGISTRY, DEFAULT_GENESIS_CONFIG, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_PAYMENT,
 };
 use casper_execution_engine::core::engine_state::{
     run_genesis_request::RunGenesisRequest, GenesisAccount,
@@ -70,7 +71,10 @@ fn test_check_transfer_success_with_source_only() {
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
@@ -131,7 +135,10 @@ fn test_check_transfer_success_with_source_only_errors() {
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))
@@ -189,7 +196,10 @@ fn test_check_transfer_success_with_source_and_target() {
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
         .main_purse();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_starting_balance;
     let expected_source_ending_balance = Motes::new(U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE))

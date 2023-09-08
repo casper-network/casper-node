@@ -1,8 +1,9 @@
 use std::{collections::BTreeSet, convert::TryInto, fmt, iter::FromIterator};
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+    WasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -156,7 +157,10 @@ where
     )
     .build();
 
-    builder.exec(add_bid_request).expect_success().commit();
+    builder
+        .exec_instrumented(add_bid_request, instrumented!())
+        .expect_success()
+        .commit();
 
     // compute N eras
 

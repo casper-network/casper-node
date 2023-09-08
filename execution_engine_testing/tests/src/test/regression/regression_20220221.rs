@@ -1,10 +1,10 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_AUCTION_DELAY,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
     RewardItem, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
@@ -75,7 +75,10 @@ fn regression_20220221_should_distribute_to_many_validators() {
 
     builder.upgrade_with_upgrade_request_and_config(None, &mut upgrade_request);
 
-    builder.exec(fund_request).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request, instrumented!())
+        .expect_success()
+        .commit();
 
     // Add validators
     for _ in 0..DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT {
@@ -92,7 +95,10 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
-        builder.exec(transfer_request).commit().expect_success();
+        builder
+            .exec_instrumented(transfer_request, instrumented!())
+            .commit()
+            .expect_success();
 
         let delegation_rate: DelegationRate = 10;
 
@@ -111,7 +117,10 @@ fn regression_20220221_should_distribute_to_many_validators() {
         .with_protocol_version(*NEW_PROTOCOL_VERSION)
         .build();
 
-        builder.exec(execute_request).expect_success().commit();
+        builder
+            .exec_instrumented(execute_request, instrumented!())
+            .expect_success()
+            .commit();
     }
 
     let mut timestamp_millis =

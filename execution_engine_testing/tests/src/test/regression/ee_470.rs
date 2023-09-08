@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::storage::global_state::in_memory::InMemoryGlobalState;
@@ -42,7 +42,10 @@ fn regression_test_genesis_hash_mismatch() {
     assert_eq!(genesis_run_hash, genesis_transforms_hash);
 
     // Step 2.
-    builder.exec(exec_request_1).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .commit()
+        .expect_success();
 
     // No step 3.
     // Step 4.

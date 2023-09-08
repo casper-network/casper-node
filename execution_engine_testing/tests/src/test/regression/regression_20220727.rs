@@ -6,7 +6,7 @@ use parity_wasm::{
 };
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
@@ -70,7 +70,10 @@ fn should_not_oom() {
         )
         .build();
 
-        builder.exec(exec_request).expect_failure().commit();
+        builder
+            .exec_instrumented(exec_request, instrumented!())
+            .expect_failure()
+            .commit();
 
         let error = builder.get_error().unwrap();
 
@@ -94,7 +97,10 @@ fn should_not_oom() {
         )
         .build();
 
-        builder.exec(exec_request).expect_failure().commit();
+        builder
+            .exec_instrumented(exec_request, instrumented!())
+            .expect_failure()
+            .commit();
 
         let error = builder.get_error().unwrap();
 
@@ -127,7 +133,10 @@ fn should_pass_table_validation() {
         )
         .build();
 
-        builder.exec(exec_request).expect_success().commit();
+        builder
+            .exec_instrumented(exec_request, instrumented!())
+            .expect_success()
+            .commit();
     }
 }
 
@@ -236,7 +245,9 @@ fn test_element_section(
     )
     .build();
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     builder.get_error()
 }
@@ -284,7 +295,10 @@ fn should_not_allow_more_than_one_table() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().unwrap();
 
@@ -387,7 +401,10 @@ fn should_allow_large_br_table() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -406,7 +423,10 @@ fn should_not_allow_large_br_table() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should fail");
 
@@ -476,7 +496,10 @@ fn should_allow_multiple_globals() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -495,7 +518,10 @@ fn should_not_allow_too_many_globals() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should fail");
 
@@ -527,7 +553,10 @@ fn should_verify_max_param_count() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let module_bytes_100_params =
         wasm_utils::make_n_arg_call_bytes(100, "i32").expect("should create wasm bytes");
@@ -542,7 +571,10 @@ fn should_verify_max_param_count() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -561,7 +593,10 @@ fn should_not_allow_too_many_params() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should fail");
 
@@ -597,7 +632,10 @@ fn should_not_allow_to_import_gas_function() {
     )
     .build();
 
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
 
     let error = builder.get_error().expect("should fail");
 
@@ -730,7 +768,10 @@ fn test_non_existing_global(module_wat: &str, index: u32) {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_failure()
+        .commit();
     let error = builder.get_error().expect("should fail");
     assert!(
         matches!(

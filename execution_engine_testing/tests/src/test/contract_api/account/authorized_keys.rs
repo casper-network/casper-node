@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
@@ -40,7 +40,7 @@ fn should_deploy_with_authorized_identity_key() {
     // Basic deploy with single key
     InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit()
         .expect_success();
 }
@@ -73,7 +73,7 @@ fn should_raise_auth_failure_with_invalid_key() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit();
 
     let deploy_result = builder
@@ -123,7 +123,7 @@ fn should_raise_auth_failure_with_invalid_keys() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit();
 
     let deploy_result = builder
@@ -184,18 +184,18 @@ fn should_raise_deploy_authorization_failure() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit()
-        .exec(exec_request_2)
+        .exec_instrumented(exec_request_2, instrumented!())
         .expect_success()
         .commit()
-        .exec(exec_request_3)
+        .exec_instrumented(exec_request_3, instrumented!())
         .expect_success()
         .commit()
         // This should execute successfully - change deploy and key management
         // thresholds.
-        .exec(exec_request_4)
+        .exec_instrumented(exec_request_4, instrumented!())
         .expect_success()
         .commit();
 
@@ -219,7 +219,10 @@ fn should_raise_deploy_authorization_failure() {
 
     // With deploy threshold == 3 using single secondary key
     // with weight == 2 should raise deploy authorization failure.
-    builder.clear_results().exec(exec_request_5).commit();
+    builder
+        .clear_results()
+        .exec_instrumented(exec_request_5, instrumented!())
+        .commit();
 
     {
         let deploy_result = builder
@@ -256,7 +259,7 @@ fn should_raise_deploy_authorization_failure() {
     // identity key (w: 1) and KEY_1 (w: 2) passes threshold of 3
     builder
         .clear_results()
-        .exec(exec_request_6)
+        .exec_instrumented(exec_request_6, instrumented!())
         .expect_success()
         .commit();
 
@@ -281,7 +284,10 @@ fn should_raise_deploy_authorization_failure() {
     // deployment threshold is now 4
     // failure: KEY_2 weight + KEY_1 weight < deployment threshold
     // let result4 = builder.clear_results()
-    builder.clear_results().exec(exec_request_7).commit();
+    builder
+        .clear_results()
+        .exec_instrumented(exec_request_7, instrumented!())
+        .commit();
 
     {
         let deploy_result = builder
@@ -321,7 +327,7 @@ fn should_raise_deploy_authorization_failure() {
     // threshold
     builder
         .clear_results()
-        .exec(exec_request_8)
+        .exec_instrumented(exec_request_8, instrumented!())
         .commit()
         .expect_success();
 }
@@ -351,10 +357,10 @@ fn should_authorize_deploy_with_multiple_keys() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit()
-        .exec(exec_request_2)
+        .exec_instrumented(exec_request_2, instrumented!())
         .expect_success()
         .commit();
 
@@ -377,7 +383,10 @@ fn should_authorize_deploy_with_multiple_keys() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -420,13 +429,19 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
 
     builder
         // Reusing a test contract that would add new key
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let exec_request_3 = {
         let deploy = DeployItemBuilder::new()
@@ -448,7 +463,10 @@ fn should_not_authorize_deploy_with_duplicated_keys() {
             .build();
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
-    builder.clear_results().exec(exec_request_3).commit();
+    builder
+        .clear_results()
+        .exec_instrumented(exec_request_3, instrumented!())
+        .commit();
     let deploy_result = builder
         .get_exec_result_owned(0)
         .expect("should have exec response")
@@ -506,14 +524,17 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         // Reusing a test contract that would add new key
-        .exec(add_key_1_request)
+        .exec_instrumented(add_key_1_request, instrumented!())
         .expect_success()
         .commit();
 
-    builder.exec(add_key_2_request).expect_success().commit();
+    builder
+        .exec_instrumented(add_key_2_request, instrumented!())
+        .expect_success()
+        .commit();
 
     builder
-        .exec(update_thresholds_request)
+        .exec_instrumented(update_thresholds_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -535,7 +556,9 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    builder.exec(transfer_request_1).commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .commit();
 
     let response = builder
         .get_exec_result_owned(3)
@@ -567,5 +590,8 @@ fn should_not_authorize_transfer_without_deploy_key_threshold() {
         ExecuteRequestBuilder::from_deploy_item(deploy).build()
     };
 
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_success()
+        .commit();
 }

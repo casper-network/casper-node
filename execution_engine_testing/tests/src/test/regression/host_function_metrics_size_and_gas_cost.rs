@@ -1,8 +1,9 @@
 use std::convert::TryInto;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{
     engine_state::{self, ExecuteRequest},
@@ -117,7 +118,7 @@ fn host_function_metrics_has_acceptable_gas_cost() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(exec_request);
+    builder.exec_instrumented(exec_request, instrumented!());
 
     let error = builder.get_error().expect("should have error");
     assert!(
@@ -148,10 +149,10 @@ fn setup() -> InMemoryWasmTestBuilder {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(create_account_exec_request(ACCOUNT0_ADDR))
+        .exec_instrumented(create_account_exec_request(ACCOUNT0_ADDR), instrumented!())
         .expect_success()
         .commit()
-        .exec(create_account_exec_request(ACCOUNT1_ADDR))
+        .exec_instrumented(create_account_exec_request(ACCOUNT1_ADDR), instrumented!())
         .expect_success()
         .commit();
     builder

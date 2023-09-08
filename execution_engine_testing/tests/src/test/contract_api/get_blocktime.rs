@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, RuntimeArgs};
@@ -21,7 +21,7 @@ fn should_run_get_blocktime_contract() {
     .build();
     InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit()
         .expect_success();
 }

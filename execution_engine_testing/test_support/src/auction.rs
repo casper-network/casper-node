@@ -26,18 +26,18 @@ use casper_types::{
     bytesrepr::{self},
     runtime_args,
     system::auction,
-    Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U256, U512,
 };
 
 use rand::Rng;
 
 use crate::{
-    transfer, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
-    DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION,
-    DEFAULT_ROUND_SEIGNIORAGE_RATE, DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY,
-    DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
+    instrumented, transfer, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder,
+    StepRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_AUCTION_DELAY, DEFAULT_GENESIS_CONFIG_HASH,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    DEFAULT_PROPOSER_PUBLIC_KEY, DEFAULT_PROTOCOL_VERSION, DEFAULT_ROUND_SEIGNIORAGE_RATE,
+    DEFAULT_SYSTEM_CONFIG, DEFAULT_UNBONDING_DELAY, DEFAULT_WASM_CONFIG, SYSTEM_ADDR,
 };
 
 const ARG_AMOUNT: &str = "amount";
@@ -87,20 +87,20 @@ pub fn run_blocks_with_transfers_and_step(
     let contract_hash = builder.get_auction_contract_hash();
     let mut next_validator_iter = validator_keys.iter().cycle();
 
-    for delegator_public_key in delegator_keys {
+    for (i, delegator_public_key) in delegator_keys.into_iter().enumerate() {
         let delegation_amount = U512::from(2000 * 1_000_000_000u64);
         let delegator_account_hash = delegator_public_key.to_account_hash();
         let next_validator_key = next_validator_iter
             .next()
             .expect("should produce values forever");
         let delegate = create_delegate_request(
-            delegator_public_key,
+            delegator_public_key.clone(),
             next_validator_key.clone(),
             delegation_amount,
             delegator_account_hash,
             contract_hash,
         );
-        builder.exec(delegate);
+        builder.exec_instrumented(delegate, instrumented! { i, delegator_public_key });
         builder.expect_success();
         builder.commit();
         builder.clear_results();
@@ -307,10 +307,10 @@ pub fn run_genesis_and_create_initial_accounts(
         },
     )
     .build();
-    builder.exec(transfer);
+    builder.exec_instrumented(transfer, instrumented!());
     builder.expect_success().commit();
 
-    for (_i, delegator_account) in delegator_accounts.iter().enumerate() {
+    for (i, delegator_account) in delegator_accounts.iter().enumerate() {
         let transfer = ExecuteRequestBuilder::transfer(
             *DEFAULT_ACCOUNT_ADDR,
             runtime_args! {
@@ -320,7 +320,7 @@ pub fn run_genesis_and_create_initial_accounts(
             },
         )
         .build();
-        builder.exec(transfer);
+        builder.exec_instrumented(transfer, instrumented! { "i" => i });
         builder.expect_success().commit();
     }
 }
@@ -379,10 +379,12 @@ pub fn create_delegate_request(
 
 /// Generate `key_count` public keys.
 pub fn generate_public_keys(key_count: usize) -> Vec<PublicKey> {
+    const SALT: usize = 12345913461usize;
     let mut ret = Vec::with_capacity(key_count);
-    for _ in 0..key_count {
-        let bytes: [u8; SecretKey::ED25519_LENGTH] = rand::random();
-        let secret_key = SecretKey::ed25519_from_bytes(bytes).unwrap();
+    for value in 0..key_count {
+        let mut secret_key_bytes = [255u8; 32];
+        U256::from(SALT + value).to_big_endian(&mut secret_key_bytes);
+        let secret_key = SecretKey::secp256k1_from_bytes(secret_key_bytes).unwrap();
         let public_key = PublicKey::from(&secret_key);
         ret.push(public_key);
     }

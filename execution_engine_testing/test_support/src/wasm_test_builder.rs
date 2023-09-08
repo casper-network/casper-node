@@ -81,8 +81,8 @@ use once_cell::sync::Lazy;
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
     instrument::{Instrumented, InstrumentedValue},
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
-    DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
+    instrumented, utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE,
+    DEFAULT_PROPOSER_ADDR, DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
 /// LMDB initial map size is calculated based on DEFAULT_LMDB_PAGES and systems page size.
@@ -817,6 +817,9 @@ where
                     InstrumentedValue::String(string) => {
                         record.push(string); // "foo"
                     }
+                    InstrumentedValue::PublicKey(public_key) => {
+                        record.push(public_key.to_string());
+                    }
                 }
             }
             // dbg!(&record);
@@ -959,7 +962,9 @@ where
             },
         )
         .build();
-        self.exec(run_request).commit().expect_success()
+        self.exec_instrumented(run_request, instrumented!())
+            .commit()
+            .expect_success()
     }
 
     /// Increments engine state.

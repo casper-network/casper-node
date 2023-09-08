@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::RuntimeArgs;
@@ -19,5 +19,8 @@ fn should_create_purse() {
     )
     .build();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 }

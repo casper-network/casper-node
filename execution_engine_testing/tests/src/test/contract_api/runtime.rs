@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use rand::Rng;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{runtime_context::RANDOM_BYTES_COUNT, ADDRESS_LENGTH};
 use casper_types::{crypto, runtime_args, RuntimeArgs, BLAKE2B_DIGEST_LENGTH};
@@ -63,7 +63,10 @@ fn should_return_different_random_bytes_on_different_phases() {
         ExecuteRequestBuilder::new().push_deploy(deploy).build()
     };
 
-    builder.exec(execute_request).commit().expect_success();
+    builder
+        .exec_instrumented(execute_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let session_generated_bytes = get_value::<RANDOM_BYTES_COUNT>(&builder, RANDOM_BYTES_RESULT);
     let payment_generated_bytes =
@@ -90,7 +93,10 @@ fn should_return_different_random_bytes_on_each_call() {
             )
             .build();
 
-            builder.exec(exec_request).commit().expect_success();
+            builder
+                .exec_instrumented(exec_request, instrumented!())
+                .commit()
+                .expect_success();
 
             get_value::<RANDOM_BYTES_COUNT>(&builder, RANDOM_BYTES_RESULT)
         })
@@ -123,7 +129,10 @@ fn should_hash() {
         )
         .build();
 
-        builder.exec(exec_request).commit().expect_success();
+        builder
+            .exec_instrumented(exec_request, instrumented!())
+            .commit()
+            .expect_success();
 
         let digest = get_value::<BLAKE2B_DIGEST_LENGTH>(&builder, HASH_RESULT);
         let expected_digest = crypto::blake2b(input);

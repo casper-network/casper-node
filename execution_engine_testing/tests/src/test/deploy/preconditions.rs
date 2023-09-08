@@ -1,8 +1,8 @@
 use assert_matches::assert_matches;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::Error;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
@@ -37,7 +37,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit();
 
     let response = builder
@@ -68,7 +68,7 @@ fn should_raise_precondition_authorization_failure_empty_authorized_keys() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit();
 
     let response = builder
@@ -106,7 +106,7 @@ fn should_raise_precondition_authorization_failure_invalid_authorized_keys() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit();
 
     let response = builder

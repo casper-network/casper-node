@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST;
@@ -75,7 +75,10 @@ fn should_record_wasmless_transfer() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -141,7 +144,10 @@ fn should_record_wasm_transfer() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -207,7 +213,10 @@ fn should_record_wasm_transfer_with_id() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -283,7 +292,10 @@ fn should_record_wasm_transfers() {
         deploy_items[0]
     };
 
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -429,8 +441,14 @@ fn should_record_wasm_transfers_with_subcall() {
         deploy_items[0]
     };
 
-    builder.exec(store_request).commit().expect_success();
-    builder.exec(transfer_request).commit().expect_success();
+    builder
+        .exec_instrumented(store_request, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

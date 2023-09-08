@@ -1,9 +1,9 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PROTOCOL_VERSION,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::engine_state::{EngineConfig, EngineConfigBuilder, UpgradeConfig},
@@ -82,7 +82,10 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
 
     let fund_request_1 =
         ExecuteRequestBuilder::standard(account_hash, session_file, faucet_args_1).build();
-    builder.exec(fund_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_1 = builder.last_exec_gas_cost();
 
@@ -111,7 +114,10 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
     .build();
-    builder.exec(fund_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
 
@@ -177,7 +183,10 @@ fn gh_2280_transfer_should_always_cost_the_same_gas() {
             .build()
     };
 
-    builder.exec(fund_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_3 = builder.last_exec_gas_cost();
 
@@ -205,7 +214,10 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
 
     let fund_request_1 =
         ExecuteRequestBuilder::standard(account_hash, session_file, create_purse_args_1).build();
-    builder.exec(fund_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_1 = builder.last_exec_gas_cost();
 
@@ -233,7 +245,10 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
     .build();
-    builder.exec(fund_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
 
@@ -304,7 +319,10 @@ fn gh_2280_create_purse_should_always_cost_the_same_gas() {
             .build()
     };
 
-    builder.exec(fund_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_3 = builder.last_exec_gas_cost();
 
@@ -333,7 +351,10 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
 
     let fund_request_1 =
         ExecuteRequestBuilder::standard(account_hash, session_file, faucet_args_1).build();
-    builder.exec(fund_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_1 = builder.last_exec_gas_cost();
 
@@ -362,7 +383,10 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
     .build();
-    builder.exec(fund_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
 
@@ -430,7 +454,10 @@ fn gh_2280_transfer_purse_to_account_should_always_cost_the_same_gas() {
             .build()
     };
 
-    builder.exec(fund_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_3 = builder.last_exec_gas_cost();
 
@@ -463,7 +490,10 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         faucet_args_1,
     )
     .build();
-    builder.exec(fund_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_1 = builder.last_exec_gas_cost();
 
@@ -491,7 +521,10 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
     .build();
-    builder.exec(fund_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
 
@@ -559,7 +592,10 @@ fn gh_2280_stored_transfer_to_account_should_always_cost_the_same_gas() {
             .build()
     };
 
-    builder.exec(fund_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_3 = builder.last_exec_gas_cost();
 
@@ -588,7 +624,10 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
 
     let fund_request_1 =
         ExecuteRequestBuilder::standard(account_hash, session_file, faucet_args_1).build();
-    builder.exec(fund_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_1 = builder.last_exec_gas_cost();
 
@@ -617,7 +656,10 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
         ExecuteRequestBuilder::new().push_deploy(deploy)
     }
     .build();
-    builder.exec(fund_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_2 = builder.last_exec_gas_cost();
 
@@ -686,7 +728,10 @@ fn gh_2280_stored_faucet_call_should_cost_the_same() {
             .build()
     };
 
-    builder.exec(fund_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(fund_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let gas_cost_3 = builder.last_exec_gas_cost();
 
@@ -719,7 +764,10 @@ fn setup() -> (InMemoryWasmTestBuilder, TestContext) {
     )
     .build();
 
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec_instrumented(install_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)

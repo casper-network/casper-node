@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
@@ -34,7 +34,7 @@ fn should_run_regression() {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -84,17 +84,17 @@ fn should_run_regression() {
     .build();
 
     builder
-        .exec(direct_call_latest_request)
+        .exec_instrumented(direct_call_latest_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(direct_call_v2_request)
+        .exec_instrumented(direct_call_v2_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(direct_call_v1_request)
+        .exec_instrumented(direct_call_v1_request, instrumented!())
         .expect_failure()
         .commit();
 
@@ -141,17 +141,17 @@ fn should_run_regression() {
     .build();
 
     builder
-        .exec(direct_call_latest_request)
+        .exec_instrumented(direct_call_latest_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(direct_call_v2_request)
+        .exec_instrumented(direct_call_v2_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(direct_call_v1_request)
+        .exec_instrumented(direct_call_v1_request, instrumented!())
         .expect_failure()
         .commit();
 
@@ -201,17 +201,17 @@ fn should_run_regression() {
     .build();
 
     builder
-        .exec(session_call_latest_request)
+        .exec_instrumented(session_call_latest_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(session_call_v2_request)
+        .exec_instrumented(session_call_v2_request, instrumented!())
         .expect_success()
         .commit();
 
     builder
-        .exec(session_call_v1_request)
+        .exec_instrumented(session_call_v1_request, instrumented!())
         .expect_failure()
         .commit();
 
@@ -239,7 +239,7 @@ fn should_run_regression() {
     .build();
 
     builder
-        .exec(call_by_hash_v2_request)
+        .exec_instrumented(call_by_hash_v2_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -251,7 +251,7 @@ fn should_run_regression() {
     )
     .build();
     builder
-        .exec(call_by_name_v2_request)
+        .exec_instrumented(call_by_name_v2_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -264,7 +264,7 @@ fn should_run_regression() {
     )
     .build();
     builder
-        .exec(call_by_hash_v1_request)
+        .exec_instrumented(call_by_hash_v1_request, instrumented!())
         .expect_failure()
         .commit();
 
@@ -290,7 +290,7 @@ fn should_run_regression() {
     )
     .build();
     builder
-        .exec(call_by_name_v1_request)
+        .exec_instrumented(call_by_name_v1_request, instrumented!())
         .expect_failure()
         .commit();
 
@@ -330,7 +330,7 @@ fn should_run_regression() {
     .build();
 
     builder
-        .exec(session_call_hash_v1_request)
+        .exec_instrumented(session_call_hash_v1_request, instrumented!())
         .expect_failure()
         .commit();
 
@@ -348,7 +348,7 @@ fn should_run_regression() {
     );
 
     builder
-        .exec(session_call_hash_v2_request)
+        .exec_instrumented(session_call_hash_v2_request, instrumented!())
         .expect_success()
         .commit();
 }

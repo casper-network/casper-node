@@ -5,7 +5,7 @@ use parity_wasm::{
 };
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_WASM_CONFIG, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{core::engine_state::Error, shared::wasm_prep::PreprocessingError};
@@ -58,7 +58,9 @@ fn should_fail_to_overflow_gas_counter() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let responses = builder
         .get_exec_result_owned(0)
@@ -166,7 +168,10 @@ fn should_correctly_measure_gas_for_opcodes() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 
     let gas_cost = builder.last_exec_gas_cost();
     let expected_cost = accounted_opcodes.clone().into_iter().map(Gas::from).sum();

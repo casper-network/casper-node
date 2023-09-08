@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::RuntimeArgs;
@@ -20,7 +20,7 @@ fn should_run_ee_549_set_refund_regression() {
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request);
+        .exec_instrumented(exec_request, instrumented!());
 
     // Execution should encounter an error because set_refund
     // is not allowed to be called during session execution.

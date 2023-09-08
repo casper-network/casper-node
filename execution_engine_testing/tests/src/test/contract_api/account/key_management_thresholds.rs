@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs};
@@ -25,10 +25,10 @@ fn should_verify_key_management_permission_with_low_weight() {
     .build();
     InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit()
-        .exec(exec_request_2)
+        .exec_instrumented(exec_request_2, instrumented!())
         .expect_success()
         .commit();
 }
@@ -62,10 +62,10 @@ fn should_verify_key_management_permission_with_sufficient_weight() {
     };
     InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit()
-        .exec(exec_request_2)
+        .exec_instrumented(exec_request_2, instrumented!())
         .expect_success()
         .commit();
 }

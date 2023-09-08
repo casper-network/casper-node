@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST, SYSTEM_ADDR,
 };
 use casper_types::{runtime_args, RuntimeArgs, U512};
@@ -25,8 +25,14 @@ fn should_run_mint_purse_contract() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit().expect_success();
-    builder.exec(exec_request_2).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit()
+        .expect_success();
 }
 
 #[ignore]
@@ -41,7 +47,7 @@ fn should_not_allow_non_system_accounts_to_mint() {
 
     assert!(InMemoryWasmTestBuilder::default()
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit()
         .is_error());
 }

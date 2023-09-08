@@ -2,7 +2,7 @@ use casper_execution_engine::core::{engine_state, execution};
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
@@ -39,7 +39,10 @@ fn should_run_purse_to_account_transfer() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let new_account = builder
         .get_account(account_1_account_hash)
@@ -69,7 +72,10 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_failure().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_failure()
+        .commit();
 
     // Get transforms output for genesis account
     let default_account = builder

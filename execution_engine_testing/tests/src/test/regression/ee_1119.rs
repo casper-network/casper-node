@@ -2,9 +2,10 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
+    instrumented, utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNTS,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_PUBLIC_KEY,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, SYSTEM_ADDR,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT,
@@ -78,7 +79,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     .build();
 
     builder
-        .exec(fund_system_exec_request)
+        .exec_instrumented(fund_system_exec_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -100,7 +101,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     .build();
 
     builder
-        .exec(delegate_exec_request)
+        .exec_instrumented(delegate_exec_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -140,7 +141,7 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
     builder
-        .exec(undelegate_exec_request)
+        .exec_instrumented(undelegate_exec_request, instrumented!())
         .commit()
         .expect_success();
 
@@ -158,7 +159,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(withdraw_bid_request).expect_success().commit();
+    builder
+        .exec_instrumented(withdraw_bid_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);
@@ -202,7 +206,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(slash_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(slash_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let unbond_purses_noop: UnbondingPurses = builder.get_unbonds();
     assert_eq!(
@@ -230,7 +237,10 @@ fn should_run_ee_1119_dont_slash_delegated_validators() {
     )
     .build();
 
-    builder.exec(slash_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(slash_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let unbond_purses: UnbondingPurses = builder.get_unbonds();
     assert_eq!(unbond_purses.len(), 1);

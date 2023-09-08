@@ -1,8 +1,9 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, ExecuteRequest,
@@ -38,7 +39,10 @@ fn setup() -> InMemoryWasmTestBuilder {
     };
     let transfer_request_1 =
         ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args_1).build();
-    builder.exec(transfer_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request_1, instrumented!())
+        .expect_success()
+        .commit();
     builder
 }
 
@@ -54,7 +58,10 @@ fn exec_and_assert_costs(
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let balance_after = builder.get_purse_balance(caller.main_purse());
 

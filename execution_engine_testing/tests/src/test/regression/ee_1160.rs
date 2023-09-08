@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::engine_state::WASMLESS_TRANSFER_FIXED_GAS_PRICE,
@@ -50,7 +50,7 @@ fn ee_1160_wasmless_transfer_should_empty_account() {
     };
 
     builder
-        .exec(no_wasm_transfer_request_1)
+        .exec_instrumented(no_wasm_transfer_request_1, instrumented!())
         .expect_success()
         .commit();
 
@@ -105,7 +105,9 @@ fn ee_1160_transfer_larger_than_balance_should_fail() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_1).commit();
+    builder
+        .exec_instrumented(no_wasm_transfer_request_1, instrumented!())
+        .commit();
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 
@@ -166,7 +168,9 @@ fn ee_1160_large_wasmless_transfer_should_avoid_overflow() {
         ExecuteRequestBuilder::from_deploy_item(deploy_item).build()
     };
 
-    builder.exec(no_wasm_transfer_request_1).commit();
+    builder
+        .exec_instrumented(no_wasm_transfer_request_1, instrumented!())
+        .commit();
 
     let balance_after = builder.get_purse_balance(default_account.main_purse());
 

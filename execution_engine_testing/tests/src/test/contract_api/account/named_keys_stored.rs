@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, RuntimeArgs};
@@ -22,7 +22,10 @@ fn should_run_stored_named_keys_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -38,7 +41,10 @@ fn should_run_stored_named_keys_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -53,7 +59,10 @@ fn should_run_stored_named_keys_contract_to_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -69,7 +78,10 @@ fn should_run_stored_named_keys_module_bytes_to_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -85,7 +97,10 @@ fn should_run_stored_named_keys_module_bytes_to_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -101,7 +116,10 @@ fn should_run_stored_named_keys_module_bytes_to_contract_to_contract() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -117,7 +135,10 @@ fn should_run_stored_named_keys_module_bytes_to_session_to_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 fn setup() -> InMemoryWasmTestBuilder {
@@ -129,6 +150,9 @@ fn setup() -> InMemoryWasmTestBuilder {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
     builder
 }

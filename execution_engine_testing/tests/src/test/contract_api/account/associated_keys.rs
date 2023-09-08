@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
     account::{AccountHash, Weight},
@@ -39,11 +39,14 @@ fn should_manage_associated_key() {
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let genesis_key = *DEFAULT_ACCOUNT_ADDR;
 
@@ -66,7 +69,10 @@ fn should_manage_associated_key() {
     )
     .build();
 
-    builder.exec(exec_request_3).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .expect_success()
+        .commit();
 
     let account_1 = builder
         .get_account(ACCOUNT_1_ADDR)

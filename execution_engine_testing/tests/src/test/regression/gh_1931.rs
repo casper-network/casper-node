@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{RuntimeArgs, StoredValue};
@@ -19,7 +19,10 @@ fn should_query_contract_package() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_NAME, RuntimeArgs::new())
             .build();
 
-    builder.exec(install_request).expect_success().commit();
+    builder
+        .exec_instrumented(install_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let contract_package_hash = builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)

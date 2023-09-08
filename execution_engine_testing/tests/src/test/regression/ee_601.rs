@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::{additive_map::AdditiveMap, transform::Transform};
 use casper_types::{runtime_args, CLValue, Key, RuntimeArgs, StoredValue};
@@ -31,7 +31,7 @@ fn should_run_ee_601_pay_session_new_uref_collision() {
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request);
+        .exec_instrumented(exec_request, instrumented!());
 
     let transforms = builder.get_execution_journals();
     let transform: AdditiveMap<Key, Transform> = transforms[0].clone().into();

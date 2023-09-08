@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_GAS_PRICE, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_GAS_PRICE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -40,7 +40,7 @@ fn should_charge_for_user_error(
     let purse_balance_before = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_before = builder.get_proposer_purse_balance();
 
-    builder.exec(request).commit();
+    builder.exec_instrumented(request, instrumented!()).commit();
 
     let purse_balance_after = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_after = builder.get_proposer_purse_balance();
@@ -117,10 +117,13 @@ fn shouldnt_consider_gas_price_when_calculating_minimum_balance() {
 
     let mut builder = setup();
     builder
-        .exec(create_account_request)
+        .exec_instrumented(create_account_request, instrumented!())
         .expect_success()
         .commit();
-    builder.exec(transfer_request).expect_success().commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .expect_success()
+        .commit();
 }
 
 #[ignore]
@@ -160,7 +163,9 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
     let purse_balance_before = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_before = builder.get_proposer_purse_balance();
 
-    builder.exec(transfer_request).commit();
+    builder
+        .exec_instrumented(transfer_request, instrumented!())
+        .commit();
 
     let purse_balance_after = builder.get_purse_balance(main_purse);
     let proposer_purse_balance_after = builder.get_proposer_purse_balance();

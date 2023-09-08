@@ -1,6 +1,7 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
@@ -45,10 +46,10 @@ fn should_charge_non_main_purse() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder
-        .exec(setup_exec_request)
+        .exec_instrumented(setup_exec_request, instrumented!())
         .expect_success()
         .commit()
-        .exec(create_purse_exec_request)
+        .exec_instrumented(create_purse_exec_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -89,7 +90,7 @@ fn should_charge_non_main_purse() {
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
     builder
-        .exec(account_payment_exec_request)
+        .exec_instrumented(account_payment_exec_request, instrumented!())
         .expect_success()
         .commit();
 

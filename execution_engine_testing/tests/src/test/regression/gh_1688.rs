@@ -1,6 +1,6 @@
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::engine_state::ExecuteRequest;
 use casper_types::{
@@ -27,7 +27,7 @@ fn setup() -> (InMemoryWasmTestBuilder, ContractPackageHash, ContractHash) {
     .build();
 
     builder
-        .exec(install_contract_request_1)
+        .exec_instrumented(install_contract_request_1, instrumented!())
         .expect_success()
         .commit();
 
@@ -61,7 +61,10 @@ fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> Execu
 
     let exec_request = request_builder(contract_package_hash, contract_hash);
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
     let contract = builder

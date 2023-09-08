@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use assert_matches::assert_matches;
 
 use casper_engine_test_support::{
-    utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE, DEFAULT_PAYMENT,
-    MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, utils, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_ACCOUNT_KEY, DEFAULT_GAS_PRICE,
+    DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -43,7 +43,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .expect_success()
         .commit()
         .get_exec_result_owned(0)
@@ -54,7 +54,7 @@ fn should_raise_insufficient_payment_when_caller_lacks_minimum_balance() {
             .build();
 
     let account_1_response = builder
-        .exec(account_1_request)
+        .exec_instrumented(account_1_request, instrumented!())
         .commit()
         .get_exec_result_owned(1)
         .expect("there should be a response");
@@ -105,7 +105,9 @@ fn should_forward_payment_execution_runtime_error() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -174,7 +176,9 @@ fn should_forward_payment_execution_gas_limit_error() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
     let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
@@ -246,7 +250,7 @@ fn should_run_out_of_gas_when_session_code_exceeds_gas_limit() {
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit();
 
     let response = builder
@@ -286,7 +290,7 @@ fn should_correctly_charge_when_session_code_runs_out_of_gas() {
 
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request)
+        .exec_instrumented(exec_request, instrumented!())
         .commit();
 
     let default_account = builder
@@ -355,7 +359,9 @@ fn should_correctly_charge_when_session_code_fails() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -405,7 +411,10 @@ fn should_correctly_charge_when_session_code_succeeds() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -462,7 +471,10 @@ fn should_finalize_to_rewards_purse() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let modified_reward_starting_balance = builder.get_proposer_purse_balance();
 
@@ -499,7 +511,7 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
     // create another account via transfer
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(setup_exec_request)
+        .exec_instrumented(setup_exec_request, instrumented!())
         .expect_success()
         .commit();
 
@@ -529,10 +541,10 @@ fn independent_standard_payments_should_not_write_the_same_keys() {
 
     // run two independent deploys
     builder
-        .exec(exec_request_from_genesis)
+        .exec_instrumented(exec_request_from_genesis, instrumented!())
         .expect_success()
         .commit()
-        .exec(exec_request_from_account_1)
+        .exec_instrumented(exec_request_from_account_1, instrumented!())
         .expect_success()
         .commit();
 

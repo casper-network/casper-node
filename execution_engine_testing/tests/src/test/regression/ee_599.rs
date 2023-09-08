@@ -1,8 +1,8 @@
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
@@ -37,10 +37,10 @@ fn setup() -> InMemoryWasmTestBuilder {
 
     let mut ctx = InMemoryWasmTestBuilder::default();
     ctx.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit()
-        .exec(exec_request_2)
+        .exec_instrumented(exec_request_2, instrumented!())
         .expect_success()
         .commit()
         .clear_results();
@@ -83,7 +83,9 @@ fn should_not_be_able_to_transfer_funds_with_transfer_purse_to_purse() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -143,7 +145,9 @@ fn should_not_be_able_to_transfer_funds_with_transfer_from_purse_to_account() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -211,7 +215,9 @@ fn should_not_be_able_to_transfer_funds_with_transfer_to_account() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 
@@ -273,7 +279,9 @@ fn should_not_be_able_to_get_main_purse_in_invalid_builder() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_3).commit();
+    builder
+        .exec_instrumented(exec_request_3, instrumented!())
+        .commit();
 
     let transaction_fee = builder.get_proposer_purse_balance() - proposer_reward_starting_balance;
 

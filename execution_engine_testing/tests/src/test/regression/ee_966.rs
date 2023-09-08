@@ -3,9 +3,9 @@ use once_cell::sync::Lazy;
 use parity_wasm::builder;
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
-    ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, DEFAULT_PROTOCOL_VERSION,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    UpgradeRequestBuilder, ARG_AMOUNT, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::{
@@ -94,7 +94,10 @@ fn should_run_ee_966_with_zero_min_and_zero_max_memory() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 }
 
 #[ignore]
@@ -108,7 +111,9 @@ fn should_run_ee_966_cant_have_too_much_initial_memory() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -129,7 +134,10 @@ fn should_run_ee_966_should_request_exactly_maximum() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 }
 
 #[ignore]
@@ -143,7 +151,10 @@ fn should_run_ee_966_should_request_exactly_maximum_as_initial() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 }
 
 #[ignore]
@@ -160,7 +171,9 @@ fn should_run_ee_966_cant_have_too_much_max_memory() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -183,7 +196,9 @@ fn should_run_ee_966_cant_have_way_too_much_max_memory() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -204,7 +219,9 @@ fn should_run_ee_966_cant_have_larger_initial_than_max_memory() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let exec_response = &builder
         .get_exec_result_owned(0)
@@ -227,7 +244,9 @@ fn should_run_ee_966_regression_fail_when_growing_mem_past_max() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request).commit();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit();
 
     let results = &builder
         .get_exec_result_owned(0)
@@ -250,7 +269,9 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .commit();
 
     //
     // This request should fail - as it's exceeding default memory limit
@@ -290,5 +311,8 @@ fn should_run_ee_966_regression_when_growing_mem_after_upgrade() {
     .with_protocol_version(*NEW_PROTOCOL_VERSION)
     .build();
 
-    builder.exec(exec_request_2).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit()
+        .expect_success();
 }

@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{account::AccountHash, contracts::NamedKeys, runtime_args, Key, RuntimeArgs};
@@ -40,5 +40,8 @@ fn should_list_named_keys() {
     )
     .build();
 
-    builder.exec(exec_request).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request, instrumented!())
+        .commit()
+        .expect_success();
 }

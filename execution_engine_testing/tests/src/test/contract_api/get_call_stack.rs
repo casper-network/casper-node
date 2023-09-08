@@ -1,8 +1,8 @@
 use num_traits::One;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrument::Instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, WasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
     core::engine_state::{Error as CoreError, ExecError, ExecuteRequest},
@@ -59,12 +59,16 @@ fn stored_versioned_contract(contract_package_hash: ContractPackageHash) -> Call
     }
 }
 
-fn store_contract(builder: &mut WasmTestBuilder<InMemoryGlobalState>, session_filename: &str) {
+fn store_contract(
+    builder: &mut WasmTestBuilder<InMemoryGlobalState>,
+    session_filename: &str,
+    instrumented: Instrumented,
+) {
     let store_contract_request =
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, session_filename, runtime_args! {})
             .build();
     builder
-        .exec(store_contract_request)
+        .exec_instrumented(store_contract_request, instrumented)
         .commit()
         .expect_success();
 }
@@ -73,11 +77,18 @@ fn execute_and_assert_result(
     call_depth: usize,
     builder: &mut InMemoryWasmTestBuilder,
     execute_request: ExecuteRequest,
+    instrumented: Instrumented,
 ) {
     if call_depth == 0 {
-        builder.exec(execute_request).commit().expect_success();
+        builder
+            .exec_instrumented(execute_request, instrumented)
+            .commit()
+            .expect_success();
     } else {
-        builder.exec(execute_request).commit().expect_failure();
+        builder
+            .exec_instrumented(execute_request, instrumented)
+            .commit()
+            .expect_failure();
         let error = builder.get_error().expect("must have an error");
         assert!(matches!(
             error,
@@ -181,10 +192,10 @@ impl BuilderExt for WasmTestBuilder<InMemoryGlobalState> {
     }
 }
 
-fn setup() -> WasmTestBuilder<InMemoryGlobalState> {
+fn setup(instrumented: Instrumented) -> WasmTestBuilder<InMemoryGlobalState> {
     let mut builder = InMemoryWasmTestBuilder::default();
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-    store_contract(&mut builder, CONTRACT_RECURSIVE_SUBCALL);
+    store_contract(&mut builder, CONTRACT_RECURSIVE_SUBCALL, instrumented);
     builder
 }
 
@@ -355,7 +366,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
 }
 
 mod session {
-    use casper_engine_test_support::{ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
+    use casper_engine_test_support::{instrumented, ExecuteRequestBuilder, DEFAULT_ACCOUNT_ADDR};
     use casper_execution_engine::shared::transform::Transform;
     use casper_types::{runtime_args, system::mint, Key, RuntimeArgs};
 
@@ -367,7 +378,7 @@ mod session {
 
     // DEPTHS should not contain 1, as it will eliminate the initial element from the subcalls
     // vector
-    const DEPTHS: &[usize] = &[0, 2, 5, 10];
+    const DEPTHS: [usize; 4] = [0, 2, 5, 10];
 
     // Session + recursive subcall
 
@@ -375,12 +386,12 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -388,12 +399,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -407,12 +421,12 @@ mod session {
     #[test]
     fn session_bytes_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -420,12 +434,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -439,7 +456,7 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_contract_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -449,7 +466,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_contract(current_contract_hash.into()));
             }
 
@@ -459,12 +476,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -478,14 +498,14 @@ mod session {
     #[test]
     fn session_bytes_to_stored_contract_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
                 ));
@@ -497,12 +517,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -516,7 +539,7 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_session_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -525,7 +548,7 @@ mod session {
                     super::stored_versioned_session(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
                 ));
@@ -537,12 +560,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -556,7 +582,7 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_session_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -566,7 +592,7 @@ mod session {
                     super::stored_versioned_session(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_contract(current_contract_hash.into()));
             }
 
@@ -576,12 +602,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -595,14 +624,14 @@ mod session {
     #[test]
     fn session_bytes_to_stored_session_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
                 ));
@@ -614,12 +643,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -633,14 +665,14 @@ mod session {
     #[test]
     fn session_bytes_to_stored_session_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_contract(current_contract_hash.into()));
             }
 
@@ -650,12 +682,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -669,12 +704,12 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -682,12 +717,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -701,7 +739,7 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_session_to_stored_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -711,7 +749,7 @@ mod session {
                     super::stored_versioned_session(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
 
@@ -721,12 +759,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -740,14 +781,14 @@ mod session {
     #[test]
     fn session_bytes_to_stored_session_to_stored_versioned_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_session(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ));
@@ -759,12 +800,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -778,12 +822,12 @@ mod session {
     #[test]
     fn session_bytes_to_stored_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::standard(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -791,12 +835,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info_module_bytes(
                 &mut builder,
@@ -812,7 +859,7 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -821,7 +868,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ));
@@ -833,14 +880,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -848,7 +897,7 @@ mod session {
     #[test]
     fn session_bytes_to_stored_versioned_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -858,7 +907,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
 
@@ -868,14 +917,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -883,14 +934,14 @@ mod session {
     #[test]
     fn session_bytes_to_stored_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ));
@@ -902,14 +953,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -917,13 +970,13 @@ mod session {
     #[test]
     fn session_bytes_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
 
@@ -933,14 +986,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -950,12 +1005,12 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -965,12 +1020,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -985,12 +1043,12 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1000,12 +1058,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             let transforms = builder.get_execution_journals().last().unwrap().clone();
 
@@ -1029,12 +1090,12 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_name_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1044,12 +1105,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1064,12 +1128,12 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_hash_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1079,12 +1143,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1099,13 +1166,13 @@ mod session {
     #[test]
     fn stored_contract_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1114,12 +1181,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1134,13 +1204,13 @@ mod session {
     #[test]
     fn stored_contract_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1149,12 +1219,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             let transforms = builder.get_execution_journals().last().unwrap().clone();
 
@@ -1179,12 +1252,12 @@ mod session {
     #[test]
     fn stored_contract_by_name_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1193,12 +1266,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1213,12 +1289,12 @@ mod session {
     #[test]
     fn stored_contract_by_hash_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1227,12 +1303,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1249,12 +1328,12 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_name_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1264,14 +1343,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1279,12 +1360,12 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_hash_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1294,14 +1375,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1309,11 +1392,11 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_name_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1323,14 +1406,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1338,12 +1423,12 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_hash_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1353,14 +1438,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1368,12 +1455,12 @@ mod session {
     #[test]
     fn stored_contract_by_name_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1382,14 +1469,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1397,13 +1486,13 @@ mod session {
     #[test]
     fn stored_contract_by_hash_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1412,14 +1501,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1427,11 +1518,11 @@ mod session {
     #[test]
     fn stored_contract_by_name_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1440,14 +1531,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1455,11 +1548,11 @@ mod session {
     #[test]
     fn stored_contract_by_hash_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1468,14 +1561,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1484,7 +1579,7 @@ mod session {
     fn stored_versioned_contract_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
     ) {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -1493,7 +1588,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -1507,14 +1602,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1523,7 +1620,7 @@ mod session {
     fn stored_versioned_contract_by_hash_to_stored_versioned_contract_to_stored_session_should_fail(
     ) {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -1533,7 +1630,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -1545,14 +1642,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1561,14 +1660,14 @@ mod session {
     fn stored_versioned_contract_by_name_to_stored_contract_to_stored_versioned_session_should_fail(
     ) {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -1582,14 +1681,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1597,14 +1698,14 @@ mod session {
     #[test]
     fn stored_versioned_contract_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -1616,14 +1717,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1632,7 +1735,7 @@ mod session {
     fn stored_contract_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
     ) {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -1641,7 +1744,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -1654,14 +1757,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1669,7 +1774,7 @@ mod session {
     #[test]
     fn stored_contract_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -1679,7 +1784,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -1690,14 +1795,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1705,14 +1812,14 @@ mod session {
     #[test]
     fn stored_contract_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -1725,14 +1832,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1740,13 +1849,13 @@ mod session {
     #[test]
     fn stored_contract_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -1757,14 +1866,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -1774,12 +1885,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_name_to_stored_versioned_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1789,12 +1900,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1809,12 +1923,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_hash_to_stored_versioned_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1824,12 +1938,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1844,12 +1961,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_name_to_stored_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1859,12 +1976,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1879,12 +1999,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_hash_to_stored_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1894,12 +2014,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1914,13 +2037,13 @@ mod session {
     #[test]
     fn stored_session_by_name_to_stored_versioned_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1929,12 +2052,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1949,13 +2075,13 @@ mod session {
     #[test]
     fn stored_session_by_hash_to_stored_versioned_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_session(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_session(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1964,12 +2090,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -1984,12 +2113,12 @@ mod session {
     #[test]
     fn stored_session_by_name_to_stored_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -1998,12 +2127,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2018,12 +2150,12 @@ mod session {
     #[test]
     fn stored_session_by_hash_to_stored_session() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2032,12 +2164,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2052,12 +2187,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2067,12 +2202,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2087,12 +2225,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2102,12 +2240,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2122,12 +2263,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_name_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2137,12 +2278,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2157,12 +2301,12 @@ mod session {
     #[test]
     fn stored_versioned_session_by_hash_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2172,12 +2316,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2192,13 +2339,13 @@ mod session {
     #[test]
     fn stored_session_by_name_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2207,12 +2354,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2227,13 +2377,13 @@ mod session {
     #[test]
     fn stored_session_by_hash_to_stored_versioned_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let subcalls =
-                vec![super::stored_versioned_contract(current_contract_package_hash.into()); *len];
+                vec![super::stored_versioned_contract(current_contract_package_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2242,12 +2392,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2262,12 +2415,12 @@ mod session {
     #[test]
     fn stored_session_by_name_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_name(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2276,12 +2429,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2296,12 +2452,12 @@ mod session {
     #[test]
     fn stored_session_by_hash_to_stored_contract() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *len];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); len];
 
             let execute_request = ExecuteRequestBuilder::contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
@@ -2310,12 +2466,15 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit().expect_success();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit()
+                .expect_success();
 
             super::assert_each_context_has_correct_call_stack_info(
                 &mut builder,
@@ -2333,7 +2492,7 @@ mod session {
     fn stored_versioned_session_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
     ) {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -2342,7 +2501,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -2356,14 +2515,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -2372,7 +2533,7 @@ mod session {
     fn stored_versioned_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail()
     {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -2382,7 +2543,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -2394,14 +2555,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -2410,14 +2573,14 @@ mod session {
     fn stored_versioned_session_by_name_to_stored_contract_to_stored_versioned_session_should_fail()
     {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -2431,14 +2594,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -2446,14 +2611,14 @@ mod session {
     #[test]
     fn stored_versioned_session_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -2465,14 +2630,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -2481,7 +2648,7 @@ mod session {
     fn stored_session_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail()
     {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -2490,7 +2657,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -2503,14 +2670,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -2518,7 +2687,7 @@ mod session {
     #[test]
     fn stored_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -2528,7 +2697,7 @@ mod session {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     len.saturating_sub(1)
                 ];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -2539,14 +2708,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -2554,14 +2725,14 @@ mod session {
     #[test]
     fn stored_session_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
@@ -2574,14 +2745,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 
@@ -2589,13 +2762,13 @@ mod session {
     #[test]
     fn stored_session_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for len in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(len));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
             let mut subcalls =
                 vec![super::stored_contract(current_contract_hash.into()); len.saturating_sub(1)];
-            if *len > 0 {
+            if len > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
@@ -2606,14 +2779,16 @@ mod session {
                 runtime_args! {
                     ARG_CALLS => subcalls.clone(),
                     ARG_CURRENT_DEPTH => 0u8,
-                    mint::ARG_AMOUNT => approved_amount(*len),
+                    mint::ARG_AMOUNT => approved_amount(len),
                 },
             )
             .build();
 
-            builder.exec(execute_request).commit();
+            builder
+                .exec_instrumented(execute_request, instrumented!(len))
+                .commit();
 
-            super::assert_invalid_context(&mut builder, *len);
+            super::assert_invalid_context(&mut builder, len);
         }
     }
 }
@@ -2622,7 +2797,8 @@ mod payment {
     use rand::Rng;
 
     use casper_engine_test_support::{
-        DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+        instrument::Instrumented, instrumented, DeployItemBuilder, ExecuteRequestBuilder,
+        InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     };
     use casper_types::{runtime_args, system::mint, HashAddr, RuntimeArgs};
     use get_call_stack_recursive_subcall::Call;
@@ -2636,9 +2812,14 @@ mod payment {
 
     // DEPTHS should not contain 1, as it will eliminate the initial element from the subcalls
     // vector.  Going further than 5 will hit the gas limit.
-    const DEPTHS: &[usize] = &[0, 2, 5];
+    const DEPTHS: [usize; 3] = [0, 2, 5];
 
-    fn execute(builder: &mut InMemoryWasmTestBuilder, call_depth: usize, subcalls: Vec<Call>) {
+    fn execute(
+        builder: &mut InMemoryWasmTestBuilder,
+        call_depth: usize,
+        subcalls: Vec<Call>,
+        instrumented: Instrumented,
+    ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
             let deploy_hash = rng.gen();
@@ -2658,13 +2839,14 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        super::execute_and_assert_result(call_depth, builder, execute_request);
+        super::execute_and_assert_result(call_depth, builder, execute_request, instrumented);
     }
 
     fn execute_stored_payment_by_package_name(
         builder: &mut InMemoryWasmTestBuilder,
         call_depth: usize,
         subcalls: Vec<Call>,
+        instrumented: Instrumented,
     ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
@@ -2694,7 +2876,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        super::execute_and_assert_result(call_depth, builder, execute_request);
+        super::execute_and_assert_result(call_depth, builder, execute_request, instrumented);
     }
 
     fn execute_stored_payment_by_package_hash(
@@ -2702,6 +2884,7 @@ mod payment {
         call_depth: usize,
         subcalls: Vec<Call>,
         current_contract_package_hash: HashAddr,
+        instrumented: Instrumented,
     ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
@@ -2727,13 +2910,14 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        super::execute_and_assert_result(call_depth, builder, execute_request);
+        super::execute_and_assert_result(call_depth, builder, execute_request, instrumented);
     }
 
     fn execute_stored_payment_by_contract_name(
         builder: &mut InMemoryWasmTestBuilder,
         call_depth: usize,
         subcalls: Vec<Call>,
+        instrumented: Instrumented,
     ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
@@ -2762,7 +2946,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        super::execute_and_assert_result(call_depth, builder, execute_request);
+        super::execute_and_assert_result(call_depth, builder, execute_request, instrumented);
     }
 
     fn execute_stored_payment_by_contract_hash(
@@ -2770,6 +2954,7 @@ mod payment {
         call_depth: usize,
         subcalls: Vec<Call>,
         current_contract_hash: HashAddr,
+        instrumented: Instrumented,
     ) {
         let execute_request = {
             let mut rng = rand::thread_rng();
@@ -2794,7 +2979,7 @@ mod payment {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        super::execute_and_assert_result(call_depth, builder, execute_request);
+        super::execute_and_assert_result(call_depth, builder, execute_request, instrumented);
     }
 
     // Session + recursive subcall
@@ -2803,7 +2988,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_versioned_session_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -2812,13 +2997,18 @@ mod payment {
                     super::stored_versioned_session(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            execute(&mut builder, *call_depth, subcalls);
+            execute(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -2826,7 +3016,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_versioned_session_to_stored_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -2836,11 +3026,16 @@ mod payment {
                     super::stored_versioned_session(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_contract(current_contract_hash.into()));
             }
 
-            execute(&mut builder, *call_depth, subcalls);
+            execute(
+                &mut builder,
+                call_depth,
+                subcalls,
+                instrumented!("call_depth" => call_depth),
+            );
         }
     }
 
@@ -2848,7 +3043,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_session_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -2857,13 +3052,18 @@ mod payment {
                 super::stored_session(current_contract_hash.into());
                 call_depth.saturating_sub(1)
             ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_contract(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            execute(&mut builder, *call_depth, subcalls)
+            execute(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -2874,7 +3074,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_contract_to_stored_session() {
         let call_depth = 5usize;
-        let mut builder = super::setup();
+        let mut builder = super::setup(instrumented!());
         let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
         let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2882,14 +3082,19 @@ mod payment {
             super::stored_contract(current_contract_hash.into()),
             super::stored_session(current_contract_hash.into()),
         ];
-        execute(&mut builder, call_depth, subcalls)
+        execute(
+            &mut builder,
+            call_depth,
+            subcalls.clone(),
+            instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+        );
     }
 
     #[ignore]
     #[test]
     fn payment_bytes_to_stored_session_to_stored_contract_() {
         let call_depth = 5usize;
-        let mut builder = super::setup();
+        let mut builder = super::setup(instrumented!());
         let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
         let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2897,7 +3102,12 @@ mod payment {
             super::stored_session(current_contract_hash.into()),
             super::stored_contract(current_contract_hash.into()),
         ];
-        execute(&mut builder, call_depth, subcalls)
+        execute(
+            &mut builder,
+            call_depth,
+            subcalls.clone(),
+            instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+        );
     }
 
     // Session + recursive subcall failure cases
@@ -2906,7 +3116,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_versioned_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -2915,13 +3125,18 @@ mod payment {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            execute(&mut builder, *call_depth, subcalls)
+            execute(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -2929,7 +3144,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_versioned_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -2939,11 +3154,16 @@ mod payment {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
 
-            execute(&mut builder, *call_depth, subcalls)
+            execute(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -2951,7 +3171,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -2960,13 +3180,18 @@ mod payment {
                 super::stored_contract(current_contract_hash.into());
                 call_depth.saturating_sub(1)
             ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ));
             }
 
-            execute(&mut builder, *call_depth, subcalls)
+            execute(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -2974,7 +3199,7 @@ mod payment {
     #[test]
     fn payment_bytes_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -2982,11 +3207,16 @@ mod payment {
                 super::stored_contract(current_contract_hash.into());
                 call_depth.saturating_sub(1)
             ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()));
             }
 
-            execute(&mut builder, *call_depth, subcalls)
+            execute(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -2996,17 +3226,22 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
-            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls);
+            execute_stored_payment_by_package_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -3014,21 +3249,22 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
             execute_stored_payment_by_package_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_package_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3037,13 +3273,18 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); call_depth];
 
-            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_package_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -3051,18 +3292,19 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); call_depth];
 
             execute_stored_payment_by_package_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_package_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3071,17 +3313,22 @@ mod payment {
     #[test]
     fn stored_payment_by_name_to_stored_versioned_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 
@@ -3089,7 +3336,7 @@ mod payment {
     #[test]
     fn stored_payment_by_hash_to_stored_versioned_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -3097,14 +3344,15 @@ mod payment {
             let subcalls =
                 vec![
                     super::stored_versioned_session(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
             execute_stored_payment_by_contract_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3113,13 +3361,18 @@ mod payment {
     #[test]
     fn stored_payment_by_name_to_stored_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); call_depth];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 
@@ -3127,17 +3380,18 @@ mod payment {
     #[test]
     fn stored_payment_by_hash_to_stored_session() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_session(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_session(current_contract_hash.into()); call_depth];
 
             execute_stored_payment_by_contract_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3146,17 +3400,22 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 
@@ -3164,21 +3423,22 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
             execute_stored_payment_by_package_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_package_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3187,13 +3447,18 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); call_depth];
 
-            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_package_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -3201,18 +3466,19 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); call_depth];
 
             execute_stored_payment_by_package_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_package_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3221,17 +3487,22 @@ mod payment {
     #[test]
     fn stored_payment_by_name_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
             let subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 
@@ -3239,7 +3510,7 @@ mod payment {
     #[test]
     fn stored_payment_by_hash_to_stored_versioned_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -3247,14 +3518,15 @@ mod payment {
             let subcalls =
                 vec![
                     super::stored_versioned_contract(current_contract_package_hash.into());
-                    *call_depth
+                    call_depth
                 ];
 
             execute_stored_payment_by_contract_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3263,13 +3535,18 @@ mod payment {
     #[test]
     fn stored_payment_by_name_to_stored_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); call_depth];
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 
@@ -3277,17 +3554,18 @@ mod payment {
     #[test]
     fn stored_payment_by_hash_to_stored_contract() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
-            let subcalls = vec![super::stored_contract(current_contract_hash.into()); *call_depth];
+            let subcalls = vec![super::stored_contract(current_contract_hash.into()); call_depth];
 
             execute_stored_payment_by_contract_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3299,7 +3577,7 @@ mod payment {
     fn stored_versioned_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail(
     ) {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -3308,13 +3586,18 @@ mod payment {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_package_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -3323,7 +3606,7 @@ mod payment {
     fn stored_versioned_payment_by_hash_to_stored_versioned_contract_to_stored_session_should_fail()
     {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -3333,15 +3616,16 @@ mod payment {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
             execute_stored_payment_by_package_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_package_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3351,7 +3635,7 @@ mod payment {
     fn stored_versioned_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail()
     {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -3360,13 +3644,18 @@ mod payment {
                 super::stored_contract(current_contract_hash.into());
                 call_depth.saturating_sub(1)
             ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            execute_stored_payment_by_package_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_package_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            );
         }
     }
 
@@ -3374,7 +3663,7 @@ mod payment {
     #[test]
     fn stored_versioned_payment_by_hash_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -3383,15 +3672,16 @@ mod payment {
                 super::stored_contract(current_contract_hash.into());
                 call_depth.saturating_sub(1)
             ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
             execute_stored_payment_by_package_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_package_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3401,7 +3691,7 @@ mod payment {
     fn stored_payment_by_name_to_stored_versioned_contract_to_stored_versioned_session_should_fail()
     {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
 
@@ -3410,13 +3700,18 @@ mod payment {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 
@@ -3424,7 +3719,7 @@ mod payment {
     #[test]
     fn stored_session_by_hash_to_stored_versioned_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -3434,15 +3729,16 @@ mod payment {
                     super::stored_versioned_contract(current_contract_package_hash.into());
                     call_depth.saturating_sub(1)
                 ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
             execute_stored_payment_by_contract_hash(
                 &mut builder,
-                *call_depth,
-                subcalls,
+                call_depth,
+                subcalls.clone(),
                 current_contract_hash,
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
             )
         }
     }
@@ -3451,7 +3747,7 @@ mod payment {
     #[test]
     fn stored_payment_by_name_to_stored_contract_to_stored_versioned_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_package_hash = default_account.get_hash(CONTRACT_PACKAGE_NAME);
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
@@ -3460,13 +3756,18 @@ mod payment {
                 super::stored_contract(current_contract_hash.into());
                 call_depth.saturating_sub(1)
             ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_versioned_session(
                     current_contract_package_hash.into(),
                 ))
             }
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 
@@ -3474,7 +3775,7 @@ mod payment {
     #[test]
     fn stored_payment_by_name_to_stored_contract_to_stored_session_should_fail() {
         for call_depth in DEPTHS {
-            let mut builder = super::setup();
+            let mut builder = super::setup(instrumented!(call_depth));
             let default_account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
             let current_contract_hash = default_account.get_hash(CONTRACT_NAME);
 
@@ -3482,11 +3783,16 @@ mod payment {
                 super::stored_contract(current_contract_hash.into());
                 call_depth.saturating_sub(1)
             ];
-            if *call_depth > 0 {
+            if call_depth > 0 {
                 subcalls.push(super::stored_session(current_contract_hash.into()))
             }
 
-            execute_stored_payment_by_contract_name(&mut builder, *call_depth, subcalls)
+            execute_stored_payment_by_contract_name(
+                &mut builder,
+                call_depth,
+                subcalls.clone(),
+                instrumented!("call_depth" => call_depth, "subcalls" => subcalls.len()),
+            )
         }
     }
 }

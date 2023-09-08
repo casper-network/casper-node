@@ -4,8 +4,8 @@ use core::convert::TryInto;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
 use casper_engine_test_support::{
-    DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, DeployItemBuilder, ExecuteRequestBuilder, InMemoryWasmTestBuilder,
+    DEFAULT_ACCOUNT_ADDR, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::shared::transform::Transform;
 use casper_types::{
@@ -33,7 +33,10 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
     .build();
 
     // Installs the contract and creates the URefs, all initialized to `0_i32`.
-    builder.exec(execution_request).expect_success().commit();
+    builder
+        .exec_instrumented(execution_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let contract_hash: ContractHash = match builder
         .get_expected_account(*DEFAULT_ACCOUNT_ADDR)
@@ -61,7 +64,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
         .collect();
 
     builder
-        .exec(
+        .exec_instrumented(
             ExecuteRequestBuilder::from_deploy_item(
                 DeployItemBuilder::new()
                     .with_address(*DEFAULT_ACCOUNT_ADDR)
@@ -80,6 +83,7 @@ fn contract_transforms_should_be_ordered_in_the_journal() {
                     .build(),
             )
             .build(),
+            instrumented!(),
         )
         .expect_success()
         .commit();

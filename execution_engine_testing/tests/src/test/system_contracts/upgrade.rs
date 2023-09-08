@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use num_rational::Ratio;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY, PRODUCTION_RUN_GENESIS_REQUEST,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, UpgradeRequestBuilder,
+    DEFAULT_ACCOUNT_ADDR, DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_UNBONDING_DELAY,
+    PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
 use casper_execution_engine::{
@@ -703,7 +704,10 @@ fn should_increase_max_associated_keys_after_upgrade() {
         .with_protocol_version(new_protocol_version)
         .build();
 
-        builder.exec(add_request).expect_success().commit();
+        builder
+            .exec_instrumented(add_request, instrumented!())
+            .expect_success()
+            .commit();
     }
 
     let account = builder

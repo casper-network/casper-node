@@ -2,7 +2,7 @@ use assert_matches::assert_matches;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
@@ -76,7 +76,10 @@ fn should_transfer_to_account() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // Check genesis account balance
 
@@ -129,7 +132,10 @@ fn should_transfer_to_public_key() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // Check genesis account balance
 
@@ -171,7 +177,10 @@ fn should_transfer_from_purse_to_public_key() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let default_account = builder
         .get_account(*DEFAULT_ACCOUNT_ADDR)
@@ -201,7 +210,10 @@ fn should_transfer_from_purse_to_public_key() {
 
     let proposer_reward_starting_balance = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     // Check genesis account balance
 
@@ -261,7 +273,10 @@ fn should_transfer_from_account_to_account() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let modified_balance = builder.get_purse_balance(default_account_purse);
 
@@ -292,7 +307,10 @@ fn should_transfer_from_account_to_account() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let transaction_fee_2 =
         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_2;
@@ -351,7 +369,10 @@ fn should_transfer_to_existing_account() {
 
     let proposer_reward_starting_balance_1 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     // Exec transfer contract
 
@@ -390,7 +411,10 @@ fn should_transfer_to_existing_account() {
 
     let proposer_reward_starting_balance_2 = builder.get_proposer_purse_balance();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .expect_success()
+        .commit();
 
     let account_2 = builder
         .get_account(*ACCOUNT_2_ADDR)
@@ -446,15 +470,15 @@ fn should_fail_when_insufficient_funds() {
     builder
         .run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST)
         // Exec transfer contract
-        .exec(exec_request_1)
+        .exec_instrumented(exec_request_1, instrumented!())
         .expect_success()
         .commit()
         // Exec transfer contract
-        .exec(exec_request_2)
+        .exec_instrumented(exec_request_2, instrumented!())
         .expect_success()
         .commit()
         // Exec transfer contract
-        .exec(exec_request_3)
+        .exec_instrumented(exec_request_3, instrumented!())
         .commit();
 
     let exec_results = builder
@@ -489,9 +513,15 @@ fn should_transfer_total_amount() {
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
-    builder.exec(exec_request_2).commit().expect_success();
+    builder
+        .exec_instrumented(exec_request_2, instrumented!())
+        .commit()
+        .expect_success();
 
     let account_1 = builder
         .get_account(*ACCOUNT_1_ADDR)

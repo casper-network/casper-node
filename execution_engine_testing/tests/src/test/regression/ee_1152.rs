@@ -2,10 +2,10 @@ use num_traits::Zero;
 use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
-    utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder, DEFAULT_ACCOUNTS,
-    DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE, DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS, MINIMUM_ACCOUNT_CREATION_BALANCE,
-    TIMESTAMP_MILLIS_INCREMENT,
+    instrumented, utils, ExecuteRequestBuilder, InMemoryWasmTestBuilder, StepRequestBuilder,
+    DEFAULT_ACCOUNTS, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_INITIAL_BALANCE,
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS, DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+    MINIMUM_ACCOUNT_CREATION_BALANCE, TIMESTAMP_MILLIS_INCREMENT,
 };
 use casper_execution_engine::core::engine_state::{
     engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, genesis::GenesisValidator, GenesisAccount,
@@ -83,8 +83,14 @@ fn should_run_ee_1152_regression_test() {
 
     builder.run_genesis(&run_genesis_request);
 
-    builder.exec(fund_request_1).commit().expect_success();
-    builder.exec(fund_request_2).commit().expect_success();
+    builder
+        .exec_instrumented(fund_request_1, instrumented!())
+        .commit()
+        .expect_success();
+    builder
+        .exec_instrumented(fund_request_2, instrumented!())
+        .commit()
+        .expect_success();
 
     let auction_hash = builder.get_auction_contract_hash();
 
@@ -112,7 +118,10 @@ fn should_run_ee_1152_regression_test() {
     )
     .build();
 
-    builder.exec(delegate_request_1).expect_success().commit();
+    builder
+        .exec_instrumented(delegate_request_1, instrumented!())
+        .expect_success()
+        .commit();
 
     let mut timestamp_millis =
         DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
@@ -141,7 +150,10 @@ fn should_run_ee_1152_regression_test() {
         .expect("should have last element");
     assert!(era_id > INITIAL_ERA_ID, "{}", era_id);
 
-    builder.exec(undelegate_request).expect_success().commit();
+    builder
+        .exec_instrumented(undelegate_request, instrumented!())
+        .expect_success()
+        .commit();
 
     let mut step_request = StepRequestBuilder::new()
         .with_parent_state_hash(builder.get_post_state_hash())
