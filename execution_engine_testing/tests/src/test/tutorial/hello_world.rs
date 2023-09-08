@@ -1,5 +1,5 @@
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
+    instrumented, ExecuteRequestBuilder, InMemoryWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{runtime_args, Key, RuntimeArgs, StoredValue};
@@ -22,7 +22,10 @@ fn should_run_hello_world() {
         ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, HELLO_WORLD_CONTRACT, session_args)
             .build()
     };
-    builder.exec(exec_request).expect_success().commit();
+    builder
+        .exec_instrumented(exec_request, instrumented! { "i" => 1u32 })
+        .expect_success()
+        .commit();
 
     let stored_message = builder
         .query(None, Key::from(*DEFAULT_ACCOUNT_ADDR), &[KEY.into()])

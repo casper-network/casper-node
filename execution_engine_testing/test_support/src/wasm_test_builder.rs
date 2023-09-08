@@ -1,14 +1,18 @@
 use std::{
     collections::BTreeMap,
     convert::{TryFrom, TryInto},
+    env,
     ffi::OsStr,
-    fs,
+    fs::{self, File},
+    io,
     ops::Deref,
     path::{Path, PathBuf},
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, Mutex},
+    time::Instant,
 };
 
+use csv::WriterBuilder;
 use filesize::PathExt;
 use lmdb::DatabaseFlags;
 use log::LevelFilter;
@@ -72,9 +76,11 @@ use casper_types::{
     DeployHash, DeployInfo, EraId, Gas, Key, KeyTag, Motes, ProtocolVersion, PublicKey,
     RuntimeArgs, StoredValue, Transfer, TransferAddr, URef, U512,
 };
+use once_cell::sync::Lazy;
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
+    instrument::{Instrumented, InstrumentedValue},
     utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
@@ -94,6 +100,35 @@ const GLOBAL_STATE_DIR: &str = "global_state";
 pub type InMemoryWasmTestBuilder = WasmTestBuilder<InMemoryGlobalState>;
 /// Wasm test builder where state is held in LMDB.
 pub type LmdbWasmTestBuilder = WasmTestBuilder<LmdbGlobalState>;
+
+fn create_execution_results_file() -> io::Result<csv::Writer<File>> {
+    let current_exe = env::current_exe()?;
+    let parent_path = current_exe
+        .parent()
+        .expect("should have parent path of current exe on this platform");
+    let results_file = parent_path.join("execution_results.txt");
+    let csv = WriterBuilder::new()
+        .flexible(true)
+        .from_path(results_file)?;
+    Ok(csv)
+}
+
+static EXECUTION_RESULTS_DATA: Lazy<Mutex<csv::Writer<File>>> = Lazy::new(|| {
+    let mut writer = create_execution_results_file().expect("should create execution results file");
+    writer
+        .write_record(vec![
+            "module_name", // casper_engine_tests::test::tutorial::hello_world
+            "file",        // execution_engine_testing/tests/src/test/tutorial/hello_world.rs
+            "line",        // 25
+            "function",    // should_run_hello_world
+            "duration_ns", // 15283
+            "gas",         // 189279130
+            "error",       // ""
+        ])
+        .unwrap();
+    writer.flush().unwrap();
+    Mutex::new(writer)
+});
 
 /// Builder for simple WASM test
 pub struct WasmTestBuilder<S> {
@@ -716,6 +751,97 @@ where
         rate.checked_mul(&Ratio::from(total_supply))
             .map(|ratio| ratio.to_integer())
             .expect("must get base round reward")
+    }
+
+    /// Runs an [`ExecuteRequest`] in an instrumented mode.
+    pub fn exec_instrumented(
+        &mut self,
+        mut exec_request: ExecuteRequest,
+        instrumented: Instrumented,
+    ) -> &mut Self {
+        let exec_request = {
+            let hash = self.post_state_hash.expect("expected post_state_hash");
+            exec_request.parent_state_hash = hash;
+            exec_request
+        };
+
+        let correlation_id = CorrelationId::new();
+
+        let start = Instant::now();
+
+        let maybe_exec_results = self.engine_state.run_execute(correlation_id, exec_request);
+
+        let elapsed = start.elapsed();
+        {
+            let mut csv = EXECUTION_RESULTS_DATA.lock().unwrap();
+
+            let mut record = vec![
+                instrumented.module_name.to_string(),
+                instrumented.file.to_string(),
+                instrumented.line.to_string(),
+                instrumented.function.to_string(),
+                elapsed.as_micros().to_string(),
+            ];
+
+            let (cost, error) = match &maybe_exec_results {
+                Ok(results) => {
+                    assert_eq!(results.len(), 1);
+                    let first_result = results.front().expect("should have result");
+                    (
+                        Some(first_result.cost()),
+                        first_result.as_error().map(ToString::to_string),
+                    )
+                }
+
+                Err(error) => {
+                    // record.push(String::new())
+                    (None, Some(error.to_string()))
+                }
+            };
+
+            record.push(match cost {
+                Some(cost) => cost.to_string(),
+                None => String::new(),
+            });
+            record.push(match error {
+                Some(error) => error,
+                None => String::new(),
+            });
+
+            for (key, value) in instrumented.data {
+                record.push(key.to_string());
+                match value {
+                    InstrumentedValue::Integer(integer) => {
+                        record.push(integer.to_string()); // 1234
+                    }
+                    InstrumentedValue::String(string) => {
+                        record.push(string); // "foo"
+                    }
+                }
+            }
+            // dbg!(&record);
+            csv.write_record(record).expect("should write record");
+            csv.flush().expect("should flush");
+        }
+
+        assert!(maybe_exec_results.is_ok());
+
+        // Parse deploy results
+        let execution_results = maybe_exec_results.as_ref().unwrap();
+        // Cache transformations
+        self.transforms.extend(
+            execution_results
+                .iter()
+                .map(|res| res.execution_journal().clone()),
+        );
+        self.exec_results.push(
+            maybe_exec_results
+                .unwrap()
+                .into_iter()
+                .map(Rc::new)
+                .collect(),
+        );
+        self
     }
 
     /// Runs an [`ExecuteRequest`].
