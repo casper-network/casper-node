@@ -4553,7 +4553,7 @@ fn should_transfer_to_main_purse_in_case_of_redelegation_past_max_delegation_cap
 
 #[ignore]
 #[test]
-fn should_delegate_and_redelegat_with_eviction_regression_test() {
+fn should_delegate_and_redelegate_with_eviction_regression_test() {
     let system_fund_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
         CONTRACT_TRANSFER_TO_ACCOUNT,
