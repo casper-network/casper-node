@@ -217,18 +217,13 @@ pub(crate) fn process_unbond_requests<P: Auction + ?Sized>(
                         match provider.read_bid(&new_validator.to_account_hash()) {
                             Ok(Some(new_validator_bid)) => {
                                 if !new_validator_bid.staked_amount().is_zero() {
-                                    let bid = read_bid_for_validator(
-                                        provider,
-                                        new_validator.clone().to_account_hash(),
-                                    )?;
-
                                     if is_under_max_delegator_cap(
                                         max_delegators_per_validator,
                                         new_validator_bid.delegators().len(),
                                     ) {
                                         handle_delegation(
                                             provider,
-                                            bid,
+                                            new_validator_bid,
                                             unbonding_purse.unbonder_public_key().clone(),
                                             new_validator.clone(),
                                             *unbonding_purse.bonding_purse(),
