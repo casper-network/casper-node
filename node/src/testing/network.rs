@@ -325,20 +325,10 @@ where
 
     /// Runs the main loop of every reactor until `condition` is true.
     ///
-    /// Panics if the `condition` is not reached inside of `within`, or if any node returns an exit
-    /// code.
+    /// Returns an error if the `condition` is not reached inside of `within`.
     ///
-    /// To settle on an exit code, use `settle_on_exit` instead.
-    pub(crate) async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
-    where
-        F: Fn(&Nodes<R>) -> bool,
-    {
-        time::timeout(within, self.settle_on_indefinitely(rng, condition))
-            .await
-            .unwrap_or_else(|_| panic!("network did not settle on condition within {:?}", within))
-    }
-
-    /// Non-panicking version of `settle_on`.
+    /// Panics if any node returns an exit code.  To settle on an exit code, use `settle_on_exit`
+    /// instead.
     pub(crate) async fn try_settle_on<F>(
         &mut self,
         rng: &mut TestRng,
@@ -349,6 +339,26 @@ where
         F: Fn(&Nodes<R>) -> bool,
     {
         time::timeout(within, self.settle_on_indefinitely(rng, condition)).await
+    }
+
+    /// Runs the main loop of every reactor until `condition` is true.
+    ///
+    /// Panics if the `condition` is not reached inside of `within`, or if any node returns an exit
+    /// code.
+    ///
+    /// To settle on an exit code, use `settle_on_exit` instead.
+    pub(crate) async fn settle_on<F>(&mut self, rng: &mut TestRng, condition: F, within: Duration)
+    where
+        F: Fn(&Nodes<R>) -> bool,
+    {
+        self.try_settle_on(rng, condition, within)
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "network did not settle on condition within {} seconds",
+                    within.as_secs_f64()
+                )
+            })
     }
 
     async fn settle_on_indefinitely<F>(&mut self, rng: &mut TestRng, condition: F)
