@@ -8,8 +8,8 @@ use casper_types::{
     bytesrepr,
     execution::TransformError,
     package::PackageKind,
-    system, AccessRights, AddressableEntityHash, ApiError, CLType, CLValueError,
-    ContractVersionKey, ContractWasmHash, Key, PackageHash, StoredValueTypeMismatch, URef,
+    system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
+    ContractVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -151,7 +151,7 @@ pub enum Error {
     InvalidContract(AddressableEntityHash),
     /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
-    InvalidContractWasm(ContractWasmHash),
+    InvalidContractWasm(ByteCodeHash),
     /// Error calling a smart contract with a missing argument.
     #[error("Missing argument: {name}")]
     MissingArgument {

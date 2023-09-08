@@ -22,9 +22,9 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, AddressableEntityHash, CLType, CLValue, ContractWasm,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
-    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLType, CLValue, EntryPoint,
+    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
+    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -423,8 +423,8 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         )
 }
 
-pub fn contract_wasm_arb() -> impl Strategy<Value = ContractWasm> {
-    collection::vec(any::<u8>(), 1..1000).prop_map(ContractWasm::new)
+pub fn contract_wasm_arb() -> impl Strategy<Value = ByteCode> {
+    collection::vec(any::<u8>(), 1..1000).prop_map(ByteCode::new)
 }
 
 pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {

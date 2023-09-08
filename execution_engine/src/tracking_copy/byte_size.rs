@@ -1,6 +1,6 @@
 use std::mem;
 
-use casper_types::{account::Account, bytesrepr::ToBytes, ContractWasm, Key, StoredValue};
+use casper_types::{account::Account, bytesrepr::ToBytes, ByteCode, Key, StoredValue};
 
 /// Returns byte size of the element - both heap size and stack size.
 pub trait ByteSize {
@@ -65,7 +65,7 @@ impl HeapSizeOf for Account {
 }
 
 // TODO: contract has other fields (re protocol version) that are not repr here...on purpose?
-impl HeapSizeOf for ContractWasm {
+impl HeapSizeOf for ByteCode {
     fn heap_size(&self) -> usize {
         self.bytes().len()
     }

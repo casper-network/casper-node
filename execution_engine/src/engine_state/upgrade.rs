@@ -10,7 +10,7 @@ use casper_types::{
     execution::Effects,
     package::{ContractVersions, Groups, PackageKind, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
-    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, CLValueError, ContractWasm,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLValue, CLValueError,
     Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
     StoredValue, URef, U512,
 };
@@ -234,7 +234,7 @@ where
         let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
         let package_hash = PackageHash::new(address_generator.new_hash_address());
 
-        let contract_wasm = ContractWasm::new(vec![]);
+        let contract_wasm = ByteCode::new(vec![]);
 
         let account_hash = PublicKey::System.to_account_hash();
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));

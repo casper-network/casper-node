@@ -38,11 +38,11 @@ use casper_types::{
         handle_payment, mint, standard_payment, CallStackElement, SystemEntityType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractVersionKey,
-    ContractVersions, ContractWasm, DeployHash, EntityVersion, Gas, GrantedAccess, Group, Groups,
-    HostFunction, HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey,
-    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    AccessRights, ApiError, ByteCode, CLTyped, CLValue, ContextAccessRights, ContractVersionKey,
+    ContractVersions, DeployHash, EntityVersion, Gas, GrantedAccess, Group, Groups, HostFunction,
+    HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
+    StoredValue, Transfer, TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    U512,
 };
 
 use crate::{
@@ -1370,7 +1370,7 @@ where
         let module: Module = {
             let wasm_key = contract.contract_wasm_key();
 
-            let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
+            let contract_wasm: ByteCode = match self.context.read_gs(&wasm_key)? {
                 Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
                 None => return Err(Error::KeyNotFound(context_key)),
@@ -1751,7 +1751,7 @@ where
         let contract_wasm_hash = self.context.new_hash_address()?;
         let contract_wasm = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
-            ContractWasm::new(module_bytes)
+            ByteCode::new(module_bytes)
         };
 
         let entity_hash = self.context.new_hash_address()?;

@@ -20,7 +20,7 @@ use crate::{
     contracts::Contract,
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    AddressableEntity, CLValue, ContractWasm, DeployInfo, Transfer,
+    AddressableEntity, ByteCode, CLValue, DeployInfo, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
 
@@ -57,7 +57,7 @@ pub enum StoredValue {
     /// An account.
     Account(Account),
     /// A contract Wasm.
-    ContractWasm(ContractWasm),
+    ContractWasm(ByteCode),
     /// A contract.
     Contract(Contract),
     /// A `Package`.
@@ -105,8 +105,8 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`ContractWasm`] if this is a `ContractWasm` variant.
-    pub fn as_contract_wasm(&self) -> Option<&ContractWasm> {
+    /// Returns a wrapped [`ByteCode`] if this is a `ContractWasm` variant.
+    pub fn as_contract_wasm(&self) -> Option<&ByteCode> {
         match self {
             StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
             _ => None,
@@ -228,8 +228,8 @@ impl From<Account> for StoredValue {
     }
 }
 
-impl From<ContractWasm> for StoredValue {
-    fn from(value: ContractWasm) -> StoredValue {
+impl From<ByteCode> for StoredValue {
+    fn from(value: ByteCode) -> StoredValue {
         StoredValue::ContractWasm(value)
     }
 }
@@ -291,7 +291,7 @@ impl TryFrom<StoredValue> for Account {
     }
 }
 
-impl TryFrom<StoredValue> for ContractWasm {
+impl TryFrom<StoredValue> for ByteCode {
     type Error = TypeMismatch;
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
@@ -461,7 +461,7 @@ impl FromBytes for StoredValue {
             tag if tag == Tag::Account as u8 => Account::from_bytes(remainder)
                 .map(|(account, remainder)| (StoredValue::Account(account), remainder)),
             tag if tag == Tag::ContractWasm as u8 => {
-                ContractWasm::from_bytes(remainder).map(|(contract_wasm, remainder)| {
+                ByteCode::from_bytes(remainder).map(|(contract_wasm, remainder)| {
                     (StoredValue::ContractWasm(contract_wasm), remainder)
                 })
             }
@@ -509,7 +509,7 @@ mod serde_helpers {
         /// An account.
         Account(&'a Account),
         /// A contract Wasm.
-        ContractWasm(&'a ContractWasm),
+        ContractWasm(&'a ByteCode),
         /// A contract.
         Contract(&'a Contract),
         /// A `Package`.
@@ -539,7 +539,7 @@ mod serde_helpers {
         /// An account.
         Account(Account),
         /// A contract Wasm.
-        ContractWasm(ContractWasm),
+        ContractWasm(ByteCode),
         /// A contract.
         Contract(Contract),
         /// A `Package`.

@@ -60,8 +60,8 @@ use casper_types::{
         mint::{self, ROUND_SEIGNIORAGE_RATE_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLValue,
-    ChainspecRegistry, ContractWasmHash, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
+    AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
+    CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
 };
@@ -114,8 +114,7 @@ pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 /// A special contract wasm hash for contracts representing Accounts.
-pub static ACCOUNT_WASM_HASH: Lazy<ContractWasmHash> =
-    Lazy::new(|| ContractWasmHash::new(DEFAULT_ADDRESS));
+pub static ACCOUNT_WASM_HASH: Lazy<ByteCodeHash> = Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.

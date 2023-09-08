@@ -14,10 +14,10 @@ use casper_types::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
     },
-    AccessRights, AddressableEntityHash, CLType, CLTyped, CLValue, ContractVersionKey,
-    ContractWasm, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion,
-    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
+    AccessRights, AddressableEntityHash, ByteCode, ByteCodeHash, CLType, CLTyped, CLValue,
+    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess, EntryPointType,
+    EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion, PublicKey, SecretKey,
+    StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -332,7 +332,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
         );
 
-        let contract_wasm = ContractWasm::new(DO_NOTHING_BYTES.to_vec());
+        let contract_wasm = ByteCode::new(DO_NOTHING_BYTES.to_vec());
 
         stored_value.insert(
             "ContractWasm".to_string(),
@@ -369,7 +369,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
 
         let entity = AddressableEntity::new(
             PackageHash::new([100; 32]),
-            ContractWasmHash::new([101; 32]),
+            ByteCodeHash::new([101; 32]),
             contract_named_keys,
             entry_points,
             ProtocolVersion::V1_0_0,

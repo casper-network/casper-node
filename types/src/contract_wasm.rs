@@ -78,12 +78,12 @@ impl Display for FromStrError {
 /// the ContractWasmHash
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct ContractWasmHash(HashAddr);
+pub struct ByteCodeHash(HashAddr);
 
-impl ContractWasmHash {
+impl ByteCodeHash {
     /// Constructs a new `ContractWasmHash` from the raw bytes of the contract wasm hash.
-    pub const fn new(value: HashAddr) -> ContractWasmHash {
-        ContractWasmHash(value)
+    pub const fn new(value: HashAddr) -> ByteCodeHash {
+        ByteCodeHash(value)
     }
 
     /// Returns the raw bytes of the contract hash as an array.
@@ -108,29 +108,29 @@ impl ContractWasmHash {
             .strip_prefix(WASM_STRING_PREFIX)
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
-        Ok(ContractWasmHash(bytes))
+        Ok(ByteCodeHash(bytes))
     }
 }
 
-impl Display for ContractWasmHash {
+impl Display for ByteCodeHash {
     fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         write!(f, "{}", base16::encode_lower(&self.0))
     }
 }
 
-impl Debug for ContractWasmHash {
+impl Debug for ByteCodeHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractWasmHash({})", base16::encode_lower(&self.0))
+        write!(f, "ByteCodeHash({})", base16::encode_lower(&self.0))
     }
 }
 
-impl CLTyped for ContractWasmHash {
+impl CLTyped for ByteCodeHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
     }
 }
 
-impl ToBytes for ContractWasmHash {
+impl ToBytes for ByteCodeHash {
     #[inline(always)]
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.0.to_bytes()
@@ -148,20 +148,20 @@ impl ToBytes for ContractWasmHash {
     }
 }
 
-impl FromBytes for ContractWasmHash {
+impl FromBytes for ByteCodeHash {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (bytes, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((ContractWasmHash::new(bytes), rem))
+        Ok((ByteCodeHash::new(bytes), rem))
     }
 }
 
-impl From<[u8; 32]> for ContractWasmHash {
+impl From<[u8; 32]> for ByteCodeHash {
     fn from(bytes: [u8; 32]) -> Self {
-        ContractWasmHash(bytes)
+        ByteCodeHash(bytes)
     }
 }
 
-impl Serialize for ContractWasmHash {
+impl Serialize for ByteCodeHash {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         if serializer.is_human_readable() {
             self.to_formatted_string().serialize(serializer)
@@ -171,46 +171,46 @@ impl Serialize for ContractWasmHash {
     }
 }
 
-impl<'de> Deserialize<'de> for ContractWasmHash {
+impl<'de> Deserialize<'de> for ByteCodeHash {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         if deserializer.is_human_readable() {
             let formatted_string = String::deserialize(deserializer)?;
-            ContractWasmHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
+            ByteCodeHash::from_formatted_str(&formatted_string).map_err(SerdeError::custom)
         } else {
             let bytes = HashAddr::deserialize(deserializer)?;
-            Ok(ContractWasmHash(bytes))
+            Ok(ByteCodeHash(bytes))
         }
     }
 }
 
-impl AsRef<[u8]> for ContractWasmHash {
+impl AsRef<[u8]> for ByteCodeHash {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl TryFrom<&[u8]> for ContractWasmHash {
+impl TryFrom<&[u8]> for ByteCodeHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &[u8]) -> Result<Self, TryFromSliceForContractHashError> {
         HashAddr::try_from(bytes)
-            .map(ContractWasmHash::new)
+            .map(ByteCodeHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
 }
 
-impl TryFrom<&Vec<u8>> for ContractWasmHash {
+impl TryFrom<&Vec<u8>> for ByteCodeHash {
     type Error = TryFromSliceForContractHashError;
 
     fn try_from(bytes: &Vec<u8>) -> Result<Self, Self::Error> {
         HashAddr::try_from(bytes as &[u8])
-            .map(ContractWasmHash::new)
+            .map(ByteCodeHash::new)
             .map_err(|_| TryFromSliceForContractHashError(()))
     }
 }
 
 #[cfg(feature = "json-schema")]
-impl JsonSchema for ContractWasmHash {
+impl JsonSchema for ByteCodeHash {
     fn schema_name() -> String {
         String::from("ContractWasmHash")
     }
@@ -228,11 +228,11 @@ impl JsonSchema for ContractWasmHash {
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct ContractWasm {
+pub struct ByteCode {
     bytes: Bytes,
 }
 
-impl Debug for ContractWasm {
+impl Debug for ByteCode {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         if self.bytes.len() > BYTE_CODE_MAX_DISPLAY_LEN {
             write!(
@@ -246,15 +246,15 @@ impl Debug for ContractWasm {
     }
 }
 
-impl ContractWasm {
+impl ByteCode {
     /// Creates new WASM object from bytes.
     pub fn new(bytes: Vec<u8>) -> Self {
-        ContractWasm {
+        ByteCode {
             bytes: bytes.into(),
         }
     }
 
-    /// Consumes instance of [`ContractWasm`] and returns its bytes.
+    /// Consumes instance of [`ByteCode`] and returns its bytes.
     pub fn take_bytes(self) -> Vec<u8> {
         self.bytes.into()
     }
@@ -265,7 +265,7 @@ impl ContractWasm {
     }
 }
 
-impl ToBytes for ContractWasm {
+impl ToBytes for ByteCode {
     fn to_bytes(&self) -> Result<Vec<u8>, Error> {
         self.bytes.to_bytes()
     }
@@ -280,10 +280,10 @@ impl ToBytes for ContractWasm {
     }
 }
 
-impl FromBytes for ContractWasm {
+impl FromBytes for ByteCode {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (bytes, rem1) = FromBytes::from_bytes(bytes)?;
-        Ok((ContractWasm { bytes }, rem1))
+        Ok((ByteCode { bytes }, rem1))
     }
 }
 
@@ -294,7 +294,7 @@ mod tests {
     fn test_debug_repr_of_short_wasm() {
         const SIZE: usize = 8;
         let wasm_bytes = vec![0; SIZE];
-        let contract_wasm = ContractWasm::new(wasm_bytes);
+        let contract_wasm = ByteCode::new(wasm_bytes);
         // String output is less than the bytes itself
         assert_eq!(
             format!("{:?}", contract_wasm),
@@ -306,7 +306,7 @@ mod tests {
     fn test_debug_repr_of_long_wasm() {
         const SIZE: usize = 65;
         let wasm_bytes = vec![0; SIZE];
-        let contract_wasm = ContractWasm::new(wasm_bytes);
+        let contract_wasm = ByteCode::new(wasm_bytes);
         // String output is less than the bytes itself
         assert_eq!(
             format!("{:?}", contract_wasm),
@@ -319,37 +319,37 @@ mod tests {
         let bytes: Vec<u8> = (0..32).collect();
         let contract_hash =
             HashAddr::try_from(&bytes[..]).expect("should create contract wasm hash");
-        let contract_hash = ContractWasmHash::new(contract_hash);
+        let contract_hash = ByteCodeHash::new(contract_hash);
         assert_eq!(&bytes, &contract_hash.as_bytes());
     }
 
     #[test]
     fn contract_wasm_hash_from_str() {
-        let contract_hash = ContractWasmHash([3; 32]);
+        let contract_hash = ByteCodeHash([3; 32]);
         let encoded = contract_hash.to_formatted_string();
-        let decoded = ContractWasmHash::from_formatted_str(&encoded).unwrap();
+        let decoded = ByteCodeHash::from_formatted_str(&encoded).unwrap();
         assert_eq!(contract_hash, decoded);
 
         let invalid_prefix =
             "contractwasm-0000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractWasmHash::from_formatted_str(invalid_prefix).is_err());
+        assert!(ByteCodeHash::from_formatted_str(invalid_prefix).is_err());
 
         let short_addr =
             "contract-wasm-00000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractWasmHash::from_formatted_str(short_addr).is_err());
+        assert!(ByteCodeHash::from_formatted_str(short_addr).is_err());
 
         let long_addr =
             "contract-wasm-000000000000000000000000000000000000000000000000000000000000000000";
-        assert!(ContractWasmHash::from_formatted_str(long_addr).is_err());
+        assert!(ByteCodeHash::from_formatted_str(long_addr).is_err());
 
         let invalid_hex =
             "contract-wasm-000000000000000000000000000000000000000000000000000000000000000g";
-        assert!(ContractWasmHash::from_formatted_str(invalid_hex).is_err());
+        assert!(ByteCodeHash::from_formatted_str(invalid_hex).is_err());
     }
 
     #[test]
     fn contract_wasm_hash_serde_roundtrip() {
-        let contract_hash = ContractWasmHash([255; 32]);
+        let contract_hash = ByteCodeHash([255; 32]);
         let serialized = bincode::serialize(&contract_hash).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
         assert_eq!(contract_hash, deserialized)
@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn contract_wasm_hash_json_roundtrip() {
-        let contract_hash = ContractWasmHash([255; 32]);
+        let contract_hash = ByteCodeHash([255; 32]);
         let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
         assert_eq!(contract_hash, decoded)

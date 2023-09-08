@@ -20,10 +20,10 @@ use casper_types::{
     execution::TransformKind,
     package::PackageKind,
     system::{AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT},
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLValue,
-    ContextAccessRights, ContractWasmHash, DeployHash, EntryPointType, EntryPoints, Gas, Key,
-    PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef,
-    KEY_HASH_LENGTH, U256, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCodeHash, CLValue,
+    ContextAccessRights, DeployHash, EntryPointType, EntryPoints, Gas, Key, PackageHash, Phase,
+    ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, URef, KEY_HASH_LENGTH, U256,
+    U512,
 };
 use tempfile::TempDir;
 
@@ -76,7 +76,7 @@ fn new_addressable_entity_with_purse(
     let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
     let entity = AddressableEntity::new(
         PackageHash::default(),
-        ContractWasmHash::default(),
+        ByteCodeHash::default(),
         named_keys,
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,

@@ -11,8 +11,8 @@ use casper_types::{
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::{PackageKind, PackageStatus},
     system::auction::{Bid, Delegator, EraInfo, SeigniorageAllocation},
-    AccessRights, AddressableEntityHash, CLType, CLTyped, CLValue, ContractVersionKey,
-    ContractVersions, ContractWasmHash, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
+    AccessRights, AddressableEntityHash, ByteCodeHash, CLType, CLTyped, CLValue,
+    ContractVersionKey, ContractVersions, DeployHash, DeployInfo, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, Group, Groups, Key, Package, PackageHash, Parameter,
     ProtocolVersion, PublicKey, SecretKey, Transfer, TransferAddr, URef, KEY_HASH_LENGTH,
     TRANSFER_ADDR_LENGTH, U128, U256, U512, UREF_ADDR_LENGTH,
@@ -495,7 +495,7 @@ fn sample_contract(named_keys_len: u8, entry_points_len: u8) -> AddressableEntit
 
     casper_types::addressable_entity::AddressableEntity::new(
         PackageHash::default(),
-        ContractWasmHash::default(),
+        ByteCodeHash::default(),
         named_keys,
         entry_points,
         ProtocolVersion::default(),

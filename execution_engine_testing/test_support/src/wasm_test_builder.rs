@@ -55,10 +55,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, CLTyped, CLValue, Contract,
-    ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey, RefundHandling,
-    StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, CLTyped, CLValue, Contract,
+    DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes,
+    Package, PackageHash, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
+    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -1171,7 +1171,7 @@ where
     }
 
     /// Queries for a contract by `ContractHash` and returns an `Option<ContractWasm>`.
-    pub fn get_contract_wasm(&self, contract_hash: AddressableEntityHash) -> Option<ContractWasm> {
+    pub fn get_contract_wasm(&self, contract_hash: AddressableEntityHash) -> Option<ByteCode> {
         let contract_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");

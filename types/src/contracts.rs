@@ -17,7 +17,7 @@ use crate::{
     addressable_entity::{EntryPoint, NamedKeys},
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
     checksummed_hex,
-    contract_wasm::ContractWasmHash,
+    contract_wasm::ByteCodeHash,
     CLType, CLTyped, EntryPoints, HashAddr, PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
 };
 
@@ -289,7 +289,7 @@ impl TryFrom<&Vec<u8>> for ContractHash {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Contract {
     contract_package_hash: PackageHash,
-    contract_wasm_hash: ContractWasmHash,
+    contract_wasm_hash: ByteCodeHash,
     named_keys: NamedKeys,
     entry_points: EntryPoints,
     protocol_version: ProtocolVersion,
@@ -299,7 +299,7 @@ impl Contract {
     /// `Contract` constructor.
     pub fn new(
         contract_package_hash: PackageHash,
-        contract_wasm_hash: ContractWasmHash,
+        contract_wasm_hash: ByteCodeHash,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
         protocol_version: ProtocolVersion,
@@ -319,7 +319,7 @@ impl Contract {
     }
 
     /// Hash for accessing contract WASM
-    pub fn contract_wasm_hash(&self) -> ContractWasmHash {
+    pub fn contract_wasm_hash(&self) -> ByteCodeHash {
         self.contract_wasm_hash
     }
 

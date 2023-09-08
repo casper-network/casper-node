@@ -35,7 +35,7 @@ use crate::{
     addressable_entity::AddressableEntityHash,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
-    contract_wasm::ContractWasmHash,
+    contract_wasm::ByteCodeHash,
     package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
@@ -822,8 +822,8 @@ impl From<AddressableEntityHash> for Key {
     }
 }
 
-impl From<ContractWasmHash> for Key {
-    fn from(wasm_hash: ContractWasmHash) -> Key {
+impl From<ByteCodeHash> for Key {
+    fn from(wasm_hash: ByteCodeHash) -> Key {
         Key::Hash(wasm_hash.value())
     }
 }

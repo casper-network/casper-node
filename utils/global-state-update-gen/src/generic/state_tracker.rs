@@ -11,7 +11,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     package::{ContractVersions, Groups, PackageKind, PackageStatus},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
-    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, ContractWasmHash, EntryPoints,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntryPoints,
     Key, Package, PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
@@ -166,7 +166,7 @@ impl<T: StateReader> StateTracker<T> {
 
         let entity_hash = AddressableEntityHash::new(rng.gen());
         let package_hash = PackageHash::new(rng.gen());
-        let contract_wasm_hash = ContractWasmHash::new([0u8; 32]);
+        let contract_wasm_hash = ByteCodeHash::new([0u8; 32]);
 
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
 

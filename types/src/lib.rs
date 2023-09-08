@@ -124,7 +124,7 @@ pub use chainspec::{
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
-pub use contract_wasm::{ContractWasm, ContractWasmHash};
+pub use contract_wasm::{ByteCode, ByteCodeHash};
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;

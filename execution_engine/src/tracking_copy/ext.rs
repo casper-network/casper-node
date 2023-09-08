@@ -4,9 +4,9 @@ use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieM
 use casper_types::{
     account::AccountHash,
     package::{ContractVersions, Groups, PackageKind, PackageStatus},
-    AccessRights, AddressableEntity, AddressableEntityHash, CLValue, ContractWasm,
-    ContractWasmHash, EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
-    StoredValue, StoredValueTypeMismatch, URef,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeHash, CLValue,
+    EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
+    StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -65,8 +65,8 @@ pub trait TrackingCopyExt<R> {
     /// Gets a contract by Key.
     fn get_contract_wasm(
         &mut self,
-        contract_wasm_hash: ContractWasmHash,
-    ) -> Result<ContractWasm, Self::Error>;
+        contract_wasm_hash: ByteCodeHash,
+    ) -> Result<ByteCode, Self::Error>;
 
     /// Gets an addressable entity  by Key.
     fn get_contract(
@@ -270,8 +270,8 @@ where
     /// Gets a contract wasm by Key
     fn get_contract_wasm(
         &mut self,
-        contract_wasm_hash: ContractWasmHash,
-    ) -> Result<ContractWasm, Self::Error> {
+        contract_wasm_hash: ByteCodeHash,
+    ) -> Result<ByteCode, Self::Error> {
         let key = contract_wasm_hash.into();
         match self.get(&key).map_err(Into::into)? {
             Some(StoredValue::ContractWasm(contract_wasm)) => Ok(contract_wasm),

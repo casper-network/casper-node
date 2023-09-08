@@ -32,10 +32,10 @@ use casper_types::{
         mint::{self, ARG_ROUND_SEIGNIORAGE_RATE, ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         standard_payment, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, CLValue,
-    Chainspec, ChainspecRegistry, ContractWasm, ContractWasmHash, Digest, EntryPoints, EraId,
-    FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
-    PublicKey, RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
+    ByteCodeHash, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId, FeeHandling,
+    GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -1131,9 +1131,9 @@ where
     ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         let protocol_version = self.protocol_version;
         let contract_wasm_hash = if no_wasm {
-            ContractWasmHash::new(DEFAULT_ADDRESS)
+            ByteCodeHash::new(DEFAULT_ADDRESS)
         } else {
-            ContractWasmHash::new(self.address_generator.borrow_mut().new_hash_address())
+            ByteCodeHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
         let entity_hash = if package_kind.is_system_account() {
             let entity_hash_addr = PublicKey::System.to_account_hash().value();
@@ -1145,7 +1145,7 @@ where
         let contract_package_hash =
             PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
-        let contract_wasm = ContractWasm::new(vec![]);
+        let contract_wasm = ByteCode::new(vec![]);
         let associated_keys = package_kind.associated_keys();
         let maybe_account_hash = package_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();

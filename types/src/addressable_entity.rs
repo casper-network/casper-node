@@ -50,7 +50,7 @@ use crate::{
     account::{Account, AccountHash},
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
-    contract_wasm::ContractWasmHash,
+    contract_wasm::ByteCodeHash,
     contracts::Contract,
     uref::{self, URef},
     AccessRights, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key, PackageHash,
@@ -631,7 +631,7 @@ impl KeyValueJsonSchema for EntryPointLabels {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct AddressableEntity {
     package_hash: PackageHash,
-    contract_wasm_hash: ContractWasmHash,
+    contract_wasm_hash: ByteCodeHash,
     named_keys: NamedKeys,
     entry_points: EntryPoints,
     protocol_version: ProtocolVersion,
@@ -643,7 +643,7 @@ pub struct AddressableEntity {
 impl From<AddressableEntity>
     for (
         PackageHash,
-        ContractWasmHash,
+        ByteCodeHash,
         NamedKeys,
         EntryPoints,
         ProtocolVersion,
@@ -671,7 +671,7 @@ impl AddressableEntity {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         package_hash: PackageHash,
-        contract_wasm_hash: ContractWasmHash,
+        contract_wasm_hash: ByteCodeHash,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
         protocol_version: ProtocolVersion,
@@ -697,7 +697,7 @@ impl AddressableEntity {
     }
 
     /// Hash for accessing contract WASM
-    pub fn contract_wasm_hash(&self) -> ContractWasmHash {
+    pub fn contract_wasm_hash(&self) -> ByteCodeHash {
         self.contract_wasm_hash
     }
 
@@ -985,7 +985,7 @@ impl ToBytes for AddressableEntity {
 impl FromBytes for AddressableEntity {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (package_hash, bytes) = PackageHash::from_bytes(bytes)?;
-        let (contract_wasm_hash, bytes) = ContractWasmHash::from_bytes(bytes)?;
+        let (contract_wasm_hash, bytes) = ByteCodeHash::from_bytes(bytes)?;
         let (named_keys, bytes) = NamedKeys::from_bytes(bytes)?;
         let (entry_points, bytes) = EntryPoints::from_bytes(bytes)?;
         let (protocol_version, bytes) = ProtocolVersion::from_bytes(bytes)?;
@@ -1042,7 +1042,7 @@ impl From<Account> for AddressableEntity {
     fn from(value: Account) -> Self {
         AddressableEntity::new(
             PackageHash::default(),
-            ContractWasmHash::new([0u8; 32]),
+            ByteCodeHash::new([0u8; 32]),
             value.named_keys().clone(),
             EntryPoints::new(),
             ProtocolVersion::default(),
@@ -1487,7 +1487,7 @@ mod tests {
         let associated_keys = AssociatedKeys::new(AccountHash::new([254; 32]), Weight::new(1));
         let contract = AddressableEntity::new(
             PackageHash::new([254; 32]),
-            ContractWasmHash::new([253; 32]),
+            ByteCodeHash::new([253; 32]),
             named_keys,
             EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,

@@ -378,7 +378,7 @@ mod tests {
     use num::{Bounded, Num};
 
     use crate::{
-        bytesrepr::Bytes, testing::TestRng, AccessRights, ContractWasm, Key, URef, U128, U256, U512,
+        bytesrepr::Bytes, testing::TestRng, AccessRights, ByteCode, Key, URef, U128, U256, U512,
     };
 
     use super::*;
@@ -510,7 +510,7 @@ mod tests {
             };
         }
 
-        let contract = StoredValue::ContractWasm(ContractWasm::new(vec![]));
+        let contract = StoredValue::ContractWasm(ByteCode::new(vec![]));
         assert_yields_type_mismatch_error(contract);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
