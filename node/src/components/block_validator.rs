@@ -32,13 +32,16 @@ use crate::{
         Component,
     },
     effect::{
+        announcements::FatalAnnouncement,
         requests::{BlockValidationRequest, FetcherRequest, StorageRequest},
         EffectBuilder, EffectExt, Effects, Responder,
     },
+    fatal,
     types::{
         appendable_block::AppendableBlock, Approval, BlockWithMetadata, Chainspec, Deploy,
         DeployFootprint, DeployHash, DeployHashWithApprovals, DeployOrTransferHash,
-        FinalitySignature, FinalitySignatureId, LegacyDeploy, NodeId, ValidatorMatrix,
+        FinalitySignature, FinalitySignatureId, LegacyDeploy, NodeId, RewardedSignatures,
+        SingleBlockRewardedSignatures, ValidatorMatrix,
     },
     NodeRng,
 };
@@ -372,29 +375,17 @@ impl BlockValidator {
         );
     }
 
-    fn handle_got_past_blocks_with_metadata<REv>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        past_blocks_with_metadata: Vec<Option<BlockWithMetadata>>,
-        proposed_block: ProposedBlock<ClContext>,
+    /// This function pairs the `SingleBlockRewardedSignatures` entries from `rewarded_signatures`
+    /// with the relevant past blocks and their metadata. If a block for which some signatures are
+    /// cited is missing, or if some signatures are double-cited, it will change the
+    /// `block_validation_state` and return `None`.
+    fn relevant_blocks_and_cited_signatures<'b, 'c>(
+        block_validation_state: &'_ mut BlockValidationState,
+        past_blocks_with_metadata: &'b [Option<BlockWithMetadata>],
+        rewarded_signatures: &'c RewardedSignatures,
         sender: NodeId,
-    ) -> Effects<Event>
-    where
-        REv: From<Event> + From<FetcherRequest<FinalitySignature>> + Send,
-    {
-        let block_validation_state =
-            if let Some(validation_state) = self.validation_states.get_mut(&proposed_block) {
-                validation_state
-            } else {
-                error!(
-                    "handle_got_past_blocks_with_metadata called for a block with no \
-                        corresponding state!"
-                );
-                return Effects::new();
-            };
-
-        let rewarded_signatures = proposed_block.value().rewarded_signatures();
-
+    ) -> Option<Vec<(&'b BlockWithMetadata, &'c SingleBlockRewardedSignatures)>> {
+        let mut result = Vec::new();
         // Check whether we know all the blocks for which the proposed block cites some signatures,
         // and if no signatures are doubly cited.
         for ((past_block_height, signatures), maybe_block) in rewarded_signatures
@@ -409,7 +400,7 @@ impl BlockValidator {
 
                     trace!(%past_block_height, "maybe_block = None if signatures.has_some() - returning");
 
-                    return Effects::new();
+                    return None;
                 }
                 None => {
                     // we have no block, but there are also no signatures cited for this block, so
@@ -446,39 +437,70 @@ impl BlockValidator {
                         block_validation_state
                             .signatures_validation_state
                             .invalidate();
-                        return Effects::new();
+                        return None;
                     }
+                    // everything is OK - save the block in the result
+                    result.push((block, signatures));
                 }
             }
         }
+        Some(result)
+    }
 
-        // If we're here, we have all the blocks necessary to proceed with validating finality
-        // signatures.
-
+    fn era_ids_vec(past_blocks_with_metadata: &[Option<BlockWithMetadata>]) -> Vec<Option<EraId>> {
         // This will create a vector of era ids for the past blocks corresponding to cited
         // signatures. The index of the entry in the vector will be the number of blocks in the
         // past relative to the current block, minus 1 (ie., 0 is the previous block, 1 is the one
         // before that, etc.) - these indices will correspond directly to the indices in
         // RewardedSignatures.
-        let era_ids_vec: Vec<_> = past_blocks_with_metadata
+        past_blocks_with_metadata
             .iter()
             .rev()
             .map(|maybe_metadata| {
                 maybe_metadata
                     .as_ref()
-                    .map_or(block_validation_state.proposed_block_era_id, |metadata| {
-                        metadata.block.header().era_id()
-                    })
+                    .map(|metadata| metadata.block.header().era_id())
             })
-            .collect();
+            .collect()
+    }
 
-        let blocks_by_height: BTreeMap<_, _> = past_blocks_with_metadata
-            .into_iter()
-            .flatten()
-            .map(|metadata| (metadata.block.header().height(), metadata))
-            .collect();
+    fn handle_got_past_blocks_with_metadata<REv>(
+        &mut self,
+        effect_builder: EffectBuilder<REv>,
+        past_blocks_with_metadata: Vec<Option<BlockWithMetadata>>,
+        proposed_block: ProposedBlock<ClContext>,
+        sender: NodeId,
+    ) -> Effects<Event>
+    where
+        REv: From<Event> + From<FetcherRequest<FinalitySignature>> + From<FatalAnnouncement> + Send,
+    {
+        let Some(block_validation_state) = self.validation_states.get_mut(&proposed_block)
+        else {
+            error!(
+                "handle_got_past_blocks_with_metadata called for a block with no \
+                    corresponding state!"
+            );
+            return Effects::new();
+        };
 
-        let era_ids: BTreeSet<_> = era_ids_vec.iter().copied().collect();
+        let rewarded_signatures = proposed_block.value().rewarded_signatures();
+
+        let Some(blocks_and_signatures) =
+            Self::relevant_blocks_and_cited_signatures(
+                block_validation_state,
+                &past_blocks_with_metadata,
+                rewarded_signatures,
+                sender,
+            ) else {
+                return Effects::new();
+            };
+
+        // If we're here, we have all the blocks necessary to proceed with validating finality
+        // signatures.
+        let era_ids_vec = Self::era_ids_vec(&past_blocks_with_metadata);
+
+        // get the set of unique era ids that are present in the cited blocks
+        let era_ids: BTreeSet<_> = era_ids_vec.iter().flatten().copied().collect();
         let validator_matrix = &self.validator_matrix;
 
         let validators: BTreeMap<_, BTreeSet<_>> = era_ids
@@ -490,18 +512,20 @@ impl BlockValidator {
             })
             .collect();
 
-        // This will be a vector of signature IDs of the signatures included in the block, but not
+        // This will be a set of signature IDs of the signatures included in the block, but not
         // found in metadata in storage.
-        let missing_sigs: HashSet<_> = rewarded_signatures
-            .iter_with_height(block_validation_state.proposed_block_height)
-            .zip(era_ids_vec)
-            .flat_map(|((block_height, single_block_rewarded_sigs), era_id)| {
-                let all_validators = validators.get(&era_id).unwrap(); // TODO: don't unwrap
-                let public_keys = single_block_rewarded_sigs
-                    .clone()
-                    .into_validator_set(all_validators.iter().cloned());
-                let block_with_metadata = blocks_by_height.get(&block_height).unwrap();
-                let block_hash = *block_with_metadata.block.hash();
+        let mut missing_sigs = HashSet::new();
+        for (block_with_metadata, single_block_rewarded_sigs) in blocks_and_signatures {
+            let era_id = block_with_metadata.block.header().era_id();
+            let Some(all_validators) = validators.get(&era_id) else {
+                return fatal!(effect_builder, "couldn't get validators for {}", era_id).ignore();
+            };
+            let public_keys = single_block_rewarded_sigs
+                .clone()
+                .into_validator_set(all_validators.iter().cloned());
+            let block_hash = *block_with_metadata.block.hash();
+            let era_id = block_with_metadata.block.header().era_id();
+            missing_sigs.extend(
                 public_keys
                     .into_iter()
                     .filter(move |public_key| {
@@ -514,9 +538,9 @@ impl BlockValidator {
                         block_hash,
                         era_id,
                         public_key,
-                    })
-            })
-            .collect();
+                    }),
+            );
+        }
         trace!(
             ?missing_sigs,
             "handle_got_past_blocks_with_metadata included_sigs"
@@ -553,6 +577,7 @@ where
         + From<FetcherRequest<LegacyDeploy>>
         + From<FetcherRequest<FinalitySignature>>
         + From<StorageRequest>
+        + From<FatalAnnouncement>
         + Send,
 {
     type Event = Event;

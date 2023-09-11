@@ -32,6 +32,8 @@ enum ReactorEvent {
     FinalitySignatureFetcher(FetcherRequest<FinalitySignature>),
     #[from]
     Storage(StorageRequest),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
 }
 
 impl From<BlockValidationRequest> for ReactorEvent {
