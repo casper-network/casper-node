@@ -44,6 +44,3 @@ lto = true
 [profile.release-with-debug]
 inherits = "release"
 debug = true
-
-[patch.crates-io]
-datasize = { git = "https://github.com/casperlabs/datasize-rs", rev = "2b980c05af5553522dde5f2751e5a0fd3347d881" }
