@@ -397,30 +397,24 @@ impl BlockValidator {
 
         // Check whether we know all the blocks for which the proposed block cites some signatures,
         // and if no signatures are doubly cited.
-        for (rel_height, (signatures, maybe_block)) in rewarded_signatures
-            .iter()
+        for ((past_block_height, signatures), maybe_block) in rewarded_signatures
+            .iter_with_height(block_validation_state.proposed_block_height)
             .zip(past_blocks_with_metadata.iter().rev())
-            .enumerate()
         {
             match maybe_block {
                 None if signatures.has_some() => {
-                    let first_missing_block_height = block_validation_state
-                        .proposed_block_height
-                        .saturating_sub(rel_height as u64)
-                        .saturating_sub(1);
-
                     block_validation_state
                         .signatures_validation_state
-                        .require_block(sender, first_missing_block_height);
+                        .require_block(sender, past_block_height);
 
-                    trace!(%rel_height, "maybe_block = None if signatures.has_some() - returning");
+                    trace!(%past_block_height, "maybe_block = None if signatures.has_some() - returning");
 
                     return Effects::new();
                 }
                 None => {
                     // we have no block, but there are also no signatures cited for this block, so
                     // we can continue
-                    trace!(%rel_height, "maybe_block = None");
+                    trace!(%past_block_height, "maybe_block = None");
                 }
                 Some(block) => {
                     let padded_signatures = block
@@ -428,7 +422,12 @@ impl BlockValidator {
                         .body()
                         .rewarded_signatures()
                         .clone()
-                        .left_padded(rel_height.saturating_add(1));
+                        .left_padded(
+                            block_validation_state
+                                .proposed_block_height
+                                .saturating_sub(past_block_height)
+                                as usize,
+                        );
                     trace!(
                         ?padded_signatures,
                         ?rewarded_signatures,
@@ -441,7 +440,7 @@ impl BlockValidator {
                     {
                         // block cited a signature that has been cited before - it is invalid!
                         debug!(
-                            %rel_height,
+                            %past_block_height,
                             "maybe_block is Some, nonzero intersection with previous"
                         );
                         block_validation_state
@@ -494,15 +493,10 @@ impl BlockValidator {
         // This will be a vector of signature IDs of the signatures included in the block, but not
         // found in metadata in storage.
         let missing_sigs: HashSet<_> = rewarded_signatures
-            .iter()
+            .iter_with_height(block_validation_state.proposed_block_height)
             .zip(era_ids_vec)
-            .enumerate()
-            .flat_map(|(i, (single_block_rewarded_sigs, era_id))| {
+            .flat_map(|((block_height, single_block_rewarded_sigs), era_id)| {
                 let all_validators = validators.get(&era_id).unwrap(); // TODO: don't unwrap
-                let block_height = block_validation_state
-                    .proposed_block_height
-                    .saturating_sub(i as u64)
-                    .saturating_sub(1);
                 let public_keys = single_block_rewarded_sigs
                     .clone()
                     .into_validator_set(all_validators.iter().cloned());

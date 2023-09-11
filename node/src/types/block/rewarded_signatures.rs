@@ -254,6 +254,23 @@ impl RewardedSignatures {
         self.0.iter()
     }
 
+    /// Iterates over the `SingleBlockRewardedSignatures`, yielding the signatures together with
+    /// the block height for each entry. `block_height` is the height of the block that contains
+    /// this instance of `RewardedSignatures`.
+    pub fn iter_with_height(
+        &self,
+        block_height: u64,
+    ) -> impl Iterator<Item = (u64, &SingleBlockRewardedSignatures)> {
+        self.0.iter().enumerate().map(move |(rel_height, sbrs)| {
+            (
+                block_height
+                    .saturating_sub(rel_height as u64)
+                    .saturating_sub(1),
+                sbrs,
+            )
+        })
+    }
+
     /// Returns `true` if there is at least one cited signature.
     pub fn has_some(&self) -> bool {
         self.0.iter().any(|signatures| signatures.has_some())
