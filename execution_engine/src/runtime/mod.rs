@@ -1372,7 +1372,7 @@ where
 
             let contract_wasm: ByteCode = match self.context.read_gs(&wasm_key)? {
                 Some(StoredValue::ByteCode(contract_wasm)) => contract_wasm,
-                Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
+                Some(_) => return Err(Error::InvalidByteCode(contract.contract_wasm_hash())),
                 None => return Err(Error::KeyNotFound(context_key)),
             };
 

@@ -63,10 +63,7 @@ pub trait TrackingCopyExt<R> {
     ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
     /// Gets a contract by Key.
-    fn get_contract_wasm(
-        &mut self,
-        contract_wasm_hash: ByteCodeHash,
-    ) -> Result<ByteCode, Self::Error>;
+    fn get_byte_code(&mut self, contract_wasm_hash: ByteCodeHash) -> Result<ByteCode, Self::Error>;
 
     /// Gets an addressable entity  by Key.
     fn get_contract(
@@ -268,15 +265,12 @@ where
     }
 
     /// Gets a contract wasm by Key
-    fn get_contract_wasm(
-        &mut self,
-        contract_wasm_hash: ByteCodeHash,
-    ) -> Result<ByteCode, Self::Error> {
-        let key = contract_wasm_hash.into();
+    fn get_byte_code(&mut self, byte_code_hash: ByteCodeHash) -> Result<ByteCode, Self::Error> {
+        let key = byte_code_hash.into();
         match self.get(&key).map_err(Into::into)? {
             Some(StoredValue::ByteCode(contract_wasm)) => Ok(contract_wasm),
             Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("ContractWasm".to_string(), other.type_name()),
+                StoredValueTypeMismatch::new("ByteCode".to_string(), other.type_name()),
             )),
             None => Err(execution::Error::KeyNotFound(key)),
         }
@@ -285,14 +279,14 @@ where
     /// Gets a contract header by Key
     fn get_contract(
         &mut self,
-        contract_hash: AddressableEntityHash,
+        entity_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error> {
-        let key = contract_hash.into();
+        let key = entity_hash.into();
 
         match self.read(&key).map_err(Into::into)? {
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
             Some(StoredValue::Contract(contract)) => {
-                let contract_key: Key = contract_hash.into();
+                let contract_key: Key = entity_hash.into();
                 let entity: AddressableEntity = contract.into();
                 self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
                 Ok(entity)

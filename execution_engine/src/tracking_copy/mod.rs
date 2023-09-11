@@ -537,10 +537,10 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                     }
                 }
                 StoredValue::Package(_) => {
-                    return Ok(query.into_not_found_result("ContractPackage value found."));
+                    return Ok(query.into_not_found_result("Package value found."));
                 }
                 StoredValue::ByteCode(_) => {
-                    return Ok(query.into_not_found_result("ContractWasm value found."));
+                    return Ok(query.into_not_found_result("ByteCode value found."));
                 }
                 StoredValue::Transfer(_) => {
                     return Ok(query.into_not_found_result("Transfer value found."));

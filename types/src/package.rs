@@ -197,14 +197,14 @@ impl Display for EntityVersionKey {
 pub const ENTITY_VERSION_KEY_SERIALIZED_LENGTH: usize =
     U32_SERIALIZED_LENGTH + U32_SERIALIZED_LENGTH;
 
-/// Collection of contract versions.
+/// Collection of entity versions.
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(transparent, deny_unknown_fields)]
 pub struct EntityVersions(
     #[serde(
-        with = "BTreeMapToArray::<EntityVersionKey, AddressableEntityHash, ContractVersionLabels>"
+        with = "BTreeMapToArray::<EntityVersionKey, AddressableEntityHash, EntityVersionLabels>"
     )]
     BTreeMap<EntityVersionKey, AddressableEntityHash>,
 );

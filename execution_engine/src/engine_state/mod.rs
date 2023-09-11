@@ -2761,7 +2761,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
             Error::Exec(err) => match err {
                 ExecError::WasmPreprocessing(_) | ExecError::UnsupportedWasmStart => true,
                 ExecError::Storage(_)
-                | ExecError::InvalidContractWasm(_)
+                | ExecError::InvalidByteCode(_)
                 | ExecError::WasmOptimizer
                 | ExecError::ParityWasm(_)
                 | ExecError::Interpreter(_)

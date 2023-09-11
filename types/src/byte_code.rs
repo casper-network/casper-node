@@ -80,7 +80,7 @@ impl Display for FromStrError {
 pub struct ByteCodeHash(HashAddr);
 
 impl ByteCodeHash {
-    /// Constructs a new `ContractWasmHash` from the raw bytes of the contract wasm hash.
+    /// Constructs a new `ByteCodeHash` from the raw bytes of the contract wasm hash.
     pub const fn new(value: HashAddr) -> ByteCodeHash {
         ByteCodeHash(value)
     }
@@ -95,7 +95,7 @@ impl ByteCodeHash {
         &self.0
     }
 
-    /// Formats the `ContractWasmHash` for users getting and putting.
+    /// Formats the `ByteCodeHash` for users getting and putting.
     pub fn to_formatted_string(self) -> String {
         format!("{}{}", WASM_STRING_PREFIX, base16::encode_lower(&self.0),)
     }
@@ -211,7 +211,7 @@ impl TryFrom<&Vec<u8>> for ByteCodeHash {
 #[cfg(feature = "json-schema")]
 impl JsonSchema for ByteCodeHash {
     fn schema_name() -> String {
-        String::from("ContractWasmHash")
+        String::from("ByteCodeHash")
     }
 
     fn json_schema(gen: &mut SchemaGenerator) -> Schema {
@@ -236,11 +236,11 @@ impl Debug for ByteCode {
         if self.bytes.len() > BYTE_CODE_MAX_DISPLAY_LEN {
             write!(
                 f,
-                "ContractWasm(0x{}...)",
+                "ByteCode(0x{}...)",
                 base16::encode_lower(&self.bytes[..BYTE_CODE_MAX_DISPLAY_LEN])
             )
         } else {
-            write!(f, "ContractWasm(0x{})", base16::encode_lower(&self.bytes))
+            write!(f, "ByteCode(0x{})", base16::encode_lower(&self.bytes))
         }
     }
 }
@@ -297,7 +297,7 @@ mod tests {
         // String output is less than the bytes itself
         assert_eq!(
             format!("{:?}", contract_wasm),
-            "ContractWasm(0x0000000000000000)"
+            "ByteCode(0x0000000000000000)"
         );
     }
 
@@ -348,17 +348,17 @@ mod tests {
 
     #[test]
     fn contract_wasm_hash_serde_roundtrip() {
-        let contract_hash = ByteCodeHash([255; 32]);
-        let serialized = bincode::serialize(&contract_hash).unwrap();
+        let byte_code_hash = ByteCodeHash([255; 32]);
+        let serialized = bincode::serialize(&byte_code_hash).unwrap();
         let deserialized = bincode::deserialize(&serialized).unwrap();
-        assert_eq!(contract_hash, deserialized)
+        assert_eq!(byte_code_hash, deserialized)
     }
 
     #[test]
     fn contract_wasm_hash_json_roundtrip() {
-        let contract_hash = ByteCodeHash([255; 32]);
-        let json_string = serde_json::to_string_pretty(&contract_hash).unwrap();
+        let byte_code_hash = ByteCodeHash([255; 32]);
+        let json_string = serde_json::to_string_pretty(&byte_code_hash).unwrap();
         let decoded = serde_json::from_str(&json_string).unwrap();
-        assert_eq!(contract_hash, decoded)
+        assert_eq!(byte_code_hash, decoded)
     }
 }

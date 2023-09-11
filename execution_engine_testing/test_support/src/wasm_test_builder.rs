@@ -1172,14 +1172,14 @@ where
         }
     }
 
-    /// Queries for a contract by `ContractHash` and returns an `Option<ContractWasm>`.
-    pub fn get_contract_wasm(&self, contract_hash: AddressableEntityHash) -> Option<ByteCode> {
-        let contract_value: StoredValue = self
+    /// Queries for a contract by `AddressableEntityHash` and returns an `Option<ByteCode>`.
+    pub fn get_byte_code(&self, contract_hash: AddressableEntityHash) -> Option<ByteCode> {
+        let byte_code_value: StoredValue = self
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
 
-        if let StoredValue::ByteCode(contract_wasm) = contract_value {
-            Some(contract_wasm)
+        if let StoredValue::ByteCode(byte_code) = byte_code_value {
+            Some(byte_code)
         } else {
             None
         }

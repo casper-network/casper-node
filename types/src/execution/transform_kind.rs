@@ -124,7 +124,7 @@ impl TransformKind {
                 }
                 StoredValue::ByteCode(_) => {
                     let expected = "Contract or Account".to_string();
-                    let found = "ContractWasm".to_string();
+                    let found = "ByteCode".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
                 StoredValue::Transfer(_) => {

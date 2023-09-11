@@ -151,7 +151,7 @@ pub enum Error {
     InvalidContract(AddressableEntityHash),
     /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
-    InvalidContractWasm(ByteCodeHash),
+    InvalidByteCode(ByteCodeHash),
     /// Error calling a smart contract with a missing argument.
     #[error("Missing argument: {name}")]
     MissingArgument {
