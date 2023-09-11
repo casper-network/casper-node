@@ -28,6 +28,7 @@ use std::{
 
 use bytes::Bytes;
 
+use futures::Future;
 use once_cell::sync::OnceCell;
 use thiserror::Error;
 use tokio::{
@@ -333,6 +334,42 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
         };
 
         self.do_enqueue_request(ticket)
+    }
+
+    /// Schedules a new request on an outgoing channel without borrowing the underlying client.
+    ///
+    /// Functions like [`JulietRpcRequestBuilder::queue_for_sending`], but partially clones the
+    /// client underlying this [`JulietRpcRequestBuilder`]. As a result, the future returned by this
+    /// function does not borrow anything and can be freely moved.
+    pub fn queue_for_sending_owned(self) -> impl Future<Output = RequestGuard> {
+        let request_handle = self.client.request_handle.clone(); // TODO: Ensure only `IoShared` needs to be cloned here.
+        let new_request_sender = self.client.new_request_sender.clone();
+
+        // TODO: Factor out code in this block to share with `queue_for_sending`.
+        async move {
+            let ticket = match request_handle.reserve_request(self.channel).await {
+                Some(ticket) => ticket,
+                None => {
+                    // We cannot queue the request, since the connection was closed.
+                    return RequestGuard::new_error(RequestError::RemoteClosed(self.payload));
+                }
+            };
+
+            {
+                let inner = Arc::new(RequestGuardInner::new());
+
+                match new_request_sender.send(NewOutgoingRequest {
+                    ticket: ticket,
+                    guard: inner.clone(),
+                    payload: self.payload,
+                }) {
+                    Ok(()) => RequestGuard { inner },
+                    Err(send_err) => {
+                        RequestGuard::new_error(RequestError::RemoteClosed(send_err.0.payload))
+                    }
+                }
+            }
+        }
     }
 
     /// Schedules a new request on an outgoing channel if space is available.
