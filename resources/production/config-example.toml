@@ -251,10 +251,9 @@ blocklist_retain_duration = '10min'
 # When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
 # This option makes sense for some private chains where for security reasons joining new nodes is restricted.
 # [network.identity]
-# tls_certificate = "node_cert.pem"
-# secret_key = "node.pem"
+# tls_certificate = "local_node_cert.pem"
+# secret_key = "local_node.pem"
 # ca_certificate = "ca_cert.pem"
-
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
