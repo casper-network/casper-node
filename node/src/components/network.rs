@@ -429,6 +429,7 @@ where
         exclude: HashSet<NodeId>,
     ) -> HashSet<NodeId> {
         // TODO: Restore sampling functionality. We currently override with `GossipTarget::All`.
+        //       See #4247.
         let is_validator_in_era = |_, _: &_| true;
         let gossip_target = GossipTarget::All;
 
@@ -841,7 +842,7 @@ where
             OutgoingConnection::Established {
                 peer_addr,
                 peer_id,
-                peer_consensus_public_key: _, // TODO: Use for limiting or remove.
+                peer_consensus_public_key: _, // TODO: Use for limiting or remove. See also #4247.
                 transport,
             } => {
                 info!("new outgoing connection established");
