@@ -896,7 +896,6 @@ mod tests {
     fn channels_enum_does_not_have_holes() {
         for idx in 0..Channel::COUNT {
             let result = Channel::from_repr(idx as u8);
-            eprintln!("idx: {} channel: {:?}", idx, result);
             result.expect("must not have holes in channel enum");
         }
     }
