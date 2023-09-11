@@ -24,7 +24,7 @@ use crate::{
 };
 
 const _NETWORK_EVENT_SIZE: usize = mem::size_of::<Event<ProtocolMessage>>();
-const_assert!(_NETWORK_EVENT_SIZE < 999); // TODO: This used to be 65 bytes!
+const_assert!(_NETWORK_EVENT_SIZE < 65);
 
 /// A network event.
 #[derive(Debug, From, Serialize)]
@@ -56,7 +56,7 @@ where
     /// Incoming connection closed.
     IncomingClosed {
         #[serde(skip_serializing)]
-        result: Result<(), MessageReceiverError>,
+        result: Result<(), Box<MessageReceiverError>>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
         peer_consensus_public_key: Option<Box<PublicKey>>,

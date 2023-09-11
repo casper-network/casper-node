@@ -690,7 +690,7 @@ where
                         drop(rpc_client);
 
                         Event::IncomingClosed {
-                            result,
+                            result: result.map_err(Box::new),
                             peer_id: Box::new(peer_id),
                             peer_addr,
                             peer_consensus_public_key,
@@ -706,7 +706,7 @@ where
 
     fn handle_incoming_closed(
         &mut self,
-        result: Result<(), MessageReceiverError>,
+        result: Result<(), Box<MessageReceiverError>>,
         peer_id: Box<NodeId>,
         peer_addr: SocketAddr,
         peer_consensus_public_key: Option<Box<PublicKey>>,

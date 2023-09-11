@@ -51,12 +51,12 @@ pub(super) fn create_rpc_builder(
 /// Dropping it will cause an "ACK", which in the Juliet transport's case is an empty response, to
 /// be sent. Cancellations or responses with actual payloads are not used at this time.
 #[derive(Debug)]
-pub(crate) struct Ticket(Option<IncomingRequest>);
+pub(crate) struct Ticket(Option<Box<IncomingRequest>>);
 
 impl Ticket {
     #[inline(always)]
     pub(super) fn from_rpc_request(incoming_request: IncomingRequest) -> Self {
-        Ticket(Some(incoming_request))
+        Ticket(Some(Box::new(incoming_request)))
     }
 
     #[cfg(test)]
