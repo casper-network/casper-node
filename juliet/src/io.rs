@@ -141,8 +141,8 @@ pub enum CoreError {
         data: Option<Bytes>,
     },
     /// The remote peer violated the protocol and has been sent an error.
-    #[error("error sent to peer")]
-    RemoteProtocolViolation(OutgoingFrame),
+    #[error("error sent to peer: {0}")]
+    RemoteProtocolViolation(Header),
     #[error("local protocol violation")]
     /// Local protocol violation - caller violated the crate's API.
     LocalProtocolViolation(#[from] LocalProtocolViolation),
@@ -420,7 +420,7 @@ where
 
                     if frame_sent.header().is_error() {
                         // We finished sending an error frame, time to exit.
-                        return Err(CoreError::RemoteProtocolViolation(frame_sent));
+                        return Err(CoreError::RemoteProtocolViolation(frame_sent.header()));
                     }
                 }
 
