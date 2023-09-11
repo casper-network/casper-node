@@ -123,8 +123,8 @@ impl Payload for Message {
             } => match tag {
                 Tag::Deploy => Channel::DataRequests,
                 Tag::LegacyDeploy => Channel::SyncDataRequests,
-                Tag::Block => Channel::DataRequests,
-                Tag::BlockHeader => Channel::DataRequests,
+                Tag::Block => Channel::SyncDataRequests,
+                Tag::BlockHeader => Channel::SyncDataRequests,
                 Tag::TrieOrChunk => Channel::SyncDataRequests,
                 Tag::FinalitySignature => Channel::DataRequests,
                 Tag::SyncLeap => Channel::SyncDataRequests,
@@ -138,8 +138,8 @@ impl Payload for Message {
                 // TODO: Verify which responses are for sync data.
                 Tag::Deploy => Channel::DataResponses,
                 Tag::LegacyDeploy => Channel::SyncDataResponses,
-                Tag::Block => Channel::DataResponses,
-                Tag::BlockHeader => Channel::DataResponses,
+                Tag::Block => Channel::SyncDataResponses,
+                Tag::BlockHeader => Channel::SyncDataResponses,
                 Tag::TrieOrChunk => Channel::SyncDataResponses,
                 Tag::FinalitySignature => Channel::DataResponses,
                 Tag::SyncLeap => Channel::SyncDataResponses,
