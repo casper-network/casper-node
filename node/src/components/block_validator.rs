@@ -90,7 +90,7 @@ pub(crate) enum Event {
 
     /// Past blocks with metadata relevant to the finality signatures included in the proposed
     /// block have been read from storage.
-    #[display(fmt = "{:?} read from storage", past_blocks_with_metadata)]
+    #[display(fmt = "past blocks read from storage")]
     GotPastBlocksWithMetadata {
         past_blocks_with_metadata: Vec<Option<BlockWithMetadata>>,
         proposed_block: ProposedBlock<ClContext>,
