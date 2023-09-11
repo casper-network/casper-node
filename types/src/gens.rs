@@ -16,7 +16,7 @@ use crate::{
     account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
     addressable_entity::{NamedKeys, Parameters, Weight},
     crypto::gens::public_key_arb_no_system,
-    package::{ContractVersionKey, ContractVersions, Groups, PackageStatus},
+    package::{EntityVersionKey, EntityVersions, Groups, PackageStatus},
     system::auction::{
         gens::era_info_arb, DelegationRate, Delegator, UnbondingPurse, WithdrawPurse,
         DELEGATION_RATE_DENOMINATOR,
@@ -427,21 +427,21 @@ pub fn byte_code_arb() -> impl Strategy<Value = ByteCode> {
     collection::vec(any::<u8>(), 1..1000).prop_map(ByteCode::new)
 }
 
-pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
+pub fn contract_version_key_arb() -> impl Strategy<Value = EntityVersionKey> {
     (1..32u32, 1..1000u32)
-        .prop_map(|(major, contract_ver)| ContractVersionKey::new(major, contract_ver))
+        .prop_map(|(major, contract_ver)| EntityVersionKey::new(major, contract_ver))
 }
 
-pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
+pub fn contract_versions_arb() -> impl Strategy<Value = EntityVersions> {
     collection::btree_map(
         contract_version_key_arb(),
         u8_slice_32().prop_map(AddressableEntityHash::new),
         1..5,
     )
-    .prop_map(ContractVersions::from)
+    .prop_map(EntityVersions::from)
 }
 
-pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
+pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<EntityVersionKey>> {
     collection::btree_set(contract_version_key_arb(), 0..5)
 }
 

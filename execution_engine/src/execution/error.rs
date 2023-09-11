@@ -9,7 +9,7 @@ use casper_types::{
     execution::TransformError,
     package::PackageKind,
     system, AccessRights, AddressableEntityHash, ApiError, ByteCodeHash, CLType, CLValueError,
-    ContractVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
+    EntityVersionKey, Key, PackageHash, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -124,7 +124,7 @@ pub enum Error {
     NoActiveContractVersions(PackageHash),
     /// Invalid contract version supplied.
     #[error("Invalid contract version: {}", _0)]
-    InvalidContractVersion(ContractVersionKey),
+    InvalidContractVersion(EntityVersionKey),
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),

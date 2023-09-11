@@ -88,9 +88,9 @@ pub enum Error {
     /// Attempted to disable a contract that does not exist.
     /// ```
     /// # use casper_types::addressable_entity::Error;
-    /// assert_eq!(2, Error::ContractNotFound as u8);
+    /// assert_eq!(2, Error::EntityNotFound as u8);
     /// ```
-    ContractNotFound = 2,
+    EntityNotFound = 2,
     /// Attempted to create a user group which already exists (use the update
     /// function to change an existing user group).
     /// ```
@@ -145,7 +145,7 @@ impl TryFrom<u8> for Error {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         let error = match value {
             v if v == Self::PreviouslyUsedVersion as u8 => Self::PreviouslyUsedVersion,
-            v if v == Self::ContractNotFound as u8 => Self::ContractNotFound,
+            v if v == Self::EntityNotFound as u8 => Self::EntityNotFound,
             v if v == Self::GroupAlreadyExists as u8 => Self::GroupAlreadyExists,
             v if v == Self::MaxGroupsExceeded as u8 => Self::MaxGroupsExceeded,
             v if v == Self::MaxTotalURefsExceeded as u8 => Self::MaxTotalURefsExceeded,

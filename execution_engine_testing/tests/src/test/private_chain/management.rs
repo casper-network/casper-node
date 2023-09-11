@@ -507,7 +507,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     )
     .expect("should be contract package");
     assert!(
-        contract_package_before.is_contract_enabled(&stored_entity_hash),
+        contract_package_before.is_entity_enabled(&stored_entity_hash),
         "newly stored contract should be enabled"
     );
 
@@ -704,7 +704,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     )
     .expect("should be contract package");
     assert!(
-        contract_package_before.is_contract_enabled(&stored_entity_hash),
+        contract_package_before.is_entity_enabled(&stored_entity_hash),
         "newly stored contract should be enabled"
     );
 

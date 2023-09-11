@@ -9,13 +9,13 @@ use casper_types::{
         AssociatedKeys as AccountAssociatedKeys, Weight as AccountWeight,
     },
     addressable_entity::{ActionThresholds, AddressableEntity, AssociatedKeys, NamedKeys},
-    package::{ContractVersions, Groups, Package, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, Package, PackageKind, PackageStatus},
     system::auction::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
     },
     AccessRights, AddressableEntityHash, ByteCode, ByteCodeHash, CLType, CLTyped, CLValue,
-    ContractVersionKey, DeployHash, DeployInfo, EntryPoint, EntryPointAccess, EntryPointType,
+    DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess, EntryPointType,
     EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion, PublicKey, SecretKey,
     StoredValue, Transfer, TransferAddr, URef, U512,
 };
@@ -385,10 +385,10 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
         let mut active_versions = BTreeMap::new();
         let v1_hash = AddressableEntityHash::new([99; 32]);
         let v2_hash = AddressableEntityHash::new([100; 32]);
-        active_versions.insert(ContractVersionKey::new(1, 2), v1_hash);
-        let v1 = ContractVersionKey::new(1, 1);
+        active_versions.insert(EntityVersionKey::new(1, 2), v1_hash);
+        let v1 = EntityVersionKey::new(1, 1);
         active_versions.insert(v1, v2_hash);
-        let active_versions = ContractVersions::from(active_versions);
+        let active_versions = EntityVersions::from(active_versions);
 
         let mut disabled_versions = BTreeSet::new();
         disabled_versions.insert(v1);

@@ -144,7 +144,7 @@ pub use key::{
 };
 pub use motes::Motes;
 pub use package::{
-    ContractVersionKey, ContractVersions, EntityVersion, Group, Groups, Package, PackageHash,
+    EntityVersion, EntityVersionKey, EntityVersions, Group, Groups, Package, PackageHash,
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};

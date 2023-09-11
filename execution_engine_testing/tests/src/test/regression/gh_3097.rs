@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    runtime_args, AddressableEntityHash, ContractVersionKey, PackageHash, RuntimeArgs,
+    runtime_args, AddressableEntityHash, EntityVersionKey, PackageHash, RuntimeArgs,
 };
 use gh_1470_regression::PACKAGE_HASH_NAME;
 
@@ -114,7 +114,7 @@ fn should_run_regression() {
             casper_execution_engine::engine_state::Error::Exec(
                 casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
-            if version == ContractVersionKey::new(1, 1),
+            if version == EntityVersionKey::new(1, 1),
         ),
         "Expected invalid contract version, found {:?}",
         error,
@@ -171,7 +171,7 @@ fn should_run_regression() {
             casper_execution_engine::engine_state::Error::Exec(
                 casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
-            if version == ContractVersionKey::new(1, 1),
+            if version == EntityVersionKey::new(1, 1),
         ),
         "Expected invalid contract version, found {:?}",
         error,
@@ -231,7 +231,7 @@ fn should_run_regression() {
             casper_execution_engine::engine_state::Error::Exec(
                 casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
-            if version == ContractVersionKey::new(1, 1),
+            if version == EntityVersionKey::new(1, 1),
         ),
         "Expected invalid contract version, found {:?}",
         error,

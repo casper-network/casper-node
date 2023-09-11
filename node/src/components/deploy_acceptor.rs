@@ -15,8 +15,8 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::engine_state::MAX_PAYMENT;
 use casper_types::{
     account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, AddressableEntityHash,
-    BlockHash, BlockHeader, CLValue, Chainspec, ContractVersionKey, CoreConfig, Deploy,
-    DeployConfig, DeployConfigurationFailure, Digest, EntityIdentifier, EntityVersion,
+    BlockHash, BlockHeader, CLValue, Chainspec, CoreConfig, Deploy, DeployConfig,
+    DeployConfigurationFailure, Digest, EntityIdentifier, EntityVersion, EntityVersionKey,
     ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, Package, PackageHash,
     PackageIdentifier, ProtocolVersion, StoredValue, Timestamp, U512,
 };
@@ -860,11 +860,11 @@ impl DeployAcceptor {
             }
             Some(package) => match maybe_package_version {
                 Some(contract_version) => {
-                    let contract_version_key = ContractVersionKey::new(
+                    let contract_version_key = EntityVersionKey::new(
                         self.protocol_version.value().major,
                         contract_version,
                     );
-                    match package.lookup_contract_hash(contract_version_key) {
+                    match package.lookup_entity_hash(contract_version_key) {
                         Some(&contract_hash) => {
                             let query_key = contract_hash.into();
                             effect_builder

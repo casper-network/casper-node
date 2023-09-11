@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
-    addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, ContractVersionKey,
+    addressable_entity::NamedKeys, bytesrepr::Bytes, AddressableEntityHash, EntityVersionKey,
     ExecutableDeployItem, Key, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
 };
 
@@ -118,13 +118,13 @@ impl ExecutionKind {
                 package = tracking_copy.borrow_mut().get_package(package_hash)?;
 
                 let maybe_version_key = if package.is_legacy() {
-                    package.current_contract_version()
+                    package.current_entity_version()
                 } else {
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver))
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver))
                 };
 
                 let contract_version_key = maybe_version_key
-                    .or_else(|| package.current_contract_version())
+                    .or_else(|| package.current_entity_version())
                     .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
                         package_hash,
                     )))?;
@@ -136,7 +136,7 @@ impl ExecutionKind {
                 }
 
                 let looked_up_entity_hash: AddressableEntityHash = package
-                    .lookup_contract_hash(contract_version_key)
+                    .lookup_entity_hash(contract_version_key)
                     .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
                         contract_version_key,
                     )))?
@@ -156,13 +156,13 @@ impl ExecutionKind {
                 package = tracking_copy.borrow_mut().get_package(package_hash)?;
 
                 let maybe_version_key = if package.is_legacy() {
-                    package.current_contract_version()
+                    package.current_entity_version()
                 } else {
-                    version.map(|ver| ContractVersionKey::new(protocol_version.value().major, ver))
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver))
                 };
 
                 let contract_version_key = maybe_version_key
-                    .or_else(|| package.current_contract_version())
+                    .or_else(|| package.current_entity_version())
                     .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
                         package_hash,
                     )))?;
@@ -174,10 +174,10 @@ impl ExecutionKind {
                 }
 
                 let looked_up_contract_hash = *package
-                    .lookup_contract_hash(contract_version_key)
-                    .ok_or(Error::Exec(
-                    execution::Error::InvalidContractVersion(contract_version_key),
-                ))?;
+                    .lookup_entity_hash(contract_version_key)
+                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                        contract_version_key,
+                    )))?;
 
                 Ok(ExecutionKind::new_addressable_entity(
                     looked_up_contract_hash,

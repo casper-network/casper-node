@@ -9,7 +9,7 @@ use rand::Rng;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
-    package::{ContractVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageKind, PackageStatus},
     system::auction::{BidAddr, BidKind, BidsExt, SeigniorageRecipientsSnapshot, UnbondingPurse},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCodeHash, CLValue, EntryPoints,
     Key, Package, PackageHash, ProtocolVersion, PublicKey, StoredValue, URef, U512,
@@ -183,14 +183,14 @@ impl<T: StateReader> StateTracker<T> {
 
         let mut contract_package = Package::new(
             URef::new(rng.gen(), AccessRights::READ_ADD_WRITE),
-            ContractVersions::default(),
+            EntityVersions::default(),
             BTreeSet::default(),
             Groups::default(),
             PackageStatus::Locked,
             PackageKind::Account(account_hash),
         );
 
-        contract_package.insert_contract_version(self.protocol_version.value().major, entity_hash);
+        contract_package.insert_entity_version(self.protocol_version.value().major, entity_hash);
         self.write_entry(
             package_hash.into(),
             StoredValue::Package(contract_package.clone()),

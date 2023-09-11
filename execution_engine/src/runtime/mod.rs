@@ -38,11 +38,11 @@ use casper_types::{
         handle_payment, mint, standard_payment, CallStackElement, SystemEntityType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, CLTyped, CLValue, ContextAccessRights, ContractVersionKey,
-    ContractVersions, DeployHash, EntityVersion, Gas, GrantedAccess, Group, Groups, HostFunction,
-    HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey, RuntimeArgs,
-    StoredValue, Transfer, TransferResult, TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH,
-    U512,
+    AccessRights, ApiError, ByteCode, CLTyped, CLValue, ContextAccessRights, DeployHash,
+    EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
+    HostFunction, HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey,
+    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
+    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -1141,7 +1141,7 @@ where
                 let is_calling_system_contract = self.is_system_contract(contract_key)?;
 
                 // Check if provided contract hash is disabled
-                let is_contract_enabled = contract_package.is_contract_enabled(&contract_hash);
+                let is_contract_enabled = contract_package.is_entity_enabled(&contract_hash);
 
                 if !is_calling_system_contract && !is_contract_enabled {
                     return Err(Error::DisabledContract(contract_hash));
@@ -1158,11 +1158,11 @@ where
                     self.context.read_gs_typed(&contract_package_key)?;
 
                 let contract_version_key = match version {
-                    Some(version) => ContractVersionKey::new(
+                    Some(version) => EntityVersionKey::new(
                         self.context.protocol_version().value().major,
                         version,
                     ),
-                    None => match contract_package.current_contract_version() {
+                    None => match contract_package.current_entity_version() {
                         Some(v) => v,
                         None => {
                             return Err(Error::NoActiveContractVersions(contract_package_hash));
@@ -1170,7 +1170,7 @@ where
                     },
                 };
                 let contract_hash = contract_package
-                    .lookup_contract_hash(contract_version_key)
+                    .lookup_entity_hash(contract_version_key)
                     .copied()
                     .ok_or(Error::InvalidContractVersion(contract_version_key))?;
 
@@ -1239,7 +1239,7 @@ where
             .engine_config()
             .administrative_accounts()
             .is_empty()
-            && !contract_package.is_contract_enabled(&contract_hash)
+            && !contract_package.is_entity_enabled(&contract_hash)
             && !self.context.is_system_addressable_entity(&contract_hash)?
         {
             return Err(Error::DisabledContract(contract_hash));
@@ -1586,7 +1586,7 @@ where
         let access_key = self.context.new_unit_uref()?;
         let contract_package = Package::new(
             access_key,
-            ContractVersions::new(),
+            EntityVersions::new(),
             BTreeSet::new(),
             Groups::new(),
             is_locked,
@@ -1703,14 +1703,13 @@ where
             return Err(Error::InvalidContext);
         }
 
-        let version = package.current_contract_version();
+        let version = package.current_entity_version();
 
         // Return an error if the contract is locked and has some version associated with it.
         if package.is_locked() && version.is_some() {
             return Err(Error::LockedContract(package_hash));
         }
-        let (main_purse, associated_keys, action_thresholds) = match package.current_contract_hash()
-        {
+        let (main_purse, associated_keys, action_thresholds) = match package.current_entity_hash() {
             Some(previous_contract_hash) => {
                 let mut previous_entity: AddressableEntity =
                     self.context.read_gs_typed(&previous_contract_hash.into())?;
@@ -1770,7 +1769,7 @@ where
             action_thresholds,
         );
 
-        let insert_contract_result = package.insert_contract_version(major, entity_hash.into());
+        let insert_contract_result = package.insert_entity_version(major, entity_hash.into());
 
         self.context
             .metered_write_gs_unsafe(Key::Hash(byte_code_hash), byte_code)?;
@@ -1806,7 +1805,7 @@ where
                 return Err(Error::Interpreter(error.into()));
             }
 
-            let version_value: u32 = insert_contract_result.contract_version();
+            let version_value: u32 = insert_contract_result.entity_version();
             let version_bytes = version_value.to_le_bytes();
             if let Err(error) = self.try_get_memory()?.set(version_ptr, &version_bytes) {
                 return Err(Error::Interpreter(error.into()));
@@ -1831,7 +1830,7 @@ where
             return Err(Error::LockedContract(contract_package_hash));
         }
 
-        if let Err(err) = contract_package.disable_contract_version(contract_hash) {
+        if let Err(err) = contract_package.disable_entity_version(contract_hash) {
             return Ok(Err(err.into()));
         }
 
@@ -2364,14 +2363,14 @@ where
                 let contract_package = {
                     let mut contract_package = Package::new(
                         access_key,
-                        ContractVersions::default(),
+                        EntityVersions::default(),
                         BTreeSet::default(),
                         Groups::default(),
                         PackageStatus::Locked,
                         PackageKind::Account(target),
                     );
                     contract_package
-                        .insert_contract_version(protocol_version.value().major, entity_hash);
+                        .insert_entity_version(protocol_version.value().major, entity_hash);
                     contract_package
                 };
 
@@ -3211,7 +3210,7 @@ where
                     self.context.read_gs_typed(&contract_package_key)?;
                 // Update the contract package from Legacy to Wasm
                 legacy_contract_package.update_package_kind(PackageKind::Wasm);
-                legacy_contract_package.insert_contract_version(
+                legacy_contract_package.insert_entity_version(
                     self.context.protocol_version().value().major,
                     contract_hash,
                 );

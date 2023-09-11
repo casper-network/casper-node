@@ -19,7 +19,7 @@ use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{ActionThresholds, NamedKeys},
     execution::Effects,
-    package::{ContractVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageKind, PackageStatus},
     system::{
         auction::{
             self, BidAddr, BidKind, DelegationRate, Delegator, SeigniorageRecipient,
@@ -1180,13 +1180,13 @@ where
         let contract_package = {
             let mut contract_package = Package::new(
                 access_key,
-                ContractVersions::new(),
+                EntityVersions::new(),
                 BTreeSet::default(),
                 Groups::default(),
                 PackageStatus::default(),
                 package_kind,
             );
-            contract_package.insert_contract_version(protocol_version.value().major, entity_hash);
+            contract_package.insert_entity_version(protocol_version.value().major, entity_hash);
             contract_package
         };
 

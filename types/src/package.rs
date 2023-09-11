@@ -110,29 +110,29 @@ pub type EntityVersion = u32;
 /// Within each discrete major `ProtocolVersion`, contract version resets to this value.
 pub const CONTRACT_INITIAL_VERSION: EntityVersion = 1;
 
-/// Major element of `ProtocolVersion` a `ContractVersion` is compatible with.
+/// Major element of `ProtocolVersion` a `EntityVersion` is compatible with.
 pub type ProtocolVersionMajor = u32;
 
-/// Major element of `ProtocolVersion` combined with `ContractVersion`.
+/// Major element of `ProtocolVersion` combined with `EntityVersion`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
-pub struct ContractVersionKey {
+pub struct EntityVersionKey {
     /// Major element of `ProtocolVersion` a `ContractVersion` is compatible with.
     protocol_version_major: ProtocolVersionMajor,
     /// Automatically incremented value for a contract version within a major `ProtocolVersion`.
-    contract_version: EntityVersion,
+    entity_version: EntityVersion,
 }
 
-impl ContractVersionKey {
+impl EntityVersionKey {
     /// Returns a new instance of ContractVersionKey with provided values.
     pub fn new(
         protocol_version_major: ProtocolVersionMajor,
-        contract_version: EntityVersion,
+        entity_version: EntityVersion,
     ) -> Self {
         Self {
             protocol_version_major,
-            contract_version,
+            entity_version,
         }
     }
 
@@ -142,21 +142,21 @@ impl ContractVersionKey {
     }
 
     /// Returns the contract version within the protocol major version.
-    pub fn contract_version(self) -> EntityVersion {
-        self.contract_version
+    pub fn entity_version(self) -> EntityVersion {
+        self.entity_version
     }
 }
 
-impl From<ContractVersionKey> for (ProtocolVersionMajor, EntityVersion) {
-    fn from(contract_version_key: ContractVersionKey) -> Self {
+impl From<EntityVersionKey> for (ProtocolVersionMajor, EntityVersion) {
+    fn from(entity_version_key: EntityVersionKey) -> Self {
         (
-            contract_version_key.protocol_version_major,
-            contract_version_key.contract_version,
+            entity_version_key.protocol_version_major,
+            entity_version_key.entity_version,
         )
     }
 }
 
-impl ToBytes for ContractVersionKey {
+impl ToBytes for EntityVersionKey {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         self.write_bytes(&mut buffer)?;
@@ -164,41 +164,37 @@ impl ToBytes for ContractVersionKey {
     }
 
     fn serialized_length(&self) -> usize {
-        CONTRACT_VERSION_KEY_SERIALIZED_LENGTH
+        ENTITY_VERSION_KEY_SERIALIZED_LENGTH
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.protocol_version_major.write_bytes(writer)?;
-        self.contract_version.write_bytes(writer)
+        self.entity_version.write_bytes(writer)
     }
 }
 
-impl FromBytes for ContractVersionKey {
+impl FromBytes for EntityVersionKey {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (protocol_version_major, remainder) = ProtocolVersionMajor::from_bytes(bytes)?;
-        let (contract_version, remainder) = EntityVersion::from_bytes(remainder)?;
+        let (entity_version, remainder) = EntityVersion::from_bytes(remainder)?;
         Ok((
-            ContractVersionKey {
+            EntityVersionKey {
                 protocol_version_major,
-                contract_version,
+                entity_version,
             },
             remainder,
         ))
     }
 }
 
-impl Display for ContractVersionKey {
+impl Display for EntityVersionKey {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}.{}",
-            self.protocol_version_major, self.contract_version
-        )
+        write!(f, "{}.{}", self.protocol_version_major, self.entity_version)
     }
 }
 
-/// Serialized length of `ContractVersionKey`.
-pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
+/// Serialized length of `EntityVersionKey`.
+pub const ENTITY_VERSION_KEY_SERIALIZED_LENGTH: usize =
     U32_SERIALIZED_LENGTH + U32_SERIALIZED_LENGTH;
 
 /// Collection of contract versions.
@@ -206,31 +202,31 @@ pub const CONTRACT_VERSION_KEY_SERIALIZED_LENGTH: usize =
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(transparent, deny_unknown_fields)]
-pub struct ContractVersions(
+pub struct EntityVersions(
     #[serde(
-        with = "BTreeMapToArray::<ContractVersionKey, AddressableEntityHash, ContractVersionLabels>"
+        with = "BTreeMapToArray::<EntityVersionKey, AddressableEntityHash, ContractVersionLabels>"
     )]
-    BTreeMap<ContractVersionKey, AddressableEntityHash>,
+    BTreeMap<EntityVersionKey, AddressableEntityHash>,
 );
 
-impl ContractVersions {
-    /// Constructs a new, empty `ContractVersions`.
+impl EntityVersions {
+    /// Constructs a new, empty `EntityVersions`.
     pub const fn new() -> Self {
-        ContractVersions(BTreeMap::new())
+        EntityVersions(BTreeMap::new())
     }
 
-    /// Returns an iterator over the `ContractHash`s (i.e. the map's values).
+    /// Returns an iterator over the `AddressableEntityHash`s (i.e. the map's values).
     pub fn contract_hashes(&self) -> impl Iterator<Item = &AddressableEntityHash> {
         self.0.values()
     }
 
-    /// Returns the `ContractHash` under the key
-    pub fn get(&self, key: &ContractVersionKey) -> Option<&AddressableEntityHash> {
+    /// Returns the `AddressableEntityHash` under the key
+    pub fn get(&self, key: &EntityVersionKey) -> Option<&AddressableEntityHash> {
         self.0.get(key)
     }
 }
 
-impl ToBytes for ContractVersions {
+impl ToBytes for EntityVersions {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         self.0.to_bytes()
     }
@@ -244,31 +240,31 @@ impl ToBytes for ContractVersions {
     }
 }
 
-impl FromBytes for ContractVersions {
+impl FromBytes for EntityVersions {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (versions, remainder) =
-            BTreeMap::<ContractVersionKey, AddressableEntityHash>::from_bytes(bytes)?;
-        Ok((ContractVersions(versions), remainder))
+            BTreeMap::<EntityVersionKey, AddressableEntityHash>::from_bytes(bytes)?;
+        Ok((EntityVersions(versions), remainder))
     }
 }
 
 #[cfg(any(feature = "testing", feature = "gens", test))]
-impl From<BTreeMap<ContractVersionKey, AddressableEntityHash>> for ContractVersions {
-    fn from(value: BTreeMap<ContractVersionKey, AddressableEntityHash>) -> Self {
-        ContractVersions(value)
+impl From<BTreeMap<EntityVersionKey, AddressableEntityHash>> for EntityVersions {
+    fn from(value: BTreeMap<EntityVersionKey, AddressableEntityHash>) -> Self {
+        EntityVersions(value)
     }
 }
 
-struct ContractVersionLabels;
+struct EntityVersionLabels;
 
-impl KeyValueLabels for ContractVersionLabels {
-    const KEY: &'static str = "contract_version_key";
-    const VALUE: &'static str = "contract_hash";
+impl KeyValueLabels for EntityVersionLabels {
+    const KEY: &'static str = "entity_version_key";
+    const VALUE: &'static str = "addressable_entity_hash";
 }
 
 #[cfg(feature = "json-schema")]
-impl KeyValueJsonSchema for ContractVersionLabels {
-    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ContractVersionAndHash");
+impl KeyValueJsonSchema for EntityVersionLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("EntityVersionAndHash");
 }
 /// Collection of named groups.
 #[derive(Clone, PartialEq, Eq, Default, Serialize, Deserialize, Debug)]
@@ -383,17 +379,17 @@ pub struct PackageHash(
 );
 
 impl PackageHash {
-    /// Constructs a new `PackageHash` from the raw bytes of the contract package hash.
+    /// Constructs a new `PackageHash` from the raw bytes of the package hash.
     pub const fn new(value: HashAddr) -> PackageHash {
         PackageHash(value)
     }
 
-    /// Returns the raw bytes of the contract hash as an array.
+    /// Returns the raw bytes of the entity hash as an array.
     pub fn value(&self) -> HashAddr {
         self.0
     }
 
-    /// Returns the raw bytes of the contract hash as a `slice`.
+    /// Returns the raw bytes of the entity hash as a `slice`.
     pub fn as_bytes(&self) -> &[u8] {
         &self.0
     }
@@ -456,7 +452,7 @@ impl Display for PackageHash {
 
 impl Debug for PackageHash {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
-        write!(f, "ContractPackageHash({})", base16::encode_lower(&self.0))
+        write!(f, "PackageHash({})", base16::encode_lower(&self.0))
     }
 }
 
@@ -618,19 +614,19 @@ impl FromBytes for PackageStatus {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 /// The type of Package.
 pub enum PackageKind {
-    /// Contract Packages associated with Wasm stored on chain.
+    /// Packages associated with Wasm stored on chain.
     Wasm,
-    /// Contract Package associated with a native contract implementation.
+    /// Package associated with a native contract implementation.
     System(SystemEntityType),
-    /// Contract Package associated with an Account hash.
+    /// Package associated with an Account hash.
     Account(AccountHash),
-    /// Contract Packages from the previous format.
+    /// Packages from the previous format.
     #[default]
     Legacy,
 }
 
 impl PackageKind {
-    /// Returns the Account hash associated with a Contract Package based on the package kind.
+    /// Returns the Account hash associated with a Package based on the package kind.
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
             Self::Account(account_hash) => Some(*account_hash),
@@ -686,9 +682,7 @@ impl ToBytes for PackageKind {
         U8_SERIALIZED_LENGTH
             + match self {
                 PackageKind::Wasm | PackageKind::Legacy => 0,
-                PackageKind::System(system_contract_type) => {
-                    system_contract_type.serialized_length()
-                }
+                PackageKind::System(system_entity_type) => system_entity_type.serialized_length(),
                 PackageKind::Account(account_hash) => account_hash.serialized_length(),
             }
     }
@@ -696,9 +690,9 @@ impl ToBytes for PackageKind {
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
             PackageKind::Wasm => PACKAGE_KIND_WASM_TAG.write_bytes(writer),
-            PackageKind::System(system_contract_type) => {
+            PackageKind::System(system_entity_type) => {
                 PACKAGE_KIND_SYSTEM_CONTRACT_TAG.write_bytes(writer)?;
-                system_contract_type.write_bytes(writer)
+                system_entity_type.write_bytes(writer)
             }
             PackageKind::Account(account_hash) => {
                 PACKAGE_KIND_ACCOUNT_TAG.write_bytes(writer)?;
@@ -715,8 +709,8 @@ impl FromBytes for PackageKind {
         match tag {
             PACKAGE_KIND_WASM_TAG => Ok((PackageKind::Wasm, remainder)),
             PACKAGE_KIND_SYSTEM_CONTRACT_TAG => {
-                let (system_contract_type, remainder) = SystemEntityType::from_bytes(remainder)?;
-                Ok((PackageKind::System(system_contract_type), remainder))
+                let (system_entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
+                Ok((PackageKind::System(system_entity_type), remainder))
             }
             PACKAGE_KIND_ACCOUNT_TAG => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
@@ -732,22 +726,22 @@ impl Display for PackageKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             PackageKind::Wasm => {
-                write!(f, "ContractPackageKind:Wasm")
+                write!(f, "PackageKind:Wasm")
             }
-            PackageKind::System(system_contract) => {
-                write!(f, "ContractPackageKind:System({})", system_contract)
+            PackageKind::System(system_entity) => {
+                write!(f, "PackageKind:System({})", system_entity)
             }
             PackageKind::Account(account_hash) => {
-                write!(f, "ContractPackageKind:Account({})", account_hash)
+                write!(f, "PackageKind:Account({})", account_hash)
             }
             PackageKind::Legacy => {
-                write!(f, "ContractPackageKind:Legacy")
+                write!(f, "PackageKind:Legacy")
             }
         }
     }
 }
 
-/// Contract definition, metadata, and security container.
+/// Entity definition, metadata, and security container.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
@@ -755,15 +749,15 @@ pub struct Package {
     /// Key used to add or disable versions.
     access_key: URef,
     /// All versions (enabled & disabled).
-    versions: ContractVersions,
-    /// Collection of disabled contract versions. The runtime will not permit disabled contract
+    versions: EntityVersions,
+    /// Collection of disabled entity versions. The runtime will not permit disabled entity
     /// versions to be executed.
-    disabled_versions: BTreeSet<ContractVersionKey>,
+    disabled_versions: BTreeSet<EntityVersionKey>,
     /// Mapping maintaining the set of URefs associated with each "user group". This can be used to
-    /// control access to methods in a particular version of the contract. A method is callable by
+    /// control access to methods in a particular version of the entity. A method is callable by
     /// any context which "knows" any of the URefs associated with the method's user group.
     groups: Groups,
-    /// A flag that determines whether a contract is locked
+    /// A flag that determines whether a entity is locked
     lock_status: PackageStatus,
     /// The kind of package.
     package_kind: PackageKind,
@@ -779,8 +773,8 @@ impl Package {
     /// Create new `Package` (with no versions) from given access key.
     pub fn new(
         access_key: URef,
-        versions: ContractVersions,
-        disabled_versions: BTreeSet<ContractVersionKey>,
+        versions: EntityVersions,
+        disabled_versions: BTreeSet<EntityVersionKey>,
         groups: Groups,
         lock_status: PackageStatus,
         package_kind: PackageKind,
@@ -795,115 +789,115 @@ impl Package {
         }
     }
 
-    /// Enable the contract version corresponding to the given hash (if it exists).
-    pub fn enable_version(&mut self, contract_hash: AddressableEntityHash) -> Result<(), Error> {
-        let contract_version_key = self
-            .find_contract_version_key_by_hash(&contract_hash)
+    /// Enable the entity version corresponding to the given hash (if it exists).
+    pub fn enable_version(&mut self, entity_hash: AddressableEntityHash) -> Result<(), Error> {
+        let entity_version_key = self
+            .find_entity_version_key_by_hash(&entity_hash)
             .copied()
-            .ok_or(Error::ContractNotFound)?;
+            .ok_or(Error::EntityNotFound)?;
 
-        self.disabled_versions.remove(&contract_version_key);
+        self.disabled_versions.remove(&entity_version_key);
 
         Ok(())
     }
 
-    /// Get the access key for this contract.
+    /// Get the access key for this entity.
     pub fn access_key(&self) -> URef {
         self.access_key
     }
 
-    /// Get the mutable group definitions for this contract.
+    /// Get the mutable group definitions for this entity.
     pub fn groups_mut(&mut self) -> &mut Groups {
         &mut self.groups
     }
 
-    /// Get the group definitions for this contract.
+    /// Get the group definitions for this entity.
     pub fn groups(&self) -> &Groups {
         &self.groups
     }
 
-    /// Adds new group to this contract.
+    /// Adds new group to this entity.
     pub fn add_group(&mut self, group: Group, urefs: BTreeSet<URef>) {
         let v = self.groups.0.entry(group).or_insert_with(Default::default);
         v.extend(urefs)
     }
 
-    /// Lookup the contract hash for a given contract version (if present)
-    pub fn lookup_contract_hash(
+    /// Lookup the entity hash for a given entity version (if present)
+    pub fn lookup_entity_hash(
         &self,
-        contract_version_key: ContractVersionKey,
+        entity_version_key: EntityVersionKey,
     ) -> Option<&AddressableEntityHash> {
-        if !self.is_version_enabled(contract_version_key) {
+        if !self.is_version_enabled(entity_version_key) {
             return None;
         }
-        self.versions.0.get(&contract_version_key)
+        self.versions.0.get(&entity_version_key)
     }
 
-    /// Checks if the given contract version exists and is available for use.
-    pub fn is_version_enabled(&self, contract_version_key: ContractVersionKey) -> bool {
-        !self.disabled_versions.contains(&contract_version_key)
-            && self.versions.0.contains_key(&contract_version_key)
+    /// Checks if the given entity version exists and is available for use.
+    pub fn is_version_enabled(&self, entity_version_key: EntityVersionKey) -> bool {
+        !self.disabled_versions.contains(&entity_version_key)
+            && self.versions.0.contains_key(&entity_version_key)
     }
 
-    /// Returns `true` if the given contract hash exists and is enabled.
-    pub fn is_contract_enabled(&self, contract_hash: &AddressableEntityHash) -> bool {
-        match self.find_contract_version_key_by_hash(contract_hash) {
+    /// Returns `true` if the given entity hash exists and is enabled.
+    pub fn is_entity_enabled(&self, entity_hash: &AddressableEntityHash) -> bool {
+        match self.find_entity_version_key_by_hash(entity_hash) {
             Some(version_key) => !self.disabled_versions.contains(version_key),
             None => false,
         }
     }
 
-    /// Insert a new contract version; the next sequential version number will be issued.
-    pub fn insert_contract_version(
+    /// Insert a new entity version; the next sequential version number will be issued.
+    pub fn insert_entity_version(
         &mut self,
         protocol_version_major: ProtocolVersionMajor,
-        contract_hash: AddressableEntityHash,
-    ) -> ContractVersionKey {
-        let contract_version = self.next_contract_version_for(protocol_version_major);
-        let key = ContractVersionKey::new(protocol_version_major, contract_version);
-        self.versions.0.insert(key, contract_hash);
+        entity_hash: AddressableEntityHash,
+    ) -> EntityVersionKey {
+        let contract_version = self.next_entity_version_for(protocol_version_major);
+        let key = EntityVersionKey::new(protocol_version_major, contract_version);
+        self.versions.0.insert(key, entity_hash);
         key
     }
 
-    /// Disable the contract version corresponding to the given hash (if it exists).
-    pub fn disable_contract_version(
+    /// Disable the entity version corresponding to the given hash (if it exists).
+    pub fn disable_entity_version(
         &mut self,
-        contract_hash: AddressableEntityHash,
+        entity_hash: AddressableEntityHash,
     ) -> Result<(), Error> {
-        let contract_version_key = self
+        let entity_version_key = self
             .versions
             .0
             .iter()
-            .filter_map(|(k, v)| if *v == contract_hash { Some(*k) } else { None })
+            .filter_map(|(k, v)| if *v == entity_hash { Some(*k) } else { None })
             .next()
-            .ok_or(Error::ContractNotFound)?;
+            .ok_or(Error::EntityNotFound)?;
 
-        if !self.disabled_versions.contains(&contract_version_key) {
-            self.disabled_versions.insert(contract_version_key);
+        if !self.disabled_versions.contains(&entity_version_key) {
+            self.disabled_versions.insert(entity_version_key);
         }
 
         Ok(())
     }
 
-    fn find_contract_version_key_by_hash(
+    fn find_entity_version_key_by_hash(
         &self,
-        contract_hash: &AddressableEntityHash,
-    ) -> Option<&ContractVersionKey> {
+        entity_hash: &AddressableEntityHash,
+    ) -> Option<&EntityVersionKey> {
         self.versions
             .0
             .iter()
-            .filter_map(|(k, v)| if v == contract_hash { Some(k) } else { None })
+            .filter_map(|(k, v)| if v == entity_hash { Some(k) } else { None })
             .next()
     }
 
-    /// Returns reference to all of this contract's versions.
-    pub fn versions(&self) -> &ContractVersions {
+    /// Returns reference to all of this entity's versions.
+    pub fn versions(&self) -> &EntityVersions {
         &self.versions
     }
 
-    /// Returns all of this contract's enabled contract versions.
-    pub fn enabled_versions(&self) -> ContractVersions {
-        let mut ret = ContractVersions::new();
+    /// Returns all of this entity's enabled entity versions.
+    pub fn enabled_versions(&self) -> EntityVersions {
+        let mut ret = EntityVersions::new();
         for version in &self.versions.0 {
             if !self.is_version_enabled(*version.0) {
                 continue;
@@ -913,41 +907,41 @@ impl Package {
         ret
     }
 
-    /// Returns mutable reference to all of this contract's versions (enabled and disabled).
-    pub fn versions_mut(&mut self) -> &mut ContractVersions {
+    /// Returns mutable reference to all of this entity's versions (enabled and disabled).
+    pub fn versions_mut(&mut self) -> &mut EntityVersions {
         &mut self.versions
     }
 
-    /// Consumes the object and returns all of this contract's versions (enabled and disabled).
-    pub fn take_versions(self) -> ContractVersions {
+    /// Consumes the object and returns all of this entity's versions (enabled and disabled).
+    pub fn take_versions(self) -> EntityVersions {
         self.versions
     }
 
-    /// Returns all of this contract's disabled versions.
-    pub fn disabled_versions(&self) -> &BTreeSet<ContractVersionKey> {
+    /// Returns all of this entity's disabled versions.
+    pub fn disabled_versions(&self) -> &BTreeSet<EntityVersionKey> {
         &self.disabled_versions
     }
 
-    /// Returns mut reference to all of this contract's disabled versions.
-    pub fn disabled_versions_mut(&mut self) -> &mut BTreeSet<ContractVersionKey> {
+    /// Returns mut reference to all of this entity's disabled versions.
+    pub fn disabled_versions_mut(&mut self) -> &mut BTreeSet<EntityVersionKey> {
         &mut self.disabled_versions
     }
 
-    /// Removes a group from this contract (if it exists).
+    /// Removes a group from this entity (if it exists).
     pub fn remove_group(&mut self, group: &Group) -> bool {
         self.groups.0.remove(group).is_some()
     }
 
-    /// Gets the next available contract version for the given protocol version
-    fn next_contract_version_for(&self, protocol_version: ProtocolVersionMajor) -> EntityVersion {
+    /// Gets the next available entity version for the given protocol version
+    fn next_entity_version_for(&self, protocol_version: ProtocolVersionMajor) -> EntityVersion {
         let current_version = self
             .versions
             .0
             .keys()
             .rev()
-            .find_map(|&contract_version_key| {
-                if contract_version_key.protocol_version_major() == protocol_version {
-                    Some(contract_version_key.contract_version())
+            .find_map(|&entity_version_key| {
+                if entity_version_key.protocol_version_major() == protocol_version {
+                    Some(entity_version_key.entity_version())
                 } else {
                     None
                 }
@@ -957,17 +951,17 @@ impl Package {
         current_version + 1
     }
 
-    /// Return the contract version key for the newest enabled contract version.
-    pub fn current_contract_version(&self) -> Option<ContractVersionKey> {
+    /// Return the entity version key for the newest enabled entity version.
+    pub fn current_entity_version(&self) -> Option<EntityVersionKey> {
         self.enabled_versions().0.keys().next_back().copied()
     }
 
-    /// Return the contract hash for the newest enabled contract version.
-    pub fn current_contract_hash(&self) -> Option<AddressableEntityHash> {
+    /// Return the entity hash for the newest enabled entity version.
+    pub fn current_entity_hash(&self) -> Option<AddressableEntityHash> {
         self.enabled_versions().0.values().next_back().copied()
     }
 
-    /// Return the lock status of the contract package.
+    /// Return the lock status of the entity package.
     pub fn is_locked(&self) -> bool {
         match self.lock_status {
             PackageStatus::Unlocked => false,
@@ -980,17 +974,17 @@ impl Package {
         self.lock_status.clone()
     }
 
-    /// Returns the kind of Contract Package.
+    /// Returns the kind of Package.
     pub fn get_package_kind(&self) -> PackageKind {
         self.package_kind.clone()
     }
 
-    /// Returns whether the contract package is of the legacy format.
+    /// Returns whether the entity package is of the legacy format.
     pub fn is_legacy(&self) -> bool {
         matches!(self.package_kind, PackageKind::Legacy)
     }
 
-    /// Update the contract package kind.
+    /// Update the entity package kind.
     pub fn update_package_kind(&mut self, new_package_kind: PackageKind) {
         self.package_kind = new_package_kind
     }
@@ -1026,18 +1020,18 @@ impl ToBytes for Package {
 impl FromBytes for Package {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (access_key, bytes) = URef::from_bytes(bytes)?;
-        let (versions, bytes) = ContractVersions::from_bytes(bytes)?;
-        let (disabled_versions, bytes) = BTreeSet::<ContractVersionKey>::from_bytes(bytes)?;
+        let (versions, bytes) = EntityVersions::from_bytes(bytes)?;
+        let (disabled_versions, bytes) = BTreeSet::<EntityVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = PackageStatus::from_bytes(bytes)?;
-        let (contract_package_kind, bytes) = PackageKind::from_bytes(bytes).unwrap_or_default();
+        let (package_kind, bytes) = PackageKind::from_bytes(bytes).unwrap_or_default();
         let result = Package {
             access_key,
             versions,
             disabled_versions,
             groups,
             lock_status,
-            package_kind: contract_package_kind,
+            package_kind,
         };
 
         Ok((result, bytes))
@@ -1050,18 +1044,18 @@ mod tests {
 
     use super::*;
     use crate::{
-        AccessRights, ContractVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Parameter,
+        AccessRights, EntityVersionKey, EntryPoint, EntryPointAccess, EntryPointType, Parameter,
         ProtocolVersion, URef,
     };
     use alloc::borrow::ToOwned;
 
-    const CONTRACT_HASH_V1: AddressableEntityHash = AddressableEntityHash::new([42; 32]);
-    const CONTRACT_HASH_V2: AddressableEntityHash = AddressableEntityHash::new([84; 32]);
+    const ENTITY_HASH_V1: AddressableEntityHash = AddressableEntityHash::new([42; 32]);
+    const ENTITY_HASH_V2: AddressableEntityHash = AddressableEntityHash::new([84; 32]);
 
-    fn make_contract_package_with_two_versions() -> Package {
-        let mut contract_package = Package::new(
+    fn make_package_with_two_versions() -> Package {
+        let mut package = Package::new(
             URef::new([0; 32], AccessRights::NONE),
-            ContractVersions::default(),
+            EntityVersions::default(),
             BTreeSet::new(),
             Groups::default(),
             PackageStatus::default(),
@@ -1076,11 +1070,11 @@ mod tests {
                 ret
             };
 
-            contract_package
+            package
                 .groups_mut()
                 .insert(Group::new("Group 1"), group_urefs.clone());
 
-            contract_package
+            package
                 .groups_mut()
                 .insert(Group::new("Group 2"), group_urefs);
         }
@@ -1109,273 +1103,253 @@ mod tests {
 
         let protocol_version = ProtocolVersion::V1_0_0;
 
-        let v1 = contract_package
-            .insert_contract_version(protocol_version.value().major, CONTRACT_HASH_V1);
-        let v2 = contract_package
-            .insert_contract_version(protocol_version.value().major, CONTRACT_HASH_V2);
+        let v1 = package.insert_entity_version(protocol_version.value().major, ENTITY_HASH_V1);
+        let v2 = package.insert_entity_version(protocol_version.value().major, ENTITY_HASH_V2);
         assert!(v2 > v1);
 
-        contract_package
+        package
     }
 
     #[test]
-    fn next_contract_version() {
+    fn next_entity_version() {
         let major = 1;
-        let mut contract_package = Package::new(
+        let mut package = Package::new(
             URef::new([0; 32], AccessRights::NONE),
-            ContractVersions::default(),
+            EntityVersions::default(),
             BTreeSet::default(),
             Groups::default(),
             PackageStatus::default(),
             PackageKind::Wasm,
         );
-        assert_eq!(contract_package.next_contract_version_for(major), 1);
+        assert_eq!(package.next_entity_version_for(major), 1);
 
-        let next_version = contract_package.insert_contract_version(major, [123; 32].into());
-        assert_eq!(next_version, ContractVersionKey::new(major, 1));
-        assert_eq!(contract_package.next_contract_version_for(major), 2);
-        let next_version_2 = contract_package.insert_contract_version(major, [124; 32].into());
-        assert_eq!(next_version_2, ContractVersionKey::new(major, 2));
+        let next_version = package.insert_entity_version(major, [123; 32].into());
+        assert_eq!(next_version, EntityVersionKey::new(major, 1));
+        assert_eq!(package.next_entity_version_for(major), 2);
+        let next_version_2 = package.insert_entity_version(major, [124; 32].into());
+        assert_eq!(next_version_2, EntityVersionKey::new(major, 2));
 
         let major = 2;
-        assert_eq!(contract_package.next_contract_version_for(major), 1);
-        let next_version_3 = contract_package.insert_contract_version(major, [42; 32].into());
-        assert_eq!(next_version_3, ContractVersionKey::new(major, 1));
+        assert_eq!(package.next_entity_version_for(major), 1);
+        let next_version_3 = package.insert_entity_version(major, [42; 32].into());
+        assert_eq!(next_version_3, EntityVersionKey::new(major, 1));
     }
 
     #[test]
     fn roundtrip_serialization() {
-        let contract_package = make_contract_package_with_two_versions();
-        let bytes = contract_package.to_bytes().expect("should serialize");
+        let package = make_package_with_two_versions();
+        let bytes = package.to_bytes().expect("should serialize");
         let (decoded_package, rem) = Package::from_bytes(&bytes).expect("should deserialize");
-        assert_eq!(contract_package, decoded_package);
+        assert_eq!(package, decoded_package);
         assert_eq!(rem.len(), 0);
     }
 
     #[test]
     fn should_remove_group() {
-        let mut contract_package = make_contract_package_with_two_versions();
+        let mut package = make_package_with_two_versions();
 
-        assert!(!contract_package.remove_group(&Group::new("Non-existent group")));
-        assert!(contract_package.remove_group(&Group::new("Group 1")));
-        assert!(!contract_package.remove_group(&Group::new("Group 1"))); // Group no longer exists
+        assert!(!package.remove_group(&Group::new("Non-existent group")));
+        assert!(package.remove_group(&Group::new("Group 1")));
+        assert!(!package.remove_group(&Group::new("Group 1"))); // Group no longer exists
     }
 
     #[test]
-    fn should_disable_and_enable_contract_version() {
-        const CONTRACT_HASH: AddressableEntityHash = AddressableEntityHash::new([123; 32]);
+    fn should_disable_and_enable_entity_version() {
+        const ENTITY_HASH: AddressableEntityHash = AddressableEntityHash::new([123; 32]);
 
-        let mut contract_package = make_contract_package_with_two_versions();
+        let mut package = make_package_with_two_versions();
 
         assert!(
-            !contract_package.is_contract_enabled(&CONTRACT_HASH),
-            "nonexisting contract contract should return false"
+            !package.is_entity_enabled(&ENTITY_HASH),
+            "nonexisting entity should return false"
         );
 
         assert_eq!(
-            contract_package.current_contract_version(),
-            Some(ContractVersionKey::new(1, 2))
+            package.current_entity_version(),
+            Some(EntityVersionKey::new(1, 2))
         );
-        assert_eq!(
-            contract_package.current_contract_hash(),
-            Some(CONTRACT_HASH_V2)
-        );
+        assert_eq!(package.current_entity_hash(), Some(ENTITY_HASH_V2));
 
         assert_eq!(
-            contract_package.versions(),
-            &ContractVersions::from(BTreeMap::from_iter([
-                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
-                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2)
+            package.versions(),
+            &EntityVersions::from(BTreeMap::from_iter([
+                (EntityVersionKey::new(1, 1), ENTITY_HASH_V1),
+                (EntityVersionKey::new(1, 2), ENTITY_HASH_V2)
             ])),
         );
         assert_eq!(
-            contract_package.enabled_versions(),
-            ContractVersions::from(BTreeMap::from_iter([
-                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
-                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2)
+            package.enabled_versions(),
+            EntityVersions::from(BTreeMap::from_iter([
+                (EntityVersionKey::new(1, 1), ENTITY_HASH_V1),
+                (EntityVersionKey::new(1, 2), ENTITY_HASH_V2)
             ])),
         );
 
-        assert!(!contract_package.is_contract_enabled(&CONTRACT_HASH));
+        assert!(!package.is_entity_enabled(&ENTITY_HASH));
 
         assert_eq!(
-            contract_package.disable_contract_version(CONTRACT_HASH),
-            Err(Error::ContractNotFound),
-            "should return contract not found error"
+            package.disable_entity_version(ENTITY_HASH),
+            Err(Error::EntityNotFound),
+            "should return entity not found error"
         );
 
         assert!(
-            !contract_package.is_contract_enabled(&CONTRACT_HASH),
-            "disabling missing contract shouldnt change outcome"
+            !package.is_entity_enabled(&ENTITY_HASH),
+            "disabling missing entity shouldnt change outcome"
         );
 
-        let next_version = contract_package.insert_contract_version(1, CONTRACT_HASH);
+        let next_version = package.insert_entity_version(1, ENTITY_HASH);
         assert!(
-            contract_package.is_version_enabled(next_version),
+            package.is_version_enabled(next_version),
             "version should exist and be enabled"
         );
-        assert!(contract_package.is_contract_enabled(&CONTRACT_HASH));
+        assert!(package.is_entity_enabled(&ENTITY_HASH));
 
         assert!(
-            contract_package.is_contract_enabled(&CONTRACT_HASH),
-            "contract should be enabled"
+            package.is_entity_enabled(&ENTITY_HASH),
+            "entity should be enabled"
         );
 
         assert_eq!(
-            contract_package.disable_contract_version(CONTRACT_HASH),
+            package.disable_entity_version(ENTITY_HASH),
             Ok(()),
             "should be able to disable version"
         );
-        assert!(!contract_package.is_contract_enabled(&CONTRACT_HASH));
+        assert!(!package.is_entity_enabled(&ENTITY_HASH));
 
         assert!(
-            !contract_package.is_contract_enabled(&CONTRACT_HASH),
-            "contract should be disabled"
+            !package.is_entity_enabled(&ENTITY_HASH),
+            "entity should be disabled"
         );
         assert_eq!(
-            contract_package.lookup_contract_hash(next_version),
+            package.lookup_entity_hash(next_version),
             None,
-            "should not return disabled contract version"
+            "should not return disabled entity version"
         );
         assert!(
-            !contract_package.is_version_enabled(next_version),
+            !package.is_version_enabled(next_version),
             "version should not be enabled"
         );
 
         assert_eq!(
-            contract_package.current_contract_version(),
-            Some(ContractVersionKey::new(1, 2))
+            package.current_entity_version(),
+            Some(EntityVersionKey::new(1, 2))
         );
+        assert_eq!(package.current_entity_hash(), Some(ENTITY_HASH_V2));
         assert_eq!(
-            contract_package.current_contract_hash(),
-            Some(CONTRACT_HASH_V2)
-        );
-        assert_eq!(
-            contract_package.versions(),
-            &ContractVersions::from(BTreeMap::from_iter([
-                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
-                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
-                (next_version, CONTRACT_HASH),
+            package.versions(),
+            &EntityVersions::from(BTreeMap::from_iter([
+                (EntityVersionKey::new(1, 1), ENTITY_HASH_V1),
+                (EntityVersionKey::new(1, 2), ENTITY_HASH_V2),
+                (next_version, ENTITY_HASH),
             ])),
         );
         assert_eq!(
-            contract_package.enabled_versions(),
-            ContractVersions::from(BTreeMap::from_iter([
-                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
-                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+            package.enabled_versions(),
+            EntityVersions::from(BTreeMap::from_iter([
+                (EntityVersionKey::new(1, 1), ENTITY_HASH_V1),
+                (EntityVersionKey::new(1, 2), ENTITY_HASH_V2),
             ])),
         );
         assert_eq!(
-            contract_package.disabled_versions(),
+            package.disabled_versions(),
             &BTreeSet::from_iter([next_version]),
         );
 
         assert_eq!(
-            contract_package.current_contract_version(),
-            Some(ContractVersionKey::new(1, 2))
+            package.current_entity_version(),
+            Some(EntityVersionKey::new(1, 2))
         );
-        assert_eq!(
-            contract_package.current_contract_hash(),
-            Some(CONTRACT_HASH_V2)
-        );
+        assert_eq!(package.current_entity_hash(), Some(ENTITY_HASH_V2));
 
         assert_eq!(
-            contract_package.disable_contract_version(CONTRACT_HASH_V2),
+            package.disable_entity_version(ENTITY_HASH_V2),
             Ok(()),
             "should be able to disable version 2"
         );
 
         assert_eq!(
-            contract_package.enabled_versions(),
-            ContractVersions::from(BTreeMap::from_iter([(
-                ContractVersionKey::new(1, 1),
-                CONTRACT_HASH_V1
+            package.enabled_versions(),
+            EntityVersions::from(BTreeMap::from_iter([(
+                EntityVersionKey::new(1, 1),
+                ENTITY_HASH_V1
             ),])),
         );
 
         assert_eq!(
-            contract_package.current_contract_version(),
-            Some(ContractVersionKey::new(1, 1))
+            package.current_entity_version(),
+            Some(EntityVersionKey::new(1, 1))
         );
-        assert_eq!(
-            contract_package.current_contract_hash(),
-            Some(CONTRACT_HASH_V1)
-        );
+        assert_eq!(package.current_entity_hash(), Some(ENTITY_HASH_V1));
 
         assert_eq!(
-            contract_package.disabled_versions(),
-            &BTreeSet::from_iter([next_version, ContractVersionKey::new(1, 2)]),
+            package.disabled_versions(),
+            &BTreeSet::from_iter([next_version, EntityVersionKey::new(1, 2)]),
         );
 
-        assert_eq!(contract_package.enable_version(CONTRACT_HASH_V2), Ok(()),);
+        assert_eq!(package.enable_version(ENTITY_HASH_V2), Ok(()),);
 
         assert_eq!(
-            contract_package.enabled_versions(),
-            ContractVersions::from(BTreeMap::from_iter([
-                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
-                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
+            package.enabled_versions(),
+            EntityVersions::from(BTreeMap::from_iter([
+                (EntityVersionKey::new(1, 1), ENTITY_HASH_V1),
+                (EntityVersionKey::new(1, 2), ENTITY_HASH_V2),
             ])),
         );
 
         assert_eq!(
-            contract_package.disabled_versions(),
+            package.disabled_versions(),
             &BTreeSet::from_iter([next_version])
         );
 
-        assert_eq!(
-            contract_package.current_contract_hash(),
-            Some(CONTRACT_HASH_V2)
-        );
+        assert_eq!(package.current_entity_hash(), Some(ENTITY_HASH_V2));
 
-        assert_eq!(contract_package.enable_version(CONTRACT_HASH), Ok(()),);
+        assert_eq!(package.enable_version(ENTITY_HASH), Ok(()),);
 
         assert_eq!(
-            contract_package.enable_version(CONTRACT_HASH),
+            package.enable_version(ENTITY_HASH),
             Ok(()),
-            "enabling a contract twice should be a noop"
+            "enabling a entity twice should be a noop"
         );
 
         assert_eq!(
-            contract_package.enabled_versions(),
-            ContractVersions::from(BTreeMap::from_iter([
-                (ContractVersionKey::new(1, 1), CONTRACT_HASH_V1),
-                (ContractVersionKey::new(1, 2), CONTRACT_HASH_V2),
-                (next_version, CONTRACT_HASH),
+            package.enabled_versions(),
+            EntityVersions::from(BTreeMap::from_iter([
+                (EntityVersionKey::new(1, 1), ENTITY_HASH_V1),
+                (EntityVersionKey::new(1, 2), ENTITY_HASH_V2),
+                (next_version, ENTITY_HASH),
             ])),
         );
 
-        assert_eq!(contract_package.disabled_versions(), &BTreeSet::new(),);
+        assert_eq!(package.disabled_versions(), &BTreeSet::new(),);
 
-        assert_eq!(
-            contract_package.current_contract_hash(),
-            Some(CONTRACT_HASH)
-        );
+        assert_eq!(package.current_entity_hash(), Some(ENTITY_HASH));
     }
 
     #[test]
     fn should_not_allow_to_enable_non_existing_version() {
-        let mut contract_package = make_contract_package_with_two_versions();
+        let mut package = make_package_with_two_versions();
 
         assert_eq!(
-            contract_package.enable_version(AddressableEntityHash::default()),
-            Err(Error::ContractNotFound),
+            package.enable_version(AddressableEntityHash::default()),
+            Err(Error::EntityNotFound),
         );
     }
 
     #[test]
-    fn contract_package_hash_from_slice() {
+    fn package_hash_from_slice() {
         let bytes: Vec<u8> = (0..32).collect();
-        let contract_hash = HashAddr::try_from(&bytes[..]).expect("should create contract hash");
-        let contract_hash = PackageHash::new(contract_hash);
-        assert_eq!(&bytes, &contract_hash.as_bytes());
+        let package_hash = HashAddr::try_from(&bytes[..]).expect("should create package hash");
+        let package_hash = PackageHash::new(package_hash);
+        assert_eq!(&bytes, &package_hash.as_bytes());
     }
 
     #[test]
-    fn contract_package_hash_from_str() {
-        let contract_package_hash = PackageHash::new([3; 32]);
-        let encoded = contract_package_hash.to_formatted_string();
+    fn package_hash_from_str() {
+        let package_hash = PackageHash::new([3; 32]);
+        let encoded = package_hash.to_formatted_string();
         let decoded = PackageHash::from_formatted_str(&encoded).unwrap();
-        assert_eq!(contract_package_hash, decoded);
+        assert_eq!(package_hash, decoded);
 
         let invalid_prefix =
             "contract-package0000000000000000000000000000000000000000000000000000000000000000";
@@ -1407,14 +1381,14 @@ mod tests {
     }
 
     #[test]
-    fn contract_package_hash_from_legacy_str() {
-        let contract_package_hash = PackageHash([3; 32]);
-        let hex_addr = contract_package_hash.to_string();
+    fn package_hash_from_legacy_str() {
+        let package_hash = PackageHash([3; 32]);
+        let hex_addr = package_hash.to_string();
         let legacy_encoded = format!("contract-package-wasm{}", hex_addr);
         let decoded_from_legacy = PackageHash::from_formatted_str(&legacy_encoded)
             .expect("should accept legacy prefixed string");
         assert_eq!(
-            contract_package_hash, decoded_from_legacy,
+            package_hash, decoded_from_legacy,
             "decoded_from_legacy should equal decoded"
         );
 

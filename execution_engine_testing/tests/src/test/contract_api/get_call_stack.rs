@@ -159,7 +159,7 @@ impl BuilderExt for LmdbWasmTestBuilder {
             _ => panic!("unreachable"),
         };
 
-        let current_contract_hash = contract_package.current_contract_hash().unwrap();
+        let current_contract_hash = contract_package.current_entity_hash().unwrap();
 
         let cl_value = self
             .query(

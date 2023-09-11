@@ -8,7 +8,7 @@ use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     bytesrepr::{self, ToBytes},
     execution::Effects,
-    package::{ContractVersions, Groups, PackageKind, PackageStatus},
+    package::{EntityVersions, Groups, PackageKind, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLValue, CLValueError,
     Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
@@ -167,7 +167,7 @@ where
         }
 
         contract_package
-            .disable_contract_version(contract_hash)
+            .disable_entity_version(contract_hash)
             .map_err(|_| {
                 ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
             })?;
@@ -190,7 +190,7 @@ where
         );
 
         contract_package
-            .insert_contract_version(self.new_protocol_version.value().major, contract_hash);
+            .insert_entity_version(self.new_protocol_version.value().major, contract_hash);
 
         self.tracking_copy
             .borrow_mut()
@@ -274,14 +274,14 @@ where
         let contract_package = {
             let mut contract_package = Package::new(
                 access_key,
-                ContractVersions::default(),
+                EntityVersions::default(),
                 BTreeSet::default(),
                 Groups::default(),
                 PackageStatus::default(),
                 PackageKind::Account(account_hash),
             );
             contract_package
-                .insert_contract_version(self.new_protocol_version.value().major, entity_hash);
+                .insert_entity_version(self.new_protocol_version.value().major, entity_hash);
             contract_package
         };
 
