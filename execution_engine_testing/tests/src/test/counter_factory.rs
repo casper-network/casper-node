@@ -98,7 +98,7 @@ fn contract_factory_wasm_should_have_expected_exports() {
     let factory_contract_wasm = builder
         .query(None, factory_contract.contract_wasm_key(), &[])
         .expect("should have contract wasm")
-        .as_contract_wasm()
+        .as_byte_code()
         .cloned()
         .expect("should have wasm");
 
@@ -173,7 +173,7 @@ fn should_install_and_use_factory_pattern() {
     let counter_1_wasm = builder
         .query(None, new_counter_1_contract.contract_wasm_key(), &[])
         .expect("should have contract wasm")
-        .as_contract_wasm()
+        .as_byte_code()
         .cloned()
         .expect("should have wasm");
 

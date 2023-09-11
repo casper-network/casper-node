@@ -122,7 +122,7 @@ impl TransformKind {
                     let found = "ContractPackage".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
-                StoredValue::ContractWasm(_) => {
+                StoredValue::ByteCode(_) => {
                     let expected = "Contract or Account".to_string();
                     let found = "ContractWasm".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
@@ -510,8 +510,8 @@ mod tests {
             };
         }
 
-        let contract = StoredValue::ContractWasm(ByteCode::new(vec![]));
-        assert_yields_type_mismatch_error(contract);
+        let byte_code = StoredValue::ByteCode(ByteCode::new(vec![]));
+        assert_yields_type_mismatch_error(byte_code);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
 

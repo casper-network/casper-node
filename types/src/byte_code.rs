@@ -21,7 +21,7 @@ const BYTE_CODE_MAX_DISPLAY_LEN: usize = 16;
 const KEY_HASH_LENGTH: usize = 32;
 const WASM_STRING_PREFIX: &str = "contract-wasm-";
 
-/// Associated error type of `TryFrom<&[u8]>` for `ContractWasmHash`.
+/// Associated error type of `TryFrom<&[u8]>` for `ByteCodeHash`.
 #[derive(Debug)]
 pub struct TryFromSliceForContractHashError(());
 
@@ -64,7 +64,6 @@ impl Display for FromStrError {
         match self {
             FromStrError::InvalidPrefix => write!(f, "invalid prefix"),
             FromStrError::Hex(error) => write!(f, "decode from hex: {}", error),
-            // FromStrError::Account(error) => write!(f, "account from string error: {:?}", error),
             FromStrError::Hash(error) => write!(f, "hash from string error: {}", error),
             FromStrError::AccountHash(error) => {
                 write!(f, "account hash from string error: {:?}", error)
@@ -75,7 +74,7 @@ impl Display for FromStrError {
 }
 
 /// A newtype wrapping a `HashAddr` which is the raw bytes of
-/// the ContractWasmHash
+/// the ByteCodeHash
 #[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 pub struct ByteCodeHash(HashAddr);
@@ -102,7 +101,7 @@ impl ByteCodeHash {
     }
 
     /// Parses a string formatted as per `Self::to_formatted_string()` into a
-    /// `ContractWasmHash`.
+    /// `ByteCodeHash`.
     pub fn from_formatted_str(input: &str) -> Result<Self, FromStrError> {
         let remainder = input
             .strip_prefix(WASM_STRING_PREFIX)
@@ -306,11 +305,11 @@ mod tests {
     fn test_debug_repr_of_long_wasm() {
         const SIZE: usize = 65;
         let wasm_bytes = vec![0; SIZE];
-        let contract_wasm = ByteCode::new(wasm_bytes);
+        let byte_code = ByteCode::new(wasm_bytes);
         // String output is less than the bytes itself
         assert_eq!(
-            format!("{:?}", contract_wasm),
-            "ContractWasm(0x00000000000000000000000000000000...)"
+            format!("{:?}", byte_code),
+            "ByteCode(0x00000000000000000000000000000000...)"
         );
     }
 

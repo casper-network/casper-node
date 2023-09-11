@@ -29,7 +29,7 @@ pub use type_mismatch::TypeMismatch;
 enum Tag {
     CLValue = 0,
     Account = 1,
-    ContractWasm = 2,
+    ByteCode = 2,
     Contract = 3,
     Package = 4,
     Transfer = 5,
@@ -56,8 +56,8 @@ pub enum StoredValue {
     CLValue(CLValue),
     /// An account.
     Account(Account),
-    /// A contract Wasm.
-    ContractWasm(ByteCode),
+    /// A record of byte code.
+    ByteCode(ByteCode),
     /// A contract.
     Contract(Contract),
     /// A `Package`.
@@ -105,10 +105,10 @@ impl StoredValue {
         }
     }
 
-    /// Returns a wrapped [`ByteCode`] if this is a `ContractWasm` variant.
-    pub fn as_contract_wasm(&self) -> Option<&ByteCode> {
+    /// Returns a wrapped [`ByteCode`] if this is a `ByteCode` variant.
+    pub fn as_byte_code(&self) -> Option<&ByteCode> {
         match self {
-            StoredValue::ContractWasm(contract_wasm) => Some(contract_wasm),
+            StoredValue::ByteCode(byte_code) => Some(byte_code),
             _ => None,
         }
     }
@@ -168,7 +168,7 @@ impl StoredValue {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
             StoredValue::Account(_) => "Account".to_string(),
-            StoredValue::ContractWasm(_) => "ContractWasm".to_string(),
+            StoredValue::ByteCode(_) => "ByteCode".to_string(),
             StoredValue::Contract(_) => "Contract".to_string(),
             StoredValue::Package(_) => "Package".to_string(),
             StoredValue::Transfer(_) => "Transfer".to_string(),
@@ -186,7 +186,7 @@ impl StoredValue {
         match self {
             StoredValue::CLValue(_) => Tag::CLValue,
             StoredValue::Account(_) => Tag::Account,
-            StoredValue::ContractWasm(_) => Tag::ContractWasm,
+            StoredValue::ByteCode(_) => Tag::ByteCode,
             StoredValue::Contract(_) => Tag::Contract,
             StoredValue::Package(_) => Tag::Package,
             StoredValue::Transfer(_) => Tag::Transfer,
@@ -230,7 +230,7 @@ impl From<Account> for StoredValue {
 
 impl From<ByteCode> for StoredValue {
     fn from(value: ByteCode) -> StoredValue {
-        StoredValue::ContractWasm(value)
+        StoredValue::ByteCode(value)
     }
 }
 
@@ -296,9 +296,9 @@ impl TryFrom<StoredValue> for ByteCode {
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
         match stored_value {
-            StoredValue::ContractWasm(contract_wasm) => Ok(contract_wasm),
+            StoredValue::ByteCode(contract_wasm) => Ok(contract_wasm),
             _ => Err(TypeMismatch::new(
-                "ContractWasm".to_string(),
+                "ByteCode".to_string(),
                 stored_value.type_name(),
             )),
         }
@@ -417,7 +417,7 @@ impl ToBytes for StoredValue {
             + match self {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
                 StoredValue::Account(account) => account.serialized_length(),
-                StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
+                StoredValue::ByteCode(contract_wasm) => contract_wasm.serialized_length(),
                 StoredValue::Contract(contract_header) => contract_header.serialized_length(),
                 StoredValue::Package(contract_package) => contract_package.serialized_length(),
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
@@ -436,7 +436,7 @@ impl ToBytes for StoredValue {
         match self {
             StoredValue::CLValue(cl_value) => cl_value.write_bytes(writer)?,
             StoredValue::Account(account) => account.write_bytes(writer)?,
-            StoredValue::ContractWasm(contract_wasm) => contract_wasm.write_bytes(writer)?,
+            StoredValue::ByteCode(contract_wasm) => contract_wasm.write_bytes(writer)?,
             StoredValue::Contract(contract_header) => contract_header.write_bytes(writer)?,
             StoredValue::Package(contract_package) => contract_package.write_bytes(writer)?,
             StoredValue::Transfer(transfer) => transfer.write_bytes(writer)?,
@@ -460,9 +460,9 @@ impl FromBytes for StoredValue {
                 .map(|(cl_value, remainder)| (StoredValue::CLValue(cl_value), remainder)),
             tag if tag == Tag::Account as u8 => Account::from_bytes(remainder)
                 .map(|(account, remainder)| (StoredValue::Account(account), remainder)),
-            tag if tag == Tag::ContractWasm as u8 => {
+            tag if tag == Tag::ByteCode as u8 => {
                 ByteCode::from_bytes(remainder).map(|(contract_wasm, remainder)| {
-                    (StoredValue::ContractWasm(contract_wasm), remainder)
+                    (StoredValue::ByteCode(contract_wasm), remainder)
                 })
             }
             tag if tag == Tag::Package as u8 => {
@@ -508,8 +508,8 @@ mod serde_helpers {
         CLValue(&'a CLValue),
         /// An account.
         Account(&'a Account),
-        /// A contract Wasm.
-        ContractWasm(&'a ByteCode),
+        /// A record of byte code.
+        ByteCode(&'a ByteCode),
         /// A contract.
         Contract(&'a Contract),
         /// A `Package`.
@@ -538,8 +538,8 @@ mod serde_helpers {
         CLValue(CLValue),
         /// An account.
         Account(Account),
-        /// A contract Wasm.
-        ContractWasm(ByteCode),
+        /// A record of byte code.
+        ByteCode(ByteCode),
         /// A contract.
         Contract(Contract),
         /// A `Package`.
@@ -567,7 +567,7 @@ mod serde_helpers {
             match stored_value {
                 StoredValue::CLValue(payload) => BinarySerHelper::CLValue(payload),
                 StoredValue::Account(payload) => BinarySerHelper::Account(payload),
-                StoredValue::ContractWasm(payload) => BinarySerHelper::ContractWasm(payload),
+                StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
                 StoredValue::Contract(payload) => BinarySerHelper::Contract(payload),
                 StoredValue::Package(payload) => BinarySerHelper::ContractPackage(payload),
                 StoredValue::Transfer(payload) => BinarySerHelper::Transfer(payload),
@@ -589,7 +589,7 @@ mod serde_helpers {
             match helper {
                 BinaryDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
                 BinaryDeserHelper::Account(payload) => StoredValue::Account(payload),
-                BinaryDeserHelper::ContractWasm(payload) => StoredValue::ContractWasm(payload),
+                BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
                 BinaryDeserHelper::Contract(payload) => StoredValue::Contract(payload),
                 BinaryDeserHelper::ContractPackage(payload) => StoredValue::Package(payload),
                 BinaryDeserHelper::Transfer(payload) => StoredValue::Transfer(payload),

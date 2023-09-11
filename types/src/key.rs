@@ -33,9 +33,9 @@ use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
     addressable_entity::AddressableEntityHash,
+    byte_code::ByteCodeHash,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
-    contract_wasm::ByteCodeHash,
     package::PackageHash,
     system::auction::{BidAddr, BidAddrTag},
     uref::{self, URef, URefAddr, UREF_SERIALIZED_LENGTH},
@@ -598,8 +598,8 @@ impl Key {
         }
     }
 
-    /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::Hash`], otherwise returns
-    /// `None`.
+    /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::Hash`], otherwise
+    /// returns `None`.
     pub fn into_entity_hash(self) -> Option<AddressableEntityHash> {
         let hash_addr = self.into_hash()?;
         Some(AddressableEntityHash::new(hash_addr))

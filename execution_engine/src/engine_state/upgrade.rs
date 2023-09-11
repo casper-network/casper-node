@@ -234,7 +234,7 @@ where
         let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
         let package_hash = PackageHash::new(address_generator.new_hash_address());
 
-        let contract_wasm = ByteCode::new(vec![]);
+        let byte_code = ByteCode::new(vec![]);
 
         let account_hash = PublicKey::System.to_account_hash();
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
@@ -285,10 +285,9 @@ where
             contract_package
         };
 
-        self.tracking_copy.borrow_mut().write(
-            contract_wasm_hash.into(),
-            StoredValue::ContractWasm(contract_wasm),
-        );
+        self.tracking_copy
+            .borrow_mut()
+            .write(contract_wasm_hash.into(), StoredValue::ByteCode(byte_code));
         self.tracking_copy
             .borrow_mut()
             .write(entity_hash.into(), StoredValue::AddressableEntity(contract));

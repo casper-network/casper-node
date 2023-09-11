@@ -45,13 +45,12 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
-use crate::contracts::ContractHash;
 use crate::{
     account::{Account, AccountHash},
+    byte_code::ByteCodeHash,
     bytesrepr::{self, FromBytes, ToBytes},
     checksummed_hex,
-    contract_wasm::ByteCodeHash,
-    contracts::Contract,
+    contracts::{Contract, ContractHash},
     uref::{self, URef},
     AccessRights, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key, PackageHash,
     ProtocolVersion, KEY_HASH_LENGTH,

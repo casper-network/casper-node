@@ -706,7 +706,7 @@ where
         match value {
             StoredValue::CLValue(cl_value) => self.validate_cl_value(cl_value),
             StoredValue::Account(_) => Ok(()),
-            StoredValue::ContractWasm(_) => Ok(()),
+            StoredValue::ByteCode(_) => Ok(()),
             StoredValue::Contract(_) => Ok(()),
             StoredValue::AddressableEntity(contract_header) => contract_header
                 .named_keys()

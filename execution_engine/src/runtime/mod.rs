@@ -1371,7 +1371,7 @@ where
             let wasm_key = contract.contract_wasm_key();
 
             let contract_wasm: ByteCode = match self.context.read_gs(&wasm_key)? {
-                Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
+                Some(StoredValue::ByteCode(contract_wasm)) => contract_wasm,
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
                 None => return Err(Error::KeyNotFound(context_key)),
             };
@@ -1748,8 +1748,8 @@ where
             ),
         };
 
-        let contract_wasm_hash = self.context.new_hash_address()?;
-        let contract_wasm = {
+        let byte_code_hash = self.context.new_hash_address()?;
+        let byte_code = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
             ByteCode::new(module_bytes)
         };
@@ -1761,7 +1761,7 @@ where
 
         let entity = AddressableEntity::new(
             package_hash,
-            contract_wasm_hash.into(),
+            byte_code_hash.into(),
             named_keys,
             entry_points,
             protocol_version,
@@ -1773,7 +1773,7 @@ where
         let insert_contract_result = package.insert_contract_version(major, entity_hash.into());
 
         self.context
-            .metered_write_gs_unsafe(Key::Hash(contract_wasm_hash), contract_wasm)?;
+            .metered_write_gs_unsafe(Key::Hash(byte_code_hash), byte_code)?;
         self.context
             .metered_write_gs_unsafe(Key::Hash(entity_hash), entity)?;
         self.context

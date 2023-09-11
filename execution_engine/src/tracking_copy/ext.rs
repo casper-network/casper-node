@@ -274,7 +274,7 @@ where
     ) -> Result<ByteCode, Self::Error> {
         let key = contract_wasm_hash.into();
         match self.get(&key).map_err(Into::into)? {
-            Some(StoredValue::ContractWasm(contract_wasm)) => Ok(contract_wasm),
+            Some(StoredValue::ByteCode(contract_wasm)) => Ok(contract_wasm),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("ContractWasm".to_string(), other.type_name()),
             )),

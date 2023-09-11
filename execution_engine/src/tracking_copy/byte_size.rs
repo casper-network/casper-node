@@ -25,7 +25,7 @@ impl ByteSize for StoredValue {
             + match self {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
                 StoredValue::Account(account) => account.serialized_length(),
-                StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
+                StoredValue::ByteCode(contract_wasm) => contract_wasm.serialized_length(),
                 StoredValue::Contract(contract) => contract.serialized_length(),
                 StoredValue::AddressableEntity(contract_header) => {
                     contract_header.serialized_length()

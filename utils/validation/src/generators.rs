@@ -332,11 +332,11 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
         );
 
-        let contract_wasm = ByteCode::new(DO_NOTHING_BYTES.to_vec());
+        let byte_code = ByteCode::new(DO_NOTHING_BYTES.to_vec());
 
         stored_value.insert(
-            "ContractWasm".to_string(),
-            ABITestCase::from_inputs(vec![StoredValue::ContractWasm(contract_wasm).into()])?,
+            "ByteCode".to_string(),
+            ABITestCase::from_inputs(vec![StoredValue::ByteCode(byte_code).into()])?,
         );
 
         let contract_named_keys = {

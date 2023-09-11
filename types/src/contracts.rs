@@ -1,6 +1,5 @@
 //! Data types for supporting contract headers feature.
-use alloc::string::String;
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::{
     convert::TryFrom,
     fmt::{self, Debug, Display, Formatter},
@@ -12,13 +11,12 @@ use datasize::DataSize;
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::addressable_entity::FromStrError;
 use crate::{
-    addressable_entity::{EntryPoint, NamedKeys},
+    addressable_entity::{EntryPoint, FromStrError, NamedKeys},
+    byte_code::ByteCodeHash,
     bytesrepr::{self, FromBytes, ToBytes, U32_SERIALIZED_LENGTH},
-    checksummed_hex,
-    contract_wasm::ByteCodeHash,
-    CLType, CLTyped, EntryPoints, HashAddr, PackageHash, ProtocolVersion, KEY_HASH_LENGTH,
+    checksummed_hex, CLType, CLTyped, EntryPoints, HashAddr, Key, PackageHash, ProtocolVersion,
+    KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -201,6 +199,12 @@ impl Debug for ContractHash {
 impl CLTyped for ContractHash {
     fn cl_type() -> CLType {
         CLType::ByteArray(KEY_HASH_LENGTH as u32)
+    }
+}
+
+impl From<ContractHash> for Key {
+    fn from(contract_hash: ContractHash) -> Self {
+        Key::Hash(contract_hash.value())
     }
 }
 

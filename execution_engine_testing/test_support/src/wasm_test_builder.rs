@@ -40,10 +40,10 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
-use casper_types::contracts::ContractHash;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes},
+    contracts::ContractHash,
     execution::Effects,
     runtime_args,
     system::{
@@ -960,15 +960,16 @@ where
             .expect("Unable to obtain mint contract. Please run genesis first.")
     }
 
-    /// Returns the [`AddressableEntityHash`] of the "handle payment" contract, panics if it can't be found.
+    /// Returns the [`AddressableEntityHash`] of the "handle payment" contract, panics if it can't
+    /// be found.
     pub fn get_handle_payment_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(HANDLE_PAYMENT)
             .cloned()
             .expect("Unable to obtain handle payment contract. Please run genesis first.")
     }
 
-    /// Returns the [`AddressableEntityHash`] of the "standard payment" contract, panics if it can't be
-    /// found.
+    /// Returns the [`AddressableEntityHash`] of the "standard payment" contract, panics if it can't
+    /// be found.
     pub fn get_standard_payment_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(STANDARD_PAYMENT)
             .cloned()
@@ -981,7 +982,8 @@ where
             .and_then(|registry| registry.get(contract_name))
     }
 
-    /// Returns the [`AddressableEntityHash`] of the "auction" contract, panics if it can't be found.
+    /// Returns the [`AddressableEntityHash`] of the "auction" contract, panics if it can't be
+    /// found.
     pub fn get_auction_contract_hash(&self) -> AddressableEntityHash {
         self.get_system_entity_hash(AUCTION)
             .cloned()
@@ -1176,7 +1178,7 @@ where
             .query(None, contract_hash.into(), &[])
             .expect("should have contract value");
 
-        if let StoredValue::ContractWasm(contract_wasm) = contract_value {
+        if let StoredValue::ByteCode(contract_wasm) = contract_value {
             Some(contract_wasm)
         } else {
             None
@@ -1412,7 +1414,8 @@ where
         self.get_value(auction_contract, UNBONDING_DELAY_KEY)
     }
 
-    /// Gets the [`AddressableEntityHash`] of the system auction contract, panics if it can't be found.
+    /// Gets the [`AddressableEntityHash`] of the system auction contract, panics if it can't be
+    /// found.
     pub fn get_system_auction_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
@@ -1428,8 +1431,8 @@ where
             .expect("should have mint hash")
     }
 
-    /// Gets the [`AddressableEntityHash`] of the system handle payment contract, panics if it can't be
-    /// found.
+    /// Gets the [`AddressableEntityHash`] of the system handle payment contract, panics if it can't
+    /// be found.
     pub fn get_system_handle_payment_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state
@@ -1437,8 +1440,8 @@ where
             .expect("should have handle payment hash")
     }
 
-    /// Returns the [`AddressableEntityHash`] of the system standard payment contract, panics if it can't be
-    /// found.
+    /// Returns the [`AddressableEntityHash`] of the system standard payment contract, panics if it
+    /// can't be found.
     pub fn get_system_standard_payment_hash(&self) -> AddressableEntityHash {
         let state_root_hash = self.get_post_state_hash();
         self.engine_state

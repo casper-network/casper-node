@@ -28,13 +28,13 @@ pub mod addressable_entity;
 pub mod api_error;
 mod block;
 mod block_time;
+mod byte_code;
 pub mod bytesrepr;
 #[cfg(any(feature = "std", test))]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
-mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
 mod deploy_info;
@@ -94,6 +94,7 @@ pub use block::{
     JsonValidatorWeight,
 };
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+pub use byte_code::{ByteCode, ByteCodeHash};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -124,7 +125,6 @@ pub use chainspec::{
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
-pub use contract_wasm::{ByteCode, ByteCodeHash};
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;

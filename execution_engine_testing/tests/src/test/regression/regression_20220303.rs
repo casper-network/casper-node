@@ -6,6 +6,7 @@ use std::{
 use casper_engine_test_support::{LmdbWasmTestBuilder, UpgradeRequestBuilder};
 use casper_execution_engine::engine_state::SystemContractRegistry;
 use casper_types::{
+    contracts::ContractHash,
     system::{self, mint},
     AccessRights, CLValue, Digest, EraId, Key, ProtocolVersion, StoredValue, URef,
 };
@@ -58,8 +59,11 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
             .expect("should contract hash")
     };
     let old_protocol_version = lmdb_fixture_state.genesis_protocol_version();
+
+    let legacy_mint_hash = ContractHash::new(mint_contract_hash.value());
+
     let old_contract = builder
-        .get_legacy_contract(mint_contract_hash)
+        .get_legacy_contract(legacy_mint_hash)
         .expect("should have mint contract");
     assert_eq!(old_contract.protocol_version(), old_protocol_version);
     let new_protocol_version = ProtocolVersion::from_parts(

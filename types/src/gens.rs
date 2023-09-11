@@ -423,7 +423,7 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
         )
 }
 
-pub fn contract_wasm_arb() -> impl Strategy<Value = ByteCode> {
+pub fn byte_code_arb() -> impl Strategy<Value = ByteCode> {
     collection::vec(any::<u8>(), 1..1000).prop_map(ByteCode::new)
 }
 
@@ -624,7 +624,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
         account_arb().prop_map(StoredValue::Account),
-        contract_wasm_arb().prop_map(StoredValue::ContractWasm),
+        byte_code_arb().prop_map(StoredValue::ByteCode),
         contract_arb().prop_map(StoredValue::Contract),
         addressable_entity_arb().prop_map(StoredValue::AddressableEntity),
         package_arb().prop_map(StoredValue::Package),
@@ -643,7 +643,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         match stored_value {
             StoredValue::CLValue(_) => stored_value,
             StoredValue::Account(_) => stored_value,
-            StoredValue::ContractWasm(_) => stored_value,
+            StoredValue::ByteCode(_) => stored_value,
             StoredValue::Contract(_) => stored_value,
             StoredValue::Package(_) => stored_value,
             StoredValue::Transfer(_) => stored_value,
