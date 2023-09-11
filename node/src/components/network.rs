@@ -490,24 +490,29 @@ where
             };
             trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            let request = connection
-                .rpc_client
-                .create_request(channel.into_channel_id())
-                .with_payload(payload);
-
             if let Some(responder) = message_queued_responder {
-                let queue_fut = request.queue_for_sending_owned();
+                let client = connection.rpc_client.clone();
+
                 // Technically, the queueing future should be spawned by the reactor, but we can
                 //       make a case here since the networking component usually controls its own
                 //       futures, we are allowed to spawn these as well.
                 tokio::spawn(async move {
-                    let guard = queue_fut.await;
+                    let guard = client
+                        .create_request(channel.into_channel_id())
+                        .with_payload(payload)
+                        .queue_for_sending()
+                        .await;
                     responder.respond(()).await;
 
                     // We need to properly process the guard, so it does not cause a cancellation.
                     process_request_guard(channel, guard)
                 });
             } else {
+                let request = connection
+                    .rpc_client
+                    .create_request(channel.into_channel_id())
+                    .with_payload(payload);
+
                 // No responder given, so we do a best effort of sending the message.
                 match request.try_queue_for_sending() {
                     Ok(guard) => process_request_guard(channel, guard),
