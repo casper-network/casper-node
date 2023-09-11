@@ -55,7 +55,8 @@ impl MultiframeReceiver {
     /// intermediate segment was processed without completing the message, both are still consumed,
     /// but `None` is returned instead. This method will never consume more than one frame.
     ///
-    /// On any error, [`Outcome::Err`] with a suitable message to return to the sender is returned.
+    /// On any error, [`Outcome::Fatal`] with a suitable message to return to the sender is
+    /// returned.
     ///
     /// `max_payload_size` is the maximum size of a payload across multiple frames. If it is
     /// exceeded, the `payload_exceeded_error_kind` function is used to construct an error `Header`
