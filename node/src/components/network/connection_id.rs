@@ -1,14 +1,7 @@
 //! Observability for network serialization/deserialization.
 //!
-//! This module introduces two IDs: [`ConnectionId`] and [`TraceId`]. The [`ConnectionId`] is a
-//! unique ID per established connection that can be independently derive by peers on either of a
-//! connection. [`TraceId`] identifies a single message, distinguishing even messages that are sent
-//! to the same peer with equal contents.
-
-use std::{
-    convert::TryFrom,
-    fmt::{self, Display, Formatter},
-};
+//! This module introduces [`ConnectionId`], a unique ID per established connection that can be
+//! independently derived by peers on either side of a connection.
 
 use openssl::ssl::SslRef;
 #[cfg(test)]
@@ -22,18 +15,6 @@ use casper_types::testing::TestRng;
 
 use super::tls::KeyFingerprint;
 use crate::{types::NodeId, utils};
-
-/// Lazily-evaluated network message ID generator.
-///
-/// Calculates a hash for the wrapped value when `Display::fmt` is called.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct TraceId([u8; 8]);
-
-impl Display for TraceId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(&base16::encode_lower(&self.0))
-    }
-}
 
 /// An ID identifying a connection.
 ///
@@ -125,30 +106,6 @@ impl ConnectionId {
         ConnectionId(id)
     }
 
-    /// Creates a new [`TraceID`] based on the message count.
-    ///
-    /// The `flag` should be created using the [`Role::in_flag`] or [`Role::out_flag`] method and
-    /// must be created accordingly (`out_flag` when serializing, `in_flag` when deserializing).
-    #[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
-    fn create_trace_id(&self, flag: u8, count: u64) -> TraceId {
-        // Copy the basic network ID.
-        let mut buffer = self.0;
-
-        // Direction set on first byte.
-        buffer[0] ^= flag;
-
-        // XOR in message count.
-        utils::xor(&mut buffer[4..12], &count.to_ne_bytes());
-
-        // Hash again and truncate.
-        let full_hash = Digest::hash(buffer);
-
-        // Safe to expect here, as we assert earlier that `Digest` is at least 12 bytes.
-        let truncated = TryFrom::try_from(&full_hash.value()[0..8]).expect("buffer size mismatch");
-
-        TraceId(truncated)
-    }
-
     #[inline]
     /// Returns a reference to the raw bytes of the connection ID.
     pub(crate) fn as_bytes(&self) -> &[u8] {
@@ -169,104 +126,5 @@ impl ConnectionId {
             NodeId::random(rng),
             NodeId::random(rng),
         )
-    }
-}
-
-/// Message sending direction.
-#[derive(Copy, Clone, Debug)]
-#[repr(u8)]
-#[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
-pub(super) enum Role {
-    /// Dialer, i.e. initiator of the connection.
-    Dialer,
-    /// Listener, acceptor of the connection.
-    Listener,
-}
-
-#[allow(dead_code)] // TODO: Re-add if necessary when connection packet tracing is readded.
-impl Role {
-    /// Returns a flag suitable for hashing incoming messages.
-    #[inline]
-    fn in_flag(self) -> u8 {
-        !(self.out_flag())
-    }
-
-    /// Returns a flag suitable for hashing outgoing messages.
-    #[inline]
-    fn out_flag(self) -> u8 {
-        // The magic flag uses 50% of the bits, to be XOR'd into the hash later.
-        const MAGIC_FLAG: u8 = 0b10101010;
-
-        match self {
-            Role::Dialer => MAGIC_FLAG,
-            Role::Listener => !MAGIC_FLAG,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::types::NodeId;
-
-    use super::{ConnectionId, Role, TlsRandomData, TraceId};
-
-    #[test]
-    fn trace_id_has_16_character() {
-        let data = [0, 1, 2, 3, 4, 5, 6, 7];
-
-        let output = format!("{}", TraceId(data));
-
-        assert_eq!(output.len(), 16);
-    }
-
-    #[test]
-    fn can_create_deterministic_trace_id() {
-        let mut rng = crate::new_rng();
-
-        // Scenario: Nodes A and B are connecting to each other. Both connections are established.
-        let node_a = NodeId::random(&mut rng);
-        let node_b = NodeId::random(&mut rng);
-
-        // We get two connections, with different Tls random data, but it will be the same on both
-        // ends of the connection.
-        let a_to_b_random = TlsRandomData::random(&mut rng);
-        let a_to_b = ConnectionId::create(a_to_b_random, node_a, node_b);
-        let a_to_b_alt = ConnectionId::create(a_to_b_random, node_b, node_a);
-
-        // Ensure that either peer ends up with the same connection id.
-        assert_eq!(a_to_b, a_to_b_alt);
-
-        let b_to_a_random = TlsRandomData::random(&mut rng);
-        let b_to_a = ConnectionId::create(b_to_a_random, node_b, node_a);
-        let b_to_a_alt = ConnectionId::create(b_to_a_random, node_a, node_b);
-        assert_eq!(b_to_a, b_to_a_alt);
-
-        // The connection IDs must be distinct though.
-        assert_ne!(a_to_b, b_to_a);
-
-        // We are only looking at messages sent on the `a_to_b` connection, although from both ends.
-        // In our example example, `node_a` is the dialing node, `node_b` the listener.
-
-        // Trace ID on A, after sending to B.
-        let msg_ab_0_on_a = a_to_b.create_trace_id(Role::Dialer.out_flag(), 0);
-
-        // The same message on B.
-        let msg_ab_0_on_b = a_to_b.create_trace_id(Role::Listener.in_flag(), 0);
-
-        // These trace IDs must match.
-        assert_eq!(msg_ab_0_on_a, msg_ab_0_on_b);
-
-        // The second message must have a distinct trace ID.
-        let msg_ab_1_on_a = a_to_b.create_trace_id(Role::Dialer.out_flag(), 1);
-        let msg_ab_1_on_b = a_to_b.create_trace_id(Role::Listener.in_flag(), 1);
-        assert_eq!(msg_ab_1_on_a, msg_ab_1_on_b);
-        assert_ne!(msg_ab_0_on_a, msg_ab_1_on_a);
-
-        // Sending a message on the **same connection** in a **different direction** also must yield
-        // a different message id.
-        let msg_ba_0_on_b = a_to_b.create_trace_id(Role::Listener.out_flag(), 0);
-        let msg_ba_0_on_a = a_to_b.create_trace_id(Role::Dialer.in_flag(), 0);
-        assert_eq!(msg_ba_0_on_b, msg_ba_0_on_a);
-        assert_ne!(msg_ba_0_on_b, msg_ab_0_on_b);
     }
 }
