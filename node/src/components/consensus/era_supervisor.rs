@@ -980,7 +980,7 @@ impl EraSupervisor {
             }
             ProtocolOutcome::CreatedTargetedMessage(payload, to) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
-                effect_builder.enqueue_message(to, message.into()).ignore()
+                effect_builder.try_send_message(to, message.into()).ignore()
             }
             ProtocolOutcome::CreatedMessageToRandomPeer(payload) => {
                 let message = ConsensusMessage::Protocol { era_id, payload };
@@ -988,7 +988,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.enqueue_message(to, message.into()).await;
+                        effect_builder.try_send_message(to, message.into()).await;
                     }
                 }
                 .ignore()
@@ -999,7 +999,7 @@ impl EraSupervisor {
                 async move {
                     let peers = effect_builder.get_fully_connected_peers(1).await;
                     if let Some(to) = peers.into_iter().next() {
-                        effect_builder.enqueue_message(to, message.into()).await;
+                        effect_builder.try_send_message(to, message.into()).await;
                     }
                 }
                 .ignore()

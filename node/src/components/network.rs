@@ -62,7 +62,7 @@ use datasize::DataSize;
 use futures::{future::BoxFuture, FutureExt};
 use itertools::Itertools;
 
-use juliet::rpc::{JulietRpcClient, JulietRpcServer, RpcBuilder};
+use juliet::rpc::{JulietRpcClient, JulietRpcServer, RequestGuard, RpcBuilder};
 use prometheus::Registry;
 use rand::{
     seq::{IteratorRandom, SliceRandom},
@@ -476,7 +476,7 @@ where
         &self,
         dest: NodeId,
         msg: Arc<Message<P>>,
-        _opt_responder: Option<AutoClosingResponder<()>>, // TODO: Restore functionality or remove?
+        message_queued_responder: Option<AutoClosingResponder<()>>,
     ) {
         // Try to send the message.
         if let Some(connection) = self.outgoing_manager.get_route(dest) {
@@ -485,56 +485,51 @@ where
             let payload = if let Some(payload) = serialize_network_message(&msg) {
                 payload
             } else {
-                // TODO: Note/log that serialization failed.
-                // The `AutoClosingResponder` will respond by itself.
+                // No need to log, `serialize_network_message` already logs the failure.
                 return;
             };
             trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            let guard = match connection
+            let channel_id = channel.into_channel_id();
+            let request = connection
                 .rpc_client
-                .create_request(channel.into_channel_id())
-                .with_payload(payload)
-                .try_queue_for_sending()
-            {
-                Ok(guard) => guard,
-                Err(builder) => {
-                    // We had to drop the message, since we hit the buffer limit.
-                    debug!(%channel, "node is sending at too high a rate, message dropped");
+                .create_request(channel_id)
+                .with_payload(payload);
 
-                    let payload = builder.into_payload().unwrap_or_default();
-                    match deserialize_network_message::<P>(&payload) {
-                        Ok(reconstructed_message) => {
-                            debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
-                        }
-                        Err(err) => {
-                            error!(our_id=%self.context.our_id(),
-                                   %dest,
-                                   reconstruction_error=%err,
-                                   ?payload,
-                                   "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
-                            );
+            if let Some(responder) = message_queued_responder {
+                // Technically, the queueing future should be spawned by the reactor, but we can
+                //       make a case here since the networking component usually controls its own
+                //       futures, we are allowed to spawn these as well.
+                tokio::spawn(async move {
+                    let guard = request.queue_for_sending().await;
+                    responder.respond(()).await;
+
+                    // We need to properly process the guard, so it does not cause a cancellation.
+                    process_request_guard(channel, guard)
+                });
+            } else {
+                // No responder given, so we do a best effort of sending the message.
+                match request.try_queue_for_sending() {
+                    Ok(guard) => process_request_guard(channel, guard),
+                    Err(builder) => {
+                        // We had to drop the message, since we hit the buffer limit.
+                        debug!(%channel, "node is sending at too high a rate, message dropped");
+
+                        let payload = builder.into_payload().unwrap_or_default();
+                        match deserialize_network_message::<P>(&payload) {
+                            Ok(reconstructed_message) => {
+                                debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
+                            }
+                            Err(err) => {
+                                error!(our_id=%self.context.our_id(),
+                                       %dest,
+                                       reconstruction_error=%err,
+                                       ?payload,
+                                       "dropped outgoing message, buffer exhausted and also failed to reconstruct it"
+                                );
+                            }
                         }
                     }
-
-                    return;
-                }
-            };
-
-            // At this point, we could pass the guard to the original component to allow for
-            // backpressure to actually propagate. In the current version we are still going with
-            // the fire-and-forget model though, so simply check for an immediate error, then
-            // forget.
-            match guard.try_wait_for_response() {
-                Ok(Ok(_outcome)) => {
-                    // We got an incredibly quick round-trip, lucky us! Nothing to do.
-                }
-                Ok(Err(err)) => {
-                    debug!(%channel, %err, "failed to send message");
-                }
-                Err(guard) => {
-                    // Not done yet, forget.
-                    guard.forget();
                 }
             }
 
@@ -900,24 +895,18 @@ where
             NetworkRequest::SendMessage {
                 dest,
                 payload,
-                respond_early,
-                auto_closing_responder,
+                message_queued_responder,
             } => {
                 // We're given a message to send. Pass on the responder so that confirmation
                 // can later be given once the message has actually been buffered.
                 self.net_metrics.direct_message_requests.inc();
 
-                if respond_early {
-                    self.send_message(*dest, Arc::new(Message::Payload(*payload)), None);
-                    auto_closing_responder.respond(()).ignore()
-                } else {
-                    self.send_message(
-                        *dest,
-                        Arc::new(Message::Payload(*payload)),
-                        Some(auto_closing_responder),
-                    );
-                    Effects::new()
-                }
+                self.send_message(
+                    *dest,
+                    Arc::new(Message::Payload(*payload)),
+                    message_queued_responder,
+                );
+                Effects::new()
             }
             NetworkRequest::ValidatorBroadcast {
                 payload,
@@ -1486,6 +1475,26 @@ where
             .field("state", &self.state)
             .field("public_addr", &self.context.public_addr())
             .finish()
+    }
+}
+
+/// Processes a request guard obtained by making a request to a peer through Juliet RPC.
+///
+/// Ensures that outgoing messages are not cancelled, a would be the case when simply dropping the
+/// `RequestGuard`. Potential errors that are available early are dropped, later errors discarded.
+#[inline]
+fn process_request_guard(channel: Channel, guard: RequestGuard) {
+    match guard.try_wait_for_response() {
+        Ok(Ok(_outcome)) => {
+            // We got an incredibly quick round-trip, lucky us! Nothing to do.
+        }
+        Ok(Err(err)) => {
+            debug!(%channel, %err, "failed to send message");
+        }
+        Err(guard) => {
+            // No ACK received yet, forget, so we don't cancel.
+            guard.forget();
+        }
     }
 }
 

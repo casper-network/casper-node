@@ -537,8 +537,7 @@ where
             NetworkRequest::SendMessage {
                 dest,
                 payload,
-                respond_early: _,
-                auto_closing_responder,
+                message_queued_responder,
             } => {
                 if *dest == self.node_id {
                     panic!("can't send message to self");
@@ -550,7 +549,11 @@ where
                     error!("network lock has been poisoned")
                 };
 
-                auto_closing_responder.respond(()).ignore()
+                if let Some(responder) = message_queued_responder {
+                    responder.respond(()).ignore()
+                } else {
+                    Effects::new()
+                }
             }
             NetworkRequest::ValidatorBroadcast {
                 payload,

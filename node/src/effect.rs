@@ -669,8 +669,20 @@ impl<REv> EffectBuilder<REv> {
 
     /// Sends a network message.
     ///
-    /// The message is queued and sent, but no delivery guaranteed. Will return after the message
-    /// has been buffered in the outgoing kernel buffer and thus is subject to backpressure.
+    /// The message is queued and sent, without any delivery guarantees. Will return after the
+    /// message has been buffered by the networking stack and is thus is subject to backpressure
+    /// from the receiving peer.
+    ///
+    /// If the message cannot be buffered immediately, `send_message` will wait until there is room
+    /// in the networking layer's buffer available. This means that messages will be buffered
+    /// outside the networking component without any limit, when this method is used. The calling
+    /// component is responsible for ensuring that not too many instances of `send_message` are
+    /// awaited at any one point in time.
+    ///
+    /// If the peer is not reachable, the message will be discarded.
+    ///
+    /// See `try_send_message` for a method that does not buffer messages outside networking if
+    /// buffers are full, but discards them instead.
     pub(crate) async fn send_message<P>(self, dest: NodeId, payload: P)
     where
         REv: From<NetworkRequest<P>>,
@@ -679,32 +691,45 @@ impl<REv> EffectBuilder<REv> {
             |responder| NetworkRequest::SendMessage {
                 dest: Box::new(dest),
                 payload: Box::new(payload),
-                respond_early: false,
-                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
+                message_queued_responder: Some(AutoClosingResponder::from_opt_responder(responder)),
             },
             QueueKind::Network,
         )
         .await;
+
+        // Note: It does not matter to use whether `Some()` (indicating buffering) or `None`
+        //       (indicating a lost message) was returned, since we do not guarantee anything about
+        //       delivery.
     }
 
-    /// Enqueues a network message.
+    /// Sends a network message with best effort.
     ///
-    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer
-    /// will receive it. Returns as soon as the message is queued inside the networking component.
-    pub(crate) async fn enqueue_message<P>(self, dest: NodeId, payload: P)
+    /// The message is queued in "fire-and-forget" fashion, there is no guarantee that the peer will
+    /// receive it. It may also be dropped if the outbound message queue for the specific peer is
+    /// full as well, instead of backpressure being propagated.
+    ///
+    /// Returns immediately. If called at extreme rates, this function may blow up the event queue,
+    /// since messages are only discarded once they have made their way to a networking component,
+    /// while this method returns earlier.
+    ///
+    /// A more heavyweight message sending function is available in `send_message`.
+    pub(crate) async fn try_send_message<P>(self, dest: NodeId, payload: P)
     where
         REv: From<NetworkRequest<P>>,
     {
-        self.make_request(
-            |responder| NetworkRequest::SendMessage {
-                dest: Box::new(dest),
-                payload: Box::new(payload),
-                respond_early: true,
-                auto_closing_responder: AutoClosingResponder::from_opt_responder(responder),
-            },
-            QueueKind::Network,
-        )
-        .await;
+        // Note: Since we do not expect any response to our request, we can avoid spawning an extra
+        //       task awaiting the responder.
+
+        self.event_queue
+            .schedule(
+                NetworkRequest::SendMessage {
+                    dest: Box::new(dest),
+                    payload: Box::new(payload),
+                    message_queued_responder: None,
+                },
+                QueueKind::Network,
+            )
+            .await
     }
 
     /// Broadcasts a network message to validator peers in the given era.
