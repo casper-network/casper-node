@@ -203,8 +203,7 @@ pub struct IoCore<const N: usize, R, W> {
 
 /// Shared data between a handles and the core itself.
 #[derive(Debug)]
-#[repr(transparent)]
-struct IoShared<const N: usize> {
+pub(crate) struct IoShared<const N: usize> {
     /// Tracks how many requests are in the wait queue.
     ///
     /// Tickets are freed once the item is in the wait queue, thus the semaphore permit count
@@ -213,6 +212,28 @@ struct IoShared<const N: usize> {
     ///
     /// The maximum number of available tickets must be >= 1 for the IO layer to function.
     buffered_requests: [Arc<Semaphore>; N],
+    /// The next generated [`IoId`].
+    ///
+    /// IoIDs are just generated sequentially until they run out (which at 1 billion at second
+    /// takes roughly 10^22 years).
+    next_io_id: Arc<AtomicU64>,
+}
+
+impl<const N: usize> IoShared<N> {
+    /// Reserves a new request ticket.
+    #[inline]
+    pub(crate) async fn reserve_request(&self, channel: ChannelId) -> Option<RequestTicket> {
+        self.buffered_requests[channel.get() as usize]
+            .clone()
+            .acquire_owned()
+            .await
+            .map(|permit| RequestTicket {
+                channel,
+                permit,
+                io_id: IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed)),
+            })
+            .ok()
+    }
 }
 
 /// Events produced by the IO layer.
@@ -336,12 +357,9 @@ impl<const N: usize> IoCoreBuilder<N> {
             buffered_requests: array_init::map_array_init(&self.buffer_size, |&sz| {
                 Arc::new(Semaphore::new(sz))
             }),
-        });
-        let handle = RequestHandle {
-            shared,
-            sender,
             next_io_id: Default::default(),
-        };
+        });
+        let handle = RequestHandle { shared, sender };
 
         (core, handle)
     }
@@ -762,14 +780,11 @@ fn item_should_wait<const N: usize>(
 #[derive(Clone, Debug)]
 pub struct RequestHandle<const N: usize> {
     /// Shared portion of the [`IoCore`], required for backpressuring onto clients.
-    shared: Arc<IoShared<N>>,
+    // Note: This field is leaking into the `rpc` module to enable partial cloning for
+    //       `queue_for_sending_owned`.
+    pub(crate) shared: Arc<IoShared<N>>,
     /// Sender for queue items.
     sender: UnboundedSender<QueuedItem>,
-    /// The next generation [`IoId`].
-    ///
-    /// IoIDs are just generated sequentially until they run out (which at 1 billion at second
-    /// takes roughly 10^22 years).
-    next_io_id: Arc<AtomicU64>,
 }
 
 /// Simple [`IoCore`] handle.
@@ -842,27 +857,12 @@ impl<const N: usize> RequestHandle<N> {
             Ok(permit) => Ok(RequestTicket {
                 channel,
                 permit,
-                io_id: IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed)),
+                io_id: IoId(self.shared.next_io_id.fetch_add(1, Ordering::Relaxed)),
             }),
 
             Err(TryAcquireError::Closed) => Err(ReservationError::Closed),
             Err(TryAcquireError::NoPermits) => Err(ReservationError::NoBufferSpaceAvailable),
         }
-    }
-
-    /// Reserves a new request ticket.
-    #[inline]
-    pub async fn reserve_request(&self, channel: ChannelId) -> Option<RequestTicket> {
-        self.shared.buffered_requests[channel.get() as usize]
-            .clone()
-            .acquire_owned()
-            .await
-            .map(|permit| RequestTicket {
-                channel,
-                permit,
-                io_id: IoId(self.next_io_id.fetch_add(1, Ordering::Relaxed)),
-            })
-            .ok()
     }
 
     /// Downgrades a [`RequestHandle`] to a [`Handle`].

@@ -323,6 +323,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
         let ticket = match self
             .client
             .request_handle
+            .shared
             .reserve_request(self.channel)
             .await
         {
@@ -342,12 +343,14 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     /// client underlying this [`JulietRpcRequestBuilder`]. As a result, the future returned by this
     /// function does not borrow anything and can be freely moved.
     pub fn queue_for_sending_owned(self) -> impl Future<Output = RequestGuard> {
-        let request_handle = self.client.request_handle.clone(); // TODO: Ensure only `IoShared` needs to be cloned here.
+        // The `IoShared` is used to obtain a ticket for sending and the next `IoId`.
+        let io_shared = self.client.request_handle.shared.clone();
+
         let new_request_sender = self.client.new_request_sender.clone();
 
         // TODO: Factor out code in this block to share with `queue_for_sending`.
         async move {
-            let ticket = match request_handle.reserve_request(self.channel).await {
+            let ticket = match io_shared.reserve_request(self.channel).await {
                 Some(ticket) => ticket,
                 None => {
                     // We cannot queue the request, since the connection was closed.
