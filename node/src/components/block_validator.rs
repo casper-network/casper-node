@@ -547,7 +547,7 @@ impl BlockValidator {
         );
 
         let mut in_flight = KeyedCounter::default();
-        let effects = missing_sigs
+        let mut effects: Effects<Event> = missing_sigs
             .iter()
             .flat_map(|sig_id| {
                 // For every request, increase the number of in-flight...
@@ -565,6 +565,14 @@ impl BlockValidator {
         block_validation_state
             .signatures_validation_state
             .require_signatures(missing_sigs, in_flight);
+
+        if block_validation_state.is_valid() {
+            // If the state is already valid (because either we downloaded all the deploys
+            // and signatures already, or the block contains no deploys and no cited
+            // signatures), we can do an early return to caller.
+            effects.extend(block_validation_state.respond(true));
+            self.validation_states.remove(&proposed_block);
+        }
 
         effects
     }
