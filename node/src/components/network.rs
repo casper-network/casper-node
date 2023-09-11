@@ -686,8 +686,10 @@ where
                     )
                     .instrument(span)
                     .event(move |result| {
-                        // We keep the client around, even though we do not use it, since dropping
-                        // it will cause the connection to be closed from our end.
+                        // By moving the `rpc_client` into this closure to drop it, we ensure it
+                        // does not get dropped until after `tasks::message_receiver` has returned.
+                        // This is important because dropping `rpc_client` is one of the ways to
+                        // trigger a connection shutdown from our end.
                         drop(rpc_client);
 
                         Event::IncomingClosed {
