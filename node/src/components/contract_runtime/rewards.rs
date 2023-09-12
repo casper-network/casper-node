@@ -132,10 +132,6 @@ impl ErasInfo {
         &self,
         era_id: EraId,
     ) -> Result<impl Iterator<Item = PublicKey> + '_, RewardsError> {
-        //if era_id.is_genesis() {
-        //    return Ok(Either::Left(std::iter::empty()));
-        //}
-
         let keys = self
             .0
             .get(&era_id)
@@ -150,10 +146,6 @@ impl ErasInfo {
     /// Returns the total potential reward per block.
     /// Since it is per block, we do not care about the expected number of blocks per era.
     pub fn reward(&self, era_id: EraId) -> Result<Ratio<U512>, RewardsError> {
-        //if era_id.is_genesis() {
-        //    return Ok(Ratio::zero());
-        //}
-
         Ok(self
             .0
             .get(&era_id)
@@ -167,10 +159,6 @@ impl ErasInfo {
         era_id: EraId,
         validator: &PublicKey,
     ) -> Result<Ratio<U512>, RewardsError> {
-        //if era_id.is_genesis() {
-        //    return Ok(Ratio::zero());
-        //}
-
         let era = self
             .0
             .get(&era_id)
@@ -336,17 +324,7 @@ pub(crate) async fn rewards_for_era<REv: ReactorEventT>(
         });
 
         for block in blocks_from_current_era {
-            // Reward for gathering all the finality signatures for this block:
-            //This needs to be proportional to the weight of signatures reported in the block, also
-            //let collection_reward = eras_info
-            //    .weight_ratio(era_id, block.proposer())?
-            //    .checked_mul(&eras_info.weight_ratio(todo!(), todo!())?)
-            //    .ok_or(RewardsError::ArithmeticOverflow)?
-            //    .checked_mul(&collection_proportion)
-            //    .ok_or(RewardsError::ArithmeticOverflow)?
-            //    .checked_mul(&eras_info.reward(era_id)?)
-            //    .ok_or(RewardsError::ArithmeticOverflow)?;
-
+            // Transfer the block production reward for this block proposer:
             increase_value_for_key(&mut result, block.proposer().clone(), production_reward)?;
 
             // Now, let's compute the reward attached to each signed block reported by the block

@@ -57,7 +57,7 @@ use casper_types::{
     system::{
         auction::{
             EraValidators, UnbondingPurse, WithdrawPurse, ARG_ERA_END_TIMESTAMP_MILLIS,
-            ARG_EVICTED_VALIDATORS, ARG_VALIDATOR, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
+            ARG_EVICTED_VALIDATORS, ARG_REWARDS_MAP, ARG_VALIDATOR_PUBLIC_KEYS, AUCTION_DELAY_KEY,
             ERA_ID_KEY, LOCKED_FUNDS_PERIOD_KEY, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
             UNBONDING_DELAY_KEY, VALIDATOR_SLOTS_KEY,
         },
@@ -1989,7 +1989,7 @@ where
         correlation_id: CorrelationId,
         pre_state_hash: Digest,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
+        rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -2000,7 +2000,7 @@ where
         };
 
         let mut runtime_args = RuntimeArgs::new();
-        runtime_args.insert(ARG_VALIDATOR, proposer)?;
+        runtime_args.insert(ARG_REWARDS_MAP, rewards.clone())?;
 
         let executor = Executor::new(*self.config());
 
