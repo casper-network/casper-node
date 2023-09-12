@@ -58,3 +58,39 @@ impl<'a> Display for PayloadFormat<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::{Bytes, BytesMut};
+    use proptest_attr_macro::proptest;
+
+    use crate::util::PayloadFormat;
+
+    use super::Index;
+
+    #[proptest]
+    fn index_derefs_correctly(idx: usize) {
+        let buffer = BytesMut::new();
+        let index = Index::new(&buffer, idx);
+
+        assert_eq!(*index, idx);
+    }
+
+    #[test]
+    fn payload_formatting_works() {
+        let payload_small = Bytes::from_static(b"hello");
+        assert_eq!(
+            PayloadFormat(&payload_small).to_string(),
+            "68 65 6c 6c 6f (5 bytes)"
+        );
+
+        let payload_large = Bytes::from_static(b"goodbye, cruel world");
+        assert_eq!(
+            PayloadFormat(&payload_large).to_string(),
+            "67 6f 6f 64 62 79 65 2c 20 63 72 75 65 6c 20 77 ... (20 bytes)"
+        );
+
+        let payload_empty = Bytes::from_static(b"");
+        assert_eq!(PayloadFormat(&payload_empty).to_string(), "(0 bytes)");
+    }
+}
