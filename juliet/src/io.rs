@@ -178,7 +178,7 @@ pub struct IoCore<const N: usize, R, W> {
     writer: W,
     /// Read buffer for incoming data.
     buffer: BytesMut,
-    /// How many more bytes are required until the next parse.
+    /// How many bytes are required until the next parse.
     ///
     /// Used to ensure we don't attempt to parse too often.
     next_parse_at: usize,
@@ -427,9 +427,9 @@ where
                 // Reading incoming data.
                 read_result = read_until_bytesmut(&mut self.reader, &mut self.buffer, self.next_parse_at), if !self.shutting_down_due_to_err => {
                     // Our read function will not return before `read_until_bytesmut` has completed.
-                    let bytes_read = read_result.map_err(CoreError::ReadFailed)?;
+                    let read_complete = read_result.map_err(CoreError::ReadFailed)?;
 
-                    if bytes_read == 0 {
+                    if !read_complete {
                         // Remote peer hung up.
                         return Ok(None);
                     }
@@ -968,10 +968,15 @@ impl Handle {
 
 /// Read bytes into a buffer.
 ///
-/// Similar to [`AsyncReadExt::read_buf`], except it performs multiple read calls until at least
-/// `target` bytes are in `buf`.
+/// Similar to [`AsyncReadExt::read_buf`], except it performs zero or more read calls until at least
+/// `target` bytes are in `buf`. Specifically, this function will
 ///
-/// Will automatically retry if an [`io::ErrorKind::Interrupted`] is returned.
+/// 1. Read bytes from `reader`, put them into `buf`, until there are at least `target` bytes
+///    available in `buf` ready for consumption.
+/// 2. Immediately retry when encountering any [`io::ErrorKind::Interrupted`] errors.
+/// 3. Propagate upwards any other errors.
+/// 4. Return `false` with less than `target` bytes available in `buf if the connection was closed.
+/// 5. Return `true` on success, i.e. `buf` contains at least `target` bytes.
 ///
 /// # Cancellation safety
 ///
@@ -980,26 +985,27 @@ async fn read_until_bytesmut<'a, R>(
     reader: &'a mut R,
     buf: &mut BytesMut,
     target: usize,
-) -> io::Result<usize>
+) -> io::Result<bool>
 where
     R: AsyncReadExt + Sized + Unpin,
 {
-    let mut bytes_read = 0;
-    buf.reserve(target);
+    let extra_required = target.saturating_sub(buf.remaining());
+    buf.reserve(extra_required);
 
     while buf.remaining() < target {
         match reader.read_buf(buf).await {
-            Ok(n) => bytes_read += n,
-            Err(err) => {
-                if matches!(err.kind(), io::ErrorKind::Interrupted) {
-                    continue;
-                }
-                return Err(err);
+            Ok(0) => return Ok(false),
+            Ok(_) => {
+                // We read some more bytes, continue.
             }
+            Err(err) if matches!(err.kind(), io::ErrorKind::Interrupted) => {
+                // Ignore `Interrupted` errors, just retry.
+            }
+            Err(err) => return Err(err),
         }
     }
 
-    Ok(bytes_read)
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -1011,9 +1017,12 @@ mod tests {
         task::{Context, Poll},
     };
 
-    use futures::FutureExt;
+    use bytes::BytesMut;
+    use futures::{Future, FutureExt};
     use proptest_attr_macro::proptest;
     use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+
+    use super::read_until_bytesmut;
 
     /// A reader simulating a stuttering transmission.
     #[derive(Debug, Default)]
@@ -1069,6 +1078,9 @@ mod tests {
                         // We will read 1-13 bytes.
                         let max_run_length =
                             ((input_sequence[0] % ORDER + 1) as usize).min(input_sequence.len());
+
+                        assert!(max_run_length > 0);
+
                         self.push_data(&input_sequence[..max_run_length]);
 
                         // Remove from input sequence.
@@ -1250,5 +1262,77 @@ mod tests {
         }
 
         assert_eq!(output, input);
+    }
+
+    /// Polls a future in a busy loop.
+    fn poll_forever<F: Future>(mut fut: F) -> <F as Future>::Output {
+        loop {
+            let waker = futures::task::noop_waker();
+            let mut cx = Context::from_waker(&waker);
+
+            let fut_pinned = unsafe { Pin::new_unchecked(&mut fut) };
+            match fut_pinned.poll(&mut cx) {
+                Poll::Ready(val) => return val,
+                Poll::Pending => continue,
+            }
+        }
+    }
+
+    #[proptest]
+    fn read_until_bytesmut_into_empty_buffer_succeeds(input: Vec<u8>) {
+        // We are trying to read any sequence that is guaranteed to finish into an empty buffer:
+        for n in 1..(input.len()) {
+            let mut reader = StutteringReader::default();
+            reader.push_randomized_sequence(&input);
+
+            let mut buf = BytesMut::new();
+            let read_successful = poll_forever(read_until_bytesmut(&mut reader, &mut buf, n))
+                .expect("reading should not fail");
+
+            assert!(read_successful);
+            assert_eq!(buf[..n], input[..n]);
+        }
+    }
+
+    #[proptest]
+    fn read_until_bytesmut_eventually_fills_buffer(input: Vec<u8>) {
+        // Given a stuttering reader with the correct amount of input available, check if we can
+        // fill it going one-by-one.
+        let mut reader = StutteringReader::default();
+        reader.push_randomized_sequence(&input);
+
+        let mut buf = BytesMut::new();
+
+        for target in 0..=input.len() {
+            let read_complete = poll_forever(read_until_bytesmut(&mut reader, &mut buf, target))
+                .expect("reading should not fail");
+
+            assert!(read_complete);
+        }
+
+        assert_eq!(buf.to_vec(), input);
+    }
+
+    #[proptest]
+    fn read_until_bytesmut_gives_up_if_not_enough_available(input: Vec<u8>) {
+        for read_past in 1..(3 * input.len()) {
+            // Trying to read past a closed connection should result in `false` being returned.
+            let mut reader = StutteringReader::default();
+            reader.push_randomized_sequence(&input);
+
+            let mut buf = BytesMut::new();
+
+            let read_complete = poll_forever(read_until_bytesmut(
+                &mut reader,
+                &mut buf,
+                input.len() + read_past,
+            ))
+            .expect("reading should not fail");
+
+            assert!(!read_complete);
+
+            // We still should find out input in `buf`.
+            assert_eq!(buf.to_vec(), input);
+        }
     }
 }
