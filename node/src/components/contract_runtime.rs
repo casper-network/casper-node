@@ -793,7 +793,7 @@ impl ContractRuntime {
         let protocol_version = chainspec.protocol_version();
         let activation_point = chainspec.protocol_config.activation_point;
         let prune_batch_size = chainspec.core_config.prune_batch_size;
-        let maybe_rewards = if finalized_block.era_report().is_some() {
+        let rewards = if finalized_block.era_report().is_some() {
             match rewards::rewards_for_era(
                 effect_builder,
                 finalized_block.era_id(),
@@ -802,13 +802,13 @@ impl ContractRuntime {
             )
             .await
             {
-                Ok(rewards) => Some(rewards),
+                Ok(rewards) => rewards,
                 Err(e) => {
                     return fatal!(effect_builder, "Failed to compute the rewards: {e:?}").await
                 }
             }
         } else {
-            None
+            BTreeMap::new()
         };
 
         let BlockAndExecutionResults {
@@ -828,7 +828,7 @@ impl ContractRuntime {
                 activation_point.era_id(),
                 key_block_height_for_activation_point,
                 prune_batch_size,
-                maybe_rewards,
+                rewards,
             )
         })
         .await

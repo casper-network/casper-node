@@ -532,11 +532,7 @@ impl LargestSpecimen for Block {
                 "validator_count",
                 cache,
             )),
-            Some(btree_map_distinct_from_prop(
-                estimator,
-                "validator_count",
-                cache,
-            )),
+            btree_map_distinct_from_prop(estimator, "validator_count", cache),
             LargestSpecimen::largest_specimen(estimator, cache),
         )
         .expect("did not expect largest specimen creation of block to fail")

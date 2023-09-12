@@ -204,7 +204,7 @@ static BLOCK: Lazy<Block> = Lazy::new(|| {
             ),
             U512::from(601),
         );
-        Some(rewards)
+        rewards
     };
 
     Block::new(
@@ -1468,7 +1468,7 @@ impl Block {
         state_root_hash: Digest,
         finalized_block: FinalizedBlock,
         next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
-        rewards: Option<BTreeMap<PublicKey, U512>>,
+        rewards: BTreeMap<PublicKey, U512>,
         protocol_version: ProtocolVersion,
     ) -> Result<Self, BlockCreationError> {
         let body = BlockBody::new(
@@ -1480,20 +1480,19 @@ impl Block {
 
         let body_hash = body.hash();
 
-        let era_end = match (
-            finalized_block.era_report,
-            next_era_validator_weights,
-            rewards,
-        ) {
-            (None, None, None) => None,
-            (Some(era_report), Some(next_era_validator_weights), Some(rewards)) => Some(
-                EraEnd::new(*era_report, next_era_validator_weights, rewards),
-            ),
-            (maybe_era_report, maybe_next_era_validator_weights, maybe_rewards) => {
+        let era_end = match (finalized_block.era_report, next_era_validator_weights) {
+            // Rewards must always be empty in non-switch blocks:
+            (None, None) if rewards.is_empty() => None,
+            (Some(era_report), Some(next_era_validator_weights)) => Some(EraEnd::new(
+                *era_report,
+                next_era_validator_weights,
+                rewards,
+            )),
+            (maybe_era_report, maybe_next_era_validator_weights) => {
                 return Err(BlockCreationError::CouldNotCreateEraEnd {
                     maybe_era_report,
                     maybe_next_era_validator_weights,
-                    maybe_rewards,
+                    rewards,
                 })
             }
         };
@@ -1613,6 +1612,12 @@ impl Block {
         self.header.timestamp()
     }
 
+    /// Returns true if block is Genesis.
+    /// Genesis child block is from era 0 and height 0.
+    pub(crate) fn is_genesis(&self) -> bool {
+        self.header.is_genesis()
+    }
+
     /// Check the integrity of a block by hashing its body and header
     #[allow(clippy::result_large_err)]
     pub fn verify(&self) -> Result<(), BlockValidationError> {
@@ -1722,10 +1727,7 @@ impl Block {
             .clone()
             .era_report
             .map(|_| BTreeMap::<PublicKey, U512>::default());
-        let rewards = finalized_block
-            .clone()
-            .era_report
-            .map(|_| BTreeMap::<PublicKey, U512>::default());
+        let rewards = BTreeMap::<PublicKey, U512>::default();
 
         Block::new(
             parent_hash,
@@ -1777,11 +1779,6 @@ impl Block {
             None
         } else {
             Some(validator_weights)
-        };
-        let rewards = if rewards.is_empty() {
-            None
-        } else {
-            Some(rewards)
         };
 
         Block::new(

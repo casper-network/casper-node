@@ -1,9 +1,8 @@
 use std::{collections::BTreeMap, ops::Range, sync::Arc};
 
-use either::Either;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use num_rational::Ratio;
-use num_traits::Zero;
+use num_traits::{CheckedAdd, CheckedMul};
 
 use crate::{
     contract_runtime::EraValidatorsRequest,
@@ -27,6 +26,7 @@ impl<T> ReactorEventT for T where T: Send + From<StorageRequest> + From<Contract
 struct ErasInfo(BTreeMap<EraId, EraInfo>);
 
 /// The era information needed in the rewards computation:
+#[derive(Clone)]
 struct EraInfo {
     weights: BTreeMap<PublicKey, U512>,
     total_weights: U512,
@@ -45,6 +45,8 @@ pub enum RewardsError {
     ValidatorKeyNotInEra(Box<PublicKey>),
     /// We didn't have a required switch block.
     MissingSwitchBlock(EraId),
+    /// We got an overflow while computing something.
+    ArithmeticOverflow,
 }
 
 /// We could not fetch the asked information for the given eras.
@@ -65,9 +67,9 @@ impl ErasInfo {
     pub async fn populate<REv: ReactorEventT>(
         effect_builder: EffectBuilder<REv>,
         protocol_version: ProtocolVersion,
-        block_hashs: impl IntoIterator<Item = (EraId, BlockHash)>,
+        block_hashes: impl IntoIterator<Item = (EraId, BlockHash)>,
     ) -> Result<Self, PopulateError> {
-        let eras_info = stream::iter(block_hashs)
+        let eras_info = stream::iter(block_hashes)
             .then(|(era_id, block_hash)| async move {
                 let state_root_hash = effect_builder
                     .get_block_from_storage(block_hash)
@@ -81,9 +83,11 @@ impl ErasInfo {
                     ))
                     .await
                     .map_err(PopulateError::FailedToFetchEra)?
-                    .into_values()
-                    .next()
-                    .ok_or_else(|| PopulateError::NoEraReturned(state_root_hash))?;
+                    // We consume the map to not clone the value:
+                    .into_iter()
+                    .find(|(key, _)| key == &era_id)
+                    .ok_or_else(|| PopulateError::NoEraReturned(state_root_hash))?
+                    .1;
                 let total_supply = effect_builder
                     .get_total_supply(state_root_hash)
                     .await
@@ -111,17 +115,26 @@ impl ErasInfo {
         Ok(eras_info)
     }
 
+    /// We cannot get the genesis info from a root hash, so we copy it from era 1 when needed.
+    pub fn copy_genesis_info_from_era_1(&mut self) -> Result<(), RewardsError> {
+        let era_1 = EraId::from(1);
+        let era_1_info = self
+            .0
+            .get(&era_1)
+            .ok_or(RewardsError::EraIdNotInEraRange(era_1))?;
+        self.0.insert(EraId::from(0), era_1_info.clone());
+
+        Ok(())
+    }
+
     /// Returns the validators from a given era.
     pub fn validator_keys(
         &self,
         era_id: EraId,
-    ) -> Result<
-        Either<impl Iterator<Item = PublicKey> + '_, impl Iterator<Item = PublicKey> + '_>,
-        RewardsError,
-    > {
-        if era_id.is_genesis() {
-            return Ok(Either::Left(std::iter::empty()));
-        }
+    ) -> Result<impl Iterator<Item = PublicKey> + '_, RewardsError> {
+        //if era_id.is_genesis() {
+        //    return Ok(Either::Left(std::iter::empty()));
+        //}
 
         let keys = self
             .0
@@ -131,15 +144,15 @@ impl ErasInfo {
             .keys()
             .cloned();
 
-        Ok(Either::Right(keys))
+        Ok(keys)
     }
 
-    /// Returns the total potential reward pot per block.
+    /// Returns the total potential reward per block.
     /// Since it is per block, we do not care about the expected number of blocks per era.
-    pub fn reward_pot(&self, era_id: EraId) -> Result<Ratio<U512>, RewardsError> {
-        if era_id.is_genesis() {
-            return Ok(Ratio::zero());
-        }
+    pub fn reward(&self, era_id: EraId) -> Result<Ratio<U512>, RewardsError> {
+        //if era_id.is_genesis() {
+        //    return Ok(Ratio::zero());
+        //}
 
         Ok(self
             .0
@@ -154,9 +167,9 @@ impl ErasInfo {
         era_id: EraId,
         validator: &PublicKey,
     ) -> Result<Ratio<U512>, RewardsError> {
-        if era_id.is_genesis() {
-            return Ok(Ratio::zero());
-        }
+        //if era_id.is_genesis() {
+        //    return Ok(Ratio::zero());
+        //}
 
         let era = self
             .0
@@ -171,7 +184,7 @@ impl ErasInfo {
     }
 
     /// For debugging purpose.
-    fn list_of_eras_id(&self) -> Vec<u64> {
+    fn era_ids(&self) -> Vec<u64> {
         self.0.keys().map(|id| id.value()).collect()
     }
 }
@@ -186,19 +199,35 @@ pub(crate) async fn rewards_for_era<REv: ReactorEventT>(
         map: &mut BTreeMap<PublicKey, Ratio<U512>>,
         key: PublicKey,
         value: Ratio<U512>,
-    ) {
+    ) -> Result<(), RewardsError> {
         // We only want to include non-zero values into the rewards, because it does not make a lot
         // of sense to mint and transfer a reward of 0.
         // This typically concerns the producer of genesis, for example, which is the system.
         if value.numer() != &U512::zero() {
-            map.entry(key)
-                .and_modify(|amount| *amount += value)
-                .or_insert(value);
+            match map.entry(key) {
+                std::collections::btree_map::Entry::Vacant(entry) => {
+                    entry.insert(value);
+                }
+                std::collections::btree_map::Entry::Occupied(mut entry) => {
+                    let new_value = (*entry.get())
+                        .checked_add(&value)
+                        .ok_or(RewardsError::ArithmeticOverflow)?;
+                    *entry.get_mut() = new_value;
+                }
+            }
         }
+
+        Ok(())
     }
 
     fn to_ratio_u512(ratio: Ratio<u64>) -> Ratio<U512> {
         Ratio::new(U512::from(*ratio.numer()), U512::from(*ratio.denom()))
+    }
+
+    // Special case: genesis block does not yield any reward, because there is no block producer,
+    // and no previous blocks whose signatures are to be rewarded:
+    if era_id.is_genesis() {
+        return Ok(BTreeMap::new());
     }
 
     // All the blocks that may appear as a signed block. They are collected upfront, so that we
@@ -206,44 +235,48 @@ pub(crate) async fn rewards_for_era<REv: ReactorEventT>(
     //
     // They are sorted from the oldest to the newest:
     let cited_blocks = {
-        let cited_block_height_start = if era_id.is_genesis() {
-            0
-        } else {
+        let cited_block_height_start = {
             let previous_era_id = era_id.saturating_sub(1);
             let previous_era_switch_block_header = effect_builder
                 .get_switch_block_header_by_era_id_from_storage(previous_era_id)
                 .await
                 .ok_or(RewardsError::MissingSwitchBlock(previous_era_id))?;
 
+            // Here we do not substract 1, because we want one block more:
             previous_era_switch_block_header
                 .height()
                 .saturating_sub(chainspec.core_config.signature_rewards_max_delay)
         };
         let range_to_fetch = cited_block_height_start..switch_block_height;
 
+        let result = collect_past_blocks_batched(effect_builder, range_to_fetch.clone()).await;
+
         tracing::info!(
-            "[era {}] block range to fetch: {:?}",
-            era_id.value(),
-            range_to_fetch
+            era_id = %era_id.value(),
+            range_requested = ?range_to_fetch,
+            num_fetched_blocks = %result.iter().flatten().count(),
+            num_requested_blocks = %result.len(),
+            "blocks fetched",
         );
 
-        collect_past_blocks_batched(effect_builder, range_to_fetch).await
+        result
     };
-
-    //tracing::info!("blocks actually fetched: {cited_blocks:?}");
-    tracing::info!(
-        "[era {}] blocks fetched: {}/{}",
-        era_id.value(),
-        cited_blocks.iter().flatten().count(),
-        cited_blocks.len(),
-    );
 
     let eras_info = {
         let mut cited_blocks = cited_blocks.iter().flatten();
+
         // We take the first block, then every switch block to get all the needed hashes to fetch
-        // needed eras:
-        let hashes_and_eras: Vec<_> = cited_blocks
-            .next()
+        // needed eras. We take the first block, because we need it for the first era.
+        // If the first block is itself a switch block, that's fine, because we fetch one block more
+        // to handle this case.
+
+        let oldest_block = cited_blocks.next();
+
+        // If the oldest block is genesis, we add the validator information for genesis (era 0) from
+        // era 1, because it's the same:
+        let oldest_block_is_genesis = oldest_block.map_or(false, |block| block.is_genesis());
+
+        let hashes_and_eras: Vec<_> = oldest_block
             .into_iter()
             .chain(cited_blocks.filter(|&block| block.is_switch()))
             .map(|block| {
@@ -259,26 +292,28 @@ pub(crate) async fn rewards_for_era<REv: ReactorEventT>(
             })
             .collect();
 
-        tracing::info!(
-            "[era {}] will try and fetch {} eras",
-            era_id.value(),
-            hashes_and_eras.len()
-        );
+        let num_eras_to_fetch = hashes_and_eras.len() + usize::from(oldest_block_is_genesis);
 
-        ErasInfo::populate(
+        let mut result = ErasInfo::populate(
             effect_builder,
             chainspec.protocol_version(),
             hashes_and_eras,
         )
         .await
-        .map_err(RewardsError::PopulateError)?
-    };
+        .map_err(RewardsError::PopulateError)?;
 
-    tracing::info!(
-        "[era {}] fetched eras: {:?}",
-        era_id.value(),
-        eras_info.list_of_eras_id()
-    );
+        if oldest_block_is_genesis {
+            result.copy_genesis_info_from_era_1()?;
+        }
+
+        tracing::info!(
+            era_id = %era_id.value(),
+            %num_eras_to_fetch,
+            eras_fetched = ?result.era_ids(),
+        );
+
+        result
+    };
 
     let collection_proportion =
         to_ratio_u512(chainspec.core_config.collection_rewards_proportion());
@@ -287,28 +322,32 @@ pub(crate) async fn rewards_for_era<REv: ReactorEventT>(
 
     // Reward for producing a block from this era:
     let production_reward = to_ratio_u512(chainspec.core_config.production_rewards_proportion())
-        * eras_info.reward_pot(era_id)?;
+        .checked_mul(&eras_info.reward(era_id)?)
+        .ok_or(RewardsError::ArithmeticOverflow)?;
 
     // Collect all rewards as a ratio:
     let full_reward_for_validators = {
         let mut result = BTreeMap::new();
 
-        let blocks_from_current_era = cited_blocks.iter().filter_map(|maybe_block_with_metadata| {
-            maybe_block_with_metadata
+        let blocks_from_current_era = cited_blocks.iter().filter_map(|maybe_block| {
+            maybe_block
                 .as_ref()
                 .filter(|block| block.era_id() == era_id)
         });
 
         for block in blocks_from_current_era {
             // Reward for gathering all the finality signatures for this block:
-            let collection_reward = eras_info.weight_ratio(era_id, block.proposer())?
-                * collection_proportion
-                * eras_info.reward_pot(era_id)?;
-            increase_value_for_key(
-                &mut result,
-                block.proposer().clone(),
-                collection_reward + production_reward,
-            );
+            //This needs to be proportional to the weight of signatures reported in the block, also
+            //let collection_reward = eras_info
+            //    .weight_ratio(era_id, block.proposer())?
+            //    .checked_mul(&eras_info.weight_ratio(todo!(), todo!())?)
+            //    .ok_or(RewardsError::ArithmeticOverflow)?
+            //    .checked_mul(&collection_proportion)
+            //    .ok_or(RewardsError::ArithmeticOverflow)?
+            //    .checked_mul(&eras_info.reward(era_id)?)
+            //    .ok_or(RewardsError::ArithmeticOverflow)?;
+
+            increase_value_for_key(&mut result, block.proposer().clone(), production_reward)?;
 
             // Now, let's compute the reward attached to each signed block reported by the block
             // we examine:
@@ -331,9 +370,25 @@ pub(crate) async fn rewards_for_era<REv: ReactorEventT>(
                     // Reward for contributing to the finality signature, ie signing this block:
                     let contribution_reward = eras_info
                         .weight_ratio(signed_block_era, &signing_validator)?
-                        * contribution_proportion
-                        * eras_info.reward_pot(signed_block_era)?;
-                    increase_value_for_key(&mut result, signing_validator, contribution_reward);
+                        .checked_mul(&contribution_proportion)
+                        .ok_or(RewardsError::ArithmeticOverflow)?
+                        .checked_mul(&eras_info.reward(signed_block_era)?)
+                        .ok_or(RewardsError::ArithmeticOverflow)?;
+                    // Reward for gathering this signature. It is both weighted by the block
+                    // producing/signature collecting validator, and the signing validator:
+                    let collection_reward = eras_info
+                        .weight_ratio(signed_block_era, &signing_validator)?
+                        .checked_mul(&collection_proportion)
+                        .ok_or(RewardsError::ArithmeticOverflow)?
+                        .checked_mul(&eras_info.reward(signed_block_era)?)
+                        .ok_or(RewardsError::ArithmeticOverflow)?;
+
+                    increase_value_for_key(&mut result, signing_validator, contribution_reward)?;
+                    increase_value_for_key(
+                        &mut result,
+                        block.proposer().clone(),
+                        collection_reward,
+                    )?;
                 }
             }
         }
@@ -344,7 +399,7 @@ pub(crate) async fn rewards_for_era<REv: ReactorEventT>(
     // Return the rewards as plain U512:
     Ok(full_reward_for_validators
         .into_iter()
-        .map(|(key, amount)| (key, amount.into()))
+        .map(|(key, amount)| (key, amount.to_integer()))
         .collect())
 }
 

@@ -188,9 +188,7 @@ impl TestBlockBuilder {
         let next_era_validator_weights = finalized_block
             .era_report()
             .map(|_| BTreeMap::<PublicKey, U512>::default());
-        let rewards = finalized_block
-            .era_report()
-            .map(|_| BTreeMap::<PublicKey, U512>::default());
+        let rewards = BTreeMap::new();
 
         Block::new(
             parent_hash,

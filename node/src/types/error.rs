@@ -29,8 +29,8 @@ pub enum BlockCreationError {
         maybe_era_report: Option<Box<EraReport>>,
         /// An optional map of the next era validator weights used to construct an `EraEnd`.
         maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
-        /// An optional map of this era validator rewards used to construct an `EraEnd`.
-        maybe_rewards: Option<BTreeMap<PublicKey, U512>>,
+        /// An map of this era validator rewards used to construct an `EraEnd`.
+        rewards: BTreeMap<PublicKey, U512>,
     },
     /// Failed to convert to a `CLValue`.
     #[error("{0}")]
