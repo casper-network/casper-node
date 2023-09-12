@@ -538,7 +538,7 @@ pub trait Auction:
     /// according to `reward_factors` returned by the consensus component.
     // TODO: rework EraInfo and other related structs, methods, etc. to report correct era-end
     // totals of per-block rewards
-    fn distribute(&mut self, rewards: BTreeMap<PublicKey, Ratio<U512>>) -> Result<(), Error> {
+    fn distribute(&mut self, rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error> {
         if self.get_caller() != PublicKey::System.to_account_hash() {
             return Err(Error::InvalidCaller);
         }
@@ -549,9 +549,9 @@ pub trait Auction:
 
         for (proposer, reward_amount) in rewards
             .into_iter()
-            .filter(|(key, amount)| key != &PublicKey::System && amount.numer().is_zero() == false)
+            .filter(|(key, amount)| key != &PublicKey::System && !amount.is_zero())
         {
-            let total_reward: Ratio<U512> = todo!();
+            let total_reward = Ratio::from(reward_amount);
             let recipient = seigniorage_recipients
                 .get(&proposer)
                 .ok_or(Error::ValidatorNotFound)?;
@@ -598,8 +598,7 @@ pub trait Auction:
                 .map(|(_delegator_hash, amount, _bonding_purse)| *amount)
                 .sum();
 
-            let validators_part: Ratio<U512> = total_reward - Ratio::from(total_delegator_payout);
-            let validator_reward = validators_part.to_integer();
+            let validator_reward = reward_amount - total_delegator_payout;
             let validator_bonding_purse = detail::reinvest_validator_reward(
                 self,
                 seigniorage_allocations,

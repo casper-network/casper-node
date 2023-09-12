@@ -130,13 +130,12 @@ pub fn execute_finalized_block(
     let scratch_state = engine_state.get_scratch_engine_state();
 
     // Pay out block rewards
-    let proposer = *finalized_block.proposer();
     if rewards.is_empty() == false {
         state_root_hash = scratch_state.distribute_block_rewards(
             CorrelationId::new(),
             state_root_hash,
             protocol_version,
-            proposer,
+            &rewards,
             next_block_height,
             block_time,
         )?;

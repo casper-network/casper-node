@@ -52,6 +52,8 @@ pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
 pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
 /// Named constant for `evicted_validators`;
 pub const ARG_EVICTED_VALIDATORS: &str = "evicted_validators";
+/// Named constant for `rewards_map`;
+pub const ARG_REWARDS_MAP: &str = "rewards_map";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";
