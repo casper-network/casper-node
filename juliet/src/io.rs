@@ -1001,3 +1001,254 @@ where
 
     Ok(bytes_read)
 }
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        collections::VecDeque,
+        io,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+
+    use futures::FutureExt;
+    use proptest_attr_macro::proptest;
+    use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+
+    /// A reader simulating a stuttering transmission.
+    #[derive(Debug, Default)]
+    struct StutteringReader {
+        /// Input events happening in the future.
+        input: VecDeque<io::Result<Option<Box<[u8]>>>>,
+    }
+
+    impl StutteringReader {
+        /// Adds a successful read to the reader.
+        fn push_data<T: Into<Box<[u8]>>>(&mut self, data: T) {
+            self.input.push_back(Ok(Some(data.into())));
+        }
+
+        /// Adds a delay, causing `Poll::Pending` to be returned by `AsyncRead::poll_read`.
+        fn push_pause(&mut self) {
+            self.input.push_back(Ok(None));
+        }
+
+        /// Adds an error to be produced by the reader.
+        fn push_error(&mut self, e: io::Error) {
+            self.input.push_back(Err(e))
+        }
+
+        /// Splits up a sequence of bytes into a series of reads, delays and intermittent
+        /// `Interrupted` errors.
+        ///
+        /// Assumes that `input_sequence` is a randomized byte string, as it will be used as a
+        /// source of entropy.
+        fn push_randomized_sequence(&mut self, mut input_sequence: &[u8]) {
+            /// Prime group order and maximum sequence length.
+            const ORDER: u8 = 13;
+
+            fn gadd(a: u8, b: u8) -> u8 {
+                (a % ORDER + b % ORDER) % ORDER
+            }
+
+            // State manipulated for pseudo-randomness.
+            let mut state = 5;
+
+            while !input_sequence.is_empty() {
+                // Mix in bytes from the input sequence.
+                state = gadd(state, input_sequence[0]);
+
+                // Decide what to do next:
+                match state {
+                    // 1/ORDER chance of a pause.
+                    3 => self.push_pause(),
+                    // 1/ORDER chance of an "interrupted" error.
+                    7 => self.push_error(io::Error::new(io::ErrorKind::Interrupted, "interrupted")),
+                    // otherwise, determine a random chunk length and add a successful read.
+                    _ => {
+                        // We will read 1-13 bytes.
+                        let max_run_length =
+                            ((input_sequence[0] % ORDER + 1) as usize).min(input_sequence.len());
+                        self.push_data(&input_sequence[..max_run_length]);
+
+                        // Remove from input sequence.
+                        input_sequence = &input_sequence[max_run_length..];
+
+                        if input_sequence.is_empty() {
+                            break;
+                        }
+                    }
+                }
+
+                // Increment state if it would be cyclical otherwise.
+                if state == gadd(state, input_sequence[0]) {
+                    state = (state + 1) % ORDER;
+                }
+            }
+        }
+    }
+
+    impl AsyncRead for StutteringReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            match self.input.pop_front() {
+                Some(Ok(Some(data))) => {
+                    // Slightly slower to initialize twice, but safer. We don't need peak
+                    // performance for this test code.
+                    let dest = buf.initialize_unfilled();
+                    let split_point = dest.len().min(data.len());
+
+                    let (to_write, remainder) = data.split_at(split_point);
+                    dest[0..split_point].copy_from_slice(to_write);
+                    buf.advance(to_write.len());
+
+                    // If we did not read the entire chunk, add back to input stream.
+                    if !remainder.is_empty() {
+                        self.input.push_front(Ok(Some(remainder.into())));
+                    }
+
+                    Poll::Ready(Ok(()))
+                }
+                Some(Ok(None)) => {
+                    // Return one pending, but ensure we're woken up immediately afterwards.
+
+                    let waker = cx.waker().clone();
+                    waker.wake();
+
+                    Poll::Pending
+                }
+                Some(Err(e)) => {
+                    // Return the scheduled error.
+                    Poll::Ready(Err(e))
+                }
+                None => {
+                    // No data to read, the 0-byte read will be detected by the caller.
+
+                    Poll::Ready(Ok(()))
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn stuttering_reader_reads_correctly() {
+        let mut reader = StutteringReader::default();
+
+        reader.push_data(&b"foo"[..]);
+        reader.push_error(io::Error::new(io::ErrorKind::Interrupted, "interrupted"));
+        reader.push_data(&b"bar"[..]);
+        reader.push_pause();
+        reader.push_data(&b"baz"[..]);
+        reader.push_pause();
+        reader.push_error(io::Error::new(io::ErrorKind::BrokenPipe, "broken pipe"));
+
+        let mut buf = [0u8; 1024];
+
+        let bytes_read = reader
+            .read(&mut buf)
+            .now_or_never()
+            .expect("should be ready")
+            .expect("should not fail");
+
+        assert_eq!(bytes_read, 3);
+        assert_eq!(&buf[..3], b"foo");
+
+        // Interrupted error.
+        let interrupted_err = reader
+            .read(&mut buf)
+            .now_or_never()
+            .expect("should be ready")
+            .expect_err("should fail");
+        assert_eq!(interrupted_err.to_string(), "interrupted");
+
+        // Let's try a partial read next.
+
+        let bytes_read = reader
+            .read(&mut buf[0..2])
+            .now_or_never()
+            .expect("should be ready")
+            .expect("should not fail");
+
+        assert_eq!(bytes_read, 2);
+        assert_eq!(&buf[..2], b"ba");
+
+        let bytes_read = reader
+            .read(&mut buf)
+            .now_or_never()
+            .expect("should be ready")
+            .expect("should not fail");
+
+        assert_eq!(bytes_read, 1);
+        assert_eq!(&buf[..1], b"r");
+
+        assert!(
+            reader.read(&mut buf).now_or_never().is_none(),
+            "expected pending read"
+        );
+
+        // The waker has been called again already, so we attempt another read.
+        let bytes_read = reader
+            .read(&mut buf)
+            .now_or_never()
+            .expect("should be ready")
+            .expect("should not fail");
+
+        assert_eq!(bytes_read, 3);
+        assert_eq!(&buf[..3], b"baz");
+
+        assert!(
+            reader.read(&mut buf).now_or_never().is_none(),
+            "expected pending read"
+        );
+
+        let broken_pipe_err = reader
+            .read(&mut buf)
+            .now_or_never()
+            .expect("should be ready")
+            .expect_err("should fail");
+        assert_eq!(broken_pipe_err.to_string(), "broken pipe");
+
+        // The final read should be a 0-length read.
+        let bytes_read = reader
+            .read(&mut buf)
+            .now_or_never()
+            .expect("should be ready")
+            .expect("should not fail");
+
+        assert_eq!(bytes_read, 0);
+    }
+
+    #[proptest]
+    fn randomized_sequences_build_correctly(input: Vec<u8>) {
+        let mut reader = StutteringReader::default();
+        reader.push_randomized_sequence(&input);
+
+        let mut output: Vec<u8> = Vec::with_capacity(input.len());
+        let mut buffer = [0u8; 512];
+        loop {
+            match reader.read(&mut buffer).now_or_never() {
+                None => {
+                    // `Poll::Pending`, ignore and try again.
+                }
+                Some(Ok(0)) => {
+                    // We are done reading.
+                    break;
+                }
+                Some(Ok(n)) => {
+                    output.extend(&buffer[..n]);
+                }
+                Some(Err(e)) if e.kind() == io::ErrorKind::Interrupted => {
+                    // Try again.
+                }
+                Some(Err(e)) => {
+                    panic!("did not expect error {}", e);
+                }
+            }
+        }
+
+        assert_eq!(output, input);
+    }
+}
