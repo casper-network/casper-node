@@ -890,12 +890,24 @@ impl<const N: usize> JulietProtocol<N> {
                     channel.cancellation_allowance -= 1;
                     buffer.advance(Header::SIZE);
 
-                    // TODO: What to do with partially received multi-frame request? (needs tests)
-
                     #[cfg(feature = "tracing")]
                     {
                         use tracing::trace;
                         trace!(%header, "received request cancellation");
+                    }
+
+                    // Multi-frame transfers that have not yet been completed are a special case,
+                    // since they have never been reported, we can cancel these internally.
+                    if let Some(in_progress_header) =
+                        channel.current_multiframe_receiver.in_progress_header()
+                    {
+                        // We already know it is a cancellation and we are on the correct channel.
+                        if in_progress_header.id() == header.id() {
+                            // Cancel transfer.
+                            channel.current_multiframe_receiver = MultiframeReceiver::default();
+                            // Remove tracked request.
+                            channel.incoming_requests.remove(&header.id());
+                        }
                     }
 
                     // Check incoming request. If it was already cancelled or answered, ignore, as
@@ -974,8 +986,8 @@ mod tests {
     use crate::{
         header::{ErrorKind, Header, Kind},
         protocol::{
-            create_unchecked_response, payload_is_multi_frame, CompletedRead,
-            LocalProtocolViolation,
+            create_unchecked_response, multiframe::MultiframeReceiver, payload_is_multi_frame,
+            CompletedRead, LocalProtocolViolation,
         },
         varint::Varint32,
         ChannelConfiguration, ChannelId, Id, Outcome,
@@ -2380,5 +2392,72 @@ mod tests {
             let alice_result = env.inject_and_send_response(Bob, id, payload.get());
             env.assert_is_error_message(ErrorKind::FictitiousRequest, id, alice_result);
         }
+    }
+
+    #[test]
+    fn multiframe_messages_cancelled_correctly_after_partial_reception() {
+        // We send a single frame of a multi-frame payload.
+        let payload = VaryingPayload::MultiFrame;
+
+        let mut env = TestingSetup::new();
+
+        let expected_id = Id::new(1);
+        let channel = env.common_channel;
+
+        // Alice sends a multi-frame request.
+        let alices_multiframe_request = env
+            .get_peer_mut(Alice)
+            .create_request(channel, payload.get())
+            .expect("should be able to create request");
+        let req_header = alices_multiframe_request.header();
+
+        assert!(alices_multiframe_request.is_multi_frame(env.max_frame_size));
+
+        let frames = alices_multiframe_request.frames();
+        let (frame, _additional_frames) = frames.next_owned(env.max_frame_size);
+        let mut buffer = BytesMut::from(frame.to_bytes().as_ref());
+
+        // The outcome of receiving a single frame should be a begun multi-frame read and 4 bytes
+        // incompletion asking for the next header.
+        let outcome = env.get_peer_mut(Bob).process_incoming(&mut buffer);
+        assert_eq!(outcome, Outcome::incomplete(4));
+
+        let bobs_channel = &env.get_peer_mut(Bob).channels[channel.get() as usize];
+        let mut expected = HashSet::new();
+        expected.insert(expected_id);
+        assert_eq!(bobs_channel.incoming_requests, expected);
+        assert!(matches!(
+            bobs_channel.current_multiframe_receiver,
+            MultiframeReceiver::InProgress {
+                header,
+                ..
+            } if header == req_header
+        ));
+
+        // Now send the cancellation.
+        let cancellation_frames = env
+            .get_peer_mut(Alice)
+            .cancel_request(channel, expected_id)
+            .expect("alice should be able to create the cancellation")
+            .expect("should required to send cancellation")
+            .frames();
+        let (cancellation_frame, _additional_frames) =
+            cancellation_frames.next_owned(env.max_frame_size);
+        let mut buffer = BytesMut::from(cancellation_frame.to_bytes().as_ref());
+
+        let bobs_outcome = env.get_peer_mut(Bob).process_incoming(&mut buffer);
+
+        // Processing the cancellation should have no external effect.
+        assert_eq!(bobs_outcome, Outcome::incomplete(4));
+
+        // Finally, check if the state is as expected. Since it is an incomplete multi-channel
+        // message, we must cancel the transfer early.
+        let bobs_channel = &env.get_peer_mut(Bob).channels[channel.get() as usize];
+
+        assert!(bobs_channel.incoming_requests.is_empty());
+        assert!(matches!(
+            bobs_channel.current_multiframe_receiver,
+            MultiframeReceiver::Ready
+        ));
     }
 }

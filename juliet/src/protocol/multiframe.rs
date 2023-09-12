@@ -179,10 +179,20 @@ impl MultiframeReceiver {
     /// Determines whether given `new_header` would be a new transfer if accepted.
     ///
     /// If `false`, `new_header` would indicate a continuation of an already in-progress transfer.
+    #[inline]
     pub(super) fn is_new_transfer(&self, new_header: Header) -> bool {
         match self {
             MultiframeReceiver::Ready => true,
             MultiframeReceiver::InProgress { header, .. } => *header != new_header,
+        }
+    }
+
+    /// Returns the ID of the in-progress transfer.
+    #[inline]
+    pub(super) fn in_progress_header(&self) -> Option<Header> {
+        match self {
+            MultiframeReceiver::Ready => None,
+            MultiframeReceiver::InProgress { header, .. } => Some(*header),
         }
     }
 }
