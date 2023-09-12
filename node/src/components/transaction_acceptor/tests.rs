@@ -27,9 +27,10 @@ use casper_types::{
     addressable_entity::{AddressableEntity, NamedKeys},
     bytesrepr::Bytes,
     testing::TestRng,
-    Block, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy, DeployConfigurationFailure,
-    EraId, Package, PublicKey, RuntimeArgs, SecretKey, StoredValue, TestTransactionV1Builder,
-    Timestamp, Transaction, TransactionV1, TransactionV1Kind, URef, U512,
+    Block, BlockV2, CLValue, Chainspec, ChainspecRawBytes, Contract, Deploy,
+    DeployConfigurationFailure, EraId, Package, PublicKey, RuntimeArgs, SecretKey, StoredValue,
+    TestBlockBuilder, TestTransactionV1Builder, Timestamp, Transaction, TransactionV1,
+    TransactionV1Kind, URef, U512,
 };
 
 use super::*;
@@ -800,13 +801,14 @@ impl reactor::Reactor for Reactor {
 }
 
 fn put_block_to_storage_and_mark_complete(
-    block: Arc<Block>,
+    block: Arc<BlockV2>,
     result_sender: Sender<bool>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     |effect_builder: EffectBuilder<Event>| {
         async move {
             let block_height = block.height();
-            let result = effect_builder.put_block_to_storage(block).await;
+            let block: Block = (*block).clone().into();
+            let result = effect_builder.put_block_to_storage(Arc::new(block)).await;
             effect_builder.mark_block_completed(block_height).await;
             result_sender
                 .send(result)
@@ -861,7 +863,8 @@ fn inject_balance_check_for_peer(
     responder: Responder<Result<(), super::Error>>,
 ) -> impl FnOnce(EffectBuilder<Event>) -> Effects<Event> {
     let txn = txn.clone();
-    let block_header = Box::new(Block::random(rng).header().clone());
+    let block = TestBlockBuilder::new().build(rng);
+    let block_header = Box::new(block.header().clone());
     |effect_builder: EffectBuilder<Event>| {
         let event_metadata = Box::new(EventMetadata::new(txn, source, Some(responder)));
         effect_builder
@@ -898,7 +901,7 @@ async fn run_transaction_acceptor_without_timeout(
     .await
     .unwrap();
 
-    let block = Arc::new(Block::random(rng));
+    let block = Arc::new(TestBlockBuilder::new().build(rng));
     // Create a channel to assert that the block was successfully injected into storage.
     let (result_sender, result_receiver) = oneshot::channel();
 

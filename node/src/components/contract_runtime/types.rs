@@ -5,7 +5,7 @@ use datasize::DataSize;
 use casper_execution_engine::engine_state::GetEraValidatorsRequest;
 use casper_types::{
     execution::{Effects, ExecutionResult},
-    Block, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion, PublicKey, U512,
+    BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::types::ApprovalsHashes;
@@ -98,7 +98,7 @@ pub(crate) struct StepEffectsAndUpcomingEraValidators {
 #[derive(Clone, Debug, DataSize)]
 pub struct BlockAndExecutionResults {
     /// The [`Block`] the contract runtime executed.
-    pub(crate) block: Arc<Block>,
+    pub(crate) block: Arc<BlockV2>,
     /// The [`ApprovalsHashes`] for the deploys in this block.
     pub(crate) approvals_hashes: Box<ApprovalsHashes>,
     /// The results from executing the deploys in the block.

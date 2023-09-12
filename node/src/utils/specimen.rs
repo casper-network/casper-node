@@ -21,12 +21,12 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::Bytes,
     crypto::{sign, PublicKey, Signature},
-    AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures, ChunkWithProof,
-    ContractPackageHash, Deploy, DeployApproval, DeployApprovalsHash, DeployHash, DeployId, Digest,
-    EraEnd, EraId, EraReport, ExecutableDeployItem, FinalitySignature, FinalitySignatureId,
-    ProtocolVersion, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader, TimeDiff, Timestamp,
-    Transaction, TransactionId, TransactionV1, TransactionV1ApprovalsHash, TransactionV1Builder,
-    TransactionV1Hash, TransactionV1Kind, URef, KEY_HASH_LENGTH, U512,
+    AccessRights, AsymmetricType, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2,
+    ChunkWithProof, ContractPackageHash, Deploy, DeployApproval, DeployApprovalsHash, DeployHash,
+    DeployId, Digest, EraEnd, EraId, EraReport, ExecutableDeployItem, FinalitySignature,
+    FinalitySignatureId, ProtocolVersion, RuntimeArgs, SecretKey, SemVer, SignedBlockHeader,
+    TimeDiff, Timestamp, Transaction, TransactionId, TransactionV1, TransactionV1ApprovalsHash,
+    TransactionV1Builder, TransactionV1Hash, TransactionV1Kind, URef, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -591,7 +591,7 @@ impl LargestSpecimen for BlockSignatures {
     }
 }
 
-impl LargestSpecimen for Block {
+impl LargestSpecimen for BlockV2 {
     fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
         let deploy_hashes = vec![
             DeployHash::largest_specimen(estimator, cache);
@@ -602,7 +602,7 @@ impl LargestSpecimen for Block {
             estimator.parameter::<usize>("max_transfers_per_block")
         ];
 
-        Block::new(
+        BlockV2::new(
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
             LargestSpecimen::largest_specimen(estimator, cache),
@@ -616,6 +616,34 @@ impl LargestSpecimen for Block {
             deploy_hashes,
             transfer_hashes,
         )
+    }
+}
+
+impl LargestSpecimen for Block {
+    fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {
+        let deploy_hashes = vec![
+            DeployHash::largest_specimen(estimator, cache);
+            estimator.parameter::<usize>("max_deploys_per_block")
+        ];
+        let transfer_hashes = vec![
+            DeployHash::largest_specimen(estimator, cache);
+            estimator.parameter::<usize>("max_transfers_per_block")
+        ];
+
+        Block::V2(BlockV2::new(
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            LargestSpecimen::largest_specimen(estimator, cache),
+            deploy_hashes,
+            transfer_hashes,
+        ))
     }
 }
 

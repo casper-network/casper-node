@@ -15,8 +15,8 @@ use thiserror::Error as ThisError;
 use tokio::time;
 
 use casper_types::{
-    generate_ed25519_keypair, testing::TestRng, ActivationPoint, Block, Chainspec,
-    ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, Signature, U512,
+    generate_ed25519_keypair, testing::TestRng, ActivationPoint, BlockV2, Chainspec,
+    ChainspecRawBytes, ProtocolVersion, PublicKey, SecretKey, Signature, TestBlockBuilder, U512,
 };
 use reactor::ReactorEvent;
 
@@ -35,7 +35,7 @@ use crate::{
     },
     protocol::Message,
     reactor::{self, EventQueueHandle, QueueKind, Reactor, Runner, TryCrankOutcome},
-    types::{EraValidatorWeights, TestBlockBuilder},
+    types::EraValidatorWeights,
     utils::{Loadable, WithDir},
     NodeRng,
 };
@@ -46,11 +46,13 @@ const POLL_INTERVAL: Duration = Duration::from_millis(10);
 const RECENT_ERA_INTERVAL: u64 = 1;
 const VALIDATOR_SLOTS: u32 = 100;
 
-fn meta_block_with_default_state(block: Arc<Block>) -> MetaBlock {
-    MetaBlock::new(block, vec![], MetaBlockState::new())
+fn meta_block_with_default_state(block: Arc<BlockV2>) -> ForwardMetaBlock {
+    MetaBlock::new_forward(block, vec![], MetaBlockState::new())
+        .try_into()
+        .unwrap()
 }
 
-fn signatures_for_block(block: &Block, signatures: &Vec<FinalitySignature>) -> BlockSignatures {
+fn signatures_for_block(block: &BlockV2, signatures: &Vec<FinalitySignature>) -> BlockSignatures {
     let mut block_signatures = BlockSignatures::new(*block.hash(), block.era_id());
     for signature in signatures {
         block_signatures.insert_signature(signature.clone());
@@ -223,7 +225,7 @@ impl Reactor for MockReactor {
             ),
             Event::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
                 let effects = Effects::new();
-                let state = &mut meta_block.state;
+                let state = meta_block.mut_state();
                 assert!(state.is_stored());
                 state.register_as_sent_to_deploy_buffer();
                 if !state.is_executed() {
@@ -239,7 +241,9 @@ impl Reactor for MockReactor {
                         self.block_accumulator.handle_event(
                             effect_builder,
                             rng,
-                            super::Event::ExecutedBlock { meta_block },
+                            super::Event::ExecutedBlock {
+                                meta_block: meta_block.try_into().unwrap(),
+                            },
                         ),
                     );
                 }
@@ -393,7 +397,10 @@ fn acceptor_register_finality_signature() {
     let mut rng = TestRng::new();
     // Create a block and an acceptor for it.
     let block = Arc::new(TestBlockBuilder::new().build(&mut rng));
-    let mut meta_block = MetaBlock::new(block.clone(), vec![], MetaBlockState::new());
+    let mut meta_block: ForwardMetaBlock =
+        MetaBlock::new_forward(block.clone(), vec![], MetaBlockState::new())
+            .try_into()
+            .unwrap();
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
 
     // Create a finality signature with the wrong block hash.
@@ -552,7 +559,8 @@ fn acceptor_register_block() {
 
     {
         // Invalid block case.
-        let invalid_block = Arc::new(TestBlockBuilder::new().build_invalid(&mut rng));
+        let invalid_block: Arc<BlockV2> = Arc::new(TestBlockBuilder::new().build_invalid(&mut rng));
+
         let mut invalid_block_acceptor = BlockAcceptor::new(*invalid_block.hash(), vec![]);
         let invalid_meta_block = meta_block_with_default_state(invalid_block);
         let malicious_peer = NodeId::random(&mut rng);
@@ -969,7 +977,7 @@ fn expected_leap_instruction(expected: LeapInstruction, actual: LeapInstruction)
     );
 }
 
-fn block_acceptor(block: Block) -> BlockAcceptor {
+fn block_acceptor(block: BlockV2) -> BlockAcceptor {
     let mut acceptor = BlockAcceptor::new(*block.hash(), vec![]);
     // One finality signature from our only validator for block 1.
     acceptor
@@ -983,7 +991,9 @@ fn block_acceptor(block: Block) -> BlockAcceptor {
     let meta_block = {
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
-        MetaBlock::new(Arc::new(block), vec![], state)
+        MetaBlock::new_forward(Arc::new(block), vec![], state)
+            .try_into()
+            .unwrap()
     };
     acceptor.register_block(meta_block, None).unwrap();
 
@@ -1044,7 +1054,9 @@ fn accumulator_purge() {
             .unwrap();
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
-        let meta_block = MetaBlock::new(block_1.clone(), vec![], state);
+        let meta_block = MetaBlock::new_forward(block_1.clone(), vec![], state)
+            .try_into()
+            .unwrap();
         acceptor
             .register_finality_signature(fin_sig_1, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
@@ -1061,7 +1073,9 @@ fn accumulator_purge() {
             .unwrap();
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
-        let meta_block = MetaBlock::new(block_2.clone(), vec![], state);
+        let meta_block = MetaBlock::new_forward(block_2.clone(), vec![], state)
+            .try_into()
+            .unwrap();
         acceptor
             .register_finality_signature(fin_sig_2, Some(peer_2), VALIDATOR_SLOTS)
             .unwrap();
@@ -1078,7 +1092,9 @@ fn accumulator_purge() {
             .unwrap();
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
-        let meta_block = MetaBlock::new(block_3.clone(), vec![], state);
+        let meta_block = MetaBlock::new_forward(block_3.clone(), vec![], state)
+            .try_into()
+            .unwrap();
         acceptor
             .register_finality_signature(fin_sig_3, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
@@ -1196,7 +1212,9 @@ fn accumulator_purge() {
             .unwrap();
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
-        let meta_block = MetaBlock::new(in_range_block.clone(), vec![], state);
+        let meta_block = MetaBlock::new_forward(in_range_block.clone(), vec![], state)
+            .try_into()
+            .unwrap();
         acceptor
             .register_finality_signature(in_range_block_sig, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
@@ -1231,7 +1249,9 @@ fn accumulator_purge() {
             .unwrap();
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
-        let meta_block = MetaBlock::new(out_of_range_block.clone(), vec![], state);
+        let meta_block = MetaBlock::new_forward(out_of_range_block.clone(), vec![], state)
+            .try_into()
+            .unwrap();
         acceptor
             .register_finality_signature(out_of_range_block_sig, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
@@ -1312,7 +1332,9 @@ fn accumulator_purge() {
             .unwrap();
         let mut state = MetaBlockState::new();
         state.register_has_sufficient_finality();
-        let meta_block = MetaBlock::new(future_block.clone(), vec![], state);
+        let meta_block = MetaBlock::new_forward(future_block.clone(), vec![], state)
+            .try_into()
+            .unwrap();
         acceptor
             .register_finality_signature(future_block_sig, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
@@ -1347,7 +1369,9 @@ fn accumulator_purge() {
             .get_mut(future_unsigned_block.hash())
             .unwrap();
         let state = MetaBlockState::new();
-        let meta_block = MetaBlock::new(future_unsigned_block.clone(), vec![], state);
+        let meta_block = MetaBlock::new_forward(future_unsigned_block.clone(), vec![], state)
+            .try_into()
+            .unwrap();
         acceptor
             .register_finality_signature(future_unsigned_block_sig, Some(peer_1), VALIDATOR_SLOTS)
             .unwrap();
@@ -1410,7 +1434,7 @@ fn register_evw_for_era(validator_matrix: &mut ValidatorMatrix, era_id: EraId) {
     validator_matrix.register_era_validator_weights(weights);
 }
 
-fn generate_next_block(rng: &mut TestRng, block: &Block) -> Block {
+fn generate_next_block(rng: &mut TestRng, block: &BlockV2) -> BlockV2 {
     let era_id = if block.is_switch_block() {
         block.era_id().successor()
     } else {
@@ -1425,7 +1449,7 @@ fn generate_next_block(rng: &mut TestRng, block: &Block) -> Block {
         .build(rng)
 }
 
-fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
+fn generate_non_genesis_block(rng: &mut TestRng) -> BlockV2 {
     let era = rng.gen_range(10..20);
     let height = era * 10 + rng.gen_range(0..10);
     let is_switch = rng.gen_bool(0.1);
@@ -1437,7 +1461,7 @@ fn generate_non_genesis_block(rng: &mut TestRng) -> Block {
         .build(rng)
 }
 
-fn generate_older_block(rng: &mut TestRng, block: &Block, height_difference: u64) -> Block {
+fn generate_older_block(rng: &mut TestRng, block: &BlockV2, height_difference: u64) -> BlockV2 {
     TestBlockBuilder::new()
         .era(block.era_id().predecessor().unwrap_or_default())
         .height(block.height() - height_difference)
@@ -1521,7 +1545,7 @@ async fn block_accumulator_reactor_flow() {
             .read_block(block_1.hash())
             .unwrap()
             .unwrap();
-        assert_eq!(expected_block, block_1);
+        assert_eq!(expected_block, block_1.clone().into());
         let expected_block_signatures = runner
             .reactor()
             .storage
@@ -1573,7 +1597,7 @@ async fn block_accumulator_reactor_flow() {
             .read_block(block_2.hash())
             .unwrap()
             .unwrap();
-        assert_eq!(expected_block, block_2);
+        assert_eq!(expected_block, block_2.clone().into());
         let expected_block_signatures = runner
             .reactor()
             .storage
@@ -1909,7 +1933,7 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
             .read_block(block_1.hash())
             .unwrap()
             .unwrap();
-        assert_eq!(expected_block, block_1);
+        assert_eq!(expected_block, block_1.clone().into());
         let expected_block_signatures = runner
             .reactor()
             .storage
@@ -1940,11 +1964,13 @@ async fn block_accumulator_doesnt_purge_with_delayed_block_execution() {
                 let mut meta_block_state = MetaBlockState::new_already_stored();
                 meta_block_state.register_as_executed();
                 let event = super::Event::ExecutedBlock {
-                    meta_block: MetaBlock::new(
+                    meta_block: MetaBlock::new_forward(
                         Arc::new(block_1.clone()),
                         Vec::new(),
                         meta_block_state,
-                    ),
+                    )
+                    .try_into()
+                    .unwrap(),
                 };
                 effect_builder
                     .into_inner()

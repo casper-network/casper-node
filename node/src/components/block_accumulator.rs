@@ -23,7 +23,8 @@ use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    ActivationPoint, BlockHash, BlockSignatures, EraId, FinalitySignature, TimeDiff, Timestamp,
+    ActivationPoint, Block, BlockHash, BlockSignatures, EraId, FinalitySignature, TimeDiff,
+    Timestamp,
 };
 
 use crate::{
@@ -46,7 +47,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{MetaBlock, MetaBlockState, NodeId, ValidatorMatrix},
+    types::{ForwardMetaBlock, MetaBlock, MetaBlockState, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -261,7 +262,7 @@ impl BlockAccumulator {
     fn register_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         sender: Option<NodeId>,
     ) -> Effects<Event>
     where
@@ -478,7 +479,7 @@ impl BlockAccumulator {
     fn register_stored<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        maybe_meta_block: Option<MetaBlock>,
+        maybe_meta_block: Option<ForwardMetaBlock>,
         maybe_block_signatures: Option<BlockSignatures>,
     ) -> Effects<Event>
     where
@@ -489,7 +490,11 @@ impl BlockAccumulator {
     {
         let mut effects = Effects::new();
         if let Some(meta_block) = maybe_meta_block {
-            effects.extend(effect_builder.announce_meta_block(meta_block).ignore());
+            effects.extend(
+                effect_builder
+                    .announce_meta_block(meta_block.into())
+                    .ignore(),
+            );
         };
         if let Some(block_signatures) = maybe_block_signatures {
             for finality_signature in block_signatures.finality_signatures() {
@@ -652,7 +657,7 @@ impl BlockAccumulator {
             .set(self.block_children.len().try_into().unwrap_or(i64::MIN));
     }
 
-    fn update_block_children(&mut self, meta_block: &MetaBlock) {
+    fn update_block_children(&mut self, meta_block: &ForwardMetaBlock) {
         if meta_block.block.is_genesis() {
             return;
         }
@@ -690,8 +695,9 @@ impl BlockAccumulator {
                 // The block wasn't executed yet, so we just put it to storage. An `ExecutedBlock`
                 // event will then re-trigger this flow and eventually mark it complete.
                 let cloned_signatures = block_signatures.clone();
+                let block: Block = (*meta_block.block).clone().into();
                 effect_builder
-                    .put_block_to_storage(Arc::clone(&meta_block.block))
+                    .put_block_to_storage(Arc::new(block))
                     .then(move |_| effect_builder.put_signatures_to_storage(cloned_signatures))
                     .event(move |_| Event::Stored {
                         maybe_meta_block: Some(meta_block),
@@ -804,7 +810,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                let meta_block = MetaBlock::new(block, vec![], MetaBlockState::new());
+                let meta_block: ForwardMetaBlock =
+                    MetaBlock::new_forward(block, vec![], MetaBlockState::new())
+                        .try_into()
+                        .unwrap();
                 self.register_block(effect_builder, meta_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {

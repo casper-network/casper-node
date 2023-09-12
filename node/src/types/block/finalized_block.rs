@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use casper_types::testing::TestRng;
 use casper_types::{
-    Block, Deploy, DeployApproval, DeployHash, EraId, EraReport, PublicKey, SecretKey, Timestamp,
+    BlockV2, Deploy, DeployApproval, DeployHash, EraId, EraReport, PublicKey, SecretKey, Timestamp,
 };
 
 use super::BlockPayload;
@@ -166,8 +166,8 @@ impl DocExample for FinalizedBlock {
     }
 }
 
-impl From<Block> for FinalizedBlock {
-    fn from(block: Block) -> Self {
+impl From<BlockV2> for FinalizedBlock {
+    fn from(block: BlockV2) -> Self {
         FinalizedBlock {
             deploy_hashes: block.deploy_hashes().to_vec(),
             transfer_hashes: block.transfer_hashes().to_vec(),

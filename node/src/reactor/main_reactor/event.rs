@@ -8,7 +8,7 @@ use serde::Serialize;
 // use static_assertions::const_assert;
 
 use casper_types::{
-    system::auction::EraValidators, Block, BlockHeader, Deploy, EraId, FinalitySignature,
+    system::auction::EraValidators, Block, BlockHeader, BlockV2, Deploy, EraId, FinalitySignature,
     Transaction,
 };
 
@@ -151,11 +151,11 @@ pub(crate) enum MainEvent {
     ApprovalsHashesFetcherRequest(#[serde(skip_serializing)] FetcherRequest<ApprovalsHashes>),
 
     #[from]
-    BlockGossiper(#[serde(skip_serializing)] gossiper::Event<Block>),
+    BlockGossiper(#[serde(skip_serializing)] gossiper::Event<BlockV2>),
     #[from]
-    BlockGossiperIncoming(GossiperIncoming<Block>),
+    BlockGossiperIncoming(GossiperIncoming<BlockV2>),
     #[from]
-    BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<Block>),
+    BlockGossiperAnnouncement(#[serde(skip_serializing)] GossiperAnnouncement<BlockV2>),
     #[from]
     BlockFetcher(#[serde(skip_serializing)] fetcher::Event<Block>),
     #[from]
@@ -606,8 +606,8 @@ impl From<NetworkRequest<gossiper::Message<Transaction>>> for MainEvent {
     }
 }
 
-impl From<NetworkRequest<gossiper::Message<Block>>> for MainEvent {
-    fn from(request: NetworkRequest<gossiper::Message<Block>>) -> Self {
+impl From<NetworkRequest<gossiper::Message<BlockV2>>> for MainEvent {
+    fn from(request: NetworkRequest<gossiper::Message<BlockV2>>) -> Self {
         MainEvent::NetworkRequest(request.map_payload(Message::from))
     }
 }

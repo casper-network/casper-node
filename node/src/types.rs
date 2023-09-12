@@ -25,7 +25,7 @@ use rand_chacha::ChaCha20Rng;
 pub use available_block_range::AvailableBlockRange;
 pub(crate) use block::{
     compute_approvals_checksum, ApprovalsHashes, BlockExecutionResultsOrChunkId, BlockPayload,
-    MetaBlock, MetaBlockMergeError, MetaBlockState,
+    ForwardMetaBlock, MetaBlock, MetaBlockMergeError, MetaBlockState,
 };
 pub use block::{BlockExecutionResultsOrChunk, FinalizedBlock, SignedBlock};
 pub use chunkable::Chunkable;
@@ -59,6 +59,3 @@ pub type NodeRng = ChaCha20Rng;
 /// The RNG used throughout the node for testing.
 #[cfg(test)]
 pub type NodeRng = casper_types::testing::TestRng;
-
-#[cfg(test)]
-pub(crate) use block::test_block_builder::TestBlockBuilder;

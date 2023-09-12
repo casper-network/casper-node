@@ -3,6 +3,8 @@ use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+#[cfg(feature = "json-schema")]
+use once_cell::sync::Lazy;
 #[cfg(any(feature = "testing", test))]
 use rand::Rng;
 #[cfg(feature = "json-schema")]
@@ -11,12 +13,18 @@ use serde::{Deserialize, Serialize};
 
 #[cfg(doc)]
 use super::Block;
+#[cfg(doc)]
+use super::BlockV2;
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     Digest,
 };
+
+#[cfg(feature = "json-schema")]
+static BLOCK_HASH: Lazy<BlockHash> =
+    Lazy::new(|| BlockHash::new(Digest::from([7; BlockHash::LENGTH])));
 
 /// The cryptographic hash of a [`Block`].
 #[derive(
@@ -47,6 +55,13 @@ impl BlockHash {
     /// Returns the wrapped inner digest.
     pub fn inner(&self) -> &Digest {
         &self.0
+    }
+
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &BLOCK_HASH
     }
 
     /// Returns a new `DeployHash` directly initialized with the provided bytes; no hashing is done.

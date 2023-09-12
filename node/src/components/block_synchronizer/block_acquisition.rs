@@ -560,7 +560,7 @@ impl BlockAcquisitionState {
     /// Register the block body for this block.
     pub(super) fn register_block(
         &mut self,
-        block: &Block,
+        block: Block,
         need_execution_state: bool,
     ) -> Result<Option<Acceptance>, BlockAcquisitionError> {
         let new_state = match self {
@@ -582,7 +582,7 @@ impl BlockAcquisitionState {
                     DeployAcquisition::new_by_hash(deploy_hashes, need_execution_state);
 
                 BlockAcquisitionState::HaveBlock(
-                    Box::new(block.clone()),
+                    Box::new(block),
                     signatures.clone(),
                     deploy_acquisition,
                 )

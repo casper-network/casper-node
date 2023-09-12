@@ -28,7 +28,7 @@ use casper_types::{
     bytesrepr::Bytes,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
-    Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Deploy, DeployHash,
+    Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes, Deploy, DeployHash,
     DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
     ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
     Transfer, URef,
@@ -281,7 +281,7 @@ pub(crate) enum StorageRequest {
     /// Store the block and approvals hashes.
     PutExecutedBlock {
         /// Block to be stored.
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         /// Approvals hashes to store.
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
@@ -502,7 +502,9 @@ pub(crate) enum StorageRequest {
 impl Display for StorageRequest {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            StorageRequest::PutBlock { block, .. } => write!(formatter, "put {}", block),
+            StorageRequest::PutBlock { block, .. } => {
+                write!(formatter, "put {}", block)
+            }
             StorageRequest::PutApprovalsHashes {
                 approvals_hashes, ..
             } => {

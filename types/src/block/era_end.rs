@@ -5,11 +5,14 @@ use core::fmt::{self, Display, Formatter};
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use super::EraReport;
-#[cfg(all(feature = "std", feature = "json-schema"))]
-use super::JsonEraEnd;
 #[cfg(feature = "json-schema")]
 use crate::SecretKey;
 use crate::{
@@ -46,8 +49,12 @@ static ERA_END: Lazy<EraEnd> = Lazy::new(|| {
 /// Information related to the end of an era, and validator weights for the following era.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct EraEnd {
+    /// Equivocation, reward and validator inactivity information.
     pub(super) era_report: EraReport<PublicKey>,
+    /// The validators for the upcoming era and their respective weights.
+    #[serde(with = "BTreeMapToArray::<PublicKey, U512, NextEraValidatorLabels>")]
     pub(super) next_era_validator_weights: BTreeMap<PublicKey, U512>,
 }
 
@@ -118,29 +125,34 @@ impl Display for EraEnd {
     }
 }
 
-#[cfg(all(feature = "std", feature = "json-schema"))]
-impl From<JsonEraEnd> for EraEnd {
-    fn from(json_data: JsonEraEnd) -> Self {
-        let era_report = EraReport::from(json_data.era_report);
-        let validator_weights = json_data
-            .next_era_validator_weights
-            .iter()
-            .map(|validator_weight| (validator_weight.validator.clone(), validator_weight.weight))
-            .collect();
-        EraEnd::new(era_report, validator_weights)
-    }
+struct NextEraValidatorLabels;
+
+impl KeyValueLabels for NextEraValidatorLabels {
+    const KEY: &'static str = "validator";
+    const VALUE: &'static str = "weight";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for NextEraValidatorLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("ValidatorWeight");
+    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> = Some(
+        "A validator's public key paired with its weight, i.e. the total number of \
+        motes staked by it and its delegators.",
+    );
+    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> = Some("The validator's public key.");
+    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The validator's weight.");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{testing::TestRng, Block};
+    use crate::{testing::TestRng, TestBlockBuilder};
 
     #[test]
     fn bytesrepr_roundtrip() {
         let rng = &mut TestRng::new();
         let block = {
-            let mut block = Block::random(rng);
+            let mut block = TestBlockBuilder::new().build(rng);
 
             let next_era_weights = (0..6)
                 .map(|index| (PublicKey::random(rng), U512::from(index)))

@@ -47,9 +47,9 @@ impl From<TimeDiff> for MaxTtl {
 
 #[cfg(test)]
 mod tests {
-    use casper_types::{testing::TestRng, TimeDiff, Timestamp};
+    use casper_types::{testing::TestRng, TestBlockBuilder, TimeDiff, Timestamp};
 
-    use crate::types::{MaxTtl, TestBlockBuilder};
+    use crate::types::MaxTtl;
 
     const SUB_MAX_TTL: TimeDiff = TimeDiff::from_millis(1);
     const MAX_TTL: TimeDiff = TimeDiff::from_millis(2);
