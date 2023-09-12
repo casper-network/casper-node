@@ -1144,7 +1144,7 @@ where
                 let is_contract_enabled = contract_package.is_entity_enabled(&contract_hash);
 
                 if !is_calling_system_contract && !is_contract_enabled {
-                    return Err(Error::DisabledContract(contract_hash));
+                    return Err(Error::DisabledEntity(contract_hash));
                 }
 
                 (entity, contract_hash, contract_package)
@@ -1165,14 +1165,14 @@ where
                     None => match contract_package.current_entity_version() {
                         Some(v) => v,
                         None => {
-                            return Err(Error::NoActiveContractVersions(contract_package_hash));
+                            return Err(Error::NoActiveEntityVersions(contract_package_hash));
                         }
                     },
                 };
                 let contract_hash = contract_package
                     .lookup_entity_hash(contract_version_key)
                     .copied()
-                    .ok_or(Error::InvalidContractVersion(contract_version_key))?;
+                    .ok_or(Error::InvalidEntityVersion(contract_version_key))?;
 
                 let contract_key = contract_hash.into();
                 let entity =
@@ -1242,7 +1242,7 @@ where
             && !contract_package.is_entity_enabled(&contract_hash)
             && !self.context.is_system_addressable_entity(&contract_hash)?
         {
-            return Err(Error::DisabledContract(contract_hash));
+            return Err(Error::DisabledEntity(contract_hash));
         }
 
         // if session the caller's context
@@ -1707,7 +1707,7 @@ where
 
         // Return an error if the contract is locked and has some version associated with it.
         if package.is_locked() && version.is_some() {
-            return Err(Error::LockedContract(package_hash));
+            return Err(Error::LockedEntity(package_hash));
         }
         let (main_purse, associated_keys, action_thresholds) = match package.current_entity_hash() {
             Some(previous_contract_hash) => {
@@ -1827,7 +1827,7 @@ where
             self.context.get_validated_package(contract_package_hash)?;
 
         if contract_package.is_locked() {
-            return Err(Error::LockedContract(contract_package_hash));
+            return Err(Error::LockedEntity(contract_package_hash));
         }
 
         if let Err(err) = contract_package.disable_entity_version(contract_hash) {
@@ -1852,7 +1852,7 @@ where
             self.context.get_validated_package(contract_package_hash)?;
 
         if contract_package.is_locked() {
-            return Err(Error::LockedContract(contract_package_hash));
+            return Err(Error::LockedEntity(contract_package_hash));
         }
 
         if let Err(err) = contract_package.enable_version(contract_hash) {
@@ -2469,7 +2469,7 @@ where
                 {
                     contract.main_purse_add_only()
                 } else {
-                    return Err(Error::InvalidContract(contract_hash));
+                    return Err(Error::InvalidEntity(contract_hash));
                 };
 
                 if source.with_access_rights(AccessRights::ADD) == target_uref {
@@ -3251,7 +3251,7 @@ where
             }
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
             Some(_) => Err(Error::UnexpectedStoredValueVariant),
-            None => Err(Error::InvalidContract(contract_hash)),
+            None => Err(Error::InvalidEntity(contract_hash)),
         }
     }
 }

@@ -45,7 +45,6 @@
               "upgrade_management": 1
             },
             "associated_keys": [],
-            "contract_package_hash": "contract-package-6464646464646464646464646464646464646464646464646464646464646464",
             "contract_wasm_hash": "contract-wasm-6565656565656565656565656565656565656565656565656565656565656565",
             "entry_points": [
               {
@@ -79,6 +78,7 @@
                 "name": "uref"
               }
             ],
+            "package_hash": "contract-package-6464646464646464646464646464646464646464646464646464646464646464",
             "protocol_version": "1.0.0"
           }
         }
@@ -122,6 +122,19 @@
     ],
     "output": "0801197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a070500743ba40b6401ffffffffffffffff00010000000202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f20202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f20400ca9a3b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0701197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d6101ffffffffffffffff0000"
   },
+  "ByteCode": {
+    "input": [
+      {
+        "type": "StoredValue",
+        "value": {
+          "ByteCode": {
+            "bytes": "0061736d010000000104016000000302010005030100010708010463616c6c00000a040102000b"
+          }
+        }
+      }
+    ],
+    "output": "02270000000061736d010000000104016000000302010005030100010708010463616c6c00000a040102000b"
+  },
   "CLValue": {
     "input": [
       {
@@ -136,68 +149,6 @@
       }
     ],
     "output": "00110000000d00000048656c6c6f2c20776f726c64210a"
-  },
-  "ContractPackage": {
-    "input": [
-      {
-        "type": "StoredValue",
-        "value": {
-          "ContractPackage": {
-            "access_key": "uref-2727272727272727272727272727272727272727272727272727272727272727-001",
-            "contract_package_kind": "Wasm",
-            "disabled_versions": [
-              {
-                "contract_version": 1,
-                "protocol_version_major": 1
-              }
-            ],
-            "groups": [
-              {
-                "group_name": "Empty",
-                "group_users": []
-              },
-              {
-                "group_name": "Single",
-                "group_users": [
-                  "uref-3737373737373737373737373737373737373737373737373737373737373737-001"
-                ]
-              }
-            ],
-            "lock_status": "Locked",
-            "versions": [
-              {
-                "contract_hash": "contract-6464646464646464646464646464646464646464646464646464646464646464",
-                "contract_version_key": {
-                  "contract_version": 1,
-                  "protocol_version_major": 1
-                }
-              },
-              {
-                "contract_hash": "contract-6363636363636363636363636363636363636363636363636363636363636363",
-                "contract_version_key": {
-                  "contract_version": 2,
-                  "protocol_version_major": 1
-                }
-              }
-            ]
-          }
-        }
-      }
-    ],
-    "output": "042727272727272727272727272727272727272727272727272727272727272727010200000001000000010000006464646464646464646464646464646464646464646464646464646464646464010000000200000063636363636363636363636363636363636363636363636363636363636363630100000001000000010000000200000005000000456d707479000000000600000053696e676c65010000003737373737373737373737373737373737373737373737373737373737373737010100"
-  },
-  "ContractWasm": {
-    "input": [
-      {
-        "type": "StoredValue",
-        "value": {
-          "ContractWasm": {
-            "bytes": "0061736d010000000104016000000302010005030100010708010463616c6c00000a040102000b"
-          }
-        }
-      }
-    ],
-    "output": "02270000000061736d010000000104016000000302010005030100010708010463616c6c00000a040102000b"
   },
   "DelegatorBid": {
     "input": [
@@ -267,6 +218,55 @@
       }
     ],
     "output": "07020000000001197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610400ca9a3b010202bb58b5feca505c74edc000d8282fc556e51a1024fc8e7d7e56c6f887c5c8d5f201197f6b23e16c8532c6abc838facd5ea789be0c76b2920334039bfa8b3d368d610400ca9a3b"
+  },
+  "Package": {
+    "input": [
+      {
+        "type": "StoredValue",
+        "value": {
+          "ContractPackage": {
+            "access_key": "uref-2727272727272727272727272727272727272727272727272727272727272727-001",
+            "disabled_versions": [
+              {
+                "entity_version": 1,
+                "protocol_version_major": 1
+              }
+            ],
+            "groups": [
+              {
+                "group_name": "Empty",
+                "group_users": []
+              },
+              {
+                "group_name": "Single",
+                "group_users": [
+                  "uref-3737373737373737373737373737373737373737373737373737373737373737-001"
+                ]
+              }
+            ],
+            "lock_status": "Locked",
+            "package_kind": "Wasm",
+            "versions": [
+              {
+                "addressable_entity_hash": "addressable-entity-6464646464646464646464646464646464646464646464646464646464646464",
+                "entity_version_key": {
+                  "entity_version": 1,
+                  "protocol_version_major": 1
+                }
+              },
+              {
+                "addressable_entity_hash": "addressable-entity-6363636363636363636363636363636363636363636363636363636363636363",
+                "entity_version_key": {
+                  "entity_version": 2,
+                  "protocol_version_major": 1
+                }
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "output": "042727272727272727272727272727272727272727272727272727272727272727010200000001000000010000006464646464646464646464646464646464646464646464646464646464646464010000000200000063636363636363636363636363636363636363636363636363636363636363630100000001000000010000000200000005000000456d707479000000000600000053696e676c65010000003737373737373737373737373737373737373737373737373737373737373737010100"
   },
   "Transfer": {
     "input": [

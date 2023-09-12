@@ -2791,15 +2791,15 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::IncompatibleProtocolMajorVersion { .. }
                 | ExecError::CLValue(_)
                 | ExecError::HostBufferEmpty
-                | ExecError::NoActiveContractVersions(_)
-                | ExecError::InvalidContractVersion(_)
+                | ExecError::NoActiveEntityVersions(_)
+                | ExecError::InvalidEntityVersion(_)
                 | ExecError::NoSuchMethod(_)
                 | ExecError::TemplateMethod(_)
                 | ExecError::KeyIsNotAURef(_)
                 | ExecError::UnexpectedStoredValueVariant
-                | ExecError::LockedContract(_)
+                | ExecError::LockedEntity(_)
                 | ExecError::InvalidPackage(_)
-                | ExecError::InvalidContract(_)
+                | ExecError::InvalidEntity(_)
                 | ExecError::MissingArgument { .. }
                 | ExecError::DictionaryItemKeyExceedsLength
                 | ExecError::MissingSystemContractRegistry
@@ -2807,7 +2807,7 @@ fn should_charge_for_errors_in_wasm(execution_result: &ExecutionResult) -> bool 
                 | ExecError::RuntimeStackOverflow
                 | ExecError::ValueTooLarge
                 | ExecError::MissingRuntimeStack
-                | ExecError::DisabledContract(_)
+                | ExecError::DisabledEntity(_)
                 | ExecError::UnexpectedKeyVariant(_)
                 | ExecError::InvalidPackageKind(_)
                 | ExecError::Transform(_) => false,

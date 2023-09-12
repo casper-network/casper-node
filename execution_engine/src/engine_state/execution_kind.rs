@@ -125,19 +125,19 @@ impl ExecutionKind {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
+                    .ok_or(Error::Exec(execution::Error::NoActiveEntityVersions(
                         package_hash,
                     )))?;
 
                 if !package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                    return Err(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )));
                 }
 
                 let looked_up_entity_hash: AddressableEntityHash = package
                     .lookup_entity_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                    .ok_or(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )))?
                     .to_owned();
@@ -163,19 +163,19 @@ impl ExecutionKind {
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())
-                    .ok_or(Error::Exec(execution::Error::NoActiveContractVersions(
+                    .ok_or(Error::Exec(execution::Error::NoActiveEntityVersions(
                         package_hash,
                     )))?;
 
                 if !package.is_version_enabled(contract_version_key) {
-                    return Err(Error::Exec(execution::Error::InvalidContractVersion(
+                    return Err(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )));
                 }
 
                 let looked_up_contract_hash = *package
                     .lookup_entity_hash(contract_version_key)
-                    .ok_or(Error::Exec(execution::Error::InvalidContractVersion(
+                    .ok_or(Error::Exec(execution::Error::InvalidEntityVersion(
                         contract_version_key,
                     )))?;
 

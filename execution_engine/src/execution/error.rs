@@ -121,10 +121,10 @@ pub enum Error {
     UnsupportedWasmStart,
     /// Contract package has no active contract versions.
     #[error("No active contract versions for contract package")]
-    NoActiveContractVersions(PackageHash),
-    /// Invalid contract version supplied.
-    #[error("Invalid contract version: {}", _0)]
-    InvalidContractVersion(EntityVersionKey),
+    NoActiveEntityVersions(PackageHash),
+    /// Invalid entity version supplied.
+    #[error("Invalid entity version: {}", _0)]
+    InvalidEntityVersion(EntityVersionKey),
     /// Contract does not have specified entry point.
     #[error("No such method: {}", _0)]
     NoSuchMethod(String),
@@ -142,13 +142,13 @@ pub enum Error {
     UnexpectedStoredValueVariant,
     /// Error upgrading a locked contract package.
     #[error("A locked contract cannot be upgraded")]
-    LockedContract(PackageHash),
+    LockedEntity(PackageHash),
     /// Unable to find a contract package by a specified hash address.
     #[error("Invalid package: {}", _0)]
     InvalidPackage(PackageHash),
     /// Unable to find a contract by a specified hash address.
     #[error("Invalid contract: {}", _0)]
-    InvalidContract(AddressableEntityHash),
+    InvalidEntity(AddressableEntityHash),
     /// Unable to find the WASM bytes specified by a hash address.
     #[error("Invalid contract WASM: {}", _0)]
     InvalidByteCode(ByteCodeHash),
@@ -178,7 +178,7 @@ pub enum Error {
     MissingRuntimeStack,
     /// Contract is disabled.
     #[error("Contract is disabled")]
-    DisabledContract(AddressableEntityHash),
+    DisabledEntity(AddressableEntityHash),
     /// Transform error.
     #[error(transparent)]
     Transform(TransformError),

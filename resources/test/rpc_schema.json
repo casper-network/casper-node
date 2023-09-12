@@ -1850,7 +1850,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Stored contract referenced by its [`ContractHash`], entry point and an instance of [`RuntimeArgs`].",
+                "description": "Stored contract referenced by its [`AddressableEntityHash`], entry point and an instance of [`RuntimeArgs`].",
                 "type": "object",
                 "required": [
                   "StoredContractByHash"
@@ -1924,7 +1924,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Stored versioned contract referenced by its [`ContractPackageHash`], entry point and an instance of [`RuntimeArgs`].",
+                "description": "Stored versioned contract referenced by its [`PackageHash`], entry point and an instance of [`RuntimeArgs`].",
                 "type": "object",
                 "required": [
                   "StoredVersionedContractByHash"
@@ -3964,14 +3964,14 @@
                 "additionalProperties": false
               },
               {
-                "description": "A contract Wasm.",
+                "description": "A record of byte code.",
                 "type": "object",
                 "required": [
-                  "ContractWasm"
+                  "ByteCode"
                 ],
                 "properties": {
-                  "ContractWasm": {
-                    "$ref": "#/components/schemas/ContractWasm"
+                  "ByteCode": {
+                    "$ref": "#/components/schemas/ByteCode"
                   }
                 },
                 "additionalProperties": false
@@ -3993,10 +3993,10 @@
                 "description": "A `Package`.",
                 "type": "object",
                 "required": [
-                  "ContractPackage"
+                  "Package"
                 ],
                 "properties": {
-                  "ContractPackage": {
+                  "Package": {
                     "$ref": "#/components/schemas/Package"
                   }
                 },
@@ -4114,7 +4114,7 @@
               }
             ]
           },
-          "ContractWasm": {
+          "ByteCode": {
             "description": "A container for contract's WASM bytes.",
             "type": "object",
             "required": [
@@ -4142,10 +4142,10 @@
             ],
             "properties": {
               "contract_package_hash": {
-                "$ref": "#/components/schemas/ContractPackageHash"
+                "$ref": "#/components/schemas/PackageHash"
               },
               "contract_wasm_hash": {
-                "$ref": "#/components/schemas/ContractWasmHash"
+                "$ref": "#/components/schemas/ByteCodeHash"
               },
               "named_keys": {
                 "$ref": "#/components/schemas/NamedKeys"
@@ -4158,11 +4158,11 @@
               }
             }
           },
-          "ContractPackageHash": {
-            "description": "The hex-encoded address of the contract package.",
+          "PackageHash": {
+            "description": "The hex-encoded address of the Package.",
             "type": "string"
           },
-          "ContractWasmHash": {
+          "ByteCodeHash": {
             "description": "The hash address of the contract wasm",
             "type": "string"
           },
@@ -4308,14 +4308,14 @@
             "type": "string"
           },
           "Package": {
-            "description": "Contract definition, metadata, and security container.",
+            "description": "Entity definition, metadata, and security container.",
             "type": "object",
             "required": [
               "access_key",
-              "contract_package_kind",
               "disabled_versions",
               "groups",
               "lock_status",
+              "package_kind",
               "versions"
             ],
             "properties": {
@@ -4331,20 +4331,20 @@
                 "description": "All versions (enabled & disabled).",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/Array_of_ContractVersionAndHash"
+                    "$ref": "#/components/schemas/Array_of_EntityVersionAndHash"
                   }
                 ]
               },
               "disabled_versions": {
-                "description": "Collection of disabled contract versions. The runtime will not permit disabled contract versions to be executed.",
+                "description": "Collection of disabled entity versions. The runtime will not permit disabled entity versions to be executed.",
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/ContractVersionKey"
+                  "$ref": "#/components/schemas/EntityVersionKey"
                 },
                 "uniqueItems": true
               },
               "groups": {
-                "description": "Mapping maintaining the set of URefs associated with each \"user group\". This can be used to control access to methods in a particular version of the contract. A method is callable by any context which \"knows\" any of the URefs associated with the method's user group.",
+                "description": "Mapping maintaining the set of URefs associated with each \"user group\". This can be used to control access to methods in a particular version of the entity. A method is callable by any context which \"knows\" any of the URefs associated with the method's user group.",
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/Array_of_NamedUserGroup"
@@ -4352,57 +4352,57 @@
                 ]
               },
               "lock_status": {
-                "description": "A flag that determines whether a contract is locked",
+                "description": "A flag that determines whether a entity is locked",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/ContractPackageStatus"
+                    "$ref": "#/components/schemas/PackageStatus"
                   }
                 ]
               },
-              "contract_package_kind": {
+              "package_kind": {
                 "description": "The kind of package.",
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/ContractPackageKind"
+                    "$ref": "#/components/schemas/PackageKind"
                   }
                 ]
               }
             }
           },
-          "Array_of_ContractVersionAndHash": {
+          "Array_of_EntityVersionAndHash": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ContractVersionAndHash"
+              "$ref": "#/components/schemas/EntityVersionAndHash"
             }
           },
-          "ContractVersionAndHash": {
+          "EntityVersionAndHash": {
             "type": "object",
             "required": [
-              "contract_hash",
-              "contract_version_key"
+              "addressable_entity_hash",
+              "entity_version_key"
             ],
             "properties": {
-              "contract_version_key": {
+              "entity_version_key": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/ContractVersionKey"
+                    "$ref": "#/components/schemas/EntityVersionKey"
                   }
                 ]
               },
-              "contract_hash": {
+              "addressable_entity_hash": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/ContractHash"
+                    "$ref": "#/components/schemas/AddressableEntityHash"
                   }
                 ]
               }
             }
           },
-          "ContractVersionKey": {
-            "description": "Major element of `ProtocolVersion` combined with `ContractVersion`.",
+          "EntityVersionKey": {
+            "description": "Major element of `ProtocolVersion` combined with `EntityVersion`.",
             "type": "object",
             "required": [
-              "contract_version",
+              "entity_version",
               "protocol_version_major"
             ],
             "properties": {
@@ -4412,7 +4412,7 @@
                 "format": "uint32",
                 "minimum": 0.0
               },
-              "contract_version": {
+              "entity_version": {
                 "description": "Automatically incremented value for a contract version within a major `ProtocolVersion`.",
                 "type": "integer",
                 "format": "uint32",
@@ -4420,7 +4420,7 @@
               }
             }
           },
-          "ContractHash": {
+          "AddressableEntityHash": {
             "description": "The hex-encoded address of the addressable entity.",
             "type": "string"
           },
@@ -4453,8 +4453,8 @@
               }
             }
           },
-          "ContractPackageStatus": {
-            "description": "A enum to determine the lock status of the contract package.",
+          "PackageStatus": {
+            "description": "A enum to determine the lock status of the package.",
             "oneOf": [
               {
                 "description": "The package is locked and cannot be versioned.",
@@ -4472,31 +4472,31 @@
               }
             ]
           },
-          "ContractPackageKind": {
-            "description": "The type of contract package.",
+          "PackageKind": {
+            "description": "The type of Package.",
             "oneOf": [
               {
-                "description": "Contract Packages associated with Wasm stored on chain.",
+                "description": "Packages associated with Wasm stored on chain.",
                 "type": "string",
                 "enum": [
                   "Wasm"
                 ]
               },
               {
-                "description": "Contract Package associated with a native contract implementation.",
+                "description": "Package associated with a native contract implementation.",
                 "type": "object",
                 "required": [
                   "System"
                 ],
                 "properties": {
                   "System": {
-                    "$ref": "#/components/schemas/SystemContractType"
+                    "$ref": "#/components/schemas/SystemEntityType"
                   }
                 },
                 "additionalProperties": false
               },
               {
-                "description": "Contract Package associated with an Account hash.",
+                "description": "Package associated with an Account hash.",
                 "type": "object",
                 "required": [
                   "Account"
@@ -4509,7 +4509,7 @@
                 "additionalProperties": false
               },
               {
-                "description": "Contract Packages from the previous format.",
+                "description": "Packages from the previous format.",
                 "type": "string",
                 "enum": [
                   "Legacy"
@@ -4517,7 +4517,7 @@
               }
             ]
           },
-          "SystemContractType": {
+          "SystemEntityType": {
             "description": "System contract types.\n\nUsed by converting to a `u32` and passing as the `system_contract_index` argument of `ext_ffi::casper_get_system_contract()`.",
             "oneOf": [
               {
@@ -4556,19 +4556,19 @@
             "required": [
               "action_thresholds",
               "associated_keys",
-              "contract_package_hash",
               "contract_wasm_hash",
               "entry_points",
               "main_purse",
               "named_keys",
+              "package_hash",
               "protocol_version"
             ],
             "properties": {
-              "contract_package_hash": {
-                "$ref": "#/components/schemas/ContractPackageHash"
+              "package_hash": {
+                "$ref": "#/components/schemas/PackageHash"
               },
               "contract_wasm_hash": {
-                "$ref": "#/components/schemas/ContractWasmHash"
+                "$ref": "#/components/schemas/ByteCodeHash"
               },
               "named_keys": {
                 "$ref": "#/components/schemas/NamedKeys"

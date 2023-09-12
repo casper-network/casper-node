@@ -12,7 +12,8 @@ use casper_types::{
     package::{EntityVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
-    AddressableEntity, AddressableEntityHash, ApiError, EraId, ProtocolVersion, RuntimeArgs, U512,
+    AddressableEntity, AddressableEntityHash, ApiError, EntityVersionKey, EraId, ProtocolVersion,
+    RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -28,12 +29,6 @@ const STORED_PAYMENT_CONTRACT_HASH_NAME: &str = "test_payment_hash";
 const STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME: &str = "test_payment_package_hash";
 const PAY_ENTRYPOINT: &str = "pay";
 const TRANSFER_PURSE_TO_ACCOUNT_CONTRACT_NAME: &str = "transfer_purse_to_account";
-// Currently Error enum that holds this variant is private and can't be used otherwise to compare
-// message
-const EXPECTED_ERROR_MESSAGE: &str = "IncompatibleProtocolMajorVersion { expected: 2, actual: 1 }";
-const EXPECTED_VERSION_ERROR_MESSAGE: &str =
-    "InvalidContractVersion(ContractVersionKey { protocol_version_major: 2, contract_version: 1 })";
-const EXPECTED_MISSING_ENTRY_POINT_MESSAGE: &str = "NoSuchMethod";
 
 const ARG_TARGET: &str = "target";
 const ARG_AMOUNT: &str = "amount";
@@ -187,10 +182,11 @@ fn should_fail_if_calling_non_existent_entry_point() {
         "calling a non-existent entry point should not work"
     );
 
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(error_message.contains(EXPECTED_MISSING_ENTRY_POINT_MESSAGE));
+    let expected_error = Error::Exec(execution::Error::NoSuchMethod(
+        "electric-boogaloo".to_string(),
+    ));
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]
@@ -590,14 +586,13 @@ fn should_fail_payment_stored_at_named_key_with_incompatible_major_version() {
         builder.is_error(),
         "calling a payment module with increased major protocol version should be error"
     );
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(
-        error_message.contains(EXPECTED_ERROR_MESSAGE),
-        "{:?}",
-        error_message
-    );
+
+    let expected_error = Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+        expected: 2,
+        actual: 1,
+    });
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]
@@ -669,10 +664,12 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         "calling a payment module with increased major protocol version should be error"
     );
 
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(error_message.contains(EXPECTED_ERROR_MESSAGE));
+    let expected_error = Error::Exec(execution::Error::IncompatibleProtocolMajorVersion {
+        expected: 2,
+        actual: 1,
+    });
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]
@@ -849,14 +846,12 @@ fn should_fail_session_stored_at_named_key_with_missing_new_major_version() {
         builder.is_error(),
         "calling a session module with increased major protocol version should be error",
     );
-    let error_message = builder
-        .exec_error_message(1)
-        .expect("should have exec error");
-    assert!(
-        error_message.contains(EXPECTED_VERSION_ERROR_MESSAGE),
-        "{}",
-        error_message
-    );
+
+    let entity_version_key = EntityVersionKey::new(2, 1);
+
+    let expected_error = Error::Exec(execution::Error::InvalidEntityVersion(entity_version_key));
+
+    builder.assert_error(expected_error);
 }
 
 #[ignore]

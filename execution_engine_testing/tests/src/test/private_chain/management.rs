@@ -545,7 +545,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         contract_package_before, contract_package_after_disable,
         "contract package should be disabled"
     );
-    assert!(!contract_package_after_disable.is_contract_enabled(&stored_entity_hash),);
+    assert!(!contract_package_after_disable.is_entity_enabled(&stored_entity_hash),);
 
     let call_delegate_requests_1 = {
         // Unable to call disabled stored contract directly
@@ -588,7 +588,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         assert!(
             matches!(
                 error,
-                Error::Exec(execution::Error::DisabledContract(disabled_contract_hash))
+                Error::Exec(execution::Error::DisabledEntity(disabled_contract_hash))
                 if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",
@@ -758,7 +758,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         contract_package_before, contract_package_after_disable,
         "contract package should be disabled"
     );
-    assert!(!contract_package_after_disable.is_contract_enabled(&stored_entity_hash),);
+    assert!(!contract_package_after_disable.is_entity_enabled(&stored_entity_hash),);
 
     let call_stored_payment_requests_1 = {
         let payment_args = runtime_args! {
@@ -807,7 +807,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         assert!(
             matches!(
                 error,
-                Error::Exec(execution::Error::DisabledContract(disabled_contract_hash))
+                Error::Exec(execution::Error::DisabledEntity(disabled_contract_hash))
                 if disabled_contract_hash == stored_entity_hash
             ),
             "expected disabled contract error, found {:?}",

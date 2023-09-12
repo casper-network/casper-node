@@ -1173,9 +1173,9 @@ where
     }
 
     /// Queries for a contract by `AddressableEntityHash` and returns an `Option<ByteCode>`.
-    pub fn get_byte_code(&self, contract_hash: AddressableEntityHash) -> Option<ByteCode> {
+    pub fn get_byte_code(&self, entity_hash: AddressableEntityHash) -> Option<ByteCode> {
         let byte_code_value: StoredValue = self
-            .query(None, contract_hash.into(), &[])
+            .query(None, entity_hash.into(), &[])
             .expect("should have contract value");
 
         if let StoredValue::ByteCode(byte_code) = byte_code_value {
