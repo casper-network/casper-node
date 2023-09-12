@@ -169,7 +169,10 @@ impl<T, E> Outcome<T, E> {
     pub fn to_result(self) -> Result<T, E> {
         match self {
             Outcome::Incomplete(missing) => {
-                panic!("did not expect incompletion by {} bytes when", missing)
+                panic!(
+                    "did not expect incompletion by {} bytes converting to result",
+                    missing
+                )
             }
             Outcome::Fatal(e) => Err(e),
             Outcome::Success(s) => Ok(s),
@@ -258,8 +261,9 @@ mod tests {
         prelude::Arbitrary,
         strategy::{Map, Strategy},
     };
+    use proptest_attr_macro::proptest;
 
-    use crate::{ChannelId, Id};
+    use crate::{ChannelId, Id, Outcome};
 
     impl Arbitrary for ChannelId {
         type Parameters = <u8 as Arbitrary>::Parameters;
@@ -281,5 +285,118 @@ mod tests {
         }
 
         type Strategy = Map<<u16 as Arbitrary>::Strategy, fn(u16) -> Self>;
+    }
+
+    #[proptest]
+    fn id_type_smoke_tests(raw: u16) {
+        let id = Id::new(raw);
+        assert_eq!(id.get(), raw);
+        assert_eq!(u16::from(id), raw);
+        assert_eq!(raw.to_string(), id.to_string());
+    }
+
+    #[proptest]
+    fn channel_type_smoke_tests(raw: u8) {
+        let channel_id = ChannelId::new(raw);
+        assert_eq!(channel_id.get(), raw);
+        assert_eq!(u8::from(channel_id), raw);
+        assert_eq!(raw.to_string(), channel_id.to_string());
+    }
+
+    #[test]
+    fn outcome_incomplete_works_on_non_zero() {
+        assert!(matches!(
+            Outcome::<(), ()>::incomplete(1),
+            Outcome::Incomplete(_)
+        ));
+
+        assert!(matches!(
+            Outcome::<(), ()>::incomplete(100),
+            Outcome::Incomplete(_)
+        ));
+
+        assert!(matches!(
+            Outcome::<(), ()>::incomplete(u32::MAX as usize),
+            Outcome::Incomplete(_)
+        ));
+    }
+
+    #[test]
+    #[should_panic(expected = "did not expect 0-byte `Incomplete`")]
+    fn outcome_incomplete_panics_on_0() {
+        let _ = Outcome::<(), ()>::incomplete(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "did not expect large usize")]
+    fn outcome_incomplete_panics_past_u32_max() {
+        let _ = Outcome::<(), ()>::incomplete(u32::MAX as usize + 1);
+    }
+
+    #[test]
+    fn outcome_expect_works_on_success() {
+        let outcome: Outcome<u32, ()> = Outcome::Success(12);
+        assert_eq!(outcome.expect("should not panic"), 12);
+    }
+
+    #[test]
+    #[should_panic(expected = "is incomplete")]
+    fn outcome_expect_panics_on_incomplete() {
+        let outcome: Outcome<u32, ()> = Outcome::incomplete(1);
+        outcome.expect("is incomplete");
+    }
+
+    #[test]
+    #[should_panic(expected = "is fatal")]
+    fn outcome_expect_panics_on_fatal() {
+        let outcome: Outcome<u32, ()> = Outcome::Fatal(());
+        outcome.expect("is fatal");
+    }
+
+    #[test]
+    fn outcome_map_err_works_correctly() {
+        let plus_1 = |x: u8| x as u16 + 1;
+
+        let success = Outcome::Success(1);
+        assert_eq!(success.map_err(plus_1), Outcome::Success(1));
+
+        let incomplete = Outcome::<(), u8>::incomplete(1);
+        assert_eq!(
+            incomplete.map_err(plus_1),
+            Outcome::<(), u16>::incomplete(1)
+        );
+
+        let fatal = Outcome::Fatal(1);
+        assert_eq!(fatal.map_err(plus_1), Outcome::<(), u16>::Fatal(2));
+    }
+
+    #[test]
+    fn outcome_to_result_works_correctly() {
+        let success = Outcome::<_, ()>::Success(1);
+        assert_eq!(success.to_result(), Ok(1));
+
+        let fatal = Outcome::<(), _>::Fatal(1);
+        assert_eq!(fatal.to_result(), Err(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "did not expect incompletion by 1 bytes converting to result")]
+    fn outcome_to_result_panics_on_incomplete() {
+        let _ = Outcome::<(), u8>::incomplete(1).to_result();
+    }
+
+    #[test]
+    fn try_outcome_works() {
+        fn try_outcome_func(input: Outcome<u8, i32>) -> Outcome<u16, i32> {
+            let value = try_outcome!(input);
+            Outcome::Success(value as u16 + 1)
+        }
+
+        assert_eq!(try_outcome_func(Outcome::Success(1)), Outcome::Success(2));
+        assert_eq!(
+            try_outcome_func(Outcome::incomplete(123)),
+            Outcome::incomplete(123)
+        );
+        assert_eq!(try_outcome_func(Outcome::Fatal(-123)), Outcome::Fatal(-123));
     }
 }
