@@ -16,7 +16,7 @@ pub mod test_block_builder;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::fmt::{self, Display, Formatter};
-#[cfg(feature = "once_cell")]
+#[cfg(feature = "json-schema")]
 use once_cell::sync::Lazy;
 #[cfg(feature = "std")]
 use std::error::Error as StdError;
