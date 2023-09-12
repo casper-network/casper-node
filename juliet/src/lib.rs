@@ -196,7 +196,7 @@ macro_rules! try_outcome {
 }
 
 /// Channel configuration values that needs to be agreed upon by all clients.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ChannelConfiguration {
     /// Maximum number of requests allowed on the channel.
     request_limit: u16,
@@ -263,7 +263,7 @@ mod tests {
     };
     use proptest_attr_macro::proptest;
 
-    use crate::{ChannelId, Id, Outcome};
+    use crate::{ChannelConfiguration, ChannelId, Id, Outcome};
 
     impl Arbitrary for ChannelId {
         type Parameters = <u8 as Arbitrary>::Parameters;
@@ -398,5 +398,23 @@ mod tests {
             Outcome::incomplete(123)
         );
         assert_eq!(try_outcome_func(Outcome::Fatal(-123)), Outcome::Fatal(-123));
+    }
+
+    #[test]
+    fn channel_configuration_can_be_built() {
+        let mut chan_cfg = ChannelConfiguration::new();
+        assert_eq!(chan_cfg, ChannelConfiguration::default());
+
+        chan_cfg = chan_cfg.with_request_limit(123);
+        assert_eq!(chan_cfg.request_limit, 123);
+
+        chan_cfg = chan_cfg.with_max_request_payload_size(99);
+        assert_eq!(chan_cfg.request_limit, 123);
+        assert_eq!(chan_cfg.max_request_payload_size, 99);
+
+        chan_cfg = chan_cfg.with_max_response_payload_size(77);
+        assert_eq!(chan_cfg.request_limit, 123);
+        assert_eq!(chan_cfg.max_request_payload_size, 99);
+        assert_eq!(chan_cfg.max_response_payload_size, 77);
     }
 }
