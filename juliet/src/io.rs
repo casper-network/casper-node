@@ -168,6 +168,7 @@ pub struct IoId(u64);
 /// items to be sent.
 ///
 /// Once instantiated, a continuous polling of [`IoCore::next_event`] is expected.
+#[derive(Debug)]
 pub struct IoCore<const N: usize, R, W> {
     /// The actual protocol state.
     juliet: JulietProtocol<N>,

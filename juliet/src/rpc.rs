@@ -101,6 +101,7 @@ pub struct JulietRpcClient<const N: usize> {
 /// [`queue_for_sending`](JulietRpcRequestBuilder::queue_for_sending) or
 /// [`try_queue_for_sending`](JulietRpcRequestBuilder::try_queue_for_sending), returning a
 /// [`RequestGuard`], which can be used to await the results of the request.
+#[derive(Debug)]
 pub struct JulietRpcRequestBuilder<'a, const N: usize> {
     client: &'a JulietRpcClient<N>,
     channel: ChannelId,
@@ -117,6 +118,7 @@ pub struct JulietRpcRequestBuilder<'a, const N: usize> {
 /// ## Shutdown
 ///
 /// The server will automatically be shutdown if the last [`JulietRpcClient`] is dropped.
+#[derive(Debug)]
 pub struct JulietRpcServer<const N: usize, R, W> {
     core: IoCore<N, R, W>,
     handle: Handle,
@@ -125,6 +127,7 @@ pub struct JulietRpcServer<const N: usize, R, W> {
 }
 
 /// Internal structure representing a new outgoing request.
+#[derive(Debug)]
 struct NewOutgoingRequest {
     /// The already reserved ticket.
     ticket: RequestTicket,
