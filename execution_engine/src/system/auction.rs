@@ -227,8 +227,12 @@ pub trait Auction:
 
         let bid = detail::read_bid_for_validator(self, validator_account_hash)?;
 
+        let delegator_already_exists = bid.delegators().contains_key(&delegator_public_key);
+
         if let Some(max_delegators_per_validator) = max_delegators_per_validator {
-            if bid.delegators().len() >= max_delegators_per_validator as usize {
+            if bid.delegators().len() >= max_delegators_per_validator as usize
+                && !delegator_already_exists
+            {
                 return Err(Error::ExceededDelegatorSizeLimit.into());
             }
         }
