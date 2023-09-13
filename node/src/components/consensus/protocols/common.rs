@@ -84,6 +84,7 @@ mod tests {
     use super::*;
     use crate::components::consensus::ClContext;
     use casper_types::{testing::TestRng, PublicKey};
+    use rand::Rng;
 
     #[test]
     #[should_panic]
@@ -94,5 +95,39 @@ mod tests {
         validator_stakes.insert(PublicKey::random(rng), U512::from(1_u32));
 
         validators::<ClContext>(&Default::default(), &Default::default(), validator_stakes);
+    }
+
+    #[test]
+    fn total_weights_less_than_u64_max() {
+        let mut rng = TestRng::new();
+
+        let (test_stake_1, test_stake_2) = (rng.gen(), rng.gen());
+
+        let mut test_stakes = |a: u64, b: u64| -> BTreeMap<PublicKey, U512> {
+            let mut result = BTreeMap::new();
+            result.insert(
+                PublicKey::random(&mut rng),
+                U512::from(a) * U512::from(u128::MAX),
+            );
+            result.insert(
+                PublicKey::random(&mut rng),
+                U512::from(b) * U512::from(u128::MAX),
+            );
+            result
+        };
+
+        // First, we test with random values.
+        let stakes = test_stakes(test_stake_1, test_stake_2);
+        let weights = validators::<ClContext>(&Default::default(), &Default::default(), stakes);
+        assert!(weights.total_weight().0 < u64::MAX);
+
+        // Then, we test with values that were known to cause issues before.
+        let stakes = test_stakes(514, 771);
+        let weights = validators::<ClContext>(&Default::default(), &Default::default(), stakes);
+        assert!(weights.total_weight().0 < u64::MAX);
+
+        let stakes = test_stakes(668, 614);
+        let weights = validators::<ClContext>(&Default::default(), &Default::default(), stakes);
+        assert!(weights.total_weight().0 < u64::MAX);
     }
 }
