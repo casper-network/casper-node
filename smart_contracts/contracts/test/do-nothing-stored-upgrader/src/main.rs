@@ -48,7 +48,7 @@ pub extern "C" fn call() {
 
     let do_nothing_package_hash: PackageHash = runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
-        .into_hash()
+        .into_hash_addr()
         .unwrap()
         .into();
 

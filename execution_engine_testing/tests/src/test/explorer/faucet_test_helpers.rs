@@ -392,7 +392,7 @@ pub fn get_faucet_entity_hash(
         .named_keys()
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .cloned()
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .map(AddressableEntityHash::new)
         .expect("failed to find faucet contract")
 }

@@ -13,7 +13,7 @@ const CONTRACT_HASH_NAME: &str = "contract_stored";
 #[no_mangle]
 pub extern "C" fn call() {
     let contract_hash = runtime::get_key(CONTRACT_HASH_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .map(AddressableEntityHash::new)
         .unwrap_or_revert();
 

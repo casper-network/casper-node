@@ -7,7 +7,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    account::AccountHash, package::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
+    account::AccountHash, package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs, U512,
 };
 
 use crate::wasm_utils;
@@ -72,7 +72,7 @@ fn should_call_group_restricted_session() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_SESSION,
                 args,
             )
@@ -133,7 +133,7 @@ fn should_call_group_restricted_session_caller() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_SESSION_CALLER,
                 args,
             )
@@ -198,8 +198,8 @@ fn should_not_call_restricted_session_from_wrong_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_hash_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_SESSION,
                 args,
             )
@@ -276,8 +276,8 @@ fn should_not_call_restricted_session_caller_from_wrong_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_hash_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_SESSION_CALLER,
                 args,
             )
@@ -349,7 +349,7 @@ fn should_call_group_restricted_contract() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_CONTRACT,
                 args,
             )
@@ -419,8 +419,8 @@ fn should_not_call_group_restricted_contract_from_wrong_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_hash_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_CONTRACT,
                 args,
             )
@@ -482,7 +482,7 @@ fn should_call_group_unrestricted_contract_caller() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 UNRESTRICTED_CONTRACT_CALLER,
                 args,
             )
@@ -549,8 +549,8 @@ fn should_call_unrestricted_contract_caller_from_different_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_hash_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 UNRESTRICTED_CONTRACT_CALLER,
                 args,
             )
@@ -613,8 +613,8 @@ fn should_call_group_restricted_contract_as_session() {
         let deploy = DeployItemBuilder::new()
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_hash_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_CONTRACT_CALLER_AS_SESSION,
                 args,
             )
@@ -677,8 +677,8 @@ fn should_call_group_restricted_contract_as_session_from_wrong_account() {
         let deploy = DeployItemBuilder::new()
             .with_address(ACCOUNT_1_ADDR)
             .with_stored_versioned_contract_by_hash(
-                package_hash.into_hash().expect("should be hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                package_hash.into_hash_addr().expect("should be hash"),
+                Some(ENTITY_INITIAL_VERSION),
                 RESTRICTED_CONTRACT_CALLER_AS_SESSION,
                 args,
             )
@@ -743,7 +743,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 UNCALLABLE_SESSION,
                 args,
             )
@@ -772,7 +772,7 @@ fn should_not_call_uncallable_contract_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CALL_RESTRICTED_ENTRY_POINTS,
                 args,
             )
@@ -829,7 +829,7 @@ fn should_not_call_uncallable_session_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 UNCALLABLE_CONTRACT,
                 args,
             )
@@ -858,7 +858,7 @@ fn should_not_call_uncallable_session_from_deploy() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CALL_RESTRICTED_ENTRY_POINTS,
                 args,
             )
@@ -922,9 +922,9 @@ fn should_not_call_group_restricted_stored_payment_code_from_invalid_account() {
             .with_session_bytes(wasm_utils::do_nothing_bytes(), RuntimeArgs::default())
             .with_stored_versioned_payment_contract_by_hash(
                 package_hash
-                    .into_hash()
+                    .into_hash_addr()
                     .expect("must have created package hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 "restricted_standard_payment",
                 args,
             )
@@ -1003,9 +1003,9 @@ fn should_call_group_restricted_stored_payment_code() {
             // .with_stored_versioned_contract_by_name(name, version, entry_point, args)
             .with_stored_versioned_payment_contract_by_hash(
                 package_hash
-                    .into_hash()
+                    .into_hash_addr()
                     .expect("must have created package hash"),
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 "restricted_standard_payment",
                 args,
             )

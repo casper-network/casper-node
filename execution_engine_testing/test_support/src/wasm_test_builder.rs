@@ -1108,7 +1108,7 @@ where
             Some(StoredValue::CLValue(cl_value)) => {
                 let entity_key = CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
                 Some(AddressableEntityHash::new(
-                    entity_key.into_hash().expect("must have hash addr"),
+                    entity_key.into_hash_addr().expect("must have hash addr"),
                 ))
             }
             Some(_) | None => None,

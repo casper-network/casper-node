@@ -66,7 +66,7 @@ pub struct RuntimeContext<'a, R> {
     // Original account/contract for read only tasks taken before execution
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
-    entity_address: Key,
+    entity_key: Key,
     package_kind: PackageKind,
     account_hash: AccountHash,
 }
@@ -109,7 +109,7 @@ where
             access_rights,
             args: runtime_args,
             entity,
-            entity_address,
+            entity_key: entity_address,
             authorization_keys,
             account_hash,
             blocktime,
@@ -163,7 +163,7 @@ where
             access_rights,
             args: runtime_args,
             entity,
-            entity_address,
+            entity_key: entity_address,
             authorization_keys,
             account_hash,
             blocktime,
@@ -243,7 +243,7 @@ where
     /// also persistable map (one that is found in the
     /// TrackingCopy/GlobalState).
     pub fn remove_key(&mut self, name: &str) -> Result<(), Error> {
-        match self.get_entity_address() {
+        match self.get_entity_key() {
             account_hash @ Key::Account(_) => {
                 let (contract, contract_key): (AddressableEntity, Key) = {
                     let contract_key = self
@@ -401,8 +401,8 @@ where
     ///
     /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
     /// type.
-    pub fn get_entity_address(&self) -> Key {
-        self.entity_address
+    pub fn get_entity_key(&self) -> Key {
+        self.entity_key
     }
 
     /// Returns the initiater of the call chain.
@@ -458,7 +458,7 @@ where
         // the element stored under `base_key`) is allowed to add new named keys to itself.
         let named_key_value = StoredValue::CLValue(CLValue::from_t((name.clone(), key))?);
         self.validate_value(&named_key_value)?;
-        self.metered_add_gs_unsafe(self.get_entity_address(), named_key_value)?;
+        self.metered_add_gs_unsafe(self.get_entity_key(), named_key_value)?;
         self.insert_named_key(name, key);
         Ok(())
     }
@@ -806,7 +806,7 @@ where
     /// Tests whether addition to `key` is valid.
     pub fn is_addable(&self, key: &Key) -> bool {
         match key {
-            Key::Hash(_) => &self.get_entity_address() == key, // ???
+            Key::Hash(_) => &self.get_entity_key() == key, // ???
             Key::URef(uref) => uref.is_addable(),
             Key::Account(_)
             | Key::Transfer(_)
@@ -885,7 +885,7 @@ where
 
     /// Charges gas for specified amount of bytes used.
     fn charge_gas_storage(&mut self, bytes_count: usize) -> Result<(), Error> {
-        if let Some(base_key) = self.get_entity_address().into_hash() {
+        if let Some(base_key) = self.get_entity_key().into_hash_addr() {
             let entity_hash = AddressableEntityHash::new(base_key);
             if self.is_system_addressable_entity(&entity_hash)? {
                 // Don't charge storage used while executing a system contract.
@@ -1001,7 +1001,7 @@ where
         weight: Weight,
     ) -> Result<(), Error> {
         let entity_key = match self.entry_point_type {
-            EntryPointType::Contract => self.entity_address,
+            EntryPointType::Contract => self.entity_key,
             EntryPointType::Session | EntryPointType::Install => {
                 self.get_entity_address_for_account_hash(self.account_hash)?
             }
@@ -1014,7 +1014,7 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key: Key = self.get_entity_address();
+        let key: Key = self.get_entity_key();
 
         // Take an addressable entity out of the global state
         let entity = {
@@ -1056,7 +1056,7 @@ where
 
         // Converts an account's public key into a URef
         // let key = Key::Account(self.contract().account_hash());
-        let key: Key = self.get_entity_address();
+        let key: Key = self.get_entity_key();
 
         // Take an account out of the global state
         let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
@@ -1093,7 +1093,7 @@ where
         }
 
         // Converts an account's public key into a URef
-        let key: Key = self.get_entity_address();
+        let key: Key = self.get_entity_key();
 
         // Take an account out of the global state
         let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
@@ -1125,7 +1125,7 @@ where
         threshold: Weight,
     ) -> Result<(), Error> {
         let entity_key = match self.entry_point_type {
-            EntryPointType::Contract => self.entity_address,
+            EntryPointType::Contract => self.entity_key,
             EntryPointType::Session | EntryPointType::Install => {
                 self.get_entity_address_for_account_hash(self.account_hash)?
             }
@@ -1136,7 +1136,7 @@ where
             return Err(SetThresholdFailure::PermissionDeniedError.into());
         }
 
-        let key: Key = self.get_entity_address();
+        let key: Key = self.get_entity_key();
 
         // Take an addressable entity out of the global state
         let mut entity: AddressableEntity = self.read_gs_typed(&key)?;
@@ -1195,7 +1195,7 @@ where
 
     /// Checks if the account context is valid.
     fn is_valid_context(&self, entity_address: Key) -> bool {
-        self.get_entity_address() == entity_address
+        self.get_entity_key() == entity_address
     }
 
     /// Gets main purse id

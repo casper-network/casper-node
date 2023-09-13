@@ -406,7 +406,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             disabled_versions,
             groups,
             PackageStatus::Locked,
-            PackageKind::Wasm,
+            PackageKind::SmartContract,
         );
 
         stored_value.insert(

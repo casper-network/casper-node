@@ -7,7 +7,7 @@ use casper_execution_engine::{engine_state, execution::Error};
 use casper_types::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Weight},
-    package::{EntityVersion, CONTRACT_INITIAL_VERSION},
+    package::{EntityVersion, ENTITY_INITIAL_VERSION},
     runtime_args,
     system::mint,
     testing::TestRng,
@@ -27,7 +27,7 @@ const ENTRY_FUNCTION_NAME: &str = "delegate";
 const DO_NOTHING_CONTRACT_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
 const RET_UREF_NAME: &str = "ret_uref";
-const INITIAL_VERSION: EntityVersion = CONTRACT_INITIAL_VERSION;
+const INITIAL_VERSION: EntityVersion = ENTITY_INITIAL_VERSION;
 const UPGRADED_VERSION: EntityVersion = INITIAL_VERSION + 1;
 const PURSE_NAME_ARG_NAME: &str = "purse_name";
 const PURSE_1: &str = "purse_1";
@@ -168,14 +168,14 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .named_keys()
         .get(DO_NOTHING_HASH_KEY_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have into hash");
 
     let stored_contract_package_hash = account_1
         .named_keys()
         .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash");
 
     // Calling initial stored version from contract package hash, should have no effects
@@ -221,7 +221,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .named_keys()
         .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash");
 
     // Calling upgraded stored version, expecting purse creation
@@ -287,7 +287,7 @@ fn should_be_able_to_observe_state_transition_across_upgrade() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored uref")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash")
         .into();
 
@@ -381,14 +381,14 @@ fn should_support_extending_functionality() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored uref")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash");
 
     let stored_hash = account
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored uref")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash")
         .into();
 
@@ -457,7 +457,7 @@ fn should_support_extending_functionality() {
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored uref")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash")
         .into();
     assert_ne!(stored_hash, stored_hash_2);
@@ -524,14 +524,14 @@ fn should_maintain_named_keys_across_upgrade() {
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
         .expect("should have stored hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash");
 
     let stored_package_hash = account
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash");
 
     // add several purse urefs to named_keys
@@ -628,7 +628,7 @@ fn should_fail_upgrade_for_locked_contract() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash")
         .into();
 
@@ -720,7 +720,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash")
         .into();
 
@@ -745,7 +745,7 @@ fn should_only_allow_upgrade_based_on_action_threshold() {
         .named_keys()
         .get(SHARING_HASH_KEY_NAME)
         .expect("must have named key entry")
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("must convert to hash");
 
@@ -848,7 +848,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         .named_keys()
         .get(CONTRACT_HASH_NAME)
         .expect("must have named key entry for contract hash")
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("must get contract hash");
 
@@ -856,7 +856,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         .named_keys()
         .get(PACKAGE_HASH_KEY_NAME)
         .expect("must have named key entry for package hash")
-        .into_hash()
+        .into_hash_addr()
         .map(PackageHash::new)
         .expect("must get package hash");
 
@@ -1009,7 +1009,7 @@ fn should_migrate_with_correct_upgrade_thresholds() {
     let contract_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
+        .map(|holder_key| holder_key.into_hash_addr().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must convert to hash");
 
@@ -1049,7 +1049,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
     let entity_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
+        .map(|holder_key| holder_key.into_hash_addr().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must convert to hash");
 
@@ -1057,7 +1057,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored package hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash");
 
     let exec_request = ExecuteRequestBuilder::standard(
@@ -1098,7 +1098,7 @@ fn should_correctly_set_upgrade_threshold_on_entity_upgrade() {
         .expect("must have entity")
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|key| key.into_hash().map(AddressableEntityHash::new))
+        .map(|key| key.into_hash_addr().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must get contract hash");
 
@@ -1135,7 +1135,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
     let entity_hash = default_addressable_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_hash().map(AddressableEntityHash::new))
+        .map(|holder_key| holder_key.into_hash_addr().map(AddressableEntityHash::new))
         .unwrap()
         .expect("must convert to hash");
 
@@ -1156,7 +1156,7 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
                 .named_keys()
                 .get(HASH_KEY_NAME)
                 .expect("must have package named key entry")
-                .into_hash()
+                .into_hash_addr()
                 .map(PackageHash::new)
                 .unwrap();
 

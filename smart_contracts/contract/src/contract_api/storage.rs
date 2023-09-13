@@ -127,6 +127,14 @@ pub fn new_locked_contract(
     create_contract(entry_points, named_keys, hash_name, uref_name, true)
 }
 
+fn foo(entry_points: EntryPoints) {
+    let package_hash = my_package_hash;
+
+    add_contract_version(package_hash, entry_points, NamedKeys::new());
+
+    disable_contract_version(package_hash, my_previous_entity_hash);
+}
+
 fn create_contract(
     entry_points: EntryPoints,
     named_keys: Option<NamedKeys>,

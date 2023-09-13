@@ -440,7 +440,7 @@ fn should_record_wasm_transfers_with_subcall() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .unwrap()
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("should have contract hash");
 

@@ -241,7 +241,7 @@ fn should_verify_isolated_auction_storage_is_free() {
             .named_keys()
             .get(AUCTION)
             .unwrap()
-            .into_hash()
+            .into_hash_addr()
             .unwrap()
             .into(),
         auction::METHOD_ADD_BID,
@@ -305,7 +305,7 @@ fn should_measure_gas_cost_for_storage_usage_write() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -417,7 +417,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_write() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -529,7 +529,7 @@ fn should_measure_gas_cost_for_storage_usage_add() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -645,7 +645,7 @@ fn should_measure_unisolated_gas_cost_for_storage_usage_add() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -757,7 +757,7 @@ fn should_verify_new_uref_is_charging_for_storage() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -802,7 +802,7 @@ fn should_verify_put_key_is_charging_for_storage() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -847,7 +847,7 @@ fn should_verify_remove_key_is_charging_for_storage() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -892,7 +892,7 @@ fn should_verify_create_contract_at_hash_is_charging_for_storage() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -937,7 +937,7 @@ fn should_verify_create_contract_user_group_is_charging_for_storage() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 
@@ -1016,7 +1016,7 @@ fn should_verify_subcall_new_uref_is_charging_for_storage() {
         .named_keys()
         .get(CONTRACT_KEY_NAME)
         .expect("contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be hash")
         .into();
 

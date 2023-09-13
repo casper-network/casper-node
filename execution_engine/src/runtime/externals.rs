@@ -546,8 +546,8 @@ where
                     [hash_dest_ptr, access_dest_ptr],
                 )?;
                 let package_status = PackageStatus::new(is_locked);
-                let (hash_addr, access_addr) =
-                    self.create_contract_package_at_hash(package_status, PackageKind::Wasm)?;
+                let (hash_addr, access_addr) = self
+                    .create_contract_package_at_hash(package_status, PackageKind::SmartContract)?;
 
                 self.function_address(hash_addr, hash_dest_ptr)?;
                 self.function_address(access_addr, access_dest_ptr)?;
@@ -602,7 +602,40 @@ where
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
+            FunctionIndex::AddSessionVersion => {
+                // args(0) = pointer to entrypoints in wasm memory
+                // args(1) = size of entrypoints in wasm memory
+                // args(2) = pointer to output buffer for serialized key
+                // args(3) = size of output buffer
+                // args(4) = pointer to bytes written
+                let (
+                    entry_points_ptr,
+                    entry_points_size,
+                    output_ptr,
+                    output_size,
+                    bytes_written_ptr,
+                ) = Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.add_session_version,
+                    [
+                        entry_points_ptr,
+                        entry_points_size,
+                        output_ptr,
+                        output_size,
+                        bytes_written_ptr,
+                    ],
+                )?;
 
+                let entry_points: EntryPoints =
+                    self.t_from_mem(entry_points_ptr, entry_points_size)?;
+                let ret = self.add_session_version(
+                    entry_points,
+                    output_ptr,
+                    output_size as usize,
+                    bytes_written_ptr,
+                )?;
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
+            }
             FunctionIndex::AddContractVersion => {
                 // args(0) = pointer to package key in wasm memory
                 // args(1) = size of package key in wasm memory

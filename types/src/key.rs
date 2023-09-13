@@ -100,6 +100,9 @@ const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH;
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
+pub type PackageAddr = [u8; 32];
+pub type PackageAddr = [u8; 32];
+
 /// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
 
@@ -187,6 +190,9 @@ pub enum Key {
     ChecksumRegistry,
     /// A `Key` under which we store bid information
     BidAddr(BidAddr),
+    Package(PackageAddr),
+    AddressableEntity((EntityKindTag, EntityAddr)),
+    ByteCode((ByteCodeKindTag, ByteCodeAddr)),
 }
 
 #[cfg(feature = "json-schema")]
@@ -591,7 +597,7 @@ impl Key {
 
     /// Returns the inner bytes of `self` if `self` is of type [`Key::Hash`], otherwise returns
     /// `None`.
-    pub fn into_hash(self) -> Option<HashAddr> {
+    pub fn into_hash_addr(self) -> Option<HashAddr> {
         match self {
             Key::Hash(hash) => Some(hash),
             _ => None,
@@ -601,7 +607,7 @@ impl Key {
     /// Returns [`AddressableEntityHash`] of `self` if `self` is of type [`Key::Hash`], otherwise
     /// returns `None`.
     pub fn into_entity_hash(self) -> Option<AddressableEntityHash> {
-        let hash_addr = self.into_hash()?;
+        let hash_addr = self.into_hash_addr()?;
         Some(AddressableEntityHash::new(hash_addr))
     }
 
@@ -1338,7 +1344,7 @@ mod tests {
         let account_hash = AccountHash::new(account);
         let key1 = Key::Account(account_hash);
         assert_eq!(key1.into_account(), Some(account_hash));
-        assert!(key1.into_hash().is_none());
+        assert!(key1.into_hash_addr().is_none());
         assert!(key1.as_uref().is_none());
     }
 
@@ -1347,7 +1353,7 @@ mod tests {
         let hash = [42; KEY_HASH_LENGTH];
         let key1 = Key::Hash(hash);
         assert!(key1.into_account().is_none());
-        assert_eq!(key1.into_hash(), Some(hash));
+        assert_eq!(key1.into_hash_addr(), Some(hash));
         assert!(key1.as_uref().is_none());
     }
 
@@ -1356,7 +1362,7 @@ mod tests {
         let uref = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
         let key1 = Key::URef(uref);
         assert!(key1.into_account().is_none());
-        assert!(key1.into_hash().is_none());
+        assert!(key1.into_hash_addr().is_none());
         assert_eq!(key1.as_uref(), Some(&uref));
     }
 

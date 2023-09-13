@@ -12,7 +12,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    package::CONTRACT_INITIAL_VERSION,
+    package::ENTITY_INITIAL_VERSION,
     runtime_args,
     system::{handle_payment, standard_payment},
     CLType, CLTyped, Key, PackageHash, Parameter, RuntimeArgs, URef, U512,
@@ -40,8 +40,8 @@ pub extern "C" fn restricted_contract() {}
 #[no_mangle]
 pub extern "C" fn restricted_session_caller() {
     let package_hash: Key = runtime::get_named_arg(ARG_PACKAGE_HASH);
-    let contract_version = Some(CONTRACT_INITIAL_VERSION);
-    let contract_package_hash = package_hash.into_hash().unwrap_or_revert().into();
+    let contract_version = Some(ENTITY_INITIAL_VERSION);
+    let contract_package_hash = package_hash.into_hash_addr().unwrap_or_revert().into();
     runtime::call_versioned_contract(
         contract_package_hash,
         contract_version,
@@ -52,8 +52,8 @@ pub extern "C" fn restricted_session_caller() {
 
 fn contract_caller() {
     let package_hash: Key = runtime::get_named_arg(ARG_PACKAGE_HASH);
-    let contract_version = Some(CONTRACT_INITIAL_VERSION);
-    let contract_package_hash = package_hash.into_hash().unwrap_or_revert().into();
+    let contract_version = Some(ENTITY_INITIAL_VERSION);
+    let contract_package_hash = package_hash.into_hash_addr().unwrap_or_revert().into();
     let runtime_args = runtime_args! {};
     runtime::call_versioned_contract(
         contract_package_hash,

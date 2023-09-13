@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{engine_state::Error, execution};
-use casper_types::{package::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
+use casper_types::{package::ENTITY_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -35,7 +35,7 @@ fn should_enforce_intended_execution_contexts() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 SESSION_CODE_TEST,
                 args,
             )
@@ -53,7 +53,7 @@ fn should_enforce_intended_execution_contexts() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CONTRACT_CODE_TEST,
                 args,
             )
@@ -71,7 +71,7 @@ fn should_enforce_intended_execution_contexts() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 ADD_NEW_KEY_AS_SESSION,
                 args,
             )
@@ -232,7 +232,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         .named_keys()
         .get(CONTRACT_HASH_KEY)
         .expect("should have contract hash")
-        .into_hash()
+        .into_hash_addr()
         .expect("should have hash");
 
     let exec_request_2 = {
@@ -334,7 +334,7 @@ fn should_not_call_session_from_contract() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 SESSION_CODE_CALLER_AS_CONTRACT,
                 args,
             )

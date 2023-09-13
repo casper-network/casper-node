@@ -25,7 +25,7 @@ pub fn delegate() {
     }
 
     let contract_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .unwrap_or_revert();
 
     runtime::call_contract(

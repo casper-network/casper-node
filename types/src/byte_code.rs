@@ -223,11 +223,17 @@ impl JsonSchema for ByteCodeHash {
     }
 }
 
+enum ByteCodeKind {
+    Empty,
+    V1CasperWasm,
+}
+
 /// A container for contract's WASM bytes.
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct ByteCode {
+    byte_code_kind: ByteCodeKind,
     bytes: Bytes,
 }
 

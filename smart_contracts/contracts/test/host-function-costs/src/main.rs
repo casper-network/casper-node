@@ -219,7 +219,7 @@ pub extern "C" fn account_function() {
 #[no_mangle]
 pub extern "C" fn calls_do_nothing_level1() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .expect("should have key")
         .into();
     runtime::call_versioned_contract(
@@ -233,7 +233,7 @@ pub extern "C" fn calls_do_nothing_level1() {
 #[no_mangle]
 pub extern "C" fn calls_do_nothing_level2() {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .expect("should have key")
         .into();
     runtime::call_versioned_contract(
@@ -246,7 +246,7 @@ pub extern "C" fn calls_do_nothing_level2() {
 
 fn measure_arg_size(bytes: usize) {
     let contract_package_hash = runtime::get_key(HASH_KEY_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .expect("should have key")
         .into();
 

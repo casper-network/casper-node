@@ -106,7 +106,7 @@ impl AccountExt for AddressableEntity {
         self.named_keys()
             .get(key)
             .cloned()
-            .and_then(Key::into_hash)
+            .and_then(Key::into_hash_addr)
             .unwrap()
     }
 }

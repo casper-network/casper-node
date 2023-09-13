@@ -506,6 +506,22 @@ extern "C" {
         existing_urefs_size: usize,
         output_size_ptr: *mut usize,
     ) -> i32;
+    /// Adds new session logic to an addressable entity of kind Account.
+    ///
+    /// # Arguments
+    /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
+    /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
+    /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
+    /// * `output_size` - size of memory area that host can write to
+    /// * `bytes_written_ptr` - pointer to a value where host will set a number of bytes written to
+    ///   the `output_size` pointer
+    pub fn casper_add_session_logic(
+        entry_points_ptr: *const u8,
+        entry_points_size: usize,
+        output_ptr: *mut u8,
+        output_size: usize,
+        bytes_written_ptr: *mut usize,
+    ) -> i32;
     /// Adds new contract version to a contract package.
     ///
     /// # Arguments

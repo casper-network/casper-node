@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
-    package::CONTRACT_INITIAL_VERSION,
+    package::ENTITY_INITIAL_VERSION,
     runtime_args, AddressableEntityHash, CLType, EntityVersion, Key, PackageHash,
 };
 
@@ -42,12 +42,12 @@ pub extern "C" fn contract_code_test() {
 pub extern "C" fn session_code_caller_as_session() {
     let contract_package_hash = runtime::get_key(PACKAGE_HASH_KEY)
         .expect("should have contract package key")
-        .into_hash()
+        .into_hash_addr()
         .unwrap_or_revert();
 
     runtime::call_versioned_contract::<()>(
         contract_package_hash.into(),
-        Some(CONTRACT_INITIAL_VERSION),
+        Some(ENTITY_INITIAL_VERSION),
         SESSION_CODE,
         runtime_args! {},
     );
@@ -63,14 +63,14 @@ pub extern "C" fn add_new_key() {
 pub extern "C" fn add_new_key_as_session() {
     let contract_package_hash = runtime::get_key(PACKAGE_HASH_KEY)
         .expect("should have package hash")
-        .into_hash()
+        .into_hash_addr()
         .unwrap_or_revert()
         .into();
 
     assert!(runtime::get_key(NEW_KEY).is_none());
     runtime::call_versioned_contract::<()>(
         contract_package_hash,
-        Some(CONTRACT_INITIAL_VERSION),
+        Some(ENTITY_INITIAL_VERSION),
         "add_new_key",
         runtime_args! {},
     );
@@ -80,10 +80,13 @@ pub extern "C" fn add_new_key_as_session() {
 #[no_mangle]
 pub extern "C" fn session_code_caller_as_contract() {
     let contract_package_key: Key = runtime::get_named_arg(PACKAGE_HASH_KEY);
-    let contract_package_hash = contract_package_key.into_hash().unwrap_or_revert().into();
+    let contract_package_hash = contract_package_key
+        .into_hash_addr()
+        .unwrap_or_revert()
+        .into();
     runtime::call_versioned_contract::<()>(
         contract_package_hash,
-        Some(CONTRACT_INITIAL_VERSION),
+        Some(ENTITY_INITIAL_VERSION),
         SESSION_CODE,
         runtime_args! {},
     );

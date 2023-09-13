@@ -750,7 +750,7 @@ fn should_allow_funding_by_an_authorized_account() {
             None,
             Key::Hash(
                 faucet_named_key
-                    .into_hash()
+                    .into_hash_addr()
                     .expect("failed to convert key into hash"),
             ),
             &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
@@ -779,7 +779,7 @@ fn should_allow_funding_by_an_authorized_account() {
             None,
             Key::Hash(
                 faucet_named_key
-                    .into_hash()
+                    .into_hash_addr()
                     .expect("failed to convert key into hash"),
             ),
             &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],

@@ -123,7 +123,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -131,7 +131,10 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
+    let package_hash = package_hash_key
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -324,7 +327,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .cloned()
         .unwrap();
     let entity_hash = contract_hash_key
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -332,7 +335,10 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
+    let package_hash = package_hash_key
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -387,7 +393,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .cloned()
         .unwrap();
     let entity_hash = contract_hash_key
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -395,7 +401,10 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
+    let package_hash = package_hash_key
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -450,7 +459,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -458,7 +467,10 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
+    let package_hash = package_hash_key
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {
@@ -553,7 +565,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .cloned()
         .unwrap();
     let entity_hash = entity_hash_key
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .unwrap();
     let package_hash_key = account
@@ -561,7 +573,10 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .get(gh_1470_regression::PACKAGE_HASH_NAME)
         .cloned()
         .unwrap();
-    let package_hash = package_hash_key.into_hash().map(PackageHash::new).unwrap();
+    let package_hash = package_hash_key
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .unwrap();
 
     let call_contract_request = {
         let args = runtime_args! {

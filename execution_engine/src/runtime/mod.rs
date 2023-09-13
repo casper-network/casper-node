@@ -475,7 +475,7 @@ where
 
     /// Checks if a [`Key`] is a system contract.
     fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
-        let entity_hash = match key.into_hash() {
+        let entity_hash = match key.into_hash_addr() {
             Some(entity_hash_bytes) => AddressableEntityHash::new(entity_hash_bytes),
             None => return Ok(false),
         };
@@ -1091,7 +1091,7 @@ where
             }
             (EntryPointType::Session, EntryPointType::Session) => {
                 // Session code called from session reuses current base key
-                Ok(self.context.get_entity_address())
+                Ok(self.context.get_entity_key())
             }
             (EntryPointType::Session, EntryPointType::Contract)
             | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
@@ -1256,6 +1256,10 @@ where
                 actual: contract.protocol_version().value().major,
                 expected: protocol_version.value().major,
             });
+        }
+
+        if let EntryPointType::Session = entry_point.entry_point_type() {
+            return Err(Error::InvalidContext);
         }
 
         let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
@@ -1680,6 +1684,44 @@ where
         Ok(Ok(()))
     }
 
+    fn add_session_version(
+        &mut self,
+        entry_points: EntryPoints,
+    ) -> Result<Result<(), ApiError>, Error> {
+        let package_hash = self.context.entity().package_hash();
+
+        let mut package = self
+            .context
+            .read_gs_typed::<Package>(&Key::from(package_hash))?;
+
+        if package.get_package_kind() != PackageKind::Account {
+            return Err(Error::InvalidContext);
+        }
+
+        let byte_code_hash = self.context.new_hash_address()?;
+        let byte_code = {
+            let module_bytes = self.get_module_from_entry_points(&entry_points)?;
+            ByteCode::new(module_bytes)
+        };
+
+        let entity_hash = self
+            .context
+            .get_entity_key()
+            .into_entity_hash()
+            .expect("I will remove this I swear, I am tired");
+
+        let mut entity = self.context.entity();
+
+        self.context
+            .metered_write_gs_unsafe(Key::Hash(byte_code_hash), byte_code)?;
+        self.context
+            .metered_write_gs_unsafe(Key::Hash(entity_hash), entity)?;
+        self.context
+            .metered_write_gs_unsafe(package_hash, package)?;
+
+        Ok(Ok(()))
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn add_contract_version(
         &mut self,
@@ -1699,7 +1741,7 @@ where
             .context
             .read_gs_typed::<Package>(&Key::from(package_hash))?;
 
-        if package.get_package_kind() != PackageKind::Wasm {
+        if package.get_package_kind() != PackageKind::SmartContract {
             return Err(Error::InvalidContext);
         }
 
@@ -1907,7 +1949,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.get_entity_address() != Key::from(self.context.get_system_contract(MINT)?) {
+        if self.context.get_entity_key() != Key::from(self.context.get_system_contract(MINT)?) {
             return Err(Error::InvalidContext);
         }
 
@@ -1937,9 +1979,7 @@ where
             return Err(Error::InvalidContext);
         }
 
-        if self.context.get_entity_address()
-            != Key::from(self.context.get_system_contract(AUCTION)?)
-        {
+        if self.context.get_entity_key() != Key::from(self.context.get_system_contract(AUCTION)?) {
             return Err(Error::InvalidContext);
         }
 
@@ -2458,7 +2498,7 @@ where
                 // Attenuate the target main purse
                 let entity_key = CLValue::into_t::<Key>(account)?;
                 let contract_hash = if let Some(entity_hash) =
-                    entity_key.into_hash().map(AddressableEntityHash::new)
+                    entity_key.into_hash_addr().map(AddressableEntityHash::new)
                 {
                     entity_hash
                 } else {
@@ -3209,7 +3249,7 @@ where
                 let mut legacy_contract_package: Package =
                     self.context.read_gs_typed(&contract_package_key)?;
                 // Update the contract package from Legacy to Wasm
-                legacy_contract_package.update_package_kind(PackageKind::Wasm);
+                legacy_contract_package.update_package_kind(PackageKind::SmartContract);
                 legacy_contract_package.insert_entity_version(
                     self.context.protocol_version().value().major,
                     contract_hash,

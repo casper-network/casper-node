@@ -60,6 +60,7 @@ pub(crate) enum FunctionIndex {
     RandomBytes,
     DictionaryReadFuncIndex,
     EnableContractVersion,
+    AddSessionVersion,
 }
 
 impl From<FunctionIndex> for usize {

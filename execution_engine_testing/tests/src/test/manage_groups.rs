@@ -10,7 +10,7 @@ use casper_engine_test_support::{
 use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     addressable_entity::{self, MAX_GROUPS},
-    package::CONTRACT_INITIAL_VERSION,
+    package::ENTITY_INITIAL_VERSION,
     runtime_args, Group, RuntimeArgs,
 };
 
@@ -76,7 +76,7 @@ fn should_create_and_remove_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -112,7 +112,7 @@ fn should_create_and_remove_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 REMOVE_GROUP,
                 args,
             )
@@ -175,7 +175,7 @@ fn should_create_and_extend_user_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -212,7 +212,7 @@ fn should_create_and_extend_user_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 EXTEND_GROUP_UREFS,
                 args,
             )
@@ -278,7 +278,7 @@ fn should_create_and_remove_urefs_from_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -317,7 +317,7 @@ fn should_create_and_remove_urefs_from_group() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 REMOVE_GROUP_UREFS,
                 args,
             )
@@ -380,7 +380,7 @@ fn should_limit_max_urefs_while_extending() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 CREATE_GROUP,
                 DEFAULT_CREATE_GROUP_ARGS.clone(),
             )
@@ -417,7 +417,7 @@ fn should_limit_max_urefs_while_extending() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 EXTEND_GROUP_UREFS,
                 args,
             )
@@ -442,7 +442,7 @@ fn should_limit_max_urefs_while_extending() {
             .with_address(*DEFAULT_ACCOUNT_ADDR)
             .with_stored_versioned_contract_by_name(
                 PACKAGE_HASH_KEY,
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 EXTEND_GROUP_UREFS,
                 args,
             )

@@ -1,4 +1,5 @@
 //! Module containing the Package and associated types for addressable entities.
+use alloc::collections::btree_map::OccupiedEntry;
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
@@ -12,6 +13,7 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use itertools::Itertools;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -107,8 +109,8 @@ impl FromBytes for Group {
 /// Automatically incremented value for a contract version within a major `ProtocolVersion`.
 pub type EntityVersion = u32;
 
-/// Within each discrete major `ProtocolVersion`, contract version resets to this value.
-pub const CONTRACT_INITIAL_VERSION: EntityVersion = 1;
+/// Within each discrete major `ProtocolVersion`, entity version resets to this value.
+pub const ENTITY_INITIAL_VERSION: EntityVersion = 1;
 
 /// Major element of `ProtocolVersion` a `EntityVersion` is compatible with.
 pub type ProtocolVersionMajor = u32;
@@ -223,6 +225,14 @@ impl EntityVersions {
     /// Returns the `AddressableEntityHash` under the key
     pub fn get(&self, key: &EntityVersionKey) -> Option<&AddressableEntityHash> {
         self.0.get(key)
+    }
+
+    pub fn maybe_first(&mut self) -> Option<(EntityVersionKey, AddressableEntityHash)> {
+        if let Some((entity_version_key, entity_hash)) = self.0.iter().next() {
+            Some((entity_version_key.clone(), entity_hash.clone()))
+        } else {
+            None
+        }
     }
 }
 
@@ -614,12 +624,12 @@ impl FromBytes for PackageStatus {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 /// The type of Package.
 pub enum PackageKind {
-    /// Packages associated with Wasm stored on chain.
-    Wasm,
     /// Package associated with a native contract implementation.
     System(SystemEntityType),
     /// Package associated with an Account hash.
     Account(AccountHash),
+    /// Packages associated with Wasm stored on chain.
+    SmartContract,
     /// Packages from the previous format.
     #[default]
     Legacy,
@@ -630,7 +640,7 @@ impl PackageKind {
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
             Self::Account(account_hash) => Some(*account_hash),
-            Self::Wasm | Self::System(_) | Self::Legacy => None,
+            Self::SmartContract | Self::System(_) | Self::Legacy => None,
         }
     }
 
@@ -638,7 +648,7 @@ impl PackageKind {
     pub fn associated_keys(&self) -> AssociatedKeys {
         match self {
             Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
-            Self::Wasm | Self::System(_) | Self::Legacy => AssociatedKeys::default(),
+            Self::SmartContract | Self::System(_) | Self::Legacy => AssociatedKeys::default(),
         }
     }
 
@@ -681,7 +691,7 @@ impl ToBytes for PackageKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                PackageKind::Wasm | PackageKind::Legacy => 0,
+                PackageKind::SmartContract | PackageKind::Legacy => 0,
                 PackageKind::System(system_entity_type) => system_entity_type.serialized_length(),
                 PackageKind::Account(account_hash) => account_hash.serialized_length(),
             }
@@ -689,7 +699,7 @@ impl ToBytes for PackageKind {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            PackageKind::Wasm => PACKAGE_KIND_WASM_TAG.write_bytes(writer),
+            PackageKind::SmartContract => PACKAGE_KIND_WASM_TAG.write_bytes(writer),
             PackageKind::System(system_entity_type) => {
                 PACKAGE_KIND_SYSTEM_CONTRACT_TAG.write_bytes(writer)?;
                 system_entity_type.write_bytes(writer)
@@ -707,7 +717,7 @@ impl FromBytes for PackageKind {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
-            PACKAGE_KIND_WASM_TAG => Ok((PackageKind::Wasm, remainder)),
+            PACKAGE_KIND_WASM_TAG => Ok((PackageKind::SmartContract, remainder)),
             PACKAGE_KIND_SYSTEM_CONTRACT_TAG => {
                 let (system_entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
                 Ok((PackageKind::System(system_entity_type), remainder))
@@ -725,7 +735,7 @@ impl FromBytes for PackageKind {
 impl Display for PackageKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            PackageKind::Wasm => {
+            PackageKind::SmartContract => {
                 write!(f, "PackageKind:Wasm")
             }
             PackageKind::System(system_entity) => {
@@ -1059,7 +1069,7 @@ mod tests {
             BTreeSet::new(),
             Groups::default(),
             PackageStatus::default(),
-            PackageKind::Wasm,
+            PackageKind::SmartContract,
         );
 
         // add groups
@@ -1119,7 +1129,7 @@ mod tests {
             BTreeSet::default(),
             Groups::default(),
             PackageStatus::default(),
-            PackageKind::Wasm,
+            PackageKind::SmartContract,
         );
         assert_eq!(package.next_entity_version_for(major), 1);
 

@@ -231,7 +231,7 @@ where
 fn last_transform_kind_on_addressable_entity(
     runtime_context: &RuntimeContext<LmdbGlobalStateView>,
 ) -> TransformKind {
-    let key = runtime_context.entity_address;
+    let key = runtime_context.entity_key;
     runtime_context
         .effects()
         .transforms()
@@ -289,7 +289,7 @@ fn entity_key_readable_valid() {
     // Entity key is readable if it is a "base" key - current context of the
     // execution.
     let query_result = build_runtime_context_and_execute(NamedKeys::new(), |mut rc| {
-        let base_key = rc.get_entity_address();
+        let base_key = rc.get_entity_key();
         let entity = rc.get_entity();
 
         let result = rc
@@ -423,7 +423,7 @@ fn contract_key_addable_valid() {
         contract_key,
         authorization_keys,
         access_rights,
-        PackageKind::Wasm,
+        PackageKind::SmartContract,
         account_hash,
         Rc::new(RefCell::new(address_generator)),
         Rc::clone(&tracking_copy),
@@ -787,7 +787,7 @@ fn should_verify_ownership_before_adding_key() {
             .metered_write_gs_unsafe(Key::Hash([1; 32]), AddressableEntity::default())
             .expect("must write key to gs");
 
-        runtime_context.entity_address = Key::Hash([1; 32]);
+        runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
             .add_associated_key(AccountHash::new([84; 32]), Weight::new(123))
@@ -811,7 +811,7 @@ fn should_verify_ownership_before_removing_a_key() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = Key::Hash([1; 32]);
+        runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
             .remove_associated_key(AccountHash::new([84; 32]))
@@ -835,7 +835,7 @@ fn should_verify_ownership_before_setting_action_threshold() {
     let query = |mut runtime_context: RuntimeContext<LmdbGlobalStateView>| {
         // Overwrites a `base_key` to a different one before doing any operation as
         // account `[0; 32]`
-        runtime_context.entity_address = Key::Hash([1; 32]);
+        runtime_context.entity_key = Key::Hash([1; 32]);
 
         let err = runtime_context
             .set_action_threshold(ActionType::Deployment, Weight::new(123))

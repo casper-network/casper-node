@@ -723,7 +723,7 @@ fn setup() -> (LmdbWasmTestBuilder, TestContext) {
         .named_keys()
         .get(HASH_KEY_NAME)
         .cloned()
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .map(AddressableEntityHash::new)
         .expect("should have key");
 

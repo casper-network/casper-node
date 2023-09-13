@@ -65,7 +65,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .map(AddressableEntityHash::new)
         .expect("should have hash");
 
@@ -89,7 +89,7 @@ fn query_dictionary_item(
             if let StoredValue::CLValue(cl_value) = stored_value {
                 let entity_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
                     .expect("must convert to contract hash")
-                    .into_hash()
+                    .into_hash_addr()
                     .map(AddressableEntityHash::new)
                     .expect("must convert to contract hash");
                 return query_dictionary_item(
@@ -591,7 +591,7 @@ fn should_query_dictionary_items_with_test_builder() {
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .expect("should have contract")
-        .into_hash()
+        .into_hash_addr()
         .map(AddressableEntityHash::new)
         .expect("should have hash");
 

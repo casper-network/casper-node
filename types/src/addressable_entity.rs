@@ -229,6 +229,14 @@ pub struct AddressableEntityHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
 );
 
+pub type EntityHash = HashAddr;
+
+impl FromBytes for EntityHash {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
+        todo!()
+    }
+}
+
 impl AddressableEntityHash {
     /// Constructs a new `AddressableEntityHash` from the raw bytes of the contract hash.
     pub const fn new(value: HashAddr) -> AddressableEntityHash {
@@ -630,7 +638,7 @@ impl KeyValueJsonSchema for EntryPointLabels {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct AddressableEntity {
     package_hash: PackageHash,
-    contract_wasm_hash: ByteCodeHash,
+    byte_code_hash: ByteCodeHash,
     named_keys: NamedKeys,
     entry_points: EntryPoints,
     protocol_version: ProtocolVersion,
@@ -654,7 +662,7 @@ impl From<AddressableEntity>
     fn from(contract: AddressableEntity) -> Self {
         (
             contract.package_hash,
-            contract.contract_wasm_hash,
+            contract.byte_code_hash,
             contract.named_keys,
             contract.entry_points,
             contract.protocol_version,
@@ -680,7 +688,7 @@ impl AddressableEntity {
     ) -> Self {
         AddressableEntity {
             package_hash,
-            contract_wasm_hash,
+            byte_code_hash: contract_wasm_hash,
             named_keys,
             entry_points,
             protocol_version,
@@ -697,7 +705,7 @@ impl AddressableEntity {
 
     /// Hash for accessing contract WASM
     pub fn contract_wasm_hash(&self) -> ByteCodeHash {
-        self.contract_wasm_hash
+        self.byte_code_hash
     }
 
     /// Checks whether there is a method with the given name
@@ -894,7 +902,7 @@ impl AddressableEntity {
 
     /// Hash for accessing wasm bytes
     pub fn contract_wasm_key(&self) -> Key {
-        self.contract_wasm_hash.into()
+        self.byte_code_hash.into()
     }
 
     /// Returns immutable reference to methods
@@ -960,7 +968,7 @@ impl ToBytes for AddressableEntity {
     fn serialized_length(&self) -> usize {
         ToBytes::serialized_length(&self.entry_points)
             + ToBytes::serialized_length(&self.package_hash)
-            + ToBytes::serialized_length(&self.contract_wasm_hash)
+            + ToBytes::serialized_length(&self.byte_code_hash)
             + ToBytes::serialized_length(&self.protocol_version)
             + ToBytes::serialized_length(&self.named_keys)
             + ToBytes::serialized_length(&self.main_purse)
@@ -994,7 +1002,7 @@ impl FromBytes for AddressableEntity {
         Ok((
             AddressableEntity {
                 package_hash,
-                contract_wasm_hash,
+                byte_code_hash: contract_wasm_hash,
                 named_keys,
                 entry_points,
                 protocol_version,
@@ -1012,7 +1020,7 @@ impl Default for AddressableEntity {
         AddressableEntity {
             named_keys: NamedKeys::new(),
             entry_points: EntryPoints::new_with_default_entry_point(),
-            contract_wasm_hash: [0; KEY_HASH_LENGTH].into(),
+            byte_code_hash: [0; KEY_HASH_LENGTH].into(),
             package_hash: [0; KEY_HASH_LENGTH].into(),
             protocol_version: ProtocolVersion::V1_0_0,
             main_purse: URef::default(),

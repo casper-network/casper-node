@@ -40,7 +40,7 @@ const UREF_INDICES_ARG: &str = "uref_indices";
 #[no_mangle]
 pub extern "C" fn create_group() {
     let package_hash_key: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .unwrap_or_revert()
         .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
@@ -60,7 +60,7 @@ pub extern "C" fn create_group() {
 #[no_mangle]
 pub extern "C" fn remove_group() {
     let package_hash_key: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .unwrap_or_revert()
         .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
@@ -70,7 +70,7 @@ pub extern "C" fn remove_group() {
 #[no_mangle]
 pub extern "C" fn extend_group_urefs() {
     let package_hash_key: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .unwrap_or_revert()
         .into();
     let group_name: String = runtime::get_named_arg(GROUP_NAME_ARG);
@@ -131,7 +131,7 @@ fn read_contract_package(package_hash: PackageHash) -> Result<Option<Package>, A
 #[no_mangle]
 pub extern "C" fn remove_group_urefs() {
     let package_hash: PackageHash = runtime::get_key(PACKAGE_HASH_KEY)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .unwrap_or_revert()
         .into();
     let _package_access_key: URef = runtime::get_key(PACKAGE_ACCESS_KEY)

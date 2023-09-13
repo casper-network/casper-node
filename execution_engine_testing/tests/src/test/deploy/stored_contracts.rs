@@ -9,7 +9,7 @@ use casper_execution_engine::{
 };
 use casper_types::{
     account::AccountHash,
-    package::{EntityVersion, CONTRACT_INITIAL_VERSION},
+    package::{EntityVersion, ENTITY_INITIAL_VERSION},
     runtime_args,
     system::mint,
     AddressableEntity, AddressableEntityHash, ApiError, EntityVersionKey, EraId, ProtocolVersion,
@@ -21,7 +21,7 @@ const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const DO_NOTHING_NAME: &str = "do_nothing";
 const DO_NOTHING_CONTRACT_PACKAGE_HASH_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_CONTRACT_HASH_NAME: &str = "do_nothing_hash";
-const INITIAL_VERSION: EntityVersion = CONTRACT_INITIAL_VERSION;
+const INITIAL_VERSION: EntityVersion = ENTITY_INITIAL_VERSION;
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const PROTOCOL_VERSION: ProtocolVersion = ProtocolVersion::V1_0_0;
 const STORED_PAYMENT_CONTRACT_NAME: &str = "test_payment_stored.wasm";
@@ -63,7 +63,7 @@ fn store_payment_to_account_context(
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME)
         .expect("key should exist")
-        .into_hash()
+        .into_hash_addr()
         .expect("should be a hash")
         .into();
 
@@ -154,7 +154,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash()
+        .into_hash_addr()
         .expect("standard_payment should be an uref");
 
     // next make another deploy that attempts to use the stored payment logic
@@ -231,7 +231,7 @@ fn should_exec_stored_code_by_hash() {
                 )
                 .with_stored_versioned_payment_contract_by_hash(
                     hash.value(),
-                    Some(CONTRACT_INITIAL_VERSION),
+                    Some(ENTITY_INITIAL_VERSION),
                     PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
@@ -301,7 +301,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
             )
             .with_stored_versioned_payment_contract_by_hash(
                 hash.value(),
-                Some(CONTRACT_INITIAL_VERSION),
+                Some(ENTITY_INITIAL_VERSION),
                 PAY_ENTRYPOINT,
                 runtime_args! {
                     ARG_AMOUNT => payment_purse_amount,
@@ -374,7 +374,7 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
                 )
                 .with_stored_versioned_payment_contract_by_hash(
                     hash.value(),
-                    Some(CONTRACT_INITIAL_VERSION),
+                    Some(ENTITY_INITIAL_VERSION),
                     PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
@@ -470,7 +470,7 @@ fn should_exec_stored_code_by_named_hash() {
                 )
                 .with_stored_versioned_payment_contract_by_name(
                     STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME,
-                    Some(CONTRACT_INITIAL_VERSION),
+                    Some(ENTITY_INITIAL_VERSION),
                     PAY_ENTRYPOINT,
                     runtime_args! {
                         ARG_AMOUNT => payment_purse_amount,
@@ -620,7 +620,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash()
+        .into_hash_addr()
         .expect("standard_payment should be an uref");
 
     //
@@ -716,7 +716,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash()
+        .into_hash_addr()
         .expect("standard_payment should be an uref");
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -907,7 +907,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_hash()
+        .into_hash_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
@@ -1005,7 +1005,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_hash()
+        .into_hash_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {

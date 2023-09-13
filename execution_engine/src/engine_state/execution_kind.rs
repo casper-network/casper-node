@@ -89,7 +89,9 @@ impl ExecutionKind {
                 })?;
 
                 entity_hash = AddressableEntityHash::new(
-                    entity_key.into_hash().ok_or(Error::InvalidKeyVariant)?,
+                    entity_key
+                        .into_hash_addr()
+                        .ok_or(Error::InvalidKeyVariant)?,
                 );
 
                 Ok(ExecutionKind::new_addressable_entity(
@@ -110,7 +112,7 @@ impl ExecutionKind {
                         .ok_or_else(|| {
                             Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                         })?
-                        .into_hash()
+                        .into_hash_addr()
                         .ok_or(Error::InvalidKeyVariant)?
                         .into()
                 };

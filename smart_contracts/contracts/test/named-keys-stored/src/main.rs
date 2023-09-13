@@ -100,7 +100,7 @@ pub extern "C" fn named_keys_session() {
 #[no_mangle]
 pub extern "C" fn named_keys_contract_to_contract() {
     let contract_hash = runtime::get_key(CONTRACT_PACKAGE_HASH_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .map(PackageHash::new)
         .unwrap_or_revert();
 
@@ -115,7 +115,7 @@ pub extern "C" fn named_keys_contract_to_contract() {
 #[no_mangle]
 pub extern "C" fn named_keys_session_to_session() {
     let contract_hash = runtime::get_key(CONTRACT_PACKAGE_HASH_NAME)
-        .and_then(Key::into_hash)
+        .and_then(Key::into_hash_addr)
         .map(PackageHash::new)
         .unwrap_or_revert();
 

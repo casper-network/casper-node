@@ -566,7 +566,7 @@ fn sample_contract_package(
         disabled_versions,
         groups,
         PackageStatus::Locked,
-        PackageKind::Wasm,
+        PackageKind::SmartContract,
     )
 }
 

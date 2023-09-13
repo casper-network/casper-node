@@ -97,7 +97,7 @@ where
             Some(StoredValue::CLValue(cl_value)) => {
                 let entity_key = CLValue::into_t::<Key>(cl_value)?;
                 let entity_hash = entity_key
-                    .into_hash()
+                    .into_hash_addr()
                     .map(AddressableEntityHash::new)
                     .expect("must convert to addressable entity hash");
 
