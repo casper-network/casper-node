@@ -670,7 +670,7 @@ impl<REv> EffectBuilder<REv> {
     /// Sends a network message.
     ///
     /// The message is queued and sent, without any delivery guarantees. Will return after the
-    /// message has been buffered by the networking stack and is thus is subject to backpressure
+    /// message has been buffered by the networking stack and is thus subject to backpressure
     /// from the receiving peer.
     ///
     /// If the message cannot be buffered immediately, `send_message` will wait until there is room
