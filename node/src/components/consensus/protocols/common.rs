@@ -18,13 +18,9 @@ pub(crate) fn validators<C: Context>(
     validator_stakes: BTreeMap<C::ValidatorId, U512>,
 ) -> Validators<C::ValidatorId> {
     let sum_stakes = safe_sum(validator_stakes.values().copied()).expect("should not overflow");
-    // We use u64 weights. Scale down by sum / u64::MAX, rounded up.
-    // If we round up the divisor, the resulting sum is guaranteed to be less than
-    // u64::MAX.
-    let scaling_factor: U512 = sum_stakes
-        .checked_add(U512::from(u64::MAX) - 1)
-        .expect("should not overflow")
-        / U512::from(u64::MAX);
+    // We use u64 weights. Scale down by floor(sum / u64::MAX) + 1.
+    // This guarantees that the resulting sum is less than u64::MAX.
+    let scaling_factor: U512 = sum_stakes / U512::from(u64::MAX) + 1;
 
     // TODO sort validators by descending weight
     let mut validators: Validators<C::ValidatorId> = validator_stakes
