@@ -57,7 +57,8 @@ use crate::{
             ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
             FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
             GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            RpcServerAnnouncement, StoredExecutedBlockAnnouncement, UnexecutedBlockAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
         requests::ChainspecRawBytesRequest,
@@ -275,6 +276,16 @@ impl reactor::Reactor for MainReactor {
                     Effects::new()
                 }
             }
+            MainEvent::StoredExecutedBlockAnnouncement(StoredExecutedBlockAnnouncement(
+                block_height,
+            )) => reactor::wrap_effects(
+                MainEvent::BlockValidator,
+                self.block_validator.handle_event(
+                    effect_builder,
+                    rng,
+                    block_validator::Event::BlockStored(block_height),
+                ),
+            ),
 
             // LOCAL I/O BOUND COMPONENTS
             MainEvent::UpgradeWatcher(event) => reactor::wrap_effects(
@@ -1123,7 +1134,7 @@ impl reactor::Reactor for MainReactor {
             validator_matrix.clone(),
             registry,
         )?;
-        let block_validator = BlockValidator::new(Arc::clone(&chainspec));
+        let block_validator = BlockValidator::new(Arc::clone(&chainspec), validator_matrix.clone());
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
         let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;

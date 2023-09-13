@@ -123,6 +123,22 @@ impl SingleBlockRewardedSignatures {
         }
         self
     }
+
+    /// Calculates the set intersection of two instances of `SingleBlockRewardedSignatures`.
+    pub(crate) fn intersection(mut self, other: &SingleBlockRewardedSignatures) -> Self {
+        self.0 = self
+            .0
+            .iter()
+            .zip(other.0.iter())
+            .map(|(a, b)| *a & *b)
+            .collect();
+        self
+    }
+
+    /// Returns `true` if the set contains at least one signature.
+    pub(crate) fn has_some(&self) -> bool {
+        self.0.iter().any(|byte| *byte != 0)
+    }
 }
 
 impl ToBytes for SingleBlockRewardedSignatures {
@@ -216,6 +232,48 @@ impl RewardedSignatures {
                 })
                 .collect(),
         )
+    }
+
+    /// Calculates the set intersection between two instances of `RewardedSignatures`.
+    pub fn intersection(&self, other: &RewardedSignatures) -> Self {
+        Self(
+            self.0
+                .iter()
+                .zip(other.0.iter())
+                .map(|(single_block_signatures, other_block_signatures)| {
+                    single_block_signatures
+                        .clone()
+                        .intersection(other_block_signatures)
+                })
+                .collect(),
+        )
+    }
+
+    /// Iterates over the `SingleBlockRewardedSignatures` for each rewarded block.
+    pub fn iter(&self) -> impl Iterator<Item = &SingleBlockRewardedSignatures> {
+        self.0.iter()
+    }
+
+    /// Iterates over the `SingleBlockRewardedSignatures`, yielding the signatures together with
+    /// the block height for each entry. `block_height` is the height of the block that contains
+    /// this instance of `RewardedSignatures`.
+    pub fn iter_with_height(
+        &self,
+        block_height: u64,
+    ) -> impl Iterator<Item = (u64, &SingleBlockRewardedSignatures)> {
+        self.0.iter().enumerate().map(move |(rel_height, sbrs)| {
+            (
+                block_height
+                    .saturating_sub(rel_height as u64)
+                    .saturating_sub(1),
+                sbrs,
+            )
+        })
+    }
+
+    /// Returns `true` if there is at least one cited signature.
+    pub fn has_some(&self) -> bool {
+        self.0.iter().any(|signatures| signatures.has_some())
     }
 }
 
