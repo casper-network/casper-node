@@ -1,7 +1,9 @@
 //! Utilities for handling reading from and writing to files.
 
-use std::io::{self};
-use std::path::PathBuf;
+use std::{
+    io::{self},
+    path::PathBuf,
+};
 
 #[cfg(not(any(feature = "sdk")))]
 use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
