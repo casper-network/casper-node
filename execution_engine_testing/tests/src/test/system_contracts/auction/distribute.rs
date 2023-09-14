@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use num_rational::Ratio;
 use num_traits::{CheckedMul, CheckedSub};
 use once_cell::sync::Lazy;
@@ -17,8 +19,8 @@ use casper_types::{
     system::auction::{
         self, Bid, Bids, DelegationRate, Delegator, EraInfo, SeigniorageAllocation,
         SeigniorageRecipientsSnapshot, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR,
-        ARG_PUBLIC_KEY, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR, METHOD_DISTRIBUTE,
-        SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
+        ARG_PUBLIC_KEY, ARG_REWARDS_MAP, ARG_VALIDATOR, DELEGATION_RATE_DENOMINATOR,
+        METHOD_DISTRIBUTE, SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY,
     },
     EraId, Key, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, U512,
 };
@@ -279,13 +281,16 @@ fn should_distribute_delegation_rate_zero() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -542,13 +547,16 @@ fn should_withdraw_bids_after_distribute() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -843,13 +851,16 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -963,13 +974,16 @@ fn should_distribute_rewards_after_restaking_delegated_funds() {
     let expected_total_reward_2_integer = expected_total_reward_2.to_integer();
     assert_eq!(total_payout_2, expected_total_reward_2_integer);
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout_2);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1250,13 +1264,16 @@ fn should_distribute_delegation_rate_half() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1467,13 +1484,16 @@ fn should_distribute_delegation_rate_full() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1655,13 +1675,16 @@ fn should_distribute_uneven_delegation_rate_zero() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -1953,6 +1976,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
             .expect("must execute step successfully");
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     // Validator 1 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -1960,7 +1986,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2009,6 +2035,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         if *delegator_public_key == *DELEGATOR_2 && *amount == delegator_2_actual_payout
     ));
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_2.clone(), total_payout);
+
     // Validator 2 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2016,7 +2045,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_2.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2052,6 +2081,9 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         if *delegator_public_key == *DELEGATOR_3 && *amount == delegator_3_actual_payout
     ));
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_3.clone(), total_payout);
+
     // Validator 3 distribution
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2059,7 +2091,7 @@ fn should_distribute_with_multiple_validators_and_delegators() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_3.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2254,12 +2286,6 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let initial_supply = builder.total_supply(None);
     let total_payout = builder.base_round_reward(None);
     let expected_total_reward = *GENESIS_ROUND_SEIGNIORAGE_RATE * initial_supply;
-    let expected_total_reward_2 =
-        *GENESIS_ROUND_SEIGNIORAGE_RATE * (initial_supply + expected_total_reward.to_integer());
-    let expected_total_reward_3 = *GENESIS_ROUND_SEIGNIORAGE_RATE
-        * (initial_supply
-            + expected_total_reward.to_integer()
-            + expected_total_reward_2.to_integer());
     let expected_total_reward_integer = expected_total_reward.to_integer();
     assert_eq!(total_payout, expected_total_reward_integer);
 
@@ -2279,18 +2305,10 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
             .expect("must execute step successfully");
     }
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_2.clone(), total_payout);
+    rewards.insert(VALIDATOR_3.clone(), total_payout);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2298,20 +2316,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_2.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
-
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_3.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2358,7 +2363,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let validator_2_delegator_1_share = {
         let validator_2_total_stake = VALIDATOR_2_STAKE + DELEGATOR_1_STAKE;
 
-        let total_reward = &Ratio::from(expected_total_reward_2.to_integer());
+        let total_reward = &Ratio::from(expected_total_reward.to_integer());
 
         let delegator_total_stake = U512::from(DELEGATOR_1_STAKE);
         let commission_rate = Ratio::new(
@@ -2385,7 +2390,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         validator_balance_after - validator_balance_before
     };
     let validator_2_expected_payout = {
-        let validator_share = expected_total_reward_2;
+        let validator_share = expected_total_reward;
         let validator_portion = validator_share - Ratio::from(validator_2_delegator_1_share);
         validator_portion.to_integer()
     };
@@ -2394,7 +2399,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
     let validator_3_delegator_1_share = {
         let validator_3_total_stake = VALIDATOR_3_STAKE + DELEGATOR_1_STAKE;
 
-        let total_reward = &Ratio::from(expected_total_reward_3.to_integer());
+        let total_reward = &Ratio::from(expected_total_reward.to_integer());
 
         let delegator_total_stake = U512::from(DELEGATOR_1_STAKE);
         let commission_rate = Ratio::new(
@@ -2421,7 +2426,7 @@ fn should_distribute_with_multiple_validators_and_shared_delegator() {
         validator_balance_after - validator_balance_before
     };
     let validator_3_expected_payout = {
-        let validator_share = expected_total_reward_3;
+        let validator_share = expected_total_reward;
         let validator_portion = validator_share - Ratio::from(validator_3_delegator_1_share);
         validator_portion.to_integer()
     };
@@ -2658,18 +2663,12 @@ fn should_increase_total_supply_after_distribute() {
         "total supply should remain unchanged regardless of auction"
     );
 
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
-        },
-    )
-    .build();
+    let total_payout = U512::from(1_000_000_000_000_u64);
 
-    builder.exec(distribute_request).commit().expect_success();
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+    rewards.insert(VALIDATOR_2.clone(), total_payout);
+    rewards.insert(VALIDATOR_3.clone(), total_payout);
 
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
@@ -2677,20 +2676,7 @@ fn should_increase_total_supply_after_distribute() {
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_2.clone()
-        },
-    )
-    .build();
-
-    builder.exec(distribute_request).commit().expect_success();
-
-    let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
-        *SYSTEM_ADDR,
-        builder.get_auction_contract_hash(),
-        METHOD_DISTRIBUTE,
-        runtime_args! {
-            ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_3.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2854,13 +2840,18 @@ fn should_not_create_purses_during_distribute() {
         "total supply should remain unchanged regardless of auction"
     );
 
+    let total_payout = U512::from(1_000_000_000_000_u64);
+
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), total_payout);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -2998,13 +2989,16 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let mut rewards = BTreeMap::new();
+    rewards.insert(VALIDATOR_1.clone(), expected_total_reward_integer);
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .build();
@@ -3076,26 +3070,32 @@ fn should_distribute_delegation_rate_full_after_upgrading() {
         timestamp_millis += TIMESTAMP_MILLIS_INCREMENT;
     }
 
+    let new_round_seigniorage_rate = {
+        let (numer, denom) = new_round_seigniorage_rate.into();
+        Ratio::new(numer.into(), denom.into())
+    };
+
+    let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
+
+    let mut rewards = BTreeMap::new();
+    rewards.insert(
+        VALIDATOR_1.clone(),
+        expected_total_reward_after.to_integer(),
+    );
+
     let distribute_request = ExecuteRequestBuilder::contract_call_by_hash(
         *SYSTEM_ADDR,
         builder.get_auction_contract_hash(),
         METHOD_DISTRIBUTE,
         runtime_args! {
             ARG_ENTRY_POINT => METHOD_DISTRIBUTE,
-            ARG_VALIDATOR => VALIDATOR_1.clone()
+            ARG_REWARDS_MAP => rewards
         },
     )
     .with_protocol_version(new_protocol_version)
     .build();
 
-    let new_round_seigniorage_rate = {
-        let (numer, denom) = new_round_seigniorage_rate.into();
-        Ratio::new(numer.into(), denom.into())
-    };
-
     builder.exec(distribute_request).commit().expect_success();
-
-    let expected_total_reward_after = new_round_seigniorage_rate * initial_supply;
 
     let validator_1_balance_after = {
         let validator_staked_amount = *get_validator_bid(&mut builder, VALIDATOR_1.clone())
