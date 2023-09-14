@@ -20,6 +20,7 @@
 //! handled locally, since the function is also responsible for performing the underlying IO.
 
 use std::{
+    cmp::Reverse,
     collections::{BinaryHeap, HashMap},
     fmt::{self, Display, Formatter},
     sync::Arc,
@@ -147,7 +148,7 @@ pub struct JulietRpcServer<const N: usize, R, W> {
     /// Clock source for timeouts.
     clock: Clock,
     /// Heap of pending timeouts.
-    timeouts: BinaryHeap<(Instant, IoId)>,
+    timeouts: BinaryHeap<Reverse<(Instant, IoId)>>,
 }
 
 /// Internal structure representing a new outgoing request.
@@ -254,7 +255,7 @@ where
 
                                 // If a timeout has been configured, add it to the timeouts map.
                                 if let Some(expires) = expires {
-                                    self.timeouts.push((expires, io_id));
+                                    self.timeouts.push(Reverse((expires, io_id)));
 
                                 }
                             },
@@ -320,9 +321,11 @@ where
     /// Returns the duration until the next timeout check needs to take place if timeouts are not
     /// modified in the interim.
     fn process_timeouts(&mut self, now: Instant) -> Duration {
-        let is_expired = |(when, _): &(_, _)| *when <= now;
+        let is_expired = |t: &Reverse<(Instant, IoId)>| t.0 .0 <= now;
 
-        for (_, io_id) in drain_heap_while(&mut self.timeouts, is_expired) {
+        for item in drain_heap_while(&mut self.timeouts, is_expired) {
+            let (_, io_id) = item.0;
+
             // If not removed already through other means, set and notify about timeout.
             if let Some(guard_ref) = self.pending.remove(&io_id) {
                 guard_ref.set_and_notify(Err(RequestError::TimedOut));
@@ -330,7 +333,7 @@ where
         }
 
         // Calculate new delay for timeouts.
-        if let Some((when, _)) = self.timeouts.peek() {
+        if let Some(Reverse((when, _))) = self.timeouts.peek() {
             when.duration_since(now)
         } else {
             Duration::from_secs(3600)
