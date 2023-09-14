@@ -203,37 +203,6 @@ impl<const N: usize> JulietRpcClient<N> {
     }
 }
 
-struct DrainConditional<'a, T, F> {
-    heap: &'a mut BinaryHeap<T>,
-    predicate: F,
-}
-
-fn drain_heap_while<T, F>(heap: &mut BinaryHeap<T>, predicate: F) -> DrainConditional<'_, T, F> {
-    DrainConditional { heap, predicate }
-}
-
-impl<'a, T, F> Iterator for DrainConditional<'a, T, F>
-where
-    F: FnMut(&T) -> bool,
-    T: Ord + PartialOrd + 'static,
-{
-    type Item = T;
-
-    #[inline]
-    fn next(&mut self) -> Option<Self::Item> {
-        let candidate = self.heap.peek()?;
-        if (self.predicate)(candidate) {
-            Some(
-                self.heap
-                    .pop()
-                    .expect("did not expect heap top to disappear"),
-            )
-        } else {
-            None
-        }
-    }
-}
-
 /// An error produced by the RPC error.
 #[derive(Debug, Error)]
 pub enum RpcServerError {
@@ -606,7 +575,7 @@ impl RequestGuard {
     ///
     /// Like [`wait_for_response`](Self::wait_for_response), except that instead of waiting, it will
     /// return `Err(self)` if the peer was not ready yet.
-    pub fn try_wait_for_response(self) -> Result<Result<Option<Bytes>, RequestError>, Self> {
+    pub fn try_get_response(self) -> Result<Result<Option<Bytes>, RequestError>, Self> {
         if self.inner.outcome.get().is_some() {
             Ok(self.take_inner())
         } else {
@@ -749,8 +718,52 @@ impl Drop for IncomingRequest {
     }
 }
 
+/// An iterator draining items out of a heap based on a predicate.
+///
+/// See [`drain_heap_while`] for details.
+struct DrainConditional<'a, T, F> {
+    /// Heap to be drained.
+    heap: &'a mut BinaryHeap<T>,
+    /// Predicate function to determine whether or not to drain a specific element.
+    predicate: F,
+}
+
+/// Removes ites from the top of a heap while a given predicate is true.
+///
+/// Will take items from `heap` as long as `predicate` evaluates to `true`.
+fn drain_heap_while<T, F: FnMut(&T) -> bool>(
+    heap: &mut BinaryHeap<T>,
+    predicate: F,
+) -> DrainConditional<'_, T, F> {
+    DrainConditional { heap, predicate }
+}
+
+impl<'a, T, F> Iterator for DrainConditional<'a, T, F>
+where
+    F: FnMut(&T) -> bool,
+    T: Ord + PartialOrd + 'static,
+{
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let candidate = self.heap.peek()?;
+        if (self.predicate)(candidate) {
+            Some(
+                self.heap
+                    .pop()
+                    .expect("did not expect heap top to disappear"),
+            )
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BinaryHeap;
+
     use bytes::Bytes;
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
 
@@ -759,7 +772,7 @@ mod tests {
         ChannelId,
     };
 
-    use super::{JulietRpcClient, JulietRpcServer};
+    use super::{drain_heap_while, JulietRpcClient, JulietRpcServer};
 
     #[allow(clippy::type_complexity)] // We'll allow it in testing.
     fn setup_peers<const N: usize>(
@@ -842,7 +855,48 @@ mod tests {
         assert_eq!(response, Some(payload));
     }
 
-    // TODO: Test draining functions
+    #[test]
+    fn drain_works() {
+        let mut heap = BinaryHeap::new();
+
+        heap.push(5);
+        heap.push(3);
+        heap.push(2);
+        heap.push(7);
+        heap.push(11);
+        heap.push(13);
+
+        assert!(drain_heap_while(&mut heap, |_| false).next().is_none());
+        assert!(drain_heap_while(&mut heap, |&v| v > 14).next().is_none());
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |&v| v > 10).collect::<Vec<_>>(),
+            vec![13, 11]
+        );
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |&v| v > 10).collect::<Vec<_>>(),
+            vec![]
+        );
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |&v| v > 2).collect::<Vec<_>>(),
+            vec![7, 5, 3]
+        );
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |_| true).collect::<Vec<_>>(),
+            vec![2]
+        );
+    }
+
+    #[test]
+    fn drain_on_empty_works() {
+        let mut empty_heap = BinaryHeap::<u32>::new();
+
+        assert!(drain_heap_while(&mut empty_heap, |_| true).next().is_none());
+    }
+
     // TODO: Ensure set_and_notify multiple times is harmless.
     // TODO: Test actual timeouts.
 }
