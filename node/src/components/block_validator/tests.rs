@@ -11,6 +11,7 @@ use casper_types::{
 };
 use derive_more::From;
 use itertools::Itertools;
+use rand::Rng;
 
 use crate::{
     components::{consensus::BlockContext, fetcher},
@@ -26,9 +27,13 @@ enum ReactorEvent {
     #[from]
     BlockValidator(Event),
     #[from]
-    Fetcher(FetcherRequest<LegacyDeploy>),
+    DeployFetcher(FetcherRequest<LegacyDeploy>),
+    #[from]
+    FinalitySignatureFetcher(FetcherRequest<FinalitySignature>),
     #[from]
     Storage(StorageRequest),
+    #[from]
+    FatalAnnouncement(FatalAnnouncement),
 }
 
 impl From<BlockValidationRequest> for ReactorEvent {
@@ -39,12 +44,14 @@ impl From<BlockValidationRequest> for ReactorEvent {
 
 struct MockReactor {
     scheduler: &'static Scheduler<ReactorEvent>,
+    validator_matrix: ValidatorMatrix,
 }
 
 impl MockReactor {
-    fn new() -> Self {
+    fn new(rng: &mut TestRng) -> Self {
         MockReactor {
             scheduler: utils::leak(Scheduler::new(QueueKind::weights())),
+            validator_matrix: ValidatorMatrix::new_with_validator(Arc::new(SecretKey::random(rng))),
         }
     }
 
@@ -64,7 +71,7 @@ impl MockReactor {
     ) {
         while !deploys_to_fetch.is_empty() || !deploys_to_not_fetch.is_empty() {
             let ((_ancestor, reactor_event), _) = self.scheduler.pop().await;
-            if let ReactorEvent::Fetcher(FetcherRequest {
+            if let ReactorEvent::DeployFetcher(FetcherRequest {
                 id,
                 peer,
                 validation_metadata: _,
@@ -179,19 +186,26 @@ async fn validate_block(
         .iter()
         .map(DeployHashWithApprovals::from)
         .collect_vec();
+    let block_era = rng.gen();
+    let block_height = rng.gen_range(0..1000);
     let proposed_block = new_proposed_block(timestamp, deploys_for_block, transfers_for_block);
 
     // Create the reactor and component.
-    let reactor = MockReactor::new();
+    let reactor = MockReactor::new(rng);
     let effect_builder = EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
     let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-    let mut block_validator = BlockValidator::new(Arc::new(chainspec));
+    let mut block_validator =
+        BlockValidator::new(Arc::new(chainspec), reactor.validator_matrix.clone());
 
     // Pass the block to the component. This future will eventually resolve to the result, i.e.
     // whether the block is valid or not.
     let bob_node_id = NodeId::random(rng);
-    let validation_result =
-        tokio::spawn(effect_builder.validate_block(bob_node_id, proposed_block.clone()));
+    let validation_result = tokio::spawn(effect_builder.validate_block(
+        bob_node_id,
+        block_era,
+        block_height,
+        proposed_block.clone(),
+    ));
     let event = reactor.expect_block_validator_event().await;
     let effects = block_validator.handle_event(effect_builder, rng, event);
 
@@ -332,22 +346,30 @@ async fn should_fetch_from_multiple_peers() {
             .iter()
             .map(|deploy| DeployHashWithApprovals::new(*deploy.hash(), deploy.approvals().clone()))
             .collect_vec();
+        let proposed_block_era_id = rng.gen();
+        let proposed_block_height = rng.gen_range(0..1000);
         let proposed_block =
             new_proposed_block(1100.into(), deploys_for_block, transfers_for_block);
 
         // Create the reactor and component.
-        let reactor = MockReactor::new();
+        let reactor = MockReactor::new(&mut rng);
         let effect_builder =
             EffectBuilder::new(EventQueueHandle::without_shutdown(reactor.scheduler));
         let (chainspec, _) = <(Chainspec, ChainspecRawBytes)>::from_resources("local");
-        let mut block_validator = BlockValidator::new(Arc::new(chainspec));
+        let mut block_validator =
+            BlockValidator::new(Arc::new(chainspec), reactor.validator_matrix.clone());
 
         // Have a validation request for each one of the peers. These futures will eventually all
         // resolve to the same result, i.e. whether the block is valid or not.
         let validation_results = (0..peer_count)
             .map(|_| {
                 let node_id = NodeId::random(&mut rng);
-                tokio::spawn(effect_builder.validate_block(node_id, proposed_block.clone()))
+                tokio::spawn(effect_builder.validate_block(
+                    node_id,
+                    proposed_block_era_id,
+                    proposed_block_height,
+                    proposed_block.clone(),
+                ))
             })
             .collect_vec();
 

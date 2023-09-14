@@ -164,7 +164,7 @@ use announcements::{
     ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
     FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
     MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
-    UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+    StoredExecutedBlockAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
@@ -1787,6 +1787,8 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn validate_block(
         self,
         sender: NodeId,
+        proposed_block_era_id: EraId,
+        proposed_block_height: u64,
         block: ProposedBlock<ClContext>,
     ) -> bool
     where
@@ -1794,6 +1796,8 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| BlockValidationRequest {
+                proposed_block_era_id,
+                proposed_block_height,
                 block,
                 sender,
                 responder,
@@ -1848,6 +1852,19 @@ impl<REv> EffectBuilder<REv> {
         self.event_queue
             .schedule(
                 UnexecutedBlockAnnouncement(block_height),
+                QueueKind::Regular,
+            )
+            .await
+    }
+
+    /// Announces that an executed block has been stored.
+    pub(crate) async fn announce_executed_block_stored(self, block_height: u64)
+    where
+        REv: From<StoredExecutedBlockAnnouncement>,
+    {
+        self.event_queue
+            .schedule(
+                StoredExecutedBlockAnnouncement(block_height),
                 QueueKind::Regular,
             )
             .await

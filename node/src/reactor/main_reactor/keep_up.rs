@@ -634,16 +634,31 @@ impl MainReactor {
                 // that we measure from the start of the active era
                 // (for consensus reasons), so this can be up to TTL + era length in practice
                 if !self.sync_to_genesis {
-                    if let Some(highest_switch_block_header) = self
+                    let highest_orphaned_block_era = highest_orphaned_block_header.era_id();
+                    let maybe_highest_orphaned_era_switch_block = self
+                        .storage
+                        .read_switch_block_header_by_era_id(highest_orphaned_block_era)
+                        .map_err(|err| err.to_string())?;
+                    let maybe_highest_switch_block_header = self
                         .storage
                         .read_highest_switch_block_headers(1)
                         .map_err(|err| err.to_string())?
-                        .last()
-                    {
-                        if synced_to_ttl(
-                            highest_switch_block_header,
+                        .into_iter()
+                        .next();
+
+                    if let (
+                        Some(highest_orphaned_era_switch_block),
+                        Some(highest_switch_block_header),
+                    ) = (
+                        maybe_highest_orphaned_era_switch_block,
+                        maybe_highest_switch_block_header,
+                    ) {
+                        if synced_to_ttl_and_signature_delay(
+                            &highest_switch_block_header,
+                            &highest_orphaned_era_switch_block,
                             &highest_orphaned_block_header,
                             self.chainspec.deploy_config.max_ttl,
+                            self.chainspec.core_config.signature_rewards_max_delay,
                         )? {
                             return Ok(Some(SyncBackInstruction::TtlSynced));
                         }
@@ -704,17 +719,23 @@ impl MainReactor {
     }
 }
 
-pub(crate) fn synced_to_ttl(
+pub(crate) fn synced_to_ttl_and_signature_delay(
     latest_switch_block_header: &BlockHeader,
+    highest_orphaned_era_switch_block: &BlockHeader,
     highest_orphaned_block_header: &BlockHeader,
     max_ttl: TimeDiff,
+    signature_delay: u64,
 ) -> Result<bool, String> {
     Ok(highest_orphaned_block_header.height() == 0
-        || is_timestamp_at_ttl(
+        || (is_timestamp_at_ttl(
             latest_switch_block_header.timestamp(),
             highest_orphaned_block_header.timestamp(),
             max_ttl,
-        ))
+        ) && has_blocks_within_signature_delay(
+            latest_switch_block_header.height(),
+            highest_orphaned_era_switch_block.height(),
+            signature_delay,
+        )))
 }
 
 fn is_timestamp_at_ttl(
@@ -725,6 +746,21 @@ fn is_timestamp_at_ttl(
     lowest_block_timestamp < latest_switch_block_timestamp.saturating_sub(max_ttl)
 }
 
+// Checks if we have all the blocks necessary to validate rewarded finality signatures.
+// In order to validate finality signatures, we need to know:
+// 1) all the blocks within `signature_rewards_max_delay` of the latest block,
+// 2) validators for all the eras such blocks belong to.
+// Both those points can be satisfied by checking whether the lowest switch block within the
+// highest contiguous range of blocks is old enough (ie. whether its height is lower than latest
+// block's height minus `signature_rewards_max_delay`).
+fn has_blocks_within_signature_delay(
+    latest_switch_block_height: u64,
+    lowest_switch_block_height: u64,
+    signature_delay: u64,
+) -> bool {
+    lowest_switch_block_height < latest_switch_block_height.saturating_sub(signature_delay)
+}
+
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
@@ -732,12 +768,16 @@ mod tests {
     use casper_types::{testing::TestRng, ProtocolVersion, TimeDiff, Timestamp};
 
     use crate::{
-        reactor::main_reactor::keep_up::{is_timestamp_at_ttl, synced_to_ttl},
+        reactor::main_reactor::keep_up::{
+            has_blocks_within_signature_delay, is_timestamp_at_ttl,
+            synced_to_ttl_and_signature_delay,
+        },
         types::Block,
     };
 
     const TWO_DAYS_SECS: u32 = 60 * 60 * 24 * 2;
     const MAX_TTL: TimeDiff = TimeDiff::from_seconds(86400);
+    const SIG_DELAY: u64 = 5;
 
     #[test]
     fn should_be_at_ttl() {
@@ -752,6 +792,17 @@ mod tests {
     }
 
     #[test]
+    fn should_have_blocks_within_sig_delay() {
+        let latest_switch_block_height = 100;
+        let lowest_block_height = latest_switch_block_height - SIG_DELAY - 5;
+        assert!(has_blocks_within_signature_delay(
+            latest_switch_block_height,
+            lowest_block_height,
+            SIG_DELAY
+        ));
+    }
+
+    #[test]
     fn should_not_be_at_ttl() {
         let latest_switch_block_timestamp = Timestamp::from_str("2010-06-15 00:00:00.000").unwrap();
         let lowest_block_timestamp = Timestamp::from_str("2010-06-14 00:00:00.000").unwrap();
@@ -760,6 +811,17 @@ mod tests {
             latest_switch_block_timestamp,
             lowest_block_timestamp,
             max_ttl
+        ));
+    }
+
+    #[test]
+    fn should_not_have_blocks_within_sig_delay() {
+        let latest_switch_block_height = 100;
+        let lowest_block_height = latest_switch_block_height - SIG_DELAY + 2;
+        assert!(!has_blocks_within_signature_delay(
+            latest_switch_block_height,
+            lowest_block_height,
+            SIG_DELAY
         ));
     }
 
@@ -794,6 +856,31 @@ mod tests {
     }
 
     #[test]
+    fn should_detect_sig_delay_at_boundary() {
+        let latest_switch_block_height = 100;
+        let lowest_block_height = latest_switch_block_height - SIG_DELAY - 1;
+        assert!(has_blocks_within_signature_delay(
+            latest_switch_block_height,
+            lowest_block_height,
+            SIG_DELAY
+        ));
+
+        let lowest_block_height = latest_switch_block_height - SIG_DELAY;
+        assert!(!has_blocks_within_signature_delay(
+            latest_switch_block_height,
+            lowest_block_height,
+            SIG_DELAY
+        ));
+
+        let lowest_block_height = latest_switch_block_height - SIG_DELAY + 1;
+        assert!(!has_blocks_within_signature_delay(
+            latest_switch_block_height,
+            lowest_block_height,
+            SIG_DELAY
+        ));
+    }
+
+    #[test]
     fn should_detect_ttl_at_genesis() {
         let mut rng = TestRng::new();
 
@@ -817,10 +904,12 @@ mod tests {
 
         assert_eq!(latest_orphaned_block.height(), 0);
         assert_eq!(
-            synced_to_ttl(
+            synced_to_ttl_and_signature_delay(
                 latest_switch_block.header(),
                 latest_orphaned_block.header(),
-                MAX_TTL
+                latest_orphaned_block.header(),
+                MAX_TTL,
+                SIG_DELAY,
             ),
             Ok(true)
         );

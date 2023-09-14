@@ -253,9 +253,9 @@ impl SwitchBlocks {
             let mut header_iter = nodes.values().map(|runner| {
                 let storage = runner.main_reactor().storage();
                 let maybe_block = storage
-                    .transactional_get_switch_block_by_era_id(era_number)
-                    .expect("failed to get switch block by era id");
-                maybe_block.expect("missing switch block").take_header()
+                    .read_switch_block_header_by_era_id(era_number.into())
+                    .expect("failed to get switch block header by era id");
+                maybe_block.expect("missing switch block header")
             });
             let header = header_iter.next().unwrap();
             assert_eq!(era_number, header.era_id().value());

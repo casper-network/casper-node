@@ -1121,6 +1121,10 @@ impl Display for SyncGlobalStateRequest {
 #[derive(Debug)]
 #[must_use]
 pub(crate) struct BlockValidationRequest {
+    /// The era in which the proposed block was created.
+    pub(crate) proposed_block_era_id: EraId,
+    /// The height of the proposed block in the chain.
+    pub(crate) proposed_block_height: u64,
     /// The block to be validated.
     pub(crate) block: ProposedBlock<ClContext>,
     /// The sender of the block, which will be asked to provide all missing deploys.
