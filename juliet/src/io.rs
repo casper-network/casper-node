@@ -158,7 +158,7 @@ pub enum CoreError {
 /// Request layer IO IDs are unique across the program per request that originated from the local
 /// endpoint. They are used to allow for buffering large numbers of items without exhausting the
 /// pool of protocol level request IDs, which are limited to `u16`s.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IoId(u64);
 
 /// IO layer for the juliet protocol.

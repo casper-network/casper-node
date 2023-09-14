@@ -20,7 +20,7 @@
 //! handled locally, since the function is also responsible for performing the underlying IO.
 
 use std::{
-    collections::HashMap,
+    collections::{BinaryHeap, HashMap},
     fmt::{self, Display, Formatter},
     sync::Arc,
     time::Duration,
@@ -29,6 +29,7 @@ use std::{
 use bytes::Bytes;
 
 use once_cell::sync::OnceCell;
+use quanta::{Clock, Instant};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -51,6 +52,8 @@ use crate::{
 pub struct RpcBuilder<const N: usize> {
     /// The IO core builder used.
     core: IoCoreBuilder<N>,
+    /// `quanta` clock to use, can be used to instantiate a mock clock.
+    clock: Clock,
 }
 
 impl<const N: usize> RpcBuilder<N> {
@@ -58,7 +61,10 @@ impl<const N: usize> RpcBuilder<N> {
     ///
     /// The builder can be reused to create instances for multiple connections.
     pub fn new(core: IoCoreBuilder<N>) -> Self {
-        RpcBuilder { core }
+        RpcBuilder {
+            core,
+            clock: Default::default(),
+        }
     }
 
     /// Creates new RPC client and server instances.
@@ -80,9 +86,19 @@ impl<const N: usize> RpcBuilder<N> {
             handle: core_handle.downgrade(),
             pending: Default::default(),
             new_requests_receiver,
+            clock: self.clock.clone(),
+            timeouts: BinaryHeap::new(),
         };
 
         (client, server)
+    }
+
+    /// Sets the [`quanta::Clock`] source.
+    ///
+    /// Can be used to pass in a mock clock, e.g. from [`quanta::Clock::mock`].
+    pub fn with_clock(mut self, clock: Clock) -> Self {
+        self.clock = clock;
+        self
     }
 }
 
@@ -120,10 +136,18 @@ pub struct JulietRpcRequestBuilder<'a, const N: usize> {
 /// The server will automatically be shutdown if the last [`JulietRpcClient`] is dropped.
 #[derive(Debug)]
 pub struct JulietRpcServer<const N: usize, R, W> {
+    /// The `io` module core used by this server.
     core: IoCore<N, R, W>,
+    /// Handle to the `IoCore`, cloned for clients.
     handle: Handle,
+    /// Map of requests that are still pending.
     pending: HashMap<IoId, Arc<RequestGuardInner>>,
+    /// Receiver for request scheduled by `JulietRpcClient`s.
     new_requests_receiver: UnboundedReceiver<NewOutgoingRequest>,
+    /// Clock source for timeouts.
+    clock: Clock,
+    /// Heap of pending timeouts.
+    timeouts: BinaryHeap<(Instant, IoId)>,
 }
 
 /// Internal structure representing a new outgoing request.
@@ -135,6 +159,8 @@ struct NewOutgoingRequest {
     guard: Arc<RequestGuardInner>,
     /// Payload of the request.
     payload: Option<Bytes>,
+    /// When the request is supposed to time out.
+    expires: Option<Instant>,
 }
 
 #[derive(Debug)]
@@ -177,6 +203,37 @@ impl<const N: usize> JulietRpcClient<N> {
     }
 }
 
+struct DrainConditional<'a, T, F> {
+    heap: &'a mut BinaryHeap<T>,
+    predicate: F,
+}
+
+fn drain_heap_while<T, F>(heap: &mut BinaryHeap<T>, predicate: F) -> DrainConditional<'_, T, F> {
+    DrainConditional { heap, predicate }
+}
+
+impl<'a, T, F> Iterator for DrainConditional<'a, T, F>
+where
+    F: FnMut(&T) -> bool,
+    T: Ord + PartialOrd + 'static,
+{
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let candidate = self.heap.peek()?;
+        if (self.predicate)(candidate) {
+            Some(
+                self.heap
+                    .pop()
+                    .expect("did not expect heap top to disappear"),
+            )
+        } else {
+            None
+        }
+    }
+}
+
 /// An error produced by the RPC error.
 #[derive(Debug, Error)]
 pub enum RpcServerError {
@@ -205,15 +262,32 @@ where
     /// `next_request` as soon as possible.
     pub async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
         loop {
+            let now = self.clock.recent();
+
+            // Process all the timeouts.
+            let until_timeout_check = self.process_timeouts(now);
+            let timeout_check = tokio::time::sleep(until_timeout_check);
+
             tokio::select! {
                 biased;
 
+                _ = timeout_check => {
+                    // Enough time has elapsed that we need to check for timeouts, which we will
+                    // do the next time we loop.
+                }
+
                 opt_new_request = self.new_requests_receiver.recv() => {
-                    if let Some(NewOutgoingRequest { ticket, guard, payload }) = opt_new_request {
+                    if let Some(NewOutgoingRequest { ticket, guard, payload, expires }) = opt_new_request {
                         match self.handle.enqueue_request(ticket, payload) {
                             Ok(io_id) => {
                                 // The request will be sent out, store it in our pending map.
                                 self.pending.insert(io_id, guard);
+
+                                // If a timeout has been configured, add it to the timeouts map.
+                                if let Some(expires) = expires {
+                                    self.timeouts.push((expires, io_id));
+
+                                }
                             },
                             Err(payload) => {
                                 // Failed to send -- time to shut down.
@@ -271,12 +345,35 @@ where
             };
         }
     }
+
+    /// Process all pending timeouts, setting and notifying `RequestError::TimedOut` on timeout.
+    ///
+    /// Returns the duration until the next timeout check needs to take place if timeouts are not
+    /// modified in the interim.
+    fn process_timeouts(&mut self, now: Instant) -> Duration {
+        let is_expired = |(when, _): &(_, _)| *when <= now;
+
+        for (_, io_id) in drain_heap_while(&mut self.timeouts, is_expired) {
+            // If not removed already through other means, set and notify about timeout.
+            if let Some(guard_ref) = self.pending.remove(&io_id) {
+                guard_ref.set_and_notify(Err(RequestError::TimedOut));
+            }
+        }
+
+        // Calculate new delay for timeouts.
+        if let Some((when, _)) = self.timeouts.peek() {
+            when.duration_since(now)
+        } else {
+            Duration::from_secs(3600)
+
+            // 1 hour dummy sleep, since we cannot have a conditional future.
+        }
+    }
 }
 
 impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
     fn drop(&mut self) {
         // When the server is dropped, ensure all waiting requests are informed.
-
         self.new_requests_receiver.close();
 
         for (_io_id, guard) in self.pending.drain() {
@@ -287,6 +384,7 @@ impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
             ticket: _,
             guard,
             payload,
+            expires: _,
         }) = self.new_requests_receiver.try_recv()
         {
             guard.set_and_notify(Err(RequestError::RemoteClosed(payload)))
@@ -362,10 +460,27 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     fn do_enqueue_request(self, ticket: RequestTicket) -> RequestGuard {
         let inner = Arc::new(RequestGuardInner::new());
 
+        // TODO: Thread timing through interface. Maybe attach to client? Clock is 40 bytes.
+        let clock = quanta::Clock::default();
+
+        // If a timeout is set, calculate expiration time.
+        let expires = if let Some(timeout) = self.timeout {
+            match clock.recent().checked_add(timeout) {
+                Some(expires) => Some(expires),
+                None => {
+                    // The timeout is so high that the resulting `Instant` would overflow.
+                    return RequestGuard::new_error(RequestError::TimeoutOverflow(timeout));
+                }
+            }
+        } else {
+            None
+        };
+
         match self.client.new_request_sender.send(NewOutgoingRequest {
             ticket,
             guard: inner.clone(),
             payload: self.payload,
+            expires,
         }) {
             Ok(()) => RequestGuard { inner },
             Err(send_err) => {
@@ -396,6 +511,11 @@ pub enum RequestError {
     /// The request was cancelled on our end due to a timeout.
     #[error("request timed out")]
     TimedOut,
+    /// Local timeout overflow.
+    ///
+    /// The given timeout would cause a clock overflow.
+    #[error("requested timeout ({0:?}) would cause clock overflow")]
+    TimeoutOverflow(Duration),
     /// Remote responded with cancellation.
     ///
     /// Instead of sending a response, the remote sent a cancellation.
@@ -721,4 +841,8 @@ mod tests {
 
         assert_eq!(response, Some(payload));
     }
+
+    // TODO: Test draining functions
+    // TODO: Ensure set_and_notify multiple times is harmless.
+    // TODO: Test actual timeouts.
 }
