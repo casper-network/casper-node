@@ -462,7 +462,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
 /// An RPC request error.
 ///
 /// Describes the reason a request did not yield a response.
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum RequestError {
     /// Remote closed, could not send.
     ///
@@ -762,9 +762,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BinaryHeap;
+    use std::{collections::BinaryHeap, sync::Arc};
 
     use bytes::Bytes;
+    use futures::FutureExt;
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
 
     use crate::{
@@ -772,7 +773,9 @@ mod tests {
         ChannelId,
     };
 
-    use super::{drain_heap_while, JulietRpcClient, JulietRpcServer};
+    use super::{
+        drain_heap_while, JulietRpcClient, JulietRpcServer, RequestGuard, RequestGuardInner,
+    };
 
     #[allow(clippy::type_complexity)] // We'll allow it in testing.
     fn setup_peers<const N: usize>(
@@ -856,6 +859,100 @@ mod tests {
     }
 
     #[test]
+    fn request_guard_polls_waiting_with_no_response() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard { inner };
+
+        // Initially, the guard should not have a response.
+        let guard = guard
+            .try_get_response()
+            .expect_err("should not have a result");
+
+        // Polling it should also result in a wait.
+        let waiting = guard.wait_for_response();
+
+        assert!(waiting.now_or_never().is_none());
+    }
+
+    #[test]
+    fn request_guard_polled_early_returns_response_when_available() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        // Waiter created before response sent.
+        let waiting = guard.wait_for_response();
+        inner.set_and_notify(Ok(None));
+
+        assert_eq!(waiting.now_or_never().expect("should poll ready"), Ok(None));
+    }
+
+    #[test]
+    fn request_guard_polled_late_returns_response_when_available() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        inner.set_and_notify(Ok(None));
+
+        // Waiter created after response sent.
+        let waiting = guard.wait_for_response();
+
+        assert_eq!(waiting.now_or_never().expect("should poll ready"), Ok(None));
+    }
+
+    #[test]
+    fn request_guard_get_returns_correct_value_when_available() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        // Waiter created and polled before notification.
+        let guard = guard
+            .try_get_response()
+            .expect_err("should not have a result");
+
+        let payload_str = b"hello, world";
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str))));
+
+        assert_eq!(
+            guard.try_get_response().expect("should be ready"),
+            Ok(Some(Bytes::from_static(payload_str)))
+        );
+    }
+
+    #[test]
+    fn request_guard_harmless_to_set_multiple_times() {
+        // We want first write wins semantics here.
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        let payload_str = b"hello, world";
+        let payload_str2 = b"goodbye, world";
+
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+
+        assert_eq!(
+            guard.try_get_response().expect("should be ready"),
+            Ok(Some(Bytes::from_static(payload_str)))
+        );
+
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+    }
+
+    #[test]
     fn drain_works() {
         let mut heap = BinaryHeap::new();
 
@@ -897,6 +994,5 @@ mod tests {
         assert!(drain_heap_while(&mut empty_heap, |_| true).next().is_none());
     }
 
-    // TODO: Ensure set_and_notify multiple times is harmless.
     // TODO: Test actual timeouts.
 }

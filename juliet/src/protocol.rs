@@ -418,7 +418,7 @@ pub enum CompletedRead {
 ///
 /// Higher level layers like [`rpc`](crate::rpc) should make it impossible to encounter
 /// [`LocalProtocolViolation`]s.
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Copy, Clone, Debug, Eq, Error, PartialEq)]
 pub enum LocalProtocolViolation {
     /// A request was not sent because doing so would exceed the request limit on channel.
     ///
