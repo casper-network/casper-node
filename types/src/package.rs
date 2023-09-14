@@ -260,7 +260,6 @@ impl FromBytes for EntityVersions {
     }
 }
 
-#[cfg(any(feature = "testing", feature = "gens", test))]
 impl From<BTreeMap<EntityVersionKey, AddressableEntityHash>> for EntityVersions {
     fn from(value: BTreeMap<EntityVersionKey, AddressableEntityHash>) -> Self {
         EntityVersions(value)

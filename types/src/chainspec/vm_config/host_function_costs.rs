@@ -296,7 +296,7 @@ pub struct HostFunctionCosts {
     /// Cost of calling the `enable_contract_version` host function.
     pub enable_contract_version: HostFunction<[Cost; 4]>,
     /// Cost of calling the `add_session_version` host function.
-    pub add_session_version: HostFunction<[Cost; 5]>,
+    pub add_session_version: HostFunction<[Cost; 2]>,
 }
 
 impl Default for HostFunctionCosts {

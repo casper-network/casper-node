@@ -605,25 +605,10 @@ where
             FunctionIndex::AddSessionVersion => {
                 // args(0) = pointer to entrypoints in wasm memory
                 // args(1) = size of entrypoints in wasm memory
-                // args(2) = pointer to output buffer for serialized key
-                // args(3) = size of output buffer
-                // args(4) = pointer to bytes written
-                let (
-                    entry_points_ptr,
-                    entry_points_size,
-                    output_ptr,
-                    output_size,
-                    bytes_written_ptr,
-                ) = Args::parse(args)?;
+                let (entry_points_ptr, entry_points_size) = Args::parse(args)?;
                 self.charge_host_function_call(
                     &host_function_costs.add_session_version,
-                    [
-                        entry_points_ptr,
-                        entry_points_size,
-                        output_ptr,
-                        output_size,
-                        bytes_written_ptr,
-                    ],
+                    [entry_points_ptr, entry_points_size],
                 )?;
 
                 let entry_points: EntryPoints =
