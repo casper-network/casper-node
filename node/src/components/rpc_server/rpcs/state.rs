@@ -936,17 +936,16 @@ impl RpcWithParams for QueryBalance {
 
         let purse_uref = match params.purse_identifier {
             PurseIdentifier::MainPurseUnderPublicKey(account_public_key) => {
-                let account = get_account(
+                get_main_purse_by_account_hash(
                     effect_builder,
                     state_root_hash,
                     account_public_key.to_account_hash(),
                 )
-                .await?;
-                account.main_purse()
+                .await?
             }
             PurseIdentifier::MainPurseUnderAccountHash(account_hash) => {
-                let account = get_account(effect_builder, state_root_hash, account_hash).await?;
-                account.main_purse()
+                get_main_purse_by_account_hash(effect_builder, state_root_hash, account_hash)
+                    .await?
             }
             PurseIdentifier::PurseUref(purse_uref) => purse_uref,
         };
@@ -1128,11 +1127,11 @@ pub(super) async fn handle_query_result<REv: ReactorEventT>(
     }
 }
 
-async fn get_account<REv: ReactorEventT>(
+async fn get_main_purse_by_account_hash<REv: ReactorEventT>(
     effect_builder: EffectBuilder<REv>,
     state_root_hash: Digest,
     account_hash: AccountHash,
-) -> Result<Account, Error> {
+) -> Result<URef, Error> {
     let (stored_value, _) = common::run_query_and_encode(
         effect_builder,
         state_root_hash,
@@ -1141,12 +1140,29 @@ async fn get_account<REv: ReactorEventT>(
     )
     .await?;
 
-    if let StoredValue::Account(account) = stored_value {
-        Ok(account)
-    } else {
-        let error_msg = format!("failed to get account {}", account_hash);
+    let error = {
+        let error_msg = format!("failed to get main purse for {}", account_hash);
         info!(?stored_value, "{}", error_msg);
-        Err(Error::new(ErrorCode::NoSuchAccount, error_msg))
+        Err(Error::new(ErrorCode::NoSuchMainPurse, error_msg))
+    };
+
+    match stored_value {
+        StoredValue::Account(account) => Ok(account.main_purse()),
+        StoredValue::CLValue(entity_key_as_clvalue) => {
+            let entity_key: Key = match CLValue::into_t(entity_key_as_clvalue) {
+                Ok(entity_key) => entity_key,
+                Err(_) => return error,
+            };
+            let (entity_value, _) =
+                common::run_query_and_encode(effect_builder, state_root_hash, entity_key, vec![])
+                    .await?;
+            if let StoredValue::AddressableEntity(entity) = entity_value {
+                Ok(entity.main_purse())
+            } else {
+                error
+            }
+        }
+        _ => error,
     }
 }
 
