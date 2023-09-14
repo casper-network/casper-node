@@ -26,6 +26,7 @@
 
 use std::{
     collections::{BTreeSet, VecDeque},
+    fmt::{self, Display, Formatter},
     io,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -50,6 +51,7 @@ use crate::{
         payload_is_multi_frame, CompletedRead, FrameIter, JulietProtocol, LocalProtocolViolation,
         OutgoingFrame, OutgoingMessage, ProtocolBuilder,
     },
+    util::PayloadFormat,
     ChannelId, Id, Outcome,
 };
 
@@ -161,6 +163,13 @@ pub enum CoreError {
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IoId(u64);
 
+impl Display for IoId {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
 /// IO layer for the juliet protocol.
 ///
 /// The central structure for the IO layer built on top of the juliet protocol, one instance per
@@ -267,6 +276,38 @@ pub enum IoEvent {
         /// The local request ID which will not be answered.
         io_id: IoId,
     },
+}
+
+impl Display for IoEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            IoEvent::NewRequest {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(f, "NewRequest {{ channel: {}, id: {}", channel, id)?;
+                if let Some(ref payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }}")
+            }
+
+            IoEvent::RequestCancelled { channel, id } => {
+                write!(f, "RequestCancalled {{ channel: {}, id: {} }}", channel, id)
+            }
+            IoEvent::ReceivedResponse { io_id, payload } => {
+                write!(f, "ReceivedResponse {{ io_id: {}", io_id)?;
+                if let Some(ref payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }}")
+            }
+            IoEvent::ReceivedCancellationResponse { io_id } => {
+                write!(f, "RequestCancalled {{ io_id: {} }}", io_id)
+            }
+        }
+    }
 }
 
 /// A builder for the [`IoCore`].
@@ -815,6 +856,16 @@ pub struct RequestTicket {
     permit: OwnedSemaphorePermit,
     /// Pre-allocated [`IoId`].
     io_id: IoId,
+}
+
+impl Display for RequestTicket {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RequestTicket {{ channel: {}, io_id: {} }}",
+            self.channel, self.io_id
+        )
+    }
 }
 
 /// A failure to reserve a slot in the queue.

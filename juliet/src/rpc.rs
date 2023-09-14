@@ -46,6 +46,7 @@ use crate::{
         RequestTicket, ReservationError,
     },
     protocol::LocalProtocolViolation,
+    util::PayloadFormat,
     ChannelId, Id,
 };
 
@@ -164,6 +165,19 @@ struct NewOutgoingRequest {
     expires: Option<Instant>,
 }
 
+impl Display for NewOutgoingRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "NewOutgoingRequest {{ ticket: {}", self.ticket,)?;
+        if let Some(ref expires) = self.expires {
+            write!(f, ", expires: {:?}", expires)?;
+        }
+        if let Some(ref payload) = self.payload {
+            write!(f, ", payload: {}", PayloadFormat(payload))?;
+        }
+        f.write_str(" }}")
+    }
+}
+
 #[derive(Debug)]
 struct RequestGuardInner {
     /// The returned response of the request.
@@ -244,9 +258,17 @@ where
                 _ = timeout_check => {
                     // Enough time has elapsed that we need to check for timeouts, which we will
                     // do the next time we loop.
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!("timeout check");
                 }
 
                 opt_new_request = self.new_requests_receiver.recv() => {
+                    #[cfg(feature = "tracing")]
+                    {
+                        if let Some(ref new_request) = opt_new_request {
+                            tracing::info!(%new_request, "request to send");
+                        }
+                    }
                     if let Some(NewOutgoingRequest { ticket, guard, payload, expires }) = opt_new_request {
                         match self.handle.enqueue_request(ticket, payload) {
                             Ok(io_id) => {
@@ -256,7 +278,6 @@ where
                                 // If a timeout has been configured, add it to the timeouts map.
                                 if let Some(expires) = expires {
                                     self.timeouts.push(Reverse((expires, io_id)));
-
                                 }
                             },
                             Err(payload) => {
@@ -266,12 +287,29 @@ where
                         }
                     } else {
                         // The client has been dropped, time for us to shut down as well.
+                        #[cfg(feature = "tracing")]
+                        tracing::debug!("last client dropped locally, shutting down");
+
                         return Ok(None);
                     }
                 }
 
-                opt_event = self.core.next_event() => {
-                    if let Some(event) = opt_event? {
+                event_result = self.core.next_event() => {
+                    #[cfg(feature = "tracing")]
+                    {
+                        match event_result {
+                            Err(ref err) => {
+                                tracing::info!(%err, "error");
+                            }
+                            Ok(None) => {
+                                tracing::info!("received remote close");
+                            }
+                            Ok(Some(ref event)) => {
+                                tracing::info!(%event, "received");
+                            }
+                        }
+                    }
+                    if let Some(event) = event_result? {
                         match event {
                             IoEvent::NewRequest {
                                 channel,
@@ -328,6 +366,8 @@ where
 
             // If not removed already through other means, set and notify about timeout.
             if let Some(guard_ref) = self.pending.remove(&io_id) {
+                #[cfg(feature = "tracing")]
+                tracing::info!(%io_id, "timeout due to response not received in time");
                 guard_ref.set_and_notify(Err(RequestError::TimedOut));
             }
         }
@@ -768,6 +808,7 @@ mod tests {
     use bytes::Bytes;
     use futures::FutureExt;
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
+    use tracing::{span, Instrument, Level};
 
     use crate::{
         io::IoCoreBuilder,
@@ -825,7 +866,6 @@ mod tests {
             .await
             .expect("error receiving request")
         {
-            println!("recieved {}", req);
             let payload = req.payload().clone();
 
             tokio::time::sleep(ECHO_DELAY).await;
@@ -850,6 +890,12 @@ mod tests {
 
     /// Completely sets up an environment with a running echo server, returning a client.
     fn create_rpc_echo_server_env() -> JulietRpcClient<2> {
+        // Setup logging if not already set up.
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init()
+            .ok(); // If setting up logging fails, another testing thread already initialized it.
+
         let builder = RpcBuilder::new(IoCoreBuilder::new(
             ProtocolBuilder::<2>::with_default_channel_config(
                 ChannelConfiguration::new()
@@ -861,12 +907,12 @@ mod tests {
         let (client, server) = setup_peers(builder);
 
         // Spawn the server.
-        tokio::spawn(run_echo_server(server));
+        tokio::spawn(run_echo_server(server).instrument(span!(Level::ERROR, "server")));
 
         let (rpc_client, rpc_server) = client;
 
         // Run the background process for the client.
-        tokio::spawn(run_echo_client(rpc_server));
+        tokio::spawn(run_echo_client(rpc_server).instrument(span!(Level::ERROR, "client")));
 
         rpc_client
     }
