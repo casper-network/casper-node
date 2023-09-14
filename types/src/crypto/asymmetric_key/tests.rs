@@ -342,6 +342,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
     }
 
     #[test]
+    #[cfg(not(any(feature = "sdk")))]
     fn secret_key_to_and_from_file() {
         let mut rng = TestRng::new();
         let secret_key = SecretKey::random_ed25519(&mut rng);
@@ -398,6 +399,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
     }
 
     #[test]
+    #[cfg(not(any(feature = "sdk")))]
     fn public_key_to_and_from_file() {
         let mut rng = TestRng::new();
         let public_key = PublicKey::random_ed25519(&mut rng);
@@ -584,6 +586,7 @@ Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
     }
 
     #[test]
+    #[cfg(not(any(feature = "sdk")))]
     fn secret_key_to_and_from_file() {
         let mut rng = TestRng::new();
         let secret_key = SecretKey::random_secp256k1(&mut rng);
@@ -641,6 +644,7 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
     }
 
     #[test]
+    #[cfg(not(any(feature = "sdk")))]
     fn public_key_to_and_from_file() {
         let mut rng = TestRng::new();
         let public_key = PublicKey::random_secp256k1(&mut rng);

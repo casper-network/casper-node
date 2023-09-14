@@ -75,7 +75,6 @@ mod uref;
 #[cfg(not(any(feature = "sdk")))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
-#[cfg(not(any(feature = "sdk")))]
 use once_cell::sync::Lazy;
 
 pub use crate::uint::{UIntParseError, U128, U256, U512};
@@ -195,13 +194,17 @@ pub use uref::{
 
 /// OS page size.
 #[cfg(feature = "std")]
-#[cfg(not(any(feature = "sdk")))]
 pub static OS_PAGE_SIZE: Lazy<usize> = Lazy::new(|| {
     /// Sensible default for many if not all systems.
     const DEFAULT_PAGE_SIZE: usize = 4096;
 
+    #[cfg(not(any(feature = "sdk")))]
     // https://www.gnu.org/software/libc/manual/html_node/Sysconf.html
     let value: c_long = unsafe { sysconf(_SC_PAGESIZE) };
+
+    #[cfg(feature = "sdk")]
+    let value = 0;
+
     if value <= 0 {
         DEFAULT_PAGE_SIZE
     } else {
