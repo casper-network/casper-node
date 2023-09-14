@@ -231,7 +231,7 @@ where
     /// `next_request` as soon as possible.
     pub async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
         loop {
-            let now = self.clock.recent();
+            let now = self.clock.now();
 
             // Process all the timeouts.
             let until_timeout_check = self.process_timeouts(now);
@@ -378,8 +378,6 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     /// Sets the timeout for the request.
     ///
     /// By default, there is an infinite timeout.
-    ///
-    /// **TODO**: Currently the timeout feature is not implemented.
     pub const fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
@@ -434,7 +432,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
 
         // If a timeout is set, calculate expiration time.
         let expires = if let Some(timeout) = self.timeout {
-            match clock.recent().checked_add(timeout) {
+            match clock.now().checked_add(timeout) {
                 Some(expires) => Some(expires),
                 None => {
                     // The timeout is so high that the resulting `Instant` would overflow.
