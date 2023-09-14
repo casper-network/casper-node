@@ -767,8 +767,10 @@ mod tests {
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
 
     use crate::{
-        io::IoCoreBuilder, protocol::ProtocolBuilder, rpc::RpcBuilder, ChannelConfiguration,
-        ChannelId,
+        io::IoCoreBuilder,
+        protocol::ProtocolBuilder,
+        rpc::{RequestError, RpcBuilder},
+        ChannelConfiguration, ChannelId,
     };
 
     use super::{
@@ -800,6 +802,10 @@ mod tests {
         (peer_a, peer_b)
     }
 
+    // It takes about 12 ms one-way for sound from the base of the Matterhorn to reach the summit,
+    // so we expect a single yodel to echo within ~ 24 ms, which is use as a reference here.
+    const ECHO_DELAY: Duration = Duration::from_millis(2 * 12);
+
     /// Runs an echo server in the background.
     ///
     /// The server keeps running as long as the future is polled.
@@ -818,10 +824,8 @@ mod tests {
         {
             println!("recieved {}", req);
             let payload = req.payload().clone();
-            // It takes roughly 12 ms one-way for sound from the base of the Matterhorn to reach
-            // the summit, so we expect a single yodel to echo within ~ 24 ms, which is use as a
-            // reference here.
-            tokio::time::sleep(Duration::from_millis(2 * 12)).await;
+
+            tokio::time::sleep(ECHO_DELAY).await;
             req.respond(payload);
         }
 
@@ -885,12 +889,44 @@ mod tests {
         let response_err = rpc_client
             .create_request(ChannelId::new(0))
             .with_payload(payload.clone())
-            .with_timeout(Duration::from_millis(5))
+            .with_timeout(ECHO_DELAY / 2)
             .queue_for_sending()
             .await
             .wait_for_response()
             .await;
         assert_eq!(response_err, Err(crate::rpc::RequestError::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn timeout_processed_in_correct_order() {
+        let rpc_client = create_rpc_echo_server_env();
+
+        let payload_short = Bytes::from(&b"timeout check short"[..]);
+        let payload_long = Bytes::from(&b"timeout check long"[..]);
+
+        // Sending two requests with different timeouts will result in both being added to the heap
+        // of timeouts to check. If the internal heap is in the wrong order, the bigger timeout will
+        // prevent the smaller one from being processed.
+
+        let req_short = rpc_client
+            .create_request(ChannelId::new(0))
+            .with_payload(payload_short)
+            .with_timeout(ECHO_DELAY / 2)
+            .queue_for_sending()
+            .await;
+
+        let req_long = rpc_client
+            .create_request(ChannelId::new(0))
+            .with_payload(payload_long.clone())
+            .with_timeout(ECHO_DELAY * 100)
+            .queue_for_sending()
+            .await;
+
+        let result_short = req_short.wait_for_response().await;
+        let result_long = req_long.wait_for_response().await;
+
+        assert_eq!(result_short, Err(RequestError::TimedOut));
+        assert_eq!(result_long, Ok(Some(payload_long)));
     }
 
     #[test]
