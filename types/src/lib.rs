@@ -29,7 +29,7 @@ pub mod api_error;
 mod block;
 mod block_time;
 pub mod bytesrepr;
-#[cfg(any(feature = "std", test))]
+#[cfg(feature = "std")]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
@@ -89,17 +89,20 @@ pub use addressable_entity::{
 };
 #[doc(inline)]
 pub use api_error::ApiError;
-pub use block::{
-    Block, BlockBody, BlockHash, BlockHashAndHeight, BlockHeader, BlockSignatures,
-    BlockSignaturesMergeError, BlockValidationError, EraEnd, EraReport, FinalitySignature,
-    FinalitySignatureId, SignedBlockHeader, SignedBlockHeaderValidationError,
-};
 #[cfg(all(feature = "std", feature = "json-schema"))]
+pub use block::JsonBlockWithSignatures;
 pub use block::{
-    JsonBlock, JsonBlockBody, JsonBlockHeader, JsonEraEnd, JsonEraReport, JsonProof, JsonReward,
-    JsonValidatorWeight,
+    Block, BlockBody, BlockBodyV1, BlockBodyV2, BlockHash, BlockHashAndHeight, BlockHeader,
+    BlockSignatures, BlockSignaturesMergeError, BlockV1, BlockV2, BlockValidationError, EraEnd,
+    EraReport, FinalitySignature, FinalitySignatureId, SignedBlockHeader,
+    SignedBlockHeaderValidationError,
 };
+#[cfg(any(feature = "testing", test))]
+pub use block::{FromTestBlockBuilder, TestBlockBuilder};
+
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
+#[cfg(feature = "std")]
+pub use chainspec::DEFAULT_HOST_FUNCTION_NEW_DICTIONARY;
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -122,12 +125,11 @@ pub use chainspec::{
     DEFAULT_CONTROL_FLOW_IF_OPCODE, DEFAULT_CONTROL_FLOW_LOOP_OPCODE,
     DEFAULT_CONTROL_FLOW_RETURN_OPCODE, DEFAULT_CONTROL_FLOW_SELECT_OPCODE,
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
-    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
-    DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
-    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
-    DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST,
-    DEFAULT_WASM_MAX_MEMORY,
+    DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_INTEGER_COMPARISON_COST,
+    DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT,
+    DEFAULT_MIN_TRANSFER_MOTES, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
+    DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
+    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 #[cfg(feature = "sdk")]

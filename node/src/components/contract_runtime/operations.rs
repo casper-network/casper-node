@@ -19,7 +19,7 @@ use casper_storage::{
 use casper_types::{
     bytesrepr::{self, ToBytes, U32_SERIALIZED_LENGTH},
     execution::{Effects, ExecutionResult, ExecutionResultV2, Transform, TransformKind},
-    AddressableEntity, Block, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport,
+    AddressableEntity, BlockV2, CLValue, Deploy, DeployHash, Digest, EraEnd, EraId, EraReport,
     HashAddr, Key, ProtocolVersion, PublicKey, StoredValue, U512,
 };
 
@@ -321,7 +321,7 @@ pub fn execute_finalized_block(
         }
     };
 
-    let block = Arc::new(Block::new(
+    let block = Arc::new(BlockV2::new(
         parent_hash,
         parent_seed,
         state_root_hash,

@@ -517,7 +517,7 @@ impl BlockBuilder {
 
     pub(super) fn register_block(
         &mut self,
-        block: &Block,
+        block: Block,
         maybe_peer: Option<NodeId>,
     ) -> Result<(), Error> {
         let was_waiting_for_block = self.waiting_for_block();

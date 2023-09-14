@@ -12,7 +12,7 @@ use tempfile::TempDir;
 use thiserror::Error;
 
 use casper_types::{
-    testing::TestRng, Block, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId,
+    testing::TestRng, BlockV2, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployId,
     FinalitySignature, Transaction, TransactionHash,
 };
 
@@ -125,7 +125,7 @@ enum Event {
     #[from]
     GossiperIncomingTransaction(GossiperIncoming<Transaction>),
     #[from]
-    GossiperIncomingBlock(GossiperIncoming<Block>),
+    GossiperIncomingBlock(GossiperIncoming<BlockV2>),
     #[from]
     GossiperIncomingFinalitySignature(GossiperIncoming<FinalitySignature>),
     #[from]

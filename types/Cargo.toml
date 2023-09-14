@@ -47,11 +47,11 @@ rand_pcg = { version = "0.3.0", optional = true }
 schemars = { version = "0.8.12", features = [
   "preserve_order",
 ], optional = true }
+serde-map-to-array = "1.1.0"
 serde = { version = "1", default-features = false, features = [
   "alloc",
   "derive",
 ] }
-serde-map-to-array = "1.1.0"
 serde_bytes = { version = "0.11.5", default-features = false, features = [
   "alloc",
 ] }

@@ -32,7 +32,7 @@ use rand::{Rng, RngCore};
 use schemars::JsonSchema;
 #[cfg(any(feature = "std", test))]
 use serde::{Deserialize, Serialize};
-#[cfg(any(feature = "std", test))]
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
 use tracing::{debug, warn};
 
 #[cfg(any(feature = "std", test))]
@@ -295,7 +295,7 @@ impl Deploy {
         let serialized_body = serialize_body(&self.payment, &self.session);
         let body_hash = Digest::hash(serialized_body);
         if body_hash != *self.header.body_hash() {
-            #[cfg(any(feature = "std", test))]
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
             warn!(?self, ?body_hash, "invalid deploy body hash");
             return Err(DeployConfigurationFailure::InvalidBodyHash);
         }
@@ -303,7 +303,7 @@ impl Deploy {
         let serialized_header = serialize_header(&self.header);
         let hash = DeployHash::new(Digest::hash(serialized_header));
         if hash != self.hash {
-            #[cfg(any(feature = "std", test))]
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
             warn!(?self, ?hash, "invalid deploy hash");
             return Err(DeployConfigurationFailure::InvalidDeployHash);
         }
@@ -345,7 +345,7 @@ impl Deploy {
     /// Returns `Ok` if and only if:
     ///   * the chain_name is correct,
     ///   * the configured parameters are complied with at the given timestamp
-    #[cfg(any(feature = "std", test))]
+    #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn is_config_compliant(
         &self,
         chain_name: &str,
@@ -1268,7 +1268,7 @@ fn serialize_body(payment: &ExecutableDeployItem, session: &ExecutableDeployItem
 /// signing verification.
 fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
     if deploy.approvals.is_empty() {
-        #[cfg(any(feature = "std", test))]
+        #[cfg(any(all(feature = "std", feature = "testing"), test))]
         warn!(?deploy, "deploy has no approvals");
         return Err(DeployConfigurationFailure::EmptyApprovals);
     }
@@ -1277,7 +1277,7 @@ fn validate_deploy(deploy: &Deploy) -> Result<(), DeployConfigurationFailure> {
 
     for (index, approval) in deploy.approvals.iter().enumerate() {
         if let Err(error) = crypto::verify(deploy.hash, approval.signature(), approval.signer()) {
-            #[cfg(any(feature = "std", test))]
+            #[cfg(any(all(feature = "std", feature = "testing"), test))]
             warn!(?deploy, "failed to verify approval {}: {}", index, error);
             return Err(DeployConfigurationFailure::InvalidApproval { index, error });
         }

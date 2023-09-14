@@ -3,12 +3,11 @@ use std::time::Duration;
 use futures::channel::oneshot;
 use rand::Rng;
 
-use casper_types::{bytesrepr::Bytes, testing::TestRng};
+use casper_types::{bytesrepr::Bytes, testing::TestRng, TestBlockBuilder};
 
 use super::*;
 use crate::{
     reactor::{EventQueueHandle, QueueKind, Scheduler},
-    types::TestBlockBuilder,
     utils,
 };
 

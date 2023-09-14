@@ -14,9 +14,9 @@ use rand::{seq::IteratorRandom, Rng};
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, Chainspec, DeployId, EraId, Key,
-    LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, URef,
-    U512,
+    testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, DeployId, EraId, Key,
+    LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder,
+    TimeDiff, URef, U512,
 };
 
 use super::*;
@@ -28,7 +28,7 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{BlockExecutionResultsOrChunkId, TestBlockBuilder, ValueOrChunk},
+    types::{BlockExecutionResultsOrChunkId, ValueOrChunk},
     utils,
 };
 
@@ -101,7 +101,7 @@ impl MockReactor {
 }
 
 struct TestEnv {
-    block: Block,
+    block: BlockV2,
     validator_keys: Vec<Arc<SecretKey>>,
     peers: Vec<NodeId>,
 }
@@ -109,7 +109,7 @@ struct TestEnv {
 // Utility struct used to generate common test artifacts
 impl TestEnv {
     // Replaces the test block with the one provided as parameter
-    fn with_block(self, block: Block) -> Self {
+    fn with_block(self, block: BlockV2) -> Self {
         Self {
             block,
             validator_keys: self.validator_keys,
@@ -117,7 +117,7 @@ impl TestEnv {
         }
     }
 
-    fn block(&self) -> &Block {
+    fn block(&self) -> &BlockV2 {
         &self.block
     }
 
@@ -173,7 +173,7 @@ impl TestEnv {
     }
 }
 
-fn check_sync_global_state_event(event: MockReactorEvent, block: &Block) {
+fn check_sync_global_state_event(event: MockReactorEvent, block: &BlockV2) {
     assert!(matches!(
         event,
         MockReactorEvent::SyncGlobalStateRequest { .. }
@@ -204,7 +204,7 @@ async fn need_next(
 
 fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
     builder: &mut BlockBuilder,
-    block: &Block,
+    block: &BlockV2,
     validator_keys_iter: I,
 ) {
     for secret_key in validator_keys_iter {
@@ -377,7 +377,9 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(
-        historical_builder.register_block(block, None).is_ok(),
+        historical_builder
+            .register_block(block.into(), None)
+            .is_ok(),
         "should register block"
     );
     // Register the remaining signatures to reach strict finality
@@ -1451,7 +1453,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(block.clone()),
+            item: Box::new(Block::V2(block.clone())),
             peer: peers[0],
         })),
     );
@@ -1497,7 +1499,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1560,7 +1562,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1631,7 +1633,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1706,7 +1708,7 @@ async fn fwd_have_block_body_without_deploys_and_strict_finality_transitions_sta
     // Register finality signatures to reach strict finality
     register_multiple_signatures(fwd_builder, block, validators_secret_keys.iter());
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1772,7 +1774,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1843,7 +1845,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1934,7 +1936,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2006,7 +2008,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2074,7 +2076,9 @@ async fn historical_sync_announces_meta_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         historical_builder,
@@ -2126,10 +2130,10 @@ async fn historical_sync_announces_meta_block() {
     let event = mock_reactor.crank().await;
     match event {
         MockReactorEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
-            assert_eq!(*meta_block.block.hash(), *block.hash());
+            assert_eq!(meta_block.hash(), *block.hash());
             // The deploy buffer is supposed to get notified
             assert!(meta_block
-                .state
+                .mut_state()
                 .register_as_sent_to_deploy_buffer()
                 .was_updated());
         }
@@ -2216,7 +2220,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2315,7 +2319,9 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2417,7 +2423,9 @@ async fn historical_sync_no_legacy_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2638,7 +2646,9 @@ async fn historical_sync_legacy_block_strict_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2835,7 +2845,9 @@ async fn historical_sync_legacy_block_weak_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -3043,7 +3055,9 @@ async fn historical_sync_legacy_block_any_finality() {
         block,
         validators_secret_keys.iter().take(1),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -3461,7 +3475,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone()),
+                item: Box::new(block.clone().into()),
                 peer: peers[0],
             })),
         );
@@ -3494,7 +3508,7 @@ async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
             mock_reactor.effect_builder(),
             &mut rng,
             Event::BlockFetched(Ok(FetchedData::FromPeer {
-                item: Box::new(block.clone()),
+                item: Box::new(block.clone().into()),
                 peer: peers[1],
             })),
         );
@@ -3733,7 +3747,9 @@ async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_respons
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let _effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
@@ -4014,7 +4030,9 @@ async fn historical_sync_latch_should_not_decrement_for_old_execution_results() 
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let _effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),

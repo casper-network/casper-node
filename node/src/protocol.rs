@@ -12,7 +12,7 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
-use casper_types::{Block, FinalitySignature, Transaction};
+use casper_types::{BlockV2, FinalitySignature, Transaction};
 
 use crate::{
     components::{
@@ -44,8 +44,8 @@ pub(crate) enum Message {
     ConsensusRequest(consensus::ConsensusRequestMessage),
     /// Block gossiper component message.
     #[from]
-    BlockGossiper(gossiper::Message<Block>),
-    /// Transaction gossiper component message.
+    BlockGossiper(gossiper::Message<BlockV2>),
+    /// Deploy gossiper component message.
     #[from]
     TransactionGossiper(gossiper::Message<Transaction>),
     #[from]
@@ -300,7 +300,7 @@ impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
         + From<ConsensusDemand>
-        + From<GossiperIncoming<Block>>
+        + From<GossiperIncoming<BlockV2>>
         + From<GossiperIncoming<Transaction>>
         + From<GossiperIncoming<FinalitySignature>>
         + From<GossiperIncoming<GossipedAddress>>

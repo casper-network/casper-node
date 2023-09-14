@@ -19,8 +19,8 @@ use smallvec::smallvec;
 use tracing::{debug, error, info, warn};
 
 use casper_types::{
-    Block, Deploy, DeployApproval, DeployFootprint, DeployHash, DeployId, DisplayIter, Timestamp,
-    Transaction, TransactionConfig, TransactionId,
+    Block, BlockV2, Deploy, DeployApproval, DeployFootprint, DeployHash, DeployId, DisplayIter,
+    Timestamp, Transaction, TransactionConfig, TransactionId,
 };
 
 use crate::{
@@ -304,10 +304,18 @@ impl DeployBuffer {
     }
 
     /// Update buffer and holds considering new added block.
-    fn register_block(&mut self, block: &Block) {
+    fn register_block(&mut self, block: &BlockV2) {
         let block_height = block.height();
         let timestamp = block.timestamp();
         debug!(%timestamp, "DeployBuffer: register_block({}) timestamp finalized", block_height);
+        self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
+    }
+
+    /// When initializing the buffer, register past blocks in order to provide replay protection.
+    fn register_versioned_block(&mut self, block: &Block) {
+        let block_height = block.height();
+        let timestamp = block.timestamp();
+        debug!(%timestamp, "DeployBuffer: register_block_for_replay_protection_on_init({}) timestamp finalized", block_height);
         self.register_deploys(timestamp, block.deploy_and_transfer_hashes());
     }
 
@@ -520,7 +528,7 @@ where
                 match event {
                     Event::Initialize(blocks) => {
                         for block in blocks {
-                            self.register_block(&block);
+                            self.register_versioned_block(&block);
                         }
                         <Self as InitializedComponent<MainEvent>>::set_state(
                             self,
@@ -536,6 +544,7 @@ where
                     | Event::StoredDeploy(_, _)
                     | Event::BlockProposed(_)
                     | Event::Block(_)
+                    | Event::VersionedBlock(_)
                     | Event::BlockFinalized(_)
                     | Event::Expire => {
                         warn!(
@@ -566,6 +575,10 @@ where
                 }
                 Event::Block(block) => {
                     self.register_block(&block);
+                    Effects::new()
+                }
+                Event::VersionedBlock(block) => {
+                    self.register_versioned_block(&block);
                     Effects::new()
                 }
                 Event::BlockProposed(proposed) => {

@@ -129,14 +129,13 @@ mod tests {
     use casper_types::{
         bytesrepr::FromBytes, ActivationPoint, BrTableCost, ChainspecRawBytes, ControlFlowCosts,
         CoreConfig, EraId, GlobalStateUpdate, HighwayConfig, HostFunction, HostFunctionCosts,
-        Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts, StoredValue, TimeDiff,
-        Timestamp, TransactionConfig, WasmConfig, U512,
+        Motes, OpcodeCosts, ProtocolConfig, ProtocolVersion, StorageCosts, StoredValue,
+        TestBlockBuilder, TimeDiff, Timestamp, TransactionConfig, WasmConfig, U512,
     };
 
     use super::*;
     use crate::{
         testing::init_logging,
-        types::TestBlockBuilder,
         utils::{Loadable, RESOURCES_PATH},
     };
 

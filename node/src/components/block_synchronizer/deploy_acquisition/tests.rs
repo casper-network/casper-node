@@ -4,9 +4,9 @@ use assert_matches::assert_matches;
 use rand::Rng;
 
 use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, URef};
-
-use crate::types::TestBlockBuilder;
+use casper_types::{
+    testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, TestBlockBuilder, URef,
+};
 
 use super::*;
 

@@ -124,8 +124,8 @@ use casper_types::{
     execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
     package::Package,
     system::auction::EraValidators,
-    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Deploy,
-    DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
+    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
+    Deploy, DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
     PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
@@ -1093,7 +1093,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts the given block and approvals hashes into the linear block store.
     pub(crate) async fn put_executed_block_to_storage(
         self,
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> bool

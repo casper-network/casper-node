@@ -906,7 +906,7 @@ impl ContractRuntime {
             );
         }
 
-        let meta_block = MetaBlock::new(block, execution_results, meta_block_state);
+        let meta_block = MetaBlock::new_forward(block, execution_results, meta_block_state);
         effect_builder.announce_meta_block(meta_block).await;
 
         // If the child is already finalized, start execution.
