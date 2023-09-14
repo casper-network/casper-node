@@ -762,7 +762,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BinaryHeap, sync::Arc};
+    use std::{collections::BinaryHeap, sync::Arc, time::Duration};
 
     use bytes::Bytes;
     use futures::FutureExt;
@@ -825,6 +825,7 @@ mod tests {
             {
                 println!("recieved {}", req);
                 let payload = req.payload().clone();
+                tokio::time::sleep(Duration::from_millis(50)).await;
                 req.respond(payload);
             }
 
@@ -855,7 +856,18 @@ mod tests {
             .await
             .expect("request failed");
 
-        assert_eq!(response, Some(payload));
+        assert_eq!(response, Some(payload.clone()));
+
+        // Create a second request with a timeout.
+        let response_err = rpc_client
+            .create_request(ChannelId::new(0))
+            .with_payload(payload.clone())
+            .with_timeout(Duration::from_millis(25))
+            .queue_for_sending()
+            .await
+            .wait_for_response()
+            .await;
+        assert_eq!(response_err, Err(crate::rpc::RequestError::TimedOut));
     }
 
     #[test]
@@ -993,6 +1005,4 @@ mod tests {
 
         assert!(drain_heap_while(&mut empty_heap, |_| true).next().is_none());
     }
-
-    // TODO: Test actual timeouts.
 }
