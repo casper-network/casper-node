@@ -800,8 +800,49 @@ mod tests {
         (peer_a, peer_b)
     }
 
-    #[tokio::test]
-    async fn basic_smoke_test() {
+    /// Runs an echo server in the background.
+    ///
+    /// The server keeps running as long as the future is polled.
+    async fn run_echo_server<const N: usize>(
+        server: (
+            JulietRpcClient<N>,
+            JulietRpcServer<N, ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
+        ),
+    ) {
+        let (rpc_client, mut rpc_server) = server;
+
+        while let Some(req) = rpc_server
+            .next_request()
+            .await
+            .expect("error receiving request")
+        {
+            println!("recieved {}", req);
+            let payload = req.payload().clone();
+            // It takes roughly 12 ms one-way for sound from the base of the Matterhorn to reach
+            // the summit, so we expect a single yodel to echo within ~ 24 ms, which is use as a
+            // reference here.
+            tokio::time::sleep(Duration::from_millis(2 * 12)).await;
+            req.respond(payload);
+        }
+
+        drop(rpc_client);
+    }
+
+    /// Runs the necessary server functionality for the RPC client.
+    async fn run_echo_client<const N: usize>(
+        mut rpc_server: JulietRpcServer<N, ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
+    ) {
+        while let Some(inc) = rpc_server
+            .next_request()
+            .await
+            .expect("client rpc_server error")
+        {
+            panic!("did not expect to receive {:?} on client", inc);
+        }
+    }
+
+    /// Completely sets up an environment with a running echo server, returning a client.
+    fn create_rpc_echo_server_env() -> JulietRpcClient<2> {
         let builder = RpcBuilder::new(IoCoreBuilder::new(
             ProtocolBuilder::<2>::with_default_channel_config(
                 ChannelConfiguration::new()
@@ -812,36 +853,20 @@ mod tests {
 
         let (client, server) = setup_peers(builder);
 
-        // Spawn an echo-server.
-        tokio::spawn(async move {
-            let (rpc_client, mut rpc_server) = server;
+        // Spawn the server.
+        tokio::spawn(run_echo_server(server));
 
-            while let Some(req) = rpc_server
-                .next_request()
-                .await
-                .expect("error receiving request")
-            {
-                println!("recieved {}", req);
-                let payload = req.payload().clone();
-                tokio::time::sleep(Duration::from_millis(50)).await;
-                req.respond(payload);
-            }
-
-            drop(rpc_client);
-        });
-
-        let (rpc_client, mut rpc_server) = client;
+        let (rpc_client, rpc_server) = client;
 
         // Run the background process for the client.
-        tokio::spawn(async move {
-            while let Some(inc) = rpc_server
-                .next_request()
-                .await
-                .expect("client rpc_server error")
-            {
-                panic!("did not expect to receive {:?} on client", inc);
-            }
-        });
+        tokio::spawn(run_echo_client(rpc_server));
+
+        rpc_client
+    }
+
+    #[tokio::test]
+    async fn basic_smoke_test() {
+        let rpc_client = create_rpc_echo_server_env();
 
         let payload = Bytes::from(&b"foobar"[..]);
 
@@ -860,7 +885,7 @@ mod tests {
         let response_err = rpc_client
             .create_request(ChannelId::new(0))
             .with_payload(payload.clone())
-            .with_timeout(Duration::from_millis(25))
+            .with_timeout(Duration::from_millis(5))
             .queue_for_sending()
             .await
             .wait_for_response()
