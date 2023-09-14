@@ -34,7 +34,10 @@ pub mod bytesrepr;
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
+#[cfg(not(any(feature = "sdk")))]
 mod cl_value;
+#[cfg(feature = "sdk")]
+pub mod cl_value;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
@@ -73,7 +76,6 @@ mod uref;
 #[cfg(not(any(feature = "sdk")))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
-#[cfg(not(any(feature = "sdk")))]
 use once_cell::sync::Lazy;
 
 pub use crate::uint::{UIntParseError, U128, U256, U512};
@@ -126,6 +128,8 @@ pub use chainspec::{
     DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, MAX_PAYMENT_AMOUNT,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
+#[cfg(feature = "sdk")]
+pub use cl_value::cl_value_to_json;
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]

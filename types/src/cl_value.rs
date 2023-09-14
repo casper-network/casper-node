@@ -1,3 +1,4 @@
+//! CLvalue type
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
@@ -14,6 +15,8 @@ use crate::{
 };
 
 mod jsonrepr;
+#[cfg(feature = "sdk")]
+pub use jsonrepr::cl_value_to_json;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
