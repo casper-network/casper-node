@@ -6,7 +6,7 @@ use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{
         self,
-        main_reactor::{keep_up::synced_to_ttl, MainEvent, MainReactor},
+        main_reactor::{keep_up::synced_to_ttl_and_signature_delay, MainEvent, MainReactor},
     },
     storage::HighestOrphanedBlockResult,
     NodeRng,
@@ -120,11 +120,25 @@ impl MainReactor {
         if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
             self.storage.get_highest_orphaned_block_header()
         {
-            if synced_to_ttl(
-                highest_switch_block_header,
-                &highest_orphaned_block_header,
-                self.chainspec.deploy_config.max_ttl,
-            )? {
+            let highest_orphaned_block_era = highest_orphaned_block_header.era_id();
+            let maybe_highest_orphaned_era_switch_block = self
+                .storage
+                .read_switch_block_header_by_era_id(highest_orphaned_block_era)
+                .map_err(|err| err.to_string())?;
+            let synced_to_ttl = if let Some(highest_orphaned_era_switch_block) =
+                maybe_highest_orphaned_era_switch_block
+            {
+                synced_to_ttl_and_signature_delay(
+                    highest_switch_block_header,
+                    &highest_orphaned_era_switch_block,
+                    &highest_orphaned_block_header,
+                    self.chainspec.deploy_config.max_ttl,
+                    self.chainspec.core_config.signature_rewards_max_delay,
+                )?
+            } else {
+                false
+            };
+            if synced_to_ttl {
                 debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
             } else {
                 info!(

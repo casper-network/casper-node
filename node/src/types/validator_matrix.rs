@@ -331,6 +331,10 @@ impl EraValidatorWeights {
         self.validator_weights.keys()
     }
 
+    pub(crate) fn into_validator_public_keys(self) -> impl Iterator<Item = PublicKey> {
+        self.validator_weights.into_keys()
+    }
+
     pub(crate) fn missing_validators<'a>(
         &self,
         validator_keys: impl Iterator<Item = &'a PublicKey>,
