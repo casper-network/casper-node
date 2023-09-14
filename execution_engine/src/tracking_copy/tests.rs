@@ -638,8 +638,8 @@ fn validate_query_proof_should_work() {
 
     let main_contract_hash = ContractHash::new([81; 32]);
     let main_contract_key: Key = main_contract_hash.into();
-    let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
 
+    let cl_value_2 = CLValue::from_t(main_contract_key).unwrap();
     let main_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         ContractPackageHash::new([21; 32]),
         *ACCOUNT_WASM_HASH,
@@ -854,6 +854,19 @@ fn validate_query_proof_should_work() {
         ),
         Err(ValidationError::InvalidProofHash)
     );
+
+    let main_account_query_result = misfit_tracking_copy
+        .query(&EngineConfig::default(), main_account_key, &[])
+        .expect("should query");
+
+    match main_account_query_result {
+        TrackingCopyQueryResult::Success { value, .. } => assert!(
+            value.as_cl_value().is_some(),
+            "Expected CLValue under main account key, got {:?}",
+            value
+        ),
+        result => panic!("Expected query success, got {:?}", result),
+    }
 }
 
 #[test]

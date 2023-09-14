@@ -20,8 +20,8 @@ use crate::global_state::{
     trie_store::{
         lmdb::{LmdbTrieStore, ScratchTrieStore},
         operations::{
-            delete, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
-            DeleteResult, ReadResult,
+            keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
+            PruneResult, ReadResult,
         },
     },
     DEFAULT_TEST_MAX_DB_SIZE, DEFAULT_TEST_MAX_READERS,
@@ -260,25 +260,25 @@ impl StateProvider for LmdbGlobalState {
         Ok(missing_hashes)
     }
 
-    /// Delete keys.
-    fn delete_keys(
+    /// Prune keys.
+    fn prune_keys(
         &self,
         mut state_root_hash: Digest,
         keys: &[Key],
-    ) -> Result<DeleteResult, Self::Error> {
+    ) -> Result<PruneResult, Self::Error> {
         let scratch_trie_store = self.get_scratch_store();
 
         let mut txn = scratch_trie_store.create_read_write_txn()?;
 
         for key in keys {
-            let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
+            let prune_results = prune::<Key, StoredValue, _, _, Self::Error>(
                 &mut txn,
                 &scratch_trie_store,
                 &state_root_hash,
                 key,
             );
-            match delete_result? {
-                DeleteResult::Deleted(root) => {
+            match prune_results? {
+                PruneResult::Pruned(root) => {
                     state_root_hash = root;
                 }
                 other => return Ok(other),
@@ -288,7 +288,7 @@ impl StateProvider for LmdbGlobalState {
         txn.commit()?;
 
         scratch_trie_store.write_root_to_db(state_root_hash)?;
-        Ok(DeleteResult::Deleted(state_root_hash))
+        Ok(PruneResult::Pruned(state_root_hash))
     }
 }
 

@@ -175,13 +175,13 @@ function await_node_historical_sync_to_genesis() {
     local WAIT_TIME_SEC=0
     local LOWEST=$(get_node_lowest_available_block "$NODE_ID")
     local HIGHEST=$(get_node_highest_available_block "$NODE_ID")
-    while [ -z $HIGHEST ] || [ -z $LOWEST ] || [ $LOWEST -ne 0 ] || [ $HIGHEST -eq 0 ]; do
+    while [ -z $HIGHEST ] || [ -z $LOWEST ] || [[ $LOWEST -ne 0 ]] || [[ $HIGHEST -eq 0 ]]; do
         log "node $NODE_ID lowest available block: $LOWEST, highest available block: $HIGHEST"
         if [ $WAIT_TIME_SEC -gt $SYNC_TIMEOUT_SEC ]; then
             log "ERROR: node 1 failed to do historical sync in ${SYNC_TIMEOUT_SEC} seconds"
             exit 1
         fi
-        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 1))
+        WAIT_TIME_SEC=$((WAIT_TIME_SEC + 5))
         sleep 5.0
         LOWEST=$(get_node_lowest_available_block "$NODE_ID")
         HIGHEST="$(get_node_highest_available_block "$NODE_ID")"

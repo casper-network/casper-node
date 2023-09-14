@@ -11,7 +11,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -502,5 +502,9 @@ fn should_transfer_total_amount() {
     let account_1_main_purse = account_1.main_purse();
     let account_1_balance = builder.get_purse_balance(account_1_main_purse);
 
-    assert_eq!(account_1_balance, U512::zero());
+    assert_eq!(
+        account_1_balance,
+        builder.calculate_refund_amount(*DEFAULT_PAYMENT),
+        "account 1 should only have refunded amount after transferring full amount"
+    );
 }

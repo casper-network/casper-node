@@ -21,8 +21,8 @@ use serde::{Deserialize, Serialize};
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    system::auction::{Bid, EraInfo, UnbondingPurse, WithdrawPurse},
-    CLValue, DeployInfo, Transfer, TransferAddr, U128, U256, U512,
+    system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
+    CLValue, DeployInfo, Key, Transfer, TransferAddr, U128, U256, U512,
 };
 
 #[derive(FromPrimitive, ToPrimitive, Debug)]
@@ -47,6 +47,7 @@ enum OpTag {
     Write = 1,
     Add = 2,
     NoOp = 3,
+    Prune = 4,
 }
 
 impl TryFrom<u8> for OpTag {
@@ -80,6 +81,8 @@ enum TransformTag {
     Failure = 17,
     WriteUnbonding = 18,
     WriteAddressableEntity = 19,
+    Prune = 20,
+    WriteBidKind = 21,
 }
 
 impl TryFrom<u8> for TransformTag {
@@ -356,6 +359,8 @@ pub enum OpKind {
     Add,
     /// An operation which has no effect.
     NoOp,
+    /// A prune operation.
+    Prune,
 }
 
 impl OpKind {
@@ -365,6 +370,7 @@ impl OpKind {
             OpKind::Write => OpTag::Write,
             OpKind::Add => OpTag::Add,
             OpKind::NoOp => OpTag::NoOp,
+            OpKind::Prune => OpTag::Prune,
         }
     }
 }
@@ -394,6 +400,7 @@ impl FromBytes for OpKind {
             OpTag::Write => Ok((OpKind::Write, remainder)),
             OpTag::Add => Ok((OpKind::Add, remainder)),
             OpTag::NoOp => Ok((OpKind::NoOp, remainder)),
+            OpTag::Prune => Ok((OpKind::Prune, remainder)),
         }
     }
 }
@@ -482,6 +489,12 @@ pub enum Transform {
     WriteUnbonding(Vec<UnbondingPurse>),
     /// Writes the addressable entity to global state.
     WriteAddressableEntity,
+    /// Removes pathing to keyed value within global state. This is a form of soft delete; the
+    /// underlying value remains in global state and is reachable from older global state root
+    /// hashes where it was included in the hash up.
+    Prune(Key),
+    /// Writes the given BidKind to global state.
+    WriteBidKind(BidKind),
 }
 
 impl ToBytes for Transform {
@@ -558,6 +571,14 @@ impl ToBytes for Transform {
             Transform::WriteAddressableEntity => {
                 (TransformTag::WriteAddressableEntity as u8).write_bytes(writer)
             }
+            Transform::Prune(value) => {
+                (TransformTag::Prune as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
+            Transform::WriteBidKind(value) => {
+                (TransformTag::WriteBidKind as u8).write_bytes(writer)?;
+                value.write_bytes(writer)
+            }
         }
     }
 
@@ -569,6 +590,7 @@ impl ToBytes for Transform {
 
     fn serialized_length(&self) -> usize {
         let body_len = match self {
+            Transform::Prune(key) => key.serialized_length(),
             Transform::WriteCLValue(value) => value.serialized_length(),
             Transform::WriteAccount(value) => value.serialized_length(),
             Transform::WriteDeployInfo(value) => value.serialized_length(),
@@ -587,6 +609,7 @@ impl ToBytes for Transform {
             | Transform::WriteContractPackage
             | Transform::WriteAddressableEntity => 0,
             Transform::WriteBid(value) => value.serialized_length(),
+            Transform::WriteBidKind(value) => value.serialized_length(),
             Transform::WriteWithdraw(value) => value.serialized_length(),
             Transform::WriteUnbonding(value) => value.serialized_length(),
         };
@@ -610,9 +633,6 @@ impl FromBytes for Transform {
             TransformTag::WriteContractWasm => Ok((Transform::WriteContractWasm, remainder)),
             TransformTag::WriteContract => Ok((Transform::WriteContract, remainder)),
             TransformTag::WriteContractPackage => Ok((Transform::WriteContractPackage, remainder)),
-            TransformTag::WriteAddressableEntity => {
-                Ok((Transform::WriteAddressableEntity, remainder))
-            }
             TransformTag::WriteDeployInfo => {
                 let (deploy_info, remainder) = DeployInfo::from_bytes(remainder)?;
                 Ok((Transform::WriteDeployInfo(deploy_info), remainder))
@@ -666,6 +686,17 @@ impl FromBytes for Transform {
                 let (unbonding_purses, remainder) =
                     <Vec<UnbondingPurse> as FromBytes>::from_bytes(remainder)?;
                 Ok((Transform::WriteUnbonding(unbonding_purses), remainder))
+            }
+            TransformTag::WriteAddressableEntity => {
+                Ok((Transform::WriteAddressableEntity, remainder))
+            }
+            TransformTag::Prune => {
+                let (key, remainder) = Key::from_bytes(remainder)?;
+                Ok((Transform::Prune(key), remainder))
+            }
+            TransformTag::WriteBidKind => {
+                let (value, remainder) = BidKind::from_bytes(remainder)?;
+                Ok((Transform::WriteBidKind(value), remainder))
             }
         }
     }

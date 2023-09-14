@@ -44,7 +44,6 @@ pub trait TrackingCopyExt<R> {
         account_hash: AccountHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
-    // TODO: make this a static method
     /// Gets the purse balance key for a given purse id.
     fn get_purse_balance_key(&self, purse_key: Key) -> Result<Key, Self::Error>;
 

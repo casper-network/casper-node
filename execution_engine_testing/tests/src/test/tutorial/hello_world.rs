@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{runtime_args, Key, RuntimeArgs, StoredValue};
+use casper_types::{runtime_args, Key, StoredValue};
 
 const HELLO_WORLD_CONTRACT: &str = "hello_world.wasm";
 const KEY: &str = "special_value";

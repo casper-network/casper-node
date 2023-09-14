@@ -1,14 +1,14 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     mem,
     ops::Deref,
     sync::{Arc, RwLock},
 };
 
-use tracing::error;
+use tracing::{debug, error};
 
 use casper_types::{
-    execution::{Effects, Transform, TransformKind},
+    execution::{Effects, Transform, TransformInstruction, TransformKind},
     Digest, Key, StoredValue,
 };
 
@@ -21,8 +21,8 @@ use crate::global_state::{
     trie_store::{
         lmdb::LmdbTrieStore,
         operations::{
-            delete, keys_with_prefix, missing_children, put_trie, read, read_with_proof,
-            DeleteResult, ReadResult,
+            keys_with_prefix, missing_children, prune, put_trie, read, read_with_proof,
+            PruneResult, ReadResult,
         },
     },
 };
@@ -31,16 +31,19 @@ type SharedCache = Arc<RwLock<Cache>>;
 
 struct Cache {
     cached_values: HashMap<Key, (bool, StoredValue)>,
+    pruned: HashSet<Key>,
 }
 
 impl Cache {
     fn new() -> Self {
         Cache {
             cached_values: HashMap::new(),
+            pruned: HashSet::new(),
         }
     }
 
     fn insert_write(&mut self, key: Key, value: StoredValue) {
+        self.pruned.remove(&key);
         self.cached_values.insert(key, (true, value));
     }
 
@@ -48,17 +51,33 @@ impl Cache {
         self.cached_values.entry(key).or_insert((false, value));
     }
 
+    fn prune(&mut self, key: Key) {
+        self.cached_values.remove(&key);
+        self.pruned.insert(key);
+    }
+
     fn get(&self, key: &Key) -> Option<&StoredValue> {
+        if self.pruned.contains(key) {
+            return None;
+        }
         self.cached_values.get(key).map(|(_dirty, value)| value)
     }
 
     /// Consumes self and returns only written values as values that were only read must be filtered
     /// out to prevent unnecessary writes.
-    fn into_dirty_writes(self) -> HashMap<Key, StoredValue> {
-        self.cached_values
+    fn into_dirty_writes(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
+        let keys_to_prune = self.pruned;
+        let stored_values: HashMap<Key, StoredValue> = self
+            .cached_values
             .into_iter()
             .filter_map(|(key, (dirty, value))| if dirty { Some((key, value)) } else { None })
-            .collect()
+            .collect();
+        debug!(
+            "Cache::into_dirty_writes prune_count: {} store_count: {}",
+            keys_to_prune.len(),
+            stored_values.len()
+        );
+        (stored_values, keys_to_prune)
     }
 }
 
@@ -103,7 +122,7 @@ impl ScratchGlobalState {
     }
 
     /// Consume self and return inner cache.
-    pub fn into_inner(self) -> HashMap<Key, StoredValue> {
+    pub fn into_inner(self) -> (HashMap<Key, StoredValue>, HashSet<Key>) {
         let cache = mem::replace(&mut *self.cache.write().unwrap(), Cache::new());
         cache.into_dirty_writes()
     }
@@ -113,8 +132,14 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
     type Error = error::Error;
 
     fn read(&self, key: &Key) -> Result<Option<StoredValue>, Self::Error> {
-        if let Some(value) = self.cache.read().unwrap().get(key) {
-            return Ok(Some(value.clone()));
+        {
+            let cache = self.cache.read().unwrap();
+            if cache.pruned.contains(key) {
+                return Ok(None);
+            }
+            if let Some(value) = cache.get(key) {
+                return Ok(Some(value.clone()));
+            }
         }
         let txn = self.environment.create_read_txn()?;
         let ret = match read::<Key, StoredValue, lmdb::RoTransaction, LmdbTrieStore, Self::Error>(
@@ -138,6 +163,9 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
         &self,
         key: &Key,
     ) -> Result<Option<TrieMerkleProof<Key, StoredValue>>, Self::Error> {
+        if self.cache.read().unwrap().pruned.contains(key) {
+            return Ok(None);
+        }
         let txn = self.environment.create_read_txn()?;
         let ret = match read_with_proof::<
             Key,
@@ -164,9 +192,14 @@ impl StateReader<Key, StoredValue> for ScratchGlobalStateView {
             prefix,
         );
         let mut ret = Vec::new();
+        let cache = self.cache.read().unwrap();
         for result in keys_iter {
             match result {
-                Ok(key) => ret.push(key),
+                Ok(key) => {
+                    if !cache.pruned.contains(&key) {
+                        ret.push(key);
+                    }
+                }
                 Err(error) => return Err(error),
             }
         }
@@ -181,13 +214,13 @@ impl CommitProvider for ScratchGlobalState {
     fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
         for (key, kind) in effects.value().into_iter().map(Transform::destructure) {
             let cached_value = self.cache.read().unwrap().get(&key).cloned();
-            let value = match (cached_value, kind) {
-                (None, TransformKind::Write(new_value)) => new_value,
+            let instruction = match (cached_value, kind) {
+                (None, TransformKind::Write(new_value)) => TransformInstruction::store(new_value),
                 (None, transform_kind) => {
                     // It might be the case that for `Add*` operations we don't have the previous
                     // value in cache yet.
                     let txn = self.environment.create_read_txn()?;
-                    let updated_value = match read::<
+                    let instruction = match read::<
                         Key,
                         StoredValue,
                         lmdb::RoTransaction,
@@ -198,7 +231,7 @@ impl CommitProvider for ScratchGlobalState {
                     )? {
                         ReadResult::Found(current_value) => {
                             match transform_kind.apply(current_value.clone()) {
-                                Ok(updated_value) => updated_value,
+                                Ok(instruction) => instruction,
                                 Err(err) => {
                                     error!(?key, ?err, "Key found, but could not apply transform");
                                     return Err(CommitError::TransformError(err).into());
@@ -219,11 +252,11 @@ impl CommitProvider for ScratchGlobalState {
                         }
                     };
                     txn.commit()?;
-                    updated_value
+                    instruction
                 }
                 (Some(current_value), transform_kind) => {
                     match transform_kind.apply(current_value) {
-                        Ok(updated_value) => updated_value,
+                        Ok(instruction) => instruction,
                         Err(err) => {
                             error!(?key, ?err, "Key found, but could not apply transform");
                             return Err(CommitError::TransformError(err).into());
@@ -231,8 +264,15 @@ impl CommitProvider for ScratchGlobalState {
                     }
                 }
             };
-
-            self.cache.write().unwrap().insert_write(key, value);
+            let mut cache = self.cache.write().unwrap();
+            match instruction {
+                TransformInstruction::Store(value) => {
+                    cache.insert_write(key, value);
+                }
+                TransformInstruction::Prune(key) => {
+                    cache.prune(key);
+                }
+            }
         }
         Ok(state_hash)
     }
@@ -294,28 +334,28 @@ impl StateProvider for ScratchGlobalState {
         Ok(missing_descendants)
     }
 
-    fn delete_keys(
+    fn prune_keys(
         &self,
         mut state_root_hash: Digest,
         keys_to_delete: &[Key],
-    ) -> Result<DeleteResult, Self::Error> {
+    ) -> Result<PruneResult, Self::Error> {
         let mut txn = self.environment.create_read_write_txn()?;
         for key in keys_to_delete {
-            let delete_result = delete::<Key, StoredValue, _, _, Self::Error>(
+            let prune_result = prune::<Key, StoredValue, _, _, Self::Error>(
                 &mut txn,
                 self.trie_store.deref(),
                 &state_root_hash,
                 key,
             );
-            match delete_result? {
-                DeleteResult::Deleted(root) => {
+            match prune_result? {
+                PruneResult::Pruned(root) => {
                     state_root_hash = root;
                 }
                 other => return Ok(other),
             }
         }
         txn.commit()?;
-        Ok(DeleteResult::Deleted(state_root_hash))
+        Ok(PruneResult::Pruned(state_root_hash))
     }
 }
 
@@ -464,7 +504,7 @@ pub(crate) mod tests {
 
         let all_keys = updated_checkout.keys_with_prefix(&[]).unwrap();
 
-        let stored_values = scratch.into_inner();
+        let (stored_values, _) = scratch.into_inner();
         assert_eq!(all_keys.len(), stored_values.len());
 
         for key in all_keys {

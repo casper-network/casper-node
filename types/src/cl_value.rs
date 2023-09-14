@@ -86,6 +86,20 @@ impl CLValue {
         })
     }
 
+    /// Converts `self` into its underlying type.
+    pub fn to_t<T: CLTyped + FromBytes>(&self) -> Result<T, CLValueError> {
+        let expected = T::cl_type();
+
+        if self.cl_type == expected {
+            Ok(bytesrepr::deserialize_from_slice(&self.bytes)?)
+        } else {
+            Err(CLValueError::Type(CLTypeMismatch {
+                expected,
+                found: self.cl_type.clone(),
+            }))
+        }
+    }
+
     /// Consumes and converts `self` back into its underlying type.
     pub fn into_t<T: CLTyped + FromBytes>(self) -> Result<T, CLValueError> {
         let expected = T::cl_type();

@@ -468,7 +468,7 @@ impl Metrics {
                     metrics.out_bytes_consensus.inc_by(size);
                     metrics.out_count_consensus.inc();
                 }
-                MessageKind::DeployGossip => {
+                MessageKind::TransactionGossip => {
                     metrics.out_bytes_deploy_gossip.inc_by(size);
                     metrics.out_count_deploy_gossip.inc();
                 }
@@ -518,7 +518,7 @@ impl Metrics {
                     metrics.in_bytes_consensus.inc_by(size);
                     metrics.in_count_consensus.inc();
                 }
-                MessageKind::DeployGossip => {
+                MessageKind::TransactionGossip => {
                     metrics.in_bytes_deploy_gossip.inc_by(size);
                     metrics.in_count_deploy_gossip.inc();
                 }

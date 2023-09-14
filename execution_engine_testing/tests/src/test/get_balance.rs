@@ -6,8 +6,7 @@ use casper_engine_test_support::{
 };
 use casper_execution_engine::tracking_copy::{self, ValidationError};
 use casper_types::{
-    account::AccountHash, runtime_args, AccessRights, Digest, Key, PublicKey, RuntimeArgs,
-    SecretKey, URef, U512,
+    account::AccountHash, runtime_args, AccessRights, Digest, Key, PublicKey, SecretKey, URef, U512,
 };
 
 const TRANSFER_ARG_TARGET: &str = "target";

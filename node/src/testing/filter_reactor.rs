@@ -42,6 +42,10 @@ impl<R: Reactor> FilterReactor<R> {
     pub(crate) fn inner(&self) -> &R {
         &self.reactor
     }
+
+    pub(crate) fn inner_mut(&mut self) -> &mut R {
+        &mut self.reactor
+    }
 }
 
 impl<R: Reactor> Reactor for FilterReactor<R> {

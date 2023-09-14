@@ -39,6 +39,7 @@ pub(crate) struct ValidatorInfo {
     pub weight: U512,
 }
 
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct ValidatorsDiff {
     pub added: BTreeSet<PublicKey>,
     pub removed: BTreeSet<PublicKey>,

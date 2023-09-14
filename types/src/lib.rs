@@ -12,9 +12,8 @@
 )]
 #![doc(html_root_url = "https://docs.rs/casper-types/3.0.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(deny(warnings)))
+    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
+    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png"
 )]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_auto_cfg))]
@@ -41,7 +40,6 @@ pub mod cl_value;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
-mod deploy;
 mod deploy_info;
 mod digest;
 mod display_iter;
@@ -67,6 +65,7 @@ mod tagged;
 #[cfg(any(feature = "testing", test))]
 pub mod testing;
 mod timestamp;
+mod transaction;
 mod transfer;
 mod transfer_result;
 mod uint;
@@ -102,12 +101,13 @@ pub use block::{
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
-    AccountConfig, AccountsConfig, ActivationPoint, AuctionCosts, BrTableCost, Chainspec,
-    ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName, ControlFlowCosts, CoreConfig,
-    DelegatorConfig, DeployConfig, GenesisAccount, GenesisValidator, GlobalStateUpdate,
-    GlobalStateUpdateConfig, GlobalStateUpdateError, HandlePaymentCosts, HighwayConfig,
-    HostFunction, HostFunctionCost, HostFunctionCosts, LegacyRequiredFinality, MintCosts,
-    NetworkConfig, OpcodeCosts, ProtocolConfig, StandardPaymentCosts, StorageCosts, SystemConfig,
+    AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
+    BrTableCost, Chainspec, ChainspecRawBytes, ChainspecRegistry, ConsensusProtocolName,
+    ControlFlowCosts, CoreConfig, DelegatorConfig, DeployConfig, FeeHandling, GenesisAccount,
+    GenesisValidator, GlobalStateUpdate, GlobalStateUpdateConfig, GlobalStateUpdateError,
+    HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
+    LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
+    StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
     UpgradeConfig, ValidatorConfig, WasmConfig,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
@@ -123,9 +123,10 @@ pub use chainspec::{
     DEFAULT_CONVERSION_COST, DEFAULT_CURRENT_MEMORY_COST, DEFAULT_DELEGATE_COST, DEFAULT_DIV_COST,
     DEFAULT_GLOBAL_COST, DEFAULT_GROW_MEMORY_COST, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
     DEFAULT_INTEGER_COMPARISON_COST, DEFAULT_LOAD_COST, DEFAULT_LOCAL_COST,
-    DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST,
-    DEFAULT_STORE_COST, DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST,
-    DEFAULT_WASMLESS_TRANSFER_COST, DEFAULT_WASM_MAX_MEMORY, MAX_PAYMENT_AMOUNT,
+    DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MAX_STACK_HEIGHT, DEFAULT_MIN_TRANSFER_MOTES,
+    DEFAULT_MUL_COST, DEFAULT_NEW_DICTIONARY_COST, DEFAULT_NOP_COST, DEFAULT_STORE_COST,
+    DEFAULT_TRANSFER_COST, DEFAULT_UNREACHABLE_COST, DEFAULT_WASMLESS_TRANSFER_COST,
+    DEFAULT_WASM_MAX_MEMORY,
 };
 pub use cl_type::{named_key_type, CLType, CLTyped};
 #[cfg(feature = "sdk")]
@@ -135,14 +136,6 @@ pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]
 pub use contracts::Contract;
 pub use crypto::*;
-pub use deploy::{
-    runtime_args, Approval, ApprovalsHash, ContractIdentifier, ContractPackageIdentifier, Deploy,
-    DeployConfigurationFailure, DeployDecodeFromJsonError, DeployError, DeployExcessiveSizeError,
-    DeployFootprint, DeployHash, DeployHeader, DeployId, ExecutableDeployItem,
-    ExecutableDeployItemIdentifier, TransferTarget,
-};
-#[cfg(any(feature = "std", test))]
-pub use deploy::{DeployBuilder, DeployBuilderError};
 pub use deploy_info::DeployInfo;
 pub use digest::{
     ChunkWithProof, ChunkWithProofVerificationError, Digest, DigestError, IndexedMerkleProof,
@@ -164,14 +157,31 @@ pub use package::{
 };
 pub use phase::{Phase, PHASE_SERIALIZED_LENGTH};
 pub use protocol_version::{ProtocolVersion, VersionCheckResult};
-#[doc(inline)]
-pub use runtime_args::{NamedArg, RuntimeArgs};
 pub use semver::{ParseSemVerError, SemVer, SEM_VER_SERIALIZED_LENGTH};
 pub use stored_value::{StoredValue, TypeMismatch as StoredValueTypeMismatch};
 pub use tagged::Tagged;
 #[cfg(any(feature = "std", test))]
 pub use timestamp::serde_option_time_diff;
 pub use timestamp::{TimeDiff, Timestamp};
+#[doc(inline)]
+pub use transaction::runtime_args::{NamedArg, RuntimeArgs};
+#[cfg(any(all(feature = "std", feature = "testing"), test))]
+pub use transaction::TestTransactionV1Builder;
+pub use transaction::{
+    runtime_args, AuctionTransactionV1, ContractIdentifier, ContractPackageIdentifier, Deploy,
+    DeployApproval, DeployApprovalsHash, DeployConfigurationFailure, DeployDecodeFromJsonError,
+    DeployError, DeployExcessiveSizeError, DeployFootprint, DeployHash, DeployHeader, DeployId,
+    DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, NativeTransactionV1,
+    PricingModeV1, Transaction, TransactionApprovalsHash, TransactionHash, TransactionId,
+    TransactionV1, TransactionV1Approval, TransactionV1ApprovalsHash, TransactionV1ConfigFailure,
+    TransactionV1DecodeFromJsonError, TransactionV1Error, TransactionV1ExcessiveSizeError,
+    TransactionV1Hash, TransactionV1Header, TransactionV1Kind, TransferTarget,
+    UserlandTransactionV1,
+};
+#[cfg(any(feature = "std", test))]
+pub use transaction::{
+    DeployBuilder, DeployBuilderError, TransactionV1Builder, TransactionV1BuilderError,
+};
 pub use transfer::{
     FromStrError as TransferFromStrError, Transfer, TransferAddr, TRANSFER_ADDR_LENGTH,
 };

@@ -6,17 +6,20 @@ use thiserror::Error;
 use casper_storage::global_state::state::StateProvider;
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
-    bytesrepr::{self},
+    bytesrepr::{self, ToBytes},
     execution::Effects,
     package::{ContractPackageKind, ContractPackageStatus, ContractVersions, Groups},
-    system::SystemContractType,
-    AccessRights, AddressableEntity, CLValue, ContractHash, ContractPackageHash, ContractWasm,
-    Digest, EntryPoints, Key, Package, Phase, ProtocolVersion, PublicKey, StoredValue, URef, U512,
+    system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemContractType},
+    AccessRights, AddressableEntity, CLValue, CLValueError, ContractHash, ContractPackageHash,
+    ContractWasm, Digest, EntryPoints, FeeHandling, Key, Package, Phase, ProtocolVersion,
+    PublicKey, StoredValue, URef, U512,
 };
 
 use crate::{
     engine_state::ACCOUNT_WASM_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
 };
+
+use super::EngineConfig;
 
 /// Represents a successfully executed upgrade.
 #[derive(Debug, Clone)]
@@ -62,6 +65,12 @@ pub enum ProtocolUpgradeError {
     CLValue(String),
 }
 
+impl From<CLValueError> for ProtocolUpgradeError {
+    fn from(v: CLValueError) -> Self {
+        Self::CLValue(v.to_string())
+    }
+}
+
 impl From<bytesrepr::Error> for ProtocolUpgradeError {
     fn from(error: bytesrepr::Error) -> Self {
         ProtocolUpgradeError::Bytesrepr(error)
@@ -74,6 +83,7 @@ where
     S: StateProvider,
 {
     new_protocol_version: ProtocolVersion,
+    old_protocol_version: ProtocolVersion,
     tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
 }
 
@@ -84,10 +94,12 @@ where
     /// Creates new system upgrader instance.
     pub(crate) fn new(
         new_protocol_version: ProtocolVersion,
+        old_protocol_version: ProtocolVersion,
         tracking_copy: Rc<RefCell<TrackingCopy<<S as StateProvider>::Reader>>>,
     ) -> Self {
         SystemUpgrader {
             new_protocol_version,
+            old_protocol_version,
             tracking_copy,
         }
     }
@@ -295,6 +307,55 @@ where
             Key::Account(account_hash),
             StoredValue::CLValue(contract_by_account),
         );
+
+        Ok(())
+    }
+
+    /// Creates an accumulation purse in the handle payment system contract if its not present.
+    ///
+    /// This can happen on older networks that did not have support for [`FeeHandling::Accumulate`]
+    /// at the genesis. In such cases we have to check the state of handle payment contract and
+    /// create an accumulation purse.
+    pub(crate) fn create_accumulation_purse_if_required(
+        &self,
+        handle_payment_hash: &ContractHash,
+        engine_config: &EngineConfig,
+    ) -> Result<(), ProtocolUpgradeError> {
+        match engine_config.fee_handling() {
+            FeeHandling::PayToProposer | FeeHandling::Burn => return Ok(()),
+            FeeHandling::Accumulate => {}
+        }
+        let mut address_generator = {
+            let seed_bytes = (self.old_protocol_version, self.new_protocol_version).to_bytes()?;
+            let phase = Phase::System;
+            AddressGenerator::new(&seed_bytes, phase)
+        };
+        let system_contract = SystemContractType::HandlePayment;
+
+        let mut addressable_entity =
+            self.retrieve_system_contract(*handle_payment_hash, system_contract)?;
+        if !addressable_entity
+            .named_keys()
+            .contains(ACCUMULATION_PURSE_KEY)
+        {
+            let purse_uref = address_generator.new_uref(AccessRights::READ_ADD_WRITE);
+            let balance_clvalue = CLValue::from_t(U512::zero())?;
+            self.tracking_copy.borrow_mut().write(
+                Key::Balance(purse_uref.addr()),
+                StoredValue::CLValue(balance_clvalue),
+            );
+            self.tracking_copy
+                .borrow_mut()
+                .write(Key::URef(purse_uref), StoredValue::CLValue(CLValue::unit()));
+
+            let mut new_named_keys = NamedKeys::new();
+            new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
+            addressable_entity.named_keys_append(new_named_keys);
+            self.tracking_copy.borrow_mut().write(
+                (*handle_payment_hash).into(),
+                StoredValue::AddressableEntity(addressable_entity),
+            );
+        }
 
         Ok(())
     }

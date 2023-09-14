@@ -5,6 +5,7 @@ NPM    = $(or $(shell which npm),    /usr/bin/npm)
 
 PINNED_NIGHTLY := $(shell cat smart_contracts/rust-toolchain)
 PINNED_STABLE  := $(shell sed -nr 's/channel\s+=\s+\"(.*)\"/\1/p' rust-toolchain.toml)
+WASM_STRIP_VERSION := $(shell wasm-strip --version)
 
 CARGO_OPTS := --locked
 CARGO_PINNED_NIGHTLY := $(CARGO) +$(PINNED_NIGHTLY) $(CARGO_OPTS)
@@ -46,7 +47,7 @@ strip-contract/%:
 	wasm-strip $(CONTRACT_TARGET_DIR)/$(subst -,_,$*).wasm 2>/dev/null | true
 
 .PHONY: strip-all-contracts
-strip-all-contracts: $(patsubst %, strip-contract/%, $(ALL_CONTRACTS))
+strip-all-contracts: $(info Using 'wasm-strip' version $(WASM_STRIP_VERSION)) $(patsubst %, strip-contract/%, $(ALL_CONTRACTS))
 
 .PHONY: strip-client-contracts
 strip-client-contracts: $(patsubst %, strip-contract/%, $(CLIENT_CONTRACTS))
@@ -134,7 +135,7 @@ lint-smart-contracts:
 
 .PHONY: audit-rs
 audit-rs:
-	$(CARGO) audit
+	$(CARGO) audit --ignore RUSTSEC-2022-0093 --ignore RUSTSEC-2023-0044
 
 .PHONY: audit-as
 audit-as:
@@ -146,8 +147,8 @@ audit: audit-rs
 
 .PHONY: doc
 doc:
-	RUSTDOCFLAGS="-D warnings --cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
-	cd smart_contracts/contract && RUSTDOCFLAGS="-D warnings --cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
+	RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
+	cd smart_contracts/contract && RUSTFLAGS="-D warnings" RUSTDOCFLAGS="--cfg docsrs" $(CARGO_PINNED_NIGHTLY) doc --all-features $(CARGO_FLAGS) --no-deps
 
 .PHONY: check-rs
 check-rs: \

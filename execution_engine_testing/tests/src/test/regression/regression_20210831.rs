@@ -12,7 +12,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{
-        auction::{self, DelegationRate},
+        auction::{self, BidsExt, DelegationRate},
         mint,
     },
     ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
@@ -251,7 +251,9 @@ fn regression_20210831_should_fail_to_withdraw_bid() {
     builder.exec(add_bid_request).expect_success().commit();
 
     let bids = builder.get_bids();
-    let account_1_bid_before = bids.get(&*ACCOUNT_1_PUBLIC_KEY).expect("should have bid");
+    let account_1_bid_before = bids
+        .validator_bid(&ACCOUNT_1_PUBLIC_KEY)
+        .expect("validator bid should exist");
     assert_eq!(
         builder.get_purse_balance(*account_1_bid_before.bonding_purse()),
         *BID_AMOUNT,
@@ -308,7 +310,9 @@ fn regression_20210831_should_fail_to_withdraw_bid() {
     );
 
     let bids = builder.get_bids();
-    let account_1_bid_after = bids.get(&*ACCOUNT_1_PUBLIC_KEY).expect("should have bid");
+    let account_1_bid_after = bids
+        .validator_bid(&ACCOUNT_1_PUBLIC_KEY)
+        .expect("after bid should exist");
 
     assert_eq!(
         account_1_bid_after, account_1_bid_before,
@@ -350,7 +354,7 @@ fn regression_20210831_should_fail_to_undelegate_bid() {
 
     let bids = builder.get_bids();
     let default_account_bid_before = bids
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid");
     assert_eq!(
         builder.get_purse_balance(*default_account_bid_before.bonding_purse()),
@@ -410,7 +414,7 @@ fn regression_20210831_should_fail_to_undelegate_bid() {
 
     let bids = builder.get_bids();
     let default_account_bid_after = bids
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid");
 
     assert_eq!(
@@ -440,7 +444,7 @@ fn regression_20210831_should_fail_to_activate_bid() {
 
     let bids = builder.get_bids();
     let bid = bids
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
+        .validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY)
         .expect("should have bid");
     assert!(!bid.inactive());
 
@@ -458,10 +462,8 @@ fn regression_20210831_should_fail_to_activate_bid() {
     builder.exec(withdraw_bid_request).expect_success().commit();
 
     let bids = builder.get_bids();
-    let bid = bids
-        .get(&*DEFAULT_ACCOUNT_PUBLIC_KEY)
-        .expect("should have bid");
-    assert!(bid.inactive());
+    let bid = bids.validator_bid(&DEFAULT_ACCOUNT_PUBLIC_KEY);
+    assert!(bid.is_none());
 
     let sender = *ACCOUNT_2_ADDR;
     let activate_bid_args = runtime_args! {

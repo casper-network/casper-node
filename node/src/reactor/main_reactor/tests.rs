@@ -8,13 +8,18 @@ use tempfile::TempDir;
 use tokio::time;
 use tracing::{error, info};
 
-use casper_execution_engine::engine_state::GetBidsRequest;
+use casper_execution_engine::engine_state::{
+    GetBidsRequest, GetBidsResult, SystemContractRegistry,
+};
+use casper_storage::global_state::state::{StateProvider, StateReader};
 use casper_types::{
-    system::auction::{Bids, DelegationRate},
+    execution::{Effects, ExecutionResult, ExecutionResultV2, TransformKind},
+    system::auction::{BidAddr, BidKind, BidsExt, DelegationRate},
     testing::TestRng,
-    AccountConfig, AccountsConfig, ActivationPoint, BlockHeader, Chainspec, ChainspecRawBytes,
-    Deploy, EraId, Motes, ProtocolVersion, PublicKey, SecretKey, TimeDiff, Timestamp,
-    ValidatorConfig, U512,
+    AccountConfig, AccountsConfig, ActivationPoint, Block, BlockHash, BlockHeader, CLValue,
+    Chainspec, ChainspecRawBytes, ContractHash, Deploy, DeployHash, EraId, Key, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StoredValue, TimeDiff, Timestamp, Transaction,
+    TransactionHash, ValidatorConfig, U512,
 };
 
 use crate::{
@@ -38,7 +43,10 @@ use crate::{
     testing::{
         self, filter_reactor::FilterReactor, network::TestingNetwork, ConditionCheckReactor,
     },
-    types::{BlockPayload, DeployOrTransferHash, ExitCode, NodeRng},
+    types::{
+        BlockPayload, DeployOrTransferHash, DeployWithFinalizedApprovals, ExitCode, NodeId,
+        NodeRng, TransactionWithFinalizedApprovals,
+    },
     utils::{External, Loadable, Source, RESOURCES_PATH},
     WithDir,
 };
@@ -49,6 +57,7 @@ struct TestChain {
     storages: Vec<TempDir>,
     chainspec: Arc<Chainspec>,
     chainspec_raw_bytes: Arc<ChainspecRawBytes>,
+    first_node_port: u16,
 }
 
 type Nodes = testing::network::Nodes<FilterReactor<MainReactor>>;
@@ -73,7 +82,7 @@ impl TestChain {
             initial_stakes.to_vec()
         } else {
             // By default we use very large stakes so we would catch overflow issues.
-            std::iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
+            iter::from_fn(|| Some(U512::from(rng.gen_range(100..999)) * U512::from(u128::MAX)))
                 .take(size)
                 .collect()
         };
@@ -101,21 +110,23 @@ impl TestChain {
         let (mut chainspec, chainspec_raw_bytes) =
             <(Chainspec, ChainspecRawBytes)>::from_resources("local");
 
+        let min_motes = 100_000_000_000u64; // 1000 token
+        let max_motes = min_motes * 100; // 100_000 token
+        let balance = U512::from(rng.gen_range(min_motes..max_motes));
+
         // Override accounts with those generated from the keys.
         let accounts = stakes
             .into_iter()
             .map(|(public_key, bonded_amount)| {
                 let validator_config =
                     ValidatorConfig::new(Motes::new(bonded_amount), DelegationRate::zero());
-                AccountConfig::new(
-                    public_key,
-                    Motes::new(U512::from(rng.gen_range(10000..99999999))),
-                    Some(validator_config),
-                )
+                AccountConfig::new(public_key, Motes::new(balance), Some(validator_config))
             })
             .collect();
         let delegators = vec![];
-        chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
+        let administrators = vec![];
+        chainspec.network_config.accounts_config =
+            AccountsConfig::new(accounts, delegators, administrators);
 
         // Make the genesis timestamp 60 seconds from now, to allow for all validators to start up.
         let genesis_time = Timestamp::now() + TimeDiff::from_seconds(60);
@@ -131,16 +142,31 @@ impl TestChain {
         chainspec.core_config.auction_delay = 1;
         chainspec.core_config.unbonding_delay = 3;
 
+        let first_node_port = testing::unused_port_on_localhost();
+
         TestChain {
             keys,
             storages: Vec::new(),
             chainspec: Arc::new(chainspec),
             chainspec_raw_bytes: Arc::new(chainspec_raw_bytes),
+            first_node_port,
         }
     }
 
     fn chainspec_mut(&mut self) -> &mut Chainspec {
         Arc::get_mut(&mut self.chainspec).unwrap()
+    }
+
+    fn chainspec(&self) -> Arc<Chainspec> {
+        self.chainspec.clone()
+    }
+
+    fn chainspec_raw_bytes(&self) -> Arc<ChainspecRawBytes> {
+        self.chainspec_raw_bytes.clone()
+    }
+
+    fn first_node_port(&self) -> u16 {
+        self.first_node_port
     }
 
     /// Creates an initializer/validator configuration for the `idx`th validator.
@@ -178,11 +204,10 @@ impl TestChain {
         let root = RESOURCES_PATH.join("local");
 
         let mut network: TestingNetwork<FilterReactor<MainReactor>> = TestingNetwork::new();
-        let first_node_port = testing::unused_port_on_localhost();
 
         for idx in 0..self.keys.len() {
             info!("creating node {}", idx);
-            let cfg = self.create_node_config(idx, first_node_port);
+            let cfg = self.create_node_config(idx, self.first_node_port);
             network
                 .add_node_with_config_and_chainspec(
                     WithDir::new(root.clone(), cfg),
@@ -219,6 +244,26 @@ fn has_completed_era(era_id: EraId) -> impl Fn(&Nodes) -> bool {
                 .unwrap()
                 .last()
                 .map_or(false, |header| header.era_id() == era_id)
+        })
+    }
+}
+
+/// Given a block height and a node id, returns a predicate to check if the lowest available block
+/// for the specified node is at or below the specified height.
+fn node_has_lowest_available_block_at_or_below_height(
+    height: u64,
+    node_id: NodeId,
+) -> impl Fn(&Nodes) -> bool {
+    move |nodes: &Nodes| {
+        nodes.get(&node_id).map_or(true, |runner| {
+            let storage = runner.main_reactor().storage();
+
+            let available_block_range = storage.get_available_block_range();
+            if available_block_range.low() == 0 && available_block_range.high() == 0 {
+                false
+            } else {
+                available_block_range.low() <= height
+            }
         })
     }
 }
@@ -291,7 +336,7 @@ impl SwitchBlocks {
     }
 
     /// Returns the set of bids in the auction contract at the end of the given era.
-    fn bids(&self, nodes: &Nodes, era_number: u64) -> Bids {
+    fn bids(&self, nodes: &Nodes, era_number: u64) -> Vec<BidKind> {
         let state_root_hash = *self.headers[era_number as usize].state_root_hash();
         for runner in nodes.values() {
             let request = GetBidsRequest::new(state_root_hash);
@@ -332,6 +377,113 @@ async fn run_network() {
         &mut rng,
         is_in_era(EraId::from(2)),
         Duration::from_secs(1001),
+    )
+    .await;
+}
+
+fn highest_complete_block_hash(
+    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
+) -> Option<BlockHash> {
+    let storage = runner.main_reactor().storage();
+
+    if let Some(highest_block) = storage.read_highest_complete_block().unwrap_or(None) {
+        return Some(*highest_block.hash());
+    } else {
+        None
+    }
+}
+
+#[tokio::test]
+async fn historical_sync_with_era_height_1() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+
+    // Instantiate a new chain with a fixed size.
+    const NETWORK_SIZE: usize = 5;
+    let mut chain = TestChain::new(&mut rng, NETWORK_SIZE, None);
+    chain.chainspec_mut().core_config.minimum_era_height = 1;
+
+    let mut net = chain
+        .create_initialized_network(&mut rng)
+        .await
+        .expect("network initialization failed");
+
+    // Wait for all nodes to reach era 3.
+    net.settle_on(
+        &mut rng,
+        is_in_era(EraId::from(3)),
+        Duration::from_secs(1000),
+    )
+    .await;
+
+    let (_, first_node) = net
+        .nodes()
+        .iter()
+        .next()
+        .expect("Expected non-empty network");
+
+    // Get a trusted hash
+    let lfb = highest_complete_block_hash(first_node)
+        .expect("Could not determine the latest complete block for this network");
+
+    // Create a joiner node
+    let mut config = Config {
+        network: network::Config::default_local_net(chain.first_node_port()),
+        gossip: gossiper::Config::new_with_small_timeouts(),
+        ..Default::default()
+    };
+    let joiner_key = Arc::new(SecretKey::random(&mut rng));
+    let (storage_cfg, temp_dir) = storage::Config::default_for_tests();
+    {
+        let secret_key_path = temp_dir.path().join("secret_key");
+        joiner_key
+            .to_file(secret_key_path.clone())
+            .expect("could not write secret key");
+        config.consensus.secret_key_path = External::Path(secret_key_path);
+    }
+    config.storage = storage_cfg;
+    config.node.trusted_hash = Some(lfb);
+    config.node.sync_to_genesis = true;
+    let root = RESOURCES_PATH.join("local");
+    let cfg = WithDir::new(root.clone(), config);
+
+    let (joiner_id, _) = net
+        .add_node_with_config_and_chainspec(
+            cfg,
+            chain.chainspec(),
+            chain.chainspec_raw_bytes(),
+            &mut rng,
+        )
+        .await
+        .expect("could not add node to reactor");
+
+    // Wait for joiner node to sync back to the block from era 1
+    net.settle_on(
+        &mut rng,
+        node_has_lowest_available_block_at_or_below_height(1, joiner_id),
+        Duration::from_secs(1000),
+    )
+    .await;
+
+    // Remove the weights for era 0 and era 1 from the validator matrix
+    let runner = net
+        .nodes_mut()
+        .get_mut(&joiner_id)
+        .expect("Could not find runner for node {joiner_id}");
+    let reactor = runner.reactor_mut().inner_mut().inner_mut();
+    reactor
+        .validator_matrix
+        .purge_era_validators(&EraId::from(0));
+    reactor
+        .validator_matrix
+        .purge_era_validators(&EraId::from(1));
+
+    // Continue syncing and check if the joiner node reaches era 0
+    net.settle_on(
+        &mut rng,
+        node_has_lowest_available_block_at_or_below_height(0, joiner_id),
+        Duration::from_secs(1000),
     )
     .await;
 }
@@ -418,7 +570,7 @@ async fn run_equivocator_network() {
 
     let era_count = 4;
 
-    let timeout = Duration::from_secs(90 * era_count);
+    let timeout = Duration::from_secs(120 * era_count);
     info!("Waiting for {} eras to end.", era_count);
     net.settle_on(
         &mut rng,
@@ -426,10 +578,13 @@ async fn run_equivocator_network() {
         timeout,
     )
     .await;
+
+    // network settled; select data to analyze
     let switch_blocks = SwitchBlocks::collect(net.nodes(), era_count);
-    let bids: Vec<Bids> = (0..era_count)
-        .map(|era_number| switch_blocks.bids(net.nodes(), era_number))
-        .collect();
+    let mut era_bids = BTreeMap::new();
+    for era in 0..era_count {
+        era_bids.insert(era, switch_blocks.bids(net.nodes(), era));
+    }
 
     // Since this setup sometimes produces no equivocation or an equivocation in era 2 rather than
     // era 1, we set an offset here.  If neither eras has an equivocation, exit early.
@@ -452,29 +607,57 @@ async fn run_equivocator_network() {
     // Era 0 consists only of the genesis block.
     // In era 1, Alice equivocates. Since eviction takes place with a delay of one
     // (`auction_delay`) era, she is still included in the next era's validator set.
+    let next_era_id = 1 + offset;
+
     assert_eq!(
-        switch_blocks.equivocators(1 + offset),
+        switch_blocks.equivocators(next_era_id),
         [alice_public_key.clone()]
     );
-    assert!(bids[1 + offset as usize][&alice_public_key].inactive());
+    let next_era_bids = era_bids.get(&next_era_id).expect("should have offset era");
+
+    let next_era_alice = next_era_bids
+        .validator_bid(&alice_public_key)
+        .expect("should have Alice's offset bid");
+    assert!(
+        next_era_alice.inactive(),
+        "Alice's bid should be inactive in offset era."
+    );
     assert!(switch_blocks
-        .next_era_validators(1 + offset)
+        .next_era_validators(next_era_id)
         .contains_key(&alice_public_key));
 
     // In era 2 Alice is banned. Banned validators count neither as faulty nor inactive, even
     // though they cannot participate. In the next era, she will be evicted.
-    assert_eq!(switch_blocks.equivocators(2 + offset), []);
-    assert!(bids[2 + offset as usize][&alice_public_key].inactive());
+    let future_era_id = 2 + offset;
+    assert_eq!(switch_blocks.equivocators(future_era_id), []);
+    let future_era_bids = era_bids
+        .get(&future_era_id)
+        .expect("should have future era");
+    let future_era_alice = future_era_bids
+        .validator_bid(&alice_public_key)
+        .expect("should have Alice's future bid");
+    assert!(
+        future_era_alice.inactive(),
+        "Alice's bid should be inactive in future era."
+    );
     assert!(!switch_blocks
-        .next_era_validators(2 + offset)
+        .next_era_validators(future_era_id)
         .contains_key(&alice_public_key));
 
-    // In era 3 she is not a validator anymore and her bid remains deactivated.
+    // In era 3 Alice is not a validator anymore and her bid remains deactivated.
+    let era_3 = 3;
     if offset == 0 {
-        assert_eq!(switch_blocks.equivocators(3), []);
-        assert!(bids[3][&alice_public_key].inactive());
+        assert_eq!(switch_blocks.equivocators(era_3), []);
+        let era_3_bids = era_bids.get(&era_3).expect("should have era 3 bids");
+        let era_3_alice = era_3_bids
+            .validator_bid(&alice_public_key)
+            .expect("should have Alice's era 3 bid");
+        assert!(
+            era_3_alice.inactive(),
+            "Alice's bid should be inactive in era 3."
+        );
         assert!(!switch_blocks
-            .next_era_validators(3)
+            .next_era_validators(era_3)
             .contains_key(&alice_public_key));
     }
 
@@ -488,12 +671,21 @@ async fn run_equivocator_network() {
         [bob_public_key.clone()]
     );
 
-    // We don't slash, so the stakes are never reduced.
-    for (public_key, stake) in &stakes {
-        assert!(bids[0][public_key].staked_amount() >= stake);
-        assert!(bids[1][public_key].staked_amount() >= stake);
-        assert!(bids[2][public_key].staked_amount() >= stake);
-        assert!(bids[3][public_key].staked_amount() >= stake);
+    for (era, bids) in era_bids {
+        for (public_key, stake) in &stakes {
+            let bid = bids
+                .validator_bid(public_key)
+                .expect("should have bid for public key {public_key} in era {era}");
+            let staked_amount = bid.staked_amount();
+            assert!(
+                staked_amount >= *stake,
+                "expected stake {} for public key {} in era {}, found {}",
+                staked_amount,
+                public_key,
+                era,
+                stake
+            );
+        }
     }
 }
 
@@ -737,14 +929,17 @@ async fn should_store_finalized_approvals() {
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .put_deploy_to_storage(Arc::new(deploy.clone()))
+                    .put_transaction_to_storage(Transaction::from(deploy.clone()))
                     .ignore()
             })
             .await;
         runner
             .process_injected_effects(|effect_builder| {
                 effect_builder
-                    .announce_new_deploy_accepted(Arc::new(deploy), Source::Client)
+                    .announce_new_transaction_accepted(
+                        Arc::new(Transaction::from(deploy)),
+                        Source::Client,
+                    )
                     .ignore()
             })
             .await;
@@ -772,7 +967,14 @@ async fn should_store_finalized_approvals() {
         let maybe_dwa = runner
             .main_reactor()
             .storage()
-            .get_deploy_with_finalized_approvals_by_hash(&deploy_hash);
+            .get_transaction_with_finalized_approvals_by_hash(&TransactionHash::from(deploy_hash))
+            .map(|transaction_wfa| match transaction_wfa {
+                TransactionWithFinalizedApprovals::Deploy {
+                    deploy,
+                    finalized_approvals,
+                } => DeployWithFinalizedApprovals::new(deploy, finalized_approvals),
+                _ => panic!("should receive deploy with finalized approvals"),
+            });
         let maybe_finalized_approvals = maybe_dwa
             .as_ref()
             .and_then(|dwa| dwa.finalized_approvals())
@@ -889,4 +1091,652 @@ async fn empty_block_validation_regression() {
         [inactive_validator] if malicious_validator == *inactive_validator => {}
         inactive => panic!("unexpected inactive validators: {:?}", inactive),
     }
+}
+
+fn simple_test_chain(
+    named: Vec<(Arc<SecretKey>, PublicKey, U512)>,
+    total_node_count: usize,
+    nameless_stake_override: Option<U512>,
+    rng: &mut TestRng,
+) -> TestChain {
+    // getting a basic network set up
+    if total_node_count < named.len() {
+        panic!("named validator count exceeds total node count");
+    }
+
+    let diff = total_node_count - named.len();
+    // Leave open slots for named validators.
+    let mut keys: Vec<Arc<SecretKey>> = (1..=diff)
+        .map(|_| Arc::new(SecretKey::random(rng)))
+        .collect();
+    // Nameless validators stake; default == 100 token
+    let nameless_stake = nameless_stake_override.unwrap_or(U512::from(10_000_000_000u64));
+    let mut stakes: BTreeMap<PublicKey, U512> = keys
+        .iter()
+        .map(|secret_key| (PublicKey::from(&*secret_key.clone()), nameless_stake))
+        .collect();
+
+    for (secret_key, public_key, stake) in named {
+        keys.push(secret_key.clone());
+        stakes.insert(public_key, stake);
+    }
+
+    let validator_count = keys.len();
+    let mut chain = TestChain::new_with_keys(rng, keys, stakes.clone());
+    chain.chainspec_mut().core_config.minimum_era_height = 5;
+    chain.chainspec_mut().highway_config.maximum_round_length =
+        chain.chainspec.core_config.minimum_block_time * 2;
+    chain.chainspec_mut().core_config.validator_slots = validator_count as u32;
+    chain.chainspec_mut().core_config.locked_funds_period = TimeDiff::default();
+    chain.chainspec_mut().core_config.vesting_schedule_period = TimeDiff::default();
+    chain.chainspec_mut().core_config.minimum_delegation_amount = 0;
+    chain.chainspec_mut().core_config.unbonding_delay = 1;
+    chain
+}
+
+fn get_highest_block_or_fail(
+    runner: &Runner<ConditionCheckReactor<FilterReactor<MainReactor>>>,
+) -> Block {
+    runner
+        .main_reactor()
+        .storage
+        .read_highest_block()
+        .expect("should not have have storage error")
+        .expect("should have block")
+}
+
+fn get_system_contract_hash_or_fail(
+    net: &TestingNetwork<FilterReactor<MainReactor>>,
+    public_key: &PublicKey,
+    system_contract_name: String,
+) -> ContractHash {
+    let (_, runner) = net
+        .nodes()
+        .iter()
+        .find(|(_, x)| x.main_reactor().consensus.public_key() == public_key)
+        .expect("should have alice runner");
+
+    let highest_block = get_highest_block_or_fail(runner);
+
+    let state_hash = highest_block.state_root_hash();
+    // we need the native auction addr so we can directly call it w/o wasm
+    // we can get it out of the system contract registry which is just a
+    // value in global state under a stable key.
+    let maybe_registry = runner
+        .main_reactor()
+        .contract_runtime
+        .engine_state()
+        .get_state()
+        .checkout(*state_hash)
+        .expect("should checkout")
+        .expect("should have view")
+        .read(&Key::SystemContractRegistry)
+        .expect("should not have gs storage error")
+        .expect("should have stored value");
+
+    let system_contract_registry: SystemContractRegistry = match maybe_registry {
+        StoredValue::CLValue(cl_value) => CLValue::into_t(cl_value).unwrap(),
+        _ => {
+            panic!("expected CLValue")
+        }
+    };
+
+    *system_contract_registry.get(&system_contract_name).unwrap()
+}
+
+fn check_bid_existence_at_tip(
+    net: &TestingNetwork<FilterReactor<MainReactor>>,
+    validator_public_key: &PublicKey,
+    delegator_public_key: Option<&PublicKey>,
+    should_exist: bool,
+) {
+    let (_, runner) = net
+        .nodes()
+        .iter()
+        .find(|(_, x)| x.main_reactor().consensus.public_key() == validator_public_key)
+        .expect("should have runner");
+
+    let highest_block = get_highest_block_or_fail(runner);
+
+    let state_hash = highest_block.state_root_hash();
+
+    let bids_result = runner
+        .main_reactor()
+        .contract_runtime
+        .auction_state(*state_hash)
+        .expect("should have bids result");
+
+    if let GetBidsResult::Success { bids } = bids_result {
+        match bids.iter().find(|x| {
+            &x.validator_public_key() == validator_public_key
+                && x.delegator_public_key().as_ref() == delegator_public_key
+        }) {
+            None => {
+                if should_exist {
+                    panic!("should have bid era: {}", highest_block.era_id());
+                }
+            }
+            Some(bid) => {
+                if !should_exist {
+                    info!("unexpected bid record existence: {:?}", bid);
+                    panic!("expected alice to not have bid");
+                }
+            }
+        }
+    } else {
+        panic!("network should have bids");
+    }
+}
+
+async fn settle_era(
+    net: &mut TestingNetwork<FilterReactor<MainReactor>>,
+    rng: &mut TestRng,
+    era_id: &mut EraId,
+    era_settle_duration: Duration,
+) {
+    info!(?era_id, "settling network on era");
+    net.settle_on(rng, has_completed_era(*era_id), era_settle_duration)
+        .await;
+    era_id.increment();
+}
+
+async fn settle_deploy(net: &mut TestingNetwork<FilterReactor<MainReactor>>, deploy: Deploy) {
+    // saturate the network with the deploy via just making them all store and accept it
+    // they're all validators so one of them should propose it
+    for runner in net.runners_mut() {
+        let txn = Transaction::from(deploy.clone());
+        runner
+            .process_injected_effects(|effect_builder| {
+                effect_builder
+                    .put_transaction_to_storage(txn.clone())
+                    .ignore()
+            })
+            .await;
+        runner
+            .process_injected_effects(|effect_builder| {
+                effect_builder
+                    .announce_new_transaction_accepted(Arc::new(txn), Source::Client)
+                    .ignore()
+            })
+            .await;
+    }
+}
+
+async fn settle_execution(
+    net: &mut TestingNetwork<FilterReactor<MainReactor>>,
+    rng: &mut TestRng,
+    key: Key,
+    deploy_hash: DeployHash,
+    timeout: Duration,
+    success_condition: fn(key: Key, effects: Effects) -> bool,
+    failure_condition: fn(key: Key, error_message: String, cost: U512) -> bool,
+) {
+    net.settle_on(
+        rng,
+        |nodes| {
+            nodes.values().all(|runner| {
+                match runner
+                    .main_reactor()
+                    .storage()
+                    .read_execution_result(&deploy_hash)
+                {
+                    Some(ExecutionResult::V2(execution_result)) => match execution_result {
+                        ExecutionResultV2::Failure {
+                            error_message,
+                            cost,
+                            ..
+                        } => failure_condition(key, error_message, cost),
+                        ExecutionResultV2::Success { effects, .. } => {
+                            success_condition(key, effects)
+                        }
+                    },
+                    Some(_) => panic!("unexpected execution result variant"),
+                    None => false, // keep waiting
+                }
+            })
+        },
+        timeout,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn run_withdraw_bid_network() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+    let mut era_id = EraId::new(0);
+    let era_timeout = Duration::from_secs(90);
+    let execution_timeout = Duration::from_secs(120);
+    let deploy_ttl = TimeDiff::from_seconds(60);
+    let alice_secret_key = Arc::new(SecretKey::random(&mut rng));
+    let alice_stake = U512::from(200_000_000_000u64);
+    let alice_public_key = PublicKey::from(&*alice_secret_key);
+
+    let (mut net, chain_name) = {
+        let named_validators = vec![(
+            alice_secret_key.clone(),
+            alice_public_key.clone(),
+            alice_stake,
+        )];
+
+        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
+
+        let chain_name = chain.chainspec.network_config.name.clone();
+
+        (
+            chain
+                .create_initialized_network(&mut rng)
+                .await
+                .expect("network initialization failed"),
+            chain_name,
+        )
+    };
+
+    // genesis
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    // making sure our post genesis assumption that alice has a bid is correct
+    check_bid_existence_at_tip(&net, &alice_public_key, None, true);
+
+    /* Now that the preamble is behind us, lets get some work done */
+
+    // crank the network forward
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    let (deploy_hash, deploy) = {
+        let auction_hash = get_system_contract_hash_or_fail(
+            &net,
+            &alice_public_key,
+            casper_types::system::AUCTION.to_string(),
+        );
+
+        // create & sign deploy to withdraw alice's full stake
+        let mut withdraw_bid = Deploy::withdraw_bid(
+            chain_name,
+            auction_hash,
+            alice_public_key.clone(),
+            alice_stake,
+            Timestamp::now(),
+            deploy_ttl,
+        );
+        // sign the deploy (single sig in this scenario)
+        withdraw_bid.sign(&alice_secret_key);
+        // we'll need the deploy_hash later to check results
+        let deploy_hash = *DeployOrTransferHash::new(&withdraw_bid).deploy_hash();
+        (deploy_hash, withdraw_bid)
+    };
+    settle_deploy(&mut net, deploy).await;
+
+    let bid_key = Key::BidAddr(BidAddr::from(alice_public_key.clone()));
+    settle_execution(
+        &mut net,
+        &mut rng,
+        bid_key,
+        deploy_hash,
+        execution_timeout,
+        |key, effects| {
+            let _ = effects
+                .transforms()
+                .iter()
+                .find(|x| match x.kind() {
+                    TransformKind::Prune(prune_key) => prune_key == &key,
+                    _ => false,
+                })
+                .expect("should have a prune record for bid");
+            true
+        },
+        |key, error_message, cost| {
+            panic!("{:?} deploy failed: {} cost: {}", key, error_message, cost);
+        },
+    )
+    .await;
+
+    // crank the network forward
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    check_bid_existence_at_tip(&net, &alice_public_key, None, false);
+}
+
+#[tokio::test]
+async fn run_undelegate_bid_network() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+    let mut era_id = EraId::new(0);
+    let era_timeout = Duration::from_secs(90);
+    let execution_timeout = Duration::from_secs(120);
+    let deploy_ttl = TimeDiff::from_seconds(60);
+    let alice = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(200_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+    let bob = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(300_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+
+    let (mut net, chain_name) = {
+        let named_validators = vec![alice.clone(), bob.clone()];
+
+        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
+
+        let chain_name = chain.chainspec.network_config.name.clone();
+
+        (
+            chain
+                .create_initialized_network(&mut rng)
+                .await
+                .expect("network initialization failed"),
+            chain_name,
+        )
+    };
+
+    // genesis
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    // making sure our post genesis assumptions are correct
+    check_bid_existence_at_tip(&net, &alice.1, None, true);
+    check_bid_existence_at_tip(&net, &bob.1, None, true);
+    // alice should not have a delegation bid record for bob (yet)
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
+
+    /* Now that the preamble is behind us, lets get some work done */
+
+    // crank the network forward
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    let auction_hash =
+        get_system_contract_hash_or_fail(&net, &alice.1, casper_types::system::AUCTION.to_string());
+
+    // have alice delegate to bob
+    // note, in the real world validators usually don't also delegate to other validators
+    // but in this test fixture the only accounts in the system are those created for
+    // genesis validators.
+    let alice_delegation_amount = U512::from(50_000_000_000u64);
+    let (deploy_hash, deploy) = {
+        // create & sign deploy to delegate from alice to bob
+        let mut delegate = Deploy::delegate(
+            chain_name.clone(),
+            auction_hash,
+            bob.1.clone(),
+            alice.1.clone(),
+            alice_delegation_amount,
+            Timestamp::now(),
+            deploy_ttl,
+        );
+        // sign the deploy (single sig in this scenario)
+        delegate.sign(&alice.0);
+        // we'll need the deploy_hash later to check results
+        let deploy_hash = *DeployOrTransferHash::new(&delegate).deploy_hash();
+        (deploy_hash, delegate)
+    };
+    settle_deploy(&mut net, deploy).await;
+
+    let bid_key = Key::BidAddr(BidAddr::new_from_public_keys(
+        &bob.1.clone(),
+        Some(&alice.1.clone()),
+    ));
+
+    settle_execution(
+        &mut net,
+        &mut rng,
+        bid_key,
+        deploy_hash,
+        execution_timeout,
+        |key, effects| {
+            let _ = effects
+                .transforms()
+                .iter()
+                .find(|x| match x.kind() {
+                    TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+                        Key::from(bid_kind.bid_addr()) == key
+                    }
+                    _ => false,
+                })
+                .expect("should have a write record for delegate bid");
+            true
+        },
+        |key, error_message, cost| {
+            panic!("{:?} deploy failed: {} cost: {}", key, error_message, cost);
+        },
+    )
+    .await;
+
+    // alice should now have a delegation bid record for bob
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), true);
+
+    let (deploy_hash, deploy) = {
+        // create & sign deploy to undelegate from alice to bob
+        let mut undelegate = Deploy::undelegate(
+            chain_name,
+            auction_hash,
+            bob.1.clone(),
+            alice.1.clone(),
+            alice_delegation_amount,
+            Timestamp::now(),
+            deploy_ttl,
+        );
+        // sign the deploy (single sig in this scenario)
+        undelegate.sign(&alice.0);
+        // we'll need the deploy_hash later to check results
+        let deploy_hash = *DeployOrTransferHash::new(&undelegate).deploy_hash();
+        (deploy_hash, undelegate)
+    };
+    settle_deploy(&mut net, deploy).await;
+
+    settle_execution(
+        &mut net,
+        &mut rng,
+        bid_key,
+        deploy_hash,
+        execution_timeout,
+        |key, effects| {
+            let _ = effects
+                .transforms()
+                .iter()
+                .find(|x| match x.kind() {
+                    TransformKind::Prune(prune_key) => prune_key == &key,
+                    _ => false,
+                })
+                .expect("should have a prune record for undelegated bid");
+            true
+        },
+        |key, error_message, cost| {
+            panic!("{:?} deploy failed: {} cost: {}", key, error_message, cost);
+        },
+    )
+    .await;
+
+    // crank the network forward
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    // making sure the validator records are still present but the undelegated bid is gone
+    check_bid_existence_at_tip(&net, &alice.1, None, true);
+    check_bid_existence_at_tip(&net, &bob.1, None, true);
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
+}
+
+#[tokio::test]
+async fn run_redelegate_bid_network() {
+    testing::init_logging();
+
+    let mut rng = crate::new_rng();
+    let mut era_id = EraId::new(0);
+    let era_timeout = Duration::from_secs(90);
+    let execution_timeout = Duration::from_secs(120);
+    let deploy_ttl = TimeDiff::from_seconds(60);
+    let alice = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(200_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+    let bob = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(300_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+    let charlie = {
+        let secret_key = Arc::new(SecretKey::random(&mut rng));
+        let public_key = PublicKey::from(&*secret_key);
+        let stake = U512::from(300_000_000_000u64);
+        (secret_key, public_key, stake)
+    };
+
+    let (mut net, chain_name) = {
+        let named_validators = vec![alice.clone(), bob.clone(), charlie.clone()];
+
+        let mut chain = simple_test_chain(named_validators, 5, None, &mut rng);
+
+        let chain_name = chain.chainspec.network_config.name.clone();
+
+        (
+            chain
+                .create_initialized_network(&mut rng)
+                .await
+                .expect("network initialization failed"),
+            chain_name,
+        )
+    };
+
+    // genesis
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    // making sure our post genesis assumptions are correct
+    check_bid_existence_at_tip(&net, &alice.1, None, true);
+    check_bid_existence_at_tip(&net, &bob.1, None, true);
+    check_bid_existence_at_tip(&net, &charlie.1, None, true);
+    // alice should not have a delegation bid record for bob or charlie (yet)
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), false);
+
+    /* Now that the preamble is behind us, lets get some work done */
+
+    // crank the network forward
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    let auction_hash =
+        get_system_contract_hash_or_fail(&net, &alice.1, casper_types::system::AUCTION.to_string());
+
+    // have alice delegate to bob
+    let alice_delegation_amount = U512::from(50_000_000_000u64);
+    let (deploy_hash, deploy) = {
+        // create & sign deploy to delegate from alice to bob
+        let mut delegate = Deploy::delegate(
+            chain_name.clone(),
+            auction_hash,
+            bob.1.clone(),
+            alice.1.clone(),
+            alice_delegation_amount,
+            Timestamp::now(),
+            deploy_ttl,
+        );
+        // sign the deploy (single sig in this scenario)
+        delegate.sign(&alice.0);
+        // we'll need the deploy_hash later to check results
+        let deploy_hash = *DeployOrTransferHash::new(&delegate).deploy_hash();
+        (deploy_hash, delegate)
+    };
+    settle_deploy(&mut net, deploy).await;
+
+    let bid_key = Key::BidAddr(BidAddr::new_from_public_keys(
+        &bob.1.clone(),
+        Some(&alice.1.clone()),
+    ));
+
+    settle_execution(
+        &mut net,
+        &mut rng,
+        bid_key,
+        deploy_hash,
+        execution_timeout,
+        |key, effects| {
+            let _ = effects
+                .transforms()
+                .iter()
+                .find(|x| match x.kind() {
+                    TransformKind::Write(StoredValue::BidKind(bid_kind)) => {
+                        Key::from(bid_kind.bid_addr()) == key
+                    }
+                    _ => false,
+                })
+                .expect("should have a write record for delegate bid");
+            true
+        },
+        |key, error_message, cost| {
+            panic!("{:?} deploy failed: {} cost: {}", key, error_message, cost);
+        },
+    )
+    .await;
+
+    // alice should now have a delegation bid record for bob
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), true);
+
+    let (deploy_hash, deploy) = {
+        // create & sign deploy to undelegate alice from bob and delegate to charlie
+        let mut redelegate = Deploy::redelegate(
+            chain_name,
+            auction_hash,
+            bob.1.clone(),
+            alice.1.clone(),
+            charlie.1.clone(),
+            alice_delegation_amount,
+            Timestamp::now(),
+            deploy_ttl,
+        );
+        // sign the deploy (single sig in this scenario)
+        redelegate.sign(&alice.0);
+        // we'll need the deploy_hash later to check results
+        let deploy_hash = *DeployOrTransferHash::new(&redelegate).deploy_hash();
+        (deploy_hash, redelegate)
+    };
+    settle_deploy(&mut net, deploy).await;
+
+    settle_execution(
+        &mut net,
+        &mut rng,
+        bid_key,
+        deploy_hash,
+        execution_timeout,
+        |key, effects| {
+            let _ = effects
+                .transforms()
+                .iter()
+                .find(|x| match x.kind() {
+                    TransformKind::Prune(prune_key) => prune_key == &key,
+                    _ => false,
+                })
+                .expect("should have a prune record for undelegated bid");
+            true
+        },
+        |key, error_message, cost| {
+            panic!("{:?} deploy failed: {} cost: {}", key, error_message, cost);
+        },
+    )
+    .await;
+
+    // original delegation bid should be removed
+    check_bid_existence_at_tip(&net, &bob.1, Some(&alice.1), false);
+    // redelegate doesn't occur until after unbonding delay elapses
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), false);
+
+    // crank the network forward to run out the unbonding delay
+    // first, close out the era the redelegate was processed in
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+    // the undelegate is in the unbonding queue
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), false);
+    // unbonding delay is 1 on this test network, so step 1 more era
+    settle_era(&mut net, &mut rng, &mut era_id, era_timeout).await;
+
+    // making sure the validator records are still present
+    check_bid_existence_at_tip(&net, &alice.1, None, true);
+    check_bid_existence_at_tip(&net, &bob.1, None, true);
+    // redelegated bid exists
+    check_bid_existence_at_tip(&net, &charlie.1, Some(&alice.1), true);
 }

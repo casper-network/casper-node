@@ -24,15 +24,17 @@ use casper_execution_engine::engine_state::{
 };
 use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
+    addressable_entity::AddressableEntity,
     bytesrepr::Bytes,
     execution::{ExecutionResult, ExecutionResultV2},
     system::auction::EraValidators,
     Block, BlockHash, BlockHeader, BlockSignatures, ChainspecRawBytes, Deploy, DeployHash,
-    DeployHeader, DeployId, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId,
-    Key, ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transfer, URef,
+    DeployHeader, Digest, DisplayIter, EraId, FinalitySignature, FinalitySignatureId, Key,
+    ProtocolVersion, PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId,
+    Transfer, URef,
 };
 
-use super::GossipTarget;
+use super::{AutoClosingResponder, GossipTarget, Responder};
 use crate::{
     components::{
         block_synchronizer::{
@@ -41,15 +43,14 @@ use crate::{
         },
         consensus::{ClContext, ProposedBlock, ValidatorChange},
         contract_runtime::EraValidatorsRequest,
-        deploy_acceptor,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::NetworkInsights,
+        transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::{ContractRuntimeError, SpeculativeExecutionState},
-    effect::{AutoClosingResponder, Responder},
     reactor::main_reactor::ReactorState,
     rpcs::docs::OpenRpcSchema,
     types::{
@@ -352,12 +353,10 @@ pub(crate) enum StorageRequest {
         /// local storage under the block_hash provided.
         responder: Responder<Option<Vec<Transfer>>>,
     },
-    /// Store given deploy.
-    PutDeploy {
-        /// Deploy to store.
-        deploy: Arc<Deploy>,
-        /// Responder to call with the result.  Returns `true` if the deploy was stored on this
-        /// attempt or false if it was previously stored.
+    PutTransaction {
+        transaction: Arc<Transaction>,
+        /// Returns `true` if the transaction was stored on this attempt or false if it was
+        /// previously stored.
         responder: Responder<bool>,
     },
     /// Retrieve deploys with given hashes.
@@ -372,13 +371,12 @@ pub(crate) enum StorageRequest {
         deploy_hash: DeployHash,
         responder: Responder<Option<LegacyDeploy>>,
     },
-    /// Retrieve deploy with given ID.
-    GetDeploy {
-        deploy_id: DeployId,
-        responder: Responder<Option<Deploy>>,
+    GetTransaction {
+        transaction_id: TransactionId,
+        responder: Responder<Option<Transaction>>,
     },
-    IsDeployStored {
-        deploy_id: DeployId,
+    IsTransactionStored {
+        transaction_id: TransactionId,
         responder: Responder<bool>,
     },
     /// Store execution results for a set of deploys of a single block.
@@ -487,10 +485,10 @@ pub(crate) enum StorageRequest {
         /// Responder to call with the result.
         responder: Responder<AvailableBlockRange>,
     },
-    /// Store a set of finalized approvals for a specific deploy.
+    /// Store a set of finalized approvals for a specific transaction.
     StoreFinalizedApprovals {
-        /// The deploy hash to store the finalized approvals for.
-        deploy_hash: DeployHash,
+        /// The transaction hash to store the finalized approvals for.
+        transaction_hash: TransactionHash,
         /// The set of finalized approvals.
         finalized_approvals: FinalizedApprovals,
         /// Responder, responded to once the approvals are written.  If true, new approvals were
@@ -537,18 +535,20 @@ impl Display for StorageRequest {
             StorageRequest::GetBlockTransfers { block_hash, .. } => {
                 write!(formatter, "get transfers for {}", block_hash)
             }
-            StorageRequest::PutDeploy { deploy, .. } => write!(formatter, "put {}", deploy),
+            StorageRequest::PutTransaction { transaction, .. } => {
+                write!(formatter, "put {}", transaction)
+            }
             StorageRequest::GetDeploys { deploy_hashes, .. } => {
                 write!(formatter, "get {}", DisplayIter::new(deploy_hashes.iter()))
             }
             StorageRequest::GetLegacyDeploy { deploy_hash, .. } => {
                 write!(formatter, "get legacy deploy {}", deploy_hash)
             }
-            StorageRequest::GetDeploy { deploy_id, .. } => {
-                write!(formatter, "get deploy {}", deploy_id)
+            StorageRequest::GetTransaction { transaction_id, .. } => {
+                write!(formatter, "get transaction {}", transaction_id)
             }
-            StorageRequest::IsDeployStored { deploy_id, .. } => {
-                write!(formatter, "is deploy {} stored", deploy_id)
+            StorageRequest::IsTransactionStored { transaction_id, .. } => {
+                write!(formatter, "is transaction {} stored", transaction_id)
             }
             StorageRequest::PutExecutionResults { block_hash, .. } => {
                 write!(formatter, "put execution results for {}", block_hash)
@@ -609,7 +609,10 @@ impl Display for StorageRequest {
             StorageRequest::GetAvailableBlockRange { .. } => {
                 write!(formatter, "get available block range",)
             }
-            StorageRequest::StoreFinalizedApprovals { deploy_hash, .. } => {
+            StorageRequest::StoreFinalizedApprovals {
+                transaction_hash: deploy_hash,
+                ..
+            } => {
                 write!(formatter, "finalized approvals for deploy {}", deploy_hash)
             }
             StorageRequest::PutExecutedBlock { block, .. } => {
@@ -878,6 +881,13 @@ pub(crate) enum ContractRuntimeRequest {
         state_root_hash: Digest,
         responder: Responder<Result<Option<Digest>, engine_state::Error>>,
     },
+    /// Returns an `AddressableEntity` if found under the given key.  If a legacy `Account` exists
+    /// under the given key, it will be converted to an `AddressableEntity` and returned.
+    GetAddressableEntity {
+        state_root_hash: Digest,
+        key: Key,
+        responder: Responder<Option<AddressableEntity>>,
+    },
     /// Get a trie or chunk by its ID.
     GetTrie {
         /// The ID of the trie (or chunk of a trie) to be read.
@@ -939,6 +949,17 @@ impl Display for ContractRuntimeRequest {
                 "get execution results checksum under {}",
                 state_root_hash
             ),
+            ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                ..
+            } => {
+                write!(
+                    formatter,
+                    "get addressable_entity {} under {}",
+                    key, state_root_hash
+                )
+            }
             ContractRuntimeRequest::GetTrie {
                 trie_or_chunk_id, ..
             } => {
@@ -1161,24 +1182,24 @@ impl Display for SetNodeStopRequest {
     }
 }
 
-/// A request to accept a new deploy.
+/// A request to accept a new transaction.
 #[derive(DataSize, Debug, Serialize)]
-pub(crate) struct AcceptDeployRequest {
-    pub(crate) deploy: Arc<Deploy>,
+pub(crate) struct AcceptTransactionRequest {
+    pub(crate) transaction: Transaction,
     pub(crate) speculative_exec_at_block: Option<Box<BlockHeader>>,
-    pub(crate) responder: Responder<Result<(), deploy_acceptor::Error>>,
+    pub(crate) responder: Responder<Result<(), transaction_acceptor::Error>>,
 }
 
-impl Display for AcceptDeployRequest {
+impl Display for AcceptTransactionRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.speculative_exec_at_block.is_some() {
             write!(
                 f,
-                "accept deploy {} for speculative exec",
-                self.deploy.hash()
+                "accept transaction {} for speculative exec",
+                self.transaction.hash()
             )
         } else {
-            write!(f, "accept deploy {}", self.deploy.hash())
+            write!(f, "accept transaction {}", self.transaction.hash())
         }
     }
 }

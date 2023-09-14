@@ -12,7 +12,7 @@ use casper_contract::{
     contract_api::{account, runtime},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{runtime_args, AccessRights, ContractHash, Key, RuntimeArgs};
+use casper_types::{runtime_args, AccessRights, ContractHash, Key};
 
 const ARG_PURSE: &str = "purse";
 const CONTRACT_HASH_NAME: &str = "regression-contract-hash";

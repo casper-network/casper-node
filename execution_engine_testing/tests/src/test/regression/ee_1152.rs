@@ -12,8 +12,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{self, DelegationRate, INITIAL_ERA_ID},
-    GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey,
-    U512,
+    GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";

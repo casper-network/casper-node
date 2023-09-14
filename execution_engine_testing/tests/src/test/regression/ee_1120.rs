@@ -12,22 +12,22 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::auction::{
-        Bids, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
+        BidsExt, DelegationRate, UnbondingPurses, ARG_DELEGATOR, ARG_VALIDATOR,
         ARG_VALIDATOR_PUBLIC_KEYS, METHOD_SLASH,
     },
-    GenesisAccount, GenesisValidator, Motes, PublicKey, RuntimeArgs, SecretKey, U512,
+    GenesisAccount, GenesisValidator, Motes, PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
 const CONTRACT_DELEGATE: &str = "delegate.wasm";
 const CONTRACT_UNDELEGATE: &str = "undelegate.wasm";
 
-const DELEGATE_AMOUNT_1: u64 = 95_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
-const DELEGATE_AMOUNT_2: u64 = 42_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
-const DELEGATE_AMOUNT_3: u64 = 13_000 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
-const UNDELEGATE_AMOUNT_1: u64 = 17_000;
-const UNDELEGATE_AMOUNT_2: u64 = 24_500;
-const UNDELEGATE_AMOUNT_3: u64 = 7_500;
+const DELEGATE_AMOUNT_1: u64 = 1 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+const DELEGATE_AMOUNT_2: u64 = 2 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+const DELEGATE_AMOUNT_3: u64 = 3 + DEFAULT_MINIMUM_DELEGATION_AMOUNT;
+const UNDELEGATE_AMOUNT_1: u64 = 1;
+const UNDELEGATE_AMOUNT_2: u64 = 2;
+const UNDELEGATE_AMOUNT_3: u64 = 3;
 
 const TRANSFER_AMOUNT: u64 = MINIMUM_ACCOUNT_CREATION_BALANCE;
 
@@ -161,9 +161,11 @@ fn should_run_ee_1120_slash_delegators() {
         .commit();
 
     // Ensure that initial bid entries exist for validator 1 and validator 2
-    let initial_bids: Bids = builder.get_bids();
+    let initial_bids = builder.get_bids();
+    let key_map = initial_bids.public_key_map();
+    let initial_bids_keys = key_map.keys().cloned().collect::<BTreeSet<_>>();
     assert_eq!(
-        initial_bids.keys().cloned().collect::<BTreeSet<_>>(),
+        initial_bids_keys,
         BTreeSet::from_iter(vec![VALIDATOR_2.clone(), VALIDATOR_1.clone()])
     );
 
@@ -206,74 +208,67 @@ fn should_run_ee_1120_slash_delegators() {
     )
     .build();
 
-    builder.exec(undelegate_request_1).commit().expect_success();
-    builder.exec(undelegate_request_2).commit().expect_success();
-    builder.exec(undelegate_request_3).commit().expect_success();
+    let expected_unbond_account_hashes = (*DELEGATOR_1_ADDR, *VALIDATOR_2_ADDR);
+    builder.exec(undelegate_request_1).expect_success().commit();
+    builder.exec(undelegate_request_2).expect_success().commit();
+    builder.exec(undelegate_request_3).expect_success().commit();
 
     // Check unbonding purses before slashing
-
     let unbond_purses_before: UnbondingPurses = builder.get_unbonds();
-    assert_eq!(unbond_purses_before.len(), 2);
+    // should be an unbonding purse for each distinct undelegator
+    unbond_purses_before.contains_key(&expected_unbond_account_hashes.1);
+    let delegator_unbond = unbond_purses_before
+        .get(&expected_unbond_account_hashes.0)
+        .expect("should have entry");
+    assert_eq!(
+        delegator_unbond.len(),
+        2,
+        "this entity undelegated from 2 different validators"
+    );
+    let undelegate_from_v1 = delegator_unbond
+        .iter()
+        .find(|x| x.validator_public_key() == &*VALIDATOR_1)
+        .expect("should have entry");
+    assert_eq!(undelegate_from_v1.amount().as_u64(), UNDELEGATE_AMOUNT_1);
+    let undelegate_from_v2 = delegator_unbond
+        .iter()
+        .find(|x| x.validator_public_key() == &*VALIDATOR_2)
+        .expect("should have entry");
+    assert_eq!(undelegate_from_v2.amount().as_u64(), UNDELEGATE_AMOUNT_2);
 
-    let validator_1_unbond_list_before = unbond_purses_before
-        .get(&VALIDATOR_1_ADDR)
-        .cloned()
-        .expect("should have unbond");
-    assert_eq!(validator_1_unbond_list_before.len(), 2); // two entries in order: undelegate, and withdraw bid
-
-    // Added through `undelegate_request_1`
+    let dual_role_unbond = unbond_purses_before
+        .get(&expected_unbond_account_hashes.1)
+        .expect("should have entry for entity that is both a validator and has also delegated to a different validator then unbonded from that other validator");
     assert_eq!(
-        validator_1_unbond_list_before[0].validator_public_key(),
-        &*VALIDATOR_1
+        dual_role_unbond.len(),
+        1,
+        "this entity undelegated from 1 validator"
     );
-    assert_eq!(
-        validator_1_unbond_list_before[0].unbonder_public_key(),
-        &*DELEGATOR_1
-    );
-    assert_eq!(
-        validator_1_unbond_list_before[0].amount(),
-        &U512::from(UNDELEGATE_AMOUNT_1)
-    );
-
-    // Added through `undelegate_request_3`
-    assert_eq!(
-        validator_1_unbond_list_before[1].validator_public_key(),
-        &*VALIDATOR_1
-    );
-    assert_eq!(
-        validator_1_unbond_list_before[1].unbonder_public_key(),
-        &*VALIDATOR_2
-    );
-    assert_eq!(
-        validator_1_unbond_list_before[1].amount(),
-        &U512::from(UNDELEGATE_AMOUNT_3)
-    );
-
-    let validator_2_unbond_list = unbond_purses_before
-        .get(&*VALIDATOR_2_ADDR)
-        .cloned()
-        .expect("should have unbond");
-
-    assert_eq!(validator_2_unbond_list.len(), 1); // one entry: undelegate
-    assert_eq!(
-        validator_2_unbond_list[0].validator_public_key(),
-        &*VALIDATOR_2
-    );
-    assert_eq!(
-        validator_2_unbond_list[0].unbonder_public_key(),
-        &*DELEGATOR_1
-    );
-    assert_eq!(
-        validator_2_unbond_list[0].amount(),
-        &U512::from(UNDELEGATE_AMOUNT_2),
-    );
+    let undelegate_from_v1 = dual_role_unbond
+        .iter()
+        .find(|x| x.validator_public_key() == &*VALIDATOR_1)
+        .expect("should have entry");
+    assert_eq!(undelegate_from_v1.amount().as_u64(), UNDELEGATE_AMOUNT_3);
 
     // Check bids before slashing
 
-    let bids_before: Bids = builder.get_bids();
+    let bids_before = builder.get_bids();
+    /*
+        There should be 5 total bids at this point:
+        VALIDATOR1 and VALIDATOR2 each have a validator bid
+        DELEGATOR1 is delegated to each of them for 2 more bids
+        VALIDATOR2 is also delegated to VALIDATOR1 for 1 more bid
+    */
+    assert_eq!(bids_before.len(), 5);
+    let bids_before_keys = bids_before
+        .public_key_map()
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
     assert_eq!(
-        bids_before.keys().collect::<Vec<_>>(),
-        initial_bids.keys().collect::<Vec<_>>()
+        bids_before_keys, initial_bids_keys,
+        "prior to taking action, keys should match initial keys"
     );
 
     let slash_request_1 = ExecuteRequestBuilder::contract_call_by_hash(
@@ -289,48 +284,36 @@ fn should_run_ee_1120_slash_delegators() {
     builder.exec(slash_request_1).expect_success().commit();
 
     // Compare bids after slashing validator 2
-    let bids_after: Bids = builder.get_bids();
+    let bids_after = builder.get_bids();
     assert_ne!(bids_before, bids_after);
-    assert_eq!(bids_after.len(), 2);
-    let validator_2_bid = bids_after.get(&VALIDATOR_2).unwrap();
-    assert!(validator_2_bid.inactive());
-    assert!(validator_2_bid.staked_amount().is_zero());
+    /*
+        there should be 3 total bids at this point:
+        VALIDATOR1 was not slashed, and their bid remains
+        DELEGATOR1 is still delegated to VALIDATOR1 and their bid remains
+        VALIDATOR2's validator bid was slashed (and removed), but they are
+            also delegated to VALIDATOR1 and that delegation bid remains
+    */
+    assert_eq!(bids_after.len(), 3);
+    assert!(bids_after.validator_bid(&VALIDATOR_2).is_none());
 
-    assert!(bids_after.contains_key(&VALIDATOR_1));
-    assert_eq!(bids_after[&VALIDATOR_1].delegators().len(), 2);
+    let validator_1_bid = bids_after
+        .validator_bid(&VALIDATOR_1)
+        .expect("should have validator1 bid");
+    let delegators = bids_after
+        .delegators_by_validator_public_key(validator_1_bid.validator_public_key())
+        .expect("should have delegators");
+    assert_eq!(delegators.len(), 2);
 
-    // validator 2's delegation bid on validator 1 was not slashed.
-    assert!(bids_after[&VALIDATOR_1]
-        .delegators()
-        .contains_key(&VALIDATOR_2));
-    assert!(bids_after[&VALIDATOR_1]
-        .delegators()
-        .contains_key(&DELEGATOR_1));
+    bids_after.delegator_by_public_keys(&VALIDATOR_1, &VALIDATOR_2).expect("the delegation record from VALIDATOR2 should exist on VALIDATOR1, in this particular and unusual edge case");
+    bids_after
+        .delegator_by_public_keys(&VALIDATOR_1, &DELEGATOR_1)
+        .expect("the delegation record from DELEGATOR_1 should exist on VALIDATOR1");
 
     let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
     assert_ne!(unbond_purses_before, unbond_purses_after);
-
-    let validator_1_unbond_list_after = unbond_purses_after
-        .get(&VALIDATOR_1_ADDR)
-        .expect("should have validator 1 entry");
-    assert_eq!(validator_1_unbond_list_after.len(), 2);
-    assert_eq!(
-        validator_1_unbond_list_after[0].unbonder_public_key(),
-        &*DELEGATOR_1
-    );
-
-    // validator 2's delegation unbond from validator 1 was not slashed
-    assert_eq!(
-        validator_1_unbond_list_after[1].unbonder_public_key(),
-        &*VALIDATOR_2
-    );
-
-    // delegator 1 had a delegation unbond slashed for validator 2's behavior.
-    // delegator 1 still has an active delegation unbond from validator 2.
-    assert_eq!(
-        validator_1_unbond_list_after,
-        &validator_1_unbond_list_before
-    );
+    assert!(unbond_purses_after.get(&VALIDATOR_1_ADDR).is_none());
+    assert!(unbond_purses_after.get(&DELEGATOR_1_ADDR).is_some());
+    assert!(unbond_purses_after.get(&VALIDATOR_2_ADDR).is_some());
 
     // slash validator 1 to clear remaining bids and unbonding purses
     let slash_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
@@ -345,19 +328,17 @@ fn should_run_ee_1120_slash_delegators() {
 
     builder.exec(slash_request_2).expect_success().commit();
 
-    let bids_after: Bids = builder.get_bids();
-    assert_eq!(bids_after.len(), 2);
-    let validator_1_bid = bids_after.get(&VALIDATOR_1).unwrap();
-    assert!(validator_1_bid.inactive());
-    assert!(validator_1_bid.staked_amount().is_zero());
+    let bids_after = builder.get_bids();
+    assert_eq!(
+        bids_after.len(),
+        0,
+        "we slashed everybody so there should be no bids remaining"
+    );
 
     let unbond_purses_after: UnbondingPurses = builder.get_unbonds();
-    assert!(unbond_purses_after
-        .get(&VALIDATOR_1_ADDR)
-        .unwrap()
-        .is_empty());
-    assert!(unbond_purses_after
-        .get(&VALIDATOR_2_ADDR)
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        unbond_purses_after.len(),
+        0,
+        "we slashed everybody currently unbonded so there should be no unbonds remaining"
+    );
 }

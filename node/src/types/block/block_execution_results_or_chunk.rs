@@ -2,18 +2,19 @@ use std::fmt::{self, Debug, Display, Formatter};
 
 use datasize::DataSize;
 use once_cell::sync::OnceCell;
+#[cfg(test)]
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
+#[cfg(test)]
+use casper_types::execution::ExecutionResultV2;
+#[cfg(test)]
+use casper_types::testing::TestRng;
 use casper_types::{
     bytesrepr::{self, ToBytes},
     execution::ExecutionResult,
     BlockHash, ChunkWithProof, ChunkWithProofVerificationError, Digest,
-};
-#[cfg(test)]
-use casper_types::{
-    execution::{Effects, ExecutionResultV2},
-    U512,
 };
 
 use super::BlockExecutionResultsOrChunkId;
@@ -64,7 +65,7 @@ impl BlockExecutionResultsOrChunk {
 
         let is_v1 = matches!(execution_results.first(), Some(ExecutionResult::V1(_)));
 
-        // If it's not V1, just construct the `ValueOrChunk` from `Vec<VersionedExecutionResult>`.
+        // If it's not V1, just construct the `ValueOrChunk` from `Vec<ExecutionResult>`.
         if !is_v1 {
             let value = make_value_or_chunk(execution_results, &block_hash, chunk_index)?;
             return Some(BlockExecutionResultsOrChunk {
@@ -75,8 +76,8 @@ impl BlockExecutionResultsOrChunk {
         }
 
         // If it is V1, we need to construct the `ValueOrChunk` from a `Vec<ExecutionResultV1>` if
-        // it's big enough to need chunking, otherwise we need to use the
-        // `Vec<VersionedExecutionResult>` as the `ValueOrChunk::Value`.
+        // it's big enough to need chunking, otherwise we need to use the `Vec<ExecutionResult>` as
+        // the `ValueOrChunk::Value`.
         let mut v1_results = Vec::with_capacity(execution_results.len());
         for result in &execution_results {
             if let ExecutionResult::V1(v1_result) = result {
@@ -168,16 +169,31 @@ impl BlockExecutionResultsOrChunk {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_mock_value(block_hash: BlockHash) -> Self {
+    pub(crate) fn new_mock_value(rng: &mut TestRng, block_hash: BlockHash) -> Self {
+        Self::new_mock_value_with_multiple_random_results(rng, block_hash, 1)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn new_mock_value_with_multiple_random_results(
+        rng: &mut TestRng,
+        block_hash: BlockHash,
+        num_results: usize,
+    ) -> Self {
+        let execution_results: Vec<ExecutionResult> = (0..num_results)
+            .into_iter()
+            .map(|_| rng.gen::<ExecutionResultV2>().into())
+            .collect();
+
         Self {
             block_hash,
-            value: ValueOrChunk::Value(vec![ExecutionResult::V2(ExecutionResultV2::Success {
-                effects: Effects::new(),
-                transfers: vec![],
-                cost: U512::from(123),
-            })]),
+            value: ValueOrChunk::new(execution_results, 0).unwrap(),
             is_valid: OnceCell::with_value(Ok(true)),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn value(&self) -> &ValueOrChunk<Vec<ExecutionResult>> {
+        &self.value
     }
 
     #[cfg(test)]

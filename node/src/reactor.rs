@@ -71,9 +71,10 @@ use utils::rlimit::{Limit, OpenFiles, ResourceLimit};
 use crate::testing::{network::NetworkedReactor, ConditionCheckReactor};
 use crate::{
     components::{
-        block_accumulator, deploy_acceptor,
+        block_accumulator,
         fetcher::{self, FetchItem},
         network::{blocklist::BlocklistJustification, Identity as NetworkIdentity},
+        transaction_acceptor,
     },
     effect::{
         announcements::{ControlAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat},
@@ -988,7 +989,7 @@ fn handle_get_response<R>(
 ) -> Effects<<R as Reactor>::Event>
 where
     R: Reactor,
-    <R as Reactor>::Event: From<deploy_acceptor::Event>
+    <R as Reactor>::Event: From<transaction_acceptor::Event>
         + From<fetcher::Event<FinalitySignature>>
         + From<fetcher::Event<Block>>
         + From<fetcher::Event<BlockHeader>>

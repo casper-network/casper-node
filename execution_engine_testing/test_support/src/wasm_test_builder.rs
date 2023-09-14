@@ -22,9 +22,9 @@ use casper_execution_engine::{
         execution_result::ExecutionResult,
         run_genesis_request::RunGenesisRequest,
         step::{StepRequest, StepSuccess},
-        BalanceResult, EngineConfig, EngineState, Error, GenesisSuccess, GetBidsRequest,
-        PruneConfig, PruneResult, QueryRequest, QueryResult, StepError, SystemContractRegistry,
-        UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
+        BalanceResult, EngineConfig, EngineConfigBuilder, EngineState, Error, GenesisSuccess,
+        GetBidsRequest, PruneConfig, PruneResult, QueryRequest, QueryResult, StepError,
+        SystemContractRegistry, UpgradeSuccess, DEFAULT_MAX_QUERY_DEPTH,
     },
     execution,
 };
@@ -47,23 +47,23 @@ use casper_types::{
     runtime_args,
     system::{
         auction::{
-            Bids, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights, WithdrawPurses,
-            ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS, AUCTION_DELAY_KEY, ERA_ID_KEY,
-            METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
+            BidKind, EraValidators, UnbondingPurse, UnbondingPurses, ValidatorWeights,
+            WithdrawPurses, ARG_ERA_END_TIMESTAMP_MILLIS, ARG_EVICTED_VALIDATORS,
+            AUCTION_DELAY_KEY, ERA_ID_KEY, METHOD_RUN_AUCTION, UNBONDING_DELAY_KEY,
         },
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AddressableEntity, AuctionCosts, CLTyped, CLValue, Contract, ContractHash, ContractPackageHash,
     ContractWasm, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag,
-    MintCosts, Package, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    MintCosts, Motes, Package, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
     TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
 use crate::{
     chainspec_config::{ChainspecConfig, PRODUCTION_PATH},
-    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_PROPOSER_ADDR,
+    utils, ExecuteRequestBuilder, StepRequestBuilder, DEFAULT_GAS_PRICE, DEFAULT_PROPOSER_ADDR,
     DEFAULT_PROTOCOL_VERSION, SYSTEM_ADDR,
 };
 
@@ -98,10 +98,10 @@ pub struct WasmTestBuilder<S> {
     /// Cached effects after successful runs i.e. `effects[0]` is the collection of effects for
     /// first exec call, etc.
     effects: Vec<Effects>,
-    /// Cached genesis account.
-    genesis_account: Option<ContractHash>,
     /// Genesis effects.
     genesis_effects: Option<Effects>,
+    /// Cached system account.
+    system_account: Option<AddressableEntity>,
     /// Scratch global state used for in-memory execution and commit optimization.
     scratch_engine_state: Option<EngineState<ScratchGlobalState>>,
     /// System contract registry.
@@ -130,8 +130,8 @@ impl<S> Clone for WasmTestBuilder<S> {
             genesis_hash: self.genesis_hash,
             post_state_hash: self.post_state_hash,
             effects: self.effects.clone(),
-            genesis_account: self.genesis_account,
             genesis_effects: self.genesis_effects.clone(),
+            system_account: self.system_account.clone(),
             scratch_engine_state: None,
             system_contract_registry: self.system_contract_registry.clone(),
             global_state_dir: self.global_state_dir.clone(),
@@ -242,7 +242,7 @@ impl LmdbWasmTestBuilder {
             genesis_hash: None,
             post_state_hash: None,
             effects: Vec::new(),
-            genesis_account: None,
+            system_account: None,
             genesis_effects: None,
             scratch_engine_state: None,
             system_contract_registry: None,
@@ -260,20 +260,26 @@ impl LmdbWasmTestBuilder {
         let chainspec_config = ChainspecConfig::from_chainspec_path(chainspec_path)
             .expect("must build chainspec configuration");
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            chainspec_config
-                .core_config
-                .vesting_schedule_period
-                .millis(),
-            chainspec_config.core_config.max_delegators_per_validator,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(
+                chainspec_config
+                    .core_config
+                    .vesting_schedule_period
+                    .millis(),
+            )
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build();
 
         Self::new_with_config(data_dir, engine_config)
     }
@@ -349,21 +355,31 @@ impl LmdbWasmTestBuilder {
         };
 
         let engine_state = EngineState::new(data_access_layer, engine_config);
-        WasmTestBuilder {
+
+        let post_state_hash = mode.post_state_hash();
+
+        let mut builder = WasmTestBuilder {
             engine_state: Rc::new(engine_state),
             exec_results: Vec::new(),
             upgrade_results: Vec::new(),
             prune_results: Vec::new(),
             genesis_hash: None,
-            post_state_hash: mode.post_state_hash(),
+            post_state_hash,
             effects: Vec::new(),
-            genesis_account: None,
             genesis_effects: None,
+            system_account: None,
             scratch_engine_state: None,
             system_contract_registry: None,
             global_state_dir: Some(global_state_dir.as_ref().to_path_buf()),
             temp_dir: None,
+        };
+
+        if let Some(post_state_hash) = post_state_hash {
+            builder.system_contract_registry =
+                builder.query_system_contract_registry(Some(post_state_hash));
         }
+
+        builder
     }
 
     /// Creates a new instance of builder using the supplied configurations, opening wrapped LMDBs
@@ -414,17 +430,21 @@ impl LmdbWasmTestBuilder {
             .vesting_schedule_period
             .millis();
 
-        let engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            chainspec_config.core_config.max_associated_keys,
-            chainspec_config.core_config.max_runtime_call_stack_height,
-            chainspec_config.core_config.minimum_delegation_amount,
-            chainspec_config.core_config.strict_argument_checking,
-            vesting_schedule_period_millis,
-            chainspec_config.core_config.max_delegators_per_validator,
-            chainspec_config.wasm_config,
-            chainspec_config.system_costs_config,
-        );
+        let engine_config = EngineConfigBuilder::new()
+            .with_max_query_depth(DEFAULT_MAX_QUERY_DEPTH)
+            .with_max_associated_keys(chainspec_config.core_config.max_associated_keys)
+            .with_max_runtime_call_stack_height(
+                chainspec_config.core_config.max_runtime_call_stack_height,
+            )
+            .with_minimum_delegation_amount(chainspec_config.core_config.minimum_delegation_amount)
+            .with_strict_argument_checking(chainspec_config.core_config.strict_argument_checking)
+            .with_vesting_schedule_period_millis(vesting_schedule_period_millis)
+            .with_max_delegators_per_validator(
+                chainspec_config.core_config.max_delegators_per_validator,
+            )
+            .with_wasm_config(chainspec_config.wasm_config)
+            .with_system_config(chainspec_config.system_costs_config)
+            .build();
 
         Self::new_temporary_with_config(engine_config)
     }
@@ -478,7 +498,7 @@ impl LmdbWasmTestBuilder {
         let maybe_exec_results = cached_state.run_execute(exec_request);
         for execution_result in maybe_exec_results.unwrap() {
             let _post_state_hash = cached_state
-                .apply_effects(
+                .commit_effects(
                     self.post_state_hash.expect("requires a post_state_hash"),
                     execution_result.effects().clone(),
                 )
@@ -531,8 +551,6 @@ where
 {
     /// Takes a [`RunGenesisRequest`], executes the request and returns Self.
     pub fn run_genesis(&mut self, run_genesis_request: &RunGenesisRequest) -> &mut Self {
-        let system_account = Key::Account(PublicKey::System.to_account_hash());
-
         let GenesisSuccess {
             post_state_hash,
             effects,
@@ -547,20 +565,6 @@ where
             .expect("Unable to get genesis response");
 
         let empty_path: Vec<String> = vec![];
-
-        let system_contract_by_account =
-            match self.query(Some(post_state_hash), system_account, &empty_path) {
-                Ok(StoredValue::CLValue(cl_value)) => {
-                    let contract_key =
-                        CLValue::into_t::<Key>(cl_value).expect("must convert to contract key");
-                    contract_key
-                        .into_hash()
-                        .map(ContractHash::new)
-                        .expect("must convert to contract hash")
-                }
-                Ok(_) => panic!("Failed to get system contract by account hash"),
-                Err(err) => panic!("{}", err),
-            };
 
         self.system_contract_registry = match self.query(
             Some(post_state_hash),
@@ -578,9 +582,24 @@ where
 
         self.genesis_hash = Some(post_state_hash);
         self.post_state_hash = Some(post_state_hash);
-        self.genesis_account = Some(system_contract_by_account);
+        self.system_account = self.get_entity_by_account_hash(*SYSTEM_ADDR);
         self.genesis_effects = Some(effects);
         self
+    }
+
+    fn query_system_contract_registry(
+        &mut self,
+        post_state_hash: Option<Digest>,
+    ) -> Option<SystemContractRegistry> {
+        match self.query(post_state_hash, Key::SystemContractRegistry, &[]) {
+            Ok(StoredValue::CLValue(cl_registry)) => {
+                let system_contract_registry =
+                    CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
+                Some(system_contract_registry)
+            }
+            Ok(_) => None,
+            Err(_) => None,
+        }
     }
 
     /// Queries state for a [`StoredValue`].
@@ -678,9 +697,8 @@ where
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
             .expect("must get mint stored value")
-            .as_addressable_entity()
-            .expect("must convert to mint contract")
-            .clone();
+            .into_addressable_entity()
+            .expect("must convert to mint contract");
 
         let mint_named_keys = mint_contract.named_keys().clone();
 
@@ -697,18 +715,16 @@ where
         let total_supply = self
             .query(maybe_post_state, Key::URef(total_supply_uref), &[])
             .expect("must read value under total supply URef")
-            .as_cl_value()
+            .into_cl_value()
             .expect("must convert into CL value")
-            .clone()
             .into_t::<U512>()
             .expect("must convert into U512");
 
         let rate = self
             .query(maybe_post_state, round_seigniorage_rate_uref, &[])
             .expect("must read value")
-            .as_cl_value()
+            .into_cl_value()
             .expect("must conver to cl value")
-            .clone()
             .into_t::<Ratio<U512>>()
             .expect("must conver to ratio");
 
@@ -756,7 +772,7 @@ where
     pub fn commit_transforms(&mut self, pre_state_hash: Digest, effects: Effects) -> &mut Self {
         let post_state_hash = self
             .engine_state
-            .apply_effects(pre_state_hash, effects)
+            .commit_effects(pre_state_hash, effects)
             .expect("should commit");
         self.post_state_hash = Some(post_state_hash);
         self
@@ -770,11 +786,25 @@ where
         engine_config: EngineConfig,
         upgrade_config: &mut UpgradeConfig,
     ) -> &mut Self {
+        self.upgrade_with_upgrade_request_and_config(Some(engine_config), upgrade_config)
+    }
+
+    /// Upgrades the execution engine.
+    ///
+    /// If `engine_config` is set to None, then it is defaulted to the current one.
+    pub fn upgrade_with_upgrade_request_and_config(
+        &mut self,
+        engine_config: Option<EngineConfig>,
+        upgrade_config: &mut UpgradeConfig,
+    ) -> &mut Self {
+        let engine_config = engine_config.unwrap_or_else(|| self.engine_state.config().clone());
+
         let pre_state_hash = self.post_state_hash.expect("should have state hash");
         upgrade_config.with_pre_state_hash(pre_state_hash);
 
-        let engine_state = Rc::get_mut(&mut self.engine_state).unwrap();
-        engine_state.update_config(engine_config);
+        let engine_state_mut =
+            Rc::get_mut(&mut self.engine_state).expect("should have unique ownership");
+        engine_state_mut.update_config(engine_config);
 
         let result = self.engine_state.commit_upgrade(upgrade_config.clone());
 
@@ -784,13 +814,8 @@ where
         }) = result
         {
             self.post_state_hash = Some(post_state_hash);
-
-            if let Ok(StoredValue::CLValue(cl_registry)) =
-                self.query(self.post_state_hash, Key::SystemContractRegistry, &[])
-            {
-                let registry = CLValue::into_t::<SystemContractRegistry>(cl_registry).unwrap();
-                self.system_contract_registry = Some(registry);
-            }
+            self.system_contract_registry =
+                self.query_system_contract_registry(Some(post_state_hash));
         }
 
         self.upgrade_results.push(result);
@@ -814,7 +839,7 @@ where
             },
         )
         .build();
-        self.exec(run_request).commit().expect_success()
+        self.exec(run_request).expect_success().commit()
     }
 
     /// Increments engine state.
@@ -918,8 +943,8 @@ where
     }
 
     /// Gets genesis account (if present)
-    pub fn get_genesis_account(&self) -> &ContractHash {
-        self.genesis_account
+    pub fn get_genesis_account(&self) -> &AddressableEntity {
+        self.system_account
             .as_ref()
             .expect("Unable to obtain genesis account. Please run genesis first.")
     }
@@ -1099,7 +1124,8 @@ where
                     Ok(_) | Err(_) => None,
                 }
             }
-            Some(_) | None => None,
+            Some(_other_variant) => None,
+            None => None,
         }
     }
 
@@ -1255,8 +1281,8 @@ where
         result.remove(&era_id)
     }
 
-    /// Gets [`Bids`].
-    pub fn get_bids(&mut self) -> Bids {
+    /// Gets [`Vec<BidKind>`].
+    pub fn get_bids(&mut self) -> Vec<BidKind> {
         let get_bids_request = GetBidsRequest::new(self.get_post_state_hash());
 
         let get_bids_result = self.engine_state.get_bids(get_bids_request).unwrap();
@@ -1357,10 +1383,7 @@ where
             .get(name)
             .expect("should have named key");
         let stored_value = self.query(None, *key, &[]).expect("should query");
-        let cl_value = stored_value
-            .as_cl_value()
-            .cloned()
-            .expect("should be cl value");
+        let cl_value = stored_value.into_cl_value().expect("should be cl value");
         let result: T = cl_value.into_t().expect("should convert");
         result
     }
@@ -1485,8 +1508,13 @@ where
     pub fn commit_prune(&mut self, prune_config: PruneConfig) -> &mut Self {
         let result = self.engine_state.commit_prune(prune_config);
 
-        if let Ok(PruneResult::Success { post_state_hash }) = &result {
+        if let Ok(PruneResult::Success {
+            post_state_hash,
+            effects,
+        }) = &result
+        {
             self.post_state_hash = Some(*post_state_hash);
+            self.effects.push(effects.clone());
         }
 
         self.prune_results.push(result);
@@ -1552,5 +1580,26 @@ where
             })
             .collect::<BTreeMap<AccountHash, Vec<UnbondingPurse>>>();
         unbonding_purses
+    }
+
+    /// Calculates refunded amount from a last execution request.
+    pub fn calculate_refund_amount(&self, payment_amount: U512) -> U512 {
+        let gas_amount = Motes::from_gas(self.last_exec_gas_cost(), DEFAULT_GAS_PRICE)
+            .expect("should create motes from gas");
+
+        let refund_ratio = match self.engine_state.config().refund_handling() {
+            RefundHandling::Refund { refund_ratio } | RefundHandling::Burn { refund_ratio } => {
+                *refund_ratio
+            }
+        };
+
+        let (numer, denom) = refund_ratio.into();
+        let refund_ratio = Ratio::new_raw(U512::from(numer), U512::from(denom));
+
+        // amount declared to be paid in payment code MINUS gas spent in last execution.
+        let refundable_amount = Ratio::from(payment_amount) - Ratio::from(gas_amount.value());
+        (refundable_amount * refund_ratio)
+            .ceil() // assumes possible dust amounts are always transferred to the user
+            .to_integer()
     }
 }

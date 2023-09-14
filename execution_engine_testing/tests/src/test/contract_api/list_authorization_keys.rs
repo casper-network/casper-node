@@ -8,7 +8,7 @@ use casper_types::{
     addressable_entity::Weight,
     runtime_args,
     system::{mint, standard_payment::ARG_AMOUNT},
-    ApiError, PublicKey, RuntimeArgs, SecretKey, U512,
+    ApiError, PublicKey, SecretKey, U512,
 };
 use once_cell::sync::Lazy;
 

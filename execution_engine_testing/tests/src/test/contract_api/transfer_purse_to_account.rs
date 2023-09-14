@@ -12,7 +12,7 @@ use casper_types::{
         auction::ARG_AMOUNT,
         mint::{self, ARG_TARGET},
     },
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -83,7 +83,8 @@ fn should_fail_when_sending_too_much_from_purse_to_account() {
     // When trying to send too much coins the balance is left unchanged
     assert_eq!(
         final_balance,
-        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - *DEFAULT_PAYMENT,
+        U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE) - *DEFAULT_PAYMENT
+            + builder.calculate_refund_amount(*DEFAULT_PAYMENT),
         "final balance incorrect"
     );
 

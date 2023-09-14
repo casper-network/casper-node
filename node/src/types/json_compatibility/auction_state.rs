@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{btree_map::Entry, BTreeMap};
 
 use num_traits::Zero;
 use once_cell::sync::Lazy;
@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_map_to_array::{BTreeMapToArray, KeyValueJsonSchema, KeyValueLabels};
 
 use casper_types::{
-    system::auction::{Bid, DelegationRate, Delegator, EraValidators},
+    system::auction::{
+        Bid, BidKind, DelegationRate, Delegator, EraValidators, Staking, ValidatorBid,
+        ValidatorBids,
+    },
     AccessRights, Digest, EraId, PublicKey, SecretKey, URef, U512,
 };
 
@@ -25,7 +28,7 @@ static ERA_VALIDATORS: Lazy<EraValidators> = Lazy::new(|| {
 
     era_validators
 });
-static BIDS: Lazy<BTreeMap<PublicKey, Bid>> = Lazy::new(|| {
+static BIDS: Lazy<ValidatorBids> = Lazy::new(|| {
     let bonding_purse = URef::new([250; 32], AccessRights::READ_ADD_WRITE);
     let staked_amount = U512::from(10);
     let release_era: u64 = 42;
@@ -33,20 +36,8 @@ static BIDS: Lazy<BTreeMap<PublicKey, Bid>> = Lazy::new(|| {
     let validator_secret_key =
         SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
     let validator_public_key = PublicKey::from(&validator_secret_key);
-    let delegator_secret_key =
-        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
-    let delegator_public_key = PublicKey::from(&delegator_secret_key);
 
-    let delegator = Delegator::unlocked(
-        delegator_public_key.clone(),
-        U512::from(10),
-        bonding_purse,
-        validator_public_key.clone(),
-    );
-    let mut delegators = BTreeMap::new();
-    delegators.insert(delegator_public_key, delegator);
-
-    let bid = Bid::locked(
+    let validator_bid = ValidatorBid::locked(
         validator_public_key.clone(),
         bonding_purse,
         staked_amount,
@@ -54,15 +45,38 @@ static BIDS: Lazy<BTreeMap<PublicKey, Bid>> = Lazy::new(|| {
         release_era,
     );
     let mut bids = BTreeMap::new();
-    bids.insert(validator_public_key, bid);
+    bids.insert(validator_public_key, Box::new(validator_bid));
 
     bids
 });
 static AUCTION_INFO: Lazy<AuctionState> = Lazy::new(|| {
     let state_root_hash = Digest::from([11; Digest::LENGTH]);
+    let validator_secret_key =
+        SecretKey::ed25519_from_bytes([42; SecretKey::ED25519_LENGTH]).unwrap();
+    let validator_public_key = PublicKey::from(&validator_secret_key);
+
+    let mut bids = vec![];
+    let validator_bid = ValidatorBid::unlocked(
+        validator_public_key.clone(),
+        URef::new([250; 32], AccessRights::READ_ADD_WRITE),
+        U512::from(20),
+        DelegationRate::zero(),
+    );
+    bids.push(BidKind::Validator(Box::new(validator_bid)));
+
+    let delegator_secret_key =
+        SecretKey::ed25519_from_bytes([43; SecretKey::ED25519_LENGTH]).unwrap();
+    let delegator_public_key = PublicKey::from(&delegator_secret_key);
+    let delegator_bid = Delegator::unlocked(
+        delegator_public_key,
+        U512::from(10),
+        URef::new([251; 32], AccessRights::READ_ADD_WRITE),
+        validator_public_key,
+    );
+    bids.push(BidKind::Delegator(Box::new(delegator_bid)));
+
     let height: u64 = 10;
     let era_validators = EraValidators::doc_example().clone();
-    let bids = BTreeMap::<PublicKey, Bid>::doc_example().clone();
     AuctionState::new(state_root_hash, height, era_validators, bids)
 });
 
@@ -103,7 +117,7 @@ impl AuctionState {
         state_root_hash: Digest,
         block_height: u64,
         era_validators: EraValidators,
-        bids: BTreeMap<PublicKey, Bid>,
+        bids: Vec<BidKind>,
     ) -> Self {
         let mut json_era_validators: Vec<JsonEraValidators> = Vec::new();
         for (era_id, validator_weights) in era_validators.iter() {
@@ -118,6 +132,51 @@ impl AuctionState {
                 era_id: *era_id,
                 validator_weights: json_validator_weights,
             });
+        }
+
+        let staking = {
+            let mut staking: Staking = BTreeMap::new();
+            for bid_kind in bids.iter().filter(|x| x.is_unified()) {
+                if let BidKind::Unified(bid) = bid_kind {
+                    let public_key = bid.validator_public_key().clone();
+                    let validator_bid = ValidatorBid::unlocked(
+                        bid.validator_public_key().clone(),
+                        *bid.bonding_purse(),
+                        *bid.staked_amount(),
+                        *bid.delegation_rate(),
+                    );
+                    staking.insert(public_key, (validator_bid, bid.delegators().clone()));
+                }
+            }
+
+            for bid_kind in bids.iter().filter(|x| x.is_validator()) {
+                if let BidKind::Validator(validator_bid) = bid_kind {
+                    let public_key = validator_bid.validator_public_key().clone();
+                    staking.insert(public_key, (*validator_bid.clone(), BTreeMap::new()));
+                }
+            }
+
+            for bid_kind in bids.iter().filter(|x| x.is_delegator()) {
+                if let BidKind::Delegator(delegator_bid) = bid_kind {
+                    let validator_public_key = delegator_bid.validator_public_key().clone();
+                    if let Entry::Occupied(mut occupant) =
+                        staking.entry(validator_public_key.clone())
+                    {
+                        let (_, delegators) = occupant.get_mut();
+                        delegators.insert(
+                            delegator_bid.delegator_public_key().clone(),
+                            *delegator_bid.clone(),
+                        );
+                    }
+                }
+            }
+            staking
+        };
+
+        let mut bids: BTreeMap<PublicKey, Bid> = BTreeMap::new();
+        for (public_key, (validator_bid, delegators)) in staking {
+            let bid = Bid::from_non_unified(validator_bid, delegators);
+            bids.insert(public_key, bid);
         }
 
         AuctionState {
@@ -141,7 +200,7 @@ impl DocExample for EraValidators {
     }
 }
 
-impl DocExample for BTreeMap<PublicKey, Bid> {
+impl DocExample for ValidatorBids {
     fn doc_example() -> &'static Self {
         &BIDS
     }

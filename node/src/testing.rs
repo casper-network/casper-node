@@ -4,7 +4,7 @@
 //! `casper-node` library.
 
 mod condition_check_reactor;
-mod fake_deploy_acceptor;
+mod fake_transaction_acceptor;
 pub(crate) mod filter_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
@@ -46,7 +46,7 @@ use crate::{
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
-pub(crate) use fake_deploy_acceptor::FakeDeployAcceptor;
+pub(crate) use fake_transaction_acceptor::FakeTransactionAcceptor;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.

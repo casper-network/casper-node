@@ -8,7 +8,7 @@ use tempfile::TempDir;
 
 use casper_types::{
     runtime_args, Chainspec, ChainspecRawBytes, Deploy, EraId, EraReport, ExecutableDeployItem,
-    PublicKey, RuntimeArgs, SecretKey, TimeDiff, U512,
+    PublicKey, SecretKey, TimeDiff, U512,
 };
 
 use super::*;
@@ -121,6 +121,11 @@ impl reactor::Reactor for Reactor {
             chainspec.core_config.vesting_schedule_period.millis(),
             Some(chainspec.core_config.max_delegators_per_validator),
             registry,
+            chainspec.core_config.administrators.clone(),
+            chainspec.core_config.allow_auction_bids,
+            chainspec.core_config.allow_unrestricted_transfers,
+            chainspec.core_config.refund_handling,
+            chainspec.core_config.fee_handling,
         )?;
 
         let reactor = Reactor {
@@ -313,7 +318,7 @@ async fn should_not_set_shared_pre_state_to_lower_block_height() {
         let target_public_key = PublicKey::random(rng);
         let session = ExecutableDeployItem::Transfer {
             args: runtime_args! {
-              "amount" => U512::from(chainspec.deploy_config.native_transfer_minimum_motes),
+              "amount" => U512::from(chainspec.transaction_config.native_transfer_minimum_motes),
               "target" => target_public_key,
               "id" => Some(9_u64),
             },

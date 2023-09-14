@@ -85,6 +85,7 @@ function run_nightly_upgrade_test() {
     bash -c "./ci/nctl_upgrade.sh test_id=11"
     bash -c "./ci/nctl_upgrade.sh test_id=12"
     bash -c "./ci/nctl_upgrade.sh test_id=13"
+    bash -c "./ci/nctl_upgrade.sh test_id=14"
 }
 
 function run_soundness_test() {
@@ -106,6 +107,11 @@ start_run_teardown "itst02.sh"
 start_run_teardown "itst11.sh"
 start_run_teardown "itst13.sh"
 start_run_teardown "itst14.sh"
+start_run_teardown "itst01_private_chain.sh"
+start_run_teardown "itst02_private_chain.sh"
+start_run_teardown "itst06_private_chain.sh"
+start_run_teardown "itst07_private_chain.sh"
+start_run_teardown "itst11_private_chain.sh"
 start_run_teardown "bond_its.sh"
 start_run_teardown "emergency_upgrade_test.sh"
 start_run_teardown "emergency_upgrade_test_balances.sh"

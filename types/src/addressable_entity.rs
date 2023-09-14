@@ -21,6 +21,8 @@ use core::{
     fmt::{self, Debug, Display, Formatter},
     iter,
 };
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -807,6 +809,21 @@ impl AddressableEntity {
         self.action_thresholds.set_threshold(action_type, weight)
     }
 
+    /// Sets a new action threshold for a given action type for the account without checking against
+    /// the total weight of the associated keys.
+    ///
+    /// This should only be called when authorized by an administrator account.
+    ///
+    /// Returns an error if setting the action would cause the `ActionType::Deployment` threshold to
+    /// be greater than any of the other action types.
+    pub fn set_action_threshold_unchecked(
+        &mut self,
+        action_type: ActionType,
+        threshold: Weight,
+    ) -> Result<(), SetThresholdFailure> {
+        self.action_thresholds.set_threshold(action_type, threshold)
+    }
+
     /// Verifies if user can set action threshold.
     pub fn can_set_threshold(&self, new_threshold: Weight) -> Result<(), SetThresholdFailure> {
         let total_weight = self.associated_keys.total_keys_weight();
@@ -1010,20 +1027,41 @@ impl From<Account> for AddressableEntity {
 }
 
 /// Context of method execution
-#[repr(u8)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Most significant bit represents version i.e.
+/// - 0b0 -> 0.x/1.x (session & contracts)
+/// - 0b1 -> 2.x and later (introduced installer, utility entry points)
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, FromPrimitive)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum EntryPointType {
     /// Runs as session code
-    Session = 0,
+    Session = 0b00000000,
     /// Runs within contract's context
-    Contract = 1,
+    Contract = 0b00000001,
+    /// Installer entry point.
+    Install = 0b10000000,
+}
+
+impl EntryPointType {
+    /// Checks if entry point type is introduced before 2.0.
+    ///
+    /// This method checks if there is a bit pattern for entry point types introduced in 2.0.
+    ///
+    /// If this bit is missing, that means given entry point type was defined in pre-2.0 world.
+    pub fn is_legacy_pattern(&self) -> bool {
+        (*self as u8) & 0b10000000 == 0
+    }
+
+    /// Get the bit pattern.
+    pub fn bits(self) -> u8 {
+        self as u8
+    }
 }
 
 impl ToBytes for EntryPointType {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        (*self as u8).to_bytes()
+        self.bits().to_bytes()
     }
 
     fn serialized_length(&self) -> usize {
@@ -1031,7 +1069,7 @@ impl ToBytes for EntryPointType {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        writer.push(*self as u8);
+        writer.push(self.bits());
         Ok(())
     }
 }
@@ -1039,21 +1077,19 @@ impl ToBytes for EntryPointType {
 impl FromBytes for EntryPointType {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (value, bytes) = u8::from_bytes(bytes)?;
-        match value {
-            0 => Ok((EntryPointType::Session, bytes)),
-            1 => Ok((EntryPointType::Contract, bytes)),
-            _ => Err(bytesrepr::Error::Formatting),
-        }
+        let entry_point_type =
+            EntryPointType::from_u8(value).ok_or(bytesrepr::Error::Formatting)?;
+        Ok((entry_point_type, bytes))
     }
 }
 
-/// Default name for an entry point
+/// Default name for an entry point.
 pub const DEFAULT_ENTRY_POINT_NAME: &str = "call";
 
-/// Default name for an installer entry point
-pub const ENTRY_POINT_NAME_INSTALL: &str = "install";
+/// Name for an installer entry point.
+pub const INSTALL_ENTRY_POINT_NAME: &str = "install";
 
-/// Default name for an upgrade entry point
+/// Name for an upgrade entry point.
 pub const UPGRADE_ENTRY_POINT_NAME: &str = "upgrade";
 
 /// Collection of entry point parameters.
@@ -1151,14 +1187,9 @@ impl Default for EntryPoint {
 
 impl ToBytes for EntryPoint {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        result.append(&mut self.name.to_bytes()?);
-        result.append(&mut self.args.to_bytes()?);
-        self.ret.append_bytes(&mut result)?;
-        result.append(&mut self.access.to_bytes()?);
-        result.append(&mut self.entry_point_type.to_bytes()?);
-
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -1170,11 +1201,11 @@ impl ToBytes for EntryPoint {
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.name().write_bytes(writer)?;
+        self.name.write_bytes(writer)?;
         self.args.write_bytes(writer)?;
         self.ret.append_bytes(writer)?;
-        self.access().write_bytes(writer)?;
-        self.entry_point_type().write_bytes(writer)?;
+        self.access.write_bytes(writer)?;
+        self.entry_point_type.write_bytes(writer)?;
         Ok(())
     }
 }
@@ -1212,10 +1243,13 @@ pub enum EntryPointAccess {
     /// list is empty then this method is not callable from outside the
     /// contract.
     Groups(Vec<Group>),
+    /// Can't be accessed directly but are kept in the derived wasm bytes.
+    Template,
 }
 
 const ENTRYPOINTACCESS_PUBLIC_TAG: u8 = 1;
 const ENTRYPOINTACCESS_GROUPS_TAG: u8 = 2;
+const ENTRYPOINTACCESS_ABSTRACT_TAG: u8 = 3;
 
 impl EntryPointAccess {
     /// Constructor for access granted to only listed groups.
@@ -1240,6 +1274,9 @@ impl ToBytes for EntryPointAccess {
                 result.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 result.append(&mut groups.to_bytes()?);
             }
+            EntryPointAccess::Template => {
+                result.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
+            }
         }
         Ok(result)
     }
@@ -1248,6 +1285,7 @@ impl ToBytes for EntryPointAccess {
         match self {
             EntryPointAccess::Public => 1,
             EntryPointAccess::Groups(groups) => 1 + groups.serialized_length(),
+            EntryPointAccess::Template => 1,
         }
     }
 
@@ -1259,6 +1297,9 @@ impl ToBytes for EntryPointAccess {
             EntryPointAccess::Groups(groups) => {
                 writer.push(ENTRYPOINTACCESS_GROUPS_TAG);
                 groups.write_bytes(writer)?;
+            }
+            EntryPointAccess::Template => {
+                writer.push(ENTRYPOINTACCESS_ABSTRACT_TAG);
             }
         }
         Ok(())
@@ -1276,6 +1317,7 @@ impl FromBytes for EntryPointAccess {
                 let result = EntryPointAccess::Groups(groups);
                 Ok((result, bytes))
             }
+            ENTRYPOINTACCESS_ABSTRACT_TAG => Ok((EntryPointAccess::Template, bytes)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }

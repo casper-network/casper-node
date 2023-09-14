@@ -1,7 +1,11 @@
 //! Wasm helpers.
-use std::fmt::Write;
+use std::{collections::BTreeSet, fmt::Write};
 
-use parity_wasm::builder;
+use parity_wasm::{
+    builder,
+    elements::{Instruction, Instructions},
+};
+use walrus::Module;
 
 use casper_types::addressable_entity::DEFAULT_ENTRY_POINT_NAME;
 
@@ -13,6 +17,28 @@ pub fn do_nothing_bytes() -> Vec<u8> {
         .signature()
         .build()
         .body()
+        .build()
+        .build()
+        // Export above function
+        .export()
+        .field(DEFAULT_ENTRY_POINT_NAME)
+        .build()
+        // Memory section is mandatory
+        .memory()
+        .build()
+        .build();
+    parity_wasm::serialize(module).expect("should serialize")
+}
+
+/// Creates minimal session code that does only one "nop" opcode
+pub fn do_minimum_bytes() -> Vec<u8> {
+    let module = builder::module()
+        .function()
+        // A signature with 0 params and no return type
+        .signature()
+        .build()
+        .body()
+        .with_instructions(Instructions::new(vec![Instruction::Nop, Instruction::End]))
         .build()
         .build()
         // Export above function
@@ -53,4 +79,14 @@ pub fn make_n_arg_call_bytes(
     );
     let module_bytes = wabt::wat2wasm(wat)?;
     Ok(module_bytes)
+}
+
+/// Returns a set of exports for a given wasm module bytes
+pub fn get_wasm_exports(module_bytes: &[u8]) -> BTreeSet<String> {
+    let module = Module::from_buffer(module_bytes).expect("should have walid wasm bytes");
+    module
+        .exports
+        .iter()
+        .map(|export| export.name.clone())
+        .collect()
 }

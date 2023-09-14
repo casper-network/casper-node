@@ -10,11 +10,7 @@ mod weight;
 use serde::{Deserialize, Serialize};
 
 use alloc::{collections::BTreeSet, vec::Vec};
-use core::{
-    convert::TryFrom,
-    fmt::{self, Debug, Display, Formatter},
-    iter,
-};
+use core::iter;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -28,12 +24,14 @@ pub use self::{
     action_thresholds::ActionThresholds,
     action_type::ActionType,
     associated_keys::AssociatedKeys,
-    error::{FromStrError, SetThresholdFailure, TryFromIntError, TryFromSliceForAccountHashError},
-    weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
+    error::FromStrError,
+    weight::Weight,
 };
 
 use crate::{
-    addressable_entity::NamedKeys,
+    addressable_entity::{
+        AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
+    },
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, AccessRights, ContextAccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
 };
@@ -61,149 +59,6 @@ static ACCOUNT: Lazy<Account> = Lazy::new(|| {
         action_thresholds,
     }
 });
-
-/// Errors that can occur while adding a new [`AccountHash`] to an account's associated keys map.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum AddKeyFailure {
-    /// There are already maximum [`AccountHash`]s associated with the given account.
-    MaxKeysLimit = 1,
-    /// The given [`AccountHash`] is already associated with the given account.
-    DuplicateKey = 2,
-    /// Caller doesn't have sufficient permissions to associate a new [`AccountHash`] with the
-    /// given account.
-    PermissionDenied = 3,
-}
-
-impl Display for AddKeyFailure {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            AddKeyFailure::MaxKeysLimit => formatter.write_str(
-                "Unable to add new associated key because maximum amount of keys is reached",
-            ),
-            AddKeyFailure::DuplicateKey => formatter
-                .write_str("Unable to add new associated key because given key already exists"),
-            AddKeyFailure::PermissionDenied => formatter
-                .write_str("Unable to add new associated key due to insufficient permissions"),
-        }
-    }
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<i32> for AddKeyFailure {
-    type Error = TryFromIntError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            d if d == AddKeyFailure::MaxKeysLimit as i32 => Ok(AddKeyFailure::MaxKeysLimit),
-            d if d == AddKeyFailure::DuplicateKey as i32 => Ok(AddKeyFailure::DuplicateKey),
-            d if d == AddKeyFailure::PermissionDenied as i32 => Ok(AddKeyFailure::PermissionDenied),
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
-
-/// Errors that can occur while removing a [`AccountHash`] from an account's associated keys map.
-#[derive(Debug, Eq, PartialEq, Copy, Clone)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum RemoveKeyFailure {
-    /// The given [`AccountHash`] is not associated with the given account.
-    MissingKey = 1,
-    /// Caller doesn't have sufficient permissions to remove an associated [`AccountHash`] from the
-    /// given account.
-    PermissionDenied = 2,
-    /// Removing the given associated [`AccountHash`] would cause the total weight of all remaining
-    /// `AccountHash`s to fall below one of the action thresholds for the given account.
-    ThresholdViolation = 3,
-}
-
-impl Display for RemoveKeyFailure {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            RemoveKeyFailure::MissingKey => {
-                formatter.write_str("Unable to remove a key that does not exist")
-            }
-            RemoveKeyFailure::PermissionDenied => formatter
-                .write_str("Unable to remove associated key due to insufficient permissions"),
-            RemoveKeyFailure::ThresholdViolation => formatter.write_str(
-                "Unable to remove a key which would violate action threshold constraints",
-            ),
-        }
-    }
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<i32> for RemoveKeyFailure {
-    type Error = TryFromIntError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            d if d == RemoveKeyFailure::MissingKey as i32 => Ok(RemoveKeyFailure::MissingKey),
-            d if d == RemoveKeyFailure::PermissionDenied as i32 => {
-                Ok(RemoveKeyFailure::PermissionDenied)
-            }
-            d if d == RemoveKeyFailure::ThresholdViolation as i32 => {
-                Ok(RemoveKeyFailure::ThresholdViolation)
-            }
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
-
-/// Errors that can occur while updating the [`Weight`] of a [`AccountHash`] in an account's
-/// associated keys map.
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-#[repr(i32)]
-#[non_exhaustive]
-pub enum UpdateKeyFailure {
-    /// The given [`AccountHash`] is not associated with the given account.
-    MissingKey = 1,
-    /// Caller doesn't have sufficient permissions to update an associated [`AccountHash`] from the
-    /// given account.
-    PermissionDenied = 2,
-    /// Updating the [`Weight`] of the given associated [`AccountHash`] would cause the total
-    /// weight of all `AccountHash`s to fall below one of the action thresholds for the given
-    /// account.
-    ThresholdViolation = 3,
-}
-
-impl Display for UpdateKeyFailure {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        match self {
-            UpdateKeyFailure::MissingKey => formatter.write_str(
-                "Unable to update the value under an associated key that does not exist",
-            ),
-            UpdateKeyFailure::PermissionDenied => formatter
-                .write_str("Unable to update associated key due to insufficient permissions"),
-            UpdateKeyFailure::ThresholdViolation => formatter.write_str(
-                "Unable to update weight that would fall below any of action thresholds",
-            ),
-        }
-    }
-}
-
-// This conversion is not intended to be used by third party crates.
-#[doc(hidden)]
-impl TryFrom<i32> for UpdateKeyFailure {
-    type Error = TryFromIntError;
-
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            d if d == UpdateKeyFailure::MissingKey as i32 => Ok(UpdateKeyFailure::MissingKey),
-            d if d == UpdateKeyFailure::PermissionDenied as i32 => {
-                Ok(UpdateKeyFailure::PermissionDenied)
-            }
-            d if d == UpdateKeyFailure::ThresholdViolation as i32 => {
-                Ok(UpdateKeyFailure::ThresholdViolation)
-            }
-            _ => Err(TryFromIntError(())),
-        }
-    }
-}
 
 /// Represents an Account in the global state.
 #[derive(PartialEq, Eq, Clone, Serialize, Deserialize, Debug)]
@@ -243,6 +98,7 @@ impl Account {
     /// [`ActionThresholds`].
     pub fn create(account: AccountHash, named_keys: NamedKeys, main_purse: URef) -> Self {
         let associated_keys = AssociatedKeys::new(account, Weight::new(1));
+
         let action_thresholds: ActionThresholds = Default::default();
         Account::new(
             account,
@@ -377,7 +233,7 @@ impl Account {
         self.associated_keys.update_key(account_hash, weight)
     }
 
-    /// Sets new action threshold for a given action type for the account.
+    /// Sets a new action threshold for a given action type for the account.
     ///
     /// Returns an error if the new action threshold weight is greater than the total weight of the
     /// account's associated keys.
@@ -502,12 +358,11 @@ pub mod gens {
     use proptest::prelude::*;
 
     use crate::{
-        account::{
-            action_thresholds::gens::account_action_thresholds_arb,
-            associated_keys::gens::account_associated_keys_arb, Account, Weight,
-        },
+        account::{associated_keys::gens::account_associated_keys_arb, Account, Weight},
         gens::{account_hash_arb, named_keys_arb, uref_arb},
     };
+
+    use super::action_thresholds::gens::account_action_thresholds_arb;
 
     prop_compose! {
         pub fn account_arb()(
@@ -534,9 +389,9 @@ mod tests {
     use crate::{
         account::{
             Account, AccountHash, ActionThresholds, ActionType, AssociatedKeys, RemoveKeyFailure,
-            SetThresholdFailure, UpdateKeyFailure, Weight,
+            UpdateKeyFailure, Weight,
         },
-        addressable_entity::NamedKeys,
+        addressable_entity::{NamedKeys, TryFromIntError},
         AccessRights, URef,
     };
     use std::{collections::BTreeSet, convert::TryFrom, iter::FromIterator, vec::Vec};

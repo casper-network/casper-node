@@ -3,11 +3,12 @@ use casper_types::{
     account::AccountHash,
     bytesrepr::{FromBytes, ToBytes},
     system::{mint::Error, CallStackElement},
-    CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
+    AddressableEntity, CLTyped, CLValue, Key, Phase, StoredValue, URef, U512,
 };
 
 use super::Runtime;
 use crate::{
+    engine_state::SystemContractRegistry,
     execution,
     system::mint::{
         runtime_provider::RuntimeProvider, storage_provider::StorageProvider,
@@ -66,6 +67,30 @@ where
 
     fn get_main_purse(&self) -> URef {
         self.context.entity().main_purse()
+    }
+
+    fn is_administrator(&self, account_hash: &AccountHash) -> bool {
+        self.context.engine_config().is_administrator(account_hash)
+    }
+
+    fn allow_unrestricted_transfers(&self) -> bool {
+        self.context.engine_config().allow_unrestricted_transfers()
+    }
+
+    fn get_system_contract_registry(&self) -> Result<SystemContractRegistry, execution::Error> {
+        self.context.system_contract_registry()
+    }
+
+    fn is_called_from_standard_payment(&self) -> bool {
+        self.context.phase() == Phase::Payment && self.module.is_none()
+    }
+
+    fn read_addressable_entity_by_account_hash(
+        &mut self,
+        account_hash: AccountHash,
+    ) -> Result<Option<AddressableEntity>, execution::Error> {
+        self.context
+            .read_addressable_entity_by_account_hash(account_hash)
     }
 }
 
