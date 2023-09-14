@@ -14,6 +14,8 @@ use schemars::JsonSchema;
 use serde::{de, ser, Deserialize, Deserializer, Serialize, Serializer};
 use serde_bytes::ByteBuf;
 
+use crate::contract_wasm::ContractWasm;
+use crate::contracts::ContractPackage;
 use crate::{
     account::Account,
     bytesrepr::{self, Error, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
@@ -29,9 +31,9 @@ pub use type_mismatch::TypeMismatch;
 enum Tag {
     CLValue = 0,
     Account = 1,
-    ByteCode = 2,
+    ContractWasm = 2,
     Contract = 3,
-    Package = 4,
+    ContractPackage = 4,
     Transfer = 5,
     DeployInfo = 6,
     EraInfo = 7,
@@ -40,6 +42,8 @@ enum Tag {
     Unbonding = 10,
     AddressableEntity = 11,
     BidKind = 12,
+    Package = 13,
+    ByteCode = 14,
 }
 
 /// A value stored in Global State.
@@ -56,12 +60,12 @@ pub enum StoredValue {
     CLValue(CLValue),
     /// An account.
     Account(Account),
-    /// A record of byte code.
-    ByteCode(ByteCode),
+    /// Contract wasm.
+    ContractWasm(ContractWasm),
     /// A contract.
     Contract(Contract),
-    /// A `Package`.
-    Package(Package),
+    /// A contract package.
+    ContractPackage(ContractPackage),
     /// A `Transfer`.
     Transfer(Transfer),
     /// Info about a deploy.
@@ -78,6 +82,10 @@ pub enum StoredValue {
     AddressableEntity(AddressableEntity),
     /// Variant that stores [`BidKind`].
     BidKind(BidKind),
+    /// A `Package`.
+    Package(Package),
+    /// A record of byte code.
+    ByteCode(ByteCode),
 }
 
 impl StoredValue {
@@ -168,9 +176,9 @@ impl StoredValue {
         match self {
             StoredValue::CLValue(cl_value) => format!("{:?}", cl_value.cl_type()),
             StoredValue::Account(_) => "Account".to_string(),
-            StoredValue::ByteCode(_) => "ByteCode".to_string(),
+            StoredValue::ContractWasm(_) => "ContractWasm".to_string(),
             StoredValue::Contract(_) => "Contract".to_string(),
-            StoredValue::Package(_) => "Package".to_string(),
+            StoredValue::ContractPackage(_) => "ContractPackage".to_string(),
             StoredValue::Transfer(_) => "Transfer".to_string(),
             StoredValue::DeployInfo(_) => "DeployInfo".to_string(),
             StoredValue::EraInfo(_) => "EraInfo".to_string(),
@@ -179,6 +187,8 @@ impl StoredValue {
             StoredValue::Unbonding(_) => "Unbonding".to_string(),
             StoredValue::AddressableEntity(_) => "AddressableEntity".to_string(),
             StoredValue::BidKind(_) => "BidKind".to_string(),
+            StoredValue::ByteCode(_) => "ByteCode".to_string(),
+            StoredValue::Package(_) => "Package".to_string(),
         }
     }
 
@@ -186,9 +196,9 @@ impl StoredValue {
         match self {
             StoredValue::CLValue(_) => Tag::CLValue,
             StoredValue::Account(_) => Tag::Account,
-            StoredValue::ByteCode(_) => Tag::ByteCode,
+            StoredValue::ContractWasm(_) => Tag::ContractWasm,
+            StoredValue::ContractPackage(_) => Tag::ContractPackage,
             StoredValue::Contract(_) => Tag::Contract,
-            StoredValue::Package(_) => Tag::Package,
             StoredValue::Transfer(_) => Tag::Transfer,
             StoredValue::DeployInfo(_) => Tag::DeployInfo,
             StoredValue::EraInfo(_) => Tag::EraInfo,
@@ -197,6 +207,8 @@ impl StoredValue {
             StoredValue::Unbonding(_) => Tag::Unbonding,
             StoredValue::AddressableEntity(_) => Tag::AddressableEntity,
             StoredValue::BidKind(_) => Tag::BidKind,
+            StoredValue::Package(_) => Tag::Package,
+            StoredValue::ByteCode(_) => Tag::ByteCode,
         }
     }
 
@@ -228,9 +240,15 @@ impl From<Account> for StoredValue {
     }
 }
 
-impl From<ByteCode> for StoredValue {
-    fn from(value: ByteCode) -> StoredValue {
-        StoredValue::ByteCode(value)
+impl From<ContractWasm> for StoredValue {
+    fn from(value: ContractWasm) -> Self {
+        StoredValue::ContractWasm(value)
+    }
+}
+
+impl From<ContractPackage> for StoredValue {
+    fn from(value: ContractPackage) -> Self {
+        StoredValue::ContractPackage(value)
     }
 }
 
@@ -260,6 +278,12 @@ impl From<Bid> for StoredValue {
 impl From<BidKind> for StoredValue {
     fn from(bid_kind: BidKind) -> StoredValue {
         StoredValue::BidKind(bid_kind)
+    }
+}
+
+impl From<ByteCode> for StoredValue {
+    fn from(value: ByteCode) -> StoredValue {
+        StoredValue::ByteCode(value)
     }
 }
 
@@ -300,6 +324,20 @@ impl TryFrom<StoredValue> for ByteCode {
             _ => Err(TypeMismatch::new(
                 "ByteCode".to_string(),
                 stored_value.type_name(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<StoredValue> for ContractPackage {
+    type Error = TypeMismatch;
+
+    fn try_from(value: StoredValue) -> Result<Self, Self::Error> {
+        match value {
+            StoredValue::ContractPackage(contract_package) => Ok(contract_package),
+            _ => Err(TypeMismatch::new(
+                "ContractPackage".to_string(),
+                value.type_name(),
             )),
         }
     }
@@ -417,9 +455,11 @@ impl ToBytes for StoredValue {
             + match self {
                 StoredValue::CLValue(cl_value) => cl_value.serialized_length(),
                 StoredValue::Account(account) => account.serialized_length(),
-                StoredValue::ByteCode(contract_wasm) => contract_wasm.serialized_length(),
+                StoredValue::ContractWasm(contract_wasm) => contract_wasm.serialized_length(),
                 StoredValue::Contract(contract_header) => contract_header.serialized_length(),
-                StoredValue::Package(contract_package) => contract_package.serialized_length(),
+                StoredValue::ContractPackage(contract_package) => {
+                    contract_package.serialized_length()
+                }
                 StoredValue::Transfer(transfer) => transfer.serialized_length(),
                 StoredValue::DeployInfo(deploy_info) => deploy_info.serialized_length(),
                 StoredValue::EraInfo(era_info) => era_info.serialized_length(),
@@ -428,6 +468,8 @@ impl ToBytes for StoredValue {
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
                 StoredValue::AddressableEntity(entity) => entity.serialized_length(),
                 StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
+                StoredValue::Package(package) => package.serialized_length(),
+                StoredValue::ByteCode(byte_code) => byte_code.serialized_length(),
             }
     }
 
@@ -436,9 +478,11 @@ impl ToBytes for StoredValue {
         match self {
             StoredValue::CLValue(cl_value) => cl_value.write_bytes(writer)?,
             StoredValue::Account(account) => account.write_bytes(writer)?,
-            StoredValue::ByteCode(contract_wasm) => contract_wasm.write_bytes(writer)?,
+            StoredValue::ContractWasm(contract_wasm) => contract_wasm.write_bytes(writer)?,
             StoredValue::Contract(contract_header) => contract_header.write_bytes(writer)?,
-            StoredValue::Package(contract_package) => contract_package.write_bytes(writer)?,
+            StoredValue::ContractPackage(contract_package) => {
+                contract_package.write_bytes(writer)?
+            }
             StoredValue::Transfer(transfer) => transfer.write_bytes(writer)?,
             StoredValue::DeployInfo(deploy_info) => deploy_info.write_bytes(writer)?,
             StoredValue::EraInfo(era_info) => era_info.write_bytes(writer)?,
@@ -447,6 +491,8 @@ impl ToBytes for StoredValue {
             StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::AddressableEntity(entity) => entity.write_bytes(writer)?,
             StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer)?,
+            StoredValue::Package(package) => package.write_bytes(writer)?,
+            StoredValue::ByteCode(byte_code) => byte_code.write_bytes(writer)?,
         };
         Ok(())
     }
@@ -460,14 +506,14 @@ impl FromBytes for StoredValue {
                 .map(|(cl_value, remainder)| (StoredValue::CLValue(cl_value), remainder)),
             tag if tag == Tag::Account as u8 => Account::from_bytes(remainder)
                 .map(|(account, remainder)| (StoredValue::Account(account), remainder)),
-            tag if tag == Tag::ByteCode as u8 => {
-                ByteCode::from_bytes(remainder).map(|(contract_wasm, remainder)| {
-                    (StoredValue::ByteCode(contract_wasm), remainder)
+            tag if tag == Tag::ContractWasm as u8 => {
+                ContractWasm::from_bytes(remainder).map(|(contract_wasm, remainder)| {
+                    (StoredValue::ContractWasm(contract_wasm), remainder)
                 })
             }
-            tag if tag == Tag::Package as u8 => {
-                Package::from_bytes(remainder).map(|(contract_package, remainder)| {
-                    (StoredValue::Package(contract_package), remainder)
+            tag if tag == Tag::ContractPackage as u8 => {
+                ContractPackage::from_bytes(remainder).map(|(contract_package, remainder)| {
+                    (StoredValue::ContractPackage(contract_package), remainder)
                 })
             }
             tag if tag == Tag::Contract as u8 => Contract::from_bytes(remainder)
@@ -494,6 +540,10 @@ impl FromBytes for StoredValue {
             }
             tag if tag == Tag::AddressableEntity as u8 => AddressableEntity::from_bytes(remainder)
                 .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
+            tag if tag == Tag::Package as u8 => Package::from_bytes(remainder)
+                .map(|(package, remainder)| (StoredValue::Package(package), remainder)),
+            tag if tag == Tag::ByteCode as u8 => ByteCode::from_bytes(remainder)
+                .map(|(byte_code, remainder)| (StoredValue::ByteCode(byte_code), remainder)),
             _ => Err(Error::Formatting),
         }
     }
@@ -508,12 +558,11 @@ mod serde_helpers {
         CLValue(&'a CLValue),
         /// An account.
         Account(&'a Account),
-        /// A record of byte code.
-        ByteCode(&'a ByteCode),
+        ContractWasm(&'a ContractWasm),
         /// A contract.
         Contract(&'a Contract),
         /// A `Package`.
-        ContractPackage(&'a Package),
+        ContractPackage(&'a ContractPackage),
         /// A `Transfer`.
         Transfer(&'a Transfer),
         /// Info about a deploy.
@@ -530,6 +579,10 @@ mod serde_helpers {
         AddressableEntity(&'a AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(&'a BidKind),
+        /// Package.
+        Package(&'a Package),
+        /// A record of byte code.
+        ByteCode(&'a ByteCode),
     }
 
     #[derive(Deserialize)]
@@ -538,12 +591,12 @@ mod serde_helpers {
         CLValue(CLValue),
         /// An account.
         Account(Account),
-        /// A record of byte code.
-        ByteCode(ByteCode),
+        /// A contract wasm.
+        ContractWasm(ContractWasm),
         /// A contract.
         Contract(Contract),
         /// A `Package`.
-        ContractPackage(Package),
+        ContractPackage(ContractPackage),
         /// A `Transfer`.
         Transfer(Transfer),
         /// Info about a deploy.
@@ -560,6 +613,10 @@ mod serde_helpers {
         AddressableEntity(AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(BidKind),
+        /// A record of a Package.
+        Package(Package),
+        /// A record of byte code.
+        ByteCode(ByteCode),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -567,9 +624,9 @@ mod serde_helpers {
             match stored_value {
                 StoredValue::CLValue(payload) => BinarySerHelper::CLValue(payload),
                 StoredValue::Account(payload) => BinarySerHelper::Account(payload),
-                StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
+                StoredValue::ContractWasm(payload) => BinarySerHelper::ContractWasm(payload),
                 StoredValue::Contract(payload) => BinarySerHelper::Contract(payload),
-                StoredValue::Package(payload) => BinarySerHelper::ContractPackage(payload),
+                StoredValue::ContractPackage(payload) => BinarySerHelper::ContractPackage(payload),
                 StoredValue::Transfer(payload) => BinarySerHelper::Transfer(payload),
                 StoredValue::DeployInfo(payload) => BinarySerHelper::DeployInfo(payload),
                 StoredValue::EraInfo(payload) => BinarySerHelper::EraInfo(payload),
@@ -580,6 +637,8 @@ mod serde_helpers {
                     BinarySerHelper::AddressableEntity(payload)
                 }
                 StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
+                StoredValue::Package(payload) => BinarySerHelper::Package(payload),
+                StoredValue::ByteCode(payload) => BinarySerHelper::ByteCode(payload),
             }
         }
     }
@@ -589,9 +648,11 @@ mod serde_helpers {
             match helper {
                 BinaryDeserHelper::CLValue(payload) => StoredValue::CLValue(payload),
                 BinaryDeserHelper::Account(payload) => StoredValue::Account(payload),
-                BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
+                BinaryDeserHelper::ContractWasm(payload) => StoredValue::ContractWasm(payload),
                 BinaryDeserHelper::Contract(payload) => StoredValue::Contract(payload),
-                BinaryDeserHelper::ContractPackage(payload) => StoredValue::Package(payload),
+                BinaryDeserHelper::ContractPackage(payload) => {
+                    StoredValue::ContractPackage(payload)
+                }
                 BinaryDeserHelper::Transfer(payload) => StoredValue::Transfer(payload),
                 BinaryDeserHelper::DeployInfo(payload) => StoredValue::DeployInfo(payload),
                 BinaryDeserHelper::EraInfo(payload) => StoredValue::EraInfo(payload),
@@ -602,6 +663,8 @@ mod serde_helpers {
                     StoredValue::AddressableEntity(payload)
                 }
                 BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
+                BinaryDeserHelper::ByteCode(payload) => StoredValue::ByteCode(payload),
+                BinaryDeserHelper::Package(payload) => StoredValue::Package(payload),
             }
         }
     }

@@ -25,7 +25,7 @@ use casper_types::{
     execution::Effects,
     package::PackageKind,
     system::auction::{BidKind, EraInfo},
-    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
     ContextAccessRights, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
     Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
     TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
@@ -224,7 +224,7 @@ where
     }
 
     /// Helper function to avoid duplication in `remove_uref`.
-    fn remove_key_from_contract(
+    fn remove_key_from_entity(
         &mut self,
         key: Key,
         mut contract: AddressableEntity,
@@ -254,10 +254,10 @@ where
                     (contract, contract_key)
                 };
                 self.named_keys.remove(name);
-                self.remove_key_from_contract(contract_key, contract, name)
+                self.remove_key_from_entity(contract_key, contract, name)
             }
             contract_uref @ Key::URef(_) => {
-                let contract: AddressableEntity = {
+                let entity: AddressableEntity = {
                     let value: StoredValue = self
                         .tracking_copy
                         .borrow_mut()
@@ -269,12 +269,12 @@ where
                 };
 
                 self.named_keys.remove(name);
-                self.remove_key_from_contract(contract_uref, contract, name)
+                self.remove_key_from_entity(contract_uref, entity, name)
             }
-            contract_hash @ Key::Hash(_) => {
-                let contract: AddressableEntity = self.read_gs_typed(&contract_hash)?;
+            entity_hash @ Key::AddressableEntity(_) => {
+                let entity: AddressableEntity = self.read_gs_typed(&entity_hash)?;
                 self.named_keys.remove(name);
-                self.remove_key_from_contract(contract_hash, contract, name)
+                self.remove_key_from_entity(entity_hash, entity, name)
             }
             transfer_addr @ Key::Transfer(_) => {
                 let _transfer: Transfer = self.read_gs_typed(&transfer_addr)?;
@@ -318,6 +318,10 @@ where
                 self.named_keys.remove(name);
                 Ok(())
             }
+            Key::Hash(_) => {
+                self.named_keys.remove(name);
+                Ok(())
+            }
             Key::SystemContractRegistry => {
                 error!("should not remove the system contract registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
@@ -332,6 +336,16 @@ where
             }
             bid_key @ Key::BidAddr(_) => {
                 let _bid_kind: BidKind = self.read_gs_typed(&bid_key)?;
+                self.named_keys.remove(name);
+                Ok(())
+            }
+            package_key @ Key::Package(_) => {
+                let _package: Package = self.read_gs_typed(&package_key)?;
+                self.named_keys.remove(name);
+                Ok(())
+            }
+            byte_code_key @ Key::ByteCode(_) => {
+                let _byte_code: ByteCode = self.read_gs_typed(&byte_code_key)?;
                 self.named_keys.remove(name);
                 Ok(())
             }
@@ -721,6 +735,8 @@ where
             StoredValue::BidKind(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
             StoredValue::Unbonding(_) => Ok(()),
+            StoredValue::ContractPackage(_) => Ok(()),
+            StoredValue::ContractWasm(_) => Ok(()),
         }
     }
 
@@ -799,7 +815,10 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => true,
+            | Key::BidAddr(_)
+            | Key::Package(_)
+            | Key::AddressableEntity(_)
+            | Key::ByteCode(_) => true,
         }
     }
 
@@ -821,7 +840,10 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => false,
+            | Key::BidAddr(_)
+            | Key::Package(_)
+            | Key::AddressableEntity(_)
+            | Key::ByteCode(_) => false,
         }
     }
 
@@ -843,7 +865,10 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => false,
+            | Key::BidAddr(_)
+            | Key::Package(_)
+            | Key::AddressableEntity(_)
+            | Key::ByteCode(_) => false,
         }
     }
 

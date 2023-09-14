@@ -1,5 +1,5 @@
 //! Module containing the Package and associated types for addressable entities.
-use alloc::collections::btree_map::OccupiedEntry;
+
 use alloc::{
     collections::{BTreeMap, BTreeSet},
     format,
@@ -13,7 +13,8 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
-use itertools::Itertools;
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
@@ -227,9 +228,10 @@ impl EntityVersions {
         self.0.get(key)
     }
 
+    /// Retrieve the first entity version key if it exists
     pub fn maybe_first(&mut self) -> Option<(EntityVersionKey, AddressableEntityHash)> {
         if let Some((entity_version_key, entity_hash)) = self.0.iter().next() {
-            Some((entity_version_key.clone(), entity_hash.clone()))
+            Some((*entity_version_key, *entity_hash))
         } else {
             None
         }
@@ -619,7 +621,9 @@ impl FromBytes for PackageStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 /// The type of Package.
@@ -629,10 +633,8 @@ pub enum PackageKind {
     /// Package associated with an Account hash.
     Account(AccountHash),
     /// Packages associated with Wasm stored on chain.
-    SmartContract,
-    /// Packages from the previous format.
     #[default]
-    Legacy,
+    SmartContract,
 }
 
 impl PackageKind {
@@ -640,7 +642,7 @@ impl PackageKind {
     pub fn maybe_account_hash(&self) -> Option<AccountHash> {
         match self {
             Self::Account(account_hash) => Some(*account_hash),
-            Self::SmartContract | Self::System(_) | Self::Legacy => None,
+            Self::SmartContract | Self::System(_) => None,
         }
     }
 
@@ -648,7 +650,7 @@ impl PackageKind {
     pub fn associated_keys(&self) -> AssociatedKeys {
         match self {
             Self::Account(account_hash) => AssociatedKeys::new(*account_hash, Weight::new(1)),
-            Self::SmartContract | Self::System(_) | Self::Legacy => AssociatedKeys::default(),
+            Self::SmartContract | Self::System(_) => AssociatedKeys::default(),
         }
     }
 
@@ -691,7 +693,7 @@ impl ToBytes for PackageKind {
     fn serialized_length(&self) -> usize {
         U8_SERIALIZED_LENGTH
             + match self {
-                PackageKind::SmartContract | PackageKind::Legacy => 0,
+                PackageKind::SmartContract => 0,
                 PackageKind::System(system_entity_type) => system_entity_type.serialized_length(),
                 PackageKind::Account(account_hash) => account_hash.serialized_length(),
             }
@@ -708,7 +710,6 @@ impl ToBytes for PackageKind {
                 PACKAGE_KIND_ACCOUNT_TAG.write_bytes(writer)?;
                 account_hash.write_bytes(writer)
             }
-            PackageKind::Legacy => PACKAGE_KIND_LEGACY_TAG.write_bytes(writer),
         }
     }
 }
@@ -726,7 +727,6 @@ impl FromBytes for PackageKind {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((PackageKind::Account(account_hash), remainder))
             }
-            PACKAGE_KIND_LEGACY_TAG => Ok((PackageKind::Legacy, remainder)),
             _ => Err(bytesrepr::Error::Formatting),
         }
     }
@@ -744,9 +744,18 @@ impl Display for PackageKind {
             PackageKind::Account(account_hash) => {
                 write!(f, "PackageKind:Account({})", account_hash)
             }
-            PackageKind::Legacy => {
-                write!(f, "PackageKind:Legacy")
-            }
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<PackageKind> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PackageKind {
+        match rng.gen_range(0..=2) {
+            0 => PackageKind::System(rng.gen()),
+            1 => PackageKind::Account(rng.gen()),
+            2 => PackageKind::SmartContract,
+            _ => unreachable!(),
         }
     }
 }
@@ -986,12 +995,14 @@ impl Package {
 
     /// Returns the kind of Package.
     pub fn get_package_kind(&self) -> PackageKind {
-        self.package_kind.clone()
+        self.package_kind
     }
 
-    /// Returns whether the entity package is of the legacy format.
-    pub fn is_legacy(&self) -> bool {
-        matches!(self.package_kind, PackageKind::Legacy)
+    pub fn is_account_kind(&self) -> bool {
+        match self.package_kind {
+            PackageKind::Account(_) => true,
+            _ => false,
+        }
     }
 
     /// Update the entity package kind.

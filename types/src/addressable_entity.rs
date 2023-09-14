@@ -229,14 +229,6 @@ pub struct AddressableEntityHash(
     #[cfg_attr(feature = "json-schema", schemars(skip, with = "String"))] HashAddr,
 );
 
-pub type EntityHash = HashAddr;
-
-impl FromBytes for EntityHash {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        todo!()
-    }
-}
-
 impl AddressableEntityHash {
     /// Constructs a new `AddressableEntityHash` from the raw bytes of the contract hash.
     pub const fn new(value: HashAddr) -> AddressableEntityHash {
@@ -270,12 +262,6 @@ impl AddressableEntityHash {
             .ok_or(FromStrError::InvalidPrefix)?;
         let bytes = HashAddr::try_from(checksummed_hex::decode(remainder)?.as_ref())?;
         Ok(AddressableEntityHash(bytes))
-    }
-
-    /// Parses a string formatted as per the legacy contract formatted string
-    pub fn from_formatted_contract_str(input: &str) -> Result<Self, FromStrError> {
-        let legacy_contract_hash = ContractHash::from_formatted_str(input)?;
-        Ok(AddressableEntityHash::from(legacy_contract_hash))
     }
 }
 
@@ -560,6 +546,15 @@ impl FromBytes for EntryPoints {
     }
 }
 
+impl Default for EntryPoints {
+    fn default() -> Self {
+        let mut entry_points = EntryPoints::new();
+        let entry_point = EntryPoint::default();
+        entry_points.add_entry_point(entry_point);
+        entry_points
+    }
+}
+
 impl EntryPoints {
     /// Constructs a new, empty `EntryPoints`.
     pub const fn new() -> EntryPoints {
@@ -678,7 +673,7 @@ impl AddressableEntity {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         package_hash: PackageHash,
-        contract_wasm_hash: ByteCodeHash,
+        byte_code_hash: ByteCodeHash,
         named_keys: NamedKeys,
         entry_points: EntryPoints,
         protocol_version: ProtocolVersion,
@@ -688,7 +683,7 @@ impl AddressableEntity {
     ) -> Self {
         AddressableEntity {
             package_hash,
-            byte_code_hash: contract_wasm_hash,
+            byte_code_hash,
             named_keys,
             entry_points,
             protocol_version,
@@ -1033,8 +1028,8 @@ impl Default for AddressableEntity {
 impl From<Contract> for AddressableEntity {
     fn from(value: Contract) -> Self {
         AddressableEntity::new(
-            value.contract_package_hash(),
-            value.contract_wasm_hash(),
+            PackageHash::new(value.contract_package_hash().value()),
+            ByteCodeHash::new(value.contract_wasm_hash().value()),
             value.named_keys().clone(),
             value.entry_points().clone(),
             value.protocol_version(),

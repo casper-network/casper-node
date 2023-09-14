@@ -14,10 +14,10 @@ use casper_types::{
         Bid, BidAddr, BidKind, Delegator, EraInfo, SeigniorageAllocation, UnbondingPurse,
         ValidatorBid, WithdrawPurse,
     },
-    AccessRights, AddressableEntityHash, ByteCode, ByteCodeHash, CLType, CLTyped, CLValue,
-    DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, Transfer, TransferAddr, URef, U512,
+    AccessRights, AddressableEntityHash, ByteCode, ByteCodeHash, ByteCodeKind, CLType, CLTyped,
+    CLValue, DeployHash, DeployInfo, EntityVersionKey, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, EraId, Group, Key, PackageHash, Parameter, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, Transfer, TransferAddr, URef, U512,
 };
 use casper_validation::{
     abi::{ABIFixture, ABITestCase},
@@ -332,7 +332,7 @@ pub fn make_abi_test_fixtures() -> Result<TestFixtures, Error> {
             ABITestCase::from_inputs(vec![StoredValue::Account(account).into()])?,
         );
 
-        let byte_code = ByteCode::new(DO_NOTHING_BYTES.to_vec());
+        let byte_code = ByteCode::new(ByteCodeKind::V1CasperWasm, DO_NOTHING_BYTES.to_vec());
 
         stored_value.insert(
             "ByteCode".to_string(),

@@ -29,11 +29,14 @@ use rand::{
 use schemars::JsonSchema;
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
+use crate::contract_wasm::ContractWasmHash;
+use crate::contracts::{ContractHash, ContractPackageHash};
+use crate::package::PackageKind;
 use crate::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity,
     addressable_entity::AddressableEntityHash,
-    byte_code::ByteCodeHash,
+    byte_code::{ByteCodeHash, ByteCodeKind},
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
     package::PackageHash,
@@ -56,6 +59,9 @@ const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
+const PACKAGE_ADDR_PREFIX: &str = "package-";
+const ENTITY_ADDR_PREFIX: &str = "addressable-entity-";
+const BYTE_CODE_ADDR_PREFIX: &str = "byte-code-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -69,6 +75,8 @@ pub const KEY_DEPLOY_INFO_LENGTH: usize = DeployHash::LENGTH;
 pub const KEY_DICTIONARY_LENGTH: usize = 32;
 /// The maximum length for a `dictionary_item_key`.
 pub const DICTIONARY_ITEM_KEY_MAX_LENGTH: usize = 128;
+/// The maximum length for an `Addr`.
+pub const ADDR_LENGTH: usize = 32;
 const PADDING_BYTES: [u8; 32] = [0u8; 32];
 const KEY_ID_SERIALIZED_LENGTH: usize = 1;
 const BID_TAG_SERIALIZED_LENGTH: usize = 1;
@@ -94,14 +102,21 @@ const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_PACKAGE_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + 32;
 
 const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH;
 
 /// An alias for [`Key`]s hash variant.
 pub type HashAddr = [u8; KEY_HASH_LENGTH];
 
-pub type PackageAddr = [u8; 32];
-pub type PackageAddr = [u8; 32];
+/// An alias for [`Key`]s package variant.
+pub type PackageAddr = [u8; ADDR_LENGTH];
+
+/// An alias for [`Key`]s entity variant.
+pub type EntityAddr = [u8; ADDR_LENGTH];
+
+/// An alias for [`Key`]s byte code variant.
+pub type ByteCodeAddr = [u8; ADDR_LENGTH];
 
 /// An alias for [`Key`]s dictionary variant.
 pub type DictionaryAddr = [u8; KEY_DICTIONARY_LENGTH];
@@ -126,6 +141,9 @@ pub enum KeyTag {
     ChainspecRegistry = 13,
     ChecksumRegistry = 14,
     BidAddr = 15,
+    Package = 16,
+    AddressableEntity = 17,
+    ByteCode = 18,
 }
 
 impl Display for KeyTag {
@@ -147,6 +165,9 @@ impl Display for KeyTag {
             KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
             KeyTag::ChecksumRegistry => write!(f, "ChecksumRegistry"),
             KeyTag::BidAddr => write!(f, "BidAddr"),
+            KeyTag::Package => write!(f, "Package"),
+            KeyTag::AddressableEntity => write!(f, "AddressableEntity"),
+            KeyTag::ByteCode => write!(f, "ByteCode"),
         }
     }
 }
@@ -190,9 +211,12 @@ pub enum Key {
     ChecksumRegistry,
     /// A `Key` under which we store bid information
     BidAddr(BidAddr),
+    /// A `Key` under which we store package information.
     Package(PackageAddr),
-    AddressableEntity((EntityKindTag, EntityAddr)),
-    ByteCode((ByteCodeKindTag, ByteCodeAddr)),
+    /// A `Key` under which we write an addressable entity.
+    AddressableEntity((PackageKind, EntityAddr)),
+    /// A `Key` under which we write a byte code record.
+    ByteCode((ByteCodeKind, ByteCodeAddr)),
 }
 
 #[cfg(feature = "json-schema")]
@@ -249,6 +273,12 @@ pub enum FromStrError {
     ChecksumRegistry(String),
     /// Bid parse error.
     BidAddr(String),
+    /// Package parse error.
+    Package(String),
+    /// Entity parse error.
+    AddressableEntity(String),
+    /// Byte code parse error.
+    ByteCode(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -308,6 +338,13 @@ impl Display for FromStrError {
                 write!(f, "checksum-registry-key from string error: {}", error)
             }
             FromStrError::BidAddr(error) => write!(f, "bid-addr-key from string error: {}", error),
+            FromStrError::Package(error) => write!(f, "package-key from string error: {}", error),
+            FromStrError::AddressableEntity(error) => {
+                write!(f, "addressable-entity-key from string error: {}", error)
+            }
+            FromStrError::ByteCode(error) => {
+                write!(f, "byte-code-key from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -334,6 +371,9 @@ impl Key {
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
             Key::ChecksumRegistry => String::from("Key::ChecksumRegistry"),
             Key::BidAddr(_) => String::from("Key::BidAddr"),
+            Key::Package(_) => String::from("Key::Package"),
+            Key::AddressableEntity(_) => String::from("Key::AddressableEntity"),
+            Key::ByteCode(_) => String::from("Key::ByteCode"),
         }
     }
 
@@ -419,6 +459,27 @@ impl Key {
             }
             Key::BidAddr(bid_addr) => {
                 format!("{}{}", BID_ADDR_PREFIX, bid_addr)
+            }
+            Key::Package(package_addr) => {
+                format!(
+                    "{}{}",
+                    PACKAGE_ADDR_PREFIX,
+                    base16::encode_lower(&package_addr)
+                )
+            }
+            Key::AddressableEntity((_, entity_addr)) => {
+                format!(
+                    "{}{}",
+                    ENTITY_ADDR_PREFIX,
+                    base16::encode_lower(&entity_addr)
+                )
+            }
+            Key::ByteCode((_, byte_code_addr)) => {
+                format!(
+                    "{}{}",
+                    BYTE_CODE_ADDR_PREFIX,
+                    base16::encode_lower(&byte_code_addr)
+                )
             }
         }
     }
@@ -764,6 +825,17 @@ impl Display for Key {
                 )
             }
             Key::BidAddr(bid_addr) => write!(f, "Key::BidAddr({})", bid_addr),
+            Key::Package(package_addr) => {
+                write!(f, "Key::Package({})", base16::encode_lower(package_addr))
+            }
+            Key::AddressableEntity((_, entity_addr)) => write!(
+                f,
+                "Key::AddressableEntity({})",
+                base16::encode_lower(entity_addr)
+            ),
+            Key::ByteCode((_, byte_code_addr)) => {
+                write!(f, "Key::ByteCode({})", base16::encode_lower(byte_code_addr))
+            }
         }
     }
 }
@@ -793,6 +865,9 @@ impl Tagged<KeyTag> for Key {
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
             Key::ChecksumRegistry => KeyTag::ChecksumRegistry,
             Key::BidAddr(_) => KeyTag::BidAddr,
+            Key::Package(_) => KeyTag::Package,
+            Key::AddressableEntity(_) => KeyTag::AddressableEntity,
+            Key::ByteCode(_) => KeyTag::ByteCode,
         }
     }
 }
@@ -829,14 +904,31 @@ impl From<AddressableEntityHash> for Key {
 }
 
 impl From<ByteCodeHash> for Key {
-    fn from(wasm_hash: ByteCodeHash) -> Key {
+    fn from(byte_code_hash: ByteCodeHash) -> Key {
+        Key::Hash(byte_code_hash.value())
+    }
+}
+impl From<PackageHash> for Key {
+    fn from(package_hash: PackageHash) -> Key {
+        Key::Hash(package_hash.value())
+    }
+}
+
+impl From<ContractWasmHash> for Key {
+    fn from(wasm_hash: ContractWasmHash) -> Self {
         Key::Hash(wasm_hash.value())
     }
 }
 
-impl From<PackageHash> for Key {
-    fn from(package_hash: PackageHash) -> Key {
-        Key::Hash(package_hash.value())
+impl From<ContractPackageHash> for Key {
+    fn from(contract_package_hash: ContractPackageHash) -> Self {
+        Key::Hash(contract_package_hash.value())
+    }
+}
+
+impl From<ContractHash> for Key {
+    fn from(contract_hash: ContractHash) -> Self {
+        Key::Hash(contract_hash.value())
     }
 }
 
@@ -872,6 +964,13 @@ impl ToBytes for Key {
                     KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
                 }
             },
+            Key::Package(_) => KEY_PACKAGE_SERIALIZED_LENGTH,
+            Key::AddressableEntity((package_kind, _)) => {
+                package_kind.serialized_length() + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
+            }
+            Key::ByteCode((byte_code_kind, _)) => {
+                byte_code_kind.serialized_length() + KEY_ID_SERIALIZED_LENGTH + ADDR_LENGTH
+            }
         }
     }
 
@@ -901,6 +1000,15 @@ impl ToBytes for Key {
                 }
                 BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
             },
+            Key::Package(package_addr) => package_addr.write_bytes(writer),
+            Key::AddressableEntity((package_kind, entity_addr)) => {
+                package_kind.write_bytes(writer)?;
+                entity_addr.write_bytes(writer)
+            }
+            Key::ByteCode((byte_code_kind, byte_code_addr)) => {
+                byte_code_kind.write_bytes(writer)?;
+                byte_code_addr.write_bytes(writer)
+            }
         }
     }
 }
@@ -999,13 +1107,16 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ChainspecRegistry => unimplemented!(),
         Key::ChecksumRegistry => unimplemented!(),
         Key::BidAddr(_) => unimplemented!(),
+        Key::Package(_) => unimplemented!(),
+        Key::AddressableEntity(_) => unimplemented!(),
+        Key::ByteCode(_) => unimplemented!(),
     }
 }
 
 #[cfg(any(feature = "testing", test))]
 impl Distribution<Key> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Key {
-        match rng.gen_range(0..=14) {
+        match rng.gen_range(0..=18) {
             0 => Key::Account(rng.gen()),
             1 => Key::Hash(rng.gen()),
             2 => Key::URef(rng.gen()),
@@ -1022,6 +1133,9 @@ impl Distribution<Key> for Standard {
             13 => Key::ChainspecRegistry,
             14 => Key::ChecksumRegistry,
             15 => Key::BidAddr(rng.gen()),
+            16 => Key::Package(rng.gen()),
+            17 => Key::AddressableEntity((rng.gen(), rng.gen())),
+            18 => Key::ByteCode((rng.gen(), rng.gen())),
             _ => unreachable!(),
         }
     }
@@ -1049,6 +1163,9 @@ mod serde_helpers {
         ChainspecRegistry,
         ChecksumRegistry,
         BidAddr(&'a BidAddr),
+        Package(&'a PackageAddr),
+        AddressableEntity((&'a PackageKind, &'a EntityAddr)),
+        ByteCode((&'a ByteCodeKind, &'a ByteCodeAddr)),
     }
 
     #[derive(Deserialize)]
@@ -1070,6 +1187,9 @@ mod serde_helpers {
         ChainspecRegistry,
         ChecksumRegistry,
         BidAddr(BidAddr),
+        Package(PackageAddr),
+        AddressableEntity((PackageKind, EntityAddr)),
+        ByteCode((ByteCodeKind, ByteCodeAddr)),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1091,6 +1211,13 @@ mod serde_helpers {
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
                 Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
                 Key::BidAddr(bid_addr) => BinarySerHelper::BidAddr(bid_addr),
+                Key::Package(package_addr) => BinarySerHelper::Package(package_addr),
+                Key::AddressableEntity((package_kind, entity_addr)) => {
+                    BinarySerHelper::AddressableEntity((package_kind, entity_addr))
+                }
+                Key::ByteCode((byte_code_kind, byte_code_addr)) => {
+                    BinarySerHelper::ByteCode((byte_code_kind, byte_code_addr))
+                }
             }
         }
     }
@@ -1114,6 +1241,13 @@ mod serde_helpers {
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
                 BinaryDeserHelper::ChecksumRegistry => Key::ChecksumRegistry,
                 BinaryDeserHelper::BidAddr(bid_addr) => Key::BidAddr(bid_addr),
+                BinaryDeserHelper::Package(package_addr) => Key::Package(package_addr),
+                BinaryDeserHelper::AddressableEntity((package_kind, entity_addr)) => {
+                    Key::AddressableEntity((package_kind, entity_addr))
+                }
+                BinaryDeserHelper::ByteCode((byte_kind, byte_code_addr)) => {
+                    Key::ByteCode((byte_kind, byte_code_addr))
+                }
             }
         }
     }

@@ -628,12 +628,7 @@ where
 
                 let entry_points: EntryPoints =
                     self.t_from_mem(entry_points_ptr, entry_points_size)?;
-                let ret = self.add_session_version(
-                    entry_points,
-                    output_ptr,
-                    output_size as usize,
-                    bytes_written_ptr,
-                )?;
+                let ret = self.add_session_version(entry_points)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
             FunctionIndex::AddContractVersion => {

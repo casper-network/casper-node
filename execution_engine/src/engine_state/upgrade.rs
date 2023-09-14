@@ -10,9 +10,9 @@ use casper_types::{
     execution::Effects,
     package::{EntityVersions, Groups, PackageKind, PackageStatus},
     system::{handle_payment::ACCUMULATION_PURSE_KEY, SystemEntityType},
-    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, CLValue, CLValueError,
-    Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    StoredValue, URef, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeKind, CLValue,
+    CLValueError, Digest, EntryPoints, FeeHandling, Key, Package, PackageHash, Phase,
+    ProtocolVersion, PublicKey, StoredValue, URef, U512,
 };
 
 use crate::{
@@ -161,11 +161,6 @@ where
             ));
         };
 
-        // Update the package kind from legacy to system contract
-        if contract_package.is_legacy() {
-            contract_package.update_package_kind(PackageKind::System(system_contract_type))
-        }
-
         contract_package
             .disable_entity_version(contract_hash)
             .map_err(|_| {
@@ -234,7 +229,7 @@ where
         let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
         let package_hash = PackageHash::new(address_generator.new_hash_address());
 
-        let byte_code = ByteCode::new(vec![]);
+        let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
 
         let account_hash = PublicKey::System.to_account_hash();
         let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));

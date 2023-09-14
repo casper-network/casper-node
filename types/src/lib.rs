@@ -35,6 +35,7 @@ mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
+mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
 mod deploy_info;
@@ -94,7 +95,7 @@ pub use block::{
     JsonValidatorWeight,
 };
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-pub use byte_code::{ByteCode, ByteCodeHash};
+pub use byte_code::{ByteCode, ByteCodeHash, ByteCodeKind};
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,

@@ -27,6 +27,10 @@ use crate::{
     Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
+use crate::byte_code::ByteCodeKind;
+use crate::contracts::{
+    ContractHash, ContractPackage, ContractPackageStatus, ContractVersionKey, ContractVersions,
+};
 use crate::{
     account::{associated_keys::gens::account_associated_keys_arb, Account},
     addressable_entity::{
@@ -360,6 +364,24 @@ pub fn account_arb() -> impl Strategy<Value = Account> {
         )
 }
 
+pub fn contract_package_arb() -> impl Strategy<Value = ContractPackage> {
+    (
+        uref_arb(),
+        contract_versions_arb(),
+        disabled_contract_versions_arb(),
+        groups_arb(),
+    )
+        .prop_map(|(access_key, versions, disabled_versions, groups)| {
+            ContractPackage::new(
+                access_key,
+                versions,
+                disabled_versions,
+                groups,
+                ContractPackageStatus::default(),
+            )
+        })
+}
+
 pub fn contract_arb() -> impl Strategy<Value = Contract> {
     (
         protocol_version_arb(),
@@ -424,17 +446,31 @@ pub fn addressable_entity_arb() -> impl Strategy<Value = AddressableEntity> {
 }
 
 pub fn byte_code_arb() -> impl Strategy<Value = ByteCode> {
-    collection::vec(any::<u8>(), 1..1000).prop_map(ByteCode::new)
+    collection::vec(any::<u8>(), 1..1000)
+        .prop_map(|byte_code| ByteCode::new(ByteCodeKind::V1CasperWasm, byte_code))
 }
 
-pub fn contract_version_key_arb() -> impl Strategy<Value = EntityVersionKey> {
+pub fn contract_version_key_arb() -> impl Strategy<Value = ContractVersionKey> {
+    (1..32u32, 1..1000u32)
+        .prop_map(|(major, contract_ver)| ContractVersionKey::new(major, contract_ver))
+}
+
+pub fn entity_version_key_arb() -> impl Strategy<Value = EntityVersionKey> {
     (1..32u32, 1..1000u32)
         .prop_map(|(major, contract_ver)| EntityVersionKey::new(major, contract_ver))
 }
 
-pub fn contract_versions_arb() -> impl Strategy<Value = EntityVersions> {
+pub fn contract_versions_arb() -> impl Strategy<Value = ContractVersions> {
     collection::btree_map(
         contract_version_key_arb(),
+        u8_slice_32().prop_map(ContractHash::new),
+        1..5,
+    )
+}
+
+pub fn entity_versions_arb() -> impl Strategy<Value = EntityVersions> {
+    collection::btree_map(
+        entity_version_key_arb(),
         u8_slice_32().prop_map(AddressableEntityHash::new),
         1..5,
     )
@@ -442,6 +478,10 @@ pub fn contract_versions_arb() -> impl Strategy<Value = EntityVersions> {
 }
 
 pub fn disabled_versions_arb() -> impl Strategy<Value = BTreeSet<EntityVersionKey>> {
+    collection::btree_set(entity_version_key_arb(), 0..5)
+}
+
+pub fn disabled_contract_versions_arb() -> impl Strategy<Value = BTreeSet<ContractVersionKey>> {
     collection::btree_set(contract_version_key_arb(), 0..5)
 }
 
@@ -453,7 +493,7 @@ pub fn groups_arb() -> impl Strategy<Value = Groups> {
 pub fn package_arb() -> impl Strategy<Value = Package> {
     (
         uref_arb(),
-        contract_versions_arb(),
+        entity_versions_arb(),
         disabled_versions_arb(),
         groups_arb(),
     )
@@ -464,7 +504,7 @@ pub fn package_arb() -> impl Strategy<Value = Package> {
                 disabled_versions,
                 groups,
                 PackageStatus::default(),
-                PackageKind::default(),
+                PackageKind::SmartContract,
             )
         })
 }
@@ -643,9 +683,9 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         match stored_value {
             StoredValue::CLValue(_) => stored_value,
             StoredValue::Account(_) => stored_value,
-            StoredValue::ByteCode(_) => stored_value,
+            StoredValue::ContractWasm(_) => stored_value,
             StoredValue::Contract(_) => stored_value,
-            StoredValue::Package(_) => stored_value,
+            StoredValue::ContractPackage(_) => stored_value,
             StoredValue::Transfer(_) => stored_value,
             StoredValue::DeployInfo(_) => stored_value,
             StoredValue::EraInfo(_) => stored_value,
@@ -654,5 +694,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Unbonding(_) => stored_value,
             StoredValue::AddressableEntity(_) => stored_value,
             StoredValue::BidKind(_) => stored_value,
+            StoredValue::Package(_) => stored_value,
+            StoredValue::ByteCode(_) => stored_value,
         })
 }

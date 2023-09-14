@@ -429,6 +429,7 @@ impl Default for HostFunctionCosts {
             blake2b: HostFunction::default(),
             random_bytes: HostFunction::default(),
             enable_contract_version: HostFunction::default(),
+            add_session_version: HostFunction::default(),
         }
     }
 }
@@ -480,6 +481,7 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.blake2b.to_bytes()?);
         ret.append(&mut self.random_bytes.to_bytes()?);
         ret.append(&mut self.enable_contract_version.to_bytes()?);
+        ret.append(&mut self.add_session_version.to_bytes()?);
         Ok(ret)
     }
 
@@ -528,6 +530,7 @@ impl ToBytes for HostFunctionCosts {
             + self.blake2b.serialized_length()
             + self.random_bytes.serialized_length()
             + self.enable_contract_version.serialized_length()
+            + self.add_session_version.serialized_length()
     }
 }
 
@@ -577,6 +580,7 @@ impl FromBytes for HostFunctionCosts {
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         let (random_bytes, rem) = FromBytes::from_bytes(rem)?;
         let (enable_contract_version, rem) = FromBytes::from_bytes(rem)?;
+        let (add_session_version, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -623,6 +627,7 @@ impl FromBytes for HostFunctionCosts {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                add_session_version,
             },
             rem,
         ))
@@ -676,6 +681,7 @@ impl Distribution<HostFunctionCosts> for Standard {
             blake2b: rng.gen(),
             random_bytes: rng.gen(),
             enable_contract_version: rng.gen(),
+            add_session_version: rng.gen(),
         }
     }
 }
@@ -739,6 +745,7 @@ pub mod gens {
             blake2b in host_function_cost_arb(),
             random_bytes in host_function_cost_arb(),
             enable_contract_version in host_function_cost_arb(),
+            add_session_version in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -785,6 +792,7 @@ pub mod gens {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                add_session_version
             }
         }
     }

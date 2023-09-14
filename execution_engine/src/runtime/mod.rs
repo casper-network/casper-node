@@ -22,6 +22,7 @@ use tracing::error;
 use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::state::StateReader;
+use casper_types::contracts::ContractPackage;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -38,11 +39,11 @@ use casper_types::{
         handle_payment, mint, standard_payment, CallStackElement, SystemEntityType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, ByteCode, CLTyped, CLValue, ContextAccessRights, DeployHash,
-    EntityVersion, EntityVersionKey, EntityVersions, Gas, GrantedAccess, Group, Groups,
-    HostFunction, HostFunctionCost, Key, NamedArg, Package, PackageHash, Phase, PublicKey,
-    RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
-    DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+    AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
+    ContextAccessRights, DeployHash, EntityVersion, EntityVersionKey, EntityVersions, Gas,
+    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package,
+    PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
+    TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
@@ -1690,18 +1691,18 @@ where
     ) -> Result<Result<(), ApiError>, Error> {
         let package_hash = self.context.entity().package_hash();
 
-        let mut package = self
+        let package = self
             .context
             .read_gs_typed::<Package>(&Key::from(package_hash))?;
 
-        if package.get_package_kind() != PackageKind::Account {
+        if !package.is_account_kind() {
             return Err(Error::InvalidContext);
         }
 
         let byte_code_hash = self.context.new_hash_address()?;
         let byte_code = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
-            ByteCode::new(module_bytes)
+            ByteCode::new(ByteCodeKind::V1CasperWasm, module_bytes)
         };
 
         let entity_hash = self
@@ -1710,12 +1711,19 @@ where
             .into_entity_hash()
             .expect("I will remove this I swear, I am tired");
 
-        let mut entity = self.context.entity();
+        let entity = self.context.entity();
 
-        self.context
-            .metered_write_gs_unsafe(Key::Hash(byte_code_hash), byte_code)?;
-        self.context
-            .metered_write_gs_unsafe(Key::Hash(entity_hash), entity)?;
+        self.context.metered_write_gs_unsafe(
+            Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash)),
+            byte_code,
+        )?;
+
+        let package_kind = package.get_package_kind();
+
+        self.context.metered_write_gs_unsafe(
+            Key::AddressableEntity((package_kind, entity_hash.value())),
+            entity.clone(),
+        )?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 
@@ -1733,10 +1741,6 @@ where
         bytes_written_ptr: u32,
         version_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        // self.context.validate_key(&Key::from(package_hash))?;
-        //
-        // let mut package: Package = self.context.get_validated_package(package_hash)?;
-
         let mut package = self
             .context
             .read_gs_typed::<Package>(&Key::from(package_hash))?;
@@ -1792,7 +1796,7 @@ where
         let byte_code_hash = self.context.new_hash_address()?;
         let byte_code = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
-            ByteCode::new(module_bytes)
+            ByteCode::new(ByteCodeKind::V1CasperWasm, module_bytes)
         };
 
         let entity_hash = self.context.new_hash_address()?;
@@ -3246,25 +3250,19 @@ where
             Some(StoredValue::Contract(contract)) => {
                 let contract_package_key = Key::Hash(contract.contract_package_hash().value());
 
-                let mut legacy_contract_package: Package =
+                let mut legacy_contract_package: ContractPackage =
                     self.context.read_gs_typed(&contract_package_key)?;
-                // Update the contract package from Legacy to Wasm
-                legacy_contract_package.update_package_kind(PackageKind::SmartContract);
-                legacy_contract_package.insert_entity_version(
-                    self.context.protocol_version().value().major,
-                    contract_hash,
-                );
 
-                if legacy_contract_package.is_legacy() {
-                    return Err(Error::InvalidPackageKind(
-                        legacy_contract_package.get_package_kind(),
-                    ));
-                }
+                let package: Package = legacy_contract_package.into();
 
-                let access_uref = &legacy_contract_package.access_key();
+                let access_uref = &package.access_key();
+
+                let package_key = Key::Package(contract.contract_package_hash().value());
+
+                let package_kind = package.get_package_kind();
 
                 self.context
-                    .metered_write_gs_unsafe(contract_package_key, legacy_contract_package)?;
+                    .metered_write_gs_unsafe(package_key, StoredValue::Package(package))?;
 
                 let entity_main_purse = self.create_purse()?;
 
@@ -3275,8 +3273,8 @@ where
                 };
 
                 let updated_entity = AddressableEntity::new(
-                    contract.contract_package_hash(),
-                    contract.contract_wasm_hash(),
+                    PackageHash::new(contract.contract_package_hash().value()),
+                    ByteCodeHash::new(contract.contract_wasm_hash().value()),
                     contract.named_keys().clone(),
                     contract.entry_points().clone(),
                     self.context.protocol_version(),
@@ -3285,8 +3283,10 @@ where
                     ActionThresholds::default(),
                 );
 
+                let entity_key = Key::AddressableEntity((package_kind, contract_hash.value()));
+
                 self.context
-                    .metered_write_gs_unsafe(contract_key, updated_entity.clone())?;
+                    .metered_write_gs_unsafe(entity_key, updated_entity.clone())?;
                 Ok(updated_entity)
             }
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),

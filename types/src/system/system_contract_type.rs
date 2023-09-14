@@ -11,6 +11,8 @@ use core::{
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -34,7 +36,9 @@ use super::{
 ///
 /// Used by converting to a `u32` and passing as the `system_contract_index` argument of
 /// `ext_ffi::casper_get_system_contract()`.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, Copy)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Default, PartialOrd, Ord, Hash, Serialize, Deserialize, Copy,
+)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub enum SystemEntityType {
@@ -86,6 +90,19 @@ impl FromBytes for SystemEntityType {
             STANDARD_PAYMENT_TAG => Ok((SystemEntityType::StandardPayment, remainder)),
             AUCTION_TAG => Ok((SystemEntityType::Auction, remainder)),
             _ => Err(Error::Formatting),
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<SystemEntityType> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SystemEntityType {
+        match rng.gen_range(0..=3) {
+            0 => SystemEntityType::Mint,
+            1 => SystemEntityType::Auction,
+            2 => SystemEntityType::StandardPayment,
+            3 => SystemEntityType::HandlePayment,
+            _ => unreachable!(),
         }
     }
 }

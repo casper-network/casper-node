@@ -119,11 +119,8 @@ impl ExecutionKind {
 
                 package = tracking_copy.borrow_mut().get_package(package_hash)?;
 
-                let maybe_version_key = if package.is_legacy() {
-                    package.current_entity_version()
-                } else {
-                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver))
-                };
+                let maybe_version_key =
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())
@@ -157,11 +154,8 @@ impl ExecutionKind {
             } => {
                 package = tracking_copy.borrow_mut().get_package(package_hash)?;
 
-                let maybe_version_key = if package.is_legacy() {
-                    package.current_entity_version()
-                } else {
-                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver))
-                };
+                let maybe_version_key =
+                    version.map(|ver| EntityVersionKey::new(protocol_version.value().major, ver));
 
                 let contract_version_key = maybe_version_key
                     .or_else(|| package.current_entity_version())

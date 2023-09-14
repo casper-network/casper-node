@@ -33,9 +33,9 @@ use casper_types::{
         standard_payment, SystemEntityType, AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
-    ByteCodeHash, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId, FeeHandling,
-    GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, PublicKey,
-    RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
+    ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId,
+    FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
+    PublicKey, RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -1145,7 +1145,7 @@ where
         let contract_package_hash =
             PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
-        let byte_code = ByteCode::new(vec![]);
+        let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
         let associated_keys = package_kind.associated_keys();
         let maybe_account_hash = package_kind.maybe_account_hash();
         let named_keys = maybe_named_keys.unwrap_or_default();

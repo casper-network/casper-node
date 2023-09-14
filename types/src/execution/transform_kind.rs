@@ -162,6 +162,16 @@ impl TransformKind {
                     let found = "Unbonding".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::ContractWasm(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractWasm".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
+                StoredValue::ContractPackage(_) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "ContractPackage".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
             },
             TransformKind::Failure(error) => Err(error),
         }
@@ -377,6 +387,7 @@ mod tests {
 
     use num::{Bounded, Num};
 
+    use crate::byte_code::ByteCodeKind;
     use crate::{
         bytesrepr::Bytes, testing::TestRng, AccessRights, ByteCode, Key, URef, U128, U256, U512,
     };
@@ -510,7 +521,7 @@ mod tests {
             };
         }
 
-        let byte_code = StoredValue::ByteCode(ByteCode::new(vec![]));
+        let byte_code = StoredValue::ByteCode(ByteCode::new(ByteCodeKind::V1CasperWasm, vec![]));
         assert_yields_type_mismatch_error(byte_code);
 
         let uref = URef::new(ZERO_ARRAY, AccessRights::READ);
