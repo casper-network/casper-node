@@ -75,6 +75,7 @@ mod uref;
 #[cfg(not(any(feature = "sdk")))]
 use libc::{c_long, sysconf, _SC_PAGESIZE};
 #[cfg(feature = "std")]
+#[cfg(not(any(feature = "sdk")))]
 use once_cell::sync::Lazy;
 
 pub use crate::uint::{UIntParseError, U128, U256, U512};
