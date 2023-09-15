@@ -538,7 +538,7 @@ pub enum RequestError {
 /// The existence of a [`RequestGuard`] indicates that a request has been made or is ongoing. It
 /// can also be used to attempt to [`cancel`](RequestGuard::cancel) the request, or retrieve its
 /// values using [`wait_for_response`](RequestGuard::wait_for_response) or
-/// [`try_wait_for_response`](RequestGuard::try_wait_for_response).
+/// [`try_get_response`](RequestGuard::try_get_response).
 #[derive(Debug)]
 #[must_use = "dropping the request guard will immediately cancel the request"]
 pub struct RequestGuard {
