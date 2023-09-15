@@ -759,9 +759,7 @@ struct DrainConditional<'a, T, F> {
     predicate: F,
 }
 
-/// Removes ites from the top of a heap while a given predicate is true.
-///
-/// Will take items from `heap` as long as `predicate` evaluates to `true`.
+/// Removes items from the top of a heap while a given predicate is true.
 fn drain_heap_while<T, F: FnMut(&T) -> bool>(
     heap: &mut BinaryHeap<T>,
     predicate: F,

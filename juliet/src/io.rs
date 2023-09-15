@@ -357,7 +357,7 @@ impl Display for IoEvent {
                 f.write_str(" }")
             }
             IoEvent::ReceivedCancellationResponse { io_id } => {
-                write!(f, "RequestCancalled {{ io_id: {} }}", io_id)
+                write!(f, "ReceivedCancellationResponse {{ io_id: {} }}", io_id)
             }
         }
     }
