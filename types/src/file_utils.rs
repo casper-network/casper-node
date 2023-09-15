@@ -1,12 +1,13 @@
 //! Utilities for handling reading from and writing to files.
 
+#[cfg(feature = "sdk")]
+use std::path::Path;
+#[cfg(not(any(feature = "sdk")))]
+use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 use std::{
     io::{self},
     path::PathBuf,
 };
-
-#[cfg(not(any(feature = "sdk")))]
-use std::{fs, io::Write, os::unix::fs::OpenOptionsExt, path::Path};
 
 use thiserror::Error;
 
@@ -32,19 +33,26 @@ pub struct WriteFileError {
     error: io::Error,
 }
 
-#[cfg(not(any(feature = "sdk")))]
+#[allow(unused_variables)]
 /// Read complete at `path` into memory.
 ///
 /// Wraps `fs::read`, but preserves the filename for better error printing.
 pub fn read_file<P: AsRef<Path>>(filename: P) -> Result<Vec<u8>, ReadFileError> {
-    let path = filename.as_ref();
-    fs::read(path).map_err(|error| ReadFileError {
-        path: path.to_owned(),
-        error,
-    })
+    #[cfg(feature = "sdk")]
+    {
+        Ok(vec![])
+    }
+    #[cfg(not(any(feature = "sdk")))]
+    {
+        let path = filename.as_ref();
+        fs::read(path).map_err(|error| ReadFileError {
+            path: path.to_owned(),
+            error,
+        })
+    }
 }
 
-#[cfg(not(any(feature = "sdk")))]
+#[allow(unused_variables, unused)]
 /// Write data to `path`.
 ///
 /// Wraps `fs::write`, but preserves the filename for better error printing.
@@ -52,14 +60,21 @@ pub(crate) fn write_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     filename: P,
     data: B,
 ) -> Result<(), WriteFileError> {
-    let path = filename.as_ref();
-    fs::write(path, data.as_ref()).map_err(|error| WriteFileError {
-        path: path.to_owned(),
-        error,
-    })
+    #[cfg(feature = "sdk")]
+    {
+        Ok(())
+    }
+    #[cfg(not(any(feature = "sdk")))]
+    {
+        let path = filename.as_ref();
+        fs::write(path, data.as_ref()).map_err(|error| WriteFileError {
+            path: path.to_owned(),
+            error,
+        })
+    }
 }
 
-#[cfg(not(any(feature = "sdk")))]
+#[allow(unused_variables, unused)]
 /// Writes data to `path`, ensuring only the owner can read or write it.
 ///
 /// Otherwise functions like [`write_file`].
@@ -67,15 +82,22 @@ pub(crate) fn write_private_file<P: AsRef<Path>, B: AsRef<[u8]>>(
     filename: P,
     data: B,
 ) -> Result<(), WriteFileError> {
-    let path = filename.as_ref();
-    fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .mode(0o600)
-        .open(path)
-        .and_then(|mut file| file.write_all(data.as_ref()))
-        .map_err(|error| WriteFileError {
-            path: path.to_owned(),
-            error,
-        })
+    #[cfg(feature = "sdk")]
+    {
+        Ok(())
+    }
+    #[cfg(not(any(feature = "sdk")))]
+    {
+        let path = filename.as_ref();
+        fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .mode(0o600)
+            .open(path)
+            .and_then(|mut file| file.write_all(data.as_ref()))
+            .map_err(|error| WriteFileError {
+                path: path.to_owned(),
+                error,
+            })
+    }
 }

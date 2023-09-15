@@ -132,7 +132,7 @@ lint-default-features:
 
 .PHONY: lint-sdk-features
 lint-sdk-features:
-	cd types && $(CARGO) clippy --all-targets --features=sdk -- -D warnings
+	$(CARGO) clippy --all-targets --features=sdk -- -D warnings
 
 .PHONY: lint-all-features
 lint-all-features:
