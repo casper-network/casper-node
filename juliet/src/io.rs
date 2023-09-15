@@ -116,7 +116,7 @@ impl Display for QueuedItem {
                 if let Some(payload) = payload {
                     write!(f, ", payload: {}", PayloadFormat(payload))?;
                 }
-                f.write_str(" }}")
+                f.write_str(" }")
             }
             QueuedItem::RequestCancellation { io_id } => {
                 write!(f, "RequestCancellation {{ io_id: {} }}", io_id)
@@ -130,7 +130,7 @@ impl Display for QueuedItem {
                 if let Some(payload) = payload {
                     write!(f, ", payload: {}", PayloadFormat(payload))?;
                 }
-                f.write_str(" }}")
+                f.write_str(" }")
             }
             QueuedItem::ResponseCancellation { channel, id } => {
                 write!(
@@ -343,7 +343,7 @@ impl Display for IoEvent {
                 if let Some(ref payload) = payload {
                     write!(f, ", payload: {}", PayloadFormat(payload))?;
                 }
-                f.write_str(" }}")
+                f.write_str(" }")
             }
 
             IoEvent::RequestCancelled { channel, id } => {
@@ -354,7 +354,7 @@ impl Display for IoEvent {
                 if let Some(ref payload) = payload {
                     write!(f, ", payload: {}", PayloadFormat(payload))?;
                 }
-                f.write_str(" }}")
+                f.write_str(" }")
             }
             IoEvent::ReceivedCancellationResponse { io_id } => {
                 write!(f, "RequestCancalled {{ io_id: {} }}", io_id)
@@ -598,6 +598,8 @@ where
         &mut self,
         completed_read: CompletedRead,
     ) -> Result<IoEvent, CoreError> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(%completed_read, "completed read");
         match completed_read {
             CompletedRead::ErrorReceived { header, data } => {
                 // We've received an error from the peer, they will be closing the connection.

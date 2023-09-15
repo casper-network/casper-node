@@ -373,6 +373,12 @@ where
                 #[cfg(feature = "tracing")]
                 tracing::debug!(%io_id, "timeout due to response not received in time");
                 guard_ref.set_and_notify(Err(RequestError::TimedOut));
+
+                // We also need to send a cancellation.
+                if self.handle.enqueue_request_cancellation(io_id).is_err() {
+                    #[cfg(feature = "tracing")]
+                    tracing::debug!(%io_id, "dropping timeout cancellation, remote already closed");
+                }
             }
         }
 
