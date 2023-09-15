@@ -1092,7 +1092,7 @@ mod tests {
 
         assert_eq!(
             drain_heap_while(&mut heap, |&v| v > 10).collect::<Vec<_>>(),
-            vec![]
+            Vec::<i32>::new()
         );
 
         assert_eq!(
