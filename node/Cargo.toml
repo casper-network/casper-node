@@ -131,7 +131,6 @@ casper-types = { path = "../types", features = [
     "datasize",
     "json-schema",
     "std",
-    "testing",
 ] }
 fake_instant = "0.4.0"
 pnet = "0.28.0"

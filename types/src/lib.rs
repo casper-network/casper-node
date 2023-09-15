@@ -29,7 +29,7 @@ pub mod api_error;
 mod block;
 mod block_time;
 pub mod bytesrepr;
-#[cfg(feature = "std")]
+#[cfg(any(feature = "std", test))]
 mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
@@ -46,7 +46,6 @@ mod display_iter;
 mod era_id;
 pub mod execution;
 #[cfg(any(feature = "std", test))]
-#[cfg(feature = "std")]
 pub mod file_utils;
 mod gas;
 #[cfg(any(feature = "testing", feature = "gens", test))]
@@ -100,8 +99,6 @@ pub use block::{
 pub use block::{FromTestBlockBuilder, TestBlockBuilder};
 
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
-#[cfg(feature = "std")]
-pub use chainspec::DEFAULT_HOST_FUNCTION_NEW_DICTIONARY;
 #[cfg(any(feature = "std", test))]
 pub use chainspec::{
     AccountConfig, AccountsConfig, ActivationPoint, AdministratorAccount, AuctionCosts,
@@ -111,7 +108,7 @@ pub use chainspec::{
     HandlePaymentCosts, HighwayConfig, HostFunction, HostFunctionCost, HostFunctionCosts,
     LegacyRequiredFinality, MintCosts, NetworkConfig, OpcodeCosts, ProtocolConfig, RefundHandling,
     StandardPaymentCosts, StorageCosts, SystemConfig, TransactionConfig, TransactionV1Config,
-    UpgradeConfig, ValidatorConfig, WasmConfig,
+    UpgradeConfig, ValidatorConfig, WasmConfig, DEFAULT_HOST_FUNCTION_NEW_DICTIONARY,
 };
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 pub use chainspec::{

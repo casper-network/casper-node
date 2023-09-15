@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.  The format
 * The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
 
 
+- Add "sdk" feature config checks to compile to wasm
 
 ## 1.5.2
 

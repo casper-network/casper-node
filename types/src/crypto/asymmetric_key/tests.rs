@@ -82,6 +82,7 @@ fn known_secret_key_to_pem(expected_key: &SecretKey, known_key_pem: &str, expect
     assert_eq!(expected_tag, decoded.tag());
 }
 
+#[cfg(not(any(feature = "sdk")))]
 fn secret_key_file_roundtrip(secret_key: SecretKey) {
     let tempdir = tempfile::tempdir().unwrap();
     let path = tempdir.path().join("test_secret_key.pem");
@@ -140,6 +141,7 @@ fn known_public_key_to_pem(known_key_hex: &str, known_key_pem: &str) {
     assert_eq!(key_bytes, Into::<Vec<u8>>::into(decoded));
 }
 
+#[cfg(not(any(feature = "sdk")))]
 fn public_key_file_roundtrip(public_key: PublicKey) {
     let tempdir = tempfile::tempdir().unwrap();
     let path = tempdir.path().join("test_public_key.pem");
@@ -214,6 +216,7 @@ fn check_ord_and_hash<T: Clone + Ord + PartialOrd + Hash>(low: T, high: T) {
 }
 
 mod system {
+    #[cfg(not(any(feature = "sdk")))]
     use std::path::Path;
 
     use super::{sign, verify};
@@ -229,6 +232,7 @@ mod system {
         assert!(SecretKey::system().to_pem().is_err());
     }
 
+    #[cfg(not(any(feature = "sdk")))]
     #[test]
     fn secret_key_to_file_should_error() {
         assert!(SecretKey::system().to_file(Path::new("/dev/null")).is_err());
@@ -249,6 +253,7 @@ mod system {
         assert!(PublicKey::system().to_pem().is_err());
     }
 
+    #[cfg(not(any(feature = "sdk")))]
     #[test]
     fn public_key_to_file_should_error() {
         assert!(PublicKey::system().to_file(Path::new("/dev/null")).is_err());
@@ -341,8 +346,8 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, ED25519_TAG);
     }
 
-    #[test]
     #[cfg(not(any(feature = "sdk")))]
+    #[test]
     fn secret_key_to_and_from_file() {
         let mut rng = TestRng::new();
         let secret_key = SecretKey::random_ed25519(&mut rng);
@@ -398,8 +403,8 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         super::known_public_key_to_pem(KNOWN_KEY_HEX, KNOWN_KEY_PEM);
     }
 
-    #[test]
     #[cfg(not(any(feature = "sdk")))]
+    #[test]
     fn public_key_to_and_from_file() {
         let mut rng = TestRng::new();
         let public_key = PublicKey::random_ed25519(&mut rng);
@@ -643,8 +648,8 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         super::known_public_key_to_pem(KNOWN_KEY_HEX, KNOWN_KEY_PEM);
     }
 
-    #[test]
     #[cfg(not(any(feature = "sdk")))]
+    #[test]
     fn public_key_to_and_from_file() {
         let mut rng = TestRng::new();
         let public_key = PublicKey::random_secp256k1(&mut rng);

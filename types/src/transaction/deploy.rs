@@ -53,7 +53,7 @@ use crate::system::auction::{
     ARG_PUBLIC_KEY as ARG_AUCTION_PUBLIC_KEY, ARG_VALIDATOR, METHOD_DELEGATE, METHOD_REDELEGATE,
     METHOD_UNDELEGATE, METHOD_WITHDRAW_BID,
 };
-#[cfg(any(all(feature = "std", feature = "testing"), test))]
+#[cfg(any(feature = "std", test))]
 use crate::{system::mint::ARG_AMOUNT, TransactionConfig, U512};
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
 use crate::{testing::TestRng, DEFAULT_MAX_PAYMENT_MOTES, DEFAULT_MIN_TRANSFER_MOTES};
