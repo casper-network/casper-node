@@ -948,11 +948,11 @@ where
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 
-            // Type: `fn distribute(reward_factors: BTreeMap<PublicKey, u64>) -> Result<(), Error>`
+            // Type: `fn distribute(rewards: BTreeMap<PublicKey, U512>) -> Result<(), Error>`
             auction::METHOD_DISTRIBUTE => (|| {
                 runtime.charge_system_contract_call(auction_costs.distribute)?;
-                let proposer = Self::get_named_argument(runtime_args, auction::ARG_VALIDATOR)?;
-                runtime.distribute(proposer).map_err(Self::reverter)?;
+                let rewards = Self::get_named_argument(runtime_args, auction::ARG_REWARDS_MAP)?;
+                runtime.distribute(rewards).map_err(Self::reverter)?;
                 CLValue::from_t(()).map_err(Self::reverter)
             })(),
 

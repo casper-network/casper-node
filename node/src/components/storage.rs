@@ -1159,6 +1159,10 @@ impl Storage {
                     .read_block_header_by_height(block_height, only_from_available_block_range)?;
                 responder.respond(maybe_header).ignore()
             }
+            StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder } => {
+                let maybe_header = self.read_switch_block_header_by_era_id(era_id)?;
+                responder.respond(maybe_header).ignore()
+            }
             StorageRequest::PutBlockHeader {
                 block_header,
                 responder,

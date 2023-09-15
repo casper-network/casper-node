@@ -111,6 +111,21 @@ impl CoreConfig {
         self.unbonding_delay - self.auction_delay
     }
 
+    /// The proportion of the total rewards going to block production.
+    pub fn production_rewards_proportion(&self) -> Ratio<u64> {
+        Ratio::new(1, 1) - self.finality_signature_proportion
+    }
+
+    /// The proportion of the total rewards going to finality signatures collection.
+    pub fn collection_rewards_proportion(&self) -> Ratio<u64> {
+        self.finders_fee * self.finality_signature_proportion
+    }
+
+    /// The proportion of the total rewards going to finality signatures collection.
+    pub fn contribution_rewards_proportion(&self) -> Ratio<u64> {
+        (Ratio::new(1, 1) - self.finders_fee) * self.finality_signature_proportion
+    }
+
     /// Returns `false` if unbonding delay is not greater than auction delay to ensure
     /// that `recent_era_count()` yields a value of at least 1.
     pub fn is_valid(&self) -> bool {
@@ -138,6 +153,23 @@ impl CoreConfig {
             error!(
                 ftf = %self.finality_threshold_fraction,
                 "finality threshold fraction is not in the range (0, 1)",
+            );
+            return false;
+        }
+
+        if self.finality_signature_proportion <= Ratio::new(0, 1)
+            || self.finality_signature_proportion >= Ratio::new(1, 1)
+        {
+            error!(
+                fsp = %self.finality_signature_proportion,
+                "finality signature proportion is not in the range (0, 1)",
+            );
+            return false;
+        }
+        if self.finders_fee <= Ratio::new(0, 1) || self.finders_fee >= Ratio::new(1, 1) {
+            error!(
+                fsp = %self.finders_fee,
+                "finder's fee proportion is not in the range (0, 1)",
             );
             return false;
         }

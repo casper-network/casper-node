@@ -69,7 +69,7 @@ impl SingleBlockRewardedSignatures {
     /// Gets the list of validators which signed from a set of recorded finality signaures (`self`)
     /// + the era's validators.
     pub fn into_validator_set(
-        self,
+        &self,
         all_validators: impl IntoIterator<Item = PublicKey>,
     ) -> BTreeSet<PublicKey> {
         self.unpack()
@@ -274,6 +274,15 @@ impl RewardedSignatures {
     /// Returns `true` if there is at least one cited signature.
     pub fn has_some(&self) -> bool {
         self.0.iter().any(|signatures| signatures.has_some())
+    }
+}
+
+impl IntoIterator for RewardedSignatures {
+    type Item = SingleBlockRewardedSignatures;
+    type IntoIter = std::vec::IntoIter<SingleBlockRewardedSignatures>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 

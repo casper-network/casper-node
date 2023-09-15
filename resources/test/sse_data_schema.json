@@ -370,7 +370,8 @@
       "type": "object",
       "required": [
         "era_report",
-        "next_era_validator_weights"
+        "next_era_validator_weights",
+        "rewards"
       ],
       "properties": {
         "era_report": {
@@ -381,6 +382,12 @@
           "items": {
             "$ref": "#/definitions/ValidatorWeight"
           }
+        },
+        "rewards": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Reward"
+          }
         }
       },
       "additionalProperties": false
@@ -390,20 +397,13 @@
       "type": "object",
       "required": [
         "equivocators",
-        "inactive_validators",
-        "rewards"
+        "inactive_validators"
       ],
       "properties": {
         "equivocators": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/PublicKey"
-          }
-        },
-        "rewards": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/Reward"
           }
         },
         "inactive_validators": {
@@ -418,24 +418,6 @@
     "PublicKey": {
       "description": "Hex-encoded cryptographic public key, including the algorithm tag prefix.",
       "type": "string"
-    },
-    "Reward": {
-      "type": "object",
-      "required": [
-        "amount",
-        "validator"
-      ],
-      "properties": {
-        "validator": {
-          "$ref": "#/definitions/PublicKey"
-        },
-        "amount": {
-          "type": "integer",
-          "format": "uint64",
-          "minimum": 0.0
-        }
-      },
-      "additionalProperties": false
     },
     "ValidatorWeight": {
       "type": "object",
@@ -456,6 +438,22 @@
     "U512": {
       "description": "Decimal representation of a 512-bit integer.",
       "type": "string"
+    },
+    "Reward": {
+      "type": "object",
+      "required": [
+        "amount",
+        "validator"
+      ],
+      "properties": {
+        "validator": {
+          "$ref": "#/definitions/PublicKey"
+        },
+        "amount": {
+          "$ref": "#/definitions/U512"
+        }
+      },
+      "additionalProperties": false
     },
     "Timestamp": {
       "description": "Timestamp formatted as per RFC 3339",

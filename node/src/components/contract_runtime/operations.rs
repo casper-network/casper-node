@@ -102,6 +102,7 @@ pub fn execute_finalized_block(
     activation_point_era_id: EraId,
     key_block_height_for_activation_point: u64,
     prune_batch_size: u64,
+    rewards: BTreeMap<PublicKey, U512>,
 ) -> Result<BlockAndExecutionResults, BlockExecutionError> {
     if finalized_block.height() != execution_pre_state.next_block_height {
         return Err(BlockExecutionError::WrongBlockHeight {
@@ -129,16 +130,16 @@ pub fn execute_finalized_block(
     let scratch_state = engine_state.get_scratch_engine_state();
 
     // Pay out block rewards
-    let proposer = *finalized_block.proposer();
-    state_root_hash = scratch_state.distribute_block_rewards(
-        CorrelationId::new(),
-        state_root_hash,
-        protocol_version,
-        proposer,
-        next_block_height,
-        block_time,
-    )?;
-
+    if rewards.is_empty() == false {
+        state_root_hash = scratch_state.distribute_block_rewards(
+            CorrelationId::new(),
+            state_root_hash,
+            protocol_version,
+            &rewards,
+            next_block_height,
+            block_time,
+        )?;
+    }
     // WARNING: Do not change the order of `deploys` as it will result in a different root hash.
     for deploy in deploys {
         let deploy_hash = *deploy.hash();
@@ -335,6 +336,7 @@ pub fn execute_finalized_block(
         state_root_hash,
         finalized_block,
         next_era_validator_weights,
+        rewards,
         protocol_version,
     )?);
 
@@ -509,7 +511,6 @@ where
     let EraReport {
         equivocators,
         inactive_validators,
-        ..
     } = era_report;
 
     // Both inactive validators and equivocators are evicted

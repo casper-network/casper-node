@@ -1199,6 +1199,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
+    pub(crate) async fn get_switch_block_header_by_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
     /// Gets the requested signature for a given block hash.
     pub(crate) async fn get_signature_from_storage(
         self,
@@ -2040,7 +2054,6 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the total supply from the given `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(unused)] //TODO remove in the next ticket implementation.
     pub(crate) async fn get_total_supply(
         self,
         state_hash: Digest,
@@ -2062,7 +2075,6 @@ impl<REv> EffectBuilder<REv> {
     /// Returns the seigniorage rate from the given `root_hash`.
     ///
     /// This operation is read only.
-    #[allow(unused)] //TODO remove in the next ticket implementation.
     pub(crate) async fn get_round_seigniorage_rate(
         self,
         state_hash: Digest,

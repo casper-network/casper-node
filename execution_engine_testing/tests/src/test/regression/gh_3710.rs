@@ -1,4 +1,9 @@
-use std::{collections::BTreeSet, convert::TryInto, fmt, iter::FromIterator};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    convert::TryInto,
+    fmt,
+    iter::FromIterator,
+};
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
@@ -257,20 +262,16 @@ where
     }
 }
 
-fn distribute_rewards<S>(builder: &mut WasmTestBuilder<S>, block_height: u64, proposer: &PublicKey)
+fn distribute_rewards<S>(builder: &mut WasmTestBuilder<S>, block_height: u64, validator: &PublicKey)
 where
     S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error> + fmt::Debug,
 {
+    let mut rewards = BTreeMap::new();
+    rewards.insert(validator.clone(), 10.into());
     builder
-        .distribute(
-            None,
-            ProtocolVersion::V1_0_0,
-            proposer.clone(),
-            block_height,
-            0,
-        )
+        .distribute(None, ProtocolVersion::V1_0_0, &rewards, block_height, 0)
         .unwrap();
 }
 

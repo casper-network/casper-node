@@ -103,6 +103,12 @@ fn create_sync_leap_test_chain(
     let (validator_secret_key, validator_public_key) = generate_ed25519_keypair();
     trusted_validator_weights.insert(validator_public_key.clone(), U512::from(2000000000000u64));
 
+    let rewards = {
+        let mut rewards = BTreeMap::new();
+        rewards.insert(validator_public_key.clone(), U512::from(123456789u64));
+        rewards
+    };
+
     let mut blocks: Vec<Block> = vec![];
     let block_count = 13 + include_switch_block_at_tip as u64;
     (0_u64..block_count).for_each(|height| {
@@ -128,6 +134,11 @@ fn create_sync_leap_test_chain(
             parent_hash,
             if is_switch {
                 trusted_validator_weights.clone()
+            } else {
+                BTreeMap::new()
+            },
+            if is_switch {
+                rewards.clone()
             } else {
                 BTreeMap::new()
             },

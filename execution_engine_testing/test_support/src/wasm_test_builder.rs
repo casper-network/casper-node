@@ -864,7 +864,7 @@ where
         &mut self,
         pre_state_hash: Option<Digest>,
         protocol_version: ProtocolVersion,
-        proposer: PublicKey,
+        rewards: &BTreeMap<PublicKey, U512>,
         next_block_height: u64,
         time: u64,
     ) -> Result<Digest, StepError> {
@@ -873,7 +873,7 @@ where
             CorrelationId::new(),
             pre_state_hash,
             protocol_version,
-            proposer,
+            rewards,
             next_block_height,
             time,
         )?;
