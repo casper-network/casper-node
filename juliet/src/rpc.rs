@@ -30,7 +30,6 @@ use std::{
 use bytes::Bytes;
 
 use once_cell::sync::OnceCell;
-use quanta::{Clock, Instant};
 use thiserror::Error;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -38,6 +37,7 @@ use tokio::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
         Notify,
     },
+    time::Instant,
 };
 
 use crate::{
@@ -54,8 +54,6 @@ use crate::{
 pub struct RpcBuilder<const N: usize> {
     /// The IO core builder used.
     core: IoCoreBuilder<N>,
-    /// `quanta` clock to use, can be used to instantiate a mock clock.
-    clock: Clock,
 }
 
 impl<const N: usize> RpcBuilder<N> {
@@ -63,10 +61,7 @@ impl<const N: usize> RpcBuilder<N> {
     ///
     /// The builder can be reused to create instances for multiple connections.
     pub fn new(core: IoCoreBuilder<N>) -> Self {
-        RpcBuilder {
-            core,
-            clock: Default::default(),
-        }
+        RpcBuilder { core }
     }
 
     /// Creates new RPC client and server instances.
@@ -88,19 +83,10 @@ impl<const N: usize> RpcBuilder<N> {
             handle: core_handle.downgrade(),
             pending: Default::default(),
             new_requests_receiver,
-            clock: self.clock.clone(),
             timeouts: BinaryHeap::new(),
         };
 
         (client, server)
-    }
-
-    /// Sets the [`quanta::Clock`] source.
-    ///
-    /// Can be used to pass in a mock clock, e.g. from [`quanta::Clock::mock`].
-    pub fn with_clock(mut self, clock: Clock) -> Self {
-        self.clock = clock;
-        self
     }
 }
 
@@ -146,8 +132,6 @@ pub struct JulietRpcServer<const N: usize, R, W> {
     pending: HashMap<IoId, Arc<RequestGuardInner>>,
     /// Receiver for request scheduled by `JulietRpcClient`s.
     new_requests_receiver: UnboundedReceiver<NewOutgoingRequest>,
-    /// Clock source for timeouts.
-    clock: Clock,
     /// Heap of pending timeouts.
     timeouts: BinaryHeap<Reverse<(Instant, IoId)>>,
 }
@@ -246,11 +230,11 @@ where
     /// `next_request` as soon as possible.
     pub async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
         loop {
-            let now = self.clock.now();
+            let now = Instant::now();
 
             // Process all the timeouts.
-            let until_timeout_check = self.process_timeouts(now);
-            let timeout_check = tokio::time::sleep(until_timeout_check);
+            let deadline = self.process_timeouts(now);
+            let timeout_check = tokio::time::sleep_until(deadline);
 
             tokio::select! {
                 biased;
@@ -362,7 +346,7 @@ where
     ///
     /// Returns the duration until the next timeout check needs to take place if timeouts are not
     /// modified in the interim.
-    fn process_timeouts(&mut self, now: Instant) -> Duration {
+    fn process_timeouts(&mut self, now: Instant) -> Instant {
         let is_expired = |t: &Reverse<(Instant, IoId)>| t.0 .0 <= now;
 
         for item in drain_heap_while(&mut self.timeouts, is_expired) {
@@ -384,11 +368,10 @@ where
 
         // Calculate new delay for timeouts.
         if let Some(Reverse((when, _))) = self.timeouts.peek() {
-            when.duration_since(now)
+            *when
         } else {
-            Duration::from_secs(3600)
-
             // 1 hour dummy sleep, since we cannot have a conditional future.
+            now + Duration::from_secs(3600)
         }
     }
 }
@@ -480,12 +463,9 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     fn do_enqueue_request(self, ticket: RequestTicket) -> RequestGuard {
         let inner = Arc::new(RequestGuardInner::new());
 
-        // TODO: Thread timing through interface. Maybe attach to client? Clock is 40 bytes.
-        let clock = quanta::Clock::default();
-
         // If a timeout is set, calculate expiration time.
         let expires = if let Some(timeout) = self.timeout {
-            match clock.now().checked_add(timeout) {
+            match Instant::now().checked_add(timeout) {
                 Some(expires) => Some(expires),
                 None => {
                     // The timeout is so high that the resulting `Instant` would overflow.
