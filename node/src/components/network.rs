@@ -490,37 +490,52 @@ where
             };
             trace!(%msg, encoded_size=payload.len(), %channel, "enqueing message for sending");
 
-            if let Some(responder) = message_queued_responder {
-                let client = connection.rpc_client.clone();
+            // Build the request.
+            let request = connection
+                .rpc_client
+                .create_request(channel.into_channel_id())
+                .with_payload(payload);
 
-                // Technically, the queueing future should be spawned by the reactor, but we can
-                //       make a case here since the networking component usually controls its own
-                //       futures, we are allowed to spawn these as well.
-                tokio::spawn(async move {
-                    let guard = client
-                        .create_request(channel.into_channel_id())
-                        .with_payload(payload)
-                        .queue_for_sending()
-                        .await;
-                    responder.respond(()).await;
+            // Attempt to enqueue it directly, regardless of what `message_queued_responder` is.
+            match request.try_queue_for_sending() {
+                Ok(guard) => process_request_guard(channel, guard),
+                Err(builder) => {
+                    // Failed to queue immediately, our next step depends on whether we were asked
+                    // to keep trying or to discard.
 
-                    // We need to properly process the guard, so it does not cause a cancellation.
-                    process_request_guard(channel, guard)
-                });
-            } else {
-                let request = connection
-                    .rpc_client
-                    .create_request(channel.into_channel_id())
-                    .with_payload(payload);
+                    // Reconstruct the payload.
+                    let payload = match builder.into_payload() {
+                        None => {
+                            // This should never happen.
+                            error!("payload unexpectedly disappeard");
+                            return;
+                        }
+                        Some(payload) => payload,
+                    };
 
-                // No responder given, so we do a best effort of sending the message.
-                match request.try_queue_for_sending() {
-                    Ok(guard) => process_request_guard(channel, guard),
-                    Err(builder) => {
+                    if let Some(responder) = message_queued_responder {
+                        // Reconstruct the client.
+                        let client = connection.rpc_client.clone();
+
+                        // Technically, the queueing future should be spawned by the reactor, but
+                        // since the networking component usually controls its own futures, we are
+                        // allowed to spawn these as well.
+                        tokio::spawn(async move {
+                            let guard = client
+                                .create_request(channel.into_channel_id())
+                                .with_payload(payload)
+                                .queue_for_sending()
+                                .await;
+                            responder.respond(()).await;
+
+                            // We need to properly process the guard, so it does not cause a
+                            // cancellation from being dropped.
+                            process_request_guard(channel, guard)
+                        });
+                    } else {
                         // We had to drop the message, since we hit the buffer limit.
                         debug!(%channel, "node is sending at too high a rate, message dropped");
 
-                        let payload = builder.into_payload().unwrap_or_default();
                         match deserialize_network_message::<P>(&payload) {
                             Ok(reconstructed_message) => {
                                 debug!(our_id=%self.context.our_id(), %dest, msg=%reconstructed_message, "dropped outgoing message, buffer exhausted");
