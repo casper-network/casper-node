@@ -20,7 +20,8 @@
 //! handled locally, since the function is also responsible for performing the underlying IO.
 
 use std::{
-    collections::HashMap,
+    cmp::Reverse,
+    collections::{BinaryHeap, HashMap},
     fmt::{self, Display, Formatter},
     sync::Arc,
     time::Duration,
@@ -36,6 +37,7 @@ use tokio::{
         mpsc::{self, UnboundedReceiver, UnboundedSender},
         Notify,
     },
+    time::Instant,
 };
 
 use crate::{
@@ -44,6 +46,7 @@ use crate::{
         RequestTicket, ReservationError,
     },
     protocol::LocalProtocolViolation,
+    util::PayloadFormat,
     ChannelId, Id,
 };
 
@@ -80,6 +83,7 @@ impl<const N: usize> RpcBuilder<N> {
             handle: core_handle.downgrade(),
             pending: Default::default(),
             new_requests_receiver,
+            timeouts: BinaryHeap::new(),
         };
 
         (client, server)
@@ -101,6 +105,7 @@ pub struct JulietRpcClient<const N: usize> {
 /// [`queue_for_sending`](JulietRpcRequestBuilder::queue_for_sending) or
 /// [`try_queue_for_sending`](JulietRpcRequestBuilder::try_queue_for_sending), returning a
 /// [`RequestGuard`], which can be used to await the results of the request.
+#[derive(Debug)]
 pub struct JulietRpcRequestBuilder<'a, const N: usize> {
     client: &'a JulietRpcClient<N>,
     channel: ChannelId,
@@ -117,14 +122,22 @@ pub struct JulietRpcRequestBuilder<'a, const N: usize> {
 /// ## Shutdown
 ///
 /// The server will automatically be shutdown if the last [`JulietRpcClient`] is dropped.
+#[derive(Debug)]
 pub struct JulietRpcServer<const N: usize, R, W> {
+    /// The `io` module core used by this server.
     core: IoCore<N, R, W>,
+    /// Handle to the `IoCore`, cloned for clients.
     handle: Handle,
+    /// Map of requests that are still pending.
     pending: HashMap<IoId, Arc<RequestGuardInner>>,
+    /// Receiver for request scheduled by `JulietRpcClient`s.
     new_requests_receiver: UnboundedReceiver<NewOutgoingRequest>,
+    /// Heap of pending timeouts.
+    timeouts: BinaryHeap<Reverse<(Instant, IoId)>>,
 }
 
 /// Internal structure representing a new outgoing request.
+#[derive(Debug)]
 struct NewOutgoingRequest {
     /// The already reserved ticket.
     ticket: RequestTicket,
@@ -132,6 +145,21 @@ struct NewOutgoingRequest {
     guard: Arc<RequestGuardInner>,
     /// Payload of the request.
     payload: Option<Bytes>,
+    /// When the request is supposed to time out.
+    expires: Option<Instant>,
+}
+
+impl Display for NewOutgoingRequest {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "NewOutgoingRequest {{ ticket: {}", self.ticket,)?;
+        if let Some(ref expires) = self.expires {
+            write!(f, ", expires: {:?}", expires)?;
+        }
+        if let Some(ref payload) = self.payload {
+            write!(f, ", payload: {}", PayloadFormat(payload))?;
+        }
+        f.write_str(" }}")
+    }
 }
 
 #[derive(Debug)]
@@ -202,15 +230,39 @@ where
     /// `next_request` as soon as possible.
     pub async fn next_request(&mut self) -> Result<Option<IncomingRequest>, RpcServerError> {
         loop {
+            let now = Instant::now();
+
+            // Process all the timeouts.
+            let deadline = self.process_timeouts(now);
+            let timeout_check = tokio::time::sleep_until(deadline);
+
             tokio::select! {
                 biased;
 
+                _ = timeout_check => {
+                    // Enough time has elapsed that we need to check for timeouts, which we will
+                    // do the next time we loop.
+                    #[cfg(feature = "tracing")]
+                    tracing::trace!("timeout check");
+                }
+
                 opt_new_request = self.new_requests_receiver.recv() => {
-                    if let Some(NewOutgoingRequest { ticket, guard, payload }) = opt_new_request {
+                    #[cfg(feature = "tracing")]
+                    {
+                        if let Some(ref new_request) = opt_new_request {
+                            tracing::debug!(%new_request, "trying to enqueue");
+                        }
+                    }
+                    if let Some(NewOutgoingRequest { ticket, guard, payload, expires }) = opt_new_request {
                         match self.handle.enqueue_request(ticket, payload) {
                             Ok(io_id) => {
                                 // The request will be sent out, store it in our pending map.
                                 self.pending.insert(io_id, guard);
+
+                                // If a timeout has been configured, add it to the timeouts map.
+                                if let Some(expires) = expires {
+                                    self.timeouts.push(Reverse((expires, io_id)));
+                                }
                             },
                             Err(payload) => {
                                 // Failed to send -- time to shut down.
@@ -219,12 +271,33 @@ where
                         }
                     } else {
                         // The client has been dropped, time for us to shut down as well.
+                        #[cfg(feature = "tracing")]
+                        tracing::info!("last client dropped locally, shutting down");
+
                         return Ok(None);
                     }
                 }
 
-                opt_event = self.core.next_event() => {
-                    if let Some(event) = opt_event? {
+                event_result = self.core.next_event() => {
+                    #[cfg(feature = "tracing")]
+                    {
+                        match event_result {
+                            Err(ref err) => {
+                                if matches!(err, CoreError::LocalProtocolViolation(_)) {
+                                    tracing::warn!(%err, "error");
+                                } else {
+                                    tracing::info!(%err, "error");
+                                }
+                            }
+                            Ok(None) => {
+                                tracing::info!("received remote close");
+                            }
+                            Ok(Some(ref event)) => {
+                                tracing::debug!(%event, "received");
+                            }
+                        }
+                    }
+                    if let Some(event) = event_result? {
                         match event {
                             IoEvent::NewRequest {
                                 channel,
@@ -268,12 +341,44 @@ where
             };
         }
     }
+
+    /// Process all pending timeouts, setting and notifying `RequestError::TimedOut` on timeout.
+    ///
+    /// Returns the duration until the next timeout check needs to take place if timeouts are not
+    /// modified in the interim.
+    fn process_timeouts(&mut self, now: Instant) -> Instant {
+        let is_expired = |t: &Reverse<(Instant, IoId)>| t.0 .0 <= now;
+
+        for item in drain_heap_while(&mut self.timeouts, is_expired) {
+            let (_, io_id) = item.0;
+
+            // If not removed already through other means, set and notify about timeout.
+            if let Some(guard_ref) = self.pending.remove(&io_id) {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(%io_id, "timeout due to response not received in time");
+                guard_ref.set_and_notify(Err(RequestError::TimedOut));
+
+                // We also need to send a cancellation.
+                if self.handle.enqueue_request_cancellation(io_id).is_err() {
+                    #[cfg(feature = "tracing")]
+                    tracing::debug!(%io_id, "dropping timeout cancellation, remote already closed");
+                }
+            }
+        }
+
+        // Calculate new delay for timeouts.
+        if let Some(Reverse((when, _))) = self.timeouts.peek() {
+            *when
+        } else {
+            // 1 hour dummy sleep, since we cannot have a conditional future.
+            now + Duration::from_secs(3600)
+        }
+    }
 }
 
 impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
     fn drop(&mut self) {
         // When the server is dropped, ensure all waiting requests are informed.
-
         self.new_requests_receiver.close();
 
         for (_io_id, guard) in self.pending.drain() {
@@ -284,6 +389,7 @@ impl<const N: usize, R, W> Drop for JulietRpcServer<N, R, W> {
             ticket: _,
             guard,
             payload,
+            expires: _,
         }) = self.new_requests_receiver.try_recv()
         {
             guard.set_and_notify(Err(RequestError::RemoteClosed(payload)))
@@ -308,8 +414,6 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     /// Sets the timeout for the request.
     ///
     /// By default, there is an infinite timeout.
-    ///
-    /// **TODO**: Currently the timeout feature is not implemented.
     pub const fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = Some(timeout);
         self
@@ -359,10 +463,24 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
     fn do_enqueue_request(self, ticket: RequestTicket) -> RequestGuard {
         let inner = Arc::new(RequestGuardInner::new());
 
+        // If a timeout is set, calculate expiration time.
+        let expires = if let Some(timeout) = self.timeout {
+            match Instant::now().checked_add(timeout) {
+                Some(expires) => Some(expires),
+                None => {
+                    // The timeout is so high that the resulting `Instant` would overflow.
+                    return RequestGuard::new_error(RequestError::TimeoutOverflow(timeout));
+                }
+            }
+        } else {
+            None
+        };
+
         match self.client.new_request_sender.send(NewOutgoingRequest {
             ticket,
             guard: inner.clone(),
             payload: self.payload,
+            expires,
         }) {
             Ok(()) => RequestGuard { inner },
             Err(send_err) => {
@@ -375,7 +493,7 @@ impl<'a, const N: usize> JulietRpcRequestBuilder<'a, N> {
 /// An RPC request error.
 ///
 /// Describes the reason a request did not yield a response.
-#[derive(Clone, Debug, Error)]
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
 pub enum RequestError {
     /// Remote closed, could not send.
     ///
@@ -393,6 +511,11 @@ pub enum RequestError {
     /// The request was cancelled on our end due to a timeout.
     #[error("request timed out")]
     TimedOut,
+    /// Local timeout overflow.
+    ///
+    /// The given timeout would cause a clock overflow.
+    #[error("requested timeout ({0:?}) would cause clock overflow")]
+    TimeoutOverflow(Duration),
     /// Remote responded with cancellation.
     ///
     /// Instead of sending a response, the remote sent a cancellation.
@@ -415,7 +538,7 @@ pub enum RequestError {
 /// The existence of a [`RequestGuard`] indicates that a request has been made or is ongoing. It
 /// can also be used to attempt to [`cancel`](RequestGuard::cancel) the request, or retrieve its
 /// values using [`wait_for_response`](RequestGuard::wait_for_response) or
-/// [`try_wait_for_response`](RequestGuard::try_wait_for_response).
+/// [`try_get_response`](RequestGuard::try_get_response).
 #[derive(Debug)]
 #[must_use = "dropping the request guard will immediately cancel the request"]
 pub struct RequestGuard {
@@ -483,7 +606,7 @@ impl RequestGuard {
     ///
     /// Like [`wait_for_response`](Self::wait_for_response), except that instead of waiting, it will
     /// return `Err(self)` if the peer was not ready yet.
-    pub fn try_wait_for_response(self) -> Result<Result<Option<Bytes>, RequestError>, Self> {
+    pub fn try_get_response(self) -> Result<Result<Option<Bytes>, RequestError>, Self> {
         if self.inner.outcome.get().is_some() {
             Ok(self.take_inner())
         } else {
@@ -626,17 +749,65 @@ impl Drop for IncomingRequest {
     }
 }
 
+/// An iterator draining items out of a heap based on a predicate.
+///
+/// See [`drain_heap_while`] for details.
+struct DrainConditional<'a, T, F> {
+    /// Heap to be drained.
+    heap: &'a mut BinaryHeap<T>,
+    /// Predicate function to determine whether or not to drain a specific element.
+    predicate: F,
+}
+
+/// Removes items from the top of a heap while a given predicate is true.
+fn drain_heap_while<T, F: FnMut(&T) -> bool>(
+    heap: &mut BinaryHeap<T>,
+    predicate: F,
+) -> DrainConditional<'_, T, F> {
+    DrainConditional { heap, predicate }
+}
+
+impl<'a, T, F> Iterator for DrainConditional<'a, T, F>
+where
+    F: FnMut(&T) -> bool,
+    T: Ord + PartialOrd + 'static,
+{
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        let candidate = self.heap.peek()?;
+        if (self.predicate)(candidate) {
+            Some(
+                self.heap
+                    .pop()
+                    .expect("did not expect heap top to disappear"),
+            )
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{collections::BinaryHeap, sync::Arc, time::Duration};
+
     use bytes::Bytes;
+    use futures::FutureExt;
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
+    use tracing::{span, Instrument, Level};
 
     use crate::{
-        io::IoCoreBuilder, protocol::ProtocolBuilder, rpc::RpcBuilder, ChannelConfiguration,
-        ChannelId,
+        io::IoCoreBuilder,
+        protocol::ProtocolBuilder,
+        rpc::{RequestError, RpcBuilder},
+        ChannelConfiguration, ChannelId,
     };
 
-    use super::{JulietRpcClient, JulietRpcServer};
+    use super::{
+        drain_heap_while, JulietRpcClient, JulietRpcServer, RequestGuard, RequestGuardInner,
+    };
 
     #[allow(clippy::type_complexity)] // We'll allow it in testing.
     fn setup_peers<const N: usize>(
@@ -663,47 +834,84 @@ mod tests {
         (peer_a, peer_b)
     }
 
-    #[tokio::test]
-    async fn basic_smoke_test() {
+    // It takes about 12 ms one-way for sound from the base of the Matterhorn to reach the summit,
+    // so we expect a single yodel to echo within ~ 24 ms, which is use as a reference here.
+    const ECHO_DELAY: Duration = Duration::from_millis(2 * 12);
+
+    /// Runs an echo server in the background.
+    ///
+    /// The server keeps running as long as the future is polled.
+    async fn run_echo_server<const N: usize>(
+        server: (
+            JulietRpcClient<N>,
+            JulietRpcServer<N, ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
+        ),
+    ) {
+        let (rpc_client, mut rpc_server) = server;
+
+        while let Some(req) = rpc_server
+            .next_request()
+            .await
+            .expect("error receiving request")
+        {
+            let payload = req.payload().clone();
+
+            tokio::time::sleep(ECHO_DELAY).await;
+            req.respond(payload);
+        }
+
+        drop(rpc_client);
+    }
+
+    /// Runs the necessary server functionality for the RPC client.
+    async fn run_echo_client<const N: usize>(
+        mut rpc_server: JulietRpcServer<N, ReadHalf<DuplexStream>, WriteHalf<DuplexStream>>,
+    ) {
+        while let Some(inc) = rpc_server
+            .next_request()
+            .await
+            .expect("client rpc_server error")
+        {
+            panic!("did not expect to receive {:?} on client", inc);
+        }
+    }
+
+    /// Creates a channel configuration with test defaults.
+    fn create_config() -> ChannelConfiguration {
+        ChannelConfiguration::new()
+            .with_max_request_payload_size(1024)
+            .with_max_response_payload_size(1024)
+            .with_request_limit(1)
+    }
+
+    /// Completely sets up an environment with a running echo server, returning a client.
+    fn create_rpc_echo_server_env(channel_config: ChannelConfiguration) -> JulietRpcClient<2> {
+        // Setup logging if not already set up.
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init()
+            .ok(); // If setting up logging fails, another testing thread already initialized it.
+
         let builder = RpcBuilder::new(IoCoreBuilder::new(
-            ProtocolBuilder::<2>::with_default_channel_config(
-                ChannelConfiguration::new()
-                    .with_max_request_payload_size(1024)
-                    .with_max_response_payload_size(1024),
-            ),
+            ProtocolBuilder::<2>::with_default_channel_config(channel_config),
         ));
 
         let (client, server) = setup_peers(builder);
 
-        // Spawn an echo-server.
-        tokio::spawn(async move {
-            let (rpc_client, mut rpc_server) = server;
+        // Spawn the server.
+        tokio::spawn(run_echo_server(server).instrument(span!(Level::ERROR, "server")));
 
-            while let Some(req) = rpc_server
-                .next_request()
-                .await
-                .expect("error receiving request")
-            {
-                println!("recieved {}", req);
-                let payload = req.payload().clone();
-                req.respond(payload);
-            }
-
-            drop(rpc_client);
-        });
-
-        let (rpc_client, mut rpc_server) = client;
+        let (rpc_client, rpc_server) = client;
 
         // Run the background process for the client.
-        tokio::spawn(async move {
-            while let Some(inc) = rpc_server
-                .next_request()
-                .await
-                .expect("client rpc_server error")
-            {
-                panic!("did not expect to receive {:?} on client", inc);
-            }
-        });
+        tokio::spawn(run_echo_client(rpc_server).instrument(span!(Level::ERROR, "client")));
+
+        rpc_client
+    }
+
+    #[tokio::test]
+    async fn basic_smoke_test() {
+        let rpc_client = create_rpc_echo_server_env(create_config());
 
         let payload = Bytes::from(&b"foobar"[..]);
 
@@ -716,6 +924,190 @@ mod tests {
             .await
             .expect("request failed");
 
-        assert_eq!(response, Some(payload));
+        assert_eq!(response, Some(payload.clone()));
+
+        // Create a second request with a timeout.
+        let response_err = rpc_client
+            .create_request(ChannelId::new(0))
+            .with_payload(payload.clone())
+            .with_timeout(ECHO_DELAY / 2)
+            .queue_for_sending()
+            .await
+            .wait_for_response()
+            .await;
+        assert_eq!(response_err, Err(crate::rpc::RequestError::TimedOut));
+    }
+
+    #[tokio::test]
+    async fn timeout_processed_in_correct_order() {
+        // It's important to set a request limit higher than 1, so that both requests can be sent at
+        // the same time.
+        let rpc_client = create_rpc_echo_server_env(create_config().with_request_limit(3));
+
+        let payload_short = Bytes::from(&b"timeout check short"[..]);
+        let payload_long = Bytes::from(&b"timeout check long"[..]);
+
+        // Sending two requests with different timeouts will result in both being added to the heap
+        // of timeouts to check. If the internal heap is in the wrong order, the bigger timeout will
+        // prevent the smaller one from being processed.
+
+        let req_short = rpc_client
+            .create_request(ChannelId::new(0))
+            .with_payload(payload_short)
+            .with_timeout(ECHO_DELAY / 2)
+            .queue_for_sending()
+            .await;
+
+        let req_long = rpc_client
+            .create_request(ChannelId::new(0))
+            .with_payload(payload_long.clone())
+            .with_timeout(ECHO_DELAY * 100)
+            .queue_for_sending()
+            .await;
+
+        let result_short = req_short.wait_for_response().await;
+        let result_long = req_long.wait_for_response().await;
+
+        assert_eq!(result_short, Err(RequestError::TimedOut));
+        assert_eq!(result_long, Ok(Some(payload_long)));
+
+        // TODO: Ensure cancellation was sent. Right now, we can verify this in the logs, but it
+        //       would be nice to have a test tailored to ensure this.
+    }
+
+    #[test]
+    fn request_guard_polls_waiting_with_no_response() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard { inner };
+
+        // Initially, the guard should not have a response.
+        let guard = guard
+            .try_get_response()
+            .expect_err("should not have a result");
+
+        // Polling it should also result in a wait.
+        let waiting = guard.wait_for_response();
+
+        assert!(waiting.now_or_never().is_none());
+    }
+
+    #[test]
+    fn request_guard_polled_early_returns_response_when_available() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        // Waiter created before response sent.
+        let waiting = guard.wait_for_response();
+        inner.set_and_notify(Ok(None));
+
+        assert_eq!(waiting.now_or_never().expect("should poll ready"), Ok(None));
+    }
+
+    #[test]
+    fn request_guard_polled_late_returns_response_when_available() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        inner.set_and_notify(Ok(None));
+
+        // Waiter created after response sent.
+        let waiting = guard.wait_for_response();
+
+        assert_eq!(waiting.now_or_never().expect("should poll ready"), Ok(None));
+    }
+
+    #[test]
+    fn request_guard_get_returns_correct_value_when_available() {
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        // Waiter created and polled before notification.
+        let guard = guard
+            .try_get_response()
+            .expect_err("should not have a result");
+
+        let payload_str = b"hello, world";
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str))));
+
+        assert_eq!(
+            guard.try_get_response().expect("should be ready"),
+            Ok(Some(Bytes::from_static(payload_str)))
+        );
+    }
+
+    #[test]
+    fn request_guard_harmless_to_set_multiple_times() {
+        // We want first write wins semantics here.
+        let inner = Arc::new(RequestGuardInner::new());
+        let guard = RequestGuard {
+            inner: inner.clone(),
+        };
+
+        let payload_str = b"hello, world";
+        let payload_str2 = b"goodbye, world";
+
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+
+        assert_eq!(
+            guard.try_get_response().expect("should be ready"),
+            Ok(Some(Bytes::from_static(payload_str)))
+        );
+
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+        inner.set_and_notify(Ok(Some(Bytes::from_static(payload_str2))));
+    }
+
+    #[test]
+    fn drain_works() {
+        let mut heap = BinaryHeap::new();
+
+        heap.push(5);
+        heap.push(3);
+        heap.push(2);
+        heap.push(7);
+        heap.push(11);
+        heap.push(13);
+
+        assert!(drain_heap_while(&mut heap, |_| false).next().is_none());
+        assert!(drain_heap_while(&mut heap, |&v| v > 14).next().is_none());
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |&v| v > 10).collect::<Vec<_>>(),
+            vec![13, 11]
+        );
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |&v| v > 10).collect::<Vec<_>>(),
+            Vec::<i32>::new()
+        );
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |&v| v > 2).collect::<Vec<_>>(),
+            vec![7, 5, 3]
+        );
+
+        assert_eq!(
+            drain_heap_while(&mut heap, |_| true).collect::<Vec<_>>(),
+            vec![2]
+        );
+    }
+
+    #[test]
+    fn drain_on_empty_works() {
+        let mut empty_heap = BinaryHeap::<u32>::new();
+
+        assert!(drain_heap_while(&mut empty_heap, |_| true).next().is_none());
     }
 }

@@ -1504,7 +1504,7 @@ where
 /// `RequestGuard`. Potential errors that are available early are dropped, later errors discarded.
 #[inline]
 fn process_request_guard(channel: Channel, guard: RequestGuard) {
-    match guard.try_wait_for_response() {
+    match guard.try_get_response() {
         Ok(Ok(_outcome)) => {
             // We got an incredibly quick round-trip, lucky us! Nothing to do.
         }

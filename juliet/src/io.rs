@@ -26,6 +26,7 @@
 
 use std::{
     collections::{BTreeSet, VecDeque},
+    fmt::{self, Display, Formatter},
     io,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -50,6 +51,7 @@ use crate::{
         payload_is_multi_frame, CompletedRead, FrameIter, JulietProtocol, LocalProtocolViolation,
         OutgoingFrame, OutgoingMessage, ProtocolBuilder,
     },
+    util::PayloadFormat,
     ChannelId, Id, Outcome,
 };
 
@@ -99,6 +101,59 @@ enum QueuedItem {
         /// Error payload.
         payload: Bytes,
     },
+}
+
+impl Display for QueuedItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            QueuedItem::Request {
+                channel,
+                io_id,
+                payload,
+                permit: _,
+            } => {
+                write!(f, "Request {{ channel: {}, io_id: {}", channel, io_id)?;
+                if let Some(payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }")
+            }
+            QueuedItem::RequestCancellation { io_id } => {
+                write!(f, "RequestCancellation {{ io_id: {} }}", io_id)
+            }
+            QueuedItem::Response {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(f, "Response {{ channel: {}, id: {}", channel, id)?;
+                if let Some(payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }")
+            }
+            QueuedItem::ResponseCancellation { channel, id } => {
+                write!(
+                    f,
+                    "ResponseCancellation {{ channel: {}, id: {} }}",
+                    channel, id
+                )
+            }
+            QueuedItem::Error {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(
+                    f,
+                    "Error {{ channel: {}, id: {}, payload: {} }}",
+                    channel,
+                    id,
+                    PayloadFormat(payload)
+                )
+            }
+        }
+    }
 }
 
 impl QueuedItem {
@@ -158,8 +213,15 @@ pub enum CoreError {
 /// Request layer IO IDs are unique across the program per request that originated from the local
 /// endpoint. They are used to allow for buffering large numbers of items without exhausting the
 /// pool of protocol level request IDs, which are limited to `u16`s.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IoId(u64);
+
+impl Display for IoId {
+    #[inline(always)]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
 
 /// IO layer for the juliet protocol.
 ///
@@ -168,6 +230,7 @@ pub struct IoId(u64);
 /// items to be sent.
 ///
 /// Once instantiated, a continuous polling of [`IoCore::next_event`] is expected.
+#[derive(Debug)]
 pub struct IoCore<const N: usize, R, W> {
     /// The actual protocol state.
     juliet: JulietProtocol<N>,
@@ -266,6 +329,38 @@ pub enum IoEvent {
         /// The local request ID which will not be answered.
         io_id: IoId,
     },
+}
+
+impl Display for IoEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            IoEvent::NewRequest {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(f, "NewRequest {{ channel: {}, id: {}", channel, id)?;
+                if let Some(ref payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }")
+            }
+
+            IoEvent::RequestCancelled { channel, id } => {
+                write!(f, "RequestCancalled {{ channel: {}, id: {} }}", channel, id)
+            }
+            IoEvent::ReceivedResponse { io_id, payload } => {
+                write!(f, "ReceivedResponse {{ io_id: {}", io_id)?;
+                if let Some(ref payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }")
+            }
+            IoEvent::ReceivedCancellationResponse { io_id } => {
+                write!(f, "ReceivedCancellationResponse {{ io_id: {} }}", io_id)
+            }
+        }
+    }
 }
 
 /// A builder for the [`IoCore`].
@@ -414,8 +509,7 @@ where
 
                     #[cfg(feature = "tracing")]
                     {
-                        use tracing::trace;
-                        trace!(frame=%frame_sent, "sent");
+                        tracing::trace!(frame=%frame_sent, "sent");
                     }
 
                     if frame_sent.header().is_error() {
@@ -446,6 +540,8 @@ where
                         None => {
                             // If the receiver was closed it means that we locally shut down the
                             // connection.
+                            #[cfg(feature = "tracing")]
+                            tracing::info!("local shutdown");
                             return Ok(None);
                         }
                     }
@@ -457,6 +553,8 @@ where
                             }
                             Err(TryRecvError::Disconnected) => {
                                 // While processing incoming items, the last handle was closed.
+                                #[cfg(feature = "tracing")]
+                                tracing::debug!("last local io handle closed, shutting down");
                                 return Ok(None);
                             }
                             Err(TryRecvError::Empty) => {
@@ -500,6 +598,8 @@ where
         &mut self,
         completed_read: CompletedRead,
     ) -> Result<IoEvent, CoreError> {
+        #[cfg(feature = "tracing")]
+        tracing::debug!(%completed_read, "completed read");
         match completed_read {
             CompletedRead::ErrorReceived { header, data } => {
                 // We've received an error from the peer, they will be closing the connection.
@@ -550,10 +650,14 @@ where
     fn handle_incoming_item(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
         // Check if the item is sendable immediately.
         if let Some(channel) = item_should_wait(&item, &self.juliet, &self.active_multi_frame) {
+            #[cfg(feature = "tracing")]
+            tracing::debug!(%item, "postponing send");
             self.wait_queue[channel.get() as usize].push_back(item);
             return Ok(());
         }
 
+        #[cfg(feature = "tracing")]
+        tracing::debug!(%item, "ready to send");
         self.send_to_ready_queue(item, false)
     }
 
@@ -589,8 +693,8 @@ where
                 drop(permit);
             }
             QueuedItem::RequestCancellation { io_id } => {
-                if let Some((_, (channel, id))) = self.request_map.remove_by_left(&io_id) {
-                    if let Some(msg) = self.juliet.cancel_request(channel, id)? {
+                if let Some((channel, id)) = self.request_map.get_by_left(&io_id) {
+                    if let Some(msg) = self.juliet.cancel_request(*channel, *id)? {
                         self.ready_queue.push_back(msg.frames());
                     }
                 } else {
@@ -816,6 +920,16 @@ pub struct RequestTicket {
     io_id: IoId,
 }
 
+impl Display for RequestTicket {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "RequestTicket {{ channel: {}, io_id: {} }}",
+            self.channel, self.io_id
+        )
+    }
+}
+
 /// A failure to reserve a slot in the queue.
 pub enum ReservationError {
     /// No buffer space available.
@@ -900,7 +1014,15 @@ impl Handle {
                 payload,
                 permit,
             })
-            .map_err(|send_err| send_err.0.into_payload())?;
+            .map(|()| {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(%io_id, %channel, "successfully enqueued");
+            })
+            .map_err(|send_err| {
+                #[cfg(feature = "tracing")]
+                tracing::debug!("failed to enqueue, remote closed");
+                send_err.0.into_payload()
+            })?;
 
         Ok(io_id)
     }

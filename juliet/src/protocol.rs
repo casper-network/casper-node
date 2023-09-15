@@ -22,7 +22,7 @@
 mod multiframe;
 mod outgoing_message;
 
-use std::{collections::HashSet, num::NonZeroU32};
+use std::{collections::HashSet, fmt::Display, num::NonZeroU32};
 
 use bytes::{Buf, Bytes, BytesMut};
 use thiserror::Error;
@@ -32,7 +32,7 @@ pub use self::outgoing_message::{FrameIter, OutgoingFrame, OutgoingMessage};
 use crate::{
     header::{self, ErrorKind, Header, Kind},
     try_outcome,
-    util::Index,
+    util::{Index, PayloadFormat},
     varint::{decode_varint32, Varint32},
     ChannelConfiguration, ChannelId, Id,
     Outcome::{self, Fatal, Incomplete, Success},
@@ -411,6 +411,62 @@ pub enum CompletedRead {
     },
 }
 
+impl Display for CompletedRead {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompletedRead::ErrorReceived { header, data } => {
+                write!(f, "ErrorReceived {{ header: {}", header)?;
+
+                if let Some(data) = data {
+                    write!(f, ", data: {}", PayloadFormat(data))?;
+                }
+
+                f.write_str(" }")
+            }
+            CompletedRead::NewRequest {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(f, "NewRequest {{ channel: {}, id: {}", channel, id)?;
+
+                if let Some(payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+
+                f.write_str(" }")
+            }
+            CompletedRead::ReceivedResponse {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(f, "ReceivedResponse {{ channel: {}, id: {}", channel, id)?;
+
+                if let Some(payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+
+                f.write_str(" }")
+            }
+            CompletedRead::RequestCancellation { channel, id } => {
+                write!(
+                    f,
+                    "RequestCancellation {{ channel: {}, id: {} }}",
+                    channel, id
+                )
+            }
+            CompletedRead::ResponseCancellation { channel, id } => {
+                write!(
+                    f,
+                    "ResponseCancellation {{ channel: {}, id: {} }}",
+                    channel, id
+                )
+            }
+        }
+    }
+}
+
 /// The caller of the this crate has violated the protocol.
 ///
 /// A correct implementation of a client should never encounter this, thus simply unwrapping every
@@ -418,7 +474,7 @@ pub enum CompletedRead {
 ///
 /// Higher level layers like [`rpc`](crate::rpc) should make it impossible to encounter
 /// [`LocalProtocolViolation`]s.
-#[derive(Copy, Clone, Debug, Error)]
+#[derive(Copy, Clone, Debug, Eq, Error, PartialEq)]
 pub enum LocalProtocolViolation {
     /// A request was not sent because doing so would exceed the request limit on channel.
     ///
@@ -447,17 +503,11 @@ pub enum LocalProtocolViolation {
 macro_rules! log_frame {
     ($header:expr) => {
         #[cfg(feature = "tracing")]
-        {
-            use tracing::trace;
-            trace!(header=%$header, "received");
-        }
+        tracing::trace!(header=%$header, "received");
     };
     ($header:expr, $payload:expr) => {
         #[cfg(feature = "tracing")]
-        {
-            use tracing::trace;
-            trace!(header=%$header, payload=%crate::util::PayloadFormat(&$payload), "received");
-        }
+        tracing::trace!(header=%$header, payload=%crate::util::PayloadFormat(&$payload), "received");
     };
 }
 
@@ -705,7 +755,7 @@ impl<const N: usize> JulietProtocol<N> {
                 None => {
                     // The header was invalid, return an error.
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?header_raw, "received invalid header");
+                    tracing::debug!(?header_raw, "received invalid header");
                     return Fatal(OutgoingMessage::new(
                         Header::new_error(ErrorKind::InvalidHeader, UNKNOWN_CHANNEL, UNKNOWN_ID),
                         None,
@@ -892,8 +942,7 @@ impl<const N: usize> JulietProtocol<N> {
 
                     #[cfg(feature = "tracing")]
                     {
-                        use tracing::trace;
-                        trace!(%header, "received request cancellation");
+                        tracing::debug!(%header, "received request cancellation");
                     }
 
                     // Multi-frame transfers that have not yet been completed are a special case,

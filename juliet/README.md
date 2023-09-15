@@ -21,3 +21,16 @@ This crate's implementation includes benefits such as
 ## Examples
 
 For a quick usage example, see `examples/fizzbuzz.rs`.
+
+## `tracing` support
+
+The crate has an optional dependency on the [`tracing`](https://docs.rs/tracing) crate, which, if enabled, allows detailed insights through logs. If the feature is not enabled, no log statements are compiled in.
+
+Log levels in general are used as follows:
+
+* `ERROR` and `WARN`: Actual issues that are not protocol level errors -- peer errors are expected and do not warrant a `WARN` level.
+* `INFO`: Insights into received high level events (e.g. connection, disconnection, etc), except information concerning individual requests/messages.
+* `DEBUG`: Detailed insights down to the level of individual requests, but not frames. A multi-megabyte single message transmission will NOT clog the logs.
+* `TRACE`: Like `DEBUG`, but also including frame and wire-level information, as well as local functions being called.
+
+At `INFO`, it is thus conceivable for a peer to maliciously spam local logs, although with some effort if connection attempts are rate limited. At `DEBUG` or lower, this becomes trivial.

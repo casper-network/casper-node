@@ -672,11 +672,11 @@ mod tests {
         assert_eq!(byte_iter.chunk(), &[11]);
         byte_iter.advance(1);
         assert_eq!(byte_iter.remaining(), 0);
-        assert_eq!(byte_iter.chunk(), &[]);
-        assert_eq!(byte_iter.chunk(), &[]);
-        assert_eq!(byte_iter.chunk(), &[]);
-        assert_eq!(byte_iter.chunk(), &[]);
-        assert_eq!(byte_iter.chunk(), &[]);
+        assert_eq!(byte_iter.chunk(), &[0u8; 0]);
+        assert_eq!(byte_iter.chunk(), &[0u8; 0]);
+        assert_eq!(byte_iter.chunk(), &[0u8; 0]);
+        assert_eq!(byte_iter.chunk(), &[0u8; 0]);
+        assert_eq!(byte_iter.chunk(), &[0u8; 0]);
         assert_eq!(byte_iter.remaining(), 0);
         assert_eq!(byte_iter.remaining(), 0);
         assert_eq!(byte_iter.remaining(), 0);
