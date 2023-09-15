@@ -103,6 +103,59 @@ enum QueuedItem {
     },
 }
 
+impl Display for QueuedItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            QueuedItem::Request {
+                channel,
+                io_id,
+                payload,
+                permit: _,
+            } => {
+                write!(f, "Request {{ channel: {}, io_id: {}", channel, io_id)?;
+                if let Some(payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }}")
+            }
+            QueuedItem::RequestCancellation { io_id } => {
+                write!(f, "RequestCancellation {{ io_id: {} }}", io_id)
+            }
+            QueuedItem::Response {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(f, "Response {{ channel: {}, id: {}", channel, id)?;
+                if let Some(payload) = payload {
+                    write!(f, ", payload: {}", PayloadFormat(payload))?;
+                }
+                f.write_str(" }}")
+            }
+            QueuedItem::ResponseCancellation { channel, id } => {
+                write!(
+                    f,
+                    "ResponseCancellation {{ channel: {}, id: {} }}",
+                    channel, id
+                )
+            }
+            QueuedItem::Error {
+                channel,
+                id,
+                payload,
+            } => {
+                write!(
+                    f,
+                    "Error {{ channel: {}, id: {}, payload: {} }}",
+                    channel,
+                    id,
+                    PayloadFormat(payload)
+                )
+            }
+        }
+    }
+}
+
 impl QueuedItem {
     /// Retrieves the payload from the queued item.
     fn into_payload(self) -> Option<Bytes> {
@@ -487,6 +540,8 @@ where
                         None => {
                             // If the receiver was closed it means that we locally shut down the
                             // connection.
+                            #[cfg(feature = "tracing")]
+                            tracing::info!("local shutdown");
                             return Ok(None);
                         }
                     }
@@ -498,6 +553,8 @@ where
                             }
                             Err(TryRecvError::Disconnected) => {
                                 // While processing incoming items, the last handle was closed.
+                                #[cfg(feature = "tracing")]
+                                tracing::debug!("last local io handle closed, shutting down");
                                 return Ok(None);
                             }
                             Err(TryRecvError::Empty) => {
@@ -591,10 +648,14 @@ where
     fn handle_incoming_item(&mut self, item: QueuedItem) -> Result<(), LocalProtocolViolation> {
         // Check if the item is sendable immediately.
         if let Some(channel) = item_should_wait(&item, &self.juliet, &self.active_multi_frame) {
+            #[cfg(feature = "tracing")]
+            tracing::debug!(%item, "postponing send");
             self.wait_queue[channel.get() as usize].push_back(item);
             return Ok(());
         }
 
+        #[cfg(feature = "tracing")]
+        tracing::debug!(%item, "ready to send");
         self.send_to_ready_queue(item, false)
     }
 
@@ -951,7 +1012,15 @@ impl Handle {
                 payload,
                 permit,
             })
-            .map_err(|send_err| send_err.0.into_payload())?;
+            .map(|()| {
+                #[cfg(feature = "tracing")]
+                tracing::debug!(%io_id, %channel, "successfully enqueued");
+            })
+            .map_err(|send_err| {
+                #[cfg(feature = "tracing")]
+                tracing::debug!("failed to enqueue, remote closed");
+                send_err.0.into_payload()
+            })?;
 
         Ok(io_id)
     }

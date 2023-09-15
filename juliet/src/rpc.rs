@@ -266,7 +266,7 @@ where
                     #[cfg(feature = "tracing")]
                     {
                         if let Some(ref new_request) = opt_new_request {
-                            tracing::debug!(%new_request, "request to send");
+                            tracing::debug!(%new_request, "trying to enqueue");
                         }
                     }
                     if let Some(NewOutgoingRequest { ticket, guard, payload, expires }) = opt_new_request {
