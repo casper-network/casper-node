@@ -3004,6 +3004,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "highway-state-grapher"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "casper-hashing",
+ "casper-node",
+ "casper-types",
+ "clap 4.2.7",
+ "flate2",
+ "serde",
+]
+
+[[package]]
 name = "hmac"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

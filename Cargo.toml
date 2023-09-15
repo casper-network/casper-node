@@ -13,6 +13,7 @@ members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "utils/highway-rewards-analysis",
+    "utils/highway-state-grapher",
 ]
 
 default-members = [
@@ -27,6 +28,7 @@ default-members = [
     "utils/global-state-update-gen",
     "utils/validation",
     "utils/highway-rewards-analysis",
+    "utils/highway-state-grapher",
 ]
 
 exclude = ["utils/nctl/remotes/casper-client-rs"]
