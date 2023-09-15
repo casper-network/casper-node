@@ -64,7 +64,7 @@ pub(crate) use components::{
     upgrade_watcher::Config as UpgradeWatcherConfig,
 };
 pub use components::{
-    contract_runtime,
+    consensus, contract_runtime,
     rpc_server::rpcs,
     storage::{self, Config as StorageConfig},
 };

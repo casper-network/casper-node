@@ -20,7 +20,7 @@ use crate::utils::ds;
 #[derive(
     Copy, Clone, DataSize, Debug, Eq, PartialEq, Hash, Ord, PartialOrd, Serialize, Deserialize,
 )]
-pub(crate) struct ValidatorIndex(pub(crate) u32);
+pub struct ValidatorIndex(pub u32);
 
 impl From<u32> for ValidatorIndex {
     fn from(idx: u32) -> Self {
@@ -30,7 +30,7 @@ impl From<u32> for ValidatorIndex {
 
 /// Information about a validator: their ID and weight.
 #[derive(Clone, DataSize, Debug, Eq, PartialEq)]
-pub(crate) struct Validator<VID> {
+pub struct Validator<VID> {
     weight: Weight,
     id: VID,
     banned: bool,
@@ -49,18 +49,20 @@ impl<VID, W: Into<Weight>> From<(VID, W)> for Validator<VID> {
 }
 
 impl<VID> Validator<VID> {
-    pub(crate) fn id(&self) -> &VID {
+    /// Returns the validator's ID.
+    pub fn id(&self) -> &VID {
         &self.id
     }
 
-    pub(crate) fn weight(&self) -> Weight {
+    /// Returns the validator's weight.
+    pub fn weight(&self) -> Weight {
         self.weight
     }
 }
 
 /// The validator IDs and weight map.
 #[derive(Debug, DataSize, Clone)]
-pub(crate) struct Validators<VID>
+pub struct Validators<VID>
 where
     VID: Eq + Hash,
 {
@@ -70,39 +72,47 @@ where
 }
 
 impl<VID: Eq + Hash> Validators<VID> {
-    pub(crate) fn total_weight(&self) -> Weight {
+    /// Returns the total weight of the set of validators.
+    pub fn total_weight(&self) -> Weight {
         self.total_weight
     }
 
     /// Returns the weight of the validator with the given index.
     ///
     /// *Panics* if the validator index does not exist.
-    pub(crate) fn weight(&self, idx: ValidatorIndex) -> Weight {
+    pub fn weight(&self, idx: ValidatorIndex) -> Weight {
         self.validators[idx.0 as usize].weight
     }
 
+    /// Returns `true` if the map is empty.
+    pub fn is_empty(&self) -> bool {
+        self.validators.is_empty()
+    }
+
     /// Returns the number of validators.
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.validators.len()
     }
 
-    pub(crate) fn get_index(&self, id: &VID) -> Option<ValidatorIndex> {
+    /// Gets the index of a validator with the given ID. Returns `None` if no such validator is in
+    /// the set.
+    pub fn get_index(&self, id: &VID) -> Option<ValidatorIndex> {
         self.index_by_id.get(id).cloned()
     }
 
     /// Returns validator ID by index, or `None` if it doesn't exist.
-    pub(crate) fn id(&self, idx: ValidatorIndex) -> Option<&VID> {
+    pub fn id(&self, idx: ValidatorIndex) -> Option<&VID> {
         self.validators.get(idx.0 as usize).map(Validator::id)
     }
 
     /// Returns an iterator over all validators, sorted by ID.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Validator<VID>> {
+    pub fn iter(&self) -> impl Iterator<Item = &Validator<VID>> {
         self.validators.iter()
     }
 
     /// Marks the validator with that ID as banned, if it exists, and excludes it from the leader
     /// sequence.
-    pub(crate) fn ban(&mut self, vid: &VID) {
+    pub fn ban(&mut self, vid: &VID) {
         if let Some(idx) = self.get_index(vid) {
             self.validators[idx.0 as usize].banned = true;
             self.validators[idx.0 as usize].can_propose = false;
@@ -110,14 +120,14 @@ impl<VID: Eq + Hash> Validators<VID> {
     }
 
     /// Marks the validator as excluded from the leader sequence.
-    pub(crate) fn set_cannot_propose(&mut self, vid: &VID) {
+    pub fn set_cannot_propose(&mut self, vid: &VID) {
         if let Some(idx) = self.get_index(vid) {
             self.validators[idx.0 as usize].can_propose = false;
         }
     }
 
     /// Returns an iterator of all indices of banned validators.
-    pub(crate) fn iter_banned_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+    pub fn iter_banned_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.iter()
             .enumerate()
             .filter(|(_, v)| v.banned)
@@ -125,14 +135,15 @@ impl<VID: Eq + Hash> Validators<VID> {
     }
 
     /// Returns an iterator of all indices of validators that are not allowed to propose values.
-    pub(crate) fn iter_cannot_propose_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+    pub fn iter_cannot_propose_idx(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.iter()
             .enumerate()
             .filter(|(_, v)| !v.can_propose)
             .map(|(idx, _)| ValidatorIndex::from(idx as u32))
     }
 
-    pub(crate) fn enumerate_ids<'a>(&'a self) -> impl Iterator<Item = (ValidatorIndex, &'a VID)> {
+    /// Returns an iterator of pairs (validator index, validator ID).
+    pub fn enumerate_ids<'a>(&'a self) -> impl Iterator<Item = (ValidatorIndex, &'a VID)> {
         let to_idx =
             |(idx, v): (usize, &'a Validator<VID>)| (ValidatorIndex::from(idx as u32), v.id());
         self.iter().enumerate().map(to_idx)
@@ -191,8 +202,9 @@ impl<VID: Ord + Hash + fmt::Debug> fmt::Display for Validators<VID> {
     }
 }
 
+/// A map from the set of validators to some values.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, AsRef, From, Hash)]
-pub(crate) struct ValidatorMap<T>(Vec<T>);
+pub struct ValidatorMap<T>(Vec<T>);
 
 impl<T> fmt::Display for ValidatorMap<Option<T>>
 where
@@ -227,39 +239,44 @@ where
 
 impl<T> ValidatorMap<T> {
     /// Returns the value for the given validator, or `None` if the index is out of range.
-    pub(crate) fn get(&self, idx: ValidatorIndex) -> Option<&T> {
+    pub fn get(&self, idx: ValidatorIndex) -> Option<&T> {
         self.0.get(idx.0 as usize)
     }
 
     /// Returns the number of values. This must equal the number of validators.
-    pub(crate) fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns `true` if this ValidatorMap is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
     /// Returns an iterator over all values.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.0.iter()
     }
 
     /// Returns an iterator over mutable references to all values.
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.0.iter_mut()
     }
 
     /// Returns an iterator over all values, by validator index.
-    pub(crate) fn enumerate(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> {
+    pub fn enumerate(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> {
         self.iter()
             .enumerate()
             .map(|(idx, value)| (ValidatorIndex(idx as u32), value))
     }
 
     /// Returns `true` if `self` has an entry for validator number `idx`.
-    pub(crate) fn has(&self, idx: ValidatorIndex) -> bool {
+    pub fn has(&self, idx: ValidatorIndex) -> bool {
         self.0.len() > idx.0 as usize
     }
 
     /// Returns an iterator over all validator indices.
-    pub(crate) fn keys(&self) -> impl Iterator<Item = ValidatorIndex> {
+    pub fn keys(&self) -> impl Iterator<Item = ValidatorIndex> {
         (0..self.len()).map(|idx| ValidatorIndex(idx as u32))
     }
 
@@ -339,12 +356,12 @@ impl<Rhs, T: Copy + Add<Rhs, Output = T>> Add<ValidatorMap<Rhs>> for ValidatorMa
 
 impl<T> ValidatorMap<Option<T>> {
     /// Returns the keys of all validators whose value is `Some`.
-    pub(crate) fn keys_some(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
+    pub fn keys_some(&self) -> impl Iterator<Item = ValidatorIndex> + '_ {
         self.iter_some().map(|(vidx, _)| vidx)
     }
 
     /// Returns an iterator over all values that are present, together with their index.
-    pub(crate) fn iter_some(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> + '_ {
+    pub fn iter_some(&self) -> impl Iterator<Item = (ValidatorIndex, &T)> + '_ {
         self.enumerate()
             .filter_map(|(vidx, opt)| opt.as_ref().map(|val| (vidx, val)))
     }

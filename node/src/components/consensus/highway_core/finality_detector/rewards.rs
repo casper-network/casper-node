@@ -12,7 +12,7 @@ use crate::components::consensus::{
 /// Returns the map of rewards to be paid out when the block `bhash` gets finalized.
 ///
 /// This is the sum of all rewards for finalization of ancestors of `bhash`, as seen from `bhash`.
-pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
+pub fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> ValidatorMap<u64> {
     // The unit that introduced the payout block.
     let payout_unit = state.unit(bhash);
     // The panorama of the payout block: Rewards must only use this panorama, since it defines
@@ -39,7 +39,7 @@ pub(crate) fn compute_rewards<C: Context>(state: &State<C>, bhash: &C::Hash) -> 
 }
 
 /// Returns the rewards for finalizing the block with hash `proposal_h`.
-fn compute_rewards_for<C: Context>(
+pub fn compute_rewards_for<C: Context>(
     state: &State<C>,
     panorama: &Panorama<C>,
     proposal_h: &C::Hash,
@@ -113,7 +113,7 @@ fn compute_rewards_for<C: Context>(
 
 /// Information about how a validator participated in a particular round.
 #[derive(Debug, Eq, PartialEq)]
-enum RoundParticipation<'a, C: Context> {
+pub enum RoundParticipation<'a, C: Context> {
     /// The validator was not assigned: The round ID was not the beginning of one of their rounds.
     Unassigned,
     /// The validator was assigned but did not create any messages in that round.
@@ -123,7 +123,7 @@ enum RoundParticipation<'a, C: Context> {
 }
 
 /// Returns information about the participation of a validator with `obs` in round `r_id`.
-fn round_participation<'a, C: Context>(
+pub fn round_participation<'a, C: Context>(
     state: &'a State<C>,
     obs: &'a Observation<C>,
     r_id: Timestamp,
