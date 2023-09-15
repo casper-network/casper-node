@@ -92,10 +92,11 @@ use crate::{
     types::{
         ApprovalsHash, ApprovalsHashes, AvailableBlockRange, Block, BlockAndDeploys, BlockBody,
         BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash,
-        BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId, DeployMetadata,
-        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, FinalizedApprovals,
-        FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier, ValueOrChunk,
+        BlockHashAndHeight, BlockHashHeightAndEra, BlockHeader, BlockHeaderWithMetadata,
+        BlockSignatures, BlockWithMetadata, Deploy, DeployHash, DeployHeader, DeployId,
+        DeployMetadata, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
+        FinalizedApprovals, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap, SyncLeapIdentifier,
+        ValueOrChunk,
     },
     utils::{display_error, WithDir},
     NodeRng,
@@ -195,8 +196,8 @@ pub struct Storage {
     block_height_index: BTreeMap<u64, BlockHash>,
     /// A map of era ID to switch block ID.
     switch_block_era_id_index: BTreeMap<EraId, BlockHash>,
-    /// A map of deploy hashes to hashes and heights of blocks containing them.
-    deploy_hash_index: BTreeMap<DeployHash, BlockHashAndHeight>,
+    /// A map of deploy hashes to hashes, heights and era IDs of blocks containing them.
+    deploy_hash_index: BTreeMap<DeployHash, BlockHashHeightAndEra>,
     /// Runs of completed blocks known in storage.
     completed_blocks: DisjointSequences,
     /// The activation point era of the current protocol version.
@@ -470,6 +471,7 @@ impl Storage {
                     block_header.block_hash(),
                     &block_body,
                     block_header.height(),
+                    block_header.era_id(),
                 )?;
             }
         }
@@ -826,15 +828,12 @@ impl Storage {
                     .respond(self.get_highest_complete_block_header(&mut txn)?)
                     .ignore()
             }
-            StorageRequest::GetBlockHeaderForDeploy {
-                deploy_hash,
+            StorageRequest::GetDeploysEraIds {
+                deploy_hashes,
                 responder,
-            } => {
-                let mut txn = self.env.begin_ro_txn()?;
-                responder
-                    .respond(self.get_block_header_by_deploy_hash(&mut txn, deploy_hash)?)
-                    .ignore()
-            }
+            } => responder
+                .respond(self.get_deploys_era_ids(deploy_hashes))
+                .ignore(),
             StorageRequest::GetBlockHeader {
                 block_hash,
                 only_from_available_block_range,
@@ -1576,6 +1575,7 @@ impl Storage {
                 *block.hash(),
                 block.body(),
                 block.header().height(),
+                block.header().era_id(),
             )?;
         }
         Ok(true)
@@ -1744,20 +1744,17 @@ impl Storage {
         ret
     }
 
-    /// Retrieves a single block header by deploy hash by looking it up in the index and returning
-    /// it.
-    fn get_block_header_by_deploy_hash<Tx: Transaction>(
-        &self,
-        txn: &mut Tx,
-        deploy_hash: DeployHash,
-    ) -> Result<Option<BlockHeader>, FatalStorageError> {
-        self.deploy_hash_index
-            .get(&deploy_hash)
-            .and_then(|block_hash_and_height| {
-                self.get_single_block_header(txn, &block_hash_and_height.block_hash)
-                    .transpose()
+    /// Returns the era IDs of the blocks in which the given deploys were executed.  If none of the
+    /// deploys have been executed yet, an empty set will be returned.
+    fn get_deploys_era_ids(&self, deploy_hashes: HashSet<DeployHash>) -> HashSet<EraId> {
+        deploy_hashes
+            .iter()
+            .filter_map(|deploy_hash| {
+                self.deploy_hash_index
+                    .get(deploy_hash)
+                    .map(|block_hash_height_and_era| block_hash_height_and_era.era_id)
             })
-            .transpose()
+            .collect()
     }
 
     /// Retrieves the block hash and height for a deploy hash by looking it up in the index
@@ -1766,7 +1763,10 @@ impl Storage {
         &self,
         deploy_hash: DeployHash,
     ) -> Result<Option<BlockHashAndHeight>, FatalStorageError> {
-        Ok(self.deploy_hash_index.get(&deploy_hash).copied())
+        Ok(self
+            .deploy_hash_index
+            .get(&deploy_hash)
+            .map(BlockHashAndHeight::from))
     }
 
     /// Retrieves the highest block from storage, if one exists. May return an LMDB error.
@@ -2647,27 +2647,29 @@ fn insert_to_block_header_indices(
 ///
 /// If a duplicate entry is encountered, index is not updated and an error is returned.
 fn insert_to_deploy_index(
-    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashAndHeight>,
+    deploy_hash_index: &mut BTreeMap<DeployHash, BlockHashHeightAndEra>,
     block_hash: BlockHash,
     block_body: &BlockBody,
     block_height: u64,
+    era_id: EraId,
 ) -> Result<(), FatalStorageError> {
     if let Some(hash) = block_body.deploy_and_transfer_hashes().find(|hash| {
-        deploy_hash_index
-            .get(hash)
-            .map_or(false, |old_block_hash_and_height| {
-                old_block_hash_and_height.block_hash != block_hash
-            })
+        deploy_hash_index.get(hash).map_or(false, |existing_value| {
+            existing_value.block_hash != block_hash
+        })
     }) {
         return Err(FatalStorageError::DuplicateDeployIndex {
             deploy_hash: *hash,
-            first: deploy_hash_index[hash],
+            first: BlockHashAndHeight::from(&deploy_hash_index[hash]),
             second: BlockHashAndHeight::new(block_hash, block_height),
         });
     }
 
     for hash in block_body.deploy_and_transfer_hashes() {
-        deploy_hash_index.insert(*hash, BlockHashAndHeight::new(block_hash, block_height));
+        deploy_hash_index.insert(
+            *hash,
+            BlockHashHeightAndEra::new(block_hash, block_height, era_id),
+        );
     }
 
     Ok(())

@@ -1364,22 +1364,24 @@ async fn check_deploys_for_replay_in_previous_eras_and_validate_block<REv>(
 where
     REv: From<BlockValidationRequest> + From<StorageRequest>,
 {
-    for deploy_hash in proposed_block.value().deploys_and_transfers_iter() {
-        let block_header = match effect_builder
-            .get_block_header_for_deploy_from_storage(deploy_hash.into())
-            .await
-        {
-            None => continue,
-            Some(header) => header,
-        };
-        // We have found the deploy in the database. If it was from a previous era, it was a
-        // replay attack.
+    let deploys_era_ids = effect_builder
+        .get_deploys_era_ids(
+            proposed_block
+                .value()
+                .deploy_and_transfer_hashes()
+                .copied()
+                .collect(),
+        )
+        .await;
+
+    for deploy_era_id in deploys_era_ids {
+        // If the stored deploy was executed in a previous era, it is a replay attack.
         //
-        // If not, then it might be this is a deploy for a block we are currently
+        // If not, then it might be this is a deploy for a block on which we are currently
         // coming to consensus, and we will rely on the immediate ancestors of the
         // block_payload within the current era to determine if we are facing a replay
         // attack.
-        if block_header.era_id() < proposed_block_era_id {
+        if deploy_era_id < proposed_block_era_id {
             return Event::ResolveValidity(ResolveValidity {
                 era_id: proposed_block_era_id,
                 sender,
