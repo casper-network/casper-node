@@ -456,8 +456,7 @@ where
 
                     #[cfg(feature = "tracing")]
                     {
-                        use tracing::trace;
-                        trace!(frame=%frame_sent, "sent");
+                        tracing::trace!(frame=%frame_sent, "sent");
                     }
 
                     if frame_sent.header().is_error() {

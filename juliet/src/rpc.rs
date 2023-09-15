@@ -266,7 +266,7 @@ where
                     #[cfg(feature = "tracing")]
                     {
                         if let Some(ref new_request) = opt_new_request {
-                            tracing::info!(%new_request, "request to send");
+                            tracing::debug!(%new_request, "request to send");
                         }
                     }
                     if let Some(NewOutgoingRequest { ticket, guard, payload, expires }) = opt_new_request {
@@ -288,7 +288,7 @@ where
                     } else {
                         // The client has been dropped, time for us to shut down as well.
                         #[cfg(feature = "tracing")]
-                        tracing::debug!("last client dropped locally, shutting down");
+                        tracing::info!("last client dropped locally, shutting down");
 
                         return Ok(None);
                     }
@@ -299,13 +299,17 @@ where
                     {
                         match event_result {
                             Err(ref err) => {
-                                tracing::info!(%err, "error");
+                                if matches!(err, CoreError::LocalProtocolViolation(_)) {
+                                    tracing::warn!(%err, "error");
+                                } else {
+                                    tracing::info!(%err, "error");
+                                }
                             }
                             Ok(None) => {
                                 tracing::info!("received remote close");
                             }
                             Ok(Some(ref event)) => {
-                                tracing::info!(%event, "received");
+                                tracing::debug!(%event, "received");
                             }
                         }
                     }
@@ -367,7 +371,7 @@ where
             // If not removed already through other means, set and notify about timeout.
             if let Some(guard_ref) = self.pending.remove(&io_id) {
                 #[cfg(feature = "tracing")]
-                tracing::info!(%io_id, "timeout due to response not received in time");
+                tracing::debug!(%io_id, "timeout due to response not received in time");
                 guard_ref.set_and_notify(Err(RequestError::TimedOut));
             }
         }

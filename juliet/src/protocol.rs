@@ -447,17 +447,11 @@ pub enum LocalProtocolViolation {
 macro_rules! log_frame {
     ($header:expr) => {
         #[cfg(feature = "tracing")]
-        {
-            use tracing::trace;
-            trace!(header=%$header, "received");
-        }
+        tracing::trace!(header=%$header, "received");
     };
     ($header:expr, $payload:expr) => {
         #[cfg(feature = "tracing")]
-        {
-            use tracing::trace;
-            trace!(header=%$header, payload=%crate::util::PayloadFormat(&$payload), "received");
-        }
+        tracing::trace!(header=%$header, payload=%crate::util::PayloadFormat(&$payload), "received");
     };
 }
 
@@ -705,7 +699,7 @@ impl<const N: usize> JulietProtocol<N> {
                 None => {
                     // The header was invalid, return an error.
                     #[cfg(feature = "tracing")]
-                    tracing::trace!(?header_raw, "received invalid header");
+                    tracing::debug!(?header_raw, "received invalid header");
                     return Fatal(OutgoingMessage::new(
                         Header::new_error(ErrorKind::InvalidHeader, UNKNOWN_CHANNEL, UNKNOWN_ID),
                         None,
@@ -892,8 +886,7 @@ impl<const N: usize> JulietProtocol<N> {
 
                     #[cfg(feature = "tracing")]
                     {
-                        use tracing::trace;
-                        trace!(%header, "received request cancellation");
+                        tracing::debug!(%header, "received request cancellation");
                     }
 
                     // Multi-frame transfers that have not yet been completed are a special case,
