@@ -693,8 +693,8 @@ where
                 drop(permit);
             }
             QueuedItem::RequestCancellation { io_id } => {
-                if let Some((_, (channel, id))) = self.request_map.remove_by_left(&io_id) {
-                    if let Some(msg) = self.juliet.cancel_request(channel, id)? {
+                if let Some((channel, id)) = self.request_map.get_by_left(&io_id) {
+                    if let Some(msg) = self.juliet.cancel_request(*channel, *id)? {
                         self.ready_queue.push_back(msg.frames());
                     }
                 } else {

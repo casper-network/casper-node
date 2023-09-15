@@ -993,7 +993,8 @@ mod tests {
         assert_eq!(result_short, Err(RequestError::TimedOut));
         assert_eq!(result_long, Ok(Some(payload_long)));
 
-        // TODO: Ensure cancellation was sent.
+        // TODO: Ensure cancellation was sent. Right now, we can verify this in the logs, but it
+        //       would be nice to have a test tailored to ensure this.
     }
 
     #[test]
