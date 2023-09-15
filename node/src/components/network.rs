@@ -514,7 +514,7 @@ where
                     };
 
                     if let Some(responder) = message_queued_responder {
-                        // Reconstruct client the client.
+                        // Reconstruct the client.
                         let client = connection.rpc_client.clone();
 
                         // Technically, the queueing future should be spawned by the reactor, but
