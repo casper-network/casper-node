@@ -13,6 +13,13 @@ All notable changes to this project will be documented in this file.  The format
 
 ## Unreleased
 
+### Added
+* The network handshake now contains the hash of the chainspec used and will be successful only if they match.
+* Add an `identity` option to load existing network identity certificates signed by a CA.
+* TLS connection keys can now be logged using the `network.keylog_location` setting (similar to `SSLKEYLOGFILE` envvar found in other applications).
+* Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
+* Unit tests can be run with JSON log output by setting a `NODE_TEST_LOG=json` environment variable.
+
 ### Fixed
 * Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
 
@@ -44,7 +51,6 @@ All notable changes to this project will be documented in this file.  The format
 ## 1.5.0-rc.1
 
 ### Added
-
 * Introduce fast-syncing to join the network, avoiding the need to execute every block to catch up.
 * Add config sections for new components to support fast-sync: `[block_accumulator]`, `[block_synchronizer]`, `[deploy_buffer]` and `[upgrade_watcher]`.
 * Add new Zug consensus protocol, disabled by default, along with a new `[consensus.zug]` config section.
@@ -93,15 +99,9 @@ All notable changes to this project will be documented in this file.  The format
   * `execution_queue_size` to report the number of blocks enqueued pending execution
   * `accumulated_(outgoing|incoming)_limiter_delay` to report how much time was spent throttling other peers.
 * Add `testing` feature to casper-node crate to support test-only functionality (random constructors) on blocks and deploys.
-* The network handshake now contains the hash of the chainspec used and will be successful only if they match.
-* Add an `identity` option to load existing network identity certificates signed by a CA.
-* TLS connection keys can now be logged using the `network.keylog_location` setting (similar to `SSLKEYLOGFILE` envvar found in other applications).
-* Add a `lock_status` field to the JSON representation of the `ContractPackage` values.
-* Unit tests can be run with JSON log output by setting a `NODE_TEST_LOG=json` environment variable.
 * Connections to unresponsive nodes will be terminated, based on a watchdog feature.
 
 ### Changed
-
 * The `starting_state_root_hash` field from the REST and JSON-RPC status endpoints now represents the state root hash of the lowest block in the available block range.
 * Detection of a crash no longer triggers DB integrity checks to run on node start; the checks can be triggered manually instead.
 * Nodes no longer connect to nodes that do not speak the same protocol version by default.
@@ -124,12 +124,10 @@ All notable changes to this project will be documented in this file.  The format
 * Rename `current_era` metric to `consensus_current_era`.
 
 ### Deprecated
-
 * `null` should no longer be used as a value for `params` in JSON-RPC requests.  Prefer an empty Array or Object.
 * Deprecate the `chain_height` metric in favor of `highest_available_block_height`.
 
 ### Removed
-
 * Remove legacy synchronization from genesis in favor of fast-sync.
 * Remove config options no longer required due to fast-sync: `[linear_chain_sync]`, `[block_proposer]` and `[consensus.highway.standstill_timeout]`.
 * Remove chainspec setting `[protocol.last_emergency_restart]` as fast sync will use the global state directly for recognizing such restarts instead.
@@ -140,7 +138,6 @@ All notable changes to this project will be documented in this file.  The format
 * Remove `casper-mainnet` feature flag.
 
 ### Fixed
-
 * Limiters for incoming requests and outgoing bandwidth will no longer inadvertently delay some validator traffic when maxed out due to joining nodes.
 * Dropped connections no longer cause the outstanding messages metric to become incorrect.
 * JSON-RPC server is now mostly compliant with the standard. Specifically, correct error values are now returned in responses in many failure cases.
@@ -189,20 +186,25 @@ All notable changes to this project will be documented in this file.  The format
 ### Changed
 * Update `casper-execution-engine`.
 
+
+
 ## 1.4.8
 
 ### Added
 * Add an `identity` option to load existing network identity certificates signed by a CA.
 
 
-### Changed
 
+### Changed
 * Update `casper-execution-engine`.
+
+
 
 ## 1.4.7
 
 ### Changed
 * Update `casper-execution-engine` and three `openssl` crates to latest versions.
+
 
 
 ## 1.4.6
@@ -211,60 +213,59 @@ All notable changes to this project will be documented in this file.  The format
 * Update dependencies to make use of scratch global state in the contract runtime.
 
 
+
 ## 1.4.5
 
 ### Added
-
 * Add a temporary chainspec setting `max_stored_value_size` to limit the size of individual values stored in global state.
 * Add a chainspec setting `minimum_delegation_amount` to limit the minimal amount of motes that can be delegated by a first time delegator.
 * Add a chainspec setting `block_max_approval_count` to limit the maximum number of approvals across all deploys in a single block.
 * Add a `finalized_approvals` field to the GetDeploy RPC, which if `true` causes the response to include finalized approvals substituted for the originally-received ones.
 
 ### Fixed
-
 * Include deploy approvals in block payloads upon which consensus operates.
 * Fixes a bug where historical auction data was unavailable via `get-auction-info` RPC.
+
+
 
 ## 1.4.4 - 2021-12-29
 
 ### Added
-
 * Add `contract_runtime_latest_commit_step` gauge metric indicating the execution duration of the latest `commit_step` call.
 
 ### Changed
-
 * No longer checksum-hex encode various types.
+
+
 
 ## 1.4.3 - 2021-12-06
 
 ### Added
-
 * Add new event to the main SSE server stream accessed via `<IP:Port>/events/main` which emits hashes of expired deploys.
 
 ### Changed
-
 * `enable_manual_sync` configuration parameter defaults to `true`.
 * Default behavior of LMDB changed to use [`NO_READAHEAD`](https://docs.rs/lmdb/0.8.0/lmdb/struct.EnvironmentFlags.html#associatedconstant.NO_READAHEAD).
+
+
 
 ## [1.4.2] - 2021-11-11
 
 ### Changed
-
 * There are now less false warnings/errors regarding dropped responders or closed channels during a shutdown, where they are expected and harmless.
 * Execution transforms are ordered by insertion order.
 
 ### Removed
-
 * The config option `consensus.highway.unit_hashes_folder` has been removed.
 
 ### Fixed
-
 * The block proposer component now retains pending deploys and transfers across a restart.
+
+
 
 ## [1.4.0] - 2021-10-04
 
 ### Added
-
 * Add `enable_manual_sync` boolean option to `[contract_runtime]` in the config.toml which enables manual LMDB sync.
 * Add `contract_runtime_execute_block` histogram tracking execution time of a whole block.
 * Long-running events now log their event type.
@@ -276,7 +277,6 @@ All notable changes to this project will be documented in this file.  The format
 * Add `info_get_validator_changes` JSON-RPC endpoint and REST endpoint `validator-changes` that return the status changes of active validators.
 
 ### Changed
-
 * The following Highway timers are now separate, configurable, and optional (if the entry is not in the config, the timer is never called):
   * `standstill_timeout` causes the node to restart if no progress is made.
   * `request_state_interval` makes the node periodically request the latest state from a peer.
@@ -296,7 +296,6 @@ All notable changes to this project will be documented in this file.  The format
   * `[fetcher][get_from_peer_timeout]`
 
 ### Removed
-
 * The unofficial support for nix-related derivations and support tooling has been removed.
 * Experimental, nix-based kubernetes testing support has been removed.
 * Experimental support for libp2p has been removed.
@@ -304,27 +303,29 @@ All notable changes to this project will be documented in this file.  The format
 * The libp2p-exclusive metrics of `read_futures_in_flight`, `read_futures_total`, `write_futures_in_flight`, `write_futures_total` have been removed.
 
 ### Fixed
-
 * Resolve an issue where `Deploys` with payment amounts exceeding the block gas limit would not be rejected.
 * Resolve issue of duplicated config option `max_associated_keys`.
+
+
 
 ## [1.3.2] - 2021-08-02
 
 ### Fixed
-
 * Resolve an issue in the `state_get_dictionary_item` JSON-RPC when a `ContractHash` is used.
 * Corrected network state engine to hold in blocked state for full 10 minutes when encountering out of order race condition.
+
+
 
 ## [1.3.1] - 2021-07-26
 
 ### Fixed
-
 * Parametrized sync_timeout and increased value to stop possible post upgrade restart loop.
+
+
 
 ## [1.3.0] - 2021-07-19
 
 ### Added
-
 * Add support for providing historical auction information via the addition of an optional block ID in the `state_get_auction_info` JSON-RPC.
 * Exclude inactive validators from proposing blocks.
 * Add validation of the `[protocol]` configuration on startup, to ensure the contained values make sense.
@@ -335,7 +336,6 @@ All notable changes to this project will be documented in this file.  The format
 * Events now log their ancestors, so detailed tracing of events is possible.
 
 ### Changed
-
 * Major rewrite of the network component, covering connection negotiation and management, periodic housekeeping and logging.
 * Exchange and authenticate Validator public keys in network handshake between peers.
 * Remove needless copying of outgoing network messages.
@@ -356,13 +356,11 @@ All notable changes to this project will be documented in this file.  The format
 * More node modules are now `pub(crate)`.
 
 ### Removed
-
 * Remove systemd notify support, including removal of `[network][systemd_support]` config option.
 * Removed dead code revealed by making modules `pub(crate)`.
 * The networking layer no longer gives preferences to validators from the previous era.
 
 ### Fixed
-
 * Avoid redundant requests caused by the Highway synchronizer.
 * Update "current era" metric also for initial era.
 * Keep syncing until the node is in the current era, rather than allowing an acceptable drift.
@@ -374,10 +372,11 @@ All notable changes to this project will be documented in this file.  The format
 * Change `BlockIdentifier` params in the Open-RPC schema to be optional.
 * Asymmetric connections are now swept regularly again.
 
+
+
 ## [1.2.0] - 2021-05-27
 
 ### Added
-
 * Add configuration options for `[consensus][highway][round_success_meter]`.
 * Add `[protocol][last_emergency_restart]` field to the chainspec for use by fast sync.
 * Add an endpoint at `/rpc-schema` to the REST server which returns the OpenRPC-compatible schema of the JSON-RPC API.
@@ -389,7 +388,6 @@ All notable changes to this project will be documented in this file.  The format
 * Add joiner test.
 
 ### Changed
-
 * Change to Apache 2.0 license.
 * Provide an efficient way of finding the block to which a given deploy belongs.
 * On hard-reset upgrades, only remove stored blocks with old protocol versions, and remove all data associated with a removed block.
@@ -413,13 +411,11 @@ All notable changes to this project will be documented in this file.  The format
 * Use `minimum_block_time` and `maximum_round_length` in Highway, instead of `minimum_round_exponent` and `maximum_round_exponent`. The minimum round length doesn't have to be a power of two in milliseconds anymore.
 
 ### Removed
-
 * Remove `impl Sub<Timestamp> for Timestamp` to help avoid panicking in non-obvious edge cases.
 * Remove `impl Sub<TimeDiff> for Timestamp` from production code to help avoid panicking in non-obvious edge cases.
 * Remove `[event_stream_server][broadcast_channel_size]` from config.toml, and make it a factor of the event stream buffer size.
 
 ### Fixed
-
 * Have casper-node process exit with the exit code returned by the validator reactor.
 * Restore cached block proposer state correctly.
 * Runtime memory estimator now registered in the joiner reactor.
@@ -438,36 +434,41 @@ All notable changes to this project will be documented in this file.  The format
 * Reduce duplication in block validation requests made by the Highway synchronizer.
 * Request latest consensus state only if consensus has stalled locally.
 
+
+
 ## [1.1.1] - 2021-04-19
 
 ### Changed
-
 * Ensure consistent validation when adding deploys and transfers while proposing and validating blocks.
+
+
 
 ## [1.1.0] - 2021-04-13 [YANKED]
 
 ### Changed
-
 * Ensure that global state queries will only be permitted to recurse to a fixed maximum depth.
+
+
 
 ## [1.0.1] - 2021-04-08
 
 ### Added
-
 * Add `[deploys][max_deploy_size]` to chainspec to limit the size of valid deploys.
 * Add `[network][maximum_net_message_size]` to chainspec to limit the size of peer-to-peer messages.
 
 ### Changed
-
 * Check deploy size does not exceed maximum permitted as part of deploy validation.
 * Include protocol version and maximum message size in network handshake of nodes.
 * Change accounts.toml to only be included in v1.0.0 configurations.
 
+
+
 ## [1.0.0] - 2021-03-30
 
 ### Added
-
 * Initial release of node for Casper mainnet.
+
+
 
 [Keep a Changelog]: https://keepachangelog.com/en/1.0.0
 [unreleased]: https://github.com/casper-network/casper-node/compare/37d561634adf73dab40fffa7f1f1ee47e80bf8a1...dev
