@@ -892,8 +892,16 @@ mod tests {
         }
     }
 
+    /// Creates a channel configuration with test defaults.
+    fn create_config() -> ChannelConfiguration {
+        ChannelConfiguration::new()
+            .with_max_request_payload_size(1024)
+            .with_max_response_payload_size(1024)
+            .with_request_limit(1)
+    }
+
     /// Completely sets up an environment with a running echo server, returning a client.
-    fn create_rpc_echo_server_env() -> JulietRpcClient<2> {
+    fn create_rpc_echo_server_env(channel_config: ChannelConfiguration) -> JulietRpcClient<2> {
         // Setup logging if not already set up.
         tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -901,11 +909,7 @@ mod tests {
             .ok(); // If setting up logging fails, another testing thread already initialized it.
 
         let builder = RpcBuilder::new(IoCoreBuilder::new(
-            ProtocolBuilder::<2>::with_default_channel_config(
-                ChannelConfiguration::new()
-                    .with_max_request_payload_size(1024)
-                    .with_max_response_payload_size(1024),
-            ),
+            ProtocolBuilder::<2>::with_default_channel_config(channel_config),
         ));
 
         let (client, server) = setup_peers(builder);
@@ -923,7 +927,7 @@ mod tests {
 
     #[tokio::test]
     async fn basic_smoke_test() {
-        let rpc_client = create_rpc_echo_server_env();
+        let rpc_client = create_rpc_echo_server_env(create_config());
 
         let payload = Bytes::from(&b"foobar"[..]);
 
@@ -952,7 +956,9 @@ mod tests {
 
     #[tokio::test]
     async fn timeout_processed_in_correct_order() {
-        let rpc_client = create_rpc_echo_server_env();
+        // It's important to set a request limit higher than 1, so that both requests can be sent at
+        // the same time.
+        let rpc_client = create_rpc_echo_server_env(create_config().with_request_limit(3));
 
         let payload_short = Bytes::from(&b"timeout check short"[..]);
         let payload_long = Bytes::from(&b"timeout check long"[..]);
@@ -980,6 +986,8 @@ mod tests {
 
         assert_eq!(result_short, Err(RequestError::TimedOut));
         assert_eq!(result_long, Ok(Some(payload_long)));
+
+        // TODO: Ensure cancellation was sent.
     }
 
     #[test]
