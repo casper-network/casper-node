@@ -17,7 +17,7 @@ use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 use tracing::{debug, warn};
 
-const EVENT_QUEUE_INFO_THRESHOLD: usize = 20;
+const EVENT_QUEUE_INFO_THRESHOLD: usize = 4;
 
 /// Weighted round-robin scheduler.
 ///
@@ -45,6 +45,9 @@ pub struct WeightedRoundRobin<I, K> {
 
     /// Whether or not the queue is sealed (not accepting any more items).
     sealed: AtomicBool,
+
+    /// Only dump event counts when there are more of them than in the previous report.
+    recent_event_count_peak: AtomicUsize,
 }
 
 /// State that wraps queue and its event count.
@@ -163,6 +166,7 @@ where
             queues,
             total: Semaphore::new(0),
             sealed: AtomicBool::new(false),
+            recent_event_count_peak: AtomicUsize::new(EVENT_QUEUE_INFO_THRESHOLD),
         }
     }
 
@@ -225,7 +229,9 @@ where
         // NOTE: Count may be off by one b/c of the way locking works when elements are popped.
         // It's fine for its purposes.
         let total = self.queues.iter().map(|q| q.1.event_count()).sum::<usize>();
-        if total > EVENT_QUEUE_INFO_THRESHOLD {
+        let recent_threshold = self.recent_event_count_peak.load(Ordering::SeqCst);
+        if total > recent_threshold {
+            self.recent_event_count_peak.store(total, Ordering::SeqCst);
             let info: Vec<_> = self
                 .queues
                 .iter()
@@ -233,7 +239,7 @@ where
                 .filter(|(_, count)| count > &0)
                 .collect();
             warn!(
-                "Current event queue size ({total}) is above the threshold ({EVENT_QUEUE_INFO_THRESHOLD}): details {info:?}"
+                "Current event queue size ({total}) is above the threshold ({recent_threshold}): details {info:?}"
             );
         }
 
