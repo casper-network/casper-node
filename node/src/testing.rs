@@ -174,7 +174,7 @@ impl<REv: 'static + Debug> ComponentHarnessBuilder<REv> {
 
         let rng = self.rng.unwrap_or_else(TestRng::new);
 
-        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
+        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights(), None)));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         let runtime = runtime::Builder::new_multi_thread()

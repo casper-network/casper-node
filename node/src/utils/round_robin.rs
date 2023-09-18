@@ -17,8 +17,6 @@ use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
 use tracing::{debug, warn};
 
-const EVENT_QUEUE_INFO_THRESHOLD: usize = 4;
-
 /// Weighted round-robin scheduler.
 ///
 /// The weighted round-robin scheduler keeps queues internally and returns an item from a queue
@@ -47,7 +45,7 @@ pub struct WeightedRoundRobin<I, K> {
     sealed: AtomicBool,
 
     /// Only dump event counts when there are more of them than in the previous report.
-    recent_event_count_peak: AtomicUsize,
+    recent_event_count_peak: Option<AtomicUsize>,
 }
 
 /// State that wraps queue and its event count.
@@ -141,7 +139,10 @@ where
     ///
     /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
     /// the number of times to return items from one queue before moving on to the next one.
-    pub(crate) fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
+    pub(crate) fn new(
+        weights: Vec<(K, NonZeroUsize)>,
+        initial_event_count_threshold: Option<usize>,
+    ) -> Self {
         assert!(!weights.is_empty(), "must provide at least one slot");
 
         let queues = weights
@@ -166,7 +167,7 @@ where
             queues,
             total: Semaphore::new(0),
             sealed: AtomicBool::new(false),
-            recent_event_count_peak: AtomicUsize::new(EVENT_QUEUE_INFO_THRESHOLD),
+            recent_event_count_peak: initial_event_count_threshold.map(AtomicUsize::new),
         }
     }
 
@@ -229,18 +230,20 @@ where
         // NOTE: Count may be off by one b/c of the way locking works when elements are popped.
         // It's fine for its purposes.
         let total = self.queues.iter().map(|q| q.1.event_count()).sum::<usize>();
-        let recent_threshold = self.recent_event_count_peak.load(Ordering::SeqCst);
-        if total > recent_threshold {
-            self.recent_event_count_peak.store(total, Ordering::SeqCst);
-            let info: Vec<_> = self
-                .queues
-                .iter()
-                .map(|q| (q.0.to_string(), q.1.event_count()))
-                .filter(|(_, count)| count > &0)
-                .collect();
-            warn!(
+        if let Some(recent_event_count_peak) = &self.recent_event_count_peak {
+            let recent_threshold = recent_event_count_peak.load(Ordering::SeqCst);
+            if total > recent_threshold {
+                recent_event_count_peak.store(total, Ordering::SeqCst);
+                let info: Vec<_> = self
+                    .queues
+                    .iter()
+                    .map(|q| (q.0.to_string(), q.1.event_count()))
+                    .filter(|(_, count)| count > &0)
+                    .collect();
+                warn!(
                 "Current event queue size ({total}) is above the threshold ({recent_threshold}): details {info:?}"
             );
+            }
         }
 
         // We increase the item count after we've put the item into the queue.
@@ -376,7 +379,7 @@ mod tests {
 
     #[tokio::test]
     async fn should_respect_weighting() {
-        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights());
+        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights(), None);
         // Push three items on to each queue
         let future1 = scheduler
             .push('a', QueueKind::One)
@@ -399,7 +402,7 @@ mod tests {
 
     #[tokio::test]
     async fn can_seal_queue() {
-        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights());
+        let scheduler = WeightedRoundRobin::<char, QueueKind>::new(weights(), None);
 
         assert_eq!(scheduler.item_count(), 0);
         scheduler.push('a', QueueKind::One).await;
