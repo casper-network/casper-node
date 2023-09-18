@@ -138,7 +138,7 @@ pub(crate) struct ComponentHarnessBuilder<REv: 'static> {
     _phantom: PhantomData<REv>,
 }
 
-impl<REv: 'static> ComponentHarnessBuilder<REv> {
+impl<REv: 'static + Debug> ComponentHarnessBuilder<REv> {
     /// Builds a component harness instance.
     ///
     /// # Panics
@@ -314,7 +314,7 @@ impl<REv: 'static> ComponentHarness<REv> {
     }
 }
 
-impl<REv: 'static> Default for ComponentHarness<REv> {
+impl<REv: 'static + Debug> Default for ComponentHarness<REv> {
     fn default() -> Self {
         Self::builder().build()
     }

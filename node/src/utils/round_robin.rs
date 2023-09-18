@@ -15,7 +15,9 @@ use std::{
 use enum_iterator::IntoEnumIterator;
 use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
-use tracing::{debug, error};
+use tracing::{debug, warn};
+
+const EVENT_QUEUE_INFO_THRESHOLD: usize = 20;
 
 /// Weighted round-robin scheduler.
 ///
@@ -132,6 +134,38 @@ where
     I: Debug,
     K: Copy + Clone + Eq + Hash + IntoEnumIterator + Debug,
 {
+    /// Creates a new weighted round-robin scheduler.
+    ///
+    /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
+    /// the number of times to return items from one queue before moving on to the next one.
+    pub(crate) fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
+        assert!(!weights.is_empty(), "must provide at least one slot");
+
+        let queues = weights
+            .iter()
+            .map(|(idx, _)| (*idx, QueueState::new()))
+            .collect();
+        let slots: Vec<Slot<K>> = weights
+            .into_iter()
+            .map(|(key, tickets)| Slot {
+                key,
+                tickets: tickets.get(),
+            })
+            .collect();
+        let active_slot = slots[0];
+
+        WeightedRoundRobin {
+            state: Mutex::new(IterationState {
+                active_slot,
+                active_slot_idx: 0,
+            }),
+            slots,
+            queues,
+            total: Semaphore::new(0),
+            sealed: AtomicBool::new(false),
+        }
+    }
+
     /// Dump the queue contents to the given dumper function.
     pub async fn dump<F: FnOnce(&QueueDump<K, I>)>(&self, dumper: F)
     where
@@ -171,38 +205,6 @@ impl<I, K> WeightedRoundRobin<I, K>
 where
     K: Copy + Clone + Eq + Hash + Display,
 {
-    /// Creates a new weighted round-robin scheduler.
-    ///
-    /// Creates a queue for each pair given in `weights`. The second component of each `weight` is
-    /// the number of times to return items from one queue before moving on to the next one.
-    pub(crate) fn new(weights: Vec<(K, NonZeroUsize)>) -> Self {
-        assert!(!weights.is_empty(), "must provide at least one slot");
-
-        let queues = weights
-            .iter()
-            .map(|(idx, _)| (*idx, QueueState::new()))
-            .collect();
-        let slots: Vec<Slot<K>> = weights
-            .into_iter()
-            .map(|(key, tickets)| Slot {
-                key,
-                tickets: tickets.get(),
-            })
-            .collect();
-        let active_slot = slots[0];
-
-        WeightedRoundRobin {
-            state: Mutex::new(IterationState {
-                active_slot,
-                active_slot_idx: 0,
-            }),
-            slots,
-            queues,
-            total: Semaphore::new(0),
-            sealed: AtomicBool::new(false),
-        }
-    }
-
     /// Pushes an item to a queue identified by key.
     ///
     /// ## Panics
@@ -214,13 +216,26 @@ where
             return;
         }
 
-        error!("XXXXX - Putting ITEM into '{}'", queue);
-
         self.queues
             .get(&queue)
             .expect("tried to push to non-existent queue")
             .push_back(item)
             .await;
+
+        // NOTE: Count may be off by one b/c of the way locking works when elements are popped.
+        // It's fine for its purposes.
+        let total = self.queues.iter().map(|q| q.1.event_count()).sum::<usize>();
+        if total > EVENT_QUEUE_INFO_THRESHOLD {
+            let info: Vec<_> = self
+                .queues
+                .iter()
+                .map(|q| (q.0.to_string(), q.1.event_count()))
+                .filter(|(_, count)| count > &0)
+                .collect();
+            warn!(
+                "Current event queue size ({total}) is above the threshold ({EVENT_QUEUE_INFO_THRESHOLD}): details {info:?}"
+            );
+        }
 
         // We increase the item count after we've put the item into the queue.
         self.total.add_permits(1);
@@ -329,7 +344,7 @@ mod tests {
     use super::*;
 
     #[repr(usize)]
-    #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+    #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, IntoEnumIterator)]
     enum QueueKind {
         One = 1,
         Two,
@@ -341,6 +356,15 @@ mod tests {
                 (QueueKind::One, NonZeroUsize::new_unchecked(1)),
                 (QueueKind::Two, NonZeroUsize::new_unchecked(2)),
             ]
+        }
+    }
+
+    impl Display for QueueKind {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                QueueKind::One => write!(f, "One"),
+                QueueKind::Two => write!(f, "Two"),
+            }
         }
     }
 
