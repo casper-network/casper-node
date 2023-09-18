@@ -34,6 +34,7 @@ pub struct DeployConfig {
     pub(crate) payment_args_max_length: u32,
     pub(crate) session_args_max_length: u32,
     pub(crate) native_transfer_minimum_motes: u64,
+    pub(crate) max_timestamp_leeway: TimeDiff,
 }
 
 impl DeployConfig {
@@ -69,6 +70,7 @@ impl DeployConfig {
         let session_args_max_length = rng.gen();
         let native_transfer_minimum_motes =
             rng.gen_range(MAX_PAYMENT_AMOUNT..1_000_000_000_000_000);
+        let max_timestamp_leeway = TimeDiff::from_seconds(rng.gen_range(0..6));
 
         DeployConfig {
             max_payment_cost,
@@ -83,6 +85,7 @@ impl DeployConfig {
             payment_args_max_length,
             session_args_max_length,
             native_transfer_minimum_motes,
+            max_timestamp_leeway,
         }
     }
 }
@@ -103,6 +106,7 @@ impl Default for DeployConfig {
             payment_args_max_length: 1024,
             session_args_max_length: 1024,
             native_transfer_minimum_motes: MAX_PAYMENT_AMOUNT,
+            max_timestamp_leeway: TimeDiff::from_str("5sec").unwrap(),
         }
     }
 }
@@ -122,6 +126,7 @@ impl ToBytes for DeployConfig {
         buffer.extend(self.payment_args_max_length.to_bytes()?);
         buffer.extend(self.session_args_max_length.to_bytes()?);
         buffer.extend(self.native_transfer_minimum_motes.to_bytes()?);
+        buffer.extend(self.max_timestamp_leeway.to_bytes()?);
         Ok(buffer)
     }
 
@@ -138,6 +143,7 @@ impl ToBytes for DeployConfig {
             + self.payment_args_max_length.serialized_length()
             + self.session_args_max_length.serialized_length()
             + self.native_transfer_minimum_motes.serialized_length()
+            + self.max_timestamp_leeway.serialized_length()
     }
 }
 
@@ -156,6 +162,7 @@ impl FromBytes for DeployConfig {
         let (payment_args_max_length, remainder) = u32::from_bytes(remainder)?;
         let (session_args_max_length, remainder) = u32::from_bytes(remainder)?;
         let (native_transfer_minimum_motes, remainder) = u64::from_bytes(remainder)?;
+        let (max_timestamp_leeway, remainder) = TimeDiff::from_bytes(remainder)?;
         let config = DeployConfig {
             max_payment_cost,
             max_ttl,
@@ -169,6 +176,7 @@ impl FromBytes for DeployConfig {
             payment_args_max_length,
             session_args_max_length,
             native_transfer_minimum_motes,
+            max_timestamp_leeway,
         };
         Ok((config, remainder))
     }
