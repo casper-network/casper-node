@@ -6,7 +6,7 @@
 
 use std::{
     collections::{BTreeMap, HashMap, VecDeque},
-    fmt::Debug,
+    fmt::{Debug, Display},
     hash::Hash,
     num::NonZeroUsize,
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -15,7 +15,7 @@ use std::{
 use enum_iterator::IntoEnumIterator;
 use serde::Serialize;
 use tokio::sync::{Mutex, MutexGuard, Semaphore};
-use tracing::debug;
+use tracing::{debug, error};
 
 /// Weighted round-robin scheduler.
 ///
@@ -169,7 +169,7 @@ where
 
 impl<I, K> WeightedRoundRobin<I, K>
 where
-    K: Copy + Clone + Eq + Hash,
+    K: Copy + Clone + Eq + Hash + Display,
 {
     /// Creates a new weighted round-robin scheduler.
     ///
@@ -213,6 +213,8 @@ where
             debug!("queue sealed, dropping item");
             return;
         }
+
+        error!("XXXXX - Putting ITEM into '{}'", queue);
 
         self.queues
             .get(&queue)
