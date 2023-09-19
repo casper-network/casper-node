@@ -244,9 +244,7 @@ where
                     .map(|q| (q.0.to_string(), q.1.event_count()))
                     .filter(|(_, count)| count > &0)
                     .collect();
-                warn!(
-                "Current event queue size ({total}) is above the threshold ({recent_threshold}): details {info:?}"
-            );
+                warn!("Current event queue size ({total}) is above the threshold ({recent_threshold}): details {info:?}");
             }
         }
 
