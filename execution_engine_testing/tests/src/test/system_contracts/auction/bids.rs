@@ -141,7 +141,7 @@ const DELEGATOR_2_BALANCE: u64 = DEFAULT_ACCOUNT_INITIAL_BALANCE;
 const VALIDATOR_1_DELEGATION_RATE: DelegationRate = 0;
 
 const EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS: u64 =
-    DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS;
+    DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS;
 
 const WEEK_TIMESTAMPS: [u64; 14] = [
     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS,
@@ -159,6 +159,10 @@ const WEEK_TIMESTAMPS: [u64; 14] = [
     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 12),
     EXPECTED_INITIAL_RELEASE_TIMESTAMP_MILLIS + (WEEK_MILLIS * 13),
 ];
+
+const DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
+const CASPER_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
+const CASPER_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
 
 #[ignore]
 #[test]
@@ -703,7 +707,9 @@ fn should_get_first_seigniorage_recipients() {
     let exec_config = ExecConfigBuilder::new()
         .with_accounts(accounts)
         .with_auction_delay(auction_delay)
+        .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
         .build();
+
     let run_genesis_request = RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,
@@ -711,7 +717,11 @@ fn should_get_first_seigniorage_recipients() {
         DEFAULT_CHAINSPEC_REGISTRY.clone(),
     );
 
-    let mut builder = LmdbWasmTestBuilder::default();
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+        .build();
+
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
 
     builder.run_genesis(&run_genesis_request);
 
@@ -735,7 +745,7 @@ fn should_get_first_seigniorage_recipients() {
         founding_validator_1
             .vesting_schedule()
             .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
-        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
     );
 
     let founding_validator_2 = bids
@@ -745,14 +755,14 @@ fn should_get_first_seigniorage_recipients() {
         founding_validator_2
             .vesting_schedule()
             .map(|vesting_schedule| vesting_schedule.initial_release_timestamp_millis()),
-        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        Some(DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
     );
 
     builder.exec(transfer_request_1).commit().expect_success();
 
     // run_auction should be executed first
     builder.run_auction(
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS + DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
+        DEFAULT_GENESIS_TIMESTAMP_MILLIS + CASPER_LOCKED_FUNDS_PERIOD_MILLIS,
         Vec::new(),
     );
 
@@ -792,6 +802,8 @@ fn should_get_first_seigniorage_recipients() {
 #[ignore]
 #[test]
 fn should_release_founder_stake() {
+    const NEW_MINIMUM_DELEGATION_AMOUNT: u64 = 0;
+
     // ACCOUNT_1_BOND / 14 = 7_142
     const EXPECTED_WEEKLY_RELEASE: u64 = 7_142;
 
@@ -864,9 +876,26 @@ fn should_release_founder_stake() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let run_genesis_request = {
+        let exec_config = ExecConfigBuilder::default()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+            .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
+        )
+    };
+
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+        .build();
+
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2455,9 +2484,25 @@ fn should_not_undelegate_vfta_holder_stake() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let run_genesis_request = {
+        let exec_config = ExecConfigBuilder::default()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+            .build();
 
-    let mut builder = LmdbWasmTestBuilder::default();
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
+        )
+    };
+
+    let custom_engine_config = EngineConfigBuilder::default()
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
+        .build();
+
+    let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
 
     builder.run_genesis(&run_genesis_request);
 
@@ -2572,9 +2617,9 @@ fn should_release_vfta_holder_stake() {
             *DELEGATOR_1_ADDR,
             CONTRACT_UNDELEGATE,
             runtime_args! {
-                auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
-                auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
-                ARG_AMOUNT => U512::from(amount),
+                    auction::ARG_VALIDATOR => ACCOUNT_1_PK.clone(),
+                    auction::ARG_DELEGATOR => DELEGATOR_1.clone(),
+                    ARG_AMOUNT => U512::from(amount),
             },
         )
         .build();
@@ -2639,10 +2684,23 @@ fn should_release_vfta_holder_stake() {
         tmp
     };
 
-    let run_genesis_request = utils::create_run_genesis_request(accounts);
+    let run_genesis_request = {
+        let exec_config = ExecConfigBuilder::default()
+            .with_accounts(accounts)
+            .with_locked_funds_period_millis(CASPER_LOCKED_FUNDS_PERIOD_MILLIS)
+            .build();
+
+        RunGenesisRequest::new(
+            *DEFAULT_GENESIS_CONFIG_HASH,
+            *DEFAULT_PROTOCOL_VERSION,
+            exec_config,
+            DEFAULT_CHAINSPEC_REGISTRY.clone(),
+        )
+    };
 
     let custom_engine_config = EngineConfigBuilder::default()
         .with_minimum_delegation_amount(NEW_MINIMUM_DELEGATION_AMOUNT)
+        .with_vesting_schedule_period_millis(CASPER_VESTING_SCHEDULE_PERIOD_MILLIS)
         .build();
 
     let mut builder = LmdbWasmTestBuilder::new_temporary_with_config(custom_engine_config);
