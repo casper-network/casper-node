@@ -12,4 +12,9 @@ casper-hashing = { path = "../../hashing" }
 casper-node = { path = "../../node" }
 casper-types = { path = "../../types" }
 flate2 = "1"
+freetype-sys = "0.13"
+glium = "0.26"
+glium_text_rusttype = "0.3"
+libc = "0.2"
+nalgebra = "0.32"
 serde = "1"

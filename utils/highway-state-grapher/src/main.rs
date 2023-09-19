@@ -1,8 +1,11 @@
+mod renderer;
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet, VecDeque},
     fmt::{self, Debug},
     fs::File,
     io::Read,
+    ops::RangeBounds,
 };
 
 use casper_hashing::Digest;
@@ -15,7 +18,18 @@ use casper_types::{EraId, PublicKey, Timestamp, U512};
 
 use clap::Parser;
 use flate2::read::GzDecoder;
+use glium::{
+    glutin::{
+        event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
+        event_loop::{ControlFlow, EventLoop},
+        window::WindowBuilder,
+        ContextBuilder,
+    },
+    Display,
+};
 use serde::{Deserialize, Serialize};
+
+use crate::renderer::Renderer;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -77,10 +91,7 @@ impl Units {
     fn reorder(&mut self, state: &State<ClContext>) {
         let mut new_order_set = HashSet::new();
         let mut new_order = vec![];
-        let mut queue: VecDeque<_> = std::mem::replace(&mut self.order, vec![])
-            .into_iter()
-            .rev()
-            .collect();
+        let mut queue: VecDeque<_> = std::mem::take(&mut self.order).into_iter().rev().collect();
         loop {
             if queue.is_empty() {
                 break;
@@ -107,8 +118,8 @@ impl Units {
     }
 }
 
-#[derive(Clone, Copy)]
-struct UnitId(ValidatorIndex, usize);
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct UnitId(ValidatorIndex, usize);
 
 impl Debug for UnitId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -117,7 +128,7 @@ impl Debug for UnitId {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-struct BlockId(u64, u8);
+pub struct BlockId(u64, u8);
 
 impl Debug for BlockId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -130,14 +141,14 @@ impl Debug for BlockId {
 }
 
 #[derive(Clone)]
-struct GraphUnit {
-    id: UnitId,
-    creator: ValidatorIndex,
-    vote: BlockId,
-    cited_units: Vec<UnitId>,
-    height: usize,
-    graph_height: usize,
-    round_exp: u8,
+pub struct GraphUnit {
+    pub id: UnitId,
+    pub creator: ValidatorIndex,
+    pub vote: BlockId,
+    pub cited_units: Vec<UnitId>,
+    pub height: usize,
+    pub graph_height: usize,
+    pub round_exp: u8,
 }
 
 impl Debug for GraphUnit {
@@ -191,9 +202,11 @@ impl BlockMapper {
 }
 
 #[derive(Clone, Debug)]
-struct Graph {
+pub struct Graph {
     units: ValidatorMap<Vec<GraphUnit>>,
+    reverse_edges: HashMap<UnitId, Vec<UnitId>>,
     blocks: BlockMapper,
+    weight_percentages: ValidatorMap<f32>,
 }
 
 impl Graph {
@@ -204,6 +217,7 @@ impl Graph {
             .enumerate()
             .map(|(idx, _)| (ValidatorIndex::from(idx as u32), vec![]))
             .collect();
+        let mut reverse_edges: HashMap<UnitId, Vec<UnitId>> = HashMap::new();
         let mut unit_ids_by_hash: HashMap<Digest, UnitId> = HashMap::new();
         let mut blocks = BlockMapper::new();
 
@@ -239,6 +253,14 @@ impl Graph {
                 .map(|max_height| max_height + 1)
                 .unwrap_or(0);
             let unit_id = UnitId(unit.creator, units.get(&unit.creator).unwrap().len());
+
+            for cited_unit_id in &cited_units {
+                reverse_edges
+                    .entry(*cited_unit_id)
+                    .or_default()
+                    .push(unit_id);
+            }
+
             let graph_unit = GraphUnit {
                 id: unit_id,
                 creator: unit.creator,
@@ -253,60 +275,49 @@ impl Graph {
             units.get_mut(&unit.creator).unwrap().push(graph_unit);
         }
 
+        let weight_percentages: ValidatorMap<f32> = state
+            .weights()
+            .iter()
+            .map(|weight| weight.0 as f32 / state.total_weight().0 as f32 * 100.0)
+            .collect();
+
         Self {
             units: units.into_values().collect(),
+            reverse_edges,
             blocks,
+            weight_percentages,
         }
     }
 
-    fn print_dot(&self) {
-        println!("digraph HighwayState {{");
-        println!("  splines=false");
-        println!("  rankdir=BT");
-        println!("  style=invis");
+    pub fn get(&self, unit_id: &UnitId) -> Option<&GraphUnit> {
+        self.units
+            .get(unit_id.0)
+            .and_then(|swimlane| swimlane.get(unit_id.1))
+    }
 
-        // print subgraphs
-        for (v_id, validator_swimlane) in self.units.iter().enumerate() {
-            println!("  subgraph cluster_V{} {{", v_id);
-            println!("    label=\"V{}\"", v_id);
-            println!("    \"V{}\" [style=invis]", v_id);
-
-            // swimlane edges
-            for unit in validator_swimlane {
-                let (unit1, style) = if let Some(prev_unit) = unit
-                    .cited_units
+    pub fn iter_range<R1, R2>(
+        &self,
+        range_vid: R1,
+        range_graph_height: R2,
+    ) -> impl Iterator<Item = &GraphUnit>
+    where
+        R1: RangeBounds<usize> + Clone,
+        R2: RangeBounds<usize> + Clone,
+    {
+        let range_vid_clone = range_vid.clone();
+        self.units
+            .iter()
+            .enumerate()
+            .skip_while(move |(vid, _)| !range_vid.contains(vid))
+            .take_while(move |(vid, _)| range_vid_clone.contains(vid))
+            .flat_map(move |(_, swimlane)| {
+                let range_graph_height_clone1 = range_graph_height.clone();
+                let range_graph_height_clone2 = range_graph_height.clone();
+                swimlane
                     .iter()
-                    .find(|cited| cited.0 == ValidatorIndex(v_id as u32))
-                {
-                    let prev_graph_height = self.units[prev_unit.0][prev_unit.1].graph_height;
-                    let graph_height = unit.graph_height;
-                    (
-                        format!("{:?}", prev_unit),
-                        format!("minlen={}", graph_height - prev_graph_height),
-                    )
-                } else {
-                    (format!("V{}", v_id), format!("style=invis"))
-                };
-                println!("    \"{}\" -> \"{:?}\" [{}]", unit1, unit.id, style);
-            }
-
-            println!("  }}");
-
-            // citing edges
-            for unit in validator_swimlane {
-                for prev_unit in &unit.cited_units {
-                    // we've already printed the edges between same-validator units
-                    if prev_unit.0 != unit.id.0 {
-                        println!(
-                            "  \"{:?}\" -> \"{:?}\" [constraint=false]",
-                            prev_unit, unit.id
-                        );
-                    }
-                }
-            }
-        }
-
-        println!("}}");
+                    .skip_while(move |unit| !range_graph_height_clone1.contains(&unit.graph_height))
+                    .take_while(move |unit| range_graph_height_clone2.contains(&unit.graph_height))
+            })
     }
 }
 
@@ -327,16 +338,98 @@ fn main() {
 
     eprintln!("{}", dump.id);
 
-    let weight_percentages: ValidatorMap<f32> = dump
-        .highway_state
-        .weights()
-        .iter()
-        .map(|weight| weight.0 as f32 / dump.highway_state.total_weight().0 as f32 * 100.0)
-        .collect();
-
     let graph = Graph::new(&dump.highway_state);
 
-    eprintln!("{:#?}", weight_percentages);
+    start_rendering(graph);
+}
 
-    graph.print_dot();
+#[derive(Clone, Copy)]
+enum MouseState {
+    Free { position: (f64, f64) },
+    Dragging { last_position: (f64, f64) },
+}
+
+impl MouseState {
+    fn handle_move(&mut self, new_position: (f64, f64)) -> Option<(f32, f32)> {
+        match self {
+            Self::Free { position } => {
+                *position = new_position;
+                None
+            }
+            Self::Dragging { last_position } => {
+                let delta_x = (new_position.0 - last_position.0) as f32;
+                let delta_y = (new_position.1 - last_position.1) as f32;
+                *last_position = new_position;
+                Some((delta_x, delta_y))
+            }
+        }
+    }
+
+    fn handle_button(&mut self, button_down: bool) {
+        match (*self, button_down) {
+            (Self::Free { position }, true) => {
+                *self = Self::Dragging {
+                    last_position: position,
+                };
+            }
+            (Self::Dragging { last_position }, false) => {
+                *self = Self::Free {
+                    position: last_position,
+                };
+            }
+            _ => (),
+        }
+    }
+}
+
+fn start_rendering(graph: Graph) {
+    let event_loop = EventLoop::new();
+
+    let wb = WindowBuilder::new()
+        .with_title("Consensus Graph Visualization")
+        .with_maximized(true)
+        .with_resizable(true);
+    let cb = ContextBuilder::new();
+    let display = Display::new(wb, cb, &event_loop).unwrap();
+
+    let mut renderer = Renderer::new(&display);
+    let mut mouse_state = MouseState::Free {
+        position: (0.0, 0.0),
+    };
+
+    event_loop.run(move |ev, _, control_flow| {
+        match ev {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => {
+                    *control_flow = ControlFlow::Exit;
+                    return;
+                }
+                WindowEvent::MouseWheel { delta, .. } => match delta {
+                    MouseScrollDelta::LineDelta(_, vertical) => {
+                        renderer.mouse_scroll(vertical);
+                    }
+                    MouseScrollDelta::PixelDelta(pixels) => {
+                        renderer.mouse_scroll(pixels.y as f32 / 30.0);
+                    }
+                },
+                WindowEvent::MouseInput { state, button, .. } => match (state, button) {
+                    (state, MouseButton::Left) => {
+                        mouse_state.handle_button(matches!(state, ElementState::Pressed));
+                    }
+                    _ => (),
+                },
+                WindowEvent::CursorMoved { position, .. } => {
+                    if let Some(delta) = mouse_state.handle_move((position.x, position.y)) {
+                        renderer.pan(delta.0, delta.1);
+                    }
+                }
+                _ => (),
+            },
+            Event::MainEventsCleared => {
+                renderer.draw(&display, &graph);
+            }
+            _ => (),
+        }
+        *control_flow = ControlFlow::Poll;
+    });
 }
