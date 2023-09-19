@@ -498,7 +498,7 @@ where
         }
 
         let event_queue_dump_threshold =
-            env::var("EVENT_QUEUE_DUMP_THRESHOLD").map_or(None, |s| s.parse::<usize>().ok());
+            env::var("CL_EVENT_QUEUE_DUMP_THRESHOLD").map_or(None, |s| s.parse::<usize>().ok());
 
         let scheduler = utils::leak(Scheduler::new(
             QueueKind::weights(),
