@@ -116,7 +116,7 @@ impl Debug for UnitId {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 struct BlockId(u64, u8);
 
 impl Debug for BlockId {
@@ -157,6 +157,7 @@ impl Debug for GraphUnit {
 #[derive(Clone, Debug)]
 struct BlockMapper {
     hash_to_id: HashMap<Digest, BlockId>,
+    id_to_hash: HashMap<BlockId, Digest>,
     last_id_by_height: HashMap<u64, u8>,
 }
 
@@ -164,12 +165,14 @@ impl BlockMapper {
     fn new() -> Self {
         Self {
             hash_to_id: HashMap::new(),
+            id_to_hash: HashMap::new(),
             last_id_by_height: HashMap::new(),
         }
     }
 
     fn insert(&mut self, hash: Digest, id: BlockId) {
         self.hash_to_id.insert(hash, id);
+        self.id_to_hash.insert(id, hash);
         let entry = self.last_id_by_height.entry(id.0).or_insert(id.1);
         *entry = (*entry).max(id.1);
     }
@@ -180,6 +183,10 @@ impl BlockMapper {
 
     fn get(&self, hash: &Digest) -> Option<BlockId> {
         self.hash_to_id.get(hash).copied()
+    }
+
+    fn get_by_id(&self, id: &BlockId) -> Option<Digest> {
+        self.id_to_hash.get(id).copied()
     }
 }
 
@@ -207,7 +214,7 @@ impl Graph {
 
         units_set.collect_ancestor_units(state);
 
-        println!("num units: {}", units_set.order.len());
+        eprintln!("num units: {}", units_set.order.len());
 
         for unit_hash in &units_set.order {
             let unit = state.unit(unit_hash);
@@ -251,6 +258,56 @@ impl Graph {
             blocks,
         }
     }
+
+    fn print_dot(&self) {
+        println!("digraph HighwayState {{");
+        println!("  splines=false");
+        println!("  rankdir=BT");
+        println!("  style=invis");
+
+        // print subgraphs
+        for (v_id, validator_swimlane) in self.units.iter().enumerate() {
+            println!("  subgraph cluster_V{} {{", v_id);
+            println!("    label=\"V{}\"", v_id);
+            println!("    \"V{}\" [style=invis]", v_id);
+
+            // swimlane edges
+            for unit in validator_swimlane {
+                let (unit1, style) = if let Some(prev_unit) = unit
+                    .cited_units
+                    .iter()
+                    .find(|cited| cited.0 == ValidatorIndex(v_id as u32))
+                {
+                    let prev_graph_height = self.units[prev_unit.0][prev_unit.1].graph_height;
+                    let graph_height = unit.graph_height;
+                    (
+                        format!("{:?}", prev_unit),
+                        format!("minlen={}", graph_height - prev_graph_height),
+                    )
+                } else {
+                    (format!("V{}", v_id), format!("style=invis"))
+                };
+                println!("    \"{}\" -> \"{:?}\" [{}]", unit1, unit.id, style);
+            }
+
+            println!("  }}");
+
+            // citing edges
+            for unit in validator_swimlane {
+                for prev_unit in &unit.cited_units {
+                    // we've already printed the edges between same-validator units
+                    if prev_unit.0 != unit.id.0 {
+                        println!(
+                            "  \"{:?}\" -> \"{:?}\" [constraint=false]",
+                            prev_unit, unit.id
+                        );
+                    }
+                }
+            }
+        }
+
+        println!("}}");
+    }
 }
 
 fn main() {
@@ -268,7 +325,7 @@ fn main() {
 
     let dump: EraDump = bincode::deserialize(&data).unwrap();
 
-    println!("{}", dump.id);
+    eprintln!("{}", dump.id);
 
     let weight_percentages: ValidatorMap<f32> = dump
         .highway_state
@@ -279,6 +336,7 @@ fn main() {
 
     let graph = Graph::new(&dump.highway_state);
 
-    println!("{:#?}", weight_percentages);
-    println!("{:#?}", graph);
+    eprintln!("{:#?}", weight_percentages);
+
+    graph.print_dot();
 }
