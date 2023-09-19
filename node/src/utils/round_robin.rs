@@ -229,8 +229,8 @@ where
 
         // NOTE: Count may be off by one b/c of the way locking works when elements are popped.
         // It's fine for its purposes.
-        let total = self.queues.iter().map(|q| q.1.event_count()).sum::<usize>();
         if let Some(recent_event_count_peak) = &self.recent_event_count_peak {
+            let total = self.queues.iter().map(|q| q.1.event_count()).sum::<usize>();
             let recent_threshold = recent_event_count_peak.load(Ordering::SeqCst);
             if total > recent_threshold {
                 recent_event_count_peak.store(total, Ordering::SeqCst);
