@@ -206,6 +206,10 @@ where
     }
 }
 
+fn should_dump_queues(total: usize, recent_threshold: usize) -> bool {
+    total > ((recent_threshold * 11) / 10)
+}
+
 impl<I, K> WeightedRoundRobin<I, K>
 where
     K: Copy + Clone + Eq + Hash + Display,
@@ -232,7 +236,7 @@ where
         if let Some(recent_event_count_peak) = &self.recent_event_count_peak {
             let total = self.queues.iter().map(|q| q.1.event_count()).sum::<usize>();
             let recent_threshold = recent_event_count_peak.load(Ordering::SeqCst);
-            if total > recent_threshold {
+            if should_dump_queues(total, recent_threshold) {
                 recent_event_count_peak.store(total, Ordering::SeqCst);
                 let info: Vec<_> = self
                     .queues
@@ -422,5 +426,37 @@ mod tests {
         assert_eq!(('b', QueueKind::Two), scheduler.pop().await);
         assert_eq!(scheduler.item_count(), 0);
         assert!(scheduler.drain_queues().await.is_empty());
+    }
+
+    #[test]
+    fn should_calculate_dump_threshold() {
+        let total = 0;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        let total = 100;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        let total = 109;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        let total = 110;
+        let recent_threshold = 100;
+        assert!(!should_dump_queues(total, recent_threshold));
+
+        // Dump only if there is 10%+ increase in event count
+        let total = 111;
+        let recent_threshold = 100;
+        assert!(should_dump_queues(total, recent_threshold));
+
+        let total = 112;
+        let recent_threshold = 100;
+        assert!(should_dump_queues(total, recent_threshold));
+
+        let total = 1_000_000;
+        let recent_threshold = 100;
+        assert!(should_dump_queues(total, recent_threshold));
     }
 }
