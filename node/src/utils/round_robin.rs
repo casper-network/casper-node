@@ -44,7 +44,8 @@ pub struct WeightedRoundRobin<I, K> {
     /// Whether or not the queue is sealed (not accepting any more items).
     sealed: AtomicBool,
 
-    /// Only dump event counts when there are more of them than in the previous report.
+    /// Dump count of events only when there is a 10%+ increase of events compared to the previous
+    /// report. Setting to `None` disables the dump function.
     recent_event_count_peak: Option<AtomicUsize>,
 }
 
