@@ -13,7 +13,7 @@ mod tests;
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap},
-    fmt::Debug,
+    fmt::{self, Debug, Display, Formatter},
     sync::Arc,
 };
 
@@ -123,6 +123,18 @@ impl BlockValidationState {
     }
 }
 
+impl Display for BlockValidationState {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "BlockValidationState({}, {} missing deploys, {} responders)",
+            self.appendable_block,
+            self.missing_deploys.len(),
+            self.responders.len()
+        )
+    }
+}
+
 #[derive(DataSize, Debug)]
 pub(crate) struct BlockValidator {
     /// Chainspec loaded for deploy validation.
@@ -157,7 +169,7 @@ impl BlockValidator {
             })
             .join(", ");
         info!(
-            peer_id=?sender, %duplicates,
+            peer_id=%sender, %duplicates,
             "received invalid block containing duplicated deploys"
         );
     }
@@ -186,7 +198,7 @@ where
                 sender,
                 responder,
             }) => {
-                debug!(?block, "validating proposed block");
+                debug!(%sender, %block, "validating proposed block");
                 if block.deploy_hashes().count()
                     > self.chainspec.deploy_config.block_max_deploy_count as usize
                 {
@@ -215,7 +227,7 @@ where
                 let state = match self.validation_states.entry(block) {
                     Entry::Occupied(entry) => {
                         let state = entry.into_mut();
-                        debug!(?state, "already validating this proposed block");
+                        debug!(%state, "already validating this proposed block");
                         state
                     }
                     Entry::Vacant(entry) => {
@@ -281,15 +293,10 @@ where
                             }
                         };
                         if let Err(err) = add_result {
-                            info!(block = ?key, %dt_hash, ?deploy_footprint, ?err, "block invalid");
+                            info!(block = %key, %dt_hash, ?deploy_footprint, %err, "block invalid");
                             invalid.push(key.clone());
                         }
-                        debug!(
-                            block_timestamp = %state.appendable_block.timestamp(),
-                            deploy_hash = %dt_hash,
-                            missing_deploy_count = %state.missing_deploys.len(),
-                            "found deploy for block validation"
-                        );
+                        debug!(deploy_hash = %dt_hash, %state, "found deploy for block validation");
                     }
                 }
 
@@ -325,7 +332,11 @@ where
                     }
 
                     // Notify everyone still waiting on it that all is lost.
-                    info!(block = ?key, %dt_hash, "could not validate the deploy. block is invalid");
+                    info!(
+                        block = %key,
+                        %dt_hash,
+                        "could not validate the deploy. block is invalid"
+                    );
                     // This validation state contains a deploy hash we failed to fetch from all
                     // sources, it can never succeed.
                     effects.extend(state.respond(false));
@@ -341,7 +352,8 @@ where
                     if state.missing_deploys.contains_key(&dt_hash) {
                         // Notify everyone still waiting on it that all is lost.
                         info!(
-                            block = ?key, %dt_hash,
+                            block = %key,
+                            %dt_hash,
                             "could not convert deploy to deploy type. block is invalid"
                         );
                         // This validation state contains a failed deploy hash, it can never
@@ -390,9 +402,9 @@ where
         };
         if deploy.deploy_or_transfer_hash() != dt_hash {
             warn!(
-                deploy = ?deploy,
-                expected_deploy_or_transfer_hash = ?dt_hash,
-                actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
+                deploy = %deploy,
+                expected_deploy_or_transfer_hash = %dt_hash,
+                actual_deploy_or_transfer_hash = %deploy.deploy_or_transfer_hash(),
                 "Deploy has incorrect transfer hash"
             );
             return Event::CannotConvertDeploy(dt_hash);
@@ -404,9 +416,9 @@ where
             },
             Err(error) => {
                 warn!(
-                    deploy = ?deploy,
-                    deploy_or_transfer_hash = ?dt_hash,
-                    ?error,
+                    deploy = %deploy,
+                    deploy_or_transfer_hash = %dt_hash,
+                    %error,
                     "Could not convert deploy",
                 );
                 Event::CannotConvertDeploy(dt_hash)
