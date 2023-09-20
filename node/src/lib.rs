@@ -56,6 +56,7 @@ pub(crate) use components::{
     block_synchronizer::Config as BlockSynchronizerConfig,
     consensus::Config as ConsensusConfig,
     contract_runtime::Config as ContractRuntimeConfig,
+    deploy_acceptor::Config as DeployAcceptorConfig,
     deploy_buffer::Config as DeployBufferConfig,
     diagnostics_port::Config as DiagnosticsPortConfig,
     event_stream_server::Config as EventStreamServerConfig,
