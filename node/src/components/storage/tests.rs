@@ -1,7 +1,7 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     fs::{self, File},
     iter,
     rc::Rc,
@@ -33,10 +33,10 @@ use crate::{
     testing::{ComponentHarness, UnitTestEvent},
     types::{
         sync_leap_validation_metadata::SyncLeapValidationMetaData, AvailableBlockRange, Block,
-        BlockHash, BlockHashAndHeight, BlockHeader, BlockHeaderWithMetadata, BlockSignatures,
-        Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata, DeployMetadataExt,
-        DeployWithFinalizedApprovals, FinalitySignature, LegacyDeploy, SyncLeapIdentifier,
-        TestBlockBuilder,
+        BlockHash, BlockHashAndHeight, BlockHashHeightAndEra, BlockHeader, BlockHeaderWithMetadata,
+        BlockSignatures, Chainspec, ChainspecRawBytes, Deploy, DeployHash, DeployMetadata,
+        DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature, LegacyDeploy,
+        SyncLeapIdentifier, TestBlockBuilder,
     },
     utils::{Loadable, WithDir},
 };
@@ -462,12 +462,12 @@ fn put_deploy(
 
 fn insert_to_deploy_index(
     storage: &mut Storage,
-    deploy: Deploy,
-    block_hash_and_height: BlockHashAndHeight,
+    deploy_hash: &DeployHash,
+    block_hash_height_and_era: BlockHashHeightAndEra,
 ) -> bool {
     storage
         .deploy_hash_index
-        .insert(*deploy.hash(), block_hash_and_height)
+        .insert(*deploy_hash, block_hash_height_and_era)
         .is_none()
 }
 
@@ -758,13 +758,13 @@ fn can_retrieve_store_and_load_deploys() {
     let deploy = Arc::new(Deploy::random(&mut harness.rng));
 
     let was_new = put_deploy(&mut harness, &mut storage, Arc::clone(&deploy));
-    let block_hash_and_height = BlockHashAndHeight::random(&mut harness.rng);
+    let block_hash_height_and_era = BlockHashHeightAndEra::random(&mut harness.rng);
     // Insert to the deploy hash index as well so that we can perform the GET later.
     // Also check that we don't have an entry there for this deploy.
     assert!(insert_to_deploy_index(
         &mut storage,
-        (*deploy).clone(),
-        block_hash_and_height
+        deploy.hash(),
+        block_hash_height_and_era
     ));
     assert!(was_new, "putting deploy should have returned `true`");
 
@@ -776,8 +776,8 @@ fn can_retrieve_store_and_load_deploys() {
     );
     assert!(!insert_to_deploy_index(
         &mut storage,
-        (*deploy).clone(),
-        block_hash_and_height
+        deploy.hash(),
+        block_hash_height_and_era
     ));
 
     // Retrieve the stored deploy.
@@ -802,7 +802,10 @@ fn can_retrieve_store_and_load_deploys() {
             panic!("We didn't store any metadata but we received it in the response.")
         }
         DeployMetadataExt::BlockInfo(recv_block_hash_and_height) => {
-            assert_eq!(block_hash_and_height, recv_block_hash_and_height)
+            assert_eq!(
+                BlockHashAndHeight::from(&block_hash_height_and_era),
+                recv_block_hash_and_height
+            )
         }
         DeployMetadataExt::Empty => panic!(
             "We stored block info in the deploy hash index \
@@ -838,6 +841,122 @@ fn can_retrieve_store_and_load_deploys() {
         }
         DeployMetadataExt::Empty => { /* We didn't store execution results or block info */ }
     }
+}
+
+#[test]
+fn should_retrieve_deploys_era_ids() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    // Populate the `deploy_hash_index` with 5 deploys from a block in era 1.
+    let era_1_deploy_hashes: HashSet<DeployHash> =
+        iter::repeat_with(|| DeployHash::random(&mut harness.rng))
+            .take(5)
+            .collect();
+    let block_hash_height_and_era = BlockHashHeightAndEra::new(
+        BlockHash::random(&mut harness.rng),
+        harness.rng.gen(),
+        EraId::new(1),
+    );
+    for deploy_hash in &era_1_deploy_hashes {
+        assert!(insert_to_deploy_index(
+            &mut storage,
+            deploy_hash,
+            block_hash_height_and_era
+        ));
+    }
+
+    // Further populate the `deploy_hash_index` with 5 deploys from a block in era 2.
+    let era_2_deploy_hashes: HashSet<DeployHash> =
+        iter::repeat_with(|| DeployHash::random(&mut harness.rng))
+            .take(5)
+            .collect();
+    let block_hash_height_and_era = BlockHashHeightAndEra::new(
+        BlockHash::random(&mut harness.rng),
+        harness.rng.gen(),
+        EraId::new(2),
+    );
+    for deploy_hash in &era_2_deploy_hashes {
+        assert!(insert_to_deploy_index(
+            &mut storage,
+            deploy_hash,
+            block_hash_height_and_era
+        ));
+    }
+
+    // Check we get an empty set for deploys not yet executed.
+    let random_deploy_hashes: HashSet<DeployHash> =
+        iter::repeat_with(|| DeployHash::random(&mut harness.rng))
+            .take(5)
+            .collect();
+    assert!(storage
+        .get_deploys_era_ids(random_deploy_hashes.clone())
+        .is_empty());
+
+    // Check we get back only era 1 for all of the era 1 deploys and similarly for era 2 ones.
+    let era1: HashSet<EraId> = iter::once(EraId::new(1)).collect();
+    assert_eq!(
+        storage.get_deploys_era_ids(era_1_deploy_hashes.clone()),
+        era1
+    );
+    let era2: HashSet<EraId> = iter::once(EraId::new(2)).collect();
+    assert_eq!(
+        storage.get_deploys_era_ids(era_2_deploy_hashes.clone()),
+        era2
+    );
+
+    // Check we get back both eras if we use some from each collection.
+    let both_eras = vec![EraId::new(1), EraId::new(2)].into_iter().collect();
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_1_deploy_hashes
+                .iter()
+                .take(3)
+                .chain(era_2_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        both_eras
+    );
+
+    // Check we get back only era 1 for era 1 deploys interspersed with unexecuted deploys, and
+    // similarly for era 2 ones.
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_1_deploy_hashes
+                .iter()
+                .take(1)
+                .chain(random_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        era1
+    );
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_2_deploy_hashes
+                .iter()
+                .take(1)
+                .chain(random_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        era2
+    );
+
+    // Check we get back both eras if we use some from each collection and also some unexecuted.
+    assert_eq!(
+        storage.get_deploys_era_ids(
+            era_1_deploy_hashes
+                .iter()
+                .take(3)
+                .chain(era_2_deploy_hashes.iter().take(3))
+                .chain(random_deploy_hashes.iter().take(3))
+                .copied()
+                .collect(),
+        ),
+        both_eras
+    );
 }
 
 #[test]
