@@ -297,6 +297,7 @@ impl Deploy {
         chain_name: &str,
         config: &DeployConfig,
         max_associated_keys: u32,
+        timestamp_leeway: TimeDiff,
         at: Timestamp,
     ) -> Result<(), DeployConfigurationFailure> {
         self.is_valid_size(config.max_deploy_size)?;
@@ -315,7 +316,7 @@ impl Deploy {
             });
         }
 
-        header.is_valid(config, at, &self.hash)?;
+        header.is_valid(config, timestamp_leeway, at, &self.hash)?;
 
         if self.approvals.len() > max_associated_keys as usize {
             debug!(
@@ -1254,6 +1255,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp,
             )
             .expect("should be acceptable");
@@ -1284,6 +1286,7 @@ mod tests {
                 expected_chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -1320,6 +1323,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -1356,6 +1360,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -1371,6 +1376,7 @@ mod tests {
         let mut rng = crate::new_rng();
         let chain_name = "net-1";
         let deploy_config = DeployConfig::default();
+        let leeway = TimeDiff::from_seconds(2);
 
         let deploy = create_deploy(
             &mut rng,
@@ -1378,10 +1384,11 @@ mod tests {
             deploy_config.max_dependencies.into(),
             chain_name,
         );
-        let current_timestamp = deploy.header.timestamp() - TimeDiff::from_seconds(1);
+        let current_timestamp = deploy.header.timestamp() - leeway - TimeDiff::from_seconds(1);
 
         let expected_error = DeployConfigurationFailure::TimestampInFuture {
             validation_timestamp: current_timestamp,
+            timestamp_leeway: leeway,
             got: deploy.header.timestamp(),
         };
 
@@ -1390,6 +1397,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                leeway,
                 current_timestamp
             ),
             Err(expected_error)
@@ -1398,6 +1406,31 @@ mod tests {
             deploy.is_valid.get().is_none(),
             "deploy should not have run expensive `is_valid` call"
         );
+    }
+
+    #[test]
+    fn acceptable_if_timestamp_slightly_in_future() {
+        let mut rng = crate::new_rng();
+        let chain_name = "net-1";
+        let deploy_config = DeployConfig::default();
+        let leeway = TimeDiff::from_seconds(2);
+
+        let deploy = create_deploy(
+            &mut rng,
+            deploy_config.max_ttl,
+            deploy_config.max_dependencies.into(),
+            chain_name,
+        );
+        let current_timestamp = deploy.header.timestamp() - (leeway / 2);
+        deploy
+            .is_config_compliant(
+                chain_name,
+                &deploy_config,
+                DEFAULT_MAX_ASSOCIATED_KEYS,
+                leeway,
+                current_timestamp,
+            )
+            .expect("should be acceptable");
     }
 
     #[test]
@@ -1435,6 +1468,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(DeployConfigurationFailure::MissingPaymentAmount)
@@ -1482,6 +1516,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(DeployConfigurationFailure::FailedToParsePaymentAmount)
@@ -1535,6 +1570,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             ),
             Err(expected_error)
@@ -1589,6 +1625,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             )
         )
@@ -1618,6 +1655,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 max_associated_keys,
+                TimeDiff::default(),
                 current_timestamp
             )
         )
@@ -1648,6 +1686,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             )
         )
@@ -1682,6 +1721,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             )
         )
@@ -1722,6 +1762,7 @@ mod tests {
                 chain_name,
                 &deploy_config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
+                TimeDiff::default(),
                 current_timestamp
             )
         )

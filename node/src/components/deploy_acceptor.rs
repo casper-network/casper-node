@@ -247,7 +247,8 @@ impl DeployAcceptor {
             &self.chain_name,
             &self.deploy_config,
             self.max_associated_keys,
-            verification_start_timestamp + self.acceptor_config.timestamp_leeway,
+            self.acceptor_config.timestamp_leeway,
+            verification_start_timestamp,
         );
         // checks chainspec values
         if let Err(error) = acceptable_result {
