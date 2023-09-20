@@ -13,7 +13,10 @@ use derive_more::From;
 use itertools::Itertools;
 
 use crate::{
-    components::{consensus::BlockContext, fetcher},
+    components::{
+        consensus::BlockContext,
+        fetcher::{self, FetchItem},
+    },
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     types::{BlockPayload, ChainspecRawBytes, DeployHashWithApprovals},
     utils::{self, Loadable},
@@ -26,7 +29,7 @@ enum ReactorEvent {
     #[from]
     BlockValidator(Event),
     #[from]
-    Fetcher(FetcherRequest<LegacyDeploy>),
+    Fetcher(FetcherRequest<Deploy>),
     #[from]
     Storage(StorageRequest),
 }
@@ -73,15 +76,15 @@ impl MockReactor {
             {
                 if let Some((position, _)) = deploys_to_fetch
                     .iter()
-                    .find_position(|deploy| *deploy.hash() == id)
+                    .find_position(|deploy| deploy.fetch_id() == id)
                 {
                     let deploy = deploys_to_fetch.remove(position);
                     let response = FetchedData::FromPeer {
-                        item: Box::new(LegacyDeploy::from(deploy)),
+                        item: Box::new(deploy),
                         peer,
                     };
                     responder.respond(Ok(response)).await;
-                } else if deploys_to_not_fetch.remove(&id) {
+                } else if deploys_to_not_fetch.remove(id.deploy_hash()) {
                     responder
                         .respond(Err(fetcher::Error::Absent {
                             id: Box::new(id),

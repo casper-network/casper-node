@@ -36,8 +36,9 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Approval, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
+        appendable_block::AppendableBlock, Approval, ApprovalsHash, Chainspec, Deploy,
+        DeployFootprint, DeployHash, DeployHashWithApprovals, DeployId, DeployOrTransferHash,
+        NodeId,
     },
     NodeRng,
 };
@@ -179,7 +180,7 @@ impl<REv> Component<REv> for BlockValidator
 where
     REv: From<Event>
         + From<BlockValidationRequest>
-        + From<FetcherRequest<LegacyDeploy>>
+        + From<FetcherRequest<Deploy>>
         + From<StorageRequest>
         + Send,
 {
@@ -223,6 +224,20 @@ where
                     return responder.respond(false).ignore();
                 }
 
+                // Prepare all approvals hashes.
+                let mut deploy_ids = HashMap::new();
+                for (dt_hash, approvals) in block_deploys.iter() {
+                    match ApprovalsHash::compute(approvals) {
+                        Ok(approvals_hash) => {
+                            deploy_ids.insert(*dt_hash, approvals_hash);
+                        }
+                        Err(error) => {
+                            warn!(%dt_hash, %error, "could not compute approvals hash");
+                            return responder.respond(false).ignore();
+                        }
+                    }
+                }
+
                 let block_timestamp = block.timestamp();
                 let state = match self.validation_states.entry(block) {
                     Entry::Occupied(entry) => {
@@ -236,7 +251,7 @@ where
                                 self.chainspec.deploy_config,
                                 block_timestamp,
                             ),
-                            missing_deploys: block_deploys.clone(),
+                            missing_deploys: block_deploys,
                             responders: smallvec![],
                         };
                         entry.insert(state)
@@ -255,12 +270,16 @@ where
                 // We register ourselves as someone interested in the ultimate validation result.
                 state.responders.push(responder);
 
-                effects.extend(block_deploys.into_iter().flat_map(|(dt_hash, _)| {
-                    // For every request, increase the number of in-flight...
-                    self.in_flight.inc(&dt_hash.into());
-                    // ...then request it.
-                    fetch_deploy(effect_builder, dt_hash, sender)
-                }));
+                effects.extend(
+                    deploy_ids
+                        .into_iter()
+                        .flat_map(|(dt_hash, approvals_hash)| {
+                            // For every request, increase the number of in-flight...
+                            self.in_flight.inc(&dt_hash.into());
+                            // ...then request it.
+                            fetch_deploy(effect_builder, dt_hash, approvals_hash, sender)
+                        }),
+                );
             }
             Event::DeployFound {
                 dt_hash,
@@ -378,25 +397,21 @@ where
 fn fetch_deploy<REv>(
     effect_builder: EffectBuilder<REv>,
     dt_hash: DeployOrTransferHash,
+    approvals_hash: ApprovalsHash,
     sender: NodeId,
 ) -> Effects<Event>
 where
-    REv: From<Event> + From<FetcherRequest<LegacyDeploy>> + Send,
+    REv: From<Event> + From<FetcherRequest<Deploy>> + Send,
 {
     async move {
-        let deploy_hash: DeployHash = dt_hash.into();
+        let deploy_id = DeployId::new(dt_hash.into(), approvals_hash);
         let deploy = match effect_builder
-            .fetch::<LegacyDeploy>(deploy_hash, sender, Box::new(EmptyValidationMetadata))
+            .fetch::<Deploy>(deploy_id, sender, Box::new(EmptyValidationMetadata))
             .await
         {
-            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => {
-                Deploy::from(*item)
-            }
-            Err(fetcher_error) => {
-                warn!(
-                    "Could not fetch deploy with deploy hash {}: {}",
-                    deploy_hash, fetcher_error
-                );
+            Ok(FetchedData::FromStorage { item }) | Ok(FetchedData::FromPeer { item, .. }) => *item,
+            Err(error) => {
+                warn!(%deploy_id, %error, "could not fetch deploy");
                 return Event::DeployMissing(dt_hash);
             }
         };
@@ -405,7 +420,7 @@ where
                 deploy = %deploy,
                 expected_deploy_or_transfer_hash = %dt_hash,
                 actual_deploy_or_transfer_hash = %deploy.deploy_or_transfer_hash(),
-                "Deploy has incorrect transfer hash"
+                "deploy has incorrect hash"
             );
             return Event::CannotConvertDeploy(dt_hash);
         }
@@ -419,7 +434,7 @@ where
                     deploy = %deploy,
                     deploy_or_transfer_hash = %dt_hash,
                     %error,
-                    "Could not convert deploy",
+                    "could not convert deploy",
                 );
                 Event::CannotConvertDeploy(dt_hash)
             }
