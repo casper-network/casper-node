@@ -821,7 +821,7 @@ mod tests {
     #[tokio::test]
     async fn can_dump_actual_events_from_scheduler() {
         // Create a scheduler with a few synthetic events.
-        let scheduler = WeightedRoundRobin::new(QueueKind::weights());
+        let scheduler = WeightedRoundRobin::new(QueueKind::weights(), None);
         scheduler
             .push(
                 MainEvent::Network(network::Event::SweepOutgoing),

@@ -1069,7 +1069,7 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
             };
 
-        let proposer_main_purse_balance_key = {
+        let rewards_target_purse_balance_key = {
             match tracking_copy
                 .borrow_mut()
                 .get_purse_balance_key(rewards_target_purse.into())
@@ -1112,7 +1112,7 @@ where
             account_main_purse_balance,
             wasmless_transfer_gas_cost,
             account_main_purse_balance_key,
-            proposer_main_purse_balance_key,
+            rewards_target_purse_balance_key,
         ) {
             Ok(execution_result) => execution_result,
             Err(error) => ExecutionResult::precondition_failure(error),

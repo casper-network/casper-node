@@ -32,7 +32,7 @@ pub use chunkable::Chunkable;
 pub use datasize::DataSize;
 pub use exit_code::ExitCode;
 pub(crate) use max_ttl::MaxTtl;
-pub use node_config::NodeConfig;
+pub use node_config::{NodeConfig, SyncHandling};
 pub(crate) use node_id::NodeId;
 pub use peers_map::PeersMap;
 pub use status_feed::{ChainspecInfo, GetStatusResult, StatusFeed};

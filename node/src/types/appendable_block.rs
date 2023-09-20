@@ -183,6 +183,10 @@ impl AppendableBlock {
         BlockPayload::new(deploys, transfers, accusations, random_bit)
     }
 
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
+    }
+
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no
     /// more transfers can be added to this block.
     fn has_max_transfer_count(&self) -> bool {

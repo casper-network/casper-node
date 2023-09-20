@@ -137,7 +137,7 @@ pub(crate) struct ComponentHarnessBuilder<REv: 'static> {
     _phantom: PhantomData<REv>,
 }
 
-impl<REv: 'static> ComponentHarnessBuilder<REv> {
+impl<REv: 'static + Debug> ComponentHarnessBuilder<REv> {
     /// Builds a component harness instance.
     ///
     /// # Panics
@@ -173,7 +173,7 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
 
         let rng = self.rng.unwrap_or_else(TestRng::new);
 
-        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
+        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights(), None)));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         let runtime = runtime::Builder::new_multi_thread()
@@ -313,7 +313,7 @@ impl<REv: 'static> ComponentHarness<REv> {
     }
 }
 
-impl<REv: 'static> Default for ComponentHarness<REv> {
+impl<REv: 'static + Debug> Default for ComponentHarness<REv> {
     fn default() -> Self {
         Self::builder().build()
     }
