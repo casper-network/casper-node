@@ -8,6 +8,7 @@ use casper_execution_engine::{
     engine_state::{run_genesis_request::RunGenesisRequest, Error as EngineError},
     execution::Error,
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, AccessRights, AddressableEntityHash,
     ApiError, CLType, CLValue, GenesisAccount, Key, Motes, RuntimeArgs, StoredValue, U512,
@@ -65,8 +66,7 @@ fn setup() -> (LmdbWasmTestBuilder, AddressableEntityHash) {
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .cloned()
-        .and_then(Key::into_hash_addr)
-        .map(AddressableEntityHash::new)
+        .and_then(Key::into_entity_hash)
         .expect("should have hash");
 
     (builder, entity_hash)
@@ -89,12 +89,14 @@ fn query_dictionary_item(
             if let StoredValue::CLValue(cl_value) = stored_value {
                 let entity_hash: AddressableEntityHash = CLValue::into_t::<Key>(cl_value)
                     .expect("must convert to contract hash")
-                    .into_hash_addr()
-                    .map(AddressableEntityHash::new)
+                    .into_entity_hash()
                     .expect("must convert to contract hash");
+
+                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+
                 return query_dictionary_item(
                     builder,
-                    entity_hash.into(),
+                    entity_key,
                     dictionary_name,
                     dictionary_item_key,
                 );
@@ -102,7 +104,7 @@ fn query_dictionary_item(
                 return Err("Provided base key is not an account".to_string());
             }
         }
-        Key::Hash(_) => {
+        Key::AddressableEntity(_) => {
             if let Some(name) = dictionary_name {
                 let stored_value = builder.query(None, key, &[])?;
 
@@ -591,8 +593,7 @@ fn should_query_dictionary_items_with_test_builder() {
         .named_keys()
         .get(dictionary::CONTRACT_HASH_NAME)
         .expect("should have contract")
-        .into_hash_addr()
-        .map(AddressableEntityHash::new)
+        .into_entity_hash()
         .expect("should have hash");
 
     let dictionary_uref = default_account
@@ -634,7 +635,7 @@ fn should_query_dictionary_items_with_test_builder() {
         // Query through contract's named keys
         let queried_value = query_dictionary_item(
             &builder,
-            Key::from(entity_hash),
+            Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash),
             Some(dictionary::DICTIONARY_NAME.to_string()),
             dictionary::DEFAULT_DICTIONARY_NAME.to_string(),
         )

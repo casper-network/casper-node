@@ -7,7 +7,7 @@ use alloc::{collections::BTreeSet, string::ToString};
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     account::AccountHash, addressable_entity::Parameters, ApiError, CLType, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints,
+    EntryPointAccess, EntryPointType, EntryPoints, Key,
 };
 
 const ROLE_A_KEYS: [AccountHash; 3] = [
@@ -101,5 +101,5 @@ pub extern "C" fn call() {
         Some(ACCESS_KEY.to_string()),
     );
 
-    runtime::put_key(CONTRACT_KEY, contract_hash.into());
+    runtime::put_key(CONTRACT_KEY, Key::contract_entity_key(contract_hash));
 }

@@ -4,6 +4,7 @@ use std::{cell::RefCell, collections::BTreeSet, fmt, rc::Rc};
 use thiserror::Error;
 
 use casper_storage::global_state::state::StateProvider;
+use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
     bytesrepr::{self, ToBytes},
@@ -16,7 +17,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::ACCOUNT_WASM_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
+    engine_state::ACCOUNT_BYTE_CODE_HASH, execution::AddressGenerator, tracking_copy::TrackingCopy,
 };
 
 use super::EngineConfig;
@@ -138,23 +139,27 @@ where
 
         let mut contract = self.retrieve_system_contract(contract_hash, system_contract_type)?;
 
-        let contract_package_key = Key::Hash(contract.package_hash().value());
-
-        let mut contract_package = if let StoredValue::Package(contract_package) = self
+        let mut contract_package = if let Some(StoredValue::Package(package)) = self
             .tracking_copy
             .borrow_mut()
-            .read(&contract_package_key)
+            .read(&Key::Package(contract.package_hash().value()))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                    contract_name.to_string(),
+                )
+            })? {
+            package
+        } else if let Some(StoredValue::ContractPackage(contract_package)) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(&Key::Hash(contract.package_hash().value()))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                     contract_name.to_string(),
                 )
             })?
-            .ok_or_else(|| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                    contract_name.to_string(),
-                )
-            })? {
-            contract_package
+        {
+            contract_package.into()
         } else {
             return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
                 contract_name,
@@ -179,17 +184,20 @@ where
             AssociatedKeys::default(),
             ActionThresholds::default(),
         );
-        self.tracking_copy.borrow_mut().write(
-            contract_hash.into(),
-            StoredValue::AddressableEntity(new_entity),
-        );
+
+        let entity_key = Key::addressable_entity_key(PackageKindTag::System, contract_hash.into());
+
+        self.tracking_copy
+            .borrow_mut()
+            .write(entity_key, StoredValue::AddressableEntity(new_entity));
 
         contract_package
             .insert_entity_version(self.new_protocol_version.value().major, contract_hash);
 
-        self.tracking_copy
-            .borrow_mut()
-            .write(contract_package_key, StoredValue::Package(contract_package));
+        self.tracking_copy.borrow_mut().write(
+            Key::Package(contract.package_hash().value()),
+            StoredValue::Package(contract_package),
+        );
 
         Ok(())
     }
@@ -199,24 +207,38 @@ where
         contract_hash: AddressableEntityHash,
         system_contract_type: SystemEntityType,
     ) -> Result<AddressableEntity, ProtocolUpgradeError> {
-        match self
+        if let Some(StoredValue::AddressableEntity(system_entity)) = self
             .tracking_copy
             .borrow_mut()
-            .read(&contract_hash.into())
+            .read(&Key::AddressableEntity((
+                PackageKindTag::System,
+                contract_hash.value(),
+            )))
             .map_err(|_| {
                 ProtocolUpgradeError::UnableToRetrieveSystemContract(
                     system_contract_type.to_string(),
                 )
-            })? {
-            None => Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                system_contract_type.to_string(),
-            )),
-            Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
-            Some(StoredValue::Contract(contract)) => Ok(contract.into()),
-            Some(_) => Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
-                system_contract_type.to_string(),
-            )),
+            })?
+        {
+            return Ok(system_entity);
         }
+
+        if let Some(StoredValue::Contract(system_contract)) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(&Key::Hash(contract_hash.value()))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContract(
+                    system_contract_type.to_string(),
+                )
+            })?
+        {
+            return Ok(system_contract.into());
+        }
+
+        Err(ProtocolUpgradeError::UnableToRetrieveSystemContract(
+            system_contract_type.to_string(),
+        ))
     }
 
     pub(crate) fn migrate_system_account(
@@ -225,7 +247,7 @@ where
     ) -> Result<(), ProtocolUpgradeError> {
         let mut address_generator = AddressGenerator::new(pre_state_hash.as_ref(), Phase::System);
 
-        let contract_wasm_hash = *ACCOUNT_WASM_HASH;
+        let byte_code_hash = *ACCOUNT_BYTE_CODE_HASH;
         let entity_hash = AddressableEntityHash::new(address_generator.new_hash_address());
         let package_hash = PackageHash::new(address_generator.new_hash_address());
 
@@ -255,7 +277,7 @@ where
 
         let contract = AddressableEntity::new(
             package_hash,
-            contract_wasm_hash,
+            byte_code_hash,
             NamedKeys::new(),
             EntryPoints::new(),
             self.new_protocol_version,
@@ -280,18 +302,21 @@ where
             contract_package
         };
 
+        let byte_code_key = Key::ByteCode((ByteCodeKind::Empty, byte_code_hash.value()));
         self.tracking_copy
             .borrow_mut()
-            .write(contract_wasm_hash.into(), StoredValue::ByteCode(byte_code));
+            .write(byte_code_key, StoredValue::ByteCode(byte_code));
+
+        let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
         self.tracking_copy
             .borrow_mut()
-            .write(entity_hash.into(), StoredValue::AddressableEntity(contract));
+            .write(entity_key, StoredValue::AddressableEntity(contract));
+
         self.tracking_copy
             .borrow_mut()
             .write(package_hash.into(), StoredValue::Package(contract_package));
 
-        let contract_key: Key = entity_hash.into();
-        let contract_by_account = CLValue::from_t(contract_key)
+        let contract_by_account = CLValue::from_t(entity_key)
             .map_err(|error| ProtocolUpgradeError::CLValue(error.to_string()))?;
 
         self.tracking_copy.borrow_mut().write(
@@ -342,8 +367,12 @@ where
             let mut new_named_keys = NamedKeys::new();
             new_named_keys.insert(ACCUMULATION_PURSE_KEY.into(), Key::from(purse_uref));
             addressable_entity.named_keys_append(new_named_keys);
+
+            let entity_key =
+                Key::addressable_entity_key(PackageKindTag::System, *handle_payment_hash);
+
             self.tracking_copy.borrow_mut().write(
-                (*handle_payment_hash).into(),
+                entity_key,
                 StoredValue::AddressableEntity(addressable_entity),
             );
         }

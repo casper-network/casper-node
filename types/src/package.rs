@@ -22,6 +22,7 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use serde_map_to_array::KeyValueJsonSchema;
 use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
+use crate::KeyTag::Account;
 use crate::{
     account::AccountHash,
     addressable_entity::{AssociatedKeys, Error, FromStrError, Weight},
@@ -30,7 +31,8 @@ use crate::{
     crypto::{self, PublicKey},
     system::SystemEntityType,
     uref::URef,
-    AddressableEntityHash, CLType, CLTyped, HashAddr, BLAKE2B_DIGEST_LENGTH, KEY_HASH_LENGTH,
+    AddressableEntityHash, CLType, CLTyped, HashAddr, Tagged, BLAKE2B_DIGEST_LENGTH,
+    KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -620,6 +622,41 @@ impl FromBytes for PackageStatus {
     }
 }
 
+#[allow(missing_docs)]
+#[derive(Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[repr(u8)]
+pub enum PackageKindTag {
+    System = 0,
+    Account = 1,
+    SmartContract = 2,
+}
+
+impl TryFrom<u8> for PackageKindTag {
+    type Error = bytesrepr::Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(PackageKindTag::System),
+            1 => Ok(PackageKindTag::Account),
+            2 => Ok(PackageKindTag::SmartContract),
+            _ => Err(bytesrepr::Error::Formatting),
+        }
+    }
+}
+
+#[cfg(any(feature = "testing", test))]
+impl Distribution<PackageKindTag> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PackageKindTag {
+        match rng.gen_range(0..=1) {
+            0 => PackageKindTag::System,
+            1 => PackageKindTag::Account,
+            2 => PackageKindTag::SmartContract,
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize,
 )]
@@ -682,6 +719,23 @@ impl PackageKind {
     }
 }
 
+impl Tagged<PackageKindTag> for PackageKind {
+    fn tag(&self) -> PackageKindTag {
+        match self {
+            PackageKind::System(_) => PackageKindTag::System,
+            PackageKind::Account(_) => PackageKindTag::Account,
+            PackageKind::SmartContract => PackageKindTag::SmartContract,
+        }
+    }
+}
+
+impl Tagged<u8> for PackageKind {
+    fn tag(&self) -> u8 {
+        let package_kind_tag: PackageKindTag = self.tag();
+        package_kind_tag as u8
+    }
+}
+
 impl ToBytes for PackageKind {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
@@ -700,13 +754,16 @@ impl ToBytes for PackageKind {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         match self {
-            PackageKind::SmartContract => PACKAGE_KIND_WASM_TAG.write_bytes(writer),
+            PackageKind::SmartContract => {
+                writer.push(self.tag());
+                Ok(())
+            }
             PackageKind::System(system_entity_type) => {
-                PACKAGE_KIND_SYSTEM_CONTRACT_TAG.write_bytes(writer)?;
+                writer.push(self.tag());
                 system_entity_type.write_bytes(writer)
             }
             PackageKind::Account(account_hash) => {
-                PACKAGE_KIND_ACCOUNT_TAG.write_bytes(writer)?;
+                writer.push(self.tag());
                 account_hash.write_bytes(writer)
             }
         }
@@ -717,14 +774,16 @@ impl FromBytes for PackageKind {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (tag, remainder) = u8::from_bytes(bytes)?;
         match tag {
-            PACKAGE_KIND_WASM_TAG => Ok((PackageKind::SmartContract, remainder)),
-            PACKAGE_KIND_SYSTEM_CONTRACT_TAG => {
-                let (system_entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
-                Ok((PackageKind::System(system_entity_type), remainder))
+            tag if tag == PackageKindTag::System as u8 => {
+                let (entity_type, remainder) = SystemEntityType::from_bytes(remainder)?;
+                Ok((PackageKind::System(entity_type), remainder))
             }
-            PACKAGE_KIND_ACCOUNT_TAG => {
+            tag if tag == PackageKindTag::Account as u8 => {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((PackageKind::Account(account_hash), remainder))
+            }
+            tag if tag == PackageKindTag::SmartContract as u8 => {
+                Ok((PackageKind::SmartContract, remainder))
             }
             _ => Err(bytesrepr::Error::Formatting),
         }
@@ -1044,7 +1103,7 @@ impl FromBytes for Package {
         let (disabled_versions, bytes) = BTreeSet::<EntityVersionKey>::from_bytes(bytes)?;
         let (groups, bytes) = Groups::from_bytes(bytes)?;
         let (lock_status, bytes) = PackageStatus::from_bytes(bytes)?;
-        let (package_kind, bytes) = PackageKind::from_bytes(bytes).unwrap_or_default();
+        let (package_kind, bytes) = PackageKind::from_bytes(bytes)?;
         let result = Package {
             access_key,
             versions,

@@ -15,6 +15,7 @@ use std::{
 use tracing::error;
 
 use casper_storage::global_state::state::StateReader;
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -26,9 +27,10 @@ use casper_types::{
     package::PackageKind,
     system::auction::{BidKind, EraInfo},
     AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, ByteCode, CLType, CLValue,
-    ContextAccessRights, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key, KeyTag,
-    Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
-    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    ContextAccessRights, Contract, DeployHash, DeployInfo, EntryPointType, Gas, GrantedAccess, Key,
+    KeyTag, Package, PackageHash, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue,
+    Tagged, Transfer, TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH,
+    KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -257,6 +259,7 @@ where
                 self.remove_key_from_entity(contract_key, contract, name)
             }
             contract_uref @ Key::URef(_) => {
+                println!("In this");
                 let entity: AddressableEntity = {
                     let value: StoredValue = self
                         .tracking_copy
@@ -1326,6 +1329,14 @@ where
             Error::MissingSystemContractHash(name.to_string())
         })?;
         Ok(*hash)
+    }
+
+    pub(crate) fn get_system_entity_key(&self, name: &str) -> Result<Key, Error> {
+        let system_entity_hash = self.get_system_contract(name)?;
+        Ok(Key::addressable_entity_key(
+            PackageKindTag::System,
+            system_entity_hash,
+        ))
     }
 
     /// Returns system contract registry by querying the global state.

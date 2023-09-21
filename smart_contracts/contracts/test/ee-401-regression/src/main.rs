@@ -11,7 +11,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::Parameters, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, URef,
+    EntryPoints, Key, URef,
 };
 
 const HELLO_EXT: &str = "hello_ext";
@@ -45,5 +45,5 @@ pub extern "C" fn call() {
     let (contract_hash, contract_version) = storage::new_contract(entry_points, None, None, None);
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(HELLO_EXT, contract_hash.into());
+    runtime::put_key(HELLO_EXT, Key::contract_entity_key(contract_hash));
 }

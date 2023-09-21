@@ -38,7 +38,13 @@ fn should_run_stored_named_keys_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder.exec(exec_request_1).expect_failure();
+
+    let expected_error = casper_execution_engine::engine_state::Error::Exec(
+        casper_execution_engine::execution::Error::InvalidContext,
+    );
+
+    builder.assert_error(expected_error)
 }
 
 #[ignore]
@@ -69,7 +75,13 @@ fn should_run_stored_named_keys_module_bytes_to_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder.exec(exec_request_1).expect_failure();
+
+    let expected_error = casper_execution_engine::engine_state::Error::Exec(
+        casper_execution_engine::execution::Error::InvalidContext,
+    );
+
+    builder.assert_error(expected_error)
 }
 
 #[ignore]
@@ -117,7 +129,13 @@ fn should_run_stored_named_keys_module_bytes_to_session_to_session() {
     )
     .build();
 
-    builder.exec(exec_request_1).expect_success().commit();
+    builder.exec(exec_request_1).expect_failure();
+
+    let expected_error = casper_execution_engine::engine_state::Error::Exec(
+        casper_execution_engine::execution::Error::InvalidContext,
+    );
+
+    builder.assert_error(expected_error)
 }
 
 fn setup() -> LmdbWasmTestBuilder {

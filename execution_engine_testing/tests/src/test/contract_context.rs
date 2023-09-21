@@ -29,70 +29,52 @@ fn should_enforce_intended_execution_contexts() {
     )
     .build();
 
-    let exec_request_2 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
-                SESSION_CODE_TEST,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    let exec_request_2 = ExecuteRequestBuilder::versioned_contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        PACKAGE_HASH_KEY,
+        Some(ENTITY_INITIAL_VERSION),
+        SESSION_CODE_TEST,
+        runtime_args! {},
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request_3 = ExecuteRequestBuilder::versioned_contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        PACKAGE_HASH_KEY,
+        Some(ENTITY_INITIAL_VERSION),
+        CONTRACT_CODE_TEST,
+        runtime_args! {},
+    )
+    .build();
 
-    let exec_request_3 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
-                CONTRACT_CODE_TEST,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    let exec_request_4 = ExecuteRequestBuilder::versioned_contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        PACKAGE_HASH_KEY,
+        Some(ENTITY_INITIAL_VERSION),
+        ADD_NEW_KEY_AS_SESSION,
+        runtime_args! {},
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    let exec_request_4 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_versioned_contract_by_name(
-                PACKAGE_HASH_KEY,
-                Some(ENTITY_INITIAL_VERSION),
-                ADD_NEW_KEY_AS_SESSION,
-                args,
-            )
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([4; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder.exec(exec_request_2).expect_failure();
+
+    let expected_error = Error::Exec(execution::Error::InvalidContext);
+
+    builder.assert_error(expected_error);
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder.exec(exec_request_4).expect_failure();
+
+    let expected_error = Error::Exec(execution::Error::InvalidContext);
+
+    builder.assert_error(expected_error);
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -107,10 +89,7 @@ fn should_enforce_intended_execution_contexts() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let _new_key = account
-        .named_keys()
-        .get(NEW_KEY)
-        .expect("new key should be there");
+    assert!(account.named_keys().get(NEW_KEY).is_none());
 
     // Check version
 
@@ -138,55 +117,49 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     )
     .build();
 
-    let exec_request_2 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_named_key(CONTRACT_HASH_KEY, SESSION_CODE_TEST, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    let exec_request_2 = ExecuteRequestBuilder::contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_HASH_KEY,
+        SESSION_CODE_TEST,
+        runtime_args! {},
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request_3 = ExecuteRequestBuilder::contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_HASH_KEY,
+        CONTRACT_CODE_TEST,
+        runtime_args! {},
+    )
+    .build();
 
-    let exec_request_3 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_named_key(CONTRACT_HASH_KEY, CONTRACT_CODE_TEST, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_name(
+        *DEFAULT_ACCOUNT_ADDR,
+        CONTRACT_HASH_KEY,
+        ADD_NEW_KEY_AS_SESSION,
+        runtime_args! {},
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
-
-    let exec_request_4 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_named_key(CONTRACT_HASH_KEY, ADD_NEW_KEY_AS_SESSION, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([4; 32])
-            .build();
-
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     builder.exec(exec_request_1).expect_success().commit();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder.exec(exec_request_2).expect_failure();
+
+    let expected_error = Error::Exec(execution::Error::InvalidContext);
+
+    builder.assert_error(expected_error);
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder.exec(exec_request_4).expect_failure();
+
+    let expected_error = Error::Exec(execution::Error::InvalidContext);
+
+    builder.assert_error(expected_error);
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -201,10 +174,7 @@ fn should_enforce_intended_execution_context_direct_by_name() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let _new_key = account
-        .named_keys()
-        .get(NEW_KEY)
-        .expect("new key should be there");
+    assert!(account.named_keys().get(NEW_KEY).is_none());
 }
 
 #[ignore]
@@ -232,53 +202,45 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         .named_keys()
         .get(CONTRACT_HASH_KEY)
         .expect("should have contract hash")
-        .into_hash_addr()
-        .expect("should have hash");
+        .into_entity_hash();
 
-    let exec_request_2 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(contract_hash.into(), SESSION_CODE_TEST, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    println!("{:?}", contract_hash);
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let contract_hash = contract_hash.unwrap();
 
-    let exec_request_3 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(contract_hash.into(), CONTRACT_CODE_TEST, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([3; 32])
-            .build();
+    let exec_request_2 = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        SESSION_CODE_TEST,
+        runtime_args! {},
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    let exec_request_3 = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        CONTRACT_CODE_TEST,
+        runtime_args! {},
+    )
+    .build();
 
-    let exec_request_4 = {
-        let args = runtime_args! {};
-        let deploy = DeployItemBuilder::new()
-            .with_address(*DEFAULT_ACCOUNT_ADDR)
-            .with_stored_session_hash(contract_hash.into(), ADD_NEW_KEY_AS_SESSION, args)
-            .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => *DEFAULT_PAYMENT, })
-            .with_authorization_keys(&[*DEFAULT_ACCOUNT_ADDR])
-            .with_deploy_hash([4; 32])
-            .build();
+    let exec_request_4 = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        contract_hash,
+        ADD_NEW_KEY_AS_SESSION,
+        runtime_args! {},
+    )
+    .build();
 
-        ExecuteRequestBuilder::new().push_deploy(deploy).build()
-    };
+    builder.exec(exec_request_2).expect_failure();
 
-    builder.exec(exec_request_2).expect_success().commit();
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext));
 
     builder.exec(exec_request_3).expect_success().commit();
 
-    builder.exec(exec_request_4).expect_success().commit();
+    builder.exec(exec_request_4).expect_failure();
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext));
 
     let account = builder
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
@@ -293,10 +255,7 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
         .get(PACKAGE_ACCESS_KEY)
         .expect("should have package hash");
 
-    let _new_key = account
-        .named_keys()
-        .get(NEW_KEY)
-        .expect("new key should be there");
+    assert!(account.named_keys().get(NEW_KEY).is_none())
 }
 
 #[ignore]

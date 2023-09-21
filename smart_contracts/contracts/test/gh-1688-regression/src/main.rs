@@ -7,7 +7,7 @@ use alloc::string::ToString;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     addressable_entity::Parameters, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints,
+    EntryPoints, Key,
 };
 
 const METHOD_PUT_KEY: &str = "put_key";
@@ -39,5 +39,5 @@ fn call() {
         Some(CONTRACT_PACKAGE_KEY.to_string()),
         None,
     );
-    runtime::put_key(CONTRACT_HASH_KEY, contract_hash.into());
+    runtime::put_key(CONTRACT_HASH_KEY, Key::contract_entity_key(contract_hash));
 }

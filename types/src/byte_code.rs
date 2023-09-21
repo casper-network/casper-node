@@ -335,7 +335,7 @@ impl ToBytes for ByteCode {
     }
 
     fn serialized_length(&self) -> usize {
-        U8_SERIALIZED_LENGTH + self.bytes.serialized_length()
+        self.byte_code_kind.serialized_length() + self.bytes.serialized_length()
     }
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {

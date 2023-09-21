@@ -11,6 +11,7 @@ use casper_contract::{
 };
 use core::convert::TryInto;
 
+use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     CLType, CLTyped, Key, PackageHash, Parameter, URef,
@@ -60,5 +61,8 @@ pub extern "C" fn call() {
     let (contract_hash, contract_version) =
         storage::add_contract_version(do_nothing_package_hash, entry_points, NamedKeys::new());
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key("end of upgrade", contract_hash.into());
+    runtime::put_key(
+        "end of upgrade",
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
+    );
 }

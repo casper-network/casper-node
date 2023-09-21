@@ -172,7 +172,7 @@ fn delegate() -> Result<(), ApiError> {
 
             let (contract_hash, _contract_version) =
                 storage::new_contract(entry_points, Some(known_keys), None, None);
-            runtime::put_key(TRANSFER_FUNDS_KEY, contract_hash.into());
+            runtime::put_key(TRANSFER_FUNDS_KEY, Key::contract_entity_key(contract_hash));
             // For easy access in outside world here `donation` purse is also attached
             // to the account
             runtime::put_key(DONATION_PURSE_COPY, purse.into());

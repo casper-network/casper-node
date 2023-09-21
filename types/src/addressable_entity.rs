@@ -45,6 +45,8 @@ pub use self::{
     weight::{Weight, WEIGHT_SERIALIZED_LENGTH},
 };
 
+use crate::key::ByteCodeAddr;
+use crate::package::{PackageKind, PackageKindTag};
 use crate::{
     account::{Account, AccountHash},
     byte_code::ByteCodeHash,
@@ -52,8 +54,8 @@ use crate::{
     checksummed_hex,
     contracts::{Contract, ContractHash},
     uref::{self, URef},
-    AccessRights, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key, PackageHash,
-    ProtocolVersion, KEY_HASH_LENGTH,
+    AccessRights, ApiError, CLType, CLTyped, ContextAccessRights, Group, HashAddr, Key,
+    PackageHash, ProtocolVersion, Tagged, KEY_HASH_LENGTH,
 };
 
 /// Maximum number of distinct user groups.
@@ -321,6 +323,18 @@ impl FromBytes for AddressableEntityHash {
 impl From<[u8; 32]> for AddressableEntityHash {
     fn from(bytes: [u8; 32]) -> Self {
         AddressableEntityHash(bytes)
+    }
+}
+
+impl TryFrom<Key> for AddressableEntityHash {
+    type Error = ApiError;
+
+    fn try_from(value: Key) -> Result<Self, Self::Error> {
+        if let Key::AddressableEntity((_, entity_addr)) = value {
+            Ok(AddressableEntityHash::new(entity_addr))
+        } else {
+            Err(ApiError::Formatting)
+        }
     }
 }
 
@@ -895,9 +909,9 @@ impl AddressableEntity {
         self.entry_points.add_entry_point(entry_point);
     }
 
-    /// Hash for accessing wasm bytes
-    pub fn contract_wasm_key(&self) -> Key {
-        self.byte_code_hash.into()
+    /// Addr for accessing wasm bytes
+    pub fn byte_code_addr(&self) -> ByteCodeAddr {
+        self.byte_code_hash.value()
     }
 
     /// Returns immutable reference to methods
@@ -936,13 +950,18 @@ impl AddressableEntity {
     }
 
     /// Extracts the access rights from the named keys of the addressable entity.
-    pub fn extract_access_rights(&self, entity_hash: AddressableEntityHash) -> ContextAccessRights {
+    pub fn extract_access_rights(
+        &self,
+        package_kind_tag: PackageKindTag,
+        entity_hash: AddressableEntityHash,
+    ) -> ContextAccessRights {
         let urefs_iter = self
             .named_keys
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        ContextAccessRights::new(entity_hash.into(), urefs_iter)
+        let entity_key = Key::AddressableEntity((package_kind_tag, entity_hash.value()));
+        ContextAccessRights::new(entity_key, urefs_iter)
     }
 }
 
@@ -1498,7 +1517,8 @@ mod tests {
             ActionThresholds::new(Weight::new(1), Weight::new(1), Weight::new(1))
                 .expect("should create thresholds"),
         );
-        let access_rights = contract.extract_access_rights(entity_hash);
+        let access_rights =
+            contract.extract_access_rights(PackageKindTag::SmartContract, entity_hash);
         let expected_uref = URef::new([42; UREF_ADDR_LENGTH], AccessRights::READ_ADD_WRITE);
         assert!(
             access_rights.has_access_rights_to_uref(&uref),

@@ -43,6 +43,7 @@ use casper_storage::{
         trie_store::operations::PruneResult as GlobalStatePruneResult,
     },
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, NamedKeys},
@@ -63,7 +64,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
     CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
-    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, URef, UpgradeConfig, U512,
+    ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Tagged, URef, UpgradeConfig, U512,
 };
 
 use self::transfer::NewTransferTargetMode;
@@ -114,7 +115,8 @@ pub const MAX_PAYMENT_AMOUNT: u64 = 2_500_000_000;
 pub static MAX_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(MAX_PAYMENT_AMOUNT));
 
 /// A special contract wasm hash for contracts representing Accounts.
-pub static ACCOUNT_WASM_HASH: Lazy<ByteCodeHash> = Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
+pub static ACCOUNT_BYTE_CODE_HASH: Lazy<ByteCodeHash> =
+    Lazy::new(|| ByteCodeHash::new(DEFAULT_ADDRESS));
 
 /// Gas/motes conversion rate of wasmless transfer cost is always 1 regardless of what user wants to
 /// pay.
@@ -860,7 +862,7 @@ where
         let mut generator =
             AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-        let contract_wasm_hash = *ACCOUNT_WASM_HASH;
+        let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
         let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
         let package_hash = PackageHash::new(generator.new_hash_address());
 
@@ -881,8 +883,8 @@ where
 
         let access_key = generator.new_uref(AccessRights::READ_ADD_WRITE);
 
-        let contract_package = {
-            let mut contract_package = Package::new(
+        let package = {
+            let mut package = Package::new(
                 access_key,
                 EntityVersions::default(),
                 BTreeSet::default(),
@@ -890,16 +892,16 @@ where
                 PackageStatus::Locked,
                 PackageKind::Account(account_hash),
             );
-            contract_package.insert_entity_version(protocol_version.value().major, entity_hash);
-            contract_package
+            package.insert_entity_version(protocol_version.value().major, entity_hash);
+            package
         };
 
-        let entity_key: Key = entity_hash.into();
+        let entity_key: Key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
 
         tracking_copy.borrow_mut().write(entity_key, entity.into());
         tracking_copy
             .borrow_mut()
-            .write(package_hash.into(), contract_package.into());
+            .write(package_hash.into(), package.into());
         let contract_by_account = match CLValue::from_t(entity_key) {
             Ok(cl_value) => cl_value,
             Err(_) => return Err(Error::Bytesrepr("Failed to convert to CLValue".to_string())),
@@ -1042,8 +1044,8 @@ where
             }
         };
 
-        let mut handle_payment_access_rights =
-            handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
+        let mut handle_payment_access_rights = handle_payment_contract
+            .extract_access_rights(PackageKindTag::System, *handle_payment_contract_hash);
 
         let gas_limit = Gas::new(U512::from(std::u64::MAX));
 
@@ -1710,17 +1712,20 @@ where
             );
 
             // payment_code_spec_2: execute payment code
-            let payment_access_rights = entity.extract_access_rights(entity_hash);
+            let payment_access_rights =
+                entity.extract_access_rights(package_kind.tag(), entity_hash);
 
             let mut payment_named_keys = entity.named_keys().clone();
 
             let payment_args = payment.args().clone();
 
+            let entity_key = Key::addressable_entity_key(package_kind.tag(), entity_hash);
+
             if payment.is_standard_payment(phase) {
                 // Todo potentially could be moved to Executor::Exec
                 executor.exec_standard_payment(
                     payment_args,
-                    entity_hash.into(),
+                    entity_key,
                     &entity,
                     package_kind.clone(),
                     &mut payment_named_keys,
@@ -1912,7 +1917,7 @@ where
             self.config.max_runtime_call_stack_height() as usize,
         );
 
-        let session_access_rights = entity.extract_access_rights(entity_hash);
+        let session_access_rights = entity.extract_access_rights(package_kind.tag(), entity_hash);
 
         let mut session_named_keys = entity.named_keys().clone();
 
@@ -2063,8 +2068,8 @@ where
                 Err(error) => return Ok(ExecutionResult::precondition_failure(error.into())),
             };
 
-            let mut handle_payment_access_rights =
-                handle_payment_contract.extract_access_rights(*handle_payment_contract_hash);
+            let mut handle_payment_access_rights = handle_payment_contract
+                .extract_access_rights(PackageKindTag::System, *handle_payment_contract_hash);
             handle_payment_access_rights.extend(&[payment_purse_uref, rewards_target_purse]);
 
             let gas_limit = Gas::new(U512::MAX);
@@ -2225,9 +2230,11 @@ where
             .copied()
             .ok_or_else(|| Error::MissingSystemContractHash(AUCTION.to_string()))?;
 
+        let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+
         let query_request = QueryRequest::new(
             state_root_hash,
-            auction_hash.into(),
+            auction_key,
             vec![SEIGNIORAGE_RECIPIENTS_SNAPSHOT_KEY.to_string()],
         );
 

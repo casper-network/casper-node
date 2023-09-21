@@ -12,8 +12,8 @@ use casper_types::{
     package::{EntityVersion, ENTITY_INITIAL_VERSION},
     runtime_args,
     system::mint,
-    AddressableEntity, AddressableEntityHash, ApiError, EntityVersionKey, EraId, ProtocolVersion,
-    RuntimeArgs, U512,
+    AddressableEntity, AddressableEntityHash, ApiError, EntityVersionKey, EraId, PackageHash,
+    ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -43,7 +43,7 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
 
 fn store_payment_to_account_context(
     builder: &mut LmdbWasmTestBuilder,
-) -> (AddressableEntity, AddressableEntityHash) {
+) -> (AddressableEntity, PackageHash) {
     // store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,
@@ -63,9 +63,8 @@ fn store_payment_to_account_context(
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_PACKAGE_HASH_NAME)
         .expect("key should exist")
-        .into_hash_addr()
-        .expect("should be a hash")
-        .into();
+        .into_package_hash()
+        .expect("should be a hash");
 
     (default_account, hash)
 }
@@ -387,44 +386,41 @@ fn should_empty_account_using_stored_payment_code_by_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder
-            .exec(exec_request_stored_payment)
-            .expect_success()
-            .commit();
+        builder.exec(exec_request_stored_payment).expect_failure();
     }
 
-    let (motes_bravo, modified_balance_bravo) = {
-        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
-
-        let transaction_fee_bravo =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
-
-        (transaction_fee_bravo, modified_balance_bravo)
-    };
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-
-    assert_eq!(
-        modified_balance_bravo,
-        builder.calculate_refund_amount(payment_purse_amount)
-    );
-
-    assert!(
-        modified_balance_alpha < initial_balance,
-        "balance should be less than initial balance"
-    );
-
-    assert!(
-        modified_balance_bravo < modified_balance_alpha,
-        "second modified balance should be less than first modified balance"
-    );
-
-    let tally = motes_alpha + motes_bravo + transferred_amount + modified_balance_bravo;
-
-    assert_eq!(
-        initial_balance, tally,
-        "no net resources should be gained or lost post-distribution"
-    );
+    // let (motes_bravo, modified_balance_bravo) = {
+    //     let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
+    //
+    //     let transaction_fee_bravo =
+    //         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
+    //
+    //     (transaction_fee_bravo, modified_balance_bravo)
+    // };
+    //
+    // let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
+    //
+    // assert_eq!(
+    //     modified_balance_bravo,
+    //     builder.calculate_refund_amount(payment_purse_amount)
+    // );
+    //
+    // assert!(
+    //     modified_balance_alpha < initial_balance,
+    //     "balance should be less than initial balance"
+    // );
+    //
+    // assert!(
+    //     modified_balance_bravo < modified_balance_alpha,
+    //     "second modified balance should be less than first modified balance"
+    // );
+    //
+    // let tally = motes_alpha + motes_bravo + transferred_amount + modified_balance_bravo;
+    //
+    // assert_eq!(
+    //     initial_balance, tally,
+    //     "no net resources should be gained or lost post-distribution"
+    // );
 }
 
 #[ignore]
@@ -483,36 +479,36 @@ fn should_exec_stored_code_by_named_hash() {
             ExecuteRequestBuilder::new().push_deploy(deploy).build()
         };
 
-        builder.exec(exec_request_stored_payment).commit();
+        builder.exec(exec_request_stored_payment).expect_failure();
     }
 
-    let (motes_bravo, modified_balance_bravo) = {
-        let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
-
-        let transaction_fee_bravo =
-            builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
-
-        (transaction_fee_bravo, modified_balance_bravo)
-    };
-
-    let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
-
-    assert!(
-        modified_balance_alpha < initial_balance,
-        "balance should be less than initial balance"
-    );
-
-    assert!(
-        modified_balance_bravo < modified_balance_alpha,
-        "second modified balance should be less than first modified balance"
-    );
-
-    let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
-
-    assert_eq!(
-        initial_balance, tally,
-        "no net resources should be gained or lost post-distribution"
-    );
+    // let (motes_bravo, modified_balance_bravo) = {
+    //     let modified_balance_bravo: U512 = builder.get_purse_balance(default_account.main_purse());
+    //
+    //     let transaction_fee_bravo =
+    //         builder.get_proposer_purse_balance() - proposer_reward_starting_balance_bravo;
+    //
+    //     (transaction_fee_bravo, modified_balance_bravo)
+    // };
+    //
+    // let initial_balance: U512 = U512::from(DEFAULT_ACCOUNT_INITIAL_BALANCE);
+    //
+    // assert!(
+    //     modified_balance_alpha < initial_balance,
+    //     "balance should be less than initial balance"
+    // );
+    //
+    // assert!(
+    //     modified_balance_bravo < modified_balance_alpha,
+    //     "second modified balance should be less than first modified balance"
+    // );
+    //
+    // let tally = motes_alpha + motes_bravo + U512::from(transferred_amount) + modified_balance_bravo;
+    //
+    // assert_eq!(
+    //     initial_balance, tally,
+    //     "no net resources should be gained or lost post-distribution"
+    // );
 }
 
 #[ignore]

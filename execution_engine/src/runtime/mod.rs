@@ -23,6 +23,7 @@ use wasmi::{MemoryRef, Trap, TrapKind};
 
 use casper_storage::global_state::state::StateReader;
 use casper_types::contracts::ContractPackage;
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
@@ -42,12 +43,12 @@ use casper_types::{
     AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
     ContextAccessRights, DeployHash, EntityVersion, EntityVersionKey, EntityVersions, Gas,
     GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package,
-    PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult,
+    PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult,
     TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
 
 use crate::{
-    engine_state::ACCOUNT_WASM_HASH,
+    engine_state::ACCOUNT_BYTE_CODE_HASH,
     execution::{self, Error},
     runtime::host_function_flag::HostFunctionFlag,
     runtime_context::RuntimeContext,
@@ -476,8 +477,8 @@ where
 
     /// Checks if a [`Key`] is a system contract.
     fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
-        let entity_hash = match key.into_hash_addr() {
-            Some(entity_hash_bytes) => AddressableEntityHash::new(entity_hash_bytes),
+        let entity_hash = match key.into_entity_hash() {
+            Some(entity_hash) => entity_hash,
             None => return Ok(false),
         };
 
@@ -530,7 +531,7 @@ where
         let gas_counter = self.gas_counter();
 
         let mint_hash = self.context.get_system_contract(MINT)?;
-        let base_key = Key::from(mint_hash);
+        let base_key = Key::addressable_entity_key(PackageKindTag::System, mint_hash);
         let mint_contract = self.context.state().borrow_mut().get_contract(mint_hash)?;
         let mut named_keys = mint_contract.named_keys().to_owned();
 
@@ -657,7 +658,7 @@ where
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
-        let base_key = Key::from(handle_payment_hash);
+        let base_key = Key::addressable_entity_key(PackageKindTag::System, handle_payment_hash);
         let handle_payment_contract = self
             .context
             .state()
@@ -767,7 +768,7 @@ where
         let gas_counter = self.gas_counter();
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
-        let entity_address = Key::from(auction_hash);
+        let entity_address = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
         let auction_contract = self
             .context
             .state()
@@ -1076,7 +1077,8 @@ where
 
     fn get_context_key_for_contract_call(
         &self,
-        contract_hash: AddressableEntityHash,
+        entity_hash: AddressableEntityHash,
+        package_kind: PackageKind,
         entry_point: &EntryPoint,
     ) -> Result<Key, Error> {
         let current = self.context.entry_point_type();
@@ -1095,10 +1097,12 @@ where
                 Ok(self.context.get_entity_key())
             }
             (EntryPointType::Session, EntryPointType::Contract)
-            | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
+            | (EntryPointType::Contract, EntryPointType::Contract) => {
+                Ok(Key::addressable_entity_key(package_kind.tag(), entity_hash))
+            }
             _ => {
                 // Any other combination (installer, normal, etc.) is a contract context.
-                Ok(contract_hash.into())
+                Ok(Key::addressable_entity_key(package_kind.tag(), entity_hash))
             }
         }
     }
@@ -1125,69 +1129,81 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
-        let (contract, contract_hash, contract_package) = match identifier {
-            CallContractIdentifier::Contract { contract_hash } => {
-                let contract_key = contract_hash.into();
-                let entity =
-                    if let Some(StoredValue::Contract(_)) = self.context.read_gs(&contract_key)? {
-                        self.migrate_contract_and_contract_package(contract_hash)?
+        let (contract, entity_hash, package) = match identifier {
+            CallContractIdentifier::Contract {
+                contract_hash: entity_hash,
+            } => {
+                let entity = if let Some(StoredValue::Contract(_)) =
+                    self.context.read_gs(&Key::Hash(entity_hash.value()))?
+                {
+                    self.migrate_contract_and_contract_package(entity_hash)?
+                } else {
+                    let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
+                        Key::addressable_entity_key(PackageKindTag::System, entity_hash)
                     } else {
-                        self.context.read_gs_typed(&contract_key)?
+                        Key::contract_entity_key(entity_hash)
                     };
-                let contract_package_key = Key::from(entity.package_hash());
-                let contract_package: Package =
-                    self.context.read_gs_typed(&contract_package_key)?;
+
+                    self.context.read_gs_typed(&entity_key)?
+                };
+                let package = Key::from(entity.package_hash());
+
+                let package: Package = self.context.read_gs_typed(&package)?;
 
                 // System contract hashes are disabled at upgrade point
-                let is_calling_system_contract = self.is_system_contract(contract_key)?;
+                let is_calling_system_contract = self.is_system_contract(
+                    Key::addressable_entity_key(package.get_package_kind().tag(), entity_hash),
+                )?;
 
                 // Check if provided contract hash is disabled
-                let is_contract_enabled = contract_package.is_entity_enabled(&contract_hash);
+                let is_contract_enabled = package.is_entity_enabled(&entity_hash);
 
                 if !is_calling_system_contract && !is_contract_enabled {
-                    return Err(Error::DisabledEntity(contract_hash));
+                    return Err(Error::DisabledEntity(entity_hash));
                 }
 
-                (entity, contract_hash, contract_package)
+                (entity, entity_hash, package)
             }
             CallContractIdentifier::ContractPackage {
                 contract_package_hash,
                 version,
             } => {
-                let contract_package_key = Key::from(contract_package_hash);
-                let contract_package: Package =
-                    self.context.read_gs_typed(&contract_package_key)?;
+                let package_key = Key::from(contract_package_hash);
+                let package: Package = self.context.read_gs_typed(&package_key)?;
 
                 let contract_version_key = match version {
                     Some(version) => EntityVersionKey::new(
                         self.context.protocol_version().value().major,
                         version,
                     ),
-                    None => match contract_package.current_entity_version() {
+                    None => match package.current_entity_version() {
                         Some(v) => v,
                         None => {
                             return Err(Error::NoActiveEntityVersions(contract_package_hash));
                         }
                     },
                 };
-                let contract_hash = contract_package
+                let entity_hash = package
                     .lookup_entity_hash(contract_version_key)
                     .copied()
                     .ok_or(Error::InvalidEntityVersion(contract_version_key))?;
 
-                let contract_key = contract_hash.into();
-                let entity =
-                    if let Some(StoredValue::Contract(_)) = self.context.read_gs(&contract_key)? {
-                        self.migrate_contract_and_contract_package(contract_hash)?
-                    } else {
-                        self.context.read_gs_typed(&contract_key)?
-                    };
+                let entity = if let Some(StoredValue::Contract(_)) =
+                    self.context.read_gs(&Key::Hash(entity_hash.value()))?
+                {
+                    self.migrate_contract_and_contract_package(entity_hash)?
+                } else {
+                    self.context.read_gs_typed(&Key::addressable_entity_key(
+                        PackageKindTag::SmartContract,
+                        entity_hash,
+                    ))?
+                };
 
-                (entity, contract_hash, contract_package)
+                (entity, entity_hash, package)
             }
         };
 
-        if let PackageKind::Account(_) = contract_package.get_package_kind() {
+        if let PackageKind::Account(_) = package.get_package_kind() {
             return Err(Error::InvalidContext);
         }
 
@@ -1200,11 +1216,7 @@ where
         // if public, allowed
         // if not public, restricted to user group access
         // if abstract, not allowed
-        self.validate_entry_point_access(
-            &contract_package,
-            entry_point_name,
-            entry_point.access(),
-        )?;
+        self.validate_entry_point_access(&package, entry_point_name, entry_point.access())?;
 
         if self.context.engine_config().strict_argument_checking() {
             let entry_point_args_lookup: BTreeMap<&str, &Parameter> = entry_point
@@ -1240,15 +1252,19 @@ where
             .engine_config()
             .administrative_accounts()
             .is_empty()
-            && !contract_package.is_entity_enabled(&contract_hash)
-            && !self.context.is_system_addressable_entity(&contract_hash)?
+            && !package.is_entity_enabled(&entity_hash)
+            && !self.context.is_system_addressable_entity(&entity_hash)?
         {
-            return Err(Error::DisabledEntity(contract_hash));
+            return Err(Error::DisabledEntity(entity_hash));
         }
 
         // if session the caller's context
         // else the called contract's context
-        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
+        let context_key = self.get_context_key_for_contract_call(
+            entity_hash,
+            package.get_package_kind(),
+            &entry_point,
+        )?;
         let protocol_version = self.context.protocol_version();
 
         // Check for major version compatibility before calling
@@ -1263,14 +1279,18 @@ where
             return Err(Error::InvalidContext);
         }
 
+        let package_kind_tag = package.get_package_kind().tag();
+
         let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
             EntryPointType::Session => (
                 self.context.entity().named_keys().clone(),
-                self.context.entity().extract_access_rights(contract_hash),
+                self.context
+                    .entity()
+                    .extract_access_rights(package_kind_tag, entity_hash),
             ),
             EntryPointType::Contract | EntryPointType::Install => (
                 contract.named_keys().clone(),
-                contract.extract_access_rights(contract_hash),
+                contract.extract_access_rights(package_kind_tag, entity_hash),
             ),
         };
 
@@ -1284,14 +1304,14 @@ where
                     CallStackElement::stored_session(
                         account_hash,
                         contract.package_hash(),
-                        contract_hash,
+                        entity_hash,
                     )
                 }
                 EntryPointType::Contract => {
-                    CallStackElement::stored_contract(contract.package_hash(), contract_hash)
+                    CallStackElement::stored_contract(contract.package_hash(), entity_hash)
                 }
                 EntryPointType::Install => {
-                    CallStackElement::stored_contract(contract.package_hash(), contract_hash)
+                    CallStackElement::stored_contract(contract.package_hash(), entity_hash)
                 }
             };
             stack.push(call_stack_element)?;
@@ -1342,7 +1362,7 @@ where
 
         access_rights.extend(&extended_access_rights);
 
-        if let PackageKind::System(system_contract_type) = contract_package.get_package_kind() {
+        if let PackageKind::System(system_contract_type) = package.get_package_kind() {
             match system_contract_type {
                 SystemEntityType::Mint => {
                     return self.call_host_mint(
@@ -1373,15 +1393,24 @@ where
         }
 
         let module: Module = {
-            let wasm_key = contract.contract_wasm_key();
+            let byte_code_addr = contract.byte_code_addr();
 
-            let contract_wasm: ByteCode = match self.context.read_gs(&wasm_key)? {
-                Some(StoredValue::ByteCode(contract_wasm)) => contract_wasm,
-                Some(_) => return Err(Error::InvalidByteCode(contract.contract_wasm_hash())),
-                None => return Err(Error::KeyNotFound(context_key)),
+            let byte_code_key = match package.get_package_kind() {
+                PackageKind::System(_) | PackageKind::Account(_) => {
+                    Key::ByteCode((ByteCodeKind::Empty, byte_code_addr))
+                }
+                PackageKind::SmartContract => {
+                    Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_addr))
+                }
             };
 
-            parity_wasm::deserialize_buffer(contract_wasm.bytes())?
+            let byte_code: ByteCode = match self.context.read_gs(&byte_code_key)? {
+                Some(StoredValue::ByteCode(byte_code)) => byte_code,
+                Some(_) => return Err(Error::InvalidByteCode(contract.contract_wasm_hash())),
+                None => return Err(Error::KeyNotFound(byte_code_key)),
+            };
+
+            parity_wasm::deserialize_buffer(byte_code.bytes())?
         };
 
         let context = self.context.new_from_self(
@@ -1610,7 +1639,7 @@ where
         let (contract_package, access_key) =
             self.create_contract_package(lock_status, contract_package_kind)?;
         self.context
-            .metered_write_gs_unsafe(Key::Hash(addr), contract_package)?;
+            .metered_write_gs_unsafe(Key::Package(addr), contract_package)?;
         Ok((addr, access_key.addr()))
     }
 
@@ -1721,7 +1750,7 @@ where
         let package_kind = package.get_package_kind();
 
         self.context.metered_write_gs_unsafe(
-            Key::AddressableEntity((package_kind, entity_hash.value())),
+            Key::AddressableEntity((package_kind.tag(), entity_hash.value())),
             entity.clone(),
         )?;
         self.context
@@ -1757,8 +1786,13 @@ where
         }
         let (main_purse, associated_keys, action_thresholds) = match package.current_entity_hash() {
             Some(previous_contract_hash) => {
+                let previous_entity_key = Key::addressable_entity_key(
+                    package.get_package_kind().tag(),
+                    previous_contract_hash,
+                );
+
                 let mut previous_entity: AddressableEntity =
-                    self.context.read_gs_typed(&previous_contract_hash.into())?;
+                    self.context.read_gs_typed(&previous_entity_key)?;
 
                 // Check if the calling entity must be grandfathered into the new
                 // addressable entity format
@@ -1817,10 +1851,19 @@ where
 
         let insert_contract_result = package.insert_entity_version(major, entity_hash.into());
 
-        self.context
-            .metered_write_gs_unsafe(Key::Hash(byte_code_hash), byte_code)?;
-        self.context
-            .metered_write_gs_unsafe(Key::Hash(entity_hash), entity)?;
+        self.context.metered_write_gs_unsafe(
+            Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash)),
+            byte_code,
+        )?;
+
+        println!(
+            "Wrote byte code record for {:?}",
+            base16::encode_lower(&byte_code_hash)
+        );
+
+        let entity_key = Key::AddressableEntity((PackageKindTag::SmartContract, entity_hash));
+
+        self.context.metered_write_gs_unsafe(entity_key, entity)?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 
@@ -1953,7 +1996,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.get_entity_key() != Key::from(self.context.get_system_contract(MINT)?) {
+        if self.context.get_entity_key() != self.context.get_system_entity_key(MINT)? {
             return Err(Error::InvalidContext);
         }
 
@@ -1983,7 +2026,7 @@ where
             return Err(Error::InvalidContext);
         }
 
-        if self.context.get_entity_key() != Key::from(self.context.get_system_contract(AUCTION)?) {
+        if self.context.get_entity_key() != self.context.get_system_entity_key(AUCTION)? {
             return Err(Error::InvalidContext);
         }
 
@@ -2384,7 +2427,7 @@ where
         match result? {
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
-                let contract_wasm_hash = *ACCOUNT_WASM_HASH;
+                let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
                 let entity_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
                 let package_hash = PackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
@@ -2404,8 +2447,8 @@ where
                 );
 
                 let access_key = self.context.new_unit_uref()?;
-                let contract_package = {
-                    let mut contract_package = Package::new(
+                let package = {
+                    let mut package = Package::new(
                         access_key,
                         EntityVersions::default(),
                         BTreeSet::default(),
@@ -2413,26 +2456,22 @@ where
                         PackageStatus::Locked,
                         PackageKind::Account(target),
                     );
-                    contract_package
-                        .insert_entity_version(protocol_version.value().major, entity_hash);
-                    contract_package
+                    package.insert_entity_version(protocol_version.value().major, entity_hash);
+                    package
                 };
 
-                let contract_key: Key = entity_hash.into();
+                let entity_key: Key =
+                    Key::addressable_entity_key(package.get_package_kind().tag(), entity_hash);
 
-                self.context.metered_write_gs_unsafe(
-                    contract_key,
-                    StoredValue::AddressableEntity(entity),
-                )?;
+                self.context
+                    .metered_write_gs_unsafe(entity_key, StoredValue::AddressableEntity(entity))?;
 
                 let contract_package_key: Key = package_hash.into();
 
-                self.context.metered_write_gs_unsafe(
-                    contract_package_key,
-                    StoredValue::Package(contract_package),
-                )?;
+                self.context
+                    .metered_write_gs_unsafe(contract_package_key, StoredValue::Package(package))?;
 
-                let contract_by_account = CLValue::from_t(contract_key)?;
+                let contract_by_account = CLValue::from_t(entity_key)?;
 
                 let target_key = Key::Account(target);
 
@@ -2501,18 +2540,18 @@ where
             Some(StoredValue::CLValue(account)) => {
                 // Attenuate the target main purse
                 let entity_key = CLValue::into_t::<Key>(account)?;
-                let contract_hash = if let Some(entity_hash) =
-                    entity_key.into_hash_addr().map(AddressableEntityHash::new)
+                let target_uref = if let Some(StoredValue::AddressableEntity(entity)) =
+                    self.context.read_gs(&entity_key)?
                 {
-                    entity_hash
+                    entity.main_purse_add_only()
                 } else {
-                    return Err(Error::UnexpectedKeyVariant(entity_key));
-                };
-                let target_uref = if let Some(StoredValue::AddressableEntity(contract)) =
-                    self.context.read_gs(&contract_hash.into())?
-                {
-                    contract.main_purse_add_only()
-                } else {
+                    let contract_hash = if let Some(entity_hash) =
+                        entity_key.into_hash_addr().map(AddressableEntityHash::new)
+                    {
+                        entity_hash
+                    } else {
+                        return Err(Error::UnexpectedKeyVariant(entity_key));
+                    };
                     return Err(Error::InvalidEntity(contract_hash));
                 };
 
@@ -2874,11 +2913,12 @@ where
 
         // Remove group if it is not referenced by at least one entry_point in active versions.
         let versions = package.versions();
-        for contract_hash in versions.contract_hashes() {
+        for entity_hash in versions.contract_hashes() {
             let entry_points = {
-                let contract: AddressableEntity =
-                    self.context.read_gs_typed(&Key::from(*contract_hash))?;
-                contract.entry_points().clone().take_entry_points()
+                let entity: AddressableEntity = self.context.read_gs_typed(
+                    &Key::addressable_entity_key(package.get_package_kind().tag(), *entity_hash),
+                )?;
+                entity.entry_points().clone().take_entry_points()
             };
             for entry_point in entry_points {
                 match entry_point.access() {
@@ -3244,8 +3284,7 @@ where
         &mut self,
         contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Error> {
-        let contract_key: Key = contract_hash.into();
-        let maybe_legacy_contract = self.context.read_gs(&contract_key)?;
+        let maybe_legacy_contract = self.context.read_gs(&Key::Hash(contract_hash.value()))?;
         match maybe_legacy_contract {
             Some(StoredValue::Contract(contract)) => {
                 let contract_package_key = Key::Hash(contract.contract_package_hash().value());
@@ -3283,13 +3322,13 @@ where
                     ActionThresholds::default(),
                 );
 
-                let entity_key = Key::AddressableEntity((package_kind, contract_hash.value()));
+                let entity_key =
+                    Key::AddressableEntity((package_kind.tag(), contract_hash.value()));
 
                 self.context
                     .metered_write_gs_unsafe(entity_key, updated_entity.clone())?;
                 Ok(updated_entity)
             }
-            Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
             Some(_) => Err(Error::UnexpectedStoredValueVariant),
             None => Err(Error::InvalidEntity(contract_hash)),
         }

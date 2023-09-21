@@ -10,6 +10,7 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
     ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, PackageHash,
@@ -99,13 +100,13 @@ pub extern "C" fn named_keys_session() {
 
 #[no_mangle]
 pub extern "C" fn named_keys_contract_to_contract() {
-    let contract_hash = runtime::get_key(CONTRACT_PACKAGE_HASH_NAME)
-        .and_then(Key::into_hash_addr)
+    let package_hash = runtime::get_key(CONTRACT_PACKAGE_HASH_NAME)
+        .and_then(Key::into_package_addr)
         .map(PackageHash::new)
         .unwrap_or_revert();
 
     runtime::call_versioned_contract::<()>(
-        contract_hash,
+        package_hash,
         None,
         ENTRY_POINT_CONTRACT,
         RuntimeArgs::default(),
@@ -114,13 +115,13 @@ pub extern "C" fn named_keys_contract_to_contract() {
 
 #[no_mangle]
 pub extern "C" fn named_keys_session_to_session() {
-    let contract_hash = runtime::get_key(CONTRACT_PACKAGE_HASH_NAME)
-        .and_then(Key::into_hash_addr)
+    let package_hash = runtime::get_key(CONTRACT_PACKAGE_HASH_NAME)
+        .and_then(Key::into_package_addr)
         .map(PackageHash::new)
         .unwrap_or_revert();
 
     runtime::call_versioned_contract::<()>(
-        contract_hash,
+        package_hash,
         None,
         ENTRY_POINT_SESSION,
         RuntimeArgs::default(),
@@ -193,5 +194,8 @@ pub extern "C" fn call() {
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
     runtime::put_key(CONTRACT_PACKAGE_HASH_NAME, contract_package_hash.into());
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+    runtime::put_key(
+        CONTRACT_HASH_NAME,
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
+    );
 }

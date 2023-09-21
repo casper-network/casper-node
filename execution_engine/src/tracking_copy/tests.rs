@@ -7,6 +7,7 @@ use casper_storage::global_state::{
     state::{self, StateProvider, StateReader},
     trie::merkle_proof::TrieMerkleProof,
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::{AccountHash, ACCOUNT_HASH_LENGTH},
     addressable_entity::{
@@ -23,7 +24,7 @@ use super::{
     meter::count_meter::Count, AddResult, TrackingCopy, TrackingCopyCache, TrackingCopyQueryResult,
 };
 use crate::{
-    engine_state::{EngineConfig, ACCOUNT_WASM_HASH},
+    engine_state::{EngineConfig, ACCOUNT_BYTE_CODE_HASH},
     runtime_context::dictionary,
     tracking_copy::{self, ValidationError},
 };
@@ -191,7 +192,7 @@ fn tracking_copy_add_named_key() {
     let associated_keys = AssociatedKeys::new(zero_account_hash, Weight::new(1));
     let contract = AddressableEntity::new(
         PackageHash::new([3u8; 32]),
-        *ACCOUNT_WASM_HASH,
+        *ACCOUNT_BYTE_CODE_HASH,
         NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
@@ -394,7 +395,7 @@ proptest! {
         let associated_keys = AssociatedKeys::new(pk, Weight::new(1));
         let account = AddressableEntity::new(
             PackageHash::new([1u8;32]),
-            *ACCOUNT_WASM_HASH,
+            *ACCOUNT_BYTE_CODE_HASH,
             named_keys,
             EntryPoints::new_with_default_entry_point(),
             ProtocolVersion::V1_0_0,
@@ -451,7 +452,7 @@ proptest! {
             AssociatedKeys::default(),
             ActionThresholds::default(),
         ));
-        let contract_key = Key::Hash(hash);
+        let contract_key = Key::AddressableEntity((PackageKindTag::SmartContract,hash));
 
         // create account which knows about contract
         let mut account_named_keys = NamedKeys::new();
@@ -459,7 +460,7 @@ proptest! {
 
 
         let entity_hash = AddressableEntityHash::new([10;32]);
-        let new_entity_key: Key = entity_hash.into();
+        let new_entity_key: Key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
         let account_value = CLValue::from_t(new_entity_key).unwrap();
         let account_key = Key::Account(address);
 
@@ -592,14 +593,15 @@ fn validate_query_proof_should_work() {
     let account_hash = AccountHash::new([3; 32]);
     let fake_purse = URef::new([4; 32], AccessRights::READ_ADD_WRITE);
     let account_entity_hash = AddressableEntityHash::new([30; 32]);
-    let account_entity_key: Key = account_entity_hash.into();
+    let account_entity_key: Key =
+        Key::addressable_entity_key(PackageKindTag::Account, account_entity_hash);
     let cl_value = CLValue::from_t(account_entity_key).unwrap();
     let account_value = StoredValue::CLValue(cl_value);
     let account_key = Key::Account(account_hash);
 
     let account_contract = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([20; 32]),
-        *ACCOUNT_WASM_HASH,
+        *ACCOUNT_BYTE_CODE_HASH,
         NamedKeys::new(),
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,
@@ -639,12 +641,13 @@ fn validate_query_proof_should_work() {
     };
 
     let main_entity_hash = AddressableEntityHash::new([81; 32]);
-    let main_entity_key: Key = main_entity_hash.into();
+    let main_entity_key: Key =
+        Key::addressable_entity_key(PackageKindTag::Account, main_entity_hash);
 
     let cl_value_2 = CLValue::from_t(main_entity_key).unwrap();
     let main_entity = StoredValue::AddressableEntity(AddressableEntity::new(
         PackageHash::new([21; 32]),
-        *ACCOUNT_WASM_HASH,
+        *ACCOUNT_BYTE_CODE_HASH,
         named_keys,
         EntryPoints::new_with_default_entry_point(),
         ProtocolVersion::V1_0_0,

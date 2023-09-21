@@ -10,12 +10,13 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{
         EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys, Parameter,
     },
-    CLType, CLTyped, U512,
+    CLType, CLTyped, Key, U512,
 };
 
 const ENTRY_FUNCTION_NAME: &str = "transfer";
@@ -82,5 +83,8 @@ pub extern "C" fn call() {
     );
 
     runtime::put_key(CONTRACT_VERSION, storage::new_uref(contract_version).into());
-    runtime::put_key(HASH_KEY_NAME, contract_hash.into());
+    runtime::put_key(
+        HASH_KEY_NAME,
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
+    );
 }

@@ -8,7 +8,7 @@ use casper_types::{
     package::PackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
     AddressableEntity, AddressableEntityHash, BlockTime, CLTyped, ContextAccessRights, DeployHash,
-    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
+    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged, U512,
 };
 
 use crate::{
@@ -45,7 +45,7 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        contract_hash: AddressableEntityHash,
+        entity_hash: AddressableEntityHash,
         entity: &AddressableEntity,
         package_kind: PackageKind,
         named_keys: &mut NamedKeys,
@@ -76,10 +76,12 @@ impl Executor {
             Rc::new(RefCell::new(generator))
         };
 
+        let entity_key = Key::addressable_entity_key(package_kind.tag(), entity_hash);
+
         let context = self.create_runtime_context(
             named_keys,
             entity,
-            Key::from(contract_hash),
+            entity_key,
             authorization_keys,
             access_rights,
             package_kind,
@@ -249,7 +251,7 @@ impl Executor {
 
         let entry_point_name = direct_system_contract_call.entry_point_name();
 
-        let contract_hash = match direct_system_contract_call {
+        let entity_hash = match direct_system_contract_call {
             DirectSystemContractCall::Slash
             | DirectSystemContractCall::RunAuction
             | DirectSystemContractCall::DistributeRewards => {
@@ -274,14 +276,14 @@ impl Executor {
             }
         };
 
-        let contract = match tracking_copy.borrow_mut().get_contract(contract_hash) {
+        let contract = match tracking_copy.borrow_mut().get_contract(entity_hash) {
             Ok(contract) => contract,
             Err(error) => return (None, ExecutionResult::precondition_failure(error.into())),
         };
 
         let mut named_keys = contract.named_keys().clone();
-        let access_rights = contract.extract_access_rights(contract_hash);
-        let entity_address = Key::from(contract_hash);
+        let access_rights = contract.extract_access_rights(package_kind.tag(), entity_hash);
+        let entity_address = Key::addressable_entity_key(package_kind.tag(), entity_hash);
 
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
@@ -311,7 +313,7 @@ impl Executor {
         // contracts, to force all such security checks for usage via the executor into a single
         // execution path.
         let result =
-            runtime.call_contract_with_stack(contract_hash, entry_point_name, runtime_args, stack);
+            runtime.call_contract_with_stack(entity_hash, entry_point_name, runtime_args, stack);
 
         match result {
             Ok(value) => match value.into_t() {

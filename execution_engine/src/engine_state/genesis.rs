@@ -35,7 +35,7 @@ use casper_types::{
     AccessRights, AddressableEntity, AddressableEntityHash, AdministratorAccount, ByteCode,
     ByteCodeHash, ByteCodeKind, CLValue, Chainspec, ChainspecRegistry, Digest, EntryPoints, EraId,
     FeeHandling, GenesisAccount, Key, Motes, Package, PackageHash, Phase, ProtocolVersion,
-    PublicKey, RefundHandling, StoredValue, SystemConfig, URef, WasmConfig, U512,
+    PublicKey, RefundHandling, StoredValue, SystemConfig, Tagged, URef, WasmConfig, U512,
 };
 
 use crate::{
@@ -1130,7 +1130,7 @@ where
         main_purse: URef,
     ) -> Result<AddressableEntityHash, Box<GenesisError>> {
         let protocol_version = self.protocol_version;
-        let contract_wasm_hash = if no_wasm {
+        let byte_code_hash = if no_wasm {
             ByteCodeHash::new(DEFAULT_ADDRESS)
         } else {
             ByteCodeHash::new(self.address_generator.borrow_mut().new_hash_address())
@@ -1142,8 +1142,7 @@ where
             AddressableEntityHash::new(self.address_generator.borrow_mut().new_hash_address())
         };
 
-        let contract_package_hash =
-            PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
+        let package_hash = PackageHash::new(self.address_generator.borrow_mut().new_hash_address());
 
         let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
         let associated_keys = package_kind.associated_keys();
@@ -1161,8 +1160,8 @@ where
         };
 
         let entity = AddressableEntity::new(
-            contract_package_hash,
-            contract_wasm_hash,
+            package_hash,
+            byte_code_hash,
             named_keys,
             entry_points,
             protocol_version,
@@ -1178,7 +1177,7 @@ where
 
         // Genesis contracts can be versioned contracts.
         let contract_package = {
-            let mut contract_package = Package::new(
+            let mut package = Package::new(
                 access_key,
                 EntityVersions::new(),
                 BTreeSet::default(),
@@ -1186,28 +1185,33 @@ where
                 PackageStatus::default(),
                 package_kind,
             );
-            contract_package.insert_entity_version(protocol_version.value().major, entity_hash);
-            contract_package
+            package.insert_entity_version(protocol_version.value().major, entity_hash);
+            package
         };
+
+        let byte_code_key = Key::ByteCode((ByteCodeKind::Empty, byte_code_hash.value()));
 
         self.tracking_copy
             .borrow_mut()
-            .write(contract_wasm_hash.into(), StoredValue::ByteCode(byte_code));
+            .write(byte_code_key, StoredValue::ByteCode(byte_code));
+
+        let entity_key = Key::AddressableEntity((package_kind.tag(), entity_hash.value()));
+
         self.tracking_copy
             .borrow_mut()
-            .write(entity_hash.into(), StoredValue::AddressableEntity(entity));
-        self.tracking_copy.borrow_mut().write(
-            contract_package_hash.into(),
-            StoredValue::Package(contract_package),
-        );
+            .write(entity_key, StoredValue::AddressableEntity(entity));
+
+        self.tracking_copy
+            .borrow_mut()
+            .write(package_hash.into(), StoredValue::Package(contract_package));
+
         if let Some(account_hash) = maybe_account_hash {
-            let contract_key: Key = entity_hash.into();
-            let contract_by_account = CLValue::from_t(contract_key)
+            let entity_by_account = CLValue::from_t(entity_key)
                 .map_err(|error| GenesisError::CLValue(error.to_string()))?;
 
             self.tracking_copy.borrow_mut().write(
                 Key::Account(account_hash),
-                StoredValue::CLValue(contract_by_account),
+                StoredValue::CLValue(entity_by_account),
             );
         }
 
@@ -1267,24 +1271,40 @@ where
         // Setup system account
         self.setup_system_account()?;
 
+        println!("System account created");
+
         // Create mint
         let total_supply_key = self.create_mint()?;
 
+        println!("total supply created");
+
         let payment_purse_uref = self.create_purse(U512::zero())?;
+
+        println!("payment purse created");
 
         // Create all genesis accounts
         self.create_accounts(total_supply_key, payment_purse_uref)?;
 
+        println!("Accounts created");
+
         // Create the auction and setup the stake of all genesis validators.
         self.create_auction(total_supply_key)?;
+
+        println!("auction created");
 
         // Create handle payment
         self.create_handle_payment(payment_purse_uref)?;
 
+        println!("handle created");
+
         // Create standard payment
         self.create_standard_payment()?;
 
+        println!("standard created");
+
         self.store_chainspec_registry(chainspec_registry)?;
+
+        println!("chainspec created");
 
         Ok(())
     }

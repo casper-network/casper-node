@@ -1,8 +1,11 @@
+use std::convert::TryFrom;
 use std::{collections::BTreeSet, convert::TryInto};
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
+    bytesrepr,
     package::{EntityVersions, Groups, PackageKind, PackageStatus},
     AccessRights, AddressableEntity, AddressableEntityHash, ByteCode, ByteCodeHash, CLValue,
     EntryPoints, Key, Motes, Package, PackageHash, Phase, ProtocolVersion, StoredValue,
@@ -10,7 +13,7 @@ use casper_types::{
 };
 
 use crate::{
-    engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_WASM_HASH},
+    engine_state::{ChecksumRegistry, SystemContractRegistry, ACCOUNT_BYTE_CODE_HASH},
     execution,
     execution::AddressGenerator,
     tracking_copy::TrackingCopy,
@@ -62,8 +65,8 @@ pub trait TrackingCopyExt<R> {
         balance_key: Key,
     ) -> Result<(Motes, TrieMerkleProof<Key, StoredValue>), Self::Error>;
 
-    /// Gets a contract by Key.
-    fn get_byte_code(&mut self, contract_wasm_hash: ByteCodeHash) -> Result<ByteCode, Self::Error>;
+    // /// Gets a contract by Key.
+    // fn get_byte_code(&mut self, contract_wasm_hash: ByteCodeHash) -> Result<ByteCode, Self::Error>;
 
     /// Gets an addressable entity  by Key.
     fn get_contract(
@@ -96,10 +99,8 @@ where
         match self.get(&account_key).map_err(Into::into)? {
             Some(StoredValue::CLValue(cl_value)) => {
                 let entity_key = CLValue::into_t::<Key>(cl_value)?;
-                let entity_hash = entity_key
-                    .into_hash_addr()
-                    .map(AddressableEntityHash::new)
-                    .expect("must convert to addressable entity hash");
+                let entity_hash = AddressableEntityHash::try_from(entity_key)
+                    .map_err(|_| execution::Error::BytesRepr(bytesrepr::Error::Formatting))?;
 
                 Ok(entity_hash)
             }
@@ -125,7 +126,7 @@ where
                 let mut generator =
                     AddressGenerator::new(account.main_purse().addr().as_ref(), Phase::System);
 
-                let contract_wasm_hash = *ACCOUNT_WASM_HASH;
+                let contract_wasm_hash = *ACCOUNT_BYTE_CODE_HASH;
                 let entity_hash = AddressableEntityHash::new(generator.new_hash_address());
                 let package_hash = PackageHash::new(generator.new_hash_address());
 
@@ -158,12 +159,12 @@ where
                     contract_package
                 };
 
-                let contract_key: Key = entity_hash.into();
+                let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
 
-                self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
+                self.write(entity_key, StoredValue::AddressableEntity(entity.clone()));
                 self.write(package_hash.into(), contract_package.into());
 
-                let contract_by_account = match CLValue::from_t(contract_key) {
+                let contract_by_account = match CLValue::from_t(entity_key) {
                     Ok(cl_value) => cl_value,
                     Err(error) => return Err(execution::Error::CLValue(error)),
                 };
@@ -180,6 +181,9 @@ where
             }
             None => return Err(execution::Error::KeyNotFound(account_key)),
         };
+
+        println!("contract key {}", contract_key);
+
         match self.get(&contract_key).map_err(Into::into)? {
             Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
             Some(other) => Err(execution::Error::TypeMismatch(
@@ -264,33 +268,21 @@ where
         Ok((balance, proof))
     }
 
-    /// Gets a contract wasm by Key
-    fn get_byte_code(&mut self, byte_code_hash: ByteCodeHash) -> Result<ByteCode, Self::Error> {
-        let key = byte_code_hash.into();
-        match self.get(&key).map_err(Into::into)? {
-            Some(StoredValue::ByteCode(contract_wasm)) => Ok(contract_wasm),
-            Some(other) => Err(execution::Error::TypeMismatch(
-                StoredValueTypeMismatch::new("ByteCode".to_string(), other.type_name()),
-            )),
-            None => Err(execution::Error::KeyNotFound(key)),
-        }
-    }
-
     /// Gets a contract header by Key
     fn get_contract(
         &mut self,
         entity_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error> {
-        let key = entity_hash.into();
+        let package_kind_tag = if self.get_system_contracts()?.has_contract_hash(&entity_hash) {
+            PackageKindTag::System
+        } else {
+            PackageKindTag::SmartContract
+        };
+
+        let key = Key::addressable_entity_key(package_kind_tag, entity_hash);
 
         match self.read(&key).map_err(Into::into)? {
             Some(StoredValue::AddressableEntity(entity)) => Ok(entity),
-            Some(StoredValue::Contract(contract)) => {
-                let contract_key: Key = entity_hash.into();
-                let entity: AddressableEntity = contract.into();
-                self.write(contract_key, StoredValue::AddressableEntity(entity.clone()));
-                Ok(entity)
-            }
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new(
                     "AddressableEntity or Contract".to_string(),
@@ -303,6 +295,7 @@ where
 
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {
         let key = package_hash.into();
+        println!("in get package");
         match self.read(&key).map_err(Into::into)? {
             Some(StoredValue::Package(contract_package)) => Ok(contract_package),
             Some(other) => Err(execution::Error::TypeMismatch(

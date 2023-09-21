@@ -197,11 +197,10 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     );
 
     // Make sure postconditions are met: payment purse has to be empty after finalization
-    let handle_payment = builder.get_handle_payment_contract_hash();
-    let contract = builder
-        .get_addressable_entity(handle_payment)
-        .expect("should have contract");
-    let key = contract
+
+    let handle_payment_entity = builder.get_handle_payment_contract();
+
+    let key = handle_payment_entity
         .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .cloned()
@@ -544,11 +543,8 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     assert_eq!(account_1_starting_balance, account_1_closing_balance);
 
     // Make sure postconditions are met: payment purse has to be empty after finalization
-    let handle_payment = builder.get_handle_payment_contract_hash();
-    let contract = builder
-        .get_addressable_entity(handle_payment)
-        .expect("should have contract");
-    let key = contract
+    let handle_payment_entity = builder.get_handle_payment_contract();
+    let key = handle_payment_entity
         .named_keys()
         .get(handle_payment::PAYMENT_PURSE_KEY)
         .cloned()

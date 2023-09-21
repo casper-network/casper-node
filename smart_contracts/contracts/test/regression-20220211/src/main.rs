@@ -7,7 +7,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::Parameters, AccessRights, CLType, CLValue, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, URef,
+    EntryPointType, EntryPoints, Key, URef,
 };
 
 const RET_AS_CONTRACT: &str = "ret_as_contract";
@@ -99,7 +99,7 @@ pub extern "C" fn call() {
     let (contract_hash, _contract_version) =
         storage::new_locked_contract(entry_points, None, None, None);
 
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+    runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }
 
 #[no_mangle]

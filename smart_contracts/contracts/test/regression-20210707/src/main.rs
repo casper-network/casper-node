@@ -15,7 +15,7 @@ use casper_types::{
     addressable_entity::NamedKeys,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints,
+    AccessRights, CLType, CLTyped, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key,
     Parameter, RuntimeArgs, URef, U512,
 };
 
@@ -214,5 +214,5 @@ pub extern "C" fn call() {
         Some(PACKAGE_HASH_NAME.to_string()),
         Some(ACCESS_UREF_NAME.to_string()),
     );
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+    runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }

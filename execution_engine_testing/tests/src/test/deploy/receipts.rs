@@ -440,8 +440,7 @@ fn should_record_wasm_transfers_with_subcall() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .unwrap()
-        .into_hash_addr()
-        .map(AddressableEntityHash::new)
+        .into_entity_hash()
         .expect("should have contract hash");
 
     let contract: AddressableEntity = builder

@@ -12,9 +12,10 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::NamedKeys, api_error, bytesrepr::ToBytes, AccessRights, ApiError, CLType,
-    CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, URef,
+    CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, URef,
 };
 
 pub const DICTIONARY_NAME: &str = "local";
@@ -230,11 +231,14 @@ pub fn delegate() {
         named_keys
     };
 
-    let (contract_hash, _version) = storage::new_contract(
+    let (entity_hash, _version) = storage::new_contract(
         entry_points,
         Some(named_keys),
         Some(CONTRACT_PACKAGE_HASH_NAME.to_string()),
         None,
     );
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+
+    let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
+
+    runtime::put_key(CONTRACT_HASH_NAME, entity_key);
 }

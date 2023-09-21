@@ -12,7 +12,7 @@ use casper_contract::{
 };
 use casper_types::{
     addressable_entity::NamedKeys, CLType, CLValue, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, PackageHash, Parameter, URef,
+    EntryPoints, Key, PackageHash, Parameter, URef,
 };
 
 pub const METHOD_ADD: &str = "add";
@@ -88,7 +88,10 @@ pub extern "C" fn call() {
     // this should overwrite the previous contract obj with the new contract obj at the same uref
     let (new_contract_hash, new_contract_version) =
         storage::add_contract_version(contract_package, entry_points, NamedKeys::new());
-    runtime::put_key(PURSE_HOLDER_STORED_CONTRACT_NAME, new_contract_hash.into());
+    runtime::put_key(
+        PURSE_HOLDER_STORED_CONTRACT_NAME,
+        Key::contract_entity_key(new_contract_hash),
+    );
     runtime::put_key(
         CONTRACT_VERSION,
         storage::new_uref(new_contract_version).into(),

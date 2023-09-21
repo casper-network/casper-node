@@ -11,7 +11,7 @@ use casper_contract::{
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionType, NamedKeys, Weight},
-    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, PackageHash, Parameter,
+    CLType, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, Key, PackageHash, Parameter,
 };
 
 const ARG_ENTITY_ACCOUNT_HASH: &str = "entity_account_hash";
@@ -84,5 +84,8 @@ pub extern "C" fn call() {
     // this should overwrite the previous contract obj with the new contract obj at the same uref
     let (new_contract_hash, _new_contract_version) =
         storage::add_contract_version(contract_package, entry_points, NamedKeys::new());
-    runtime::put_key(CONTRACT_HASH_NAME, new_contract_hash.into());
+    runtime::put_key(
+        CONTRACT_HASH_NAME,
+        Key::contract_entity_key(new_contract_hash),
+    );
 }

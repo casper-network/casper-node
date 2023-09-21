@@ -13,6 +13,7 @@ use thiserror::Error;
 use tracing::{debug, error, trace};
 
 use casper_execution_engine::engine_state::MAX_PAYMENT;
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash, system::auction::ARG_AMOUNT, AddressableEntity, AddressableEntityHash,
     BlockHash, BlockHeader, CLValue, Chainspec, CoreConfig, Deploy, DeployConfig,
@@ -637,7 +638,8 @@ impl DeployAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
                 entity_hash,
             )) => {
-                let query_key = Key::from(entity_hash);
+                let query_key =
+                    Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
                 let path = vec![];
                 effect_builder
                     .get_contract_for_validation(*block_header.state_root_hash(), query_key, path)
@@ -737,7 +739,8 @@ impl DeployAcceptor {
             ExecutableDeployItemIdentifier::AddressableEntity(EntityIdentifier::Hash(
                 contract_hash,
             )) => {
-                let query_key = Key::from(contract_hash);
+                let query_key =
+                    Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash);
                 let path = vec![];
                 effect_builder
                     .get_contract_for_validation(*block_header.state_root_hash(), query_key, path)
@@ -866,7 +869,10 @@ impl DeployAcceptor {
                     );
                     match package.lookup_entity_hash(contract_version_key) {
                         Some(&contract_hash) => {
-                            let query_key = contract_hash.into();
+                            let query_key = Key::addressable_entity_key(
+                                PackageKindTag::SmartContract,
+                                contract_hash,
+                            );
                             effect_builder
                                 .get_contract_for_validation(
                                     *block_header.state_root_hash(),

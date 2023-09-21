@@ -207,7 +207,7 @@ fn expensive_subcall_should_cost_more() {
         .named_keys()
         .get(EXPENSIVE_CALCULATION_KEY)
         .expect("should get expensive_calculation contract hash")
-        .into_hash_addr()
+        .into_entity_hash()
         .expect("should get hash");
 
     // execute the contracts via subcalls

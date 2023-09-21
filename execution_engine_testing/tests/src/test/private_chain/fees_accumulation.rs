@@ -4,6 +4,7 @@ use casper_engine_test_support::{
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::engine_state::EngineConfigBuilder;
+use casper_types::package::PackageKindTag;
 use casper_types::{
     runtime_args,
     system::{handle_payment::ACCUMULATION_PURSE_KEY, mint},
@@ -282,8 +283,10 @@ fn should_accumulate_fees_after_upgrade() {
 
     // Check handle payments has rewards purse
     let handle_payment_hash = builder.get_handle_payment_contract_hash();
+    let handle_payment_entity_key =
+        Key::addressable_entity_key(PackageKindTag::System, handle_payment_hash);
     let handle_payment_contract = builder
-        .query(None, handle_payment_hash.into(), &[])
+        .query(None, handle_payment_entity_key, &[])
         .expect("should have handle payment contract")
         .into_contract()
         .expect("should have legacy Contract under the Key::Contract variant");

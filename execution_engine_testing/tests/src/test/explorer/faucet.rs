@@ -6,6 +6,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash, runtime_args, system::mint, ApiError, Key, PublicKey, SecretKey, U512,
 };
@@ -152,6 +153,8 @@ fn should_allow_installer_to_set_variables() {
         .commit();
 
     let faucet_contract_hash = helper.query_and_set_faucet_contract_hash(&builder);
+    let faucet_entity_key =
+        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
 
     assert_eq!(
         helper.query_faucet_purse_balance(&builder),
@@ -160,7 +163,7 @@ fn should_allow_installer_to_set_variables() {
 
     let available_amount: U512 = query_stored_value(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         vec![AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
     );
 
@@ -170,7 +173,7 @@ fn should_allow_installer_to_set_variables() {
 
     let time_interval: u64 = query_stored_value(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         vec![TIME_INTERVAL_NAMED_KEY.to_string()],
     );
 
@@ -179,7 +182,7 @@ fn should_allow_installer_to_set_variables() {
 
     let distributions_per_interval: u64 = query_stored_value(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         vec![DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
     );
 
@@ -192,7 +195,7 @@ fn should_allow_installer_to_set_variables() {
 
     let available_amount: U512 = query_stored_value(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         vec![AVAILABLE_AMOUNT_NAMED_KEY.to_string()],
     );
 
@@ -200,7 +203,7 @@ fn should_allow_installer_to_set_variables() {
 
     let time_interval: u64 = query_stored_value(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         vec![TIME_INTERVAL_NAMED_KEY.to_string()],
     );
 
@@ -208,7 +211,7 @@ fn should_allow_installer_to_set_variables() {
 
     let distributions_per_interval: u64 = query_stored_value(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         vec![DISTRIBUTIONS_PER_INTERVAL_NAMED_KEY.to_string()],
     );
 
@@ -391,6 +394,8 @@ fn should_not_fund_once_exhausted() {
     helper.query_and_set_faucet_contract_hash(&builder);
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
+    let faucet_entity_key =
+        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
 
@@ -492,7 +497,7 @@ fn should_not_fund_once_exhausted() {
     // faucet may resume distributions once block time is > last_distribution_time + time_interval.
     let last_distribution_time = query_stored_value::<u64>(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         [LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()].into(),
     );
     assert_eq!(last_distribution_time, 0);
@@ -521,7 +526,7 @@ fn should_not_fund_once_exhausted() {
 
     let last_distribution_time = query_stored_value::<u64>(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         [LAST_DISTRIBUTION_TIME_NAMED_KEY.to_string()].into(),
     );
 
@@ -529,7 +534,7 @@ fn should_not_fund_once_exhausted() {
 
     let remaining_requests = query_stored_value::<U512>(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         [REMAINING_REQUESTS_NAMED_KEY.to_string()].into(),
     );
 
@@ -579,6 +584,8 @@ fn should_allow_installer_to_fund_freely() {
     helper.query_and_set_faucet_contract_hash(&builder);
 
     let faucet_contract_hash = get_faucet_entity_hash(&builder, installer_account);
+    let faucet_entity_key =
+        Key::addressable_entity_key(PackageKindTag::SmartContract, faucet_contract_hash);
     let faucet_purse = get_faucet_purse(&builder, installer_account);
 
     let faucet_purse_balance = builder.get_purse_balance(faucet_purse);
@@ -586,7 +593,7 @@ fn should_allow_installer_to_fund_freely() {
 
     let available_amount = query_stored_value::<U512>(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         [AVAILABLE_AMOUNT_NAMED_KEY.to_string()].into(),
     );
 
@@ -601,7 +608,7 @@ fn should_allow_installer_to_fund_freely() {
 
     let available_amount = query_stored_value::<U512>(
         &mut builder,
-        faucet_contract_hash.into(),
+        faucet_entity_key,
         [AVAILABLE_AMOUNT_NAMED_KEY.to_string()].into(),
     );
 

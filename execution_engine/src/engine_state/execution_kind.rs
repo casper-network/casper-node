@@ -88,11 +88,15 @@ impl ExecutionKind {
                     Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                 })?;
 
+                println!("Key from named keys: {}", entity_key);
+
                 entity_hash = AddressableEntityHash::new(
                     entity_key
-                        .into_hash_addr()
+                        .into_entity_addr()
                         .ok_or(Error::InvalidKeyVariant)?,
                 );
+
+                println!("Attempting to call {}", entity_hash);
 
                 Ok(ExecutionKind::new_addressable_entity(
                     entity_hash,
@@ -112,9 +116,8 @@ impl ExecutionKind {
                         .ok_or_else(|| {
                             Error::Exec(execution::Error::NamedKeyNotFound(name.to_string()))
                         })?
-                        .into_hash_addr()
+                        .into_package_hash()
                         .ok_or(Error::InvalidKeyVariant)?
-                        .into()
                 };
 
                 package = tracking_copy.borrow_mut().get_package(package_hash)?;

@@ -7,7 +7,7 @@ extern crate alloc;
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     runtime_args, AddressableEntityHash, CLType, CLTyped, EntryPoint, EntryPointAccess,
-    EntryPointType, EntryPoints, Parameter,
+    EntryPointType, EntryPoints, Key, Parameter,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";
@@ -28,7 +28,7 @@ pub extern "C" fn call() {
     let (contract_hash, _contract_version) =
         storage::new_locked_contract(entry_points, None, None, None);
 
-    runtime::put_key(CONTRACT_HASH_NAME, contract_hash.into());
+    runtime::put_key(CONTRACT_HASH_NAME, Key::contract_entity_key(contract_hash));
 }
 
 #[no_mangle]

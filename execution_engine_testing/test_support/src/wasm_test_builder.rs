@@ -40,6 +40,7 @@ use casper_storage::{
         trie_store::lmdb::LmdbTrieStore,
     },
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self, FromBytes},
@@ -55,10 +56,10 @@ use casper_types::{
         mint::{ROUND_SEIGNIORAGE_RATE_KEY, TOTAL_SUPPLY_KEY},
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, CLTyped, CLValue, Contract,
-    DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts, Key, KeyTag, MintCosts, Motes,
-    Package, PackageHash, ProtocolVersion, PublicKey, RefundHandling, StoredValue, Transfer,
-    TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
+    AddressableEntity, AddressableEntityHash, AuctionCosts, ByteCode, ByteCodeHash, ByteCodeKind,
+    CLTyped, CLValue, Contract, DeployHash, DeployInfo, Digest, EraId, Gas, HandlePaymentCosts,
+    Key, KeyTag, MintCosts, Motes, Package, PackageHash, ProtocolVersion, PublicKey,
+    RefundHandling, StoredValue, Transfer, TransferAddr, URef, UpgradeConfig, OS_PAGE_SIZE, U512,
 };
 use tempfile::TempDir;
 
@@ -672,11 +673,12 @@ where
     /// # Panics
     /// Panics if the total supply can't be found.
     pub fn total_supply(&self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_key: Key = self
+        let mint_entity_hash = self
             .get_system_entity_hash(MINT)
             .cloned()
-            .expect("should have mint_contract_hash")
-            .into();
+            .expect("should have mint_contract_hash");
+
+        let mint_key = Key::addressable_entity_key(PackageKindTag::System, mint_entity_hash);
 
         let result = self.query(maybe_post_state, mint_key, &[TOTAL_SUPPLY_KEY.to_string()]);
 
@@ -693,7 +695,8 @@ where
     /// # Panics
     /// Panics if the total supply or seigniorage rate can't be found.
     pub fn base_round_reward(&mut self, maybe_post_state: Option<Digest>) -> U512 {
-        let mint_key: Key = self.get_mint_contract_hash().into();
+        let mint_key: Key =
+            Key::addressable_entity_key(PackageKindTag::System, self.get_mint_contract_hash());
 
         let mint_contract = self
             .query(maybe_post_state, mint_key, &[])
@@ -1056,11 +1059,12 @@ where
 
     /// Returns the "handle payment" contract, panics if it can't be found.
     pub fn get_handle_payment_contract(&self) -> AddressableEntity {
-        let handle_payment_contract: Key = self
-            .get_system_entity_hash(HANDLE_PAYMENT)
-            .cloned()
-            .expect("should have handle payment contract uref")
-            .into();
+        let handle_payment_contract = Key::addressable_entity_key(
+            PackageKindTag::System,
+            self.get_system_entity_hash(HANDLE_PAYMENT)
+                .cloned()
+                .expect("should have handle payment contract uref"),
+        );
         self.query(None, handle_payment_contract, &[])
             .and_then(|v| v.try_into().map_err(|error| format!("{:?}", error)))
             .expect("should find handle payment URef")
@@ -1107,9 +1111,7 @@ where
         match self.query(None, Key::Account(account_hash), &[]).ok() {
             Some(StoredValue::CLValue(cl_value)) => {
                 let entity_key = CLValue::into_t::<Key>(cl_value).expect("must have contract hash");
-                Some(AddressableEntityHash::new(
-                    entity_key.into_hash_addr().expect("must have hash addr"),
-                ))
+                entity_key.into_entity_hash()
             }
             Some(_) | None => None,
         }
@@ -1143,13 +1145,15 @@ where
             .expect("account to exist")
     }
 
-    /// Queries for an addressable entity by `ContractHash`.
+    /// Queries for an addressable entity by `AddressableEntityHash`.
     pub fn get_addressable_entity(
         &self,
         entity_hash: AddressableEntityHash,
     ) -> Option<AddressableEntity> {
+        let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
+
         let contract_value: StoredValue = self
-            .query(None, entity_hash.into(), &[])
+            .query(None, entity_key, &[])
             .expect("should have contract value");
 
         if let StoredValue::AddressableEntity(contract) = contract_value {
@@ -1172,10 +1176,12 @@ where
         }
     }
 
-    /// Queries for a contract by `AddressableEntityHash` and returns an `Option<ByteCode>`.
-    pub fn get_byte_code(&self, entity_hash: AddressableEntityHash) -> Option<ByteCode> {
+    /// Queries for byte code by `ByteCodeAddr` and returns an `Option<ByteCode>`.
+    pub fn get_byte_code(&self, byte_code_hash: ByteCodeHash) -> Option<ByteCode> {
+        let byte_code_key = Key::byte_code_key(ByteCodeKind::V1CasperWasm, byte_code_hash.value());
+
         let byte_code_value: StoredValue = self
-            .query(None, entity_hash.into(), &[])
+            .query(None, byte_code_key, &[])
             .expect("should have contract value");
 
         if let StoredValue::ByteCode(byte_code) = byte_code_value {

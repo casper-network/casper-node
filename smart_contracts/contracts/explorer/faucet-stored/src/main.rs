@@ -9,9 +9,10 @@ use casper_contract::{
     contract_api::{account, runtime, storage, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
+use casper_types::package::PackageKindTag;
 use casper_types::{
     addressable_entity::NamedKeys, ApiError, CLType, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter, PublicKey, URef, U512,
+    EntryPoints, Key, Parameter, PublicKey, URef, U512,
 };
 
 #[repr(u16)]
@@ -223,7 +224,7 @@ pub extern "C" fn call() {
     );
     runtime::put_key(
         &format!("{}_{}", faucet::CONTRACT_NAME, id),
-        contract_hash.into(),
+        Key::addressable_entity_key(PackageKindTag::SmartContract, contract_hash),
     );
 
     // This is specifically for this installing account, which would allow one installing account

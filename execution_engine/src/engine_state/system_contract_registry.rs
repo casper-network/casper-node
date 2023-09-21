@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 
-use casper_types::contracts::ContractHash;
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
     AddressableEntityHash, CLType, CLTyped,

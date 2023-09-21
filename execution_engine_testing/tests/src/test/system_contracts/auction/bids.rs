@@ -21,6 +21,7 @@ use casper_execution_engine::{
     execution,
 };
 
+use casper_types::package::PackageKindTag;
 use casper_types::{
     self,
     account::AccountHash,
@@ -34,8 +35,8 @@ use casper_types::{
             ARG_NEW_VALIDATOR, ARG_PUBLIC_KEY, ARG_VALIDATOR, ERA_ID_KEY, INITIAL_ERA_ID,
         },
     },
-    EraId, GenesisAccount, GenesisValidator, Motes, ProtocolVersion, PublicKey, SecretKey, U256,
-    U512,
+    EraId, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion, PublicKey, SecretKey,
+    U256, U512,
 };
 
 use crate::lmdb_fixture;
@@ -179,6 +180,8 @@ fn should_add_new_bid() {
     let mut builder = LmdbWasmTestBuilder::default();
 
     builder.run_genesis(&run_genesis_request);
+
+    println!("{}", *BID_ACCOUNT_1_ADDR);
 
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
@@ -398,8 +401,10 @@ fn should_run_delegate_and_undelegate() {
     );
     assert_eq!(*active_bid.delegation_rate(), ADD_BID_DELEGATION_RATE_1);
 
+    let auction_key = Key::addressable_entity_key(PackageKindTag::System, auction_hash);
+
     let auction_stored_value = builder
-        .query(None, auction_hash.into(), &[])
+        .query(None, auction_key, &[])
         .expect("should query auction hash");
     let _auction = auction_stored_value
         .as_addressable_entity()

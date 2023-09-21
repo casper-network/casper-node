@@ -6,6 +6,7 @@ use std::{
 
 use rand::Rng;
 
+use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
     addressable_entity::{ActionThresholds, AssociatedKeys, NamedKeys, Weight},
@@ -196,15 +197,15 @@ impl<T: StateReader> StateTracker<T> {
             StoredValue::Package(contract_package.clone()),
         );
 
+        let entity_key = Key::addressable_entity_key(PackageKindTag::Account, entity_hash);
+
         self.write_entry(
-            entity_hash.into(),
+            entity_key,
             StoredValue::AddressableEntity(addressable_entity.clone()),
         );
 
-        let addressable_entity_by_account_hash = {
-            let contract_key: Key = entity_hash.into();
-            CLValue::from_t(contract_key).expect("must convert to cl_value")
-        };
+        let addressable_entity_by_account_hash =
+            { CLValue::from_t(entity_key).expect("must convert to cl_value") };
 
         self.accounts_cache
             .insert(account_hash, addressable_entity.clone());

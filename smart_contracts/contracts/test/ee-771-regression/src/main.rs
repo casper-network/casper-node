@@ -9,7 +9,7 @@ use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
     addressable_entity::{NamedKeys, Parameters},
     AddressableEntityHash, CLType, EntityVersion, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, RuntimeArgs,
+    EntryPoints, Key, RuntimeArgs,
 };
 
 const ENTRY_POINT_NAME: &str = "contract_ext";
@@ -75,14 +75,20 @@ fn install() -> AddressableEntityHash {
     let (contract_hash, _contract_version) = store(NamedKeys::new());
 
     let mut keys = NamedKeys::new();
-    keys.insert(CONTRACT_KEY.to_string(), contract_hash.into());
+    keys.insert(
+        CONTRACT_KEY.to_string(),
+        Key::contract_entity_key(contract_hash),
+    );
     let (contract_hash, _contract_version) = store(keys);
 
     let mut keys_2 = NamedKeys::new();
-    keys_2.insert(CONTRACT_KEY.to_string(), contract_hash.into());
+    keys_2.insert(
+        CONTRACT_KEY.to_string(),
+        Key::contract_entity_key(contract_hash),
+    );
     let (contract_hash, _contract_version) = store(keys_2);
 
-    runtime::put_key(CONTRACT_KEY, contract_hash.into());
+    runtime::put_key(CONTRACT_KEY, Key::contract_entity_key(contract_hash));
 
     contract_hash
 }
