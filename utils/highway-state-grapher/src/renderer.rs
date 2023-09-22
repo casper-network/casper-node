@@ -75,9 +75,9 @@ impl Renderer {
             Self::unit_vertex_buffer(display);
 
         Renderer {
-            center: Vector2::new(1.5, 1.0),
+            center: Vector2::new(3.5, 2.5),
             window_width: 3000.0, // will get updated on first frame draw
-            width: 4.0,
+            width: 8.0,
             program: Program::from_source(display, VERTEX_SHADER_SRC, FRAGMENT_SHADER_SRC, None)
                 .unwrap(),
             text_system,
@@ -210,9 +210,20 @@ impl Renderer {
 
         let matrix2 = Matrix::translation(x, y) * *view;
 
+        let color = if let Some(quorum) = unit.max_quorum.as_ref() {
+            if quorum.max_rank <= 1 {
+                Self::quorum_color_spectrum(0.0)
+            } else {
+                let frac = quorum.rank as f32 / (quorum.max_rank - 1) as f32;
+                Self::quorum_color_spectrum(frac)
+            }
+        } else {
+            [0.0_f32, 0.0, 0.2]
+        };
+
         let uniforms = uniform! {
             matrix: matrix2.inner(),
-            color: [ 0.0_f32, 0.0, 0.2 ],
+            color: color,
         };
 
         target
@@ -253,10 +264,16 @@ impl Renderer {
             );
             let text3 = format!("Vote: {:?}", unit.vote);
             let text4 = format!("round_exp: {}", unit.round_exp);
+            let text5 = if let Some(quorum) = unit.max_quorum.as_ref() {
+                format!("max quorum: {:3.1}%", quorum.weight_percent)
+            } else {
+                "".to_string()
+            };
             self.draw_text(target, -0.55, 0.5, &text1, 1.3, &matrix2);
-            self.draw_text(target, -0.82, 0.05, &text2, 1.0, &matrix2);
-            self.draw_text(target, -0.82, -0.35, &text3, 1.0, &matrix2);
-            self.draw_text(target, -0.82, -0.75, &text4, 1.0, &matrix2);
+            self.draw_text(target, -0.82, 0.15, &text2, 1.0, &matrix2);
+            self.draw_text(target, -0.82, -0.15, &text3, 1.0, &matrix2);
+            self.draw_text(target, -0.82, -0.45, &text4, 1.0, &matrix2);
+            self.draw_text(target, -0.82, -0.75, &text5, 1.0, &matrix2);
         } else {
             let text = format!("{:?}", unit.id);
             self.draw_text(target, -0.6, -0.1, &text, 2.0, &matrix2);
@@ -348,5 +365,11 @@ impl Renderer {
     pub fn pan(&mut self, delta_x: f32, delta_y: f32) {
         let scale = self.width / self.window_width;
         self.center += Vector2::new(-delta_x * scale, delta_y * scale);
+    }
+
+    fn quorum_color_spectrum(frac: f32) -> [f32; 3] {
+        let r = if frac < 0.5 { frac } else { 1.0 };
+        let g = if frac < 0.5 { 1.0 } else { 1.0 - frac };
+        [r * 0.5, g * 0.5, 0.0]
     }
 }

@@ -1,7 +1,7 @@
 mod renderer;
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     fmt::{self, Debug},
     fs::File,
     io::Read,
@@ -10,7 +10,10 @@ use std::{
 
 use casper_hashing::Digest;
 use casper_node::consensus::{
-    highway_core::{Panorama, State},
+    highway_core::{
+        finality_detector::{assigned_weight_and_latest_unit, find_max_quora},
+        Panorama, State,
+    },
     utils::{ValidatorIndex, ValidatorMap},
     ClContext,
 };
@@ -140,6 +143,19 @@ impl Debug for BlockId {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct Quorum {
+    pub rank: usize,
+    pub max_rank: usize,
+    pub weight_percent: f32,
+}
+
+impl Debug for Quorum {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:3.1}", self.weight_percent)
+    }
+}
+
 #[derive(Clone)]
 pub struct GraphUnit {
     pub id: UnitId,
@@ -149,6 +165,7 @@ pub struct GraphUnit {
     pub height: usize,
     pub graph_height: usize,
     pub round_exp: u8,
+    pub max_quorum: Option<Quorum>,
 }
 
 impl Debug for GraphUnit {
@@ -160,6 +177,7 @@ impl Debug for GraphUnit {
             .field("graph_height", &self.graph_height)
             .field("vote", &self.vote)
             .field("round_exp", &self.round_exp)
+            .field("max_quorum", &self.max_quorum)
             .field("cited_units", &self.cited_units)
             .finish()
     }
@@ -230,9 +248,14 @@ impl Graph {
 
         eprintln!("num units: {}", units_set.order.len());
 
+        let mut highest_block: Option<(u64, Digest)> = None;
+
         for unit_hash in &units_set.order {
             let unit = state.unit(unit_hash);
             let block = state.block(&unit.block);
+            if highest_block.map_or(true, |(height, _)| height < block.height) {
+                highest_block = Some((block.height, unit.block));
+            }
             let block_id = if let Some(b_id) = blocks.get(&unit.block) {
                 b_id
             } else {
@@ -270,9 +293,45 @@ impl Graph {
                 graph_height,
                 round_exp: (unit.round_len().millis() / state.params().min_round_length().millis())
                     .trailing_zeros() as u8,
+                max_quorum: None,
             };
             unit_ids_by_hash.insert(*unit_hash, unit_id);
             units.get_mut(&unit.creator).unwrap().push(graph_unit);
+        }
+
+        // fill in max quora
+        if let Some((_hb_height, hb_hash)) = highest_block {
+            let hb_unit = state.unit(&hb_hash);
+            for bhash in state.ancestor_hashes(&hb_hash) {
+                let proposal_unit = state.unit(bhash);
+                let r_id = proposal_unit.round_id();
+
+                let (assigned_weight, latest) =
+                    assigned_weight_and_latest_unit(state, &hb_unit.panorama, r_id);
+
+                let max_quora = find_max_quora(state, bhash, &latest);
+                // deduplicate and sort max quora
+                let max_quora_set: BTreeSet<_> = max_quora.iter().copied().collect();
+                let max_quora_rank_map: BTreeMap<_, _> = max_quora_set
+                    .into_iter()
+                    .rev()
+                    .enumerate()
+                    .map(|(rank, quorum)| (quorum, rank))
+                    .collect();
+
+                for unit in latest.iter().flatten() {
+                    let gunit_id = unit_ids_by_hash.get(*unit).unwrap();
+                    let gunit = &mut units.get_mut(&gunit_id.0).unwrap()[gunit_id.1];
+                    let quorum_w = max_quora[gunit.creator];
+                    let rank = max_quora_rank_map[&quorum_w];
+                    let weight_percent = quorum_w.0 as f32 / assigned_weight.0 as f32 * 100.0;
+                    gunit.max_quorum = Some(Quorum {
+                        rank,
+                        max_rank: max_quora_rank_map.len(),
+                        weight_percent,
+                    });
+                }
+            }
         }
 
         let weight_percentages: ValidatorMap<f32> = state
