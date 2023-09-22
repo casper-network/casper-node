@@ -34,6 +34,7 @@ mod chainspec;
 pub mod checksummed_hex;
 mod cl_type;
 mod cl_value;
+pub mod contract_messages;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;

@@ -35,6 +35,7 @@ use crate::{
     addressable_entity::ContractHash,
     bytesrepr::{self, Error, FromBytes, ToBytes, U64_SERIALIZED_LENGTH},
     checksummed_hex,
+    contract_messages::{MessageTopicAddr, MessageTopicHash, MESSAGE_TOPIC_HASH_LENGTH},
     contract_wasm::ContractWasmHash,
     package::ContractPackageHash,
     system::auction::{BidAddr, BidAddrTag},
@@ -56,6 +57,7 @@ const ERA_SUMMARY_PREFIX: &str = "era-summary-";
 const CHAINSPEC_REGISTRY_PREFIX: &str = "chainspec-registry-";
 const CHECKSUM_REGISTRY_PREFIX: &str = "checksum-registry-";
 const BID_ADDR_PREFIX: &str = "bid-addr-";
+const MESSAGE_TOPIC_PREFIX: &str = "message-topic-";
 
 /// The number of bytes in a Blake2b hash
 pub const BLAKE2B_DIGEST_LENGTH: usize = 32;
@@ -123,6 +125,7 @@ pub enum KeyTag {
     ChainspecRegistry = 13,
     ChecksumRegistry = 14,
     BidAddr = 15,
+    MessageTopic = 16,
 }
 
 impl Display for KeyTag {
@@ -144,6 +147,7 @@ impl Display for KeyTag {
             KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
             KeyTag::ChecksumRegistry => write!(f, "ChecksumRegistry"),
             KeyTag::BidAddr => write!(f, "BidAddr"),
+            KeyTag::MessageTopic => write!(f, "MessageTopic"),
         }
     }
 }
@@ -187,6 +191,8 @@ pub enum Key {
     ChecksumRegistry,
     /// A `Key` under which we store bid information
     BidAddr(BidAddr),
+    /// A `Key` under which a message topic is stored
+    MessageTopic(MessageTopicAddr),
 }
 
 #[cfg(feature = "json-schema")]
@@ -243,6 +249,8 @@ pub enum FromStrError {
     ChecksumRegistry(String),
     /// Bid parse error.
     BidAddr(String),
+    /// Message topic parse error.
+    MessageTopic(String),
     /// Unknown prefix.
     UnknownPrefix,
 }
@@ -302,6 +310,9 @@ impl Display for FromStrError {
                 write!(f, "checksum-registry-key from string error: {}", error)
             }
             FromStrError::BidAddr(error) => write!(f, "bid-addr-key from string error: {}", error),
+            FromStrError::MessageTopic(error) => {
+                write!(f, "message-topic-key from string error: {}", error)
+            }
             FromStrError::UnknownPrefix => write!(f, "unknown prefix for key"),
         }
     }
@@ -328,6 +339,7 @@ impl Key {
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
             Key::ChecksumRegistry => String::from("Key::ChecksumRegistry"),
             Key::BidAddr(_) => String::from("Key::BidAddr"),
+            Key::MessageTopic(_) => String::from("Key::MessageTopic"),
         }
     }
 
@@ -413,6 +425,9 @@ impl Key {
             }
             Key::BidAddr(bid_addr) => {
                 format!("{}{}", BID_ADDR_PREFIX, bid_addr)
+            }
+            Key::MessageTopic(message_addr) => {
+                format!("{}{}", MESSAGE_TOPIC_PREFIX, message_addr)
             }
         }
     }
@@ -577,6 +592,30 @@ impl Key {
             return Ok(Key::ChecksumRegistry);
         }
 
+        if let Some(message_topic_addr) = input.strip_prefix(MESSAGE_TOPIC_PREFIX) {
+            let bytes = checksummed_hex::decode(message_topic_addr)
+                .map_err(|error| FromStrError::MessageTopic(error.to_string()))?;
+
+            if bytes.is_empty() {
+                return Err(FromStrError::MessageTopic(
+                    "bytes should not be 0 len".to_string(),
+                ));
+            }
+
+            let entity_addr_bytes =
+                <[u8; KEY_HASH_LENGTH]>::try_from(bytes[0..KEY_HASH_LENGTH].as_ref())
+                    .map_err(|err| FromStrError::MessageTopic(err.to_string()))?;
+
+            let topic_hash_bytes =
+                <[u8; MESSAGE_TOPIC_HASH_LENGTH]>::try_from(bytes[KEY_HASH_LENGTH..].as_ref())
+                    .map_err(|err| FromStrError::MessageTopic(err.to_string()))?;
+
+            return Ok(Key::MessageTopic(MessageTopicAddr::new(
+                entity_addr_bytes,
+                topic_hash_bytes,
+            )));
+        }
+
         Err(FromStrError::UnknownPrefix)
     }
 
@@ -678,6 +717,12 @@ impl Key {
         Key::Dictionary(addr)
     }
 
+    /// Creates a new [`Key::MessageTopic`] variant based on an `entity_addr` and a hash of the
+    /// topic name.
+    pub fn message_topic(entity_addr: HashAddr, topic_hash: MessageTopicHash) -> Key {
+        Key::MessageTopic(MessageTopicAddr::new(entity_addr, topic_hash))
+    }
+
     /// Returns true if the key is of type [`Key::Dictionary`].
     pub fn is_dictionary_key(&self) -> bool {
         if let Key::Dictionary(_) = self {
@@ -758,6 +803,7 @@ impl Display for Key {
                 )
             }
             Key::BidAddr(bid_addr) => write!(f, "Key::BidAddr({})", bid_addr),
+            Key::MessageTopic(message_addr) => write!(f, "Key::MessageTopic({})", message_addr),
         }
     }
 }
@@ -787,6 +833,7 @@ impl Tagged<KeyTag> for Key {
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
             Key::ChecksumRegistry => KeyTag::ChecksumRegistry,
             Key::BidAddr(_) => KeyTag::BidAddr,
+            Key::MessageTopic(_) => KeyTag::MessageTopic,
         }
     }
 }
@@ -866,6 +913,9 @@ impl ToBytes for Key {
                     KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
                 }
             },
+            Key::MessageTopic(message_addr) => {
+                KEY_ID_SERIALIZED_LENGTH + message_addr.serialized_length()
+            }
         }
     }
 
@@ -895,6 +945,11 @@ impl ToBytes for Key {
                 }
                 BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
             },
+            Key::MessageTopic(message_addr) => {
+                let bytes = message_addr.to_bytes()?;
+                writer.extend(&bytes);
+                Ok(())
+            }
         }
     }
 }
@@ -967,6 +1022,10 @@ impl FromBytes for Key {
                 let (bid_addr, rem) = BidAddr::from_bytes(remainder)?;
                 Ok((Key::BidAddr(bid_addr), rem))
             }
+            tag if tag == KeyTag::MessageTopic as u8 => {
+                let (message_addr, rem) = MessageTopicAddr::from_bytes(remainder)?;
+                Ok((Key::MessageTopic(message_addr), rem))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -993,6 +1052,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ChainspecRegistry => unimplemented!(),
         Key::ChecksumRegistry => unimplemented!(),
         Key::BidAddr(_) => unimplemented!(),
+        Key::MessageTopic(_) => unimplemented!(),
     }
 }
 
@@ -1016,6 +1076,7 @@ impl Distribution<Key> for Standard {
             13 => Key::ChainspecRegistry,
             14 => Key::ChecksumRegistry,
             15 => Key::BidAddr(rng.gen()),
+            16 => Key::MessageTopic(rng.gen()),
             _ => unreachable!(),
         }
     }
@@ -1043,6 +1104,7 @@ mod serde_helpers {
         ChainspecRegistry,
         ChecksumRegistry,
         BidAddr(&'a BidAddr),
+        MessageTopic(&'a MessageTopicAddr),
     }
 
     #[derive(Deserialize)]
@@ -1064,6 +1126,7 @@ mod serde_helpers {
         ChainspecRegistry,
         ChecksumRegistry,
         BidAddr(BidAddr),
+        MessageTopic(MessageTopicAddr),
     }
 
     impl<'a> From<&'a Key> for BinarySerHelper<'a> {
@@ -1085,6 +1148,7 @@ mod serde_helpers {
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
                 Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
                 Key::BidAddr(bid_addr) => BinarySerHelper::BidAddr(bid_addr),
+                Key::MessageTopic(message_addr) => BinarySerHelper::MessageTopic(message_addr),
             }
         }
     }
@@ -1108,6 +1172,7 @@ mod serde_helpers {
                 BinaryDeserHelper::ChainspecRegistry => Key::ChainspecRegistry,
                 BinaryDeserHelper::ChecksumRegistry => Key::ChecksumRegistry,
                 BinaryDeserHelper::BidAddr(bid_addr) => Key::BidAddr(bid_addr),
+                BinaryDeserHelper::MessageTopic(message_addr) => Key::MessageTopic(message_addr),
             }
         }
     }
@@ -1166,6 +1231,7 @@ mod tests {
     const UNBOND_KEY: Key = Key::Unbond(AccountHash::new([42; 32]));
     const CHAINSPEC_REGISTRY_KEY: Key = Key::ChainspecRegistry;
     const CHECKSUM_REGISTRY_KEY: Key = Key::ChecksumRegistry;
+    const MESSAGE_TOPIC_KEY: Key = Key::MessageTopic(MessageTopicAddr::new([42; 32], [42; 32]));
     const KEYS: &[Key] = &[
         ACCOUNT_KEY,
         HASH_KEY,
@@ -1185,6 +1251,7 @@ mod tests {
         UNIFIED_BID_KEY,
         VALIDATOR_BID_KEY,
         DELEGATOR_BID_KEY,
+        MESSAGE_TOPIC_KEY,
     ];
     const HEX_STRING: &str = "2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a2a";
     const UNIFIED_HEX_STRING: &str =
@@ -1319,6 +1386,10 @@ mod tests {
                 base16::encode_lower(&PADDING_BYTES),
             )
         );
+        assert_eq!(
+            format!("{}", MESSAGE_TOPIC_KEY),
+            format!("Key::MessageTopic({}{})", HEX_STRING, HEX_STRING)
+        )
     }
 
     #[test]
@@ -1591,6 +1662,10 @@ mod tests {
             "{}",
             bid_addr_err
         );
+        assert!(Key::from_formatted_str(MESSAGE_TOPIC_PREFIX)
+            .unwrap_err()
+            .to_string()
+            .starts_with("message-topic-key from string error: "));
         let invalid_prefix = "a-0000000000000000000000000000000000000000000000000000000000000000";
         assert_eq!(
             Key::from_formatted_str(invalid_prefix)
@@ -1668,5 +1743,6 @@ mod tests {
         round_trip(&Key::Unbond(AccountHash::new(zeros)));
         round_trip(&Key::ChainspecRegistry);
         round_trip(&Key::ChecksumRegistry);
+        round_trip(&Key::MessageTopic(MessageTopicAddr::new(zeros, nines)))
     }
 }

@@ -330,6 +330,10 @@ where
                 error!("should not remove the checksum registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
+            Key::MessageTopic(_) => {
+                error!("should not remove the message keys");
+                Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
+            }
             bid_key @ Key::BidAddr(_) => {
                 let _bid_kind: BidKind = self.read_gs_typed(&bid_key)?;
                 self.named_keys.remove(name);
@@ -799,7 +803,8 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => true,
+            | Key::BidAddr(_)
+            | Key::MessageTopic(_) => true,
         }
     }
 
@@ -821,7 +826,8 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => false,
+            | Key::BidAddr(_)
+            | Key::MessageTopic(_) => false,
         }
     }
 
@@ -843,7 +849,8 @@ where
             | Key::Unbond(_)
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
-            | Key::BidAddr(_) => false,
+            | Key::BidAddr(_)
+            | Key::MessageTopic(_) => false,
         }
     }
 
