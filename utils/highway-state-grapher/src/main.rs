@@ -295,6 +295,10 @@ impl Graph {
             .and_then(|swimlane| swimlane.get(unit_id.1))
     }
 
+    pub fn validator_weights(&self) -> &ValidatorMap<f32> {
+        &self.weight_percentages
+    }
+
     pub fn iter_range<R1, R2>(
         &self,
         range_vid: R1,

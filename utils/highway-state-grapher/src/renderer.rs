@@ -2,6 +2,7 @@ mod matrix;
 
 use std::{collections::HashSet, f32::consts::PI};
 
+use casper_node::consensus::utils::ValidatorMap;
 use glium::{
     implement_vertex, index, uniform, Display, DrawParameters, Frame, Program, Surface,
     VertexBuffer,
@@ -192,13 +193,19 @@ impl Renderer {
             min_validator_index..=max_validator_index,
             min_graph_height..=max_graph_height,
         ) {
-            self.draw_unit(&mut target, unit, &matrix);
+            self.draw_unit(&mut target, unit, graph.validator_weights(), &matrix);
         }
 
         target.finish().unwrap();
     }
 
-    fn draw_unit(&mut self, target: &mut Frame, unit: &GraphUnit, view: &Matrix) {
+    fn draw_unit(
+        &mut self,
+        target: &mut Frame,
+        unit: &GraphUnit,
+        weights: &ValidatorMap<f32>,
+        view: &Matrix,
+    ) {
         let (x, y) = Self::unit_pos(unit);
 
         let matrix2 = Matrix::translation(x, y) * *view;
@@ -223,7 +230,7 @@ impl Renderer {
             color: [ 1.0_f32, 1.0, 0.0 ],
         };
 
-        let draw_parameters = DrawParameters {
+        let draw_params = DrawParameters {
             line_width: Some(LINE_WIDTH),
             ..Default::default()
         };
@@ -234,17 +241,22 @@ impl Renderer {
                 &self.frame_indices,
                 &self.program,
                 &uniforms,
-                &draw_parameters,
+                &draw_params,
             )
             .unwrap();
 
-        if self.width < 6.0 {
+        if self.width < 10.0 {
             let text1 = format!("{:?}", unit.id);
-            let text2 = format!("Vote: {:?}", unit.vote);
-            let text3 = format!("round_exp: {}", unit.round_exp);
+            let text2 = format!(
+                "Creator weight: {:3.1}%",
+                weights.get(unit.creator).unwrap()
+            );
+            let text3 = format!("Vote: {:?}", unit.vote);
+            let text4 = format!("round_exp: {}", unit.round_exp);
             self.draw_text(target, -0.55, 0.5, &text1, 1.3, &matrix2);
-            self.draw_text(target, -0.8, -0.1, &text2, 1.0, &matrix2);
-            self.draw_text(target, -0.8, -0.5, &text3, 1.0, &matrix2);
+            self.draw_text(target, -0.82, 0.05, &text2, 1.0, &matrix2);
+            self.draw_text(target, -0.82, -0.35, &text3, 1.0, &matrix2);
+            self.draw_text(target, -0.82, -0.75, &text4, 1.0, &matrix2);
         } else {
             let text = format!("{:?}", unit.id);
             self.draw_text(target, -0.6, -0.1, &text, 2.0, &matrix2);
