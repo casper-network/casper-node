@@ -2,6 +2,7 @@ use std::convert::TryFrom;
 use std::{collections::BTreeSet, convert::TryInto};
 
 use casper_storage::global_state::{state::StateReader, trie::merkle_proof::TrieMerkleProof};
+use casper_types::contracts::ContractPackage;
 use casper_types::package::PackageKindTag;
 use casper_types::{
     account::AccountHash,
@@ -182,8 +183,6 @@ where
             None => return Err(execution::Error::KeyNotFound(account_key)),
         };
 
-        println!("contract key {}", contract_key);
-
         match self.get(&contract_key).map_err(Into::into)? {
             Some(StoredValue::AddressableEntity(contract)) => Ok(contract),
             Some(other) => Err(execution::Error::TypeMismatch(
@@ -295,13 +294,21 @@ where
 
     fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Self::Error> {
         let key = package_hash.into();
-        println!("in get package");
         match self.read(&key).map_err(Into::into)? {
             Some(StoredValue::Package(contract_package)) => Ok(contract_package),
             Some(other) => Err(execution::Error::TypeMismatch(
                 StoredValueTypeMismatch::new("Package".to_string(), other.type_name()),
             )),
-            None => Err(execution::Error::KeyNotFound(key)),
+            None => match self
+                .read(&Key::Hash(package_hash.value()))
+                .map_err(Into::into)?
+            {
+                Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package.into()),
+                Some(other) => Err(execution::Error::TypeMismatch(
+                    StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+                )),
+                None => Err(execution::Error::KeyNotFound(key)),
+            },
         }
     }
 

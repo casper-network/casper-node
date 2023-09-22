@@ -670,7 +670,7 @@ impl Key {
     /// `None`.
     pub fn into_entity_addr(self) -> Option<EntityAddr> {
         match self {
-            Key::AddressableEntity((_, entity_addr)) => Some(entity_addr),
+            Key::AddressableEntity((_, hash)) => Some(hash),
             _ => None,
         }
     }
@@ -1534,7 +1534,7 @@ mod tests {
         let account_hash = AccountHash::new(account);
         let key1 = Key::Account(account_hash);
         assert_eq!(key1.into_account(), Some(account_hash));
-        assert!(key1.into_hash_addr().is_none());
+        assert!(key1.into_entity_addr().is_none());
         assert!(key1.as_uref().is_none());
     }
 
@@ -1543,7 +1543,7 @@ mod tests {
         let hash = [42; KEY_HASH_LENGTH];
         let key1 = Key::Hash(hash);
         assert!(key1.into_account().is_none());
-        assert_eq!(key1.into_hash_addr(), Some(hash));
+        assert_eq!(key1.into_entity_addr(), Some(hash));
         assert!(key1.as_uref().is_none());
     }
 
@@ -1552,7 +1552,7 @@ mod tests {
         let uref = URef::new([42; 32], AccessRights::READ_ADD_WRITE);
         let key1 = Key::URef(uref);
         assert!(key1.into_account().is_none());
-        assert!(key1.into_hash_addr().is_none());
+        assert!(key1.into_entity_addr().is_none());
         assert_eq!(key1.as_uref(), Some(&uref));
     }
 

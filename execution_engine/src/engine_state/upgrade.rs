@@ -139,44 +139,18 @@ where
 
         let mut contract = self.retrieve_system_contract(contract_hash, system_contract_type)?;
 
-        let mut contract_package = if let Some(StoredValue::Package(package)) = self
-            .tracking_copy
-            .borrow_mut()
-            .read(&Key::Package(contract.package_hash().value()))
-            .map_err(|_| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                    contract_name.to_string(),
-                )
-            })? {
-            package
-        } else if let Some(StoredValue::ContractPackage(contract_package)) = self
-            .tracking_copy
-            .borrow_mut()
-            .read(&Key::Hash(contract.package_hash().value()))
-            .map_err(|_| {
-                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                    contract_name.to_string(),
-                )
-            })?
-        {
-            contract_package.into()
-        } else {
-            return Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
-                contract_name,
-            ));
-        };
+        let mut package =
+            self.retrieve_system_package(contract.package_hash(), system_contract_type)?;
 
-        contract_package
-            .disable_entity_version(contract_hash)
-            .map_err(|_| {
-                ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
-            })?;
+        package.disable_entity_version(contract_hash).map_err(|_| {
+            ProtocolUpgradeError::FailedToDisablePreviousVersion(contract_name.to_string())
+        })?;
 
         contract.set_protocol_version(self.new_protocol_version);
 
         let new_entity = AddressableEntity::new(
             contract.package_hash(),
-            contract.contract_wasm_hash(),
+            contract.byte_code_hash(),
             contract.named_keys().clone(),
             entry_points,
             self.new_protocol_version,
@@ -185,21 +159,66 @@ where
             ActionThresholds::default(),
         );
 
+        let byte_code_key =
+            Key::byte_code_key(ByteCodeKind::Empty, contract.byte_code_hash().value());
+        let byte_code = ByteCode::new(ByteCodeKind::Empty, vec![]);
+
+        self.tracking_copy
+            .borrow_mut()
+            .write(byte_code_key, StoredValue::ByteCode(byte_code));
+
         let entity_key = Key::addressable_entity_key(PackageKindTag::System, contract_hash.into());
 
         self.tracking_copy
             .borrow_mut()
             .write(entity_key, StoredValue::AddressableEntity(new_entity));
 
-        contract_package
-            .insert_entity_version(self.new_protocol_version.value().major, contract_hash);
+        package.insert_entity_version(self.new_protocol_version.value().major, contract_hash);
 
         self.tracking_copy.borrow_mut().write(
             Key::Package(contract.package_hash().value()),
-            StoredValue::Package(contract_package),
+            StoredValue::Package(package),
         );
 
         Ok(())
+    }
+
+    fn retrieve_system_package(
+        &self,
+        package_hash: PackageHash,
+        system_contract_type: SystemEntityType,
+    ) -> Result<Package, ProtocolUpgradeError> {
+        if let Some(StoredValue::Package(system_entity)) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(&Key::Package(package_hash.value()))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                    system_contract_type.to_string(),
+                )
+            })?
+        {
+            return Ok(system_entity);
+        }
+
+        if let Some(StoredValue::ContractPackage(contract_package)) = self
+            .tracking_copy
+            .borrow_mut()
+            .read(&Key::Hash(package_hash.value()))
+            .map_err(|_| {
+                ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+                    system_contract_type.to_string(),
+                )
+            })?
+        {
+            let mut package: Package = contract_package.into();
+            package.update_package_kind(PackageKind::System(system_contract_type));
+            return Ok(package);
+        }
+
+        Err(ProtocolUpgradeError::UnableToRetrieveSystemContractPackage(
+            system_contract_type.to_string(),
+        ))
     }
 
     fn retrieve_system_contract(

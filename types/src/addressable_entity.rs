@@ -713,7 +713,7 @@ impl AddressableEntity {
     }
 
     /// Hash for accessing contract WASM
-    pub fn contract_wasm_hash(&self) -> ByteCodeHash {
+    pub fn byte_code_hash(&self) -> ByteCodeHash {
         self.byte_code_hash
     }
 
@@ -969,7 +969,7 @@ impl ToBytes for AddressableEntity {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut result = bytesrepr::allocate_buffer(self)?;
         self.package_hash().write_bytes(&mut result)?;
-        self.contract_wasm_hash().write_bytes(&mut result)?;
+        self.byte_code_hash().write_bytes(&mut result)?;
         self.named_keys().write_bytes(&mut result)?;
         self.entry_points().write_bytes(&mut result)?;
         self.protocol_version().write_bytes(&mut result)?;
@@ -992,7 +992,7 @@ impl ToBytes for AddressableEntity {
 
     fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
         self.package_hash().write_bytes(writer)?;
-        self.contract_wasm_hash().write_bytes(writer)?;
+        self.byte_code_hash().write_bytes(writer)?;
         self.named_keys().write_bytes(writer)?;
         self.entry_points().write_bytes(writer)?;
         self.protocol_version().write_bytes(writer)?;

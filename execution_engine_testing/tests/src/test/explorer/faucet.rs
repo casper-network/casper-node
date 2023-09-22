@@ -752,16 +752,13 @@ fn should_allow_funding_by_an_authorized_account() {
         .get(&format!("{}_{}", FAUCET_CONTRACT_NAMED_KEY, FAUCET_ID))
         .expect("failed to find faucet named key");
 
+    let key = Key::contract_entity_key(faucet_named_key.into_entity_hash().expect(
+        "must convert to entity hash\
+    ",
+    ));
+
     let maybe_authorized_account_public_key = builder
-        .query(
-            None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash_addr()
-                    .expect("failed to convert key into hash"),
-            ),
-            &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
-        )
+        .query(None, key, &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()])
         .expect("failed to find authorized account named key")
         .as_cl_value()
         .expect("failed to convert into cl value")
@@ -782,15 +779,7 @@ fn should_allow_funding_by_an_authorized_account() {
         .commit();
 
     let maybe_authorized_account_public_key = builder
-        .query(
-            None,
-            Key::Hash(
-                faucet_named_key
-                    .into_hash_addr()
-                    .expect("failed to convert key into hash"),
-            ),
-            &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()],
-        )
+        .query(None, key, &[AUTHORIZED_ACCOUNT_NAMED_KEY.to_string()])
         .expect("failed to find authorized account named key")
         .as_cl_value()
         .expect("failed to convert into cl value")

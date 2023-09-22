@@ -22,7 +22,7 @@ pub extern "C" fn contract_ext() {
             // Calls a stored contract if exists.
             runtime::call_contract(
                 contract_key
-                    .into_hash_addr()
+                    .into_entity_addr()
                     .expect("should be a hash")
                     .into(),
                 "contract_ext",

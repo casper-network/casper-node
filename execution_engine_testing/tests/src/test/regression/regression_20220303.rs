@@ -111,7 +111,7 @@ fn test_upgrade(major_bump: u32, minor_bump: u32, patch_bump: u32, upgrade_entri
     );
     assert_eq!(
         old_contract.contract_wasm_hash().value(),
-        new_contract.contract_wasm_hash().value()
+        new_contract.byte_code_hash().value()
     );
     assert_ne!(old_contract.entry_points(), new_contract.entry_points());
     assert_eq!(

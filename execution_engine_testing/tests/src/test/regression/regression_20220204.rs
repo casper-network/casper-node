@@ -2,6 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_execution_engine::engine_state::Error;
 use casper_execution_engine::{engine_state, execution};
 use casper_types::{runtime_args, system::mint, AccessRights, ApiError, RuntimeArgs};
 
@@ -262,16 +263,8 @@ fn regression_20220204_as_session() {
     )
     .build();
     builder.exec(exec_request_1).commit();
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InvalidContext as u8
-        ),
-        "Expected revert but received {:?}",
-        error
-    );
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
@@ -291,16 +284,8 @@ fn regression_20220204_as_session_attenuated() {
     )
     .build();
     builder.exec(exec_request_2).commit();
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InvalidContext as u8
-        ),
-        "Expected revert but received {:?}",
-        error
-    );
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
@@ -324,16 +309,8 @@ fn regression_20220204_as_session_by_hash() {
     )
     .build();
     builder.exec(exec_request).commit();
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InvalidContext as u8
-        ),
-        "Expected revert but received {:?}",
-        error
-    );
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
@@ -357,16 +334,9 @@ fn regression_20220204_as_session_by_hash_attenuated() {
     )
     .build();
     builder.exec(exec_request).commit();
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InvalidContext as u8
-        ),
-        "Expected revert but received {:?}",
-        error
-    );
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext));
+
     let entrypoint = TRANSFER_AS_SESSION;
     let new_access_rights = AccessRights::ADD;
     let mut builder = setup();
@@ -385,16 +355,7 @@ fn regression_20220204_as_session_by_hash_attenuated() {
     )
     .build();
     builder.exec(exec_request).commit();
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InvalidContext as u8
-        ),
-        "Expected revert but received {:?}",
-        error
-    );
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
@@ -418,16 +379,7 @@ fn regression_20220204_main_purse_as_session() {
     // introduced as part of EE-1217. This assertion will serve as a reference point when the
     // restriction will be lifted, and this test needs to be updated accordingly.
 
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InvalidContext as u8,
-        ),
-        "Expected revert but received {:?}",
-        error
-    );
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
@@ -449,16 +401,7 @@ fn regression_20220204_main_purse_as_session_by_hash() {
     // introduced as part of EE-1217. This assertion will serve as a reference point when the
     // restriction will be lifted, and this test needs to be updated accordingly.
 
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InvalidContext as u8,
-        ),
-        "Expected revert but received {:?}",
-        error
-    );
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 fn setup() -> LmdbWasmTestBuilder {

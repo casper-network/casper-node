@@ -25,6 +25,7 @@ use crate::{
 
 impl From<execution::Error> for Option<Error> {
     fn from(exec_error: execution::Error) -> Self {
+        println!("{:?}", exec_error);
         match exec_error {
             // This is used to propagate [`execution::Error::GasLimit`] to make sure [`Auction`]
             // contract running natively supports propagating gas limit errors without a panic.

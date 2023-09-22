@@ -23,7 +23,7 @@ pub extern "C" fn call() {
         let contract_hash = runtime::get_key(&contract_hash_key_name)
             .ok_or(ApiError::MissingKey)
             .unwrap_or_revert()
-            .into_hash_addr()
+            .into_entity_addr()
             .ok_or(ApiError::UnexpectedKeyVariant)
             .map(AddressableEntityHash::new)
             .unwrap_or_revert();
@@ -36,7 +36,7 @@ pub extern "C" fn call() {
         let contract_package_hash = runtime::get_key(CONTRACT_PACKAGE_HASH_KEY)
             .ok_or(ApiError::MissingKey)
             .unwrap_or_revert()
-            .into_hash_addr()
+            .into_package_addr()
             .ok_or(ApiError::UnexpectedKeyVariant)
             .map(PackageHash::new)
             .unwrap_or_revert();

@@ -15,7 +15,7 @@ use crate::{
     account,
     addressable_entity::TryFromSliceForAccountHashError,
     bytesrepr::{Bytes, Error, FromBytes, ToBytes},
-    checksummed_hex, uref, CLType, CLTyped, HashAddr,
+    checksummed_hex, uref, ByteCode, ByteCodeKind, CLType, CLTyped, HashAddr,
 };
 
 const CONTRACT_WASM_MAX_DISPLAY_LEN: usize = 16;
@@ -240,12 +240,16 @@ pub struct ContractWasm {
     bytes: Bytes,
 }
 
-#[cfg(test)]
 impl ContractWasm {
+    #[cfg(test)]
     pub fn new(bytes: Vec<u8>) -> Self {
         Self {
             bytes: bytes.into(),
         }
+    }
+
+    fn take_bytes(self) -> Vec<u8> {
+        self.bytes.into()
     }
 }
 
@@ -282,6 +286,12 @@ impl FromBytes for ContractWasm {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
         let (bytes, rem1) = FromBytes::from_bytes(bytes)?;
         Ok((ContractWasm { bytes }, rem1))
+    }
+}
+
+impl From<ContractWasm> for ByteCode {
+    fn from(value: ContractWasm) -> Self {
+        ByteCode::new(ByteCodeKind::V1CasperWasm, value.take_bytes())
     }
 }
 

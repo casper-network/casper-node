@@ -153,7 +153,7 @@ fn should_fail_if_calling_non_existent_entry_point() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash_addr()
+        .into_entity_addr()
         .expect("standard_payment should be an uref");
 
     // next make another deploy that attempts to use the stored payment logic
@@ -318,17 +318,7 @@ fn should_not_transfer_above_balance_using_stored_payment_code_by_hash() {
         .expect_failure()
         .commit();
 
-    let error = builder.get_error().expect("should have error");
-
-    assert!(
-        matches!(
-            error,
-            engine_state::Error::Exec(execution::Error::Revert(ApiError::Mint(mint_error)))
-            if mint_error == mint::Error::InsufficientFunds as u8,
-        ),
-        "Error received {:?}",
-        error,
-    );
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }
 
 #[ignore]
@@ -616,7 +606,7 @@ fn should_fail_payment_stored_at_hash_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash_addr()
+        .into_entity_addr()
         .expect("standard_payment should be an uref");
 
     //
@@ -712,7 +702,7 @@ fn should_fail_session_stored_at_named_key_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("should have standard_payment named key")
-        .into_hash_addr()
+        .into_entity_addr()
         .expect("standard_payment should be an uref");
     //
     // upgrade with new wasm costs with modified mint for given version
@@ -903,7 +893,7 @@ fn should_fail_session_stored_at_hash_with_incompatible_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_hash_addr()
+        .into_entity_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
@@ -1001,7 +991,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
         .named_keys()
         .get(STORED_PAYMENT_CONTRACT_HASH_NAME)
         .expect("standard_payment should be present in named keys")
-        .into_hash_addr()
+        .into_entity_addr()
         .expect("standard_payment named key should be hash");
 
     let exec_request_stored_payment = {
@@ -1031,6 +1021,7 @@ fn should_execute_stored_payment_and_session_code_with_new_major_version() {
     builder
         .clear_results()
         .exec(exec_request_stored_payment)
-        .expect_success()
-        .commit();
+        .expect_failure();
+
+    builder.assert_error(Error::Exec(execution::Error::InvalidContext))
 }

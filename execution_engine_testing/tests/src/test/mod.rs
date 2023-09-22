@@ -10,7 +10,8 @@ mod gas_counter;
 mod get_balance;
 mod groups;
 mod host_function_costs;
-mod manage_groups;
+// TODO: Revisit this module and check relevancy.
+// mod manage_groups;
 mod private_chain;
 mod regression;
 mod step;

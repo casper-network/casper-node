@@ -1152,9 +1152,16 @@ where
     ) -> Option<AddressableEntity> {
         let entity_key = Key::addressable_entity_key(PackageKindTag::SmartContract, entity_hash);
 
-        let contract_value: StoredValue = self
-            .query(None, entity_key, &[])
-            .expect("should have contract value");
+        let contract_value: StoredValue = match self.query(None, entity_key, &[]) {
+            Ok(stored_value) => stored_value,
+            Err(_) => self
+                .query(
+                    None,
+                    Key::addressable_entity_key(PackageKindTag::System, entity_hash),
+                    &[],
+                )
+                .expect("must have value"),
+        };
 
         if let StoredValue::AddressableEntity(contract) = contract_value {
             Some(contract)

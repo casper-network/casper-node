@@ -96,12 +96,10 @@ fn should_run_genesis() {
     assert_eq!(account_1_balance_actual, U512::from(ACCOUNT_1_BALANCE));
     assert_eq!(account_2_balance_actual, U512::from(ACCOUNT_2_BALANCE));
 
-    let mint_contract_key = Key::addressable_entity_key(
-        PackageKindTag::SmartContract,
-        builder.get_mint_contract_hash(),
-    );
+    let mint_contract_key =
+        Key::addressable_entity_key(PackageKindTag::System, builder.get_mint_contract_hash());
     let handle_payment_contract_key = Key::addressable_entity_key(
-        PackageKindTag::SmartContract,
+        PackageKindTag::System,
         builder.get_handle_payment_contract_hash(),
     );
 

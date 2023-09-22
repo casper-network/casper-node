@@ -484,7 +484,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .unwrap();
 
     let stored_entity_hash = stored_entity_key
-        .into_hash_addr()
+        .into_entity_addr()
         .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
@@ -496,7 +496,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
     };
 
     let do_nothing_contract_package_hash = do_nothing_contract_package_key
-        .into_hash_addr()
+        .into_entity_addr()
         .map(PackageHash::new)
         .expect("should be package hash");
 
@@ -681,7 +681,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .unwrap();
 
     let stored_entity_hash = stored_entity_key
-        .into_hash_addr()
+        .into_entity_addr()
         .map(AddressableEntityHash::new)
         .expect("should have stored entity hash");
 
@@ -693,7 +693,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
     };
 
     let test_payment_stored_package_hash = test_payment_stored_package_key
-        .into_hash_addr()
+        .into_package_addr()
         .map(PackageHash::new)
         .expect("should have contract package");
 

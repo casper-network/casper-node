@@ -1175,6 +1175,7 @@ where
             }
             NewTransferTargetMode::CreateAccount(account_hash) => {
                 let create_purse_stack = self.get_new_system_call_stack();
+
                 let (maybe_uref, execution_result): (Option<URef>, ExecutionResult) = executor
                     .call_system_contract(
                         DirectSystemContractCall::CreatePurse,
@@ -2535,7 +2536,7 @@ where
 
         let account_addr = public_key.to_account_hash();
 
-        let contract_hash = match tracking_copy
+        let entity_hash = match tracking_copy
             .borrow_mut()
             .get_entity_hash_by_account_hash(account_addr)
         {
@@ -2543,9 +2544,16 @@ where
             Err(error) => return Err(error.into()),
         };
 
-        let account = match tracking_copy.borrow_mut().get_contract(contract_hash) {
-            Ok(contract) => contract,
-            Err(error) => return Err(error.into()),
+        let account = match tracking_copy
+            .borrow_mut()
+            .read(&Key::addressable_entity_key(
+                PackageKindTag::Account,
+                entity_hash,
+            ))
+            .map_err(|_| Error::InvalidKeyVariant)?
+        {
+            Some(StoredValue::AddressableEntity(account)) => account,
+            Some(_) | None => return Err(Error::InvalidKeyVariant),
         };
 
         let main_purse_balance_key = {

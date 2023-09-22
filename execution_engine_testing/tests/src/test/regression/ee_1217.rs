@@ -2,6 +2,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
+use casper_execution_engine::execution::Error;
 use casper_execution_engine::{
     engine_state::{engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, Error as CoreError},
     execution::Error as ExecError,
@@ -64,12 +65,7 @@ fn should_fail_to_add_bid_from_stored_session_code() {
 
     builder.exec(add_bid_request);
 
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(error, CoreError::Exec(ExecError::Revert(ApiError::AuctionError(
-            auction_error,
-        ))) if auction_error == auction::Error::InvalidContext as u8)
-    );
+    builder.assert_error(CoreError::Exec(Error::InvalidContext))
 }
 
 #[ignore]
@@ -161,12 +157,7 @@ fn should_fail_to_withdraw_bid_from_stored_session_code() {
 
     builder.exec(withdraw_bid_request);
 
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(error, CoreError::Exec(ExecError::Revert(ApiError::AuctionError(
-            auction_error,
-        ))) if auction_error == auction::Error::InvalidContext as u8)
-    );
+    builder.assert_error(CoreError::Exec(Error::InvalidContext))
 }
 
 #[ignore]
@@ -296,12 +287,7 @@ fn should_fail_to_delegate_from_stored_session_code() {
 
     builder.exec(delegate_request);
 
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(error, CoreError::Exec(ExecError::Revert(ApiError::AuctionError(
-            auction_error,
-        ))) if auction_error == auction::Error::InvalidContext as u8)
-    );
+    builder.assert_error(CoreError::Exec(Error::InvalidContext))
 }
 
 #[ignore]
@@ -470,12 +456,7 @@ fn should_fail_to_undelegate_from_stored_session_code() {
 
     builder.exec(undelegate_request).commit();
 
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(error, CoreError::Exec(ExecError::Revert(ApiError::AuctionError(
-            auction_error,
-        ))) if auction_error == auction::Error::InvalidContext as u8)
-    );
+    builder.assert_error(CoreError::Exec(Error::InvalidContext))
 }
 
 #[ignore]
@@ -630,12 +611,7 @@ fn should_fail_to_activate_bid_from_stored_session_code() {
 
     builder.exec(activate_bid_request);
 
-    let error = builder.get_error().expect("should have returned an error");
-    assert!(
-        matches!(error, CoreError::Exec(ExecError::Revert(ApiError::AuctionError(
-            auction_error,
-        ))) if auction_error == auction::Error::InvalidContext as u8)
-    );
+    builder.assert_error(CoreError::Exec(Error::InvalidContext))
 }
 
 #[ignore]

@@ -41,8 +41,8 @@ use casper_types::{
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, ApiError, ByteCode, ByteCodeHash, ByteCodeKind, CLTyped, CLValue,
-    ContextAccessRights, DeployHash, EntityVersion, EntityVersionKey, EntityVersions, Gas,
-    GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package,
+    ContextAccessRights, ContractWasm, DeployHash, EntityVersion, EntityVersionKey, EntityVersions,
+    Gas, GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package,
     PackageHash, Phase, PublicKey, RuntimeArgs, StoredValue, Tagged, Transfer, TransferResult,
     TransferredTo, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
 };
@@ -993,6 +993,7 @@ where
         stack: RuntimeStack,
     ) -> Result<CLValue, Error> {
         self.stack = Some(stack);
+
         self.call_contract(contract_hash, entry_point_name, args)
     }
 
@@ -1133,19 +1134,20 @@ where
             CallContractIdentifier::Contract {
                 contract_hash: entity_hash,
             } => {
-                let entity = if let Some(StoredValue::Contract(_)) =
-                    self.context.read_gs(&Key::Hash(entity_hash.value()))?
-                {
-                    self.migrate_contract_and_contract_package(entity_hash)?
+                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    Key::addressable_entity_key(PackageKindTag::System, entity_hash)
                 } else {
-                    let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
-                        Key::addressable_entity_key(PackageKindTag::System, entity_hash)
-                    } else {
-                        Key::contract_entity_key(entity_hash)
-                    };
-
-                    self.context.read_gs_typed(&entity_key)?
+                    Key::contract_entity_key(entity_hash)
                 };
+
+                let entity = if let Some(StoredValue::AddressableEntity(entity)) =
+                    self.context.read_gs(&entity_key)?
+                {
+                    entity
+                } else {
+                    self.migrate_contract_and_contract_package(entity_hash)?
+                };
+
                 let package = Key::from(entity.package_hash());
 
                 let package: Package = self.context.read_gs_typed(&package)?;
@@ -1168,8 +1170,19 @@ where
                 contract_package_hash,
                 version,
             } => {
+                println!("Here");
+
                 let package_key = Key::from(contract_package_hash);
-                let package: Package = self.context.read_gs_typed(&package_key)?;
+                let package: Package = match self.context.read_gs_typed(&package_key) {
+                    Ok(package) => package,
+                    Err(Error::KeyNotFound(_)) => {
+                        let contract_package: ContractPackage = self
+                            .context
+                            .read_gs_typed(&Key::Hash(contract_package_hash.value()))?;
+                        contract_package.into()
+                    }
+                    Err(error) => return Err(error),
+                };
 
                 let contract_version_key = match version {
                     Some(version) => EntityVersionKey::new(
@@ -1188,15 +1201,18 @@ where
                     .copied()
                     .ok_or(Error::InvalidEntityVersion(contract_version_key))?;
 
-                let entity = if let Some(StoredValue::Contract(_)) =
-                    self.context.read_gs(&Key::Hash(entity_hash.value()))?
-                {
-                    self.migrate_contract_and_contract_package(entity_hash)?
+                let entity_key = if self.context.is_system_addressable_entity(&entity_hash)? {
+                    Key::addressable_entity_key(PackageKindTag::System, entity_hash)
                 } else {
-                    self.context.read_gs_typed(&Key::addressable_entity_key(
-                        PackageKindTag::SmartContract,
-                        entity_hash,
-                    ))?
+                    Key::contract_entity_key(entity_hash)
+                };
+
+                let entity = if let Some(StoredValue::AddressableEntity(entity)) =
+                    self.context.read_gs(&entity_key)?
+                {
+                    entity
+                } else {
+                    self.migrate_contract_and_contract_package(entity_hash)?
                 };
 
                 (entity, entity_hash, package)
@@ -1406,7 +1422,7 @@ where
 
             let byte_code: ByteCode = match self.context.read_gs(&byte_code_key)? {
                 Some(StoredValue::ByteCode(byte_code)) => byte_code,
-                Some(_) => return Err(Error::InvalidByteCode(contract.contract_wasm_hash())),
+                Some(_) => return Err(Error::InvalidByteCode(contract.byte_code_hash())),
                 None => return Err(Error::KeyNotFound(byte_code_key)),
             };
 
@@ -2545,8 +2561,9 @@ where
                 {
                     entity.main_purse_add_only()
                 } else {
-                    let contract_hash = if let Some(entity_hash) =
-                        entity_key.into_hash_addr().map(AddressableEntityHash::new)
+                    let contract_hash = if let Some(entity_hash) = entity_key
+                        .into_entity_addr()
+                        .map(AddressableEntityHash::new)
                     {
                         entity_hash
                     } else {
@@ -3321,6 +3338,18 @@ where
                     associated_keys,
                     ActionThresholds::default(),
                 );
+
+                let previous_wasm = self.context.read_gs_typed::<ContractWasm>(&Key::Hash(
+                    contract.contract_wasm_hash().value(),
+                ))?;
+
+                let byte_code_key =
+                    Key::byte_code_key(ByteCodeKind::V1CasperWasm, updated_entity.byte_code_addr());
+
+                let byte_code: ByteCode = previous_wasm.into();
+
+                self.context
+                    .metered_write_gs_unsafe(byte_code_key, StoredValue::ByteCode(byte_code))?;
 
                 let entity_key =
                     Key::AddressableEntity((package_kind.tag(), contract_hash.value()));

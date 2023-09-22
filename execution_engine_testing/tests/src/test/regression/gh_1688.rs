@@ -46,12 +46,12 @@ fn setup() -> (LmdbWasmTestBuilder, PackageHash, AddressableEntityHash) {
         .expect("should have hash");
 
     let contract_package_hash = package_hash_key
-        .into_hash_addr()
+        .into_package_addr()
         .map(PackageHash::new)
         .expect("should be hash");
 
     let entity_hash = entity_hash_key
-        .into_hash_addr()
+        .into_entity_addr()
         .map(AddressableEntityHash::new)
         .expect("should be hash");
 

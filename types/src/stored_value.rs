@@ -315,12 +315,26 @@ impl TryFrom<StoredValue> for Account {
     }
 }
 
+impl TryFrom<StoredValue> for ContractWasm {
+    type Error = TypeMismatch;
+
+    fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
+        match stored_value {
+            StoredValue::ContractWasm(contract_wasm) => Ok(contract_wasm),
+            _ => Err(TypeMismatch::new(
+                "ContractWasm".to_string(),
+                stored_value.type_name(),
+            )),
+        }
+    }
+}
+
 impl TryFrom<StoredValue> for ByteCode {
     type Error = TypeMismatch;
 
     fn try_from(stored_value: StoredValue) -> Result<Self, Self::Error> {
         match stored_value {
-            StoredValue::ByteCode(contract_wasm) => Ok(contract_wasm),
+            StoredValue::ByteCode(byte_code) => Ok(byte_code),
             _ => Err(TypeMismatch::new(
                 "ByteCode".to_string(),
                 stored_value.type_name(),
