@@ -416,12 +416,11 @@ fn start_rendering(graph: Graph) {
                         renderer.mouse_scroll(pixels.y as f32 / 30.0);
                     }
                 },
-                WindowEvent::MouseInput { state, button, .. } => match (state, button) {
-                    (state, MouseButton::Left) => {
+                WindowEvent::MouseInput { state, button, .. } => {
+                    if let (state, MouseButton::Left) = (state, button) {
                         mouse_state.handle_button(matches!(state, ElementState::Pressed));
                     }
-                    _ => (),
-                },
+                }
                 WindowEvent::CursorMoved { position, .. } => {
                     if let Some(delta) = mouse_state.handle_move((position.x, position.y)) {
                         renderer.pan(delta.0, delta.1);

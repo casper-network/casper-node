@@ -12,7 +12,7 @@ use nalgebra::Vector2;
 
 use crate::{renderer::matrix::Matrix, Graph, GraphUnit, UnitId};
 
-const VERTEX_SHADER_SRC: &'static str = r#"
+const VERTEX_SHADER_SRC: &str = r#"
     #version 140
 
     in vec2 position;
@@ -27,7 +27,7 @@ const VERTEX_SHADER_SRC: &'static str = r#"
     }
 "#;
 
-const FRAGMENT_SHADER_SRC: &'static str = r#"
+const FRAGMENT_SHADER_SRC: &str = r#"
     #version 140
 
     in vec3 in_color;
@@ -38,7 +38,7 @@ const FRAGMENT_SHADER_SRC: &'static str = r#"
     }
 "#;
 
-const FONT_FILE: &'static [u8] = include_bytes!("../DejaVuSans.ttf");
+const FONT_FILE: &[u8] = include_bytes!("../DejaVuSans.ttf");
 
 #[derive(Debug, Clone, Copy)]
 struct Vertex {
@@ -169,7 +169,7 @@ impl Renderer {
 
         target.clear_color(0.0, 0.0, 0.2, 1.0);
 
-        let matrix = Matrix::translation(-self.center.x as f32, -self.center.y as f32)
+        let matrix = Matrix::translation(-self.center.x, -self.center.y)
             * Matrix::scale(2.0 / self.width, 2.0 / height);
 
         let mut edges_to_draw = HashSet::new();
@@ -218,7 +218,7 @@ impl Renderer {
         target
             .draw(
                 &self.unit_vertex_buffer,
-                &self.interior_indices,
+                self.interior_indices,
                 &self.program,
                 &uniforms,
                 &Default::default(),
@@ -327,7 +327,7 @@ impl Renderer {
         target
             .draw(
                 &vertex_buffer,
-                &indices,
+                indices,
                 &self.program,
                 &uniforms,
                 &draw_parameters,
