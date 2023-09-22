@@ -3,21 +3,34 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::core::{engine_state::Error, execution::Error as ExecError};
-use casper_types::{runtime_args, RuntimeArgs};
+use casper_types::RuntimeArgs;
 
 #[ignore]
 #[test]
-fn panic_in_contract_should_yield_trap_unreachable() {
-    const CONTRACT_NAME: &str = "do_panic.wasm";
+fn runtime_stack_overflow_should_cause_unreachable_error() {
+    // Create an unconstrained recursive call
+    let wat = r#"(module
+        (func $call (call $call))
+        (export "call" (func $call))
+        (memory $memory 1)
+      )"#;
 
-    let do_panic_request =
-        ExecuteRequestBuilder::standard(*DEFAULT_ACCOUNT_ADDR, CONTRACT_NAME, runtime_args! {})
-            .build();
+    let module_bytes = wabt::wat2wasm(wat).unwrap();
+
+    let do_stack_overflow_request = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
 
     let mut builder = InMemoryWasmTestBuilder::default();
 
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-    builder.exec(do_panic_request).expect_failure().commit();
+    builder
+        .exec(do_stack_overflow_request)
+        .expect_failure()
+        .commit();
 
     // TODO: In order to assert if proper message has been put on `stderr` we might consider
     // extending EE to be able to write to arbitrary stream. It would default to `Stdout` so the
