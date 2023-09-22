@@ -23,7 +23,7 @@ use clap::Parser;
 use flate2::read::GzDecoder;
 use glium::{
     glutin::{
-        event::{ElementState, Event, MouseButton, MouseScrollDelta, WindowEvent},
+        event::{ElementState, Event, MouseButton, MouseScrollDelta, VirtualKeyCode, WindowEvent},
         event_loop::{ControlFlow, EventLoop},
         window::WindowBuilder,
         ContextBuilder,
@@ -407,6 +407,23 @@ fn main() {
 }
 
 #[derive(Clone, Copy)]
+struct KeyboardState {
+    e_state: bool,
+}
+
+impl KeyboardState {
+    fn e_pressed(&mut self) -> bool {
+        let was_pressed = self.e_state;
+        self.e_state = true;
+        !was_pressed
+    }
+
+    fn e_released(&mut self) {
+        self.e_state = false;
+    }
+}
+
+#[derive(Clone, Copy)]
 enum MouseState {
     Free { position: (f64, f64) },
     Dragging { last_position: (f64, f64) },
@@ -443,6 +460,13 @@ impl MouseState {
             _ => (),
         }
     }
+
+    fn cursor(&self) -> (f32, f32) {
+        match self {
+            Self::Free { position } => (position.0 as f32, position.1 as f32),
+            Self::Dragging { last_position } => (last_position.0 as f32, last_position.1 as f32),
+        }
+    }
 }
 
 fn start_rendering(graph: Graph) {
@@ -459,6 +483,7 @@ fn start_rendering(graph: Graph) {
     let mut mouse_state = MouseState::Free {
         position: (0.0, 0.0),
     };
+    let mut keyboard_state = KeyboardState { e_state: false };
 
     event_loop.run(move |ev, _, control_flow| {
         match ev {
@@ -475,6 +500,19 @@ fn start_rendering(graph: Graph) {
                         renderer.mouse_scroll(pixels.y as f32 / 30.0);
                     }
                 },
+                WindowEvent::KeyboardInput { input, .. } => {
+                    match (input.virtual_keycode, input.state) {
+                        (Some(VirtualKeyCode::E), ElementState::Pressed) => {
+                            if keyboard_state.e_pressed() {
+                                renderer.toggle_edges();
+                            }
+                        }
+                        (Some(VirtualKeyCode::E), ElementState::Released) => {
+                            keyboard_state.e_released();
+                        }
+                        _ => (),
+                    }
+                }
                 WindowEvent::MouseInput { state, button, .. } => {
                     if let (state, MouseButton::Left) = (state, button) {
                         mouse_state.handle_button(matches!(state, ElementState::Pressed));
@@ -488,7 +526,8 @@ fn start_rendering(graph: Graph) {
                 _ => (),
             },
             Event::MainEventsCleared => {
-                renderer.draw(&display, &graph);
+                let (cursor_x, cursor_y) = mouse_state.cursor();
+                renderer.draw(&display, &graph, cursor_x, cursor_y);
             }
             _ => (),
         }

@@ -58,6 +58,7 @@ pub struct Renderer {
     unit_vertex_buffer: VertexBuffer<Vertex>,
     interior_indices: index::NoIndices,
     frame_indices: index::IndexBuffer<u32>,
+    edges_enabled: bool,
 }
 
 const UNIT_WIDTH: f32 = 0.5;
@@ -86,6 +87,7 @@ impl Renderer {
             unit_vertex_buffer,
             interior_indices,
             frame_indices,
+            edges_enabled: true,
         }
     }
 
@@ -151,11 +153,13 @@ impl Renderer {
         )
     }
 
-    pub fn draw(&mut self, display: &Display, graph: &Graph) {
+    pub fn draw(&mut self, display: &Display, graph: &Graph, cursor_x: f32, cursor_y: f32) {
         let mut target = display.draw();
 
         let (size_x, size_y) = target.get_dimensions();
         self.window_width = size_x as f32;
+
+        let (cursor_x, cursor_y) = self.convert_cursor(cursor_x, cursor_y, size_x, size_y);
 
         let aspect = (size_y as f32) / (size_x as f32);
 
@@ -173,21 +177,37 @@ impl Renderer {
             * Matrix::scale(2.0 / self.width, 2.0 / height);
 
         let mut edges_to_draw = HashSet::new();
+        let mut highlighted_edges_to_draw = HashSet::new();
 
         for unit in graph.iter_range(
             min_validator_index..=max_validator_index,
             min_graph_height..=max_graph_height,
         ) {
+            let set_to_insert = if Self::unit_contains_cursor(unit, cursor_x, cursor_y) {
+                &mut highlighted_edges_to_draw
+            } else {
+                &mut edges_to_draw
+            };
             for cited_unit in &unit.cited_units {
-                edges_to_draw.insert((unit.id, *cited_unit));
+                set_to_insert.insert((unit.id, *cited_unit));
             }
             for dependent_unit in graph.reverse_edges.get(&unit.id).into_iter().flatten() {
-                edges_to_draw.insert((*dependent_unit, unit.id));
+                set_to_insert.insert((*dependent_unit, unit.id));
             }
         }
 
         // draw edges first, so that the units are drawn over them
-        self.draw_edges(display, &mut target, &matrix, graph, edges_to_draw);
+        if self.edges_enabled {
+            self.draw_edges(display, &mut target, &matrix, graph, edges_to_draw, false);
+        }
+        self.draw_edges(
+            display,
+            &mut target,
+            &matrix,
+            graph,
+            highlighted_edges_to_draw,
+            true,
+        );
 
         for unit in graph.iter_range(
             min_validator_index..=max_validator_index,
@@ -197,6 +217,20 @@ impl Renderer {
         }
 
         target.finish().unwrap();
+    }
+
+    fn convert_cursor(&self, cursor_x: f32, cursor_y: f32, size_x: u32, size_y: u32) -> (f32, f32) {
+        let size_x = size_x as f32;
+        let size_y = size_y as f32;
+        let delta_x = (cursor_x / size_x - 0.5) * self.width;
+        let delta_y = (0.5 - cursor_y / size_y) * self.width * size_y / size_x;
+        (self.center.x + delta_x, self.center.y + delta_y)
+    }
+
+    fn unit_contains_cursor(unit: &GraphUnit, cursor_x: f32, cursor_y: f32) -> bool {
+        let (unit_x, unit_y) = Self::unit_pos(unit);
+        (unit_x - cursor_x).abs() < UNIT_WIDTH / 2.0
+            && (unit_y - cursor_y).abs() < UNIT_HEIGHT / 2.0
     }
 
     fn draw_unit(
@@ -313,6 +347,7 @@ impl Renderer {
         view: &Matrix,
         graph: &Graph,
         edges: HashSet<(UnitId, UnitId)>,
+        highlight: bool,
     ) {
         let mut vertices = vec![];
 
@@ -331,13 +366,23 @@ impl Renderer {
         let vertex_buffer = VertexBuffer::new(display, &vertices).unwrap();
         let indices = index::NoIndices(index::PrimitiveType::LinesList);
 
+        let color = if highlight {
+            [1.0_f32, 1.0, 1.0]
+        } else {
+            [1.0_f32, 1.0, 0.0]
+        };
+
         let uniforms = uniform! {
             matrix: view.inner(),
-            color: [ 1.0_f32, 1.0, 0.0 ],
+            color: color,
         };
 
         let draw_parameters = DrawParameters {
-            line_width: Some(LINE_WIDTH),
+            line_width: Some(if highlight {
+                LINE_WIDTH * 2.0
+            } else {
+                LINE_WIDTH
+            }),
             ..Default::default()
         };
 
@@ -365,6 +410,10 @@ impl Renderer {
     pub fn pan(&mut self, delta_x: f32, delta_y: f32) {
         let scale = self.width / self.window_width;
         self.center += Vector2::new(-delta_x * scale, delta_y * scale);
+    }
+
+    pub fn toggle_edges(&mut self) {
+        self.edges_enabled = !self.edges_enabled;
     }
 
     fn quorum_color_spectrum(frac: f32) -> [f32; 3] {
