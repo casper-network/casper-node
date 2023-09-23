@@ -102,15 +102,15 @@ test-contracts: test-contracts-rs
 
 .PHONY: check-std-features
 check-std-features:
-	cd types && $(CARGO) check --all-targets --no-default-features --features=std
-	cd types && $(CARGO) check --all-targets --features=std
+	$(CARGO) check --all-targets --no-default-features --features=std
+	$(CARGO) check --all-targets --features=std
 	cd smart_contracts/contract && $(CARGO) check --all-targets --no-default-features --features=std
 	cd smart_contracts/contract && $(CARGO) check --all-targets --features=std
 
 .PHONY: check-sdk-features
 check-sdk-features:
-	cd types && $(CARGO) check --all-targets --no-default-features --features=sdk
-	cd types && $(CARGO) check --all-targets --features=sdk --verbose
+	$(CARGO) check --all-targets --no-default-features --features=sdk
+	$(CARGO) check --all-targets --features=sdk
 
 .PHONY: check-format
 check-format:
