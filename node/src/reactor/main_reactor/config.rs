@@ -5,10 +5,10 @@ use tracing::error;
 use crate::{
     logging::LoggingConfig,
     types::{Chainspec, NodeConfig},
-    BlockAccumulatorConfig, BlockSynchronizerConfig, ConsensusConfig, ContractRuntimeConfig,
-    DeployAcceptorConfig, DeployBufferConfig, DiagnosticsPortConfig, EventStreamServerConfig,
-    FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig, RpcServerConfig,
-    SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
+    BlockAccumulatorConfig, BlockSynchronizerConfig, BlockValidatorConfig, ConsensusConfig,
+    ContractRuntimeConfig, DeployAcceptorConfig, DeployBufferConfig, DiagnosticsPortConfig,
+    EventStreamServerConfig, FetcherConfig, GossipConfig, NetworkConfig, RestServerConfig,
+    RpcServerConfig, SpeculativeExecConfig, StorageConfig, UpgradeWatcherConfig,
 };
 
 /// Root configuration.
@@ -50,6 +50,8 @@ pub struct Config {
     pub block_accumulator: BlockAccumulatorConfig,
     /// Config values for the block synchronizer.
     pub block_synchronizer: BlockSynchronizerConfig,
+    /// Config values for the block validator.
+    pub block_validator: BlockValidatorConfig,
     /// Config values for the upgrade watcher.
     pub upgrade_watcher: UpgradeWatcherConfig,
 }

@@ -36,7 +36,7 @@ pub(crate) enum AddError {
 }
 
 /// A block that is still being added to. It keeps track of and enforces block limits.
-#[derive(Clone, DataSize, Debug)]
+#[derive(Clone, Eq, PartialEq, DataSize, Debug)]
 pub(crate) struct AppendableBlock {
     deploy_config: DeployConfig,
     deploys: Vec<DeployHashWithApprovals>,
@@ -187,6 +187,10 @@ impl AppendableBlock {
             deploys, transfers, ..
         } = self;
         BlockPayload::new(deploys, transfers, accusations, random_bit)
+    }
+
+    pub(crate) fn timestamp(&self) -> Timestamp {
+        self.timestamp
     }
 
     /// Returns `true` if the number of transfers is already the maximum allowed count, i.e. no

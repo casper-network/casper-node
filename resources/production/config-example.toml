@@ -501,6 +501,18 @@ disconnect_dishonest_peers_interval = '10 seconds'
 latch_reset_interval = '5 seconds'
 
 
+# =============================================
+# Configuration options for the block validator
+# =============================================
+[block_validator]
+
+# Maximum number of completed entries to retain.
+#
+# A higher value can avoid creating needless validation work on an already-validated proposed
+# block, but comes at the cost of increased memory consumption.
+max_completed_entries = 3
+
+
 # ==================================
 # Configuration options for fetchers
 # ==================================
