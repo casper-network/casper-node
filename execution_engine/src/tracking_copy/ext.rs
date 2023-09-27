@@ -75,8 +75,14 @@ pub trait TrackingCopyExt<R> {
         contract_hash: AddressableEntityHash,
     ) -> Result<AddressableEntity, Self::Error>;
 
-    /// Gets a contract package by Key.
+    /// Gets a package by Key.
     fn get_package(&mut self, contract_package_hash: PackageHash) -> Result<Package, Self::Error>;
+
+    /// Gets an entity by Key.
+    fn get_contract_entity(
+        &mut self,
+        entity_hash: AddressableEntityHash,
+    ) -> Result<(AddressableEntity, bool), Self::Error>;
 
     /// Gets the system contract registry.
     fn get_system_contracts(&mut self) -> Result<SystemContractRegistry, Self::Error>;
@@ -303,9 +309,39 @@ where
                 .read(&Key::Hash(package_hash.value()))
                 .map_err(Into::into)?
             {
-                Some(StoredValue::ContractPackage(contract_package)) => Ok(contract_package.into()),
+                Some(StoredValue::ContractPackage(contract_package)) => {
+                    let package: Package = contract_package.into();
+                    self.write(
+                        Key::Package(package_hash.value()),
+                        StoredValue::Package(package.clone()),
+                    );
+                    Ok(package)
+                }
                 Some(other) => Err(execution::Error::TypeMismatch(
                     StoredValueTypeMismatch::new("ContractPackage".to_string(), other.type_name()),
+                )),
+                None => Err(execution::Error::KeyNotFound(key)),
+            },
+        }
+    }
+
+    fn get_contract_entity(
+        &mut self,
+        entity_hash: AddressableEntityHash,
+    ) -> Result<(AddressableEntity, bool), Self::Error> {
+        let key = Key::contract_entity_key(entity_hash);
+        match self.read(&key).map_err(Into::into)? {
+            Some(StoredValue::AddressableEntity(entity)) => Ok((entity, false)),
+            Some(other) => Err(execution::Error::TypeMismatch(
+                StoredValueTypeMismatch::new("AddressableEntity".to_string(), other.type_name()),
+            )),
+            None => match self
+                .read(&Key::Hash(entity_hash.value()))
+                .map_err(Into::into)?
+            {
+                Some(StoredValue::Contract(contract)) => Ok((contract.into(), true)),
+                Some(other) => Err(execution::Error::TypeMismatch(
+                    StoredValueTypeMismatch::new("Contract".to_string(), other.type_name()),
                 )),
                 None => Err(execution::Error::KeyNotFound(key)),
             },

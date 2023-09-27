@@ -49,8 +49,8 @@ pub extern "C" fn call() {
 
     let do_nothing_package_hash: PackageHash = runtime::get_key(DO_NOTHING_PACKAGE_HASH_KEY_NAME)
         .unwrap_or_revert()
-        .into_entity_addr()
-        .unwrap()
+        .into_package_addr()
+        .unwrap_or_revert()
         .into();
 
     let _do_nothing_uref: URef = runtime::get_key(DO_NOTHING_ACCESS_KEY_NAME)

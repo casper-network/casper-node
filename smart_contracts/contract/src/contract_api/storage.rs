@@ -288,45 +288,45 @@ pub fn remove_contract_user_group(package_hash: PackageHash, label: &str) -> Res
     api_error::result_from(ret)
 }
 
-/// Add a new version of a contract to the contract stored at the given
-/// `Key`. Note that this contract must have been created by
-/// `create_contract` or `create_contract_package_at_hash` first.
+/// Add version to existing Package.
 pub fn add_contract_version(
-    contract_package_hash: PackageHash,
+    package_hash: PackageHash,
     entry_points: EntryPoints,
     named_keys: NamedKeys,
 ) -> (AddressableEntityHash, EntityVersion) {
-    let (contract_package_hash_ptr, contract_package_hash_size, _bytes1) =
-        contract_api::to_ptr(contract_package_hash);
-    let (entry_points_ptr, entry_points_size, _bytes4) = contract_api::to_ptr(entry_points);
-    let (named_keys_ptr, named_keys_size, _bytes5) = contract_api::to_ptr(named_keys);
+    // Retain the underscore as Wasm transpiliation requires it.
+    let (package_hash_ptr, package_hash_size, _package_hash_bytes) =
+        contract_api::to_ptr(package_hash);
+    let (entry_points_ptr, entry_points_size, _entry_point_bytes) =
+        contract_api::to_ptr(entry_points);
+    let (named_keys_ptr, named_keys_size, _named_keys_bytes) = contract_api::to_ptr(named_keys);
 
-    let mut output_ptr = vec![0u8; Key::max_serialized_length()];
-    let mut total_bytes: usize = 0;
+    let mut output_ptr = vec![0u8; 32];
+    // let mut total_bytes: usize = 0;
 
-    let mut contract_version: EntityVersion = 0;
+    let mut entity_version: EntityVersion = 0;
 
     let ret = unsafe {
-        ext_ffi::casper_add_contract_version(
-            contract_package_hash_ptr,
-            contract_package_hash_size,
-            &mut contract_version as *mut EntityVersion,
+        ext_ffi::casper_add_package_version(
+            package_hash_ptr,
+            package_hash_size,
+            &mut entity_version as *mut EntityVersion, // Fixed width
             entry_points_ptr,
             entry_points_size,
             named_keys_ptr,
             named_keys_size,
             output_ptr.as_mut_ptr(),
             output_ptr.len(),
-            &mut total_bytes as *mut usize,
+            // &mut total_bytes as *mut usize,
         )
     };
     match api_error::result_from(ret) {
         Ok(_) => {}
         Err(e) => revert(e),
     }
-    output_ptr.truncate(total_bytes);
-    let contract_hash = bytesrepr::deserialize(output_ptr).unwrap_or_revert();
-    (contract_hash, contract_version)
+    // output_ptr.truncate(32usize);
+    let entity_hash = bytesrepr::deserialize(output_ptr).unwrap_or_revert();
+    (entity_hash, entity_version)
 }
 
 /// Disable a version of a contract from the contract stored at the given

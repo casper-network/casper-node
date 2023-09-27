@@ -522,24 +522,22 @@ extern "C" {
         output_size: usize,
         bytes_written_ptr: *mut usize,
     ) -> i32;
-    /// Adds new contract version to a contract package.
+    /// Adds a new version to a package.
     ///
     /// # Arguments
     ///
-    /// * `contract_package_hash_ptr` - pointer to serialized contract package hash.
-    /// * `contract_package_hash_size` - size of contract package hash in serialized form.
+    /// * `package_hash_ptr` - pointer to serialized package hash.
+    /// * `package_hash_size` - size of package hash in serialized form.
     /// * `version_ptr` - output parameter where new version assigned by host is set
     /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
     /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
     /// * `named_keys_ptr` - pointer to serialized [`casper_types::addressable_entity::NamedKeys`]
     /// * `named_keys_size` - size of serialized [`casper_types::addressable_entity::NamedKeys`]
     /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
-    /// * `output_size` - size of memory area that host can write to
-    /// * `bytes_written_ptr` - pointer to a value where host will set a number of bytes written to
-    ///   the `output_size` pointer
-    pub fn casper_add_contract_version(
-        contract_package_hash_ptr: *const u8,
-        contract_package_hash_size: usize,
+    /// * `output_size` - expected width of output (currently 32)
+    pub fn casper_add_package_version(
+        package_hash_ptr: *const u8,
+        package_hash_size: usize,
         version_ptr: *const u32,
         entry_points_ptr: *const u8,
         entry_points_size: usize,
@@ -547,7 +545,7 @@ extern "C" {
         named_keys_size: usize,
         output_ptr: *mut u8,
         output_size: usize,
-        bytes_written_ptr: *mut usize,
+        // bytes_written_ptr: *mut usize,
     ) -> i32;
     /// Disables contract in a contract package. Returns non-zero standard error for a failure,
     /// otherwise a zero indicates success.

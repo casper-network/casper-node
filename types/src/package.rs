@@ -31,7 +31,7 @@ use crate::{
     crypto::{self, PublicKey},
     system::SystemEntityType,
     uref::URef,
-    AddressableEntityHash, CLType, CLTyped, HashAddr, Tagged, BLAKE2B_DIGEST_LENGTH,
+    AddressableEntityHash, CLType, CLTyped, HashAddr, Key, Tagged, BLAKE2B_DIGEST_LENGTH,
     KEY_HASH_LENGTH,
 };
 
@@ -1038,14 +1038,29 @@ impl Package {
         self.enabled_versions().0.values().next_back().copied()
     }
 
+    pub fn previous_entity_key(&self) -> Option<Key> {
+        if let Some(previous_entity_hash) = self.current_entity_hash() {
+            return Some(Key::addressable_entity_key(
+                self.get_package_kind().tag(),
+                previous_entity_hash,
+            ));
+        }
+        None
+    }
+
     /// Return the lock status of the entity package.
     pub fn is_locked(&self) -> bool {
+        if self.versions.0.is_empty() {
+            return false;
+        }
+
         match self.lock_status {
             PackageStatus::Unlocked => false,
             PackageStatus::Locked => true,
         }
     }
 
+    // TODO: Check the history of this.
     /// Return the package status itself
     pub fn get_lock_status(&self) -> PackageStatus {
         self.lock_status.clone()

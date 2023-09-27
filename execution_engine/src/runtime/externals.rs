@@ -2,6 +2,7 @@ use std::{collections::BTreeSet, convert::TryFrom};
 
 use wasmi::{Externals, RuntimeArgs, RuntimeValue, Trap};
 
+use crate::ADDRESS_LENGTH;
 use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::AccountHash,
@@ -616,16 +617,16 @@ where
                 let ret = self.add_session_version(entry_points)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }
-            FunctionIndex::AddContractVersion => {
-                // args(0) = pointer to package key in wasm memory
-                // args(1) = size of package key in wasm memory
-                // args(2) = pointer to entrypoints in wasm memory
-                // args(3) = size of entrypoints in wasm memory
-                // args(4) = pointer to named keys in wasm memory
-                // args(5) = size of named keys in wasm memory
-                // args(6) = pointer to output buffer for serialized key
-                // args(7) = size of output buffer
-                // args(8) = pointer to bytes written
+            FunctionIndex::AddPackageVersion => {
+                // args(0) = pointer to package hash in wasm memory
+                // args(1) = size of package hash in wasm memory
+                // args(2) = pointer to entity version in wasm memory
+                // args(3) = pointer to entrypoints in wasm memory
+                // args(4) = size of entrypoints in wasm memory
+                // args(5) = pointer to named keys in wasm memory
+                // args(6) = size of named keys in wasm memory
+                // args(7) = pointer to output buffer for serialized key
+                // args(8) = size of output buffer
                 let (
                     contract_package_hash_ptr,
                     contract_package_hash_size,
@@ -636,8 +637,8 @@ where
                     named_keys_size,
                     output_ptr,
                     output_size,
-                    bytes_written_ptr,
                 ) = Args::parse(args)?;
+
                 self.charge_host_function_call(
                     &host_function_costs.add_contract_version,
                     [
@@ -650,23 +651,28 @@ where
                         named_keys_size,
                         output_ptr,
                         output_size,
-                        bytes_written_ptr,
                     ],
                 )?;
 
-                let contract_package_hash: PackageHash =
+                // Exit if unable to return output.
+                if output_size < 32 {
+                    // `output_size` must be >= actual length of serialized hash bytes
+                    return Ok(Some(RuntimeValue::I32(api_error::i32_from(Err(
+                        ApiError::BufferTooSmall,
+                    )))));
+                }
+
+                let package_hash: PackageHash =
                     self.t_from_mem(contract_package_hash_ptr, contract_package_hash_size)?;
                 let entry_points: EntryPoints =
                     self.t_from_mem(entry_points_ptr, entry_points_size)?;
                 let named_keys: NamedKeys = self.t_from_mem(named_keys_ptr, named_keys_size)?;
                 let ret = self.add_contract_version(
-                    contract_package_hash,
+                    package_hash,
+                    version_ptr,
                     entry_points,
                     named_keys,
                     output_ptr,
-                    output_size as usize,
-                    bytes_written_ptr,
-                    version_ptr,
                 )?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(ret))))
             }

@@ -1251,6 +1251,29 @@ where
         Ok(contract_package)
     }
 
+    pub(crate) fn get_package(&mut self, package_hash: PackageHash) -> Result<Package, Error> {
+        self.tracking_copy
+            .borrow_mut()
+            .get_package(package_hash)
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn get_contract_entity(
+        &mut self,
+        entity_key: Key,
+    ) -> Result<(AddressableEntity, bool), Error> {
+        let entity_hash = if let Some(entity_hash) = entity_key.into_entity_hash() {
+            entity_hash
+        } else {
+            return Err(Error::UnexpectedKeyVariant(entity_key));
+        };
+
+        self.tracking_copy
+            .borrow_mut()
+            .get_contract_entity(entity_hash)
+            .map_err(Into::into)
+    }
+
     /// Gets a dictionary item key from a dictionary referenced by a `uref`.
     pub(crate) fn dictionary_get(
         &mut self,

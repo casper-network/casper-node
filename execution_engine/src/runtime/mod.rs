@@ -57,6 +57,7 @@ use crate::{
         standard_payment::StandardPayment,
     },
     tracking_copy::TrackingCopyExt,
+    ADDRESS_LENGTH,
 };
 pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
 pub use wasm_prep::{
@@ -1170,8 +1171,6 @@ where
                 contract_package_hash,
                 version,
             } => {
-                println!("Here");
-
                 let package_key = Key::from(contract_package_hash);
                 let package: Package = match self.context.read_gs_typed(&package_key) {
                     Ok(package) => package,
@@ -1736,25 +1735,25 @@ where
     ) -> Result<Result<(), ApiError>, Error> {
         let package_hash = self.context.entity().package_hash();
 
-        let package = self
-            .context
-            .read_gs_typed::<Package>(&Key::from(package_hash))?;
+        let package = self.context.get_package(package_hash)?;
 
         if !package.is_account_kind() {
             return Err(Error::InvalidContext);
         }
 
         let byte_code_hash = self.context.new_hash_address()?;
+
         let byte_code = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
             ByteCode::new(ByteCodeKind::V1CasperWasm, module_bytes)
         };
 
-        let entity_hash = self
-            .context
-            .get_entity_key()
-            .into_entity_hash()
-            .expect("I will remove this I swear, I am tired");
+        let entity_hash =
+            if let Some(entity_hash) = self.context.get_entity_key().into_entity_hash() {
+                entity_hash
+            } else {
+                return Err(Error::UnexpectedKeyVariant(self.context.get_entity_key()));
+            };
 
         let entity = self.context.entity();
 
@@ -1769,6 +1768,7 @@ where
             Key::AddressableEntity((package_kind.tag(), entity_hash.value())),
             entity.clone(),
         )?;
+
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 
@@ -1779,80 +1779,48 @@ where
     fn add_contract_version(
         &mut self,
         package_hash: PackageHash,
+        version_ptr: u32,
         entry_points: EntryPoints,
         mut named_keys: NamedKeys,
         output_ptr: u32,
-        output_size: usize,
-        bytes_written_ptr: u32,
-        version_ptr: u32,
     ) -> Result<Result<(), ApiError>, Error> {
-        let mut package = self
-            .context
-            .read_gs_typed::<Package>(&Key::from(package_hash))?;
+        let mut package = self.context.get_package(package_hash)?;
 
         if package.get_package_kind() != PackageKind::SmartContract {
             return Err(Error::InvalidContext);
         }
 
-        let version = package.current_entity_version();
-
         // Return an error if the contract is locked and has some version associated with it.
-        if package.is_locked() && version.is_some() {
+        if package.is_locked() {
             return Err(Error::LockedEntity(package_hash));
         }
-        let (main_purse, associated_keys, action_thresholds) = match package.current_entity_hash() {
-            Some(previous_contract_hash) => {
-                let previous_entity_key = Key::addressable_entity_key(
-                    package.get_package_kind().tag(),
-                    previous_contract_hash,
-                );
 
-                let mut previous_entity: AddressableEntity =
-                    self.context.read_gs_typed(&previous_entity_key)?;
+        let (main_purse, previous_named_keys, action_thresholds, associated_keys) =
+            self.new_version_entity_parts(&package)?;
 
-                // Check if the calling entity must be grandfathered into the new
-                // addressable entity format
-                if previous_entity.associated_keys().is_empty()
-                    && self.context.validate_uref(&package.access_key()).is_ok()
-                {
-                    let upgrade_management_threshold =
-                        previous_entity.action_thresholds().upgrade_management();
-                    previous_entity.add_associated_key(
-                        self.context.get_caller(),
-                        *upgrade_management_threshold,
-                    )?;
-                }
-
-                if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
-                    return Err(Error::UpgradeAuthorizationFailure);
-                }
-
-                // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
-                let previous_named_keys = previous_entity.named_keys().clone();
-                named_keys.append(previous_named_keys);
-                (
-                    previous_entity.main_purse(),
-                    previous_entity.associated_keys().clone(),
-                    previous_entity.action_thresholds().clone(),
-                )
-            }
-            None => (
-                self.create_purse()?,
-                AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
-                ActionThresholds::default(),
-            ),
-        };
+        // TODO: EE-1032 - Implement different ways of carrying on existing named keys.
+        named_keys.append(previous_named_keys);
 
         let byte_code_hash = self.context.new_hash_address()?;
+
+        let entity_hash = self.context.new_hash_address()?;
+
+        let protocol_version = self.context.protocol_version();
+
+        let insert_contract_result =
+            package.insert_entity_version(protocol_version.value().major, entity_hash.into());
+
         let byte_code = {
             let module_bytes = self.get_module_from_entry_points(&entry_points)?;
             ByteCode::new(ByteCodeKind::V1CasperWasm, module_bytes)
         };
 
-        let entity_hash = self.context.new_hash_address()?;
+        self.context.metered_write_gs_unsafe(
+            Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash)),
+            byte_code,
+        )?;
 
-        let protocol_version = self.context.protocol_version();
-        let major = protocol_version.value().major;
+        let entity_key = Key::AddressableEntity((PackageKindTag::SmartContract, entity_hash));
 
         let entity = AddressableEntity::new(
             package_hash,
@@ -1865,51 +1833,23 @@ where
             action_thresholds,
         );
 
-        let insert_contract_result = package.insert_entity_version(major, entity_hash.into());
-
-        self.context.metered_write_gs_unsafe(
-            Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash)),
-            byte_code,
-        )?;
-
-        println!(
-            "Wrote byte code record for {:?}",
-            base16::encode_lower(&byte_code_hash)
-        );
-
-        let entity_key = Key::AddressableEntity((PackageKindTag::SmartContract, entity_hash));
-
         self.context.metered_write_gs_unsafe(entity_key, entity)?;
         self.context
             .metered_write_gs_unsafe(package_hash, package)?;
 
-        // return contract key to caller
+        // set return values to buffer
         {
-            let key_bytes = match entity_hash.to_bytes() {
+            let hash_bytes = match entity_hash.to_bytes() {
                 Ok(bytes) => bytes,
                 Err(error) => return Ok(Err(error.into())),
             };
 
-            // `output_size` must be >= actual length of serialized Key bytes
-            if output_size < key_bytes.len() {
-                return Ok(Err(ApiError::BufferTooSmall));
-            }
-
-            // Set serialized Key bytes into the output buffer
-            if let Err(error) = self.try_get_memory()?.set(output_ptr, &key_bytes) {
+            // Set serialized hash bytes into the output buffer
+            if let Err(error) = self.try_get_memory()?.set(output_ptr, &hash_bytes) {
                 return Err(Error::Interpreter(error.into()));
             }
 
-            // SAFETY: For all practical purposes following conversion is assumed to be safe
-            let bytes_size: u32 = key_bytes
-                .len()
-                .try_into()
-                .expect("Serialized value should fit within the limit");
-            let size_bytes = bytes_size.to_le_bytes(); // Wasm is little-endian
-            if let Err(error) = self.try_get_memory()?.set(bytes_written_ptr, &size_bytes) {
-                return Err(Error::Interpreter(error.into()));
-            }
-
+            // Set version into VM shared memory
             let version_value: u32 = insert_contract_result.entity_version();
             let version_bytes = version_value.to_le_bytes();
             if let Err(error) = self.try_get_memory()?.set(version_ptr, &version_bytes) {
@@ -1918,6 +1858,54 @@ where
         }
 
         Ok(Ok(()))
+    }
+
+    fn new_version_entity_parts(
+        &mut self,
+        package: &Package,
+    ) -> Result<(URef, NamedKeys, ActionThresholds, AssociatedKeys), Error> {
+        if let Some(previous_entity_key) = package.previous_entity_key() {
+            let (mut previous_entity, requires_purse_creation) =
+                self.context.get_contract_entity(previous_entity_key)?;
+
+            let action_thresholds = previous_entity.action_thresholds().clone();
+
+            // Check if the calling entity must be grandfathered into the new
+            // addressable entity format
+            if self.context.validate_uref(&package.access_key()).is_ok() {
+                previous_entity.add_associated_key(
+                    self.context.get_caller(),
+                    *action_thresholds.upgrade_management(),
+                )?;
+            }
+
+            let mut associated_keys = previous_entity.associated_keys().clone();
+
+            if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
+                return Err(Error::UpgradeAuthorizationFailure);
+            }
+
+            let main_purse = if !requires_purse_creation {
+                self.create_purse()?
+            } else {
+                previous_entity.main_purse()
+            };
+            let previous_named_keys = previous_entity.take_named_keys();
+
+            return Ok((
+                main_purse,
+                previous_named_keys,
+                action_thresholds,
+                associated_keys,
+            ));
+        }
+
+        Ok((
+            self.create_purse()?,
+            NamedKeys::new(),
+            ActionThresholds::default(),
+            AssociatedKeys::new(self.context.get_caller(), Weight::new(1)),
+        ))
     }
 
     fn disable_contract_version(

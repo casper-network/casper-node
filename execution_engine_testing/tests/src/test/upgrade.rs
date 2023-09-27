@@ -14,6 +14,7 @@ use casper_types::{
     AddressableEntityHash, CLValue, EraId, PackageHash, ProtocolVersion, PublicKey, RuntimeArgs,
     StoredValue, U512,
 };
+use get_call_stack_recursive_subcall::ContractAddress::ContractPackageHash;
 
 const DO_NOTHING_STORED_CONTRACT_NAME: &str = "do_nothing_stored";
 const DO_NOTHING_STORED_UPGRADER_CONTRACT_NAME: &str = "do_nothing_stored_upgrader";
@@ -1121,6 +1122,7 @@ enum InvocationType {
     ByContractName,
     ByPackageHash(Option<EntityVersion>),
     ByPackageName(Option<EntityVersion>),
+    ByUpgrader,
 }
 
 fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
@@ -1141,6 +1143,14 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         .unwrap()
         .expect("must convert to hash");
 
+    let package_hash = default_addressable_entity
+        .named_keys()
+        .get(HASH_KEY_NAME)
+        .expect("must have package named key entry")
+        .into_hash_addr()
+        .map(PackageHash::new)
+        .unwrap();
+
     let execute_request = match invocation_type {
         InvocationType::ByPackageName(maybe_contract_version) => {
             ExecuteRequestBuilder::versioned_contract_call_by_name(
@@ -1154,14 +1164,6 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
             .build()
         }
         InvocationType::ByPackageHash(maybe_contract_version) => {
-            let package_hash = default_addressable_entity
-                .named_keys()
-                .get(HASH_KEY_NAME)
-                .expect("must have package named key entry")
-                .into_hash_addr()
-                .map(PackageHash::new)
-                .unwrap();
-
             ExecuteRequestBuilder::versioned_contract_call_by_hash(
                 *DEFAULT_ACCOUNT_ADDR,
                 package_hash,
@@ -1188,12 +1190,32 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         )
         .with_protocol_version(new_protocol_version)
         .build(),
+        InvocationType::ByUpgrader => ExecuteRequestBuilder::standard(
+            *DEFAULT_ACCOUNT_ADDR,
+            &format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME),
+            runtime_args! {
+                ARG_CONTRACT_PACKAGE => package_hash
+            },
+        )
+        .with_protocol_version(new_protocol_version)
+        .build(),
     };
 
     builder.exec(execute_request).expect_success().commit();
 
+    let updated_entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have default entity");
+
+    let updated_hash = updated_entity
+        .named_keys()
+        .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
+        .map(|holder_key| holder_key.into_entity_hash())
+        .unwrap()
+        .expect("must convert to hash");
+
     let updated_purse_entity = builder
-        .get_addressable_entity(entity_hash)
+        .get_addressable_entity(updated_hash)
         .expect("must have purse holder entity hash");
 
     let actual_associated_keys = updated_purse_entity.associated_keys();
@@ -1237,4 +1259,10 @@ fn should_correctly_migrate_contract_when_invoked_by_contract_hash() {
 #[test]
 fn should_correctly_migrate_contract_when_invoked_by_contract_name() {
     call_and_migrate_purse_holder_contract(InvocationType::ByContractName)
+}
+
+#[ignore]
+#[test]
+fn should_correctly_migrate_and_upgrade_with_upgrader() {
+    call_and_migrate_purse_holder_contract(InvocationType::ByUpgrader)
 }

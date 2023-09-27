@@ -668,16 +668,16 @@ impl From<AddressableEntity>
         ActionThresholds,
     )
 {
-    fn from(contract: AddressableEntity) -> Self {
+    fn from(entity: AddressableEntity) -> Self {
         (
-            contract.package_hash,
-            contract.byte_code_hash,
-            contract.named_keys,
-            contract.entry_points,
-            contract.protocol_version,
-            contract.main_purse,
-            contract.associated_keys,
-            contract.action_thresholds,
+            entity.package_hash,
+            entity.byte_code_hash,
+            entity.named_keys,
+            entity.entry_points,
+            entity.protocol_version,
+            entity.main_purse,
+            entity.associated_keys,
+            entity.action_thresholds,
         )
     }
 }
