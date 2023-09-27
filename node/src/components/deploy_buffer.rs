@@ -213,10 +213,6 @@ impl DeployBuffer {
     /// Update buffer considering new stored deploy.
     fn register_deploy(&mut self, deploy: Deploy) {
         let deploy_hash = deploy.hash();
-        if deploy.is_valid().is_err() {
-            error!(%deploy_hash, "DeployBuffer: invalid deploy must not be buffered");
-            return;
-        }
         if self.dead.contains(deploy_hash) {
             info!(%deploy_hash, "DeployBuffer: attempt to register already dead deploy");
             return;
