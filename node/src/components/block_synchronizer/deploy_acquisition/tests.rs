@@ -1,10 +1,14 @@
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::types::{Block, Deploy};
 use assert_matches::assert_matches;
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
-use casper_types::{testing::TestRng, AccessRights, CLValue, StoredValue, URef};
 use rand::Rng;
+
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use casper_types::{
+    testing::TestRng, AccessRights, CLValue, Deploy, StoredValue, TestBlockBuilder, URef,
+};
+
+use crate::types::ApprovalsHashes;
 
 use super::*;
 
@@ -23,11 +27,17 @@ fn gen_approvals_hashes<'a, I: Iterator<Item = &'a Deploy> + Clone>(
     rng: &mut TestRng,
     deploys_iter: I,
 ) -> ApprovalsHashes {
-    let block = Block::random_with_deploys(rng, deploys_iter.clone());
+    let era = rng.gen_range(0..6);
+    let block = TestBlockBuilder::new()
+        .era(era)
+        .height(era * 10 + rng.gen_range(0..10))
+        .deploys(deploys_iter.clone())
+        .build(rng);
+
     ApprovalsHashes::new(
         block.hash(),
         deploys_iter
-            .map(|deploy| deploy.approvals_hash().unwrap())
+            .map(|deploy| deploy.compute_approvals_hash().unwrap())
             .collect(),
         TrieMerkleProof::new(
             URef::new([255; 32], AccessRights::NONE).into(),
@@ -47,7 +57,7 @@ fn dont_apply_approvals_hashes_when_acquiring_by_id() {
         test_deploys
             .iter()
             .map(|(deploy_hash, deploy)| {
-                DeployId::new(*deploy_hash, deploy.approvals_hash().unwrap())
+                DeployId::new(*deploy_hash, deploy.compute_approvals_hash().unwrap())
             })
             .collect(),
         false,
@@ -92,7 +102,7 @@ fn apply_approvals_on_acquisition_by_hash_creates_correct_ids() {
     for (deploy_hash, deploy) in test_deploys.iter().take(test_deploys.len() - 1) {
         let acceptance = deploy_acquisition.apply_deploy(DeployId::new(
             *deploy_hash,
-            deploy.approvals_hash().unwrap(),
+            deploy.compute_approvals_hash().unwrap(),
         ));
         assert_matches!(acceptance, Some(Acceptance::NeededIt));
     }
@@ -105,7 +115,7 @@ fn apply_approvals_on_acquisition_by_hash_creates_correct_ids() {
     let last_deploy = test_deploys.values().last().unwrap();
     let last_deploy_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
         *last_deploy.hash(),
-        last_deploy.approvals_hash().unwrap(),
+        last_deploy.compute_approvals_hash().unwrap(),
     ));
     assert_matches!(last_deploy_acceptance, None);
 }
@@ -123,7 +133,7 @@ fn apply_approvals_hashes_after_having_already_applied_deploys() {
     // Apply a valid deploy that was not applied before. This should succeed.
     let acceptance = deploy_acquisition.apply_deploy(DeployId::new(
         *first_deploy_hash,
-        first_deploy.approvals_hash().unwrap(),
+        first_deploy.compute_approvals_hash().unwrap(),
     ));
     assert_matches!(acceptance, Some(Acceptance::NeededIt));
 
@@ -150,7 +160,7 @@ fn partially_applied_deploys_on_acquisition_by_hash_should_need_missing_deploys(
     for (deploy_hash, deploy) in test_deploys.iter().take(test_deploys.len() - 1) {
         let acceptance = deploy_acquisition.apply_deploy(DeployId::new(
             *deploy_hash,
-            deploy.approvals_hash().unwrap(),
+            deploy.compute_approvals_hash().unwrap(),
         ));
         assert_matches!(acceptance, Some(Acceptance::NeededIt));
     }
@@ -165,14 +175,14 @@ fn partially_applied_deploys_on_acquisition_by_hash_should_need_missing_deploys(
     // Apply the last deploy and check the acceptance
     let last_deploy_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
         *last_deploy.hash(),
-        last_deploy.approvals_hash().unwrap(),
+        last_deploy.compute_approvals_hash().unwrap(),
     ));
     assert_matches!(last_deploy_acceptance, Some(Acceptance::NeededIt));
 
     // Try to add the last deploy again to check the acceptance
     let already_registered_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
         *last_deploy.hash(),
-        last_deploy.approvals_hash().unwrap(),
+        last_deploy.compute_approvals_hash().unwrap(),
     ));
     assert_matches!(already_registered_acceptance, Some(Acceptance::HadIt));
 }
@@ -187,7 +197,7 @@ fn apply_unregistered_deploy_returns_no_acceptance() {
     let unregistered_deploy = Deploy::random(&mut rng);
     let unregistered_deploy_acceptance = deploy_acquisition.apply_deploy(DeployId::new(
         *unregistered_deploy.hash(),
-        unregistered_deploy.approvals_hash().unwrap(),
+        unregistered_deploy.compute_approvals_hash().unwrap(),
     ));
 
     // An unregistered deploy should not be accepted

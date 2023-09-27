@@ -2,34 +2,18 @@ use once_cell::sync::Lazy;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, UpgradeRequestBuilder, DEFAULT_ACCOUNT_ADDR,
-    DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
+    DEFAULT_PROTOCOL_VERSION, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            engine_config::{
-                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            EngineConfig, Error, DEFAULT_MAX_QUERY_DEPTH, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        },
-        execution::Error as ExecError,
-    },
-    shared::{
-        wasm_config::{WasmConfig, DEFAULT_WASM_MAX_MEMORY},
-        wasm_prep::DEFAULT_MAX_PARAMETER_COUNT,
-    },
+    engine_state::{EngineConfigBuilder, Error},
+    execution::Error as ExecError,
+    runtime::{PreprocessingError, WasmValidationError, DEFAULT_MAX_PARAMETER_COUNT},
 };
-use casper_types::{EraId, ProtocolVersion, RuntimeArgs};
+use casper_types::{EraId, ProtocolVersion, RuntimeArgs, WasmConfig};
 
 use crate::wasm_utils;
 
-// Previously this value was derived from `wasmi::DEFAULT_CALL_STACK_LIMIT` as we haven't a check
-// for argument count declared in wasm functions. We have very restrictive stack height which also
-// means the maximum allowed function count still fails at runtime inside the stack limiter.
-//
-// Max parameter count - 1 will exercise the height limiter while passing the preprocessing stage.
-const ARITY_INTERPRETER_LIMIT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize - 1;
+const ARITY_INTERPRETER_LIMIT: usize = DEFAULT_MAX_PARAMETER_COUNT as usize;
 const DEFAULT_ACTIVATION_POINT: EraId = EraId::new(1);
 const I32_WAT_TYPE: &str = "i64";
 const NEW_WASM_STACK_HEIGHT: u32 = 16;
@@ -51,7 +35,7 @@ fn initialize_builder() -> LmdbWasmTestBuilder {
 
 #[ignore]
 #[test]
-fn should_verify_interpreter_stack_limit() {
+fn should_pass_max_parameter_count() {
     let mut builder = initialize_builder();
 
     // This runs out of the interpreter stack limit
@@ -64,16 +48,32 @@ fn should_verify_interpreter_stack_limit() {
         RuntimeArgs::default(),
     )
     .build();
-    builder.exec(exec).expect_failure().commit();
 
+    builder.exec(exec).expect_success().commit();
+
+    let module_bytes = wasm_utils::make_n_arg_call_bytes(ARITY_INTERPRETER_LIMIT + 1, I32_WAT_TYPE)
+        .expect("should make wasm bytes");
+
+    let exec = ExecuteRequestBuilder::module_bytes(
+        *DEFAULT_ACCOUNT_ADDR,
+        module_bytes,
+        RuntimeArgs::default(),
+    )
+    .build();
+
+    builder.exec(exec).expect_failure().commit();
     let error = builder.get_error().expect("should have error");
 
-    // For default stack height of 64 * 1024 with a function that takes 16384 i32 arguments it will
-    // fail with following message: Function #0 reading/validation error: At instruction
-    // GetGlobal(0)(@16386): Stack: exceeded stack limit 16384 But due to the default being
-    // small it fails with Unreachable from within the stack height limiter.
     assert!(
-        matches!(&error, Error::Exec(ExecError::Interpreter(s)) if s.contains("Unreachable")),
+        matches!(
+            error,
+            Error::WasmPreprocessing(PreprocessingError::WasmValidation(
+                WasmValidationError::TooManyParameters {
+                    max: 256,
+                    actual: 257
+                }
+            ))
+        ),
         "{:?}",
         error
     );
@@ -104,23 +104,9 @@ fn should_observe_stack_height_limit() {
 
     {
         // We need to perform an upgrade to be able to observe new max wasm stack height.
-        let new_engine_config = EngineConfig::new(
-            DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_ASSOCIATED_KEYS,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-            DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-            DEFAULT_STRICT_ARGUMENT_CHECKING,
-            DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            None,
-            WasmConfig::new(
-                DEFAULT_WASM_MAX_MEMORY,
-                NEW_WASM_STACK_HEIGHT,
-                Default::default(),
-                Default::default(),
-                Default::default(),
-            ),
-            Default::default(),
-        );
+        let new_engine_config = EngineConfigBuilder::default()
+            .with_wasm_max_stack_height(NEW_WASM_STACK_HEIGHT)
+            .build();
 
         let mut upgrade_request = UpgradeRequestBuilder::new()
             .with_current_protocol_version(*OLD_PROTOCOL_VERSION)
@@ -128,7 +114,8 @@ fn should_observe_stack_height_limit() {
             .with_activation_point(DEFAULT_ACTIVATION_POINT)
             .build();
 
-        builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+        builder
+            .upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
     }
 
     // This runs out of the interpreter stack limit.

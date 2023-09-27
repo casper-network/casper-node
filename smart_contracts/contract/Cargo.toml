@@ -22,3 +22,7 @@ no-std-helpers = ["wee_alloc"]
 test-support = []
 # DEPRECATED - enabling `std` has no effect.
 std = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -8,11 +8,11 @@
 //! While the [`main`](fn.main.html) function is the central entrypoint for the node application,
 //! its core event loop is found inside the [reactor](reactor/index.html).
 
-#![doc(html_root_url = "https://docs.rs/casper-node/1.5.0-rc.1")]
+#![doc(html_root_url = "https://docs.rs/casper-node/1.5.2")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
+    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
+    test(attr(deny(warnings)))
 )]
 #![warn(
     missing_docs,
@@ -35,21 +35,18 @@ pub(crate) mod testing;
 pub(crate) mod tls;
 pub mod types;
 pub mod utils;
-pub use components::{
-    contract_runtime,
-    rpc_server::rpcs,
-    storage::{self, Config as StorageConfig},
-};
-pub use reactor::main_reactor::Config as MainReactorConfig;
-pub use utils::WithDir;
 
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::{
+    env,
+    sync::{atomic::AtomicUsize, Arc},
+};
 
 use ansi_term::Color::Red;
 use once_cell::sync::Lazy;
 #[cfg(not(test))]
 use rand::SeedableRng;
 use signal_hook::{consts::TERM_SIGNALS, flag};
+use tracing::warn;
 
 pub(crate) use components::{
     block_accumulator::Config as BlockAccumulatorConfig,
@@ -66,17 +63,27 @@ pub(crate) use components::{
     rpc_server::{Config as RpcServerConfig, SpeculativeExecConfig},
     upgrade_watcher::Config as UpgradeWatcherConfig,
 };
+pub use components::{
+    contract_runtime,
+    rpc_server::rpcs,
+    storage::{self, Config as StorageConfig},
+};
+pub use reactor::main_reactor::Config as MainReactorConfig;
 pub(crate) use types::NodeRng;
+pub use utils::WithDir;
 
 /// The maximum thread count which should be spawned by the tokio runtime.
 pub const MAX_THREAD_COUNT: usize = 512;
 
 fn version_string(color: bool) -> String {
-    let mut version = format!(
-        "{}-{}",
-        env!("CARGO_PKG_VERSION"),
-        env!("VERGEN_GIT_SHA_SHORT")
-    );
+    let mut version = env!("CARGO_PKG_VERSION").to_string();
+    if let Ok(git_sha) = env::var("VERGEN_GIT_SHA") {
+        version = format!("{}-{}", version, git_sha);
+    } else {
+        warn!(
+            "vergen env var unavailable, casper-node build version will not include git short hash"
+        );
+    }
 
     // Add a `@DEBUG` (or similar) tag to release string on non-release builds.
     if env!("NODE_BUILD_PROFILE") != "release" {

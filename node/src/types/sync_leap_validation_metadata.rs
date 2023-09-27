@@ -1,8 +1,7 @@
+use casper_types::{ActivationPoint, Chainspec, GlobalStateUpdate};
 use datasize::DataSize;
 use num_rational::Ratio;
 use serde::Serialize;
-
-use super::{chainspec::GlobalStateUpdate, ActivationPoint, Chainspec};
 
 #[derive(Clone, DataSize, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct SyncLeapValidationMetaData {

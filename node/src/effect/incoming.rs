@@ -10,13 +10,14 @@ use std::{
 use datasize::DataSize;
 use serde::Serialize;
 
+use casper_types::FinalitySignature;
+
+use super::AutoClosingResponder;
 use crate::{
     components::{consensus, fetcher::Tag, gossiper},
     protocol::Message,
-    types::{FinalitySignature, NodeId, TrieOrChunkIdDisplay},
+    types::{NodeId, TrieOrChunkIdDisplay},
 };
-
-use super::AutoClosingResponder;
 
 /// An envelope for an incoming message, attaching a sender address.
 #[derive(DataSize, Debug, Serialize)]

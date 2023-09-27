@@ -1,11 +1,11 @@
 use std::fmt::{self, Display, Formatter};
 
-use casper_hashing::Digest;
 use derive_more::From;
 use either::Either;
 use serde::Serialize;
 
-use casper_execution_engine::core::engine_state;
+use casper_execution_engine::engine_state;
+use casper_types::{Block, BlockHash, BlockHeader, Deploy, Digest, FinalitySignature};
 
 use super::GlobalStateSynchronizerEvent;
 use crate::{
@@ -15,8 +15,8 @@ use crate::{
     },
     effect::requests::BlockSynchronizerRequest,
     types::{
-        ApprovalsHashes, Block, BlockExecutionResultsOrChunk, BlockHash, BlockHeader, Deploy,
-        FinalitySignature, FinalizedBlock, LegacyDeploy, NodeId, SyncLeap,
+        ApprovalsHashes, BlockExecutionResultsOrChunk, FinalizedBlock, LegacyDeploy, NodeId,
+        SyncLeap,
     },
 };
 

@@ -106,7 +106,6 @@ use std::{
     time::{Duration, Instant},
 };
 
-use casper_storage::global_state::storage::trie::TrieRaw;
 use datasize::DataSize;
 use futures::{channel::oneshot, future::BoxFuture, FutureExt};
 use num_rational::Ratio;
@@ -116,18 +115,19 @@ use smallvec::{smallvec, SmallVec};
 use tokio::{sync::Semaphore, time};
 use tracing::{debug, error, warn};
 
-use casper_execution_engine::{
-    core::engine_state::{
-        self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
-        GetBidsResult, QueryRequest, QueryResult,
-    },
-    shared::execution_journal::ExecutionJournal,
+use casper_execution_engine::engine_state::{
+    self, era_validators::GetEraValidatorsError, BalanceRequest, BalanceResult, GetBidsRequest,
+    GetBidsResult, QueryRequest, QueryResult,
 };
-use casper_hashing::Digest;
+use casper_storage::global_state::trie::TrieRaw;
 use casper_types::{
-    account::Account, bytesrepr::Bytes, system::auction::EraValidators, Contract, ContractPackage,
-    EraId, ExecutionEffect, ExecutionResult, Key, PublicKey, TimeDiff, Timestamp, Transfer, URef,
-    U512,
+    bytesrepr::Bytes,
+    execution::{Effects as ExecutionEffects, ExecutionResult, ExecutionResultV2},
+    package::Package,
+    system::auction::EraValidators,
+    AddressableEntity, Block, BlockHash, BlockHeader, BlockSignatures, BlockV2, ChainspecRawBytes,
+    Deploy, DeployHash, DeployHeader, Digest, EraId, FinalitySignature, FinalitySignatureId, Key,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionHash, TransactionId, Transfer, U512,
 };
 
 use crate::{
@@ -138,11 +138,11 @@ use crate::{
         },
         consensus::{ClContext, EraDump, ProposedBlock, ValidatorChange},
         contract_runtime::{ContractRuntimeError, EraValidatorsRequest},
-        deploy_acceptor,
         diagnostics_port::StopAtSpec,
         fetcher::{FetchItem, FetchResult},
         gossiper::GossipItem,
         network::{blocklist::BlocklistJustification, FromIncoming, NetworkInsights},
+        transaction_acceptor,
         upgrade_watcher::NextUpgrade,
     },
     contract_runtime::{
@@ -150,29 +150,28 @@ use crate::{
     },
     reactor::{main_reactor::ReactorState, EventQueueHandle, QueueKind},
     types::{
-        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange, Block,
-        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader,
-        BlockSignatures, BlockWithMetadata, ChainspecRawBytes, Deploy, DeployHash, DeployHeader,
-        DeployId, DeployMetadataExt, DeployWithFinalizedApprovals, FinalitySignature,
-        FinalitySignatureId, FinalizedApprovals, FinalizedBlock, LegacyDeploy, MetaBlock,
-        MetaBlockState, NodeId, TrieOrChunk, TrieOrChunkId,
+        appendable_block::AppendableBlock, ApprovalsHashes, AvailableBlockRange,
+        BlockExecutionResultsOrChunk, BlockExecutionResultsOrChunkId, BlockWithMetadata,
+        DeployExecutionInfo, DeployWithFinalizedApprovals, FinalizedApprovals, FinalizedBlock,
+        LegacyDeploy, MetaBlock, MetaBlockState, NodeId, SignedBlock, TrieOrChunk, TrieOrChunkId,
     },
     utils::{fmt_limit::FmtLimit, SharedFlag, Source},
 };
 use announcements::{
     BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-    ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement, FatalAnnouncement,
-    FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement,
-    MetaBlockAnnouncement, PeerBehaviorAnnouncement, QueueDumpFormat, RpcServerAnnouncement,
+    ControlAnnouncement, DeployBufferAnnouncement, FatalAnnouncement, FetchedNewBlockAnnouncement,
+    FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
+    PeerBehaviorAnnouncement, QueueDumpFormat, TransactionAcceptorAnnouncement,
     UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
 };
 use diagnostics_port::DumpConsensusStateRequest;
 use requests::{
-    BeginGossipRequest, BlockAccumulatorRequest, BlockSynchronizerRequest, BlockValidationRequest,
-    ChainspecRawBytesRequest, ConsensusRequest, ContractRuntimeRequest, DeployBufferRequest,
-    FetcherRequest, MakeBlockExecutableRequest, MarkBlockCompletedRequest, MetricsRequest,
-    NetworkInfoRequest, NetworkRequest, ReactorStatusRequest, SetNodeStopRequest, StorageRequest,
-    SyncGlobalStateRequest, TrieAccumulatorRequest, UpgradeWatcherRequest,
+    AcceptTransactionRequest, BeginGossipRequest, BlockAccumulatorRequest,
+    BlockSynchronizerRequest, BlockValidationRequest, ChainspecRawBytesRequest, ConsensusRequest,
+    ContractRuntimeRequest, DeployBufferRequest, FetcherRequest, MakeBlockExecutableRequest,
+    MarkBlockCompletedRequest, MetricsRequest, NetworkInfoRequest, NetworkRequest,
+    ReactorStatusRequest, SetNodeStopRequest, StorageRequest, SyncGlobalStateRequest,
+    TrieAccumulatorRequest, UpgradeWatcherRequest,
 };
 
 /// A resource that will never be available, thus trying to acquire it will wait forever.
@@ -917,33 +916,40 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Announces that the HTTP API server has received a deploy.
-    pub(crate) async fn announce_deploy_received(
+    /// Try to accept a transaction received from the JSON-RPC server.
+    pub(crate) async fn try_accept_transaction(
         self,
-        deploy: Box<Deploy>,
-        responder: Option<Responder<Result<(), deploy_acceptor::Error>>>,
-    ) where
-        REv: From<RpcServerAnnouncement>,
+        transaction: Transaction,
+        speculative_exec_at_block: Option<Box<BlockHeader>>,
+    ) -> Result<(), transaction_acceptor::Error>
+    where
+        REv: From<AcceptTransactionRequest>,
     {
-        self.event_queue
-            .schedule(
-                RpcServerAnnouncement::DeployReceived { deploy, responder },
-                QueueKind::Api,
-            )
-            .await;
+        self.make_request(
+            |responder| AcceptTransactionRequest {
+                transaction,
+                speculative_exec_at_block,
+                responder,
+            },
+            QueueKind::Api,
+        )
+        .await
     }
 
-    /// Announces that a deploy not previously stored has now been accepted and stored.
-    pub(crate) fn announce_new_deploy_accepted(
+    /// Announces that a transaction not previously stored has now been accepted and stored.
+    pub(crate) fn announce_new_transaction_accepted(
         self,
-        deploy: Box<Deploy>,
+        transaction: Arc<Transaction>,
         source: Source,
     ) -> impl Future<Output = ()>
     where
-        REv: From<DeployAcceptorAnnouncement>,
+        REv: From<TransactionAcceptorAnnouncement>,
     {
         self.event_queue.schedule(
-            DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+            TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                transaction,
+                source,
+            },
             QueueKind::Validation,
         )
     }
@@ -977,17 +983,19 @@ impl<REv> EffectBuilder<REv> {
             .await;
     }
 
-    /// Announces that an invalid deploy has been received.
-    pub(crate) fn announce_invalid_deploy(
+    pub(crate) fn announce_invalid_transaction(
         self,
-        deploy: Box<Deploy>,
+        transaction: Transaction,
         source: Source,
     ) -> impl Future<Output = ()>
     where
-        REv: From<DeployAcceptorAnnouncement>,
+        REv: From<TransactionAcceptorAnnouncement>,
     {
         self.event_queue.schedule(
-            DeployAcceptorAnnouncement::InvalidDeploy { deploy, source },
+            TransactionAcceptorAnnouncement::InvalidTransaction {
+                transaction,
+                source,
+            },
             QueueKind::Validation,
         )
     }
@@ -1006,19 +1014,13 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Announces a committed Step success.
-    pub(crate) async fn announce_commit_step_success(
-        self,
-        era_id: EraId,
-        execution_journal: ExecutionJournal,
-    ) where
+    pub(crate) async fn announce_commit_step_success(self, era_id: EraId, effects: ExecutionEffects)
+    where
         REv: From<ContractRuntimeAnnouncement>,
     {
         self.event_queue
             .schedule(
-                ContractRuntimeAnnouncement::CommitStepSuccess {
-                    era_id,
-                    execution_effect: ExecutionEffect::from(&execution_journal),
-                },
+                ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
                 QueueKind::ContractRuntime,
             )
             .await
@@ -1094,7 +1096,7 @@ impl<REv> EffectBuilder<REv> {
     /// Puts the given block and approvals hashes into the linear block store.
     pub(crate) async fn put_executed_block_to_storage(
         self,
-        block: Arc<Block>,
+        block: Arc<BlockV2>,
         approvals_hashes: Box<ApprovalsHashes>,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) -> bool
@@ -1194,6 +1196,20 @@ impl<REv> EffectBuilder<REv> {
                 only_from_available_block_range,
                 responder,
             },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    pub(crate) async fn get_switch_block_header_by_era_id_from_storage(
+        self,
+        era_id: EraId,
+    ) -> Option<BlockHeader>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSwitchBlockHeaderByEra { era_id, responder },
             QueueKind::FromStorage,
         )
         .await
@@ -1453,13 +1469,15 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Puts the given deploy into the deploy store.
-    pub(crate) async fn put_deploy_to_storage(self, deploy: Box<Deploy>) -> bool
+    pub(crate) async fn put_transaction_to_storage(self, transaction: Transaction) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::PutDeploy { deploy, responder },
+            |responder| StorageRequest::PutTransaction {
+                transaction: Arc::new(transaction),
+                responder,
+            },
             QueueKind::ToStorage,
         )
         .await
@@ -1507,17 +1525,20 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Gets the requested deploy from the deploy store by DeployId.
+    /// Gets the requested transaction from storage by DeployId.
     ///
-    /// Returns the "original" deploy, which are the first received by the node, along with a
+    /// Returns the "original" transaction, which is the first received by the node, along with a
     /// potentially different set of approvals used during execution of the recorded block.
-    pub(crate) async fn get_stored_deploy(self, deploy_id: DeployId) -> Option<Deploy>
+    pub(crate) async fn get_stored_transaction(
+        self,
+        transaction_id: TransactionId,
+    ) -> Option<Transaction>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeploy {
-                deploy_id,
+            |responder| StorageRequest::GetTransaction {
+                transaction_id,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1525,13 +1546,13 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    pub(crate) async fn is_deploy_stored(self, deploy_id: DeployId) -> bool
+    pub(crate) async fn is_transaction_stored(self, transaction_id: TransactionId) -> bool
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::IsDeployStored {
-                deploy_id,
+            |responder| StorageRequest::IsTransactionStored {
+                transaction_id,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1544,6 +1565,7 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn put_execution_results_to_storage(
         self,
         block_hash: BlockHash,
+        block_height: u64,
         execution_results: HashMap<DeployHash, ExecutionResult>,
     ) where
         REv: From<StorageRequest>,
@@ -1551,6 +1573,7 @@ impl<REv> EffectBuilder<REv> {
         self.make_request(
             |responder| StorageRequest::PutExecutionResults {
                 block_hash: Box::new(block_hash),
+                block_height,
                 execution_results,
                 responder,
             },
@@ -1560,16 +1583,36 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested deploys from the deploy store.
-    pub(crate) async fn get_deploy_and_metadata_from_storage(
+    pub(crate) async fn get_deploy_and_execution_info_from_storage(
         self,
         deploy_hash: DeployHash,
-    ) -> Option<(DeployWithFinalizedApprovals, DeployMetadataExt)>
+    ) -> Option<(DeployWithFinalizedApprovals, Option<DeployExecutionInfo>)>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetDeployAndMetadata {
+            |responder| StorageRequest::GetDeployAndExecutionInfo {
                 deploy_hash,
+                responder,
+            },
+            QueueKind::FromStorage,
+        )
+        .await
+    }
+
+    /// Gets the requested block and its finality signatures.
+    pub(crate) async fn get_signed_block_at_height_from_storage(
+        self,
+        block_height: u64,
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock>
+    where
+        REv: From<StorageRequest>,
+    {
+        self.make_request(
+            |responder| StorageRequest::GetSignedBlockByHeight {
+                block_height,
+                only_from_available_block_range,
                 responder,
             },
             QueueKind::FromStorage,
@@ -1643,16 +1686,16 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the requested block by hash with its associated metadata.
-    pub(crate) async fn get_block_with_metadata_from_storage(
+    pub(crate) async fn get_signed_block_from_storage(
         self,
         block_hash: BlockHash,
         only_from_available_block_range: bool,
-    ) -> Option<BlockWithMetadata>
+    ) -> Option<SignedBlock>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetBlockAndMetadataByHash {
+            |responder| StorageRequest::GetSignedBlockByHash {
                 block_hash,
                 only_from_available_block_range,
                 responder,
@@ -1663,14 +1706,18 @@ impl<REv> EffectBuilder<REv> {
     }
 
     /// Gets the highest block with its associated metadata.
-    pub(crate) async fn get_highest_block_with_metadata_from_storage(
+    pub(crate) async fn get_highest_signed_block_from_storage(
         self,
-    ) -> Option<BlockWithMetadata>
+        only_from_available_block_range: bool,
+    ) -> Option<SignedBlock>
     where
         REv: From<StorageRequest>,
     {
         self.make_request(
-            |responder| StorageRequest::GetHighestBlockWithMetadata { responder },
+            |responder| StorageRequest::GetHighestSignedBlock {
+                only_from_available_block_range,
+                responder,
+            },
             QueueKind::FromStorage,
         )
         .await
@@ -1909,78 +1956,34 @@ impl<REv> EffectBuilder<REv> {
         .await
     }
 
-    /// Retrieves an `Account` from global state if present.
-    pub(crate) async fn get_account_from_global_state(
+    /// Retrieves an `AddressableEntity` from under the given key in global state if present.
+    pub(crate) async fn get_addressable_entity(
         self,
         state_root_hash: Digest,
-        account_key: Key,
-    ) -> Option<Account>
+        key: Key,
+    ) -> Option<AddressableEntity>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let query_request = QueryRequest::new(state_root_hash, account_key, vec![]);
-        match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => value.as_account().cloned(),
-            Ok(_) | Err(_) => None,
-        }
+        self.make_request(
+            |responder| ContractRuntimeRequest::GetAddressableEntity {
+                state_root_hash,
+                key,
+                responder,
+            },
+            QueueKind::ContractRuntime,
+        )
+        .await
     }
 
-    /// Retrieves the balance of a purse, returns `None` if no purse is present.
-    pub(crate) async fn check_purse_balance(
-        self,
-        state_root_hash: Digest,
-        main_purse: URef,
-    ) -> Option<U512>
+    /// Retrieves a `Package` from under the given key in global state if present.
+    pub(crate) async fn get_package(self, state_root_hash: Digest, key: Key) -> Option<Package>
     where
         REv: From<ContractRuntimeRequest>,
     {
-        let balance_request = BalanceRequest::new(state_root_hash, main_purse);
-        match self.get_balance(balance_request).await {
-            Ok(balance_result) => {
-                if let Some(motes) = balance_result.motes() {
-                    return Some(*motes);
-                }
-                None
-            }
-            Err(_) => None,
-        }
-    }
-
-    /// Retrieves an `Contract` from global state if present.
-    pub(crate) async fn get_contract_for_validation(
-        self,
-        state_root_hash: Digest,
-        query_key: Key,
-        path: Vec<String>,
-    ) -> Option<Box<Contract>>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        let query_request = QueryRequest::new(state_root_hash, query_key, path);
+        let query_request = QueryRequest::new(state_root_hash, key, vec![]);
         match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => {
-                // TODO: Extending `StoredValue` with an `into_contract` would reduce cloning here.
-                value.as_contract().map(|c| Box::new(c.clone()))
-            }
-            Ok(_) | Err(_) => None,
-        }
-    }
-
-    /// Retrieves an `ContractPackage` from global state if present.
-    pub(crate) async fn get_contract_package_for_validation(
-        self,
-        state_root_hash: Digest,
-        query_key: Key,
-        path: Vec<String>,
-    ) -> Option<Box<ContractPackage>>
-    where
-        REv: From<ContractRuntimeRequest>,
-    {
-        let query_request = QueryRequest::new(state_root_hash, query_key, path);
-        match self.query_global_state(query_request).await {
-            Ok(QueryResult::Success { value, .. }) => {
-                value.as_contract_package().map(|pkg| Box::new(pkg.clone()))
-            }
+            Ok(QueryResult::Success { value, .. }) => value.into_contract_package(),
             Ok(_) | Err(_) => None,
         }
     }
@@ -2222,7 +2225,7 @@ impl<REv> EffectBuilder<REv> {
     /// Any previously stored finalized approvals for the given hash are quietly overwritten
     pub(crate) async fn store_finalized_approvals(
         self,
-        deploy_hash: DeployHash,
+        transaction_hash: TransactionHash,
         finalized_approvals: FinalizedApprovals,
     ) -> bool
     where
@@ -2230,7 +2233,7 @@ impl<REv> EffectBuilder<REv> {
     {
         self.make_request(
             |responder| StorageRequest::StoreFinalizedApprovals {
-                deploy_hash,
+                transaction_hash,
                 finalized_approvals,
                 responder,
             },
@@ -2244,15 +2247,15 @@ impl<REv> EffectBuilder<REv> {
     pub(crate) async fn speculative_execute_deploy(
         self,
         execution_prestate: SpeculativeExecutionState,
-        deploy: Deploy,
-    ) -> Result<Option<ExecutionResult>, engine_state::Error>
+        deploy: Arc<Deploy>,
+    ) -> Result<Option<ExecutionResultV2>, engine_state::Error>
     where
         REv: From<ContractRuntimeRequest>,
     {
         self.make_request(
             |responder| ContractRuntimeRequest::SpeculativeDeployExecution {
                 execution_prestate,
-                deploy: Box::new(deploy),
+                deploy,
                 responder,
             },
             QueueKind::ContractRuntime,
@@ -2266,7 +2269,7 @@ impl<REv> EffectBuilder<REv> {
         id: BlockExecutionResultsOrChunkId,
     ) -> Option<BlockExecutionResultsOrChunk>
     where
-        REv: From<StorageRequest>, // TODO: Extract to a separate component for caching.
+        REv: From<StorageRequest>,
     {
         self.make_request(
             |responder| StorageRequest::GetBlockExecutionResultsOrChunk { id, responder },

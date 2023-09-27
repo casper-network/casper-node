@@ -3,8 +3,8 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state::Error, execution};
-use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
+use casper_execution_engine::{engine_state::Error, execution};
+use casper_types::{package::CONTRACT_INITIAL_VERSION, runtime_args, Key, RuntimeArgs};
 
 const CONTRACT_HEADERS: &str = "contract_context.wasm";
 const PACKAGE_HASH_KEY: &str = "package_hash_key";
@@ -95,11 +95,8 @@ fn should_enforce_intended_execution_contexts() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let _package_hash = account
         .named_keys()
@@ -192,11 +189,8 @@ fn should_enforce_intended_execution_context_direct_by_name() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let _package_hash = account
         .named_keys()
@@ -231,11 +225,8 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
 
     let contract_hash = account
         .named_keys()
@@ -290,11 +281,8 @@ fn should_enforce_intended_execution_context_direct_by_hash() {
     builder.exec(exec_request_4).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let _package_hash = account
         .named_keys()
@@ -329,11 +317,8 @@ fn should_not_call_session_from_contract() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("should have default account");
 
     let contract_package_hash = account
         .named_keys()

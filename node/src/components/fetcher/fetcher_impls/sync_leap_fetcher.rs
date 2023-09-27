@@ -51,7 +51,7 @@ impl ItemFetcher<SyncLeap> for Fetcher<SyncLeap> {
                 }
                 for signed_header in item.signed_block_headers {
                     effect_builder
-                        .put_signatures_to_storage(signed_header.block_signatures)
+                        .put_signatures_to_storage(signed_header.block_signatures().clone())
                         .await;
                 }
             }

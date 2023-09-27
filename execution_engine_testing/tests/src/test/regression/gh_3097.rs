@@ -39,17 +39,26 @@ fn should_run_regression() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have account");
-    let disabled_contract_hash = account.named_keys()[DISABLED_CONTRACT_HASH_KEY]
+    let disabled_contract_hash = account
+        .named_keys()
+        .get(DISABLED_CONTRACT_HASH_KEY)
+        .unwrap()
         .into_hash()
         .map(ContractHash::new)
         .unwrap();
-    let enabled_contract_hash = account.named_keys()[ENABLED_CONTRACT_HASH_KEY]
+    let enabled_contract_hash = account
+        .named_keys()
+        .get(ENABLED_CONTRACT_HASH_KEY)
+        .unwrap()
         .into_hash()
         .map(ContractHash::new)
         .unwrap();
-    let contract_package_hash = account.named_keys()[CONTRACT_PACKAGE_HASH_KEY]
+    let contract_package_hash = account
+        .named_keys()
+        .get(CONTRACT_PACKAGE_HASH_KEY)
+        .unwrap()
         .into_hash()
         .map(ContractPackageHash::new)
         .unwrap();
@@ -102,8 +111,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::InvalidContractVersion(version)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
             if version == ContractVersionKey::new(1, 1),
         ),
@@ -159,8 +168,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::InvalidContractVersion(version)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
             if version == ContractVersionKey::new(1, 1),
         ),
@@ -219,8 +228,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::InvalidContractVersion(version)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::InvalidContractVersion(version)
             )
             if version == ContractVersionKey::new(1, 1),
         ),
@@ -272,8 +281,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::DisabledContract(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),
@@ -298,8 +307,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::DisabledContract(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),
@@ -338,8 +347,8 @@ fn should_run_regression() {
     assert!(
         matches!(
             error,
-            casper_execution_engine::core::engine_state::Error::Exec(
-                casper_execution_engine::core::execution::Error::DisabledContract(contract_hash)
+            casper_execution_engine::engine_state::Error::Exec(
+                casper_execution_engine::execution::Error::DisabledContract(contract_hash)
             )
             if contract_hash == disabled_contract_hash
         ),

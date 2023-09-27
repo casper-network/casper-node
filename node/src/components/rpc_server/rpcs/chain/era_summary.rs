@@ -2,16 +2,12 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
 use casper_types::{
     system::auction::{EraInfo, SeigniorageAllocation},
-    AsymmetricType, EraId, PublicKey, U512,
+    AsymmetricType, BlockHash, BlockV2, Digest, EraId, PublicKey, StoredValue, U512,
 };
 
-use crate::{
-    rpcs::{common::MERKLE_PROOF, docs::DocExample},
-    types::{json_compatibility::StoredValue, Block, BlockHash},
-};
+use crate::rpcs::common::MERKLE_PROOF;
 
 pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let delegator_amount = U512::from(1000);
@@ -36,10 +32,10 @@ pub(super) static ERA_SUMMARY: Lazy<EraSummary> = Lazy::new(|| {
     let mut era_info = EraInfo::new();
     *era_info.seigniorage_allocations_mut() = seigniorage_allocations;
     EraSummary {
-        block_hash: *Block::doc_example().hash(),
+        block_hash: *BlockV2::example().hash(),
         era_id: EraId::from(42),
         stored_value: StoredValue::EraInfo(era_info),
-        state_root_hash: *Block::doc_example().header().state_root_hash(),
+        state_root_hash: *BlockV2::example().state_root_hash(),
         merkle_proof: MERKLE_PROOF.clone(),
     }
 });

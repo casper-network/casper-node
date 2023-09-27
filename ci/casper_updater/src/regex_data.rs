@@ -28,11 +28,6 @@ pub mod types {
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
-                "hashing/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
-                replacement,
-            ),
-            DependentFile::new(
                 "execution_engine/Cargo.toml",
                 Regex::new(r#"(?m)(^casper-types = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
@@ -69,35 +64,35 @@ pub mod types {
     });
 }
 
-pub mod hashing {
+pub mod storage {
     use super::*;
 
     pub static DEPENDENT_FILES: Lazy<Vec<DependentFile>> = Lazy::new(|| {
         vec![
             DependentFile::new(
                 "execution_engine/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
             ),
             DependentFile::new(
                 "execution_engine_testing/test_support/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
             ),
             DependentFile::new(
                 "node/Cargo.toml",
-                Regex::new(r#"(?m)(^casper-hashing = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
+                Regex::new(r#"(?m)(^casper-storage = \{[^\}]*version = )"(?:[^"]+)"#).unwrap(),
                 replacement,
             ),
             DependentFile::new(
-                "hashing/Cargo.toml",
+                "storage/Cargo.toml",
                 MANIFEST_VERSION_REGEX.clone(),
                 replacement,
             ),
             DependentFile::new(
-                "hashing/src/lib.rs",
+                "storage/src/lib.rs",
                 Regex::new(
-                    r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-hashing)/(?:[^"]+)"#,
+                    r#"(?m)(#!\[doc\(html_root_url = "https://docs.rs/casper-storage)/(?:[^"]+)"#,
                 )
                 .unwrap(),
                 replacement_with_slash,

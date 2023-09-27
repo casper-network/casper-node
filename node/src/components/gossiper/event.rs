@@ -6,11 +6,13 @@ use std::{
 use derive_more::From;
 use serde::Serialize;
 
+use casper_types::DisplayIter;
+
 use super::GossipItem;
 use crate::{
     effect::{incoming::GossiperIncoming, requests::BeginGossipRequest, GossipTarget},
     types::NodeId,
-    utils::{DisplayIter, Source},
+    utils::Source,
 };
 
 /// `Gossiper` events.

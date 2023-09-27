@@ -1,15 +1,12 @@
 use std::{
     any::Any,
-    collections::BTreeMap,
     fmt::{self, Debug, Display, Formatter},
     path::PathBuf,
 };
 
 use datasize::DataSize;
-use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr::ToBytes, TimeDiff, Timestamp};
+use casper_types::{TimeDiff, Timestamp};
 
 use crate::{
     components::consensus::{traits::Context, ActionId, TimerId},
@@ -93,71 +90,6 @@ impl<C: Context> Display for ProposedBlock<C> {
             self.context.timestamp(),
             self.value
         )
-    }
-}
-
-/// Equivocation and reward information to be included in the terminal finalized block.
-#[derive(Clone, DataSize, Debug, PartialOrd, Ord, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(bound(
-    serialize = "VID: Ord + Serialize",
-    deserialize = "VID: Ord + Deserialize<'de>",
-))]
-pub struct EraReport<VID> {
-    /// The set of equivocators.
-    pub(crate) equivocators: Vec<VID>,
-    /// Rewards for finalization of earlier blocks.
-    ///
-    /// This is a measure of the value of each validator's contribution to consensus, in
-    /// fractions of the configured maximum block reward.
-    pub(crate) rewards: BTreeMap<VID, u64>,
-    /// Validators that haven't produced any unit during the era.
-    pub(crate) inactive_validators: Vec<VID>,
-}
-
-impl<VID> Default for EraReport<VID>
-where
-    VID: Ord,
-{
-    fn default() -> Self {
-        EraReport {
-            equivocators: vec![],
-            rewards: BTreeMap::new(),
-            inactive_validators: vec![],
-        }
-    }
-}
-
-impl<VID> EraReport<VID> {
-    pub fn hash(&self) -> Digest
-    where
-        VID: ToBytes,
-    {
-        // Helper function to hash slice of validators
-        fn hash_slice_of_validators<VID>(slice_of_validators: &[VID]) -> Digest
-        where
-            VID: ToBytes,
-        {
-            Digest::hash_merkle_tree(slice_of_validators.iter().map(|validator| {
-                Digest::hash(validator.to_bytes().expect("Could not serialize validator"))
-            }))
-        }
-
-        // Pattern match here leverages compiler to ensure every field is accounted for
-        let EraReport {
-            equivocators,
-            inactive_validators,
-            rewards,
-        } = self;
-
-        let hashed_equivocators = hash_slice_of_validators(equivocators);
-        let hashed_inactive_validators = hash_slice_of_validators(inactive_validators);
-        let hashed_rewards = Digest::hash_btree_map(rewards).expect("Could not hash rewards");
-
-        Digest::hash_slice_rfold(&[
-            hashed_equivocators,
-            hashed_rewards,
-            hashed_inactive_validators,
-        ])
     }
 }
 

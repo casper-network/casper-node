@@ -13,8 +13,8 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    api_error, bytesrepr::ToBytes, contracts::NamedKeys, AccessRights, ApiError, CLType, CLValue,
-    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, URef,
+    addressable_entity::NamedKeys, api_error, bytesrepr::ToBytes, AccessRights, ApiError, CLType,
+    CLValue, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, URef,
 };
 
 pub const DICTIONARY_NAME: &str = "local";

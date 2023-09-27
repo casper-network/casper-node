@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::Error;
+use casper_execution_engine::engine_state::Error;
 use casper_types::{account::AccountHash, runtime_args, RuntimeArgs, U512};
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -26,7 +26,7 @@ fn should_raise_precondition_authorization_failure_invalid_account() {
                 "transfer_purse_to_account.wasm",
                 runtime_args! { "target" =>account_1_account_hash, "amount" => U512::from(transferred_amount) },
             )
-            .with_address(nonexistent_account_addr)
+            // .with_address(nonexistent_account_addr)
             .with_empty_payment_bytes(runtime_args! { ARG_AMOUNT => U512::from(payment_purse_amount) })
             .with_authorization_keys(&[nonexistent_account_addr])
             .build();

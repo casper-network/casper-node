@@ -1,7 +1,5 @@
 pub(crate) mod test_utils;
 
-use assert_matches::assert_matches;
-use num_rational::Ratio;
 use std::{
     cmp::min,
     collections::{BTreeMap, VecDeque},
@@ -9,13 +7,16 @@ use std::{
     time::Duration,
 };
 
+use assert_matches::assert_matches;
 use derive_more::From;
+use num_rational::Ratio;
 use rand::{seq::IteratorRandom, Rng};
 
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
 use casper_types::{
-    testing::TestRng, AccessRights, CLValue, EraId, Key, ProtocolVersion, PublicKey, SecretKey,
-    StoredValue, TimeDiff, URef, U512,
+    testing::TestRng, AccessRights, BlockV2, CLValue, Chainspec, DeployId, EraId, Key,
+    LegacyRequiredFinality, ProtocolVersion, PublicKey, SecretKey, StoredValue, TestBlockBuilder,
+    TimeDiff, URef, U512,
 };
 
 use super::*;
@@ -27,13 +28,12 @@ use crate::{
     effect::Effect,
     reactor::{EventQueueHandle, QueueKind, Scheduler},
     tls::KeyFingerprint,
-    types::{chainspec::LegacyRequiredFinality, DeployId, TestBlockBuilder},
+    types::{BlockExecutionResultsOrChunkId, ValueOrChunk},
     utils,
 };
 
-const MAX_SIMULTANEOUS_PEERS: usize = 5;
+const MAX_SIMULTANEOUS_PEERS: u8 = 5;
 const TEST_LATCH_RESET_INTERVAL_MILLIS: u64 = 5;
-const TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS: u64 = 150;
 const SHOULD_FETCH_EXECUTION_STATE: bool = true;
 const STRICT_FINALITY_REQUIRED_VERSION: ProtocolVersion = ProtocolVersion::from_parts(1, 5, 0);
 
@@ -68,7 +68,7 @@ struct MockReactor {
 
 impl MockReactor {
     fn new() -> Self {
-        let scheduler = utils::leak(Scheduler::new(QueueKind::weights()));
+        let scheduler = utils::leak(Scheduler::new(QueueKind::weights(), None));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         MockReactor {
@@ -101,7 +101,7 @@ impl MockReactor {
 }
 
 struct TestEnv {
-    block: Block,
+    block: BlockV2,
     validator_keys: Vec<Arc<SecretKey>>,
     peers: Vec<NodeId>,
 }
@@ -109,7 +109,7 @@ struct TestEnv {
 // Utility struct used to generate common test artifacts
 impl TestEnv {
     // Replaces the test block with the one provided as parameter
-    fn with_block(self, block: Block) -> Self {
+    fn with_block(self, block: BlockV2) -> Self {
         Self {
             block,
             validator_keys: self.validator_keys,
@@ -117,7 +117,7 @@ impl TestEnv {
         }
     }
 
-    fn block(&self) -> &Block {
+    fn block(&self) -> &BlockV2 {
         &self.block
     }
 
@@ -149,8 +149,7 @@ impl TestEnv {
             PublicKey::from(self.validator_keys[0].as_ref()),
             1,
         );
-        validator_matrix
-            .register_validator_weights(self.block.header().era_id(), validator_weights);
+        validator_matrix.register_validator_weights(self.block.era_id(), validator_weights);
 
         validator_matrix
     }
@@ -174,7 +173,7 @@ impl TestEnv {
     }
 }
 
-fn check_sync_global_state_event(event: MockReactorEvent, block: &Block) {
+fn check_sync_global_state_event(event: MockReactorEvent, block: &BlockV2) {
     assert!(matches!(
         event,
         MockReactorEvent::SyncGlobalStateRequest { .. }
@@ -196,26 +195,22 @@ async fn need_next(
     rng: &mut TestRng,
     reactor: &MockReactor,
     block_synchronizer: &mut BlockSynchronizer,
-    num_expected_events: usize,
+    num_expected_events: u8,
 ) -> Vec<MockReactorEvent> {
     let effects = block_synchronizer.need_next(reactor.effect_builder(), rng);
-    assert_eq!(effects.len(), num_expected_events);
+    assert_eq!(effects.len() as u8, num_expected_events);
     reactor.process_effects(effects).await
 }
 
 fn register_multiple_signatures<'a, I: IntoIterator<Item = &'a Arc<SecretKey>>>(
     builder: &mut BlockBuilder,
-    block: &Block,
+    block: &BlockV2,
     validator_keys_iter: I,
 ) {
     for secret_key in validator_keys_iter {
         // Register a finality signature
-        let signature = FinalitySignature::create(
-            *block.hash(),
-            block.header().era_id(),
-            secret_key.as_ref(),
-            PublicKey::from(secret_key.as_ref()),
-        );
+        let signature =
+            FinalitySignature::create(*block.hash(), block.era_id(), secret_key.as_ref());
         assert!(signature.is_verified().is_ok());
         assert!(builder.register_finality_signature(signature, None).is_ok());
     }
@@ -257,6 +252,7 @@ impl<I: IntoIterator> OneExt for I {
     }
 }
 
+#[cfg(test)]
 impl BlockSynchronizer {
     fn new_initialized(
         rng: &mut TestRng,
@@ -266,7 +262,7 @@ impl BlockSynchronizer {
         let mut block_synchronizer = BlockSynchronizer::new(
             config,
             Arc::new(Chainspec::random(rng)),
-            MAX_SIMULTANEOUS_PEERS as u32,
+            MAX_SIMULTANEOUS_PEERS,
             validator_matrix,
             &prometheus::Registry::new(),
         )
@@ -297,6 +293,42 @@ impl BlockSynchronizer {
 /// Returns the number of validators that need a signature for a weak finality of 1/3.
 fn weak_finality_threshold(n: usize) -> usize {
     n / 3 + 1
+}
+
+/// Returns the number of validators that need a signature for a strict finality of 2/3.
+fn strict_finality_threshold(n: usize) -> usize {
+    n * 2 / 3 + 1
+}
+
+fn latch_inner_check(builder: Option<&BlockBuilder>, expected: bool, msg: &str) {
+    assert_eq!(
+        builder.expect("builder should exist").latched(),
+        expected,
+        "{}",
+        msg
+    );
+}
+
+fn latch_count_check(builder: Option<&BlockBuilder>, expected: u8, msg: &str) {
+    assert_eq!(
+        builder.expect("builder should exist").latch_count(),
+        expected,
+        "{}",
+        msg
+    );
+}
+
+fn need_next_inner_check(
+    builder: Option<&mut BlockBuilder>,
+    rng: &mut TestRng,
+    expected: NeedNext,
+    msg: &str,
+) {
+    let need_next = builder
+        .expect("should exist")
+        .block_acquisition_action(rng, MAX_SIMULTANEOUS_PEERS)
+        .need_next();
+    assert_eq!(need_next, expected, "{}", msg);
 }
 
 #[tokio::test]
@@ -330,7 +362,7 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
     let historical_builder = block_synchronizer.historical.as_mut().unwrap();
     assert!(
         historical_builder
-            .register_block_header(block.header().clone(), None)
+            .register_block_header(block.header().clone().into(), None)
             .is_ok(),
         "historical builder should register header"
     );
@@ -345,7 +377,9 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
     assert!(
-        historical_builder.register_block(block, None).is_ok(),
+        historical_builder
+            .register_block(block.into(), None)
+            .is_ok(),
         "should register block"
     );
     // Register the remaining signatures to reach strict finality
@@ -445,35 +479,182 @@ async fn global_state_sync_wont_stall_with_bad_peers() {
 }
 
 #[tokio::test]
+async fn synchronizer_doesnt_busy_loop_without_peers() {
+    fn check_need_peer_events(expected_block_hash: BlockHash, events: Vec<MockReactorEvent>) {
+        // Explicitly verify the two effects are indeed asking networking and accumulator for peers.
+        assert_matches!(
+            events[0],
+            MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
+                count,
+                ..
+            }) if count == MAX_SIMULTANEOUS_PEERS as usize
+        );
+        assert_matches!(
+            events[1],
+            MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
+                block_hash,
+                ..
+            }) if block_hash == expected_block_hash
+        );
+    }
+
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let test_env = TestEnv::random(&mut rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .random_deploys(1, &mut rng)
+            .build(&mut rng),
+    );
+    let block = test_env.block();
+    let block_hash = *block.hash();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let cfg = Config {
+        latch_reset_interval: TimeDiff::from_millis(TEST_LATCH_RESET_INTERVAL_MILLIS),
+        ..Default::default()
+    };
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, cfg);
+
+    block_synchronizer.register_block_by_hash(block_hash, true);
+
+    latch_inner_check(
+        block_synchronizer.historical.as_ref(),
+        false,
+        "initial set up, should not be latched",
+    );
+
+    {
+        // We registered no peers, so we need peers
+        need_next_inner_check(
+            block_synchronizer.historical.as_mut(),
+            &mut rng,
+            NeedNext::Peers(block_hash),
+            "should need peers",
+        );
+
+        // We registered no peers, so the synchronizer should ask for peers.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::Request(BlockSynchronizerRequest::NeedNext),
+        );
+        assert_eq!(effects.len(), 2, "we should ask for peers from both networking and accumulator, thus two effects are expected");
+
+        latch_inner_check(
+            block_synchronizer.historical.as_ref(),
+            true,
+            "should be latched waiting for peers",
+        );
+
+        check_need_peer_events(block_hash, mock_reactor.process_effects(effects).await);
+    }
+
+    {
+        // Inject an empty response from the network, simulating no available peers.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::NetworkPeers(*block.hash(), vec![]),
+        );
+
+        latch_inner_check(
+            block_synchronizer.historical.as_ref(),
+            true,
+            "should still be latched because only one response was received and it \
+             did not have what we needed.",
+        );
+
+        assert!(effects.is_empty(), "effects should be empty");
+    }
+
+    {
+        // Inject an empty response from the accumulator, simulating no available peers.
+        // as this is the second of two responses, the latch clears. the logic then
+        // calls need next again, we still need peers, so we generate the same two effects again.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::AccumulatedPeers(*block.hash(), None),
+        );
+        assert!(!effects.is_empty(), "we should still need peers...");
+
+        latch_inner_check(
+            block_synchronizer.historical.as_ref(),
+            true,
+            "we need peers, ask again",
+        );
+
+        // We registered no peers, so we still need peers
+        need_next_inner_check(
+            block_synchronizer.historical.as_mut(),
+            &mut rng,
+            NeedNext::Peers(block_hash),
+            "should need peers",
+        );
+
+        check_need_peer_events(block_hash, mock_reactor.process_effects(effects).await);
+    }
+}
+
+#[tokio::test]
 async fn should_not_stall_after_registering_new_era_validator_weights() {
     let mut rng = TestRng::new();
     let mock_reactor = MockReactor::new();
     let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
+    let block_hash = *block.hash();
+    let era_id = block.header().era_id();
 
-    // Set up an empty validator matrix.
+    // Set up a validator matrix.
     let mut validator_matrix = ValidatorMatrix::new_with_validator(ALICE_SECRET_KEY.clone());
     let mut block_synchronizer =
         BlockSynchronizer::new_initialized(&mut rng, validator_matrix.clone(), Config::default());
 
     // Set up the synchronizer for the test block such that the next step is getting era validators.
-    block_synchronizer.register_block_by_hash(*block.hash(), true);
-    block_synchronizer.register_peers(*block.hash(), peers.clone());
+    block_synchronizer.register_block_by_hash(block_hash, true);
+    block_synchronizer.register_peers(block_hash, peers.clone());
     block_synchronizer
         .historical
         .as_mut()
         .expect("should have historical builder")
-        .register_block_header(block.header().clone(), None)
+        .register_block_header(block.header().clone().into(), None)
         .expect("should register block header");
 
-    // At this point, the next step the synchronizer takes should be to get era validators.
+    latch_inner_check(
+        block_synchronizer.historical.as_ref(),
+        false,
+        "initial set up, should not be latched",
+    );
+    need_next_inner_check(
+        block_synchronizer.historical.as_mut(),
+        &mut rng,
+        NeedNext::EraValidators(era_id),
+        "should need era validators for era block is in",
+    );
+
     let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
     assert_eq!(
         effects.len(),
-        MAX_SIMULTANEOUS_PEERS,
-        "need next should have an effect per peer when needing peers"
+        MAX_SIMULTANEOUS_PEERS as usize,
+        "need next should have an effect per peer when needing sync leap"
     );
+    latch_inner_check(
+        block_synchronizer.historical.as_ref(),
+        true,
+        "after determination that we need validators, should be latched",
+    );
+
+    // `need_next` should return no effects while latched.
+    assert!(
+        block_synchronizer
+            .need_next(mock_reactor.effect_builder(), &mut rng)
+            .is_empty(),
+        "should return no effects while latched"
+    );
+
+    // bleed off the event q, checking the expected event kind
     for effect in effects {
         tokio::spawn(async move { effect.await });
         let event = mock_reactor.crank().await;
@@ -483,32 +664,43 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
         };
     }
 
-    // Ensure the in-flight latch has been set, i.e. that `need_next` returns nothing.
-    let effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
-    assert!(
-        effects.is_empty(),
-        "should not have need next while latched"
-    );
-
     // Update the validator matrix to now have an entry for the era of our random block.
     validator_matrix.register_validator_weights(
-        block.header().era_id(),
+        era_id,
         iter::once((ALICE_PUBLIC_KEY.clone(), 100.into())).collect(),
     );
 
+    // register validator_matrix
     block_synchronizer
         .historical
         .as_mut()
         .expect("should have historical builder")
         .register_era_validator_weights(&validator_matrix);
 
+    latch_inner_check(
+        block_synchronizer.historical.as_ref(),
+        false,
+        "after registering validators, should not be latched",
+    );
+
+    need_next_inner_check(
+        block_synchronizer.historical.as_mut(),
+        &mut rng,
+        NeedNext::FinalitySignatures(block_hash, era_id, validator_matrix.public_keys(&era_id)),
+        "should need finality sigs",
+    );
+
     // Ensure the in-flight latch has been released, i.e. that `need_next` returns something.
     let mut effects = block_synchronizer.need_next(mock_reactor.effect_builder(), &mut rng);
     assert_eq!(
         effects.len(),
         1,
-        "need next should produce 1 effect now that we have peers and the latch is removed"
+        "need next should produce 1 effect because we currently need exactly 1 signature \
+         NOTE: finality signatures are a special case; we currently we fan out 1 peer per signature \
+          but do multiple rounds of this against increasingly strict weight thresholds. \
+         All other fetchers fan out by asking each of MAX_SIMULTANEOUS_PEERS for the _same_ item."
     );
+
     tokio::spawn(async move { effects.remove(0).await });
     let event = mock_reactor.crank().await;
     assert_matches!(
@@ -517,7 +709,7 @@ async fn should_not_stall_after_registering_new_era_validator_weights() {
             id,
             peer,
             ..
-        }) if peers.contains(&peer) && id.block_hash == *block.hash()
+        }) if peers.contains(&peer) && id.block_hash() == block.hash()
     );
 }
 
@@ -538,7 +730,7 @@ fn duplicate_register_block_not_allowed_if_builder_is_not_failed() {
     assert!(!block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Trying to register a different block should replace the old one
-    let new_block = Block::random(&mut rng);
+    let new_block = TestBlockBuilder::new().build(&mut rng);
     assert!(block_synchronizer.register_block_by_hash(*new_block.hash(), false));
     assert_eq!(
         block_synchronizer.forward.unwrap().block_hash(),
@@ -577,7 +769,7 @@ async fn historical_sync_gets_peers_form_both_connected_peers_and_accumulator() 
         MockReactorEvent::NetworkInfoRequest(NetworkInfoRequest::FullyConnectedPeers {
             count,
             ..
-        }) if count == MAX_SIMULTANEOUS_PEERS
+        }) if count == MAX_SIMULTANEOUS_PEERS as usize
     );
 
     assert_matches!(
@@ -667,19 +859,25 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
     let mock_reactor = MockReactor::new();
     let test_env = TestEnv::random(&mut rng);
     let block = test_env.block();
+    let block_hash = *block.hash();
     let peers = test_env.peers();
     let validator_matrix = test_env.gen_validator_matrix();
     let cfg = Config {
-        stall_limit: TimeDiff::from_millis(TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS),
         ..Default::default()
     };
     let mut block_synchronizer =
         BlockSynchronizer::new_initialized(&mut rng, validator_matrix, cfg);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
-    assert!(block_synchronizer.forward.is_some());
-    block_synchronizer.register_peers(*block.hash(), peers.clone());
+    assert!(
+        block_synchronizer.register_block_by_hash(block_hash, false),
+        "should register block by hash"
+    );
+    assert!(
+        block_synchronizer.forward.is_some(),
+        "should have forward sync"
+    );
+    block_synchronizer.register_peers(block_hash, peers.clone());
 
     let events = need_next(
         &mut rng,
@@ -689,6 +887,18 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
     )
     .await;
 
+    let initial_progress = block_synchronizer
+        .forward
+        .as_ref()
+        .expect("should exist")
+        .last_progress_time();
+
+    latch_inner_check(
+        block_synchronizer.forward.as_ref(),
+        true,
+        "forward builder should be latched after need next call",
+    );
+
     let mut peers_asked = Vec::new();
     for event in events {
         assert_matches!(
@@ -697,15 +907,25 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
                 id,
                 peer,
                 ..
-            }) if peers.contains(&peer) && id == *block.hash() => {
+            }) if peers.contains(&peer) && id == block_hash => {
                 peers_asked.push(peer);
-            }
+            },
+            "should be block header fetch"
         );
     }
 
     // Simulate fetch errors for the header
     let mut generated_effects = Effects::new();
     for peer in peers_asked {
+        latch_inner_check(
+            block_synchronizer.forward.as_ref(),
+            true,
+            &format!("response from peer: {:?}, but should still be latched until after final response received", peer),
+        );
+        assert!(
+            generated_effects.is_empty(),
+            "effects should remain empty until last response"
+        );
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             &mut rng,
@@ -720,25 +940,47 @@ async fn fwd_sync_is_not_blocked_by_failed_header_fetch_within_latch_interval() 
         generated_effects.extend(effects);
     }
 
+    need_next_inner_check(
+        block_synchronizer.forward.as_mut(),
+        &mut rng,
+        NeedNext::BlockHeader(block_hash),
+        "should need block header",
+    );
+    assert!(
+        !generated_effects.is_empty(),
+        "should have gotten effects after the final response tail called into need next"
+    );
+
+    latch_inner_check(
+        block_synchronizer.forward.as_ref(),
+        true,
+        "all requests have been responded to, and the last event response should have \
+        resulted in a fresh need next being reported and thus a new latch",
+    );
+
+    assert_matches!(
+        block_synchronizer.forward_progress(),
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == block_hash,
+        "should be syncing"
+    );
+
+    tokio::time::sleep(Duration::from(cfg.need_next_interval)).await;
+
     assert_matches!(
         block_synchronizer.forward_progress(),
         BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == *block.hash()
     );
 
-    // The effects are empty at this point and the synchronizer is stuck
-    assert!(generated_effects.is_empty());
+    let current_progress = block_synchronizer
+        .forward
+        .as_ref()
+        .expect("should exist")
+        .last_progress_time();
 
-    // Wait for the stall detection time to pass
-    tokio::time::sleep(Duration::from_millis(
-        TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS * 2,
-    ))
-    .await;
-
-    // Check if the forward builder is reported as stalled so that the control logic can recover
-    assert_matches!(
-        block_synchronizer.forward_progress(),
-        BlockSynchronizerProgress::Stalled(block_hash, _, _) if block_hash == *block.hash()
-    );
+    assert_eq!(
+        initial_progress, current_progress,
+        "we have not gotten the record we need, so progress should remain the same"
+    )
 }
 
 #[tokio::test]
@@ -784,7 +1026,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(block.clone().take_header()),
+            item: Box::new(block.clone().take_header().into()),
             peer: peers_asked[0],
         })),
     );
@@ -804,7 +1046,10 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
     // need to get more signatures to reach weak finality.
     assert_eq!(
         effects.len(),
-        min(test_env.validator_keys().len(), MAX_SIMULTANEOUS_PEERS)
+        min(
+            test_env.validator_keys().len(),
+            MAX_SIMULTANEOUS_PEERS as usize
+        )
     );
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
@@ -813,7 +1058,7 @@ async fn registering_header_successfully_triggers_signatures_fetch_for_weak_fina
                 id,
                 peer,
                 ..
-            }) if peers.contains(&peer) && id.block_hash == *block.hash() && id.era_id == block.header().era_id()
+            }) if peers.contains(&peer) && id.block_hash() == block.hash() && id.era_id() == block.era_id()
         );
     }
 }
@@ -840,7 +1085,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -853,9 +1098,8 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     // Simulate a successful fetch of a single signature
     let signature = FinalitySignature::create(
         *block.hash(),
-        block.header().era_id(),
+        block.era_id(),
         validators_secret_keys[0].as_ref(),
-        PublicKey::from(validators_secret_keys[0].as_ref()),
     );
     assert!(signature.is_verified().is_ok());
     let effects = block_synchronizer.handle_event(
@@ -872,7 +1116,10 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
     // The peer limit should still be in place.
     assert_eq!(
         effects.len(),
-        min(validators_secret_keys.len() - 1, MAX_SIMULTANEOUS_PEERS)
+        min(
+            validators_secret_keys.len() - 1,
+            MAX_SIMULTANEOUS_PEERS as usize
+        )
     );
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
@@ -883,9 +1130,9 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
                 ..
             }) => {
                 assert!(peers.contains(&peer));
-                assert_eq!(id.block_hash, *block.hash());
-                assert_eq!(id.era_id, block.header().era_id());
-                assert_ne!(id.public_key, PublicKey::from(validators_secret_keys[0].as_ref()));
+                assert_eq!(id.block_hash(), block.hash());
+                assert_eq!(id.era_id(), block.era_id());
+                assert_ne!(*id.public_key(), PublicKey::from(validators_secret_keys[0].as_ref()));
             }
         );
     }
@@ -898,12 +1145,8 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
         .take(weak_finality_threshold(validators_secret_keys.len()))
     {
         // Register a finality signature
-        let signature = FinalitySignature::create(
-            *block.hash(),
-            block.header().era_id(),
-            secret_key.as_ref(),
-            PublicKey::from(secret_key.as_ref()),
-        );
+        let signature =
+            FinalitySignature::create(*block.hash(), block.era_id(), secret_key.as_ref());
         assert!(signature.is_verified().is_ok());
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
@@ -924,7 +1167,7 @@ async fn fwd_more_signatures_are_requested_if_weak_finality_is_not_reached() {
             generated_effects
                 .into_iter()
                 .rev()
-                .take(MAX_SIMULTANEOUS_PEERS),
+                .take(MAX_SIMULTANEOUS_PEERS as usize),
         )
         .await;
     for event in events {
@@ -949,32 +1192,33 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
     let test_env = TestEnv::random(&mut rng);
     let peers = test_env.peers();
     let block = test_env.block();
+    let expected_block_hash = *block.hash();
+    let era_id = block.header().era_id();
     let validator_matrix = test_env.gen_validator_matrix();
-    let num_validators = test_env.validator_keys().len();
+    let num_validators = test_env.validator_keys().len() as u8;
     let cfg = Config {
-        stall_limit: TimeDiff::from_millis(TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS),
         ..Default::default()
     };
     let mut block_synchronizer =
         BlockSynchronizer::new_initialized(&mut rng, validator_matrix, cfg);
 
     // Register block for fwd sync
-    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
+    assert!(block_synchronizer.register_block_by_hash(expected_block_hash, false));
     assert!(block_synchronizer.forward.is_some());
-    block_synchronizer.register_peers(*block.hash(), peers.clone());
+    block_synchronizer.register_peers(expected_block_hash, peers.clone());
     let fwd_builder = block_synchronizer
         .forward
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
     // Check the block acquisition state
     assert_matches!(
         fwd_builder.block_acquisition_state(),
-        BlockAcquisitionState::HaveBlockHeader(header, _) if header.block_hash() == *block.hash()
+        BlockAcquisitionState::HaveBlockHeader(header, _) if header.block_hash() == expected_block_hash
     );
 
     // Synchronizer should fetch finality signatures
@@ -982,10 +1226,11 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
         &mut rng,
         &mock_reactor,
         &mut block_synchronizer,
-        min(num_validators, MAX_SIMULTANEOUS_PEERS), /* We have num_validators
-                                                      * validators so we
-                                                      * require the num_validators
-                                                      * signatures */
+        min(num_validators, MAX_SIMULTANEOUS_PEERS),
+        /* We have num_validators
+         * validators so we
+         * require the num_validators
+         * signatures */
     )
     .await;
 
@@ -1000,9 +1245,9 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
                 ..
             }) => {
                 assert!(peers.contains(&peer));
-                assert_eq!(id.block_hash, *block.hash());
-                assert_eq!(id.era_id, block.header().era_id());
-                sigs_requested.push((peer, id.public_key));
+                assert_eq!(*id.block_hash(), expected_block_hash);
+                assert_eq!(id.era_id(), era_id);
+                sigs_requested.push((peer, id.public_key().clone()));
             }
         );
     }
@@ -1010,15 +1255,24 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
     // Simulate failed fetch of finality signatures
     let mut generated_effects = Effects::new();
     for (peer, public_key) in sigs_requested {
+        latch_inner_check(
+            block_synchronizer.forward.as_ref(),
+            true,
+            &format!("response from peer: {:?}, but should still be latched until after final response received", peer),
+        );
+        assert!(
+            generated_effects.is_empty(),
+            "effects should remain empty until last response"
+        );
         let effects = block_synchronizer.handle_event(
             mock_reactor.effect_builder(),
             &mut rng,
             Event::FinalitySignatureFetched(Err(FetcherError::Absent {
-                id: Box::new(Box::new(FinalitySignatureId {
-                    block_hash: *block.hash(),
-                    era_id: block.header().era_id(),
+                id: Box::new(Box::new(FinalitySignatureId::new(
+                    expected_block_hash,
+                    era_id,
                     public_key,
-                })),
+                ))),
                 peer,
             })),
         );
@@ -1029,22 +1283,38 @@ async fn fwd_sync_is_not_blocked_by_failed_signatures_fetch_within_latch_interva
 
     assert_matches!(
         block_synchronizer.forward_progress(),
-        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == *block.hash()
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == expected_block_hash,
+        "should be syncing"
     );
 
     // The effects are empty at this point and the synchronizer is stuck
-    assert!(generated_effects.is_empty());
+    assert!(
+        !generated_effects.is_empty(),
+        "should have gotten effects after the final response tail called into need next"
+    );
 
-    // Wait for the stall detection time to pass
-    tokio::time::sleep(Duration::from_millis(
-        TEST_SYNCHRONIZER_STALL_LIMIT_MILLIS * 2,
-    ))
-    .await;
+    latch_inner_check(
+        block_synchronizer.forward.as_ref(),
+        true,
+        "all requests have been responded to, and the last event response should have \
+        resulted in a fresh need next being reported and thus a new latch",
+    );
+
+    for event in mock_reactor.process_effects(generated_effects).await {
+        assert_matches!(
+            event,
+            MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                id,
+                peer,
+                ..
+            }) if peers.contains(&peer) && *id.block_hash() == expected_block_hash && id.era_id() == block.header().era_id()
+        );
+    }
 
     // Check if the forward builder is reported as stalled so that the control logic can recover
     assert_matches!(
         block_synchronizer.forward_progress(),
-        BlockSynchronizerProgress::Stalled(block_hash, _, _) if block_hash == *block.hash()
+        BlockSynchronizerProgress::Syncing(block_hash, _, _) if block_hash == expected_block_hash
     );
 }
 
@@ -1070,7 +1340,7 @@ async fn next_action_for_have_weak_finality_is_fetching_block_body() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1136,7 +1406,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1183,7 +1453,7 @@ async fn registering_block_body_transitions_builder_to_have_block_state() {
         mock_reactor.effect_builder(),
         &mut rng,
         Event::BlockFetched(Ok(FetchedData::FromPeer {
-            item: Box::new(block.clone()),
+            item: Box::new(Block::V2(block.clone())),
             peer: peers[0],
         })),
     );
@@ -1216,7 +1486,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1229,7 +1499,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1247,7 +1517,7 @@ async fn fwd_having_block_body_for_block_without_deploys_requires_only_signature
                 id,
                 peer,
                 ..
-            }) if peers.contains(&peer) && id.block_hash == *block.hash() && id.era_id == block.header().era_id()
+            }) if peers.contains(&peer) && id.block_hash() == block.hash() && id.era_id() == block.era_id()
         );
     }
 }
@@ -1279,7 +1549,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1292,7 +1562,7 @@ async fn fwd_having_block_body_for_block_with_deploys_requires_approvals_hashes(
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1350,7 +1620,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1363,7 +1633,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1375,7 +1645,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
         block.hash(),
         deploys
             .iter()
-            .map(|deploy| deploy.approvals_hash().unwrap())
+            .map(|deploy| deploy.compute_approvals_hash().unwrap())
             .collect(),
         dummy_merkle_proof(),
     );
@@ -1390,7 +1660,7 @@ async fn fwd_registering_approvals_hashes_triggers_fetch_for_deploys() {
             peer: peers[0],
         })),
     );
-    assert_eq!(effects.len(), MAX_SIMULTANEOUS_PEERS);
+    assert_eq!(effects.len(), MAX_SIMULTANEOUS_PEERS as usize);
     for event in mock_reactor.process_effects(effects).await {
         assert_matches!(
             event,
@@ -1431,14 +1701,14 @@ async fn fwd_have_block_body_without_deploys_and_strict_finality_transitions_sta
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
     // Register finality signatures to reach strict finality
     register_multiple_signatures(fwd_builder, block, validators_secret_keys.iter());
 
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1492,7 +1762,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1504,7 +1774,7 @@ async fn fwd_have_block_with_strict_finality_requires_creation_of_finalized_bloc
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
 
     // Check the block acquisition state
     assert_matches!(
@@ -1563,7 +1833,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1575,7 +1845,7 @@ async fn fwd_have_strict_finality_requests_enqueue_when_finalized_block_is_creat
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1654,7 +1924,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1666,7 +1936,7 @@ async fn fwd_builder_status_is_executing_when_block_is_enqueued_for_execution() 
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1726,7 +1996,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1738,7 +2008,7 @@ async fn fwd_sync_is_finished_when_block_is_marked_as_executed() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -1794,7 +2064,7 @@ async fn historical_sync_announces_meta_block() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     assert!(historical_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
 
@@ -1806,7 +2076,9 @@ async fn historical_sync_announces_meta_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         historical_builder,
@@ -1858,10 +2130,10 @@ async fn historical_sync_announces_meta_block() {
     let event = mock_reactor.crank().await;
     match event {
         MockReactorEvent::MetaBlockAnnouncement(MetaBlockAnnouncement(mut meta_block)) => {
-            assert_eq!(*meta_block.block.hash(), *block.hash());
+            assert_eq!(meta_block.hash(), *block.hash());
             // The deploy buffer is supposed to get notified
             assert!(meta_block
-                .state
+                .mut_state()
                 .register_as_sent_to_deploy_buffer()
                 .was_updated());
         }
@@ -1887,7 +2159,8 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
 
     // Registering block for historical sync
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
+    assert!(block_synchronizer
+        .register_block_by_hash(*TestBlockBuilder::new().build(&mut rng).hash(), true));
 
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
@@ -1896,7 +2169,8 @@ fn builders_are_purged_when_requested() {
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_none());
 
-    assert!(block_synchronizer.register_block_by_hash(*Block::random(&mut rng).hash(), true));
+    assert!(block_synchronizer
+        .register_block_by_hash(*TestBlockBuilder::new().build(&mut rng).hash(), true));
     assert!(block_synchronizer.forward.is_some());
     assert!(block_synchronizer.historical.is_some());
 
@@ -1935,7 +2209,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
         .as_mut()
         .expect("Forward builder should have been initialized");
     assert!(fwd_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .is_ok());
     fwd_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     // Register finality signatures to reach weak finality
@@ -1946,7 +2220,7 @@ async fn synchronizer_halts_if_block_cannot_be_made_executable() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(fwd_builder.register_block(block, None).is_ok());
+    assert!(fwd_builder.register_block(block.into(), None).is_ok());
     // Register the remaining signatures to reach strict finality
     register_multiple_signatures(
         fwd_builder,
@@ -2035,7 +2309,7 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2045,7 +2319,9 @@ async fn historical_sync_skips_exec_results_and_deploys_if_block_empty() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2137,7 +2413,7 @@ async fn historical_sync_no_legacy_block() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2147,7 +2423,9 @@ async fn historical_sync_no_legacy_block() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2233,14 +2511,13 @@ async fn historical_sync_no_legacy_block() {
         );
     }
 
+    let execution_results = BlockExecutionResultsOrChunk::new_mock_value(rng, *block.hash());
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
         Event::ExecutionResultsFetched {
             block_hash: *block.hash(),
-            result: Ok(FetchedData::from_storage(Box::new(
-                BlockExecutionResultsOrChunk::new_mock_value(*block.hash()),
-            ))),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
         },
     );
 
@@ -2288,7 +2565,7 @@ async fn historical_sync_no_legacy_block() {
         Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
             ApprovalsHashes::new(
                 block.hash(),
-                vec![deploy.approvals_hash().unwrap()],
+                vec![deploy.compute_approvals_hash().unwrap()],
                 dummy_merkle_proof(),
             ),
         )))),
@@ -2359,7 +2636,7 @@ async fn historical_sync_legacy_block_strict_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2369,7 +2646,9 @@ async fn historical_sync_legacy_block_strict_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2455,14 +2734,13 @@ async fn historical_sync_legacy_block_strict_finality() {
         );
     }
 
+    let execution_results = BlockExecutionResultsOrChunk::new_mock_value(rng, *block.hash());
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
         Event::ExecutionResultsFetched {
             block_hash: *block.hash(),
-            result: Ok(FetchedData::from_storage(Box::new(
-                BlockExecutionResultsOrChunk::new_mock_value(*block.hash()),
-            ))),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
         },
     );
 
@@ -2557,7 +2835,7 @@ async fn historical_sync_legacy_block_weak_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2567,7 +2845,9 @@ async fn historical_sync_legacy_block_weak_finality() {
             .iter()
             .take(weak_finality_threshold(validators_secret_keys.len())),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2653,14 +2933,13 @@ async fn historical_sync_legacy_block_weak_finality() {
         );
     }
 
+    let execution_results = BlockExecutionResultsOrChunk::new_mock_value(rng, *block.hash());
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
         Event::ExecutionResultsFetched {
             block_hash: *block.hash(),
-            result: Ok(FetchedData::from_storage(Box::new(
-                BlockExecutionResultsOrChunk::new_mock_value(*block.hash()),
-            ))),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
         },
     );
 
@@ -2768,7 +3047,7 @@ async fn historical_sync_legacy_block_any_finality() {
         .as_mut()
         .expect("Historical builder should have been initialized");
     historical_builder
-        .register_block_header(block.clone().take_header(), None)
+        .register_block_header(block.clone().take_header().into(), None)
         .expect("header registration works");
     historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
     register_multiple_signatures(
@@ -2776,7 +3055,9 @@ async fn historical_sync_legacy_block_any_finality() {
         block,
         validators_secret_keys.iter().take(1),
     );
-    assert!(historical_builder.register_block(block, None).is_ok());
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
 
     let events = need_next(rng, &mock_reactor, &mut block_synchronizer, 1).await;
 
@@ -2862,14 +3143,13 @@ async fn historical_sync_legacy_block_any_finality() {
         );
     }
 
+    let execution_results = BlockExecutionResultsOrChunk::new_mock_value(rng, *block.hash());
     let effects = block_synchronizer.handle_event(
         mock_reactor.effect_builder(),
         rng,
         Event::ExecutionResultsFetched {
             block_hash: *block.hash(),
-            result: Ok(FetchedData::from_storage(Box::new(
-                BlockExecutionResultsOrChunk::new_mock_value(*block.hash()),
-            ))),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
         },
     );
 
@@ -2946,4 +3226,945 @@ async fn historical_sync_legacy_block_any_finality() {
     for event in events {
         assert_matches!(event, MockReactorEvent::MarkBlockCompletedRequest(_));
     }
+}
+
+#[tokio::test]
+async fn fwd_sync_latch_should_not_decrement_for_old_responses() {
+    let mut rng = TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let deploys = [Deploy::random(&mut rng)];
+    let test_env = TestEnv::random(&mut rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .deploys(deploys.iter())
+            .build(&mut rng),
+    );
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(&mut rng, validator_matrix, Config::default());
+
+    // Register block for fwd sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), false));
+    assert!(block_synchronizer.forward.is_some());
+
+    // Start syncing.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::Request(BlockSynchronizerRequest::NeedNext),
+        );
+        assert_eq!(effects.len(), 1);
+
+        // First, the synchronizer should get peers.
+        let events = mock_reactor.process_effects(effects).await;
+        assert_matches!(
+            events[0],
+            MockReactorEvent::BlockAccumulatorRequest(BlockAccumulatorRequest::GetPeersForBlock {
+                block_hash,
+                ..
+            }) if block_hash == *block.hash()
+        );
+
+        latch_inner_check(
+            block_synchronizer.forward.as_ref(),
+            true,
+            "should be latched waiting for peers",
+        );
+    }
+
+    // Register peers. This would make the synchronizer ask for the block header.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::AccumulatedPeers(*block.hash(), Some(peers.clone())),
+        );
+        let events = mock_reactor.process_effects(effects).await;
+
+        let mut peers_asked = Vec::new();
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::BlockHeaderFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) if peers.contains(&peer) && id == *block.hash() => {
+                    peers_asked.push(peer);
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no block header was received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Simulate successful fetch of the block header.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone().take_header().into()),
+                peer: peers_asked[0],
+            })),
+        );
+        let events = mock_reactor.process_effects(effects).await;
+
+        let expected_latch_count = events.len() as u8; // number of finality sig fetches.
+
+        // Check what signatures were requested
+        let mut sigs_requested = Vec::new();
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) => {
+                    assert_eq!(id.block_hash(), block.hash());
+                    assert_eq!(id.era_id(), block.header().era_id());
+                    sigs_requested.push((peer, id.public_key().clone()));
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            format!(
+                "Latch count should be {} since no finality sigs were received.",
+                expected_latch_count
+            )
+            .as_str(),
+        );
+
+        // Receive a late response with the block header.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockHeaderFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone().take_header().into()),
+                peer: peers_asked[1],
+            })),
+        );
+
+        assert_eq!(effects.len(), 0);
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            format!(
+                "Latch count should be {} since no finality sigs were received.",
+                expected_latch_count
+            )
+            .as_str(),
+        );
+    }
+
+    // Register finality sigs. This would make the synchronizer switch to have weak finality and
+    // continue asking for the block body.
+    {
+        let mut generated_effects = Effects::new();
+        for secret_key in validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len()))
+        {
+            // Register a finality signature
+            let signature = FinalitySignature::create(
+                *block.hash(),
+                block.header().era_id(),
+                secret_key.as_ref(),
+            );
+            assert!(signature.is_verified().is_ok());
+            let effects = block_synchronizer.handle_event(
+                mock_reactor.effect_builder(),
+                &mut rng,
+                Event::FinalitySignatureFetched(Ok(FetchedData::FromPeer {
+                    item: Box::new(signature),
+                    peer: peers[2],
+                })),
+            );
+            generated_effects.extend(effects);
+        }
+
+        let events = mock_reactor
+            .process_effects(
+                generated_effects
+                    .into_iter()
+                    .rev()
+                    .take(MAX_SIMULTANEOUS_PEERS as usize),
+            )
+            .await;
+
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::BlockFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) => {
+                    assert!(peers.contains(&peer));
+                    assert_eq!(id, *block.hash());
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no block was received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Receive some more finality signatures to check if the latch decrements.
+        let mut generated_effects = Effects::new();
+        for secret_key in validators_secret_keys
+            .iter()
+            .skip(weak_finality_threshold(validators_secret_keys.len()))
+            .take(2)
+        {
+            // Register a finality signature
+            let signature = FinalitySignature::create(
+                *block.hash(),
+                block.header().era_id(),
+                secret_key.as_ref(),
+            );
+            assert!(signature.is_verified().is_ok());
+            let effects = block_synchronizer.handle_event(
+                mock_reactor.effect_builder(),
+                &mut rng,
+                Event::FinalitySignatureFetched(Ok(FetchedData::FromPeer {
+                    item: Box::new(signature),
+                    peer: peers[2],
+                })),
+            );
+            generated_effects.extend(effects);
+        }
+
+        assert_eq!(generated_effects.len(), 0);
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no block was received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+    }
+
+    // Register a block response. This would make the synchronizer switch to HaveBlock and continue
+    // asking for the approvals hashes.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone().into()),
+                peer: peers[0],
+            })),
+        );
+        let events = mock_reactor.process_effects(effects).await;
+
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::ApprovalsHashesFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) if peers.contains(&peer) && id == *block.hash()
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no approval hashes were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Receive another response with the block. This is the second response out of the 5 we sent
+        // out earlier.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::BlockFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(block.clone().into()),
+                peer: peers[1],
+            })),
+        );
+        assert_eq!(effects.len(), 0);
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no approval hashes were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+    }
+
+    // Register approvals hashes. This would make the synchronizer switch to HaveApprovalsHashes and
+    // continue asking for the deploys.
+    {
+        let approvals_hashes = ApprovalsHashes::new(
+            block.hash(),
+            deploys
+                .iter()
+                .map(|deploy| deploy.compute_approvals_hash().unwrap())
+                .collect(),
+            dummy_merkle_proof(),
+        );
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::ApprovalsHashesFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(approvals_hashes.clone()),
+                peer: peers[0],
+            })),
+        );
+        assert_eq!(effects.len(), MAX_SIMULTANEOUS_PEERS as usize);
+        for event in mock_reactor.process_effects(effects).await {
+            assert_matches!(
+                event,
+                MockReactorEvent::DeployFetcherRequest(FetcherRequest {
+                    id,
+                    peer,
+                    ..
+                }) => {
+                    assert!(peers.contains(&peer));
+                    assert_eq!(id, DeployId::new(
+                        *deploys[0].hash(),
+                        approvals_hashes.approvals_hashes()[0],
+                    ));
+                }
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no deploys were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+
+        // Receive a late response with the approvals hashes.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::ApprovalsHashesFetched(Ok(FetchedData::FromPeer {
+                item: Box::new(approvals_hashes.clone()),
+                peer: peers[1],
+            })),
+        );
+
+        assert_eq!(effects.len(), 0);
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            format!(
+                "Latch count should be {} since no deploys were received.",
+                MAX_SIMULTANEOUS_PEERS
+            )
+            .as_str(),
+        );
+    }
+
+    // Receive a deploy. This would make the synchonizer switch to HaveAllDeploys and continue
+    // asking for more finality signatures in order to reach strict finality.
+    {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::DeployFetched {
+                block_hash: *block.hash(),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploys[0].clone())))),
+            },
+        );
+        let events = mock_reactor.process_effects(effects).await;
+        let expected_latch_count = events.len() as u8;
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            format!(
+                "Latch count should be {} since no new signatures were received.",
+                expected_latch_count
+            )
+            .as_str(),
+        );
+
+        // Since it's the single deploy in the block, the next step is to get the rest of the
+        // finality signatures to get strict finality.
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::FinalitySignatureFetcherRequest(FetcherRequest {
+                    id,
+                    ..
+                }) => {
+                    assert_eq!(id.block_hash(), block.hash());
+                    assert_eq!(id.era_id(), block.header().era_id());
+                }
+            );
+        }
+
+        // Receive a late deploy response.
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            &mut rng,
+            Event::DeployFetched {
+                block_hash: *block.hash(),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(deploys[0].clone())))),
+            },
+        );
+
+        assert_eq!(effects.len(), 0);
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            expected_latch_count,
+            "Latch should not have changed since we did not receive a new signature yet.",
+        );
+    }
+
+    // Receive the rest of the the missing signatures to get strict finality. This would switch the
+    // state to HaveStrictFinality and continue to request to make the block executable.
+    {
+        let mut generated_effects = Effects::new();
+        for secret_key in validators_secret_keys.iter().rev().take(
+            strict_finality_threshold(validators_secret_keys.len())
+                - weak_finality_threshold(validators_secret_keys.len()),
+        ) {
+            // Register a finality signature
+            let signature = FinalitySignature::create(
+                *block.hash(),
+                block.header().era_id(),
+                secret_key.as_ref(),
+            );
+            assert!(signature.is_verified().is_ok());
+            let effects = block_synchronizer.handle_event(
+                mock_reactor.effect_builder(),
+                &mut rng,
+                Event::FinalitySignatureFetched(Ok(FetchedData::FromPeer {
+                    item: Box::new(signature),
+                    peer: peers[2],
+                })),
+            );
+            generated_effects.extend(effects);
+        }
+
+        // Once strict finality is achieved, the synchronizer will try to make the block executable.
+        let events = mock_reactor
+            .process_effects(generated_effects.into_iter().rev().take(1))
+            .await;
+
+        for event in events {
+            assert_matches!(
+                event,
+                MockReactorEvent::MakeBlockExecutableRequest(MakeBlockExecutableRequest {
+                    block_hash,
+                    ..
+                }) if block_hash == *block.hash()
+            );
+        }
+
+        latch_count_check(
+            block_synchronizer.forward.as_ref(),
+            1,
+            "Latch count should still be 1 since no FinalizedBlock was received.",
+        );
+    }
+}
+
+#[tokio::test]
+async fn historical_sync_latch_should_not_decrement_for_old_deploy_fetch_responses() {
+    let rng = &mut TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let first_deploy = Deploy::random(rng);
+    let second_deploy = Deploy::random(rng);
+    let third_deploy = Deploy::random(rng);
+    let test_env = TestEnv::random(rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .deploys(
+                [
+                    first_deploy.clone(),
+                    second_deploy.clone(),
+                    third_deploy.clone(),
+                ]
+                .iter(),
+            )
+            .build(rng),
+    );
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default())
+            .with_legacy_finality(LegacyRequiredFinality::Strict);
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    historical_builder
+        .register_block_header(block.clone().take_header().into(), None)
+        .expect("header registration works");
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
+
+    let _effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynced {
+            block_hash: *block.hash(),
+            result: Ok(GlobalStateSynchronizerResponse::new(
+                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                vec![],
+            )),
+        },
+    );
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    let _effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GotExecutionResultsChecksum {
+            block_hash: *block.hash(),
+            result: Ok(Some(Digest::SENTINEL_NONE)),
+        },
+    );
+
+    let execution_results =
+        BlockExecutionResultsOrChunk::new_mock_value_with_multiple_random_results(
+            rng,
+            *block.hash(),
+            3,
+        );
+    let _effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
+        },
+    );
+
+    let _effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsStored(*block.hash()),
+    );
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllExecutionResults(_, _, _, checksum)
+            if checksum.is_checkable() == true
+    );
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ApprovalsHashesFetched(Ok(FetchedData::from_storage(Box::new(
+            ApprovalsHashes::new(
+                block.hash(),
+                vec![
+                    first_deploy.compute_approvals_hash().unwrap(),
+                    second_deploy.compute_approvals_hash().unwrap(),
+                    third_deploy.compute_approvals_hash().unwrap(),
+                ],
+                dummy_merkle_proof(),
+            ),
+        )))),
+    );
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveApprovalsHashes(_, _, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+    for event in events {
+        assert_matches!(
+            event,
+            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        MAX_SIMULTANEOUS_PEERS,
+        format!(
+            "Latch count should be {} since no deploys were received.",
+            MAX_SIMULTANEOUS_PEERS
+        )
+        .as_str(),
+    );
+
+    // Receive 1 out of MAX_SIMULTANEOUS_PEERS requests for the first deploy.
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::DeployFetched {
+            block_hash: *block.hash(),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                first_deploy.clone(),
+            )))),
+        },
+    );
+
+    // The first deploy was registered. The synchronizer will create MAX_SIMULTANEOUS_PEERS fetch
+    // requests for another deploy.
+    for event in mock_reactor.process_effects(effects).await {
+        assert_matches!(
+            event,
+            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+        );
+    }
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        MAX_SIMULTANEOUS_PEERS,
+        format!(
+            "Latch count should be {} since the node should ask for the second deploy.",
+            MAX_SIMULTANEOUS_PEERS
+        )
+        .as_str(),
+    );
+
+    // Receive 1 out of MAX_SIMULTANEOUS_PEERS requests for the second deploy.
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::DeployFetched {
+            block_hash: *block.hash(),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                second_deploy.clone(),
+            )))),
+        },
+    );
+
+    // The second deploy was registered. The synchronizer will create MAX_SIMULTANEOUS_PEERS fetch
+    // requests for another deploy.
+    for event in mock_reactor.process_effects(effects).await {
+        assert_matches!(
+            event,
+            MockReactorEvent::DeployFetcherRequest(FetcherRequest { .. })
+        );
+    }
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        MAX_SIMULTANEOUS_PEERS,
+        format!(
+            "Latch count should be {} since the node should ask for the third deploy.",
+            MAX_SIMULTANEOUS_PEERS
+        )
+        .as_str(),
+    );
+
+    // The current state is:
+    // * Sent out MAX_SIMULTANEOUS_PEERS requests for the first deploy and received 1 response.
+    // * Sent out MAX_SIMULTANEOUS_PEERS requests for the second deploy and received 1 response.
+    // * Sent out MAX_SIMULTANEOUS_PEERS requests for the third deploy and haven't received anything
+    //   yet.
+    //
+    // So we can receive at this point MAX_SIMULTANEOUS_PEERS - 2 "late" responses for the first and
+    // second deploys and MAX_SIMULTANEOUS_PEERS responses for the third deploy.
+    //
+    // Simulate that we receive the "late" responses first. The synchronizer shouldn't unlatch and
+    // try to send out more requests for the third deploy. It should hold off until the right
+    // response comes through.
+
+    // Receive the late responses for the first deploy
+    for _ in 1..MAX_SIMULTANEOUS_PEERS {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            rng,
+            Event::DeployFetched {
+                block_hash: *block.hash(),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                    first_deploy.clone(),
+                )))),
+            },
+        );
+
+        assert_eq!(effects.len(), 0);
+
+        latch_count_check(
+            block_synchronizer.historical.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            "Shouldn't decrement the latch since this was a late response",
+        );
+    }
+
+    // Receive the late responses for the second deploy
+    for _ in 1..MAX_SIMULTANEOUS_PEERS {
+        let effects = block_synchronizer.handle_event(
+            mock_reactor.effect_builder(),
+            rng,
+            Event::DeployFetched {
+                block_hash: *block.hash(),
+                result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                    second_deploy.clone(),
+                )))),
+            },
+        );
+
+        assert_eq!(effects.len(), 0);
+
+        latch_count_check(
+            block_synchronizer.historical.as_ref(),
+            MAX_SIMULTANEOUS_PEERS,
+            "Shouldn't decrement the latch since this was a late response",
+        );
+    }
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::DeployFetched {
+            block_hash: *block.hash(),
+            result: Either::Right(Ok(FetchedData::from_storage(Box::new(
+                third_deploy.clone(),
+            )))),
+        },
+    );
+
+    // ----- HaveAllDeploys -----
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveAllDeploys(_, _)
+    );
+
+    let events = mock_reactor.process_effects(effects).await;
+    for event in events {
+        assert_matches!(event, MockReactorEvent::FinalitySignatureFetcherRequest(_));
+    }
+}
+
+#[tokio::test]
+async fn historical_sync_latch_should_not_decrement_for_old_execution_results() {
+    let rng = &mut TestRng::new();
+    let mock_reactor = MockReactor::new();
+    let first_deploy = Deploy::random(rng);
+    let second_deploy = Deploy::random(rng);
+    let third_deploy = Deploy::random(rng);
+    let test_env = TestEnv::random(rng).with_block(
+        TestBlockBuilder::new()
+            .era(1)
+            .deploys(
+                [
+                    first_deploy.clone(),
+                    second_deploy.clone(),
+                    third_deploy.clone(),
+                ]
+                .iter(),
+            )
+            .build(rng),
+    );
+    let peers = test_env.peers();
+    let block = test_env.block();
+    let validator_matrix = test_env.gen_validator_matrix();
+    let validators_secret_keys = test_env.validator_keys();
+    let mut block_synchronizer =
+        BlockSynchronizer::new_initialized(rng, validator_matrix, Default::default())
+            .with_legacy_finality(LegacyRequiredFinality::Strict);
+
+    // Register block for historical sync
+    assert!(block_synchronizer.register_block_by_hash(*block.hash(), SHOULD_FETCH_EXECUTION_STATE));
+    block_synchronizer.register_peers(*block.hash(), peers.clone());
+
+    let historical_builder = block_synchronizer
+        .historical
+        .as_mut()
+        .expect("Historical builder should have been initialized");
+    historical_builder
+        .register_block_header(block.clone().take_header().into(), None)
+        .expect("header registration works");
+    historical_builder.register_era_validator_weights(&block_synchronizer.validator_matrix);
+    register_multiple_signatures(
+        historical_builder,
+        block,
+        validators_secret_keys
+            .iter()
+            .take(weak_finality_threshold(validators_secret_keys.len())),
+    );
+    assert!(historical_builder
+        .register_block(block.into(), None)
+        .is_ok());
+
+    let _effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GlobalStateSynced {
+            block_hash: *block.hash(),
+            result: Ok(GlobalStateSynchronizerResponse::new(
+                super::global_state_synchronizer::RootHash::new(*block.state_root_hash()),
+                vec![],
+            )),
+        },
+    );
+
+    assert_matches!(
+        historical_state(&block_synchronizer),
+        BlockAcquisitionState::HaveGlobalState { .. }
+    );
+
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        1,
+        "Latch count should be 1 since we're waiting for execution results checksum.",
+    );
+
+    // Create chunked execution results.
+    let execution_results =
+        BlockExecutionResultsOrChunk::new_mock_value_with_multiple_random_results(
+            rng,
+            *block.hash(),
+            100000, // Lots of results to achieve chunking.
+        );
+    let checksum = assert_matches!(
+        execution_results.value(),
+        ValueOrChunk::ChunkWithProof(chunk) => chunk.proof().root_hash()
+    );
+
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::GotExecutionResultsChecksum {
+            block_hash: *block.hash(),
+            result: Ok(Some(checksum)),
+        },
+    );
+
+    for event in mock_reactor.process_effects(effects).await {
+        assert_matches!(
+            event,
+            MockReactorEvent::BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest { .. })
+        );
+    }
+
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        MAX_SIMULTANEOUS_PEERS,
+        format!(
+            "Latch count should be {} since no chunks of execution results were received.",
+            MAX_SIMULTANEOUS_PEERS
+        )
+        .as_str(),
+    );
+
+    // Receive the first chunk of execution results.
+    let effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(
+                execution_results.clone(),
+            ))),
+        },
+    );
+
+    // It's expected that the synchronizer will ask for the next chunks of execution results.
+    for event in mock_reactor.process_effects(effects).await {
+        assert_matches!(
+            event,
+            MockReactorEvent::BlockExecutionResultsOrChunkFetcherRequest(FetcherRequest { id, .. }) if id.chunk_index() != 0
+        );
+    }
+
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        MAX_SIMULTANEOUS_PEERS,
+        format!(
+            "Latch count should be {} since no responses with chunks != 0 were received.",
+            MAX_SIMULTANEOUS_PEERS
+        )
+        .as_str(),
+    );
+
+    // Receive the first chunk of execution results again (late response).
+    let _effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Ok(FetchedData::from_storage(Box::new(execution_results))),
+        },
+    );
+
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        MAX_SIMULTANEOUS_PEERS,
+        format!(
+            "Latch count should be {} since we already had the first chunk and no responses with chunks != 0 were received.",
+            MAX_SIMULTANEOUS_PEERS
+        )
+        .as_str(),
+    );
+
+    // Receive a fetch error.
+    let _effects = block_synchronizer.handle_event(
+        mock_reactor.effect_builder(),
+        rng,
+        Event::ExecutionResultsFetched {
+            block_hash: *block.hash(),
+            result: Err(FetcherError::Absent {
+                id: Box::new(BlockExecutionResultsOrChunkId::new(*block.hash())),
+                peer: peers[0],
+            }),
+        },
+    );
+
+    latch_count_check(
+        block_synchronizer.historical.as_ref(),
+        MAX_SIMULTANEOUS_PEERS - 1,
+        format!(
+            "Latch count should be {} since we received an `Absent` response.",
+            MAX_SIMULTANEOUS_PEERS - 1
+        )
+        .as_str(),
+    );
 }

@@ -1,8 +1,7 @@
 use std::fmt::{self, Display, Formatter};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, PublicKey};
+use casper_types::{Block, BlockHash, Deploy, DeployHash, DeployId, Digest, EraId, PublicKey};
 
 use crate::{
     components::block_synchronizer::{
@@ -10,16 +9,13 @@ use crate::{
         signature_acquisition::SignatureAcquisition, BlockAcquisitionError,
         ExecutionResultsAcquisition, ExecutionResultsChecksum,
     },
-    types::{
-        Block, BlockExecutionResultsOrChunkId, BlockHash, BlockHeader, Deploy, DeployHash,
-        DeployId, EraValidatorWeights, FinalizedBlock, NodeId,
-    },
+    types::{BlockExecutionResultsOrChunkId, EraValidatorWeights, FinalizedBlock, NodeId},
     NodeRng,
 };
 
 use super::block_acquisition::signatures_from_missing_validators;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct BlockAcquisitionAction {
     peers_to_ask: Vec<NodeId>,
     need_next: NeedNext,
@@ -133,12 +129,11 @@ impl BlockAcquisitionAction {
     pub(super) fn finality_signatures(
         peer_list: &PeerList,
         rng: &mut NodeRng,
-        block_header: &BlockHeader,
+        era_id: EraId,
+        block_hash: BlockHash,
         missing_signatures: Vec<PublicKey>,
     ) -> Self {
         let peers_to_ask = peer_list.qualified_peers(rng);
-        let era_id = block_header.era_id();
-        let block_hash = block_header.block_hash();
 
         debug!(
             %era_id,
@@ -164,33 +159,27 @@ impl BlockAcquisitionAction {
         }
     }
 
-    pub(super) fn switch_to_have_strict_finality(block_header: &BlockHeader) -> Self {
+    pub(super) fn switch_to_have_sufficient_finality(
+        block_hash: BlockHash,
+        block_height: u64,
+    ) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::SwitchToHaveStrictFinality(
-                block_header.block_hash(),
-                block_header.height(),
-            ),
+            need_next: NeedNext::SwitchToHaveStrictFinality(block_hash, block_height),
         }
     }
 
-    pub(super) fn block_marked_complete(block_header: &BlockHeader) -> Self {
+    pub(super) fn block_marked_complete(block_hash: BlockHash, block_height: u64) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::BlockMarkedComplete(
-                block_header.block_hash(),
-                block_header.height(),
-            ),
+            need_next: NeedNext::BlockMarkedComplete(block_hash, block_height),
         }
     }
 
-    pub(super) fn make_executable_block(block_header: &BlockHeader) -> Self {
+    pub(super) fn make_executable_block(block_hash: BlockHash, block_height: u64) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::MakeExecutableBlock(
-                block_header.block_hash(),
-                block_header.height(),
-            ),
+            need_next: NeedNext::MakeExecutableBlock(block_hash, block_height),
         }
     }
 
@@ -201,7 +190,7 @@ impl BlockAcquisitionAction {
     ) -> Self {
         BlockAcquisitionAction {
             peers_to_ask: vec![],
-            need_next: NeedNext::EnqueueForExecution(*block_hash, block.height(), block, deploys),
+            need_next: NeedNext::EnqueueForExecution(*block_hash, block.height, block, deploys),
         }
     }
 
@@ -266,37 +255,32 @@ impl BlockAcquisitionAction {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn maybe_needs_deploy(
-        block_header: &BlockHeader,
+        block_hash: BlockHash,
+        block_height: u64,
+        era_id: EraId,
         peer_list: &PeerList,
         rng: &mut NodeRng,
         validator_weights: &EraValidatorWeights,
         signatures: &mut SignatureAcquisition,
         needs_deploy: Option<DeployIdentifier>,
         is_historical: bool,
-        max_simultaneous_peers: usize,
+        max_simultaneous_peers: u8,
     ) -> Self {
         match needs_deploy {
             Some(DeployIdentifier::ById(deploy_id)) => {
-                info!("BlockAcquisition: requesting missing deploy by ID");
-                BlockAcquisitionAction::deploy_by_id(
-                    block_header.block_hash(),
-                    deploy_id,
-                    peer_list,
-                    rng,
-                )
+                debug!("BlockAcquisition: requesting missing deploy by ID");
+                BlockAcquisitionAction::deploy_by_id(block_hash, deploy_id, peer_list, rng)
             }
             Some(DeployIdentifier::ByHash(deploy_hash)) => {
-                info!("BlockAcquisition: requesting missing deploy by hash");
-                BlockAcquisitionAction::deploy_by_hash(
-                    block_header.block_hash(),
-                    deploy_hash,
-                    peer_list,
-                    rng,
-                )
+                debug!("BlockAcquisition: requesting missing deploy by hash");
+                BlockAcquisitionAction::deploy_by_hash(block_hash, deploy_hash, peer_list, rng)
             }
             None => {
                 if signatures.has_sufficient_finality(is_historical, true) {
-                    BlockAcquisitionAction::switch_to_have_strict_finality(block_header)
+                    BlockAcquisitionAction::switch_to_have_sufficient_finality(
+                        block_hash,
+                        block_height,
+                    )
                 } else {
                     signatures_from_missing_validators(
                         validator_weights,
@@ -304,7 +288,8 @@ impl BlockAcquisitionAction {
                         max_simultaneous_peers,
                         peer_list,
                         rng,
-                        block_header,
+                        era_id,
+                        block_hash,
                     )
                 }
             }

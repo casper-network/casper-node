@@ -7,10 +7,11 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
-    contracts::{self, CONTRACT_INITIAL_VERSION, MAX_GROUPS},
-    runtime_args, Group, Key, RuntimeArgs,
+    addressable_entity::{self, MAX_GROUPS},
+    package::CONTRACT_INITIAL_VERSION,
+    runtime_args, Group, RuntimeArgs,
 };
 
 const CONTRACT_GROUPS: &str = "manage_groups.wasm";
@@ -55,11 +56,8 @@ fn should_create_and_remove_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -161,11 +159,8 @@ fn should_create_and_extend_user_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
 
     let package_hash = account
         .named_keys()
@@ -272,12 +267,8 @@ fn should_create_and_remove_urefs_from_group() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)
@@ -382,12 +373,8 @@ fn should_limit_max_urefs_while_extending() {
     builder.exec(exec_request_1).expect_success().commit();
 
     let account = builder
-        .query(None, Key::Account(*DEFAULT_ACCOUNT_ADDR), &[])
-        .expect("should query account")
-        .as_account()
-        .cloned()
-        .expect("should be account");
-
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have contract");
     let package_hash = account
         .named_keys()
         .get(PACKAGE_HASH_KEY)
@@ -505,5 +492,8 @@ fn should_limit_max_urefs_while_extending() {
     let exec_response = response.last().expect("should have response");
     let error = exec_response.as_error().expect("should have error");
     let error = assert_matches!(error, Error::Exec(execution::Error::Revert(e)) => e);
-    assert_eq!(error, &contracts::Error::MaxTotalURefsExceeded.into());
+    assert_eq!(
+        error,
+        &addressable_entity::Error::MaxTotalURefsExceeded.into()
+    );
 }

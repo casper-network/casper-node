@@ -2,15 +2,12 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, ARG_AMOUNT,
     DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{self, Error},
     execution,
 };
 use casper_types::{
-    account::{AccountHash, Weight},
-    runtime_args,
-    system::mint,
-    RuntimeArgs, U512,
+    account::AccountHash, addressable_entity::Weight, runtime_args, system::mint, U512,
 };
 
 const CONTRACT_ADD_ASSOCIATED_KEY: &str = "add_associated_key.wasm";

@@ -9,8 +9,11 @@ use std::{
 use datasize::DataSize;
 use tracing::debug;
 
+use casper_types::{DeployHash, DeployId};
+
+use crate::types::ApprovalsHashes;
+
 use super::block_acquisition::Acceptance;
-use crate::types::{ApprovalsHashes, DeployHash, DeployId};
 
 #[derive(Clone, Copy, PartialEq, Eq, DataSize, Debug)]
 pub(crate) enum Error {

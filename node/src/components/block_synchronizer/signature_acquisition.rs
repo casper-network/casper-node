@@ -2,12 +2,10 @@ use std::collections::{btree_map::Entry, BTreeMap};
 
 use datasize::DataSize;
 
-use casper_types::PublicKey;
+use casper_types::{FinalitySignature, LegacyRequiredFinality, PublicKey};
 
 use super::block_acquisition::Acceptance;
-use crate::types::{
-    chainspec::LegacyRequiredFinality, EraValidatorWeights, FinalitySignature, SignatureWeight,
-};
+use crate::types::{EraValidatorWeights, SignatureWeight};
 
 #[derive(Clone, PartialEq, Eq, DataSize, Debug)]
 enum SignatureState {
@@ -60,7 +58,7 @@ impl SignatureAcquisition {
         finality_signature: FinalitySignature,
         validator_weights: &EraValidatorWeights,
     ) -> Acceptance {
-        let acceptance = match self.inner.entry(finality_signature.public_key.clone()) {
+        let acceptance = match self.inner.entry(finality_signature.public_key().clone()) {
             Entry::Vacant(vacant_entry) => {
                 vacant_entry.insert(SignatureState::Signature(Box::new(finality_signature)));
                 Acceptance::NeededIt
@@ -143,16 +141,16 @@ impl SignatureAcquisition {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::BTreeSet, fmt::Debug};
+    use std::{collections::BTreeSet, fmt::Debug, iter};
 
-    use super::*;
-    use crate::types::BlockHash;
     use assert_matches::assert_matches;
-    use casper_types::{testing::TestRng, EraId, SecretKey, U512};
     use itertools::Itertools;
     use num_rational::Ratio;
     use rand::Rng;
-    use std::iter::repeat_with;
+
+    use casper_types::{testing::TestRng, BlockHash, EraId, SecretKey, U512};
+
+    use super::*;
 
     impl SignatureAcquisition {
         pub(super) fn have_no_vacant(&self) -> bool {
@@ -184,7 +182,7 @@ mod tests {
 
     fn test_finality_with_ratio(finality_threshold: Ratio<u64>, first_weight: SignatureWeight) {
         let rng = &mut TestRng::new();
-        let validators = repeat_with(|| keypair(rng)).take(4).collect_vec();
+        let validators = iter::repeat_with(|| keypair(rng)).take(4).collect_vec();
         let block_hash = BlockHash::random(rng);
         let era_id = EraId::new(rng.gen());
         let weights = EraValidatorWeights::new(
@@ -204,8 +202,7 @@ mod tests {
 
         // Signature for the validator #0 weighting 1:
         let (public_0, secret_0) = validators.get(0).unwrap();
-        let finality_signature =
-            FinalitySignature::create(block_hash, era_id, secret_0, public_0.clone());
+        let finality_signature = FinalitySignature::create(block_hash, era_id, secret_0);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::NeededIt
@@ -222,8 +219,7 @@ mod tests {
 
         // Signature for the validator #2 weighting 3:
         let (public_2, secret_2) = validators.get(2).unwrap();
-        let finality_signature =
-            FinalitySignature::create(block_hash, era_id, secret_2, public_2.clone());
+        let finality_signature = FinalitySignature::create(block_hash, era_id, secret_2);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::NeededIt
@@ -246,8 +242,7 @@ mod tests {
 
         // Signature for the validator #3 weighting 4:
         let (public_3, secret_3) = validators.get(3).unwrap();
-        let finality_signature =
-            FinalitySignature::create(block_hash, era_id, secret_3, public_3.clone());
+        let finality_signature = FinalitySignature::create(block_hash, era_id, secret_3);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::NeededIt
@@ -290,7 +285,7 @@ mod tests {
     #[test]
     fn adding_a_not_already_stored_validator_signature_works() {
         let rng = &mut TestRng::new();
-        let validators = repeat_with(|| keypair(rng)).take(4).collect_vec();
+        let validators = iter::repeat_with(|| keypair(rng)).take(4).collect_vec();
         let block_hash = BlockHash::random(rng);
         let era_id = EraId::new(rng.gen());
         let weights = EraValidatorWeights::new(
@@ -309,17 +304,16 @@ mod tests {
         );
 
         // Signature for an already stored validator:
-        let (public_0, secret_0) = validators.first().unwrap();
-        let finality_signature =
-            FinalitySignature::create(block_hash, era_id, secret_0, public_0.clone());
+        let (_public_0, secret_0) = validators.first().unwrap();
+        let finality_signature = FinalitySignature::create(block_hash, era_id, secret_0);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::NeededIt
         );
 
         // Signature for an unknown validator:
-        let (public, secret) = keypair(rng);
-        let finality_signature = FinalitySignature::create(block_hash, era_id, &secret, public);
+        let (_public, secret) = keypair(rng);
+        let finality_signature = FinalitySignature::create(block_hash, era_id, &secret);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::NeededIt
@@ -329,7 +323,7 @@ mod tests {
     #[test]
     fn signing_twice_does_nothing() {
         let rng = &mut TestRng::new();
-        let validators = repeat_with(|| keypair(rng)).take(4).collect_vec();
+        let validators = iter::repeat_with(|| keypair(rng)).take(4).collect_vec();
         let block_hash = BlockHash::random(rng);
         let era_id = EraId::new(rng.gen());
         let weights = EraValidatorWeights::new(
@@ -347,19 +341,17 @@ mod tests {
             LegacyRequiredFinality::Strict,
         );
 
-        let (public_0, secret_0) = validators.first().unwrap();
+        let (_public_0, secret_0) = validators.first().unwrap();
 
         // Signature for an already stored validator:
-        let finality_signature =
-            FinalitySignature::create(block_hash, era_id, secret_0, public_0.clone());
+        let finality_signature = FinalitySignature::create(block_hash, era_id, secret_0);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::NeededIt
         );
 
         // Signing again returns `HadIt`:
-        let finality_signature =
-            FinalitySignature::create(block_hash, era_id, secret_0, public_0.clone());
+        let finality_signature = FinalitySignature::create(block_hash, era_id, secret_0);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::HadIt
@@ -369,7 +361,7 @@ mod tests {
     #[test]
     fn register_pending_has_the_expected_behavior() {
         let rng = &mut TestRng::new();
-        let validators = repeat_with(|| keypair(rng)).take(4).collect_vec();
+        let validators = iter::repeat_with(|| keypair(rng)).take(4).collect_vec();
         let era_id = EraId::new(rng.gen());
         let block_hash = BlockHash::random(rng);
         let weights = EraValidatorWeights::new(
@@ -403,8 +395,7 @@ mod tests {
         );
 
         // Sign it:
-        let finality_signature =
-            FinalitySignature::create(block_hash, era_id, secret_0, public_0.clone());
+        let finality_signature = FinalitySignature::create(block_hash, era_id, secret_0);
         assert_matches!(
             signature_acquisition.apply_signature(finality_signature, &weights),
             Acceptance::NeededIt
@@ -425,7 +416,7 @@ mod tests {
     #[test]
     fn register_pending_an_unknown_validator_works() {
         let rng = &mut TestRng::new();
-        let validators = repeat_with(|| keypair(rng)).take(4).collect_vec();
+        let validators = iter::repeat_with(|| keypair(rng)).take(4).collect_vec();
         let mut signature_acquisition = SignatureAcquisition::new(
             validators.iter().map(|(p, _)| p.clone()).collect(),
             LegacyRequiredFinality::Strict,

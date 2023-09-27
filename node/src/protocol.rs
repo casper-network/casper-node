@@ -12,6 +12,8 @@ use hex_fmt::HexFmt;
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
+use casper_types::{BlockV2, FinalitySignature, Transaction};
+
 use crate::{
     components::{
         consensus,
@@ -27,7 +29,7 @@ use crate::{
         },
         AutoClosingResponder, EffectBuilder,
     },
-    types::{Block, Deploy, FinalitySignature, NodeId},
+    types::NodeId,
 };
 
 /// Reactor message.
@@ -42,10 +44,10 @@ pub(crate) enum Message {
     ConsensusRequest(consensus::ConsensusRequestMessage),
     /// Block gossiper component message.
     #[from]
-    BlockGossiper(gossiper::Message<Block>),
+    BlockGossiper(gossiper::Message<BlockV2>),
     /// Deploy gossiper component message.
     #[from]
-    DeployGossiper(gossiper::Message<Deploy>),
+    TransactionGossiper(gossiper::Message<Transaction>),
     #[from]
     FinalitySignatureGossiper(gossiper::Message<FinalitySignature>),
     /// Address gossiper component message.
@@ -77,10 +79,10 @@ impl Payload for Message {
             Message::Consensus(_) => MessageKind::Consensus,
             Message::ConsensusRequest(_) => MessageKind::Consensus,
             Message::BlockGossiper(_) => MessageKind::BlockGossip,
-            Message::DeployGossiper(_) => MessageKind::DeployGossip,
+            Message::TransactionGossiper(_) => MessageKind::TransactionGossip,
             Message::AddressGossiper(_) => MessageKind::AddressGossip,
             Message::GetRequest { tag, .. } | Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy => MessageKind::DeployTransfer,
+                Tag::Deploy | Tag::LegacyDeploy | Tag::Transaction => MessageKind::DeployTransfer,
                 Tag::Block => MessageKind::BlockTransfer,
                 Tag::BlockHeader => MessageKind::BlockTransfer,
                 Tag::TrieOrChunk => MessageKind::TrieTransfer,
@@ -100,7 +102,7 @@ impl Payload for Message {
         match self {
             Message::Consensus(_) => false,
             Message::ConsensusRequest(_) => false,
-            Message::DeployGossiper(_) => false,
+            Message::TransactionGossiper(_) => false,
             Message::BlockGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
@@ -116,31 +118,33 @@ impl Payload for Message {
         match self {
             Message::Consensus(_) => weights.consensus,
             Message::ConsensusRequest(_) => weights.consensus,
-            Message::BlockGossiper(_) => weights.gossip,
-            Message::DeployGossiper(_) => weights.gossip,
-            Message::FinalitySignatureGossiper(_) => weights.gossip,
-            Message::AddressGossiper(_) => weights.gossip,
+            Message::BlockGossiper(_) => weights.block_gossip,
+            Message::TransactionGossiper(_) => weights.transaction_gossip,
+            Message::FinalitySignatureGossiper(_) => weights.finality_signature_gossip,
+            Message::AddressGossiper(_) => weights.address_gossip,
             Message::GetRequest { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_requests,
+                Tag::Deploy | Tag::Transaction => weights.deploy_requests,
+                Tag::LegacyDeploy => weights.legacy_deploy_requests,
                 Tag::Block => weights.block_requests,
-                Tag::BlockHeader => weights.block_requests,
+                Tag::BlockHeader => weights.block_header_requests,
                 Tag::TrieOrChunk => weights.trie_requests,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::SyncLeap => weights.block_requests,
-                Tag::ApprovalsHashes => weights.block_requests,
-                Tag::BlockExecutionResults => weights.block_requests,
+                Tag::FinalitySignature => weights.finality_signature_requests,
+                Tag::SyncLeap => weights.sync_leap_requests,
+                Tag::ApprovalsHashes => weights.approvals_hashes_requests,
+                Tag::BlockExecutionResults => weights.execution_results_requests,
             },
             Message::GetResponse { tag, .. } => match tag {
-                Tag::Deploy | Tag::LegacyDeploy => weights.deploy_responses,
+                Tag::Deploy | Tag::Transaction => weights.deploy_responses,
+                Tag::LegacyDeploy => weights.legacy_deploy_responses,
                 Tag::Block => weights.block_responses,
-                Tag::BlockHeader => weights.block_responses,
+                Tag::BlockHeader => weights.block_header_responses,
                 Tag::TrieOrChunk => weights.trie_responses,
-                Tag::FinalitySignature => weights.gossip,
-                Tag::SyncLeap => weights.block_responses,
-                Tag::ApprovalsHashes => weights.block_responses,
-                Tag::BlockExecutionResults => weights.block_responses,
+                Tag::FinalitySignature => weights.finality_signature_responses,
+                Tag::SyncLeap => weights.sync_leap_responses,
+                Tag::ApprovalsHashes => weights.approvals_hashes_responses,
+                Tag::BlockExecutionResults => weights.execution_results_responses,
             },
-            Message::FinalitySignature(_) => weights.finality_signatures,
+            Message::FinalitySignature(_) => weights.finality_signature_broadcasts,
         }
     }
 
@@ -149,7 +153,7 @@ impl Payload for Message {
             Message::Consensus(_) => false,
             Message::ConsensusRequest(_) => false,
             Message::BlockGossiper(_) => false,
-            Message::DeployGossiper(_) => false,
+            Message::TransactionGossiper(_) => false,
             Message::FinalitySignatureGossiper(_) => false,
             Message::AddressGossiper(_) => false,
             // Trie requests can deadlock between syncing nodes.
@@ -193,7 +197,7 @@ impl Debug for Message {
             Message::Consensus(c) => f.debug_tuple("Consensus").field(&c).finish(),
             Message::ConsensusRequest(c) => f.debug_tuple("ConsensusRequest").field(&c).finish(),
             Message::BlockGossiper(dg) => f.debug_tuple("BlockGossiper").field(&dg).finish(),
-            Message::DeployGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
+            Message::TransactionGossiper(dg) => f.debug_tuple("DeployGossiper").field(&dg).finish(),
             Message::FinalitySignatureGossiper(sig) => f
                 .debug_tuple("FinalitySignatureGossiper")
                 .field(&sig)
@@ -202,7 +206,7 @@ impl Debug for Message {
             Message::GetRequest { tag, serialized_id } => f
                 .debug_struct("GetRequest")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_id))
+                .field("serialized_id", &HexFmt(serialized_id))
                 .finish(),
             Message::GetResponse {
                 tag,
@@ -210,7 +214,10 @@ impl Debug for Message {
             } => f
                 .debug_struct("GetResponse")
                 .field("tag", tag)
-                .field("serialized_item", &HexFmt(serialized_item))
+                .field(
+                    "serialized_item",
+                    &format!("{} bytes", serialized_item.len()),
+                )
                 .finish(),
             Message::FinalitySignature(fs) => {
                 f.debug_tuple("FinalitySignature").field(&fs).finish()
@@ -240,9 +247,9 @@ mod specimen_support {
                     MessageDiscriminants::BlockGossiper => {
                         Message::BlockGossiper(LargestSpecimen::largest_specimen(estimator, cache))
                     }
-                    MessageDiscriminants::DeployGossiper => {
-                        Message::DeployGossiper(LargestSpecimen::largest_specimen(estimator, cache))
-                    }
+                    MessageDiscriminants::TransactionGossiper => Message::TransactionGossiper(
+                        LargestSpecimen::largest_specimen(estimator, cache),
+                    ),
                     MessageDiscriminants::FinalitySignatureGossiper => {
                         Message::FinalitySignatureGossiper(LargestSpecimen::largest_specimen(
                             estimator, cache,
@@ -268,7 +275,7 @@ impl Display for Message {
             Message::Consensus(consensus) => write!(f, "Consensus::{}", consensus),
             Message::ConsensusRequest(consensus) => write!(f, "ConsensusRequest({})", consensus),
             Message::BlockGossiper(deploy) => write!(f, "BlockGossiper::{}", deploy),
-            Message::DeployGossiper(deploy) => write!(f, "DeployGossiper::{}", deploy),
+            Message::TransactionGossiper(txn) => write!(f, "TransactionGossiper::{}", txn),
             Message::FinalitySignatureGossiper(sig) => {
                 write!(f, "FinalitySignatureGossiper::{}", sig)
             }
@@ -293,8 +300,8 @@ impl<REv> FromIncoming<Message> for REv
 where
     REv: From<ConsensusMessageIncoming>
         + From<ConsensusDemand>
-        + From<GossiperIncoming<Block>>
-        + From<GossiperIncoming<Deploy>>
+        + From<GossiperIncoming<BlockV2>>
+        + From<GossiperIncoming<Transaction>>
         + From<GossiperIncoming<FinalitySignature>>
         + From<GossiperIncoming<GossipedAddress>>
         + From<NetRequestIncoming>
@@ -320,7 +327,7 @@ where
                 message: Box::new(message),
             }
             .into(),
-            Message::DeployGossiper(message) => GossiperIncoming {
+            Message::TransactionGossiper(message) => GossiperIncoming {
                 sender,
                 message: Box::new(message),
             }
@@ -381,6 +388,11 @@ where
                     message: Box::new(NetRequest::BlockExecutionResults(serialized_id)),
                 }
                 .into(),
+                Tag::Transaction => NetRequestIncoming {
+                    sender,
+                    message: Box::new(NetRequest::Deploy(serialized_id)),
+                }
+                .into(),
             },
             Message::GetResponse {
                 tag,
@@ -429,6 +441,11 @@ where
                 Tag::BlockExecutionResults => NetResponseIncoming {
                     sender,
                     message: Box::new(NetResponse::BlockExecutionResults(serialized_item)),
+                }
+                .into(),
+                Tag::Transaction => NetResponseIncoming {
+                    sender,
+                    message: Box::new(NetResponse::Deploy(serialized_item)),
                 }
                 .into(),
             },

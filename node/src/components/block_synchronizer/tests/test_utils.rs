@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, convert::TryInto};
 
 use crate::types::TrieOrChunkId;
 #[cfg(test)]
-use casper_hashing::ChunkWithProof;
+use casper_types::ChunkWithProof;
 use rand::Rng;
 
 pub(crate) fn chunks_with_proof_from_data(data: &[u8]) -> BTreeMap<u64, ChunkWithProof> {

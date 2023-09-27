@@ -6,8 +6,16 @@
 # If set, use this hash as a trust anchor when joining an existing network.
 #trusted_hash = 'HEX-FORMATTED BLOCK HASH'
 
-# Whether to synchronize all data back to genesis, or just [deploys.max_ttl] (chainspec setting) worth of data.
-sync_to_genesis = true
+# Historical sync behavior for this node. Options are:
+#  'genesis'  (node will attempt to acquire all block data back to genesis)
+#  'ttl'      (node will attempt to acquire all block data to comply with time to live enforcement)
+#  'nosync'   (node will only acquire blocks moving forward)
+# note: ttl is a chainsepc configured behavior on a given network; consult the `max_ttl` chainspec setting
+#       (it is currently ~18 hours by default on production and production-like networks but subject to change).
+# note: `nosync` is incompatible with validator behavior; a nosync node is prevented from participating
+#        in consensus / switching to validate mode. it is primarily for lightweight nodes that are
+#        only interested in recent activity.
+sync_handling = 'ttl'
 
 # Idle time after which the syncing process is considered stalled.
 idle_tolerance = '20min'
@@ -20,6 +28,13 @@ control_logic_default_delay = '1sec'
 
 # Flag which forces the node to resync all of the blocks.
 force_resync = false
+
+# A timeout for the ShutdownForUpgrade state, after which the node will upgrade even if not all
+# conditions are satisfied.
+shutdown_for_upgrade_timeout = '2min'
+
+# Maximum time a node will wait for an upgrade to commit.
+upgrade_timeout = '30sec'
 
 
 # =================================
@@ -237,15 +252,38 @@ blocklist_retain_duration = '10min'
 # Any weight set to 0 means that the category of traffic is exempt from throttling.
 [network.estimator_weights]
 consensus = 0
-gossip = 0
-finality_signatures = 0
+block_gossip = 1
+deploy_gossip = 0
+finality_signature_gossip = 1
+address_gossip = 0
+finality_signature_broadcasts = 0
 deploy_requests = 1
-deploy_responses = 1
+deploy_responses = 0
+legacy_deploy_requests = 1
+legacy_deploy_responses = 0
 block_requests = 1
 block_responses = 0
+block_header_requests = 1
+block_header_responses = 0
 trie_requests = 1
 trie_responses = 0
+finality_signature_requests = 1
+finality_signature_responses = 0
+sync_leap_requests = 1
+sync_leap_responses = 0
+approvals_hashes_requests = 1
+approvals_hashes_responses = 0
+execution_results_requests = 1
+execution_results_responses = 0
 
+# Identity of a node
+#
+# When this section is not specified, an identity will be generated when the node process starts with a self-signed certifcate.
+# This option makes sense for some private chains where for security reasons joining new nodes is restricted.
+# [network.identity]
+# tls_certificate = "local_node_cert.pem"
+# secret_key = "local_node.pem"
+# ca_certificate = "ca_cert.pem"
 
 # ==================================================
 # Configuration options for the JSON-RPC HTTP server
@@ -269,6 +307,13 @@ qps_limit = 100
 
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 2_621_440
+
+# Specifies which origin will be reported as allowed by RPC server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
 
 
 # ========================================================================
@@ -296,6 +341,13 @@ qps_limit = 1
 # Maximum number of bytes to accept in a single request body.
 max_body_bytes = 2_621_440
 
+# Specifies which origin will be reported as allowed by speculative execution server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
+
 
 # ==============================================
 # Configuration options for the REST HTTP server
@@ -316,6 +368,13 @@ address = '0.0.0.0:8888'
 # The global max rate of requests (per second) before they are limited.
 # Request will be delayed to the next 1 second bucket once limited.
 qps_limit = 10
+
+# Specifies which origin will be reported as allowed by REST server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
 
 
 # ==========================================================
@@ -340,6 +399,12 @@ event_stream_buffer_length = 5000
 # The maximum number of subscribers across all event streams the server will permit at any one time.
 max_concurrent_subscribers = 100
 
+# Specifies which origin will be reported as allowed by event stream server.
+#
+# If left empty, CORS will be disabled.
+# If set to '*', any origin is allowed.
+# Otherwise, only a specified origin is allowed. The given string must conform to the [origin scheme](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Origin).
+cors_origin = ''
 
 # ===============================================
 # Configuration options for the storage component

@@ -17,12 +17,14 @@ use tracing_futures::Instrument;
 
 use casper_types::testing::TestRng;
 
+use casper_types::{Chainspec, ChainspecRawBytes};
+
 use super::ConditionCheckReactor;
 use crate::{
     effect::{EffectBuilder, Effects},
     reactor::{Finalize, Reactor, Runner, TryCrankOutcome},
     tls::KeyFingerprint,
-    types::{Chainspec, ChainspecRawBytes, ExitCode, NodeId},
+    types::{ExitCode, NodeId},
     utils::Loadable,
     NodeRng,
 };
@@ -193,40 +195,8 @@ where
         self.nodes
             .get_mut(node_id)
             .unwrap()
-            .reactor_mut()
-            .set_condition_checker(Box::new(condition));
-
-        time::timeout(within, self.crank_and_check_indefinitely(node_id, rng))
+            .crank_until(rng, condition, within)
             .await
-            .unwrap()
-    }
-
-    async fn crank_and_check_indefinitely(&mut self, node_id: &NodeId, rng: &mut TestRng) {
-        loop {
-            match self.crank(node_id, rng).await {
-                TryCrankOutcome::NoEventsToProcess => {
-                    Instant::advance_time(POLL_INTERVAL.as_millis() as u64);
-                    time::sleep(POLL_INTERVAL).await;
-                    continue;
-                }
-                TryCrankOutcome::ProcessedAnEvent => {}
-                TryCrankOutcome::ShouldExit(exit_code) => {
-                    panic!("should not exit: {:?}", exit_code)
-                }
-                TryCrankOutcome::Exited => unreachable!(),
-            }
-
-            if self
-                .nodes
-                .get(node_id)
-                .unwrap()
-                .reactor()
-                .condition_result()
-            {
-                debug!("{} met condition", node_id);
-                return;
-            }
-        }
     }
 
     /// Crank all runners once, returning the number of events processed.

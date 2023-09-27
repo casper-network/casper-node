@@ -1,16 +1,19 @@
 //! Errors that the contract runtime component may raise.
+use std::collections::BTreeMap;
 
 use serde::Serialize;
 use thiserror::Error;
 
-use casper_execution_engine::core::engine_state::{Error as EngineStateError, StepError};
-use casper_storage::global_state::storage::error::lmdb::Error as StorageLmdbError;
+use casper_execution_engine::engine_state::{
+    Error as EngineStateError, GetEraValidatorsError, StepError,
+};
+use casper_storage::global_state::error::Error as StorageLmdbError;
+use casper_types::{bytesrepr, CLValueError, PublicKey, U512};
 
 use crate::{
     components::contract_runtime::ExecutionPreState,
-    types::{error::BlockCreationError, FinalizedBlock},
+    types::{FinalizedBlock, InternalEraReport},
 };
-use casper_execution_engine::core::engine_state::GetEraValidatorsError;
 
 /// An error returned from mis-configuring the contract runtime component.
 #[derive(Debug, Error)]
@@ -57,15 +60,35 @@ pub enum BlockExecutionError {
         #[serde(skip_serializing)]
         StepError,
     ),
-    /// An error that occurred while creating a block.
-    #[error(transparent)]
-    BlockCreation(#[from] BlockCreationError),
+    /// Failed to compute the approvals checksum.
+    #[error("failed to compute approvals checksum: {0}")]
+    FailedToComputeApprovalsChecksum(bytesrepr::Error),
+    /// Failed to compute the execution results checksum.
+    #[error("failed to compute execution results checksum: {0}")]
+    FailedToComputeExecutionResultsChecksum(bytesrepr::Error),
+    /// Failed to convert the checksum registry to a `CLValue`.
+    #[error("failed to convert the checksum registry to a clvalue: {0}")]
+    ChecksumRegistryToCLValue(CLValueError),
+    /// `EraEnd`s need both an `EraReport` present and a map of the next era validator weights.
+    /// If one of them is not present while trying to construct an `EraEnd`, this error is
+    /// produced.
+    #[error(
+        "cannot create era end unless we have both an era report and next era validators. \
+         era report: {maybe_era_report:?}, \
+         next era validator weights: {maybe_next_era_validator_weights:?}"
+    )]
+    FailedToCreateEraEnd {
+        /// An optional `EraReport` we tried to use to construct an `EraEnd`.
+        maybe_era_report: Option<InternalEraReport>,
+        /// An optional map of the next era validator weights used to construct an `EraEnd`.
+        maybe_next_era_validator_weights: Option<BTreeMap<PublicKey, U512>>,
+    },
     /// An error that occurred while interacting with lmdb.
     #[error(transparent)]
     Lmdb(
         #[from]
         #[serde(skip_serializing)]
-        lmdb::Error,
+        StorageLmdbError,
     ),
     /// An error that occurred while getting era validators.
     #[error(transparent)]

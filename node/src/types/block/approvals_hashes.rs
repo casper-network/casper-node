@@ -3,22 +3,21 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-use casper_storage::global_state::storage::trie::merkle_proof::TrieMerkleProof;
 use datasize::DataSize;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::Digest;
-use casper_types::{bytesrepr, Key, StoredValue};
+use casper_storage::global_state::trie::merkle_proof::TrieMerkleProof;
+use casper_types::{bytesrepr, Block, DeployApprovalsHash, DeployId, Digest, Key, StoredValue};
 
-use super::{Block, BlockHash};
+use super::BlockHash;
 use crate::{
     components::{
         contract_runtime::APPROVALS_CHECKSUM_NAME,
         fetcher::{FetchItem, Tag},
     },
-    types::{self, ApprovalsHash, DeployId},
+    types,
     utils::ds,
 };
 
@@ -28,7 +27,7 @@ pub(crate) struct ApprovalsHashes {
     /// Hash of the block that contains deploys that are relevant to the approvals.
     block_hash: BlockHash,
     /// The set of all deploys' finalized approvals' hashes.
-    approvals_hashes: Vec<ApprovalsHash>,
+    approvals_hashes: Vec<DeployApprovalsHash>,
     /// The Merkle proof of the checksum registry containing the checksum of
     /// the finalized approvals.
     #[data_size(skip)]
@@ -41,7 +40,7 @@ pub(crate) struct ApprovalsHashes {
 impl ApprovalsHashes {
     pub(crate) fn new(
         block_hash: &BlockHash,
-        approvals_hashes: Vec<ApprovalsHash>,
+        approvals_hashes: Vec<DeployApprovalsHash>,
         merkle_proof_approvals: TrieMerkleProof<Key, StoredValue>,
     ) -> Self {
         Self {
@@ -62,10 +61,10 @@ impl ApprovalsHashes {
             .compute_state_hash()
             .map_err(ApprovalsHashesValidationError::TrieMerkleProof)?;
 
-        if proof_state_root_hash != *block.header().state_root_hash() {
+        if proof_state_root_hash != *block.state_root_hash() {
             return Err(ApprovalsHashesValidationError::StateRootHashMismatch {
                 proof_state_root_hash,
-                block_state_root_hash: *block.header().state_root_hash(),
+                block_state_root_hash: *block.state_root_hash(),
             });
         }
 
@@ -103,7 +102,7 @@ impl ApprovalsHashes {
             .map(|(deploy_hash, approvals_hash)| DeployId::new(*deploy_hash, *approvals_hash))
     }
 
-    pub(crate) fn approvals_hashes(&self) -> &[ApprovalsHash] {
+    pub(crate) fn approvals_hashes(&self) -> &[DeployApprovalsHash] {
         self.approvals_hashes.as_ref()
     }
 
@@ -170,6 +169,17 @@ pub(crate) enum ApprovalsHashesValidationError {
 }
 
 mod specimen_support {
+    use std::collections::BTreeMap;
+
+    use once_cell::sync::OnceCell;
+
+    use casper_storage::global_state::trie::{
+        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
+        Pointer,
+    };
+    use casper_types::{bytesrepr::Bytes, CLValue, Digest, Key, StoredValue};
+
+    use super::ApprovalsHashes;
     use crate::{
         contract_runtime::{APPROVALS_CHECKSUM_NAME, EXECUTION_RESULTS_CHECKSUM_NAME},
         utils::specimen::{
@@ -177,16 +187,6 @@ mod specimen_support {
             SizeEstimator,
         },
     };
-
-    use super::ApprovalsHashes;
-    use casper_hashing::Digest;
-    use casper_storage::global_state::storage::trie::{
-        merkle_proof::{TrieMerkleProof, TrieMerkleProofStep},
-        Pointer,
-    };
-    use casper_types::{bytesrepr::Bytes, CLValue, Key, StoredValue};
-    use once_cell::sync::OnceCell;
-    use std::collections::BTreeMap;
 
     impl LargestSpecimen for ApprovalsHashes {
         fn largest_specimen<E: SizeEstimator>(estimator: &E, cache: &mut Cache) -> Self {

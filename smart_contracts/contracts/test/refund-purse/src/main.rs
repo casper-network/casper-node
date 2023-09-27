@@ -9,7 +9,7 @@ use casper_contract::{
     contract_api::{account, runtime, system},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{runtime_args, ApiError, ContractHash, RuntimeArgs, URef, U512};
+use casper_types::{runtime_args, ApiError, ContractHash, URef, U512};
 
 #[repr(u16)]
 enum Error {

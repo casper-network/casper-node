@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_storage::global_state::storage::{
+use casper_storage::global_state::{
     state::{lmdb::LmdbGlobalState, StateProvider},
     transaction_source::lmdb::LmdbEnvironment,
     trie_store::lmdb::LmdbTrieStore,
@@ -32,7 +32,7 @@ fn regression_test_genesis_hash_mismatch() {
     // This is trie's post state hash after calling run_genesis endpoint.
     // Step 1a)
     let genesis_run_hash = builder.get_genesis_hash();
-    let genesis_transforms = builder.get_genesis_transforms().clone();
+    let genesis_transforms = builder.get_genesis_effects().clone();
 
     let empty_root_hash = {
         let gs = {
@@ -67,7 +67,7 @@ fn regression_test_genesis_hash_mismatch() {
 
     // Step 4a)
     let second_genesis_run_hash = builder.get_genesis_hash();
-    let second_genesis_transforms = builder.get_genesis_transforms().clone();
+    let second_genesis_transforms = builder.get_genesis_effects().clone();
 
     // Step 4b)
     let second_genesis_transforms_hash = builder

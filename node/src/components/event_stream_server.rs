@@ -25,7 +25,7 @@ mod sse_server;
 #[cfg(test)]
 mod tests;
 
-use std::{fmt::Debug, net::SocketAddr, path::PathBuf, sync::Arc};
+use std::{fmt::Debug, net::SocketAddr, path::PathBuf};
 
 use datasize::DataSize;
 use tokio::sync::{
@@ -42,7 +42,6 @@ use crate::{
     components::{ComponentState, InitializedComponent, PortBoundComponent},
     effect::{EffectBuilder, Effects},
     reactor::main_reactor::MainEvent,
-    types::JsonBlock,
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -126,8 +125,56 @@ impl EventStreamServer {
 
         let (server_shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
-        let (listening_address, server_with_shutdown) =
-            warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
+        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
+
+        let listening_address = match self.config.cors_origin.as_str() {
+            "" => {
+                let (listening_address, server_with_shutdown) = warp::serve(sse_filter)
+                    .try_bind_with_graceful_shutdown(required_address, async {
+                        shutdown_receiver.await.ok();
+                    })
+                    .map_err(|error| ListeningError::Listen {
+                        address: required_address,
+                        error: Box::new(error),
+                    })?;
+
+                tokio::spawn(http_server::run(
+                    self.config.clone(),
+                    self.api_version,
+                    server_with_shutdown,
+                    server_shutdown_sender,
+                    sse_data_receiver,
+                    event_broadcaster,
+                    new_subscriber_info_receiver,
+                ));
+                listening_address
+            }
+            "*" => {
+                let (listening_address, server_with_shutdown) =
+                    warp::serve(sse_filter.with(warp::cors().allow_any_origin()))
+                        .try_bind_with_graceful_shutdown(required_address, async {
+                            shutdown_receiver.await.ok();
+                        })
+                        .map_err(|error| ListeningError::Listen {
+                            address: required_address,
+                            error: Box::new(error),
+                        })?;
+
+                tokio::spawn(http_server::run(
+                    self.config.clone(),
+                    self.api_version,
+                    server_with_shutdown,
+                    server_shutdown_sender,
+                    sse_data_receiver,
+                    event_broadcaster,
+                    new_subscriber_info_receiver,
+                ));
+                listening_address
+            }
+            _ => {
+                let (listening_address, server_with_shutdown) = warp::serve(
+                    sse_filter.with(warp::cors().allow_origin(self.config.cors_origin.as_str())),
+                )
                 .try_bind_with_graceful_shutdown(required_address, async {
                     shutdown_receiver.await.ok();
                 })
@@ -136,19 +183,20 @@ impl EventStreamServer {
                     error: Box::new(error),
                 })?;
 
+                tokio::spawn(http_server::run(
+                    self.config.clone(),
+                    self.api_version,
+                    server_with_shutdown,
+                    server_shutdown_sender,
+                    sse_data_receiver,
+                    event_broadcaster,
+                    new_subscriber_info_receiver,
+                ));
+                listening_address
+            }
+        };
+
         info!(address=%listening_address, "started event stream server");
-
-        let (sse_data_sender, sse_data_receiver) = mpsc::unbounded_channel();
-
-        tokio::spawn(http_server::run(
-            self.config.clone(),
-            self.api_version,
-            server_with_shutdown,
-            server_shutdown_sender,
-            sse_data_receiver,
-            event_broadcaster,
-            new_subscriber_info_receiver,
-        ));
 
         let event_indexer = EventIndexer::new(self.storage_path.clone());
 
@@ -238,11 +286,9 @@ where
                 }
                 Event::BlockAdded(block) => self.broadcast(SseData::BlockAdded {
                     block_hash: *block.hash(),
-                    block: Box::new(JsonBlock::new(&block, None)),
+                    block: Box::new((*block).clone()),
                 }),
-                Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted {
-                    deploy: Arc::new(*deploy),
-                }),
+                Event::DeployAccepted(deploy) => self.broadcast(SseData::DeployAccepted { deploy }),
                 Event::DeployProcessed {
                     deploy_hash,
                     deploy_header,
@@ -273,10 +319,10 @@ where
                 Event::FinalitySignature(fs) => self.broadcast(SseData::FinalitySignature(fs)),
                 Event::Step {
                     era_id,
-                    execution_effect,
+                    execution_effects,
                 } => self.broadcast(SseData::Step {
                     era_id,
-                    execution_effect,
+                    execution_effects,
                 }),
             },
         }

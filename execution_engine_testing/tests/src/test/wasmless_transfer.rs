@@ -6,32 +6,16 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{
-            engine_config::{
-                DEFAULT_MINIMUM_DELEGATION_AMOUNT, DEFAULT_STRICT_ARGUMENT_CHECKING,
-                DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-            },
-            EngineConfig, Error as CoreError, DEFAULT_MAX_QUERY_DEPTH,
-            DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
-        },
-        execution::Error as ExecError,
-    },
-    shared::{
-        system_config::{
-            auction_costs::AuctionCosts, handle_payment_costs::HandlePaymentCosts,
-            mint_costs::MintCosts, standard_payment_costs::StandardPaymentCosts, SystemConfig,
-            DEFAULT_WASMLESS_TRANSFER_COST,
-        },
-        wasm_config::WasmConfig,
-    },
+    engine_state::{EngineConfigBuilder, Error as CoreError, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
+    execution::Error as ExecError,
 };
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    AccessRights, ApiError, EraId, Gas, Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs,
-    SecretKey, URef, U512,
+    AccessRights, ApiError, AuctionCosts, EraId, Gas, HandlePaymentCosts, Key, MintCosts, Motes,
+    ProtocolVersion, PublicKey, SecretKey, StandardPaymentCosts, SystemConfig, URef,
+    DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const CONTRACT_TRANSFER_PURSE_TO_ACCOUNT: &str = "transfer_purse_to_account.wasm";
@@ -111,12 +95,12 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     let id: Option<u64> = None;
 
     let account_1_purse = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     let account_2_purse = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("should get account 2")
         .main_purse();
 
@@ -215,7 +199,7 @@ fn transfer_wasmless(wasmless_transfer: WasmlessTransfer) {
     // Make sure postconditions are met: payment purse has to be empty after finalization
     let handle_payment = builder.get_handle_payment_contract_hash();
     let contract = builder
-        .get_contract(handle_payment)
+        .get_addressable_entity(handle_payment)
         .expect("should have contract");
     let key = contract
         .named_keys()
@@ -356,7 +340,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         }
         InvalidWasmlessTransfer::TransferToSelfByURef => {
             let account_1_purse = builder
-                .get_account(*ACCOUNT_1_ADDR)
+                .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
                 .expect("should get account 1")
                 .main_purse();
             // same source and target purse is invalid
@@ -398,7 +382,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         }
         InvalidWasmlessTransfer::OtherSourceAccountByURef => {
             let account_2_purse = builder
-                .get_account(*ACCOUNT_2_ADDR)
+                .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
                 .expect("should get account 1")
                 .main_purse();
             // passes another account's purse as source
@@ -493,11 +477,11 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
         }
         InvalidWasmlessTransfer::OtherPurseToSelfPurse => {
             let account_1_purse = builder
-                .get_account(*ACCOUNT_1_ADDR)
+                .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
                 .expect("should get account 1")
                 .main_purse();
             let account_2_purse = builder
-                .get_account(*ACCOUNT_2_ADDR)
+                .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
                 .expect("should get account 1")
                 .main_purse();
 
@@ -527,7 +511,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     };
 
     let account_1_purse = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
@@ -562,7 +546,7 @@ fn invalid_transfer_wasmless(invalid_wasmless_transfer: InvalidWasmlessTransfer)
     // Make sure postconditions are met: payment purse has to be empty after finalization
     let handle_payment = builder.get_handle_payment_contract_hash();
     let contract = builder
-        .get_contract(handle_payment)
+        .get_addressable_entity(handle_payment)
         .expect("should have contract");
     let key = contract
         .named_keys()
@@ -591,12 +575,12 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
     let transfer_amount: U512 = U512::from(1000);
 
     let account_1_purse = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     assert_eq!(
-        builder.get_account(*ACCOUNT_2_ADDR),
+        builder.get_entity_by_account_hash(*ACCOUNT_2_ADDR),
         None,
         "account 2 should not exist"
     );
@@ -626,7 +610,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
         .commit();
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
@@ -644,7 +628,7 @@ fn transfer_wasmless_should_create_target_if_it_doesnt_exist() {
 
 fn get_default_account_named_uref(builder: &mut LmdbWasmTestBuilder, name: &str) -> URef {
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("default account should exist");
     default_account
         .named_keys()
@@ -731,12 +715,12 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
     let account_2_to_account_1_amount: U512 = U512::one();
 
     let account_1_purse = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     assert_eq!(
-        builder.get_account(*ACCOUNT_2_ADDR),
+        builder.get_entity_by_account_hash(*ACCOUNT_2_ADDR),
         None,
         "account 2 should not exist"
     );
@@ -766,7 +750,7 @@ fn transfer_wasmless_should_fail_without_main_purse_minimum_balance() {
         .commit();
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
@@ -831,12 +815,12 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
     let account_2_to_account_1_amount: U512 = U512::one();
 
     let account_1_purse = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1")
         .main_purse();
 
     assert_eq!(
-        builder.get_account(*ACCOUNT_2_ADDR),
+        builder.get_entity_by_account_hash(*ACCOUNT_2_ADDR),
         None,
         "account 2 should not exist"
     );
@@ -866,7 +850,7 @@ fn transfer_wasmless_should_transfer_funds_after_paying_for_transfer() {
         .commit();
 
     let account_2 = builder
-        .get_account(*ACCOUNT_2_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_2_ADDR)
         .expect("account 2 should exist");
 
     let account_2_starting_balance = builder.get_purse_balance(account_2.main_purse());
@@ -922,7 +906,7 @@ fn transfer_wasmless_should_fail_with_secondary_purse_insufficient_funds() {
     builder.exec(create_purse_request).commit().expect_success();
 
     let account_1 = builder
-        .get_account(*ACCOUNT_1_ADDR)
+        .get_entity_by_account_hash(*ACCOUNT_1_ADDR)
         .expect("should get account 1");
 
     let account_1_purse = account_1
@@ -996,17 +980,10 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
         new_standard_payment_costs,
     );
 
-    let new_engine_config = EngineConfig::new(
-        DEFAULT_MAX_QUERY_DEPTH,
-        new_max_associated_keys,
-        DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
-        DEFAULT_MINIMUM_DELEGATION_AMOUNT,
-        DEFAULT_STRICT_ARGUMENT_CHECKING,
-        DEFAULT_VESTING_SCHEDULE_LENGTH_MILLIS,
-        None,
-        WasmConfig::default(),
-        new_system_config,
-    );
+    let new_engine_config = EngineConfigBuilder::default()
+        .with_max_associated_keys(new_max_associated_keys)
+        .with_system_config(new_system_config)
+        .build();
 
     let old_protocol_version = *DEFAULT_PROTOCOL_VERSION;
     let new_protocol_version = ProtocolVersion::from_parts(
@@ -1019,7 +996,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get default_account");
 
     let mut upgrade_request = {
@@ -1030,7 +1007,7 @@ fn transfer_wasmless_should_observe_upgraded_cost() {
             .build()
     };
 
-    builder.upgrade_with_upgrade_request(new_engine_config, &mut upgrade_request);
+    builder.upgrade_with_upgrade_request_and_config(Some(new_engine_config), &mut upgrade_request);
 
     let default_account_balance_before = builder.get_purse_balance(default_account.main_purse());
 

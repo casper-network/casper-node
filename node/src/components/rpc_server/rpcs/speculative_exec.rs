@@ -1,18 +1,15 @@
 //! RPC related to speculative execution.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
-use std::str;
+use std::{str, sync::Arc};
 
 use async_trait::async_trait;
-use casper_execution_engine::core::engine_state::Error as EngineStateError;
-use casper_json_rpc::ReservedErrorCode;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_types::{ExecutionResult, ProtocolVersion};
+use casper_execution_engine::engine_state::Error as EngineStateError;
+use casper_json_rpc::ReservedErrorCode;
+use casper_types::{execution::ExecutionResultV2, BlockHash, Deploy, ProtocolVersion, Transaction};
 
 use super::{
     chain::BlockIdentifier,
@@ -20,20 +17,16 @@ use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
     Error, ErrorCode, ReactorEventT, RpcWithParams,
 };
-use crate::{
-    effect::{requests::RpcRequest, EffectBuilder},
-    reactor::QueueKind,
-    types::{Block, BlockHash, Deploy},
-};
+use crate::{components::contract_runtime::SpeculativeExecutionState, effect::EffectBuilder};
 
 static SPECULATIVE_EXEC_PARAMS: Lazy<SpeculativeExecParams> = Lazy::new(|| SpeculativeExecParams {
-    block_identifier: Some(BlockIdentifier::Hash(*Block::doc_example().hash())),
+    block_identifier: Some(BlockIdentifier::Hash(*BlockHash::example())),
     deploy: Deploy::doc_example().clone(),
 });
 static SPECULATIVE_EXEC_RESULT: Lazy<SpeculativeExecResult> = Lazy::new(|| SpeculativeExecResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    block_hash: *Block::doc_example().hash(),
-    execution_result: ExecutionResult::example().clone(),
+    block_hash: *BlockHash::example(),
+    execution_result: ExecutionResultV2::example().clone(),
 });
 
 /// Params for "speculative_exec" RPC request.
@@ -62,7 +55,7 @@ pub struct SpeculativeExecResult {
     /// Hash of the block on top of which the deploy was executed.
     pub block_hash: BlockHash,
     /// Result of the execution.
-    pub execution_result: ExecutionResult,
+    pub execution_result: ExecutionResultV2,
 }
 
 impl DocExample for SpeculativeExecResult {
@@ -89,7 +82,6 @@ impl RpcWithParams for SpeculativeExec {
             block_identifier: maybe_block_id,
             deploy,
         } = params;
-        // This RPC request is restricted by the block availability index.
         let only_from_available_block_range = true;
 
         let block = common::get_block(
@@ -99,15 +91,25 @@ impl RpcWithParams for SpeculativeExec {
         )
         .await?;
         let block_hash = *block.hash();
-        let result = effect_builder
-            .make_request(
-                |responder| RpcRequest::SpeculativeDeployExecute {
-                    block_header: Box::new(block.take_header()),
-                    deploy: Box::new(deploy),
-                    responder,
-                },
-                QueueKind::Api,
+        let execution_prestate = SpeculativeExecutionState {
+            state_root_hash: *block.state_root_hash(),
+            block_time: block.timestamp(),
+            protocol_version: block.protocol_version(),
+        };
+
+        let accept_transaction_result = effect_builder
+            .try_accept_transaction(
+                Transaction::from(deploy.clone()),
+                Some(Box::new(block.take_header())),
             )
+            .await;
+
+        if let Err(error) = accept_transaction_result {
+            return Err(Error::new(ErrorCode::InvalidDeploy, error.to_string()));
+        }
+
+        let result = effect_builder
+            .speculative_execute_deploy(execution_prestate, Arc::new(deploy))
             .await;
 
         match result {
@@ -127,7 +129,7 @@ impl RpcWithParams for SpeculativeExec {
                 let rpc_error = match error {
                     EngineStateError::RootNotFound(_) => Error::new(ErrorCode::NoSuchStateRoot, ""),
                     EngineStateError::WasmPreprocessing(error) => {
-                        Error::new(ErrorCode::InvalidDeploy, format!("{}", error))
+                        Error::new(ErrorCode::InvalidDeploy, error.to_string())
                     }
                     EngineStateError::InvalidDeployItemVariant(error) => {
                         Error::new(ErrorCode::InvalidDeploy, error)
@@ -153,12 +155,12 @@ impl RpcWithParams for SpeculativeExec {
                     | EngineStateError::MissingSystemContractRegistry
                     | EngineStateError::MissingSystemContractHash(_)
                     | EngineStateError::RuntimeStackOverflow
-                    | EngineStateError::FailedToGetWithdrawKeys
+                    | EngineStateError::FailedToGetKeys(_)
                     | EngineStateError::FailedToGetStoredWithdraws
                     | EngineStateError::FailedToGetWithdrawPurses
                     | EngineStateError::FailedToRetrieveUnbondingDelay
                     | EngineStateError::FailedToRetrieveEraId => {
-                        Error::new(ReservedErrorCode::InternalError, format!("{}", error))
+                        Error::new(ReservedErrorCode::InternalError, error.to_string())
                     }
                     _ => Error::new(
                         ReservedErrorCode::InternalError,

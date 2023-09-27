@@ -1189,10 +1189,10 @@ async fn should_limit_concurrent_subscribers() {
 /// versions of the events emitted by the SSE server by comparing the contents of
 /// `resources/test/sse_data_schema.json` across different versions of the codebase.
 #[test]
-fn schema_test() {
+fn json_schema_check() {
     let schema_path = format!(
         "{}/../resources/test/sse_data_schema.json",
         env!("CARGO_MANIFEST_DIR")
     );
-    assert_schema(schema_path, schema_for!(SseData));
+    assert_schema(&schema_path, schema_for!(SseData));
 }

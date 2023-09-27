@@ -4,8 +4,7 @@ use datasize::DataSize;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use casper_hashing::Digest;
-use casper_types::{crypto, PublicKey, SecretKey, Signature};
+use casper_types::{crypto, Digest, PublicKey, SecretKey, Signature};
 
 use crate::{
     components::consensus::traits::{ConsensusValueT, Context, ValidatorSecret},
@@ -54,7 +53,7 @@ impl ConsensusValueT for Arc<BlockPayload> {
     }
 }
 
-/// The collection of types used for cryptography, IDs and blocks in the CasperLabs node.
+/// The collection of types used for cryptography, IDs and blocks in the Casper node.
 #[derive(Clone, DataSize, Debug, Deserialize, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub(crate) struct ClContext;
 

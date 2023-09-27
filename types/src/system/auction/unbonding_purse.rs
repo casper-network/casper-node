@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::vec::Vec;
 
 #[cfg(feature = "datasize")]
@@ -94,6 +91,11 @@ impl UnbondingPurse {
     /// Returns the public key for the new validator.
     pub fn new_validator(&self) -> &Option<PublicKey> {
         &self.new_validator
+    }
+
+    /// Sets amount to provided value.
+    pub fn with_amount(&mut self, amount: U512) {
+        self.amount = amount;
     }
 }
 

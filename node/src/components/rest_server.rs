@@ -30,6 +30,7 @@ use futures::{future::BoxFuture, join, FutureExt};
 use tokio::{sync::oneshot, task::JoinHandle};
 use tracing::{debug, error, info, warn};
 
+use casper_json_rpc::CorsOrigin;
 use casper_types::ProtocolVersion;
 
 use super::Component;
@@ -288,13 +289,32 @@ where
         let (shutdown_sender, shutdown_receiver) = oneshot::channel::<()>();
 
         let builder = utils::start_listening(&cfg.address)?;
-        let server_join_handle = Some(tokio::spawn(http_server::run(
-            builder,
-            effect_builder,
-            self.api_version,
-            shutdown_receiver,
-            cfg.qps_limit,
-        )));
+
+        let server_join_handle = match cfg.cors_origin.as_str() {
+            "" => Some(tokio::spawn(http_server::run(
+                builder,
+                effect_builder,
+                self.api_version,
+                shutdown_receiver,
+                cfg.qps_limit,
+            ))),
+            "*" => Some(tokio::spawn(http_server::run_with_cors(
+                builder,
+                effect_builder,
+                self.api_version,
+                shutdown_receiver,
+                cfg.qps_limit,
+                CorsOrigin::Any,
+            ))),
+            _ => Some(tokio::spawn(http_server::run_with_cors(
+                builder,
+                effect_builder,
+                self.api_version,
+                shutdown_receiver,
+                cfg.qps_limit,
+                CorsOrigin::Specified(cfg.cors_origin.clone()),
+            ))),
+        };
 
         let node_startup_instant = self.node_startup_instant;
         let network_name = self.network_name.clone();
@@ -345,38 +365,38 @@ mod schema_tests {
     use schemars::schema_for;
 
     #[test]
-    fn schema_status() {
+    fn json_schema_status_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_status.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetStatusResult));
+        assert_schema(&schema_path, schema_for!(GetStatusResult));
     }
 
     #[test]
-    fn schema_validator_changes() {
+    fn json_schema_validator_changes_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_validator_changes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetValidatorChangesResult));
+        assert_schema(&schema_path, schema_for!(GetValidatorChangesResult));
     }
 
     #[test]
-    fn schema_rpc_schema() {
+    fn json_schema_rpc_schema_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_rpc_schema.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(OpenRpcSchema));
+        assert_schema(&schema_path, schema_for!(OpenRpcSchema));
     }
 
     #[test]
-    fn schema_chainspec_bytes() {
+    fn json_schema_chainspec_bytes_check() {
         let schema_path = format!(
             "{}/../resources/test/rest_schema_chainspec_bytes.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for!(GetChainspecResult));
+        assert_schema(&schema_path, schema_for!(GetChainspecResult));
     }
 }

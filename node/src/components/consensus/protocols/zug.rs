@@ -81,7 +81,7 @@ use itertools::Itertools;
 use rand::{seq::IteratorRandom, Rng};
 use tracing::{debug, error, event, info, warn, Level};
 
-use casper_types::{TimeDiff, Timestamp, U512};
+use casper_types::{Chainspec, TimeDiff, Timestamp, U512};
 
 use crate::{
     components::consensus::{
@@ -96,7 +96,7 @@ use crate::{
         utils::{ValidatorIndex, ValidatorMap, Validators, Weight},
         ActionId, LeaderSequence, TimerId,
     },
-    types::{Chainspec, NodeId},
+    types::NodeId,
     utils, NodeRng,
 };
 use fault::Fault;
@@ -146,6 +146,8 @@ impl<C: Context> Debug for ActiveValidator<C> {
             .finish()
     }
 }
+
+struct FaultySender(NodeId);
 
 /// Contains the state required for the protocol.
 #[derive(Debug, DataSize)]
@@ -199,6 +201,9 @@ where
     next_scheduled_update: Timestamp,
     /// The write-ahead log to prevent honest nodes from double-signing upon restart.
     write_wal: Option<WriteWal<C>>,
+    /// A map of random IDs -> tipmestamp of when it has been created, allowing to
+    /// verify that a response has been asked for.
+    sent_sync_requests: registered_sync::RegisteredSync,
 }
 
 impl<C: Context + 'static> Zug<C> {
@@ -263,6 +268,7 @@ impl<C: Context + 'static> Zug<C> {
             paused: false,
             next_scheduled_update: Timestamp::MAX,
             write_wal: None,
+            sent_sync_requests: Default::default(),
         }
     }
 
@@ -414,7 +420,7 @@ impl<C: Context + 'static> Zug<C> {
     }
 
     /// Request the latest state from a random peer.
-    fn handle_sync_peer_timer(&self, now: Timestamp, rng: &mut NodeRng) -> ProtocolOutcomes<C> {
+    fn handle_sync_peer_timer(&mut self, now: Timestamp, rng: &mut NodeRng) -> ProtocolOutcomes<C> {
         if self.evidence_only || self.finalized_switch_block() {
             return vec![]; // Era has ended. No further progress is expected.
         }
@@ -428,7 +434,7 @@ impl<C: Context + 'static> Zug<C> {
         let round_id = (self.first_non_finalized_round_id..=self.current_round)
             .choose(rng)
             .unwrap_or(self.current_round);
-        let payload = self.create_sync_request(first_validator_idx, round_id);
+        let payload = self.create_sync_request(rng, first_validator_idx, round_id);
         let mut outcomes = vec![ProtocolOutcome::CreatedRequestToRandomPeer(
             SerializedMessage::from_message(&payload),
         )];
@@ -474,7 +480,8 @@ impl<C: Context + 'static> Zug<C> {
     /// If there are more than 128 validators, the information only covers echoes and votes of
     /// validators with index in `first_validator_idx..=(first_validator_idx + 127)`.
     fn create_sync_request(
-        &self,
+        &mut self,
+        rng: &mut NodeRng,
         first_validator_idx: ValidatorIndex,
         round_id: RoundId,
     ) -> SyncRequest<C> {
@@ -489,6 +496,7 @@ impl<C: Context + 'static> Zug<C> {
                     faulty,
                     active,
                     *self.instance_id(),
+                    self.sent_sync_requests.create_and_register_new_id(rng),
                 );
             }
         };
@@ -510,6 +518,10 @@ impl<C: Context + 'static> Zug<C> {
         if let Some(echo_map) = proposal_hash.and_then(|hash| round.echoes().get(&hash)) {
             echoes = self.validator_bit_field(first_validator_idx, echo_map.keys().cloned());
         }
+
+        // We create a new ID that the responder will use to show it's allowed to do so:
+        let sync_id = self.sent_sync_requests.create_and_register_new_id(rng);
+
         SyncRequest {
             round_id,
             proposal_hash,
@@ -521,6 +533,7 @@ impl<C: Context + 'static> Zug<C> {
             active,
             faulty,
             instance_id: *self.instance_id(),
+            sync_id,
         }
     }
 
@@ -785,6 +798,7 @@ impl<C: Context + 'static> Zug<C> {
             active,
             faulty,
             instance_id,
+            sync_id,
         } = sync_request;
         if first_validator_idx.0 >= self.validators.len() as u32 {
             info!(
@@ -916,6 +930,7 @@ impl<C: Context + 'static> Zug<C> {
             signed_messages,
             evidence,
             instance_id,
+            sync_id,
         };
         (
             outcomes,
@@ -938,10 +953,27 @@ impl<C: Context + 'static> Zug<C> {
             echo_sigs,
             true_vote_sigs,
             false_vote_sigs,
-            mut signed_messages,
+            signed_messages,
             evidence,
             instance_id,
+            sync_id,
         } = sync_response;
+
+        // We have not asked for any sync response:
+        if self.sent_sync_requests.try_remove_id(sync_id).is_none() {
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
+
+        // `echo_sigs`, `true_vote_sigs` and `false_vote_sigs` ought not to have more items than the
+        // amount of validators. In such a case, the sender is malicious.
+        if echo_sigs
+            .len()
+            .max(true_vote_sigs.len())
+            .max(false_vote_sigs.len())
+            > self.validators.len()
+        {
+            return vec![ProtocolOutcome::Disconnect(sender)];
+        }
 
         let (proposal_hash, proposal) = match proposal_or_hash {
             Some(Either::Left(proposal)) => {
@@ -952,46 +984,55 @@ impl<C: Context + 'static> Zug<C> {
             None => (None, None),
         };
 
-        // Reconstruct the signed messages from the echo and vote signatures, and add them to the
-        // messages we need to handle.
-        let mut contents = vec![];
-        if let Some(hash) = proposal_hash {
-            for (validator_idx, signature) in echo_sigs {
-                contents.push((validator_idx, Content::Echo(hash), signature));
-            }
-        }
-        for (validator_idx, signature) in true_vote_sigs {
-            contents.push((validator_idx, Content::Vote(true), signature));
-        }
-        for (validator_idx, signature) in false_vote_sigs {
-            contents.push((validator_idx, Content::Vote(false), signature));
-        }
-        signed_messages.extend(
-            contents
+        // `signed_messages` is now the previous `signed_messages` + all the messages from
+        // `echo_sigs`, `true_vote_sigs` and `false_vote_sigs`:
+        let signed_messages = {
+            let echo_sigs = proposal_hash
+                .map(move |hash| {
+                    echo_sigs
+                        .into_iter()
+                        .map(move |(validator_idx, signature)| {
+                            (validator_idx, Content::Echo(hash), signature)
+                        })
+                })
                 .into_iter()
-                .map(|(validator_idx, content, signature)| SignedMessage {
+                .flatten();
+            let true_vote_sigs = true_vote_sigs
+                .into_iter()
+                .map(|(validator_idx, signature)| (validator_idx, Content::Vote(true), signature));
+            let false_vote_sigs = false_vote_sigs
+                .into_iter()
+                .map(|(validator_idx, signature)| (validator_idx, Content::Vote(false), signature));
+
+            let sigs = echo_sigs.chain(true_vote_sigs).chain(false_vote_sigs).map(
+                |(validator_idx, content, signature)| SignedMessage {
                     round_id,
                     instance_id,
                     content,
                     validator_idx,
                     signature,
-                }),
-        );
+                },
+            );
 
-        // Handle the signed messages, evidence and proposal. The proposal must be handled last,
-        // since the other data may contain its justification, i.e. the proposer's own echo, or a
-        // quorum of echoes.
-        let mut outcomes = vec![];
-        for signed_msg in signed_messages {
-            outcomes.extend(self.handle_signed_message(signed_msg, sender, now));
-        }
-        for (signed_msg, content2, signature2) in evidence {
-            outcomes.extend(self.handle_evidence(signed_msg, content2, signature2, sender, now));
-        }
-        if let Some(proposal) = proposal {
-            outcomes.extend(self.handle_proposal(round_id, proposal, sender, now));
-        }
-        outcomes
+            signed_messages.into_iter().chain(sigs)
+        };
+
+        let handle_outcomes = move || -> Result<_, FaultySender> {
+            let mut outcomes = vec![];
+            for signed_msg in signed_messages {
+                outcomes.extend(self.handle_signed_message(signed_msg, sender, now)?);
+            }
+            for (signed_msg, content2, signature2) in evidence {
+                outcomes
+                    .extend(self.handle_evidence(signed_msg, content2, signature2, sender, now)?);
+            }
+            if let Some(proposal) = proposal {
+                outcomes.extend(self.handle_proposal(round_id, proposal, sender, now)?);
+            }
+            Ok(outcomes)
+        };
+
+        outcomes_or_disconnect(handle_outcomes())
     }
 
     /// The main entry point for signed echoes or votes. This function mostly authenticates
@@ -1002,7 +1043,7 @@ impl<C: Context + 'static> Zug<C> {
         signed_msg: SignedMessage<C>,
         sender: NodeId,
         now: Timestamp,
-    ) -> ProtocolOutcomes<C> {
+    ) -> Result<ProtocolOutcomes<C>, FaultySender> {
         let our_idx = self.our_idx();
         let validator_idx = signed_msg.validator_idx;
         let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
@@ -1014,7 +1055,7 @@ impl<C: Context + 'static> Zug<C> {
                 %sender,
                 "invalid incoming message: validator index out of range",
             );
-            return vec![ProtocolOutcome::Disconnect(sender)];
+            return Err(FaultySender(sender));
         };
 
         if self.faults.contains_key(&validator_idx) {
@@ -1023,29 +1064,29 @@ impl<C: Context + 'static> Zug<C> {
                 ?validator_id,
                 "ignoring message from faulty validator"
             );
-            return vec![];
+            return Ok(vec![]);
         }
 
         if signed_msg.round_id > self.current_round.saturating_add(MAX_FUTURE_ROUNDS) {
             debug!(our_idx, ?signed_msg, "dropping message from future round");
-            return vec![];
+            return Ok(vec![]);
         }
 
         if self.evidence_only {
             debug!(our_idx, ?signed_msg, "received an irrelevant message");
-            return vec![];
+            return Ok(vec![]);
         }
 
         if let Some(round) = self.round(signed_msg.round_id) {
             if round.contains(&signed_msg.content, validator_idx) {
                 debug!(our_idx, ?signed_msg, %sender, "received a duplicated message");
-                return vec![];
+                return Ok(vec![]);
             }
         }
 
         if !signed_msg.verify_signature(&validator_id) {
             warn!(our_idx, ?signed_msg, %sender, "invalid signature",);
-            return vec![ProtocolOutcome::Disconnect(sender)];
+            return Err(FaultySender(sender));
         }
 
         if let Some((content2, signature2)) = self.detect_fault(&signed_msg) {
@@ -1055,7 +1096,7 @@ impl<C: Context + 'static> Zug<C> {
             outcomes.push(ProtocolOutcome::CreatedGossipMessage(
                 SerializedMessage::from_message(&evidence_msg),
             ));
-            return outcomes;
+            return Ok(outcomes);
         }
 
         if self.faults.contains_key(&signed_msg.validator_idx) {
@@ -1064,14 +1105,15 @@ impl<C: Context + 'static> Zug<C> {
                 ?signed_msg,
                 "dropping message from faulty validator"
             );
-        } else {
-            self.record_entry(&Entry::SignedMessage(signed_msg.clone()));
-            if self.add_content(signed_msg) {
-                return self.update(now);
-            }
+            return Ok(vec![]);
         }
 
-        vec![]
+        self.record_entry(&Entry::SignedMessage(signed_msg.clone()));
+        if self.add_content(signed_msg) {
+            Ok(self.update(now))
+        } else {
+            Ok(vec![])
+        }
     }
 
     /// Verifies an evidence message that is supposed to contain two conflicting sigantures by the
@@ -1083,11 +1125,11 @@ impl<C: Context + 'static> Zug<C> {
         signature2: C::Signature,
         sender: NodeId,
         now: Timestamp,
-    ) -> ProtocolOutcomes<C> {
+    ) -> Result<ProtocolOutcomes<C>, FaultySender> {
         let our_idx = self.our_idx();
         let validator_idx = signed_msg.validator_idx;
         if let Some(Fault::Direct(..)) = self.faults.get(&validator_idx) {
-            return vec![]; // Validator is already known to be faulty.
+            return Ok(vec![]); // Validator is already known to be faulty.
         }
         let validator_id = if let Some(validator_id) = self.validators.id(validator_idx) {
             validator_id.clone()
@@ -1098,7 +1140,7 @@ impl<C: Context + 'static> Zug<C> {
                 %sender,
                 "invalid incoming evidence: validator index out of range",
             );
-            return vec![ProtocolOutcome::Disconnect(sender)];
+            return Err(FaultySender(sender));
         };
         if !signed_msg.content.contradicts(&content2) {
             warn!(
@@ -1108,7 +1150,7 @@ impl<C: Context + 'static> Zug<C> {
                 %sender,
                 "invalid evidence: contents don't conflict",
             );
-            return vec![ProtocolOutcome::Disconnect(sender)];
+            return Err(FaultySender(sender));
         }
         if !signed_msg.verify_signature(&validator_id)
             || !signed_msg
@@ -1122,9 +1164,9 @@ impl<C: Context + 'static> Zug<C> {
                 %sender,
                 "invalid signature in evidence",
             );
-            return vec![ProtocolOutcome::Disconnect(sender)];
+            return Err(FaultySender(sender));
         }
-        self.handle_fault(signed_msg, validator_id, content2, signature2, now)
+        Ok(self.handle_fault(signed_msg, validator_id, content2, signature2, now))
     }
 
     /// Checks whether an incoming proposal should be added to the protocol state and starts
@@ -1135,7 +1177,7 @@ impl<C: Context + 'static> Zug<C> {
         proposal: Proposal<C>,
         sender: NodeId,
         now: Timestamp,
-    ) -> ProtocolOutcomes<C> {
+    ) -> Result<ProtocolOutcomes<C>, FaultySender> {
         let leader_idx = self.leader(round_id);
         let our_idx = self.our_idx();
 
@@ -1162,7 +1204,7 @@ impl<C: Context + 'static> Zug<C> {
                     proposal,
                     "invalid proposal: parent is not from an earlier round",
                 );
-                return vec![ProtocolOutcome::Disconnect(sender)];
+                return Err(FaultySender(sender));
             }
         }
 
@@ -1172,7 +1214,7 @@ impl<C: Context + 'static> Zug<C> {
                 proposal,
                 "received a proposal with a timestamp far in the future; dropping",
             );
-            return vec![];
+            return Ok(vec![]);
         }
         if proposal.timestamp > now {
             log_proposal!(
@@ -1189,7 +1231,7 @@ impl<C: Context + 'static> Zug<C> {
                 proposal,
                 "invalid proposal: inactive must be present in all except the first and dummy proposals",
             );
-            return vec![ProtocolOutcome::Disconnect(sender)];
+            return Err(FaultySender(sender));
         }
         if let Some(inactive) = &proposal.inactive {
             if inactive
@@ -1201,7 +1243,7 @@ impl<C: Context + 'static> Zug<C> {
                     proposal,
                     "invalid proposal: invalid inactive validator index",
                 );
-                return vec![ProtocolOutcome::Disconnect(sender)];
+                return Err(FaultySender(sender));
             }
         }
 
@@ -1215,7 +1257,7 @@ impl<C: Context + 'static> Zug<C> {
                 hashed_prop.inner(),
                 "dropping proposal: missing echoes"
             );
-            return vec![];
+            return Ok(vec![]);
         }
 
         if self.round(round_id).and_then(Round::proposal) == Some(&hashed_prop) {
@@ -1224,7 +1266,7 @@ impl<C: Context + 'static> Zug<C> {
                 hashed_prop.inner(),
                 "dropping proposal: we already have it"
             );
-            return vec![];
+            return Ok(vec![]);
         }
 
         let ancestor_values = if let Some(parent_round_id) = hashed_prop.maybe_parent_round_id() {
@@ -1242,7 +1284,7 @@ impl<C: Context + 'static> Zug<C> {
                     .entry(hashed_prop)
                     .or_insert_with(HashSet::new)
                     .insert((round_id, sender));
-                return vec![];
+                return Ok(vec![]);
             }
         } else {
             vec![]
@@ -1250,7 +1292,7 @@ impl<C: Context + 'static> Zug<C> {
 
         let mut outcomes = self.validate_proposal(round_id, hashed_prop, ancestor_values, sender);
         outcomes.extend(self.update(now));
-        outcomes
+        Ok(outcomes)
     }
 
     /// Updates the round's outcome and returns `true` if there is a new quorum of echoes for the
@@ -2115,14 +2157,21 @@ where
             }) => {
                 // TODO: make sure that `echo` is indeed an echo
                 debug!(our_idx, %sender, %proposal, %round_id, "handling proposal with echo");
-                let mut outcomes = self.handle_signed_message(echo, sender, now);
-                outcomes.extend(self.handle_proposal(round_id, proposal, sender, now));
-                outcomes
+
+                let outcomes = || {
+                    let mut outcomes = self.handle_signed_message(echo, sender, now)?;
+                    outcomes.extend(self.handle_proposal(round_id, proposal, sender, now)?);
+                    Ok(outcomes)
+                };
+
+                outcomes_or_disconnect(outcomes())
             }
-            Ok(Message::Signed(signed_msg)) => self.handle_signed_message(signed_msg, sender, now),
-            Ok(Message::Evidence(signed_msg, content2, signature2)) => {
-                self.handle_evidence(signed_msg, content2, signature2, sender, now)
+            Ok(Message::Signed(signed_msg)) => {
+                outcomes_or_disconnect(self.handle_signed_message(signed_msg, sender, now))
             }
+            Ok(Message::Evidence(signed_msg, content2, signature2)) => outcomes_or_disconnect(
+                self.handle_evidence(signed_msg, content2, signature2, sender, now),
+            ),
         }
     }
 
@@ -2416,6 +2465,12 @@ where
     }
 }
 
+fn outcomes_or_disconnect<C: Context>(
+    result: Result<ProtocolOutcomes<C>, FaultySender>,
+) -> ProtocolOutcomes<C> {
+    result.unwrap_or_else(|sender| vec![ProtocolOutcome::Disconnect(sender.0)])
+}
+
 mod specimen_support {
     use std::collections::BTreeSet;
 
@@ -2476,6 +2531,7 @@ mod specimen_support {
                 active: LargestSpecimen::largest_specimen(estimator, cache),
                 faulty: LargestSpecimen::largest_specimen(estimator, cache),
                 instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                sync_id: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
@@ -2506,6 +2562,7 @@ mod specimen_support {
                 signed_messages: vec_prop_specimen(estimator, "validator_count", cache),
                 evidence: vec_prop_specimen(estimator, "validator_count", cache),
                 instance_id: LargestSpecimen::largest_specimen(estimator, cache),
+                sync_id: LargestSpecimen::largest_specimen(estimator, cache),
             }
         }
     }
@@ -2560,6 +2617,69 @@ mod specimen_support {
                 }
             });
             *cache.set(item)
+        }
+    }
+}
+
+mod registered_sync {
+    use crate::{
+        types::{DataSize, NodeRng},
+        utils::specimen::{Cache, LargestSpecimen, SizeEstimator},
+    };
+    use casper_types::{TimeDiff, Timestamp};
+    use rand::Rng as _;
+    use serde::{Deserialize, Serialize};
+    use std::collections::BTreeMap;
+
+    #[derive(Default, DataSize, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+    pub struct RegisteredSync(BTreeMap<RandomId, Timestamp>);
+
+    #[derive(
+        DataSize, Copy, Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Ord, PartialOrd,
+    )]
+    pub struct RandomId(u64);
+
+    impl RegisteredSync {
+        /// Prunes entries older than one minute.
+        fn prune_old(&mut self) {
+            const ONE_MIN: TimeDiff = TimeDiff::from_seconds(60);
+
+            self.0.retain(|_, timestamp| timestamp.elapsed() < ONE_MIN);
+        }
+
+        pub fn create_and_register_new_id(&mut self, rng: &mut NodeRng) -> RandomId {
+            self.prune_old();
+
+            let id = loop {
+                let id = RandomId::new(rng);
+
+                if self.0.contains_key(&id) == false {
+                    break id;
+                }
+            };
+
+            self.0.insert(id, Timestamp::now());
+
+            id
+        }
+
+        /// Tries and remove the random ID from the stored IDs and returns it if it was present.
+        pub fn try_remove_id(&mut self, id: RandomId) -> Option<RandomId> {
+            self.0.remove(&id)?;
+
+            Some(id)
+        }
+    }
+
+    impl RandomId {
+        pub fn new(rng: &mut NodeRng) -> Self {
+            RandomId(rng.gen())
+        }
+    }
+
+    impl LargestSpecimen for RandomId {
+        fn largest_specimen<E: SizeEstimator>(_estimator: &E, _cache: &mut Cache) -> Self {
+            RandomId(u64::MAX)
         }
     }
 }

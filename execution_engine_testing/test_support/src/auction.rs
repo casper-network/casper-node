@@ -1,32 +1,31 @@
 use std::{collections::HashSet, convert::TryFrom, io::Write, time::Instant};
 
-use casper_storage::global_state::storage::lmdb::{Cursor, Transaction};
+use lmdb::{Cursor, Transaction};
+use rand::Rng;
 use tempfile::TempDir;
 
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{
-        self, genesis::GenesisValidator, run_genesis_request::RunGenesisRequest, ChainspecRegistry,
-        EngineState, ExecConfig, ExecuteRequest, GenesisAccount,
+        self,
+        engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+        genesis::ExecConfigBuilder,
+        run_genesis_request::RunGenesisRequest,
+        EngineState, ExecuteRequest,
     },
     execution,
 };
-use casper_hashing::Digest;
 use casper_storage::global_state::{
-    shared::CorrelationId,
-    storage::{
-        state::{CommitProvider, StateProvider},
-        trie::{Pointer, Trie},
-    },
+    state::{CommitProvider, StateProvider},
+    trie::{Pointer, Trie},
 };
 use casper_types::{
     account::AccountHash,
     bytesrepr::{self},
     runtime_args,
     system::auction,
-    Key, Motes, ProtocolVersion, PublicKey, RuntimeArgs, SecretKey, StoredValue, U512,
+    ChainspecRegistry, Digest, GenesisAccount, GenesisValidator, Key, Motes, ProtocolVersion,
+    PublicKey, SecretKey, StoredValue, U512,
 };
-
-use rand::Rng;
 
 use crate::{
     transfer, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder,
@@ -228,7 +227,7 @@ fn find_necessary_tries<S>(
         necessary_tries.insert(root);
 
         let trie_bytes = engine_state
-            .get_trie_full(CorrelationId::new(), root)
+            .get_trie_full(root)
             .unwrap()
             .expect("trie should exist")
             .into_inner();
@@ -321,19 +320,20 @@ fn create_run_genesis_request(
     validator_slots: u32,
     genesis_accounts: Vec<GenesisAccount>,
 ) -> RunGenesisRequest {
-    let exec_config = {
-        ExecConfig::new(
-            genesis_accounts,
-            *DEFAULT_WASM_CONFIG,
-            *DEFAULT_SYSTEM_CONFIG,
-            validator_slots,
-            DEFAULT_AUCTION_DELAY,
-            DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-            DEFAULT_ROUND_SEIGNIORAGE_RATE,
-            DEFAULT_UNBONDING_DELAY,
-            DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-        )
-    };
+    let exec_config = ExecConfigBuilder::default()
+        .with_accounts(genesis_accounts)
+        .with_wasm_config(*DEFAULT_WASM_CONFIG)
+        .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+        .with_validator_slots(validator_slots)
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_refund_handling(DEFAULT_REFUND_HANDLING)
+        .with_fee_handling(DEFAULT_FEE_HANDLING)
+        .build();
+
     RunGenesisRequest::new(
         *DEFAULT_GENESIS_CONFIG_HASH,
         *DEFAULT_PROTOCOL_VERSION,

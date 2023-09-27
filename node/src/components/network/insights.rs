@@ -13,12 +13,12 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use casper_types::{EraId, PublicKey};
+use casper_types::{DisplayIter, EraId, PublicKey};
 use serde::Serialize;
 
 use crate::{
     types::NodeId,
-    utils::{opt_display::OptDisplay, DisplayIter, TimeAnchor},
+    utils::{opt_display::OptDisplay, TimeAnchor},
 };
 
 use super::{

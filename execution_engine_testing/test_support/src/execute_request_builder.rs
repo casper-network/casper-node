@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use rand::Rng;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     deploy_item::DeployItem, execute_request::ExecuteRequest,
 };
 use casper_types::{

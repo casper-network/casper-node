@@ -21,9 +21,9 @@ use datasize::DataSize;
 use derive_more::{Display, From};
 use itertools::Itertools;
 use smallvec::{smallvec, SmallVec};
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
-use casper_types::Timestamp;
+use casper_types::{Chainspec, Deploy, DeployApproval, DeployFootprint, DeployHash, Timestamp};
 
 use crate::{
     components::{
@@ -36,8 +36,8 @@ use crate::{
         EffectBuilder, EffectExt, Effects, Responder,
     },
     types::{
-        appendable_block::AppendableBlock, Approval, Chainspec, Deploy, DeployFootprint,
-        DeployHash, DeployHashWithApprovals, DeployOrTransferHash, LegacyDeploy, NodeId,
+        appendable_block::AppendableBlock, DeployHashWithApprovals, DeployOrTransferHash,
+        LegacyDeploy, NodeId,
     },
     NodeRng,
 };
@@ -60,7 +60,7 @@ impl ProposedBlock<ClContext> {
 
     fn deploys_and_transfers_iter(
         &self,
-    ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<Approval>)> + '_ {
+    ) -> impl Iterator<Item = (DeployOrTransferHash, BTreeSet<DeployApproval>)> + '_ {
         let deploys = self.value().deploys().iter().map(|dwa| {
             (
                 DeployOrTransferHash::Deploy(*dwa.deploy_hash()),
@@ -109,7 +109,7 @@ pub(crate) struct BlockValidationState {
     appendable_block: AppendableBlock,
     /// The set of approvals contains approvals from deploys that would be finalized with the
     /// block.
-    missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<Approval>>,
+    missing_deploys: HashMap<DeployOrTransferHash, BTreeSet<DeployApproval>>,
     /// A list of responders that are awaiting an answer.
     responders: SmallVec<[Responder<bool>; 2]>,
 }
@@ -186,13 +186,14 @@ where
                 sender,
                 responder,
             }) => {
+                debug!(?block, "validating proposed block");
                 if block.deploy_hashes().count()
-                    > self.chainspec.deploy_config.block_max_deploy_count as usize
+                    > self.chainspec.transaction_config.block_max_deploy_count as usize
                 {
                     return responder.respond(false).ignore();
                 }
                 if block.transfer_hashes().count()
-                    > self.chainspec.deploy_config.block_max_transfer_count as usize
+                    > self.chainspec.transaction_config.block_max_native_count as usize
                 {
                     return responder.respond(false).ignore();
                 }
@@ -216,7 +217,7 @@ where
                     .entry(block)
                     .or_insert(BlockValidationState {
                         appendable_block: AppendableBlock::new(
-                            self.chainspec.deploy_config,
+                            self.chainspec.transaction_config,
                             block_timestamp,
                         ),
                         missing_deploys: block_deploys.clone(),
@@ -224,7 +225,11 @@ where
                     });
 
                 if state.missing_deploys.is_empty() {
-                    // Block has already been validated successfully, early return to caller.
+                    debug!(
+                        block_timestamp = %state.appendable_block.timestamp(),
+                        "no missing deploys - block validation complete"
+                    );
+                    // Block has already been validated successfully or has no deploys.
                     return responder.respond(true).ignore();
                 }
 
@@ -247,7 +252,7 @@ where
 
                 // If a deploy is received for a given block that makes that block invalid somehow,
                 // mark it for removal.
-                let mut invalid = Vec::new();
+                let mut invalid: Vec<ProposedBlock<ClContext>> = Vec::new();
 
                 // Our first pass updates all validation states, crossing off the found deploy.
                 for (key, state) in self.validation_states.iter_mut() {
@@ -272,6 +277,12 @@ where
                             info!(block = ?key, %dt_hash, ?deploy_footprint, ?err, "block invalid");
                             invalid.push(key.clone());
                         }
+                        debug!(
+                            block_timestamp = %state.appendable_block.timestamp(),
+                            deploy_hash = %dt_hash,
+                            missing_deploy_count = %state.missing_deploys.len(),
+                            "found deploy for block validation"
+                        );
                     }
                 }
 
@@ -284,6 +295,10 @@ where
                     if state.missing_deploys.is_empty() {
                         // This one is done and valid.
                         effects.extend(state.respond(true));
+                        debug!(
+                            block_timestamp = %state.appendable_block.timestamp(),
+                            "no further missing deploys - block validation complete"
+                        );
                         return false;
                     }
                     true
@@ -366,11 +381,11 @@ where
                 return Event::DeployMissing(dt_hash);
             }
         };
-        if deploy.deploy_or_transfer_hash() != dt_hash {
+        if DeployOrTransferHash::new(&deploy) != dt_hash {
             warn!(
                 deploy = ?deploy,
                 expected_deploy_or_transfer_hash = ?dt_hash,
-                actual_deploy_or_transfer_hash = ?deploy.deploy_or_transfer_hash(),
+                actual_deploy_or_transfer_hash = ?DeployOrTransferHash::new(&deploy),
                 "Deploy has incorrect transfer hash"
             );
             return Event::CannotConvertDeploy(dt_hash);

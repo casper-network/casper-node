@@ -2,14 +2,12 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
-    engine_state::Error as CoreError, execution::Error as ExecError,
-};
+use casper_execution_engine::{engine_state::Error as CoreError, execution::Error as ExecError};
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{mint, standard_payment},
-    ContractHash, Key, RuntimeArgs, U512,
+    ContractHash, Key, U512,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";
@@ -60,11 +58,15 @@ fn regression_20211110() {
 
     funds = funds.checked_sub(INSTALL_COST).unwrap();
 
-    let contract_hash: ContractHash =
-        match builder.get_expected_account(ACCOUNT_1_ADDR).named_keys()[CONTRACT_HASH_NAME] {
-            Key::Hash(addr) => addr.into(),
-            _ => panic!("Couldn't find regression contract."),
-        };
+    let contract_hash = match builder
+        .get_expected_addressable_entity_by_account_hash(ACCOUNT_1_ADDR)
+        .named_keys()
+        .get(CONTRACT_HASH_NAME)
+        .unwrap()
+    {
+        Key::Hash(addr) => ContractHash::new(*addr),
+        _ => panic!("Couldn't find regression contract."),
+    };
 
     let recurse_request = {
         let payment_args = runtime_args! {

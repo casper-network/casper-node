@@ -1,9 +1,9 @@
 use thiserror::Error;
 use tracing::error;
 
-use casper_types::{crypto, EraId};
+use casper_types::{crypto, BlockHash, BlockValidationError, EraId};
 
-use crate::types::{BlockHash, BlockValidationError, MetaBlockMergeError, NodeId};
+use crate::types::{MetaBlockMergeError, NodeId};
 
 #[derive(Error, Debug)]
 pub(crate) enum InvalidGossipError {

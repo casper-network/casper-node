@@ -6,31 +6,42 @@ import random
 import re
 import subprocess
 import threading
+import time
+import psutil
 import toml
 from time import sleep
 
 # How long to keep the test running (assuming errorless run)
-TEST_DURATION_SECS = 30 * 60
+TEST_DURATION_SECS = 45 * 60
+
+# How long to wait before running the health checks, giving the network some time to settle
+# after the disturbances.
+NETWORK_SETTLE_DOWN_TIME_SECS = 2 * 60
 
 # Wasm transfers
 DEPLOY_SPAM_INTERVAL_SECS = 3 * 60
 DEPLOY_SPAM_COUNT = 600
 
 # Named keys bloat
-HUGE_DEPLOY_SPAM_INTERVAL_SECS = 60
-HUGE_DEPLOY_SPAM_COUNT = 2
+HUGE_DEPLOY_SPAM_INTERVAL_SECS = 2 * 60
+HUGE_DEPLOY_SPAM_COUNT = 1
 
 # How long to wait between invoking disturbance scenarios
 DISTURBANCE_INTERVAL_SECS = 5
 
 # Time allowed for the network to progress
-PROGRESS_WAIT_TIMEOUT_SECS = 2 * 60
+PROGRESS_WAIT_TIMEOUT_SECS = 5 * 60
+
+# Alert thresholds
+HUGE_MEMORY_CONSUMPTION_ALERT_THRESHOLD_BYTES = (2**30) * 8.5  # ~8.5Gb
+COMMAND_EXECUTION_TIME_SECS = 3
 
 invoke_lock = threading.Lock()
 current_node_count = 5
 path_to_client = ""
 huge_deploy_path = "./utils/nctl/sh/scenarios/smart_contracts/named_keys_bloat.wasm"
 huge_deploy_payment_amount = 10000000000000000
+test_shutting_down = False
 
 
 # Kill a random node, wait one minute, restart node
@@ -62,17 +73,36 @@ def log(msg):
 
 
 def invoke(command, quiet=False):
+    global invoke_lock
     if not quiet:
         log("invoking command: {}".format(command))
-    invoke_lock.acquire()
+
+    while True:
+        if not invoke_lock.acquire(timeout=60):
+            log("unable to acquire lock, retrying")
+        else:
+            break
+
     try:
-        result = subprocess.check_output(['/bin/bash', '-c',
-                                          'shopt -s expand_aliases\nsource $NCTL/activate\n{}'
-                                         .format(command)]).decode("utf-8").rstrip()
+        start = time.time()
+        result = subprocess.check_output([
+            '/bin/bash', '-c',
+            'shopt -s expand_aliases\nsource $NCTL/activate\n{}'.format(
+                command, timeout=60)
+        ]).decode("utf-8").rstrip()
+        end = time.time()
+        elapsed = end - start
+        if elapsed > COMMAND_EXECUTION_TIME_SECS:
+            log("command took {:.2f} seconds to execute: {}".format(
+                end - start, command))
         return result
-    except subprocess.CalledProcessError as e:
-        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down"
-            )
+    except subprocess.CalledProcessError as err:
+        log("command returned non-zero exit code - this can be a transitory error if the node is temporarily down: {}"
+            .format(err))
+        return ""
+    except subprocess.TimeoutExpired as err:
+        log("subprocess timeout - this can be a transitory error if the node is temporarily down: {}"
+            .format(err))
         return ""
     finally:
         invoke_lock.release()
@@ -90,7 +120,8 @@ def start_network():
     invoke(command)
 
     for node in range(1, 11):
-        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(node)
+        path_to_chainspec = "utils/nctl/assets/net-1/nodes/node-{}/config/1_0_0/chainspec.toml".format(
+            node)
         chainspec = toml.load(path_to_chainspec)
         chainspec['deploys']['block_gas_limit'] = huge_deploy_payment_amount
         toml.dump(chainspec, open(path_to_chainspec, 'w'))
@@ -114,7 +145,7 @@ def wait_for_height(target_height):
     retries = PROGRESS_WAIT_TIMEOUT_SECS / 2
     while True:
         heights = []
-        for node in range(1, 6):
+        for node in range(1, current_node_count + 1):
             height = get_chain_height(node)
             heights.append(height)
         keep_waiting = len(
@@ -132,23 +163,36 @@ def wait_for_height(target_height):
         sleep(2)
 
 
+def memory_reporter_thread():
+    global test_shutting_down
+    while not test_shutting_down:
+        show_memory_usage()
+        sleep(30)
+
+    log("*** memory_reporter_thread finishing ***")
+    return
+
+
 def deploy_sender_thread(count, interval):
-    global current_node_count
+    global current_node_count, test_shutting_down
+
     command = "nctl-transfer-wasm node={} transfers=1"
-    while True:
+    while not test_shutting_down:
         for i in range(count):
             nctl_call = command.format(random.randint(1, current_node_count))
             invoke(nctl_call, True)
         log("sent " + str(count) + " deploys and sleeping " + str(interval) +
             " seconds")
         sleep(interval)
+
+    log("*** deploy_sender_thread finishing ***")
     return
 
 
 def huge_deploy_sender_thread(count, interval):
-    global current_node_count
+    global current_node_count, test_shutting_down
 
-    while True:
+    while not test_shutting_down:
         for i in range(count):
             random_node = random.randint(1, current_node_count)
             huge_deploy_path = make_huge_deploy(random_node)
@@ -160,6 +204,17 @@ def huge_deploy_sender_thread(count, interval):
         log("sent " + str(count) + " huge deploys and sleeping " +
             str(interval) + " seconds")
         sleep(interval)
+
+    log("*** huge_deploy_sender_thread finishing ***")
+    return
+
+
+def get_node_metrics_endpoint(node):
+    command = "nctl-view-node-ports node={}".format(node)
+    result = invoke(command, True)
+    m = re.match(r'.*REST @ (\d*).*', result)
+    if m and m.group(1):
+        return "http://localhost:{}/metrics/".format(int(m.group(1)))
     return
 
 
@@ -170,6 +225,14 @@ def get_node_rpc_endpoint(node):
     if m and m.group(1):
         return "localhost:{}/rpc/".format(int(m.group(1)))
     return
+
+
+def start_memory_reporting():
+    log("*** starting memory reporting ***")
+    handle = threading.Thread(target=memory_reporter_thread)
+    handle.daemon = True
+    handle.start()
+    return handle
 
 
 def start_sending_deploys():
@@ -192,9 +255,52 @@ def start_sending_huge_deploys():
     return handle
 
 
-def test_timer_thread(secs):
+def disturbance_thread(disturbance_interval_secs):
+    global current_node_count, test_shutting_down
+
+    while not test_shutting_down:
+        disturbance_1(current_node_count)
+        assert_network_is_progressing(current_node_count)
+        sleep(disturbance_interval_secs)
+
+        disturbance_2(current_node_count)
+        assert_network_is_progressing(current_node_count)
+        sleep(disturbance_interval_secs)
+
+        current_node_count = join_node(current_node_count)
+        assert_network_is_progressing(current_node_count)
+
+    log("*** disturbance_thread finishing ***")
+    return
+
+
+def start_disturbance_thread():
+    log("*** starting disturbance thread ***")
+    handle = threading.Thread(target=disturbance_thread,
+                              args=(DISTURBANCE_INTERVAL_SECS, ))
+    handle.daemon = True
+    handle.start()
+    return handle
+
+
+def test_timer_thread(secs, deploy_sender_handle, huge_deploy_sender_handle,
+                      disturbance_thread, memory_reporter_thread):
+    global test_shutting_down
+
     sleep(secs)
-    log("*** " + str(secs) + " secs passed - running health checks ***")
+    log("*** " + str(secs) +
+        " secs passed - waiting for worker threads to finish ***")
+    test_shutting_down = True
+    deploy_sender_handle.join()
+    huge_deploy_sender_handle.join()
+    disturbance_thread.join()
+    memory_reporter_thread.join()
+
+    log("*** waiting {} seconds to allow the network to settle ***".format(
+        NETWORK_SETTLE_DOWN_TIME_SECS))
+    sleep(NETWORK_SETTLE_DOWN_TIME_SECS)
+
+    log("*** running health checks ***")
     run_health_checks()
     log("*** test finished successfully ***")
     invoke("nctl-stop")
@@ -229,9 +335,13 @@ def run_health_checks():
     return
 
 
-def start_test_timer(secs):
+def start_test_timer(secs, deploy_sender_handle, huge_deploy_sender_handle,
+                     disturbance_thread, memory_reporter_thread):
     log("*** starting test timer (" + str(secs) + " secs) ***")
-    handle = threading.Thread(target=test_timer_thread, args=(secs, ))
+    handle = threading.Thread(
+        target=test_timer_thread,
+        args=(secs, deploy_sender_handle, huge_deploy_sender_handle,
+              disturbance_thread, memory_reporter_thread))
     handle.daemon = True
     handle.start()
     return handle
@@ -250,19 +360,57 @@ def make_huge_deploy(node):
     if os.path.exists(output):
         os.remove(output)
     command = "{} make-deploy --output {} --chain-name {} --payment-amount {} --ttl {} --secret-key {} --session-path {} > /dev/null 2>&1".format(
-        path_to_client, output, chain_name, huge_deploy_payment_amount, ttl, secret_key,
-        session_path)
+        path_to_client, output, chain_name, huge_deploy_payment_amount, ttl,
+        secret_key, session_path)
     invoke(command)
     return output
 
 
-def prepare_test_env():
+def show_node_metrics(node_id):
+    endpoint = get_node_metrics_endpoint(node_id)
+    command = "curl {} | grep -v '#'".format(endpoint)
+    response = invoke(command)
+    if response:
+        log(response)
+    return
+
+
+def show_memory_usage():
+    try:
+        for p in psutil.process_iter():
+            if (p.name() == 'casper-node'):
+                cmd = p.cmdline()[0]
+                match = re.search(f".*node-(\d+).*", cmd)
+                if match:
+                    node_id = match[1]
+                    mem = p.memory_info().rss
+                    if mem > HUGE_MEMORY_CONSUMPTION_ALERT_THRESHOLD_BYTES:
+                        log("node-{}, pid={}, mem={} bytes ({:.2f} Gb) - HIGH! - dumping metrics"
+                            .format(node_id, p.pid, mem, mem / (2**30)))
+                        show_node_metrics(node_id)
+                    else:
+                        log("node-{}, pid={}, mem={} bytes ({:.2f} Gb)".format(
+                            node_id, p.pid, mem, mem / (2**30)))
+                else:
+                    log("can't determine casper node id")
+    except psutil.NoSuchProcess:
+        log("unable to determine nodes memory consumption")
+
+
+def start_test():
     compile_node()
     start_network()
     wait_for_height(2)
-    timer_thread = start_test_timer(TEST_DURATION_SECS)
+    memory_reporter_thread = start_memory_reporting()
     deploy_sender_handle = start_sending_deploys()
     huge_deploy_sender_handle = start_sending_huge_deploys()
+    disturbance_thread = start_disturbance_thread()
+    main_test_thread = start_test_timer(TEST_DURATION_SECS,
+                                        deploy_sender_handle,
+                                        huge_deploy_sender_handle,
+                                        disturbance_thread,
+                                        memory_reporter_thread)
+    main_test_thread.join()
     return
 
 
@@ -336,16 +484,4 @@ def join_node(current_node_count):
 
 path_to_client = invoke("get_path_to_client")
 
-prepare_test_env()
-
-while True:
-    disturbance_1(current_node_count)
-    assert_network_is_progressing(current_node_count)
-    sleep(DISTURBANCE_INTERVAL_SECS)
-
-    disturbance_2(current_node_count)
-    assert_network_is_progressing(current_node_count)
-    sleep(DISTURBANCE_INTERVAL_SECS)
-
-    current_node_count = join_node(current_node_count)
-    assert_network_is_progressing(current_node_count)
+start_test()

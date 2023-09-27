@@ -1,7 +1,8 @@
 use datasize::DataSize;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
-use casper_execution_engine::shared::utils;
+use casper_types::OS_PAGE_SIZE;
 
 const DEFAULT_MAX_GLOBAL_STATE_SIZE: usize = 805_306_368_000; // 750 GiB
 const DEFAULT_MAX_READERS: u32 = 512;
@@ -29,7 +30,7 @@ pub struct Config {
     pub max_query_depth: Option<u64>,
     /// Enable synchronizing to disk only after each block is written.
     ///
-    /// Defaults to `false`.
+    /// Defaults to `true`.
     pub enable_manual_sync: Option<bool>,
 }
 
@@ -39,7 +40,12 @@ impl Config {
         let value = self
             .max_global_state_size
             .unwrap_or(DEFAULT_MAX_GLOBAL_STATE_SIZE);
-        utils::check_multiple_of_page_size(value);
+        if value % *OS_PAGE_SIZE != 0 {
+            warn!(
+                "maximum global state database size {} is not multiple of system page size {}",
+                value, *OS_PAGE_SIZE
+            );
+        }
         value
     }
 

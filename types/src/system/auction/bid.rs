@@ -1,47 +1,65 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 mod vesting;
 
 use alloc::{collections::BTreeMap, vec::Vec};
+use core::fmt::{self, Display, Formatter};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
 #[cfg(feature = "json-schema")]
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "json-schema")]
+use serde_map_to_array::KeyValueJsonSchema;
+use serde_map_to_array::{BTreeMapToArray, KeyValueLabels};
 
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
-    system::auction::{DelegationRate, Delegator, Error},
+    system::auction::{DelegationRate, Delegator, Error, ValidatorBid},
     CLType, CLTyped, PublicKey, URef, U512,
 };
 
 pub use vesting::{VestingSchedule, VESTING_SCHEDULE_LENGTH_MILLIS};
 
 /// An entry in the validator map.
-#[derive(PartialEq, Eq, Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct Bid {
-    /// Validator public key
+    /// Validator public key.
     validator_public_key: PublicKey,
     /// The purse that was used for bonding.
     bonding_purse: URef,
     /// The amount of tokens staked by a validator (not including delegators).
     staked_amount: U512,
-    /// Delegation rate
+    /// Delegation rate.
     delegation_rate: DelegationRate,
     /// Vesting schedule for a genesis validator. `None` if non-genesis validator.
     vesting_schedule: Option<VestingSchedule>,
-    /// This validator's delegators, indexed by their public keys
+    /// This validator's delegators, indexed by their public keys.
+    #[serde(with = "BTreeMapToArray::<PublicKey, Delegator, DelegatorLabels>")]
     delegators: BTreeMap<PublicKey, Delegator>,
-    /// `true` if validator has been "evicted"
+    /// `true` if validator has been "evicted".
     inactive: bool,
 }
 
 impl Bid {
+    #[allow(missing_docs)]
+    pub fn from_non_unified(
+        validator_bid: ValidatorBid,
+        delegators: BTreeMap<PublicKey, Delegator>,
+    ) -> Self {
+        Self {
+            validator_public_key: validator_bid.validator_public_key().clone(),
+            bonding_purse: *validator_bid.bonding_purse(),
+            staked_amount: validator_bid.staked_amount(),
+            delegation_rate: *validator_bid.delegation_rate(),
+            vesting_schedule: validator_bid.vesting_schedule().cloned(),
+            delegators,
+            inactive: validator_bid.inactive(),
+        }
+    }
+
     /// Creates new instance of a bid with locked funds.
     pub fn locked(
         validator_public_key: PublicKey,
@@ -270,7 +288,7 @@ impl Bid {
         }
 
         for delegator in self.delegators_mut().values_mut() {
-            let staked_amount = *delegator.staked_amount();
+            let staked_amount = delegator.staked_amount();
             if let Some(vesting_schedule) = delegator.vesting_schedule_mut() {
                 if timestamp_millis >= vesting_schedule.initial_release_timestamp_millis()
                     && vesting_schedule
@@ -301,7 +319,7 @@ impl Bid {
         self.delegators
             .iter()
             .fold(Some(U512::zero()), |maybe_a, (_, b)| {
-                maybe_a.and_then(|a| a.checked_add(*b.staked_amount()))
+                maybe_a.and_then(|a| a.checked_add(b.staked_amount()))
             })
             .and_then(|delegators_sum| delegators_sum.checked_add(*self.staked_amount()))
             .ok_or(Error::InvalidAmount)
@@ -316,15 +334,9 @@ impl CLTyped for Bid {
 
 impl ToBytes for Bid {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        let mut result = bytesrepr::allocate_buffer(self)?;
-        self.validator_public_key.write_bytes(&mut result)?;
-        self.bonding_purse.write_bytes(&mut result)?;
-        self.staked_amount.write_bytes(&mut result)?;
-        self.delegation_rate.write_bytes(&mut result)?;
-        self.vesting_schedule.write_bytes(&mut result)?;
-        self.delegators().write_bytes(&mut result)?;
-        self.inactive.write_bytes(&mut result)?;
-        Ok(result)
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
@@ -343,7 +355,7 @@ impl ToBytes for Bid {
         self.staked_amount.write_bytes(writer)?;
         self.delegation_rate.write_bytes(writer)?;
         self.vesting_schedule.write_bytes(writer)?;
-        self.delegators().write_bytes(writer)?;
+        self.delegators.write_bytes(writer)?;
         self.inactive.write_bytes(writer)?;
         Ok(())
     }
@@ -371,6 +383,49 @@ impl FromBytes for Bid {
             bytes,
         ))
     }
+}
+
+impl Display for Bid {
+    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "bid {{ bonding purse {}, staked {}, delegation rate {}, delegators {{",
+            self.bonding_purse, self.staked_amount, self.delegation_rate
+        )?;
+
+        let count = self.delegators.len();
+        for (index, delegator) in self.delegators.values().enumerate() {
+            write!(
+                formatter,
+                "{}{}",
+                delegator,
+                if index + 1 == count { "" } else { ", " }
+            )?;
+        }
+
+        write!(
+            formatter,
+            "}}, is {}inactive }}",
+            if self.inactive { "" } else { "not " }
+        )
+    }
+}
+
+struct DelegatorLabels;
+
+impl KeyValueLabels for DelegatorLabels {
+    const KEY: &'static str = "delegator_public_key";
+    const VALUE: &'static str = "delegator";
+}
+
+#[cfg(feature = "json-schema")]
+impl KeyValueJsonSchema for DelegatorLabels {
+    const JSON_SCHEMA_KV_NAME: Option<&'static str> = Some("PublicKeyAndDelegator");
+    const JSON_SCHEMA_KV_DESCRIPTION: Option<&'static str> =
+        Some("A delegator associated with the given validator.");
+    const JSON_SCHEMA_KEY_DESCRIPTION: Option<&'static str> =
+        Some("The public key of the delegator.");
+    const JSON_SCHEMA_VALUE_DESCRIPTION: Option<&'static str> = Some("The delegator details.");
 }
 
 #[cfg(test)]
@@ -549,7 +604,7 @@ mod prop_tests {
 
     proptest! {
         #[test]
-        fn test_value_bid(bid in gens::bid_arb(1..100)) {
+        fn test_unified_bid(bid in gens::unified_bid_arb(0..3)) {
             bytesrepr::test_serialization_roundtrip(&bid);
         }
     }

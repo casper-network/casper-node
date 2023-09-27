@@ -33,14 +33,12 @@ use warp::{
 };
 
 #[cfg(test)]
-use casper_types::testing::TestRng;
+use casper_types::{execution::ExecutionResultV2, testing::TestRng, TestBlockBuilder};
 use casper_types::{
-    EraId, ExecutionEffect, ExecutionResult, ProtocolVersion, PublicKey, TimeDiff, Timestamp,
+    execution::{Effects, ExecutionResult},
+    Block, BlockHash, Deploy, DeployHash, EraId, FinalitySignature, ProtocolVersion, PublicKey,
+    TimeDiff, Timestamp,
 };
-
-use crate::types::{BlockHash, Deploy, DeployHash, FinalitySignature, JsonBlock};
-#[cfg(test)]
-use crate::{testing, types::Block};
 
 /// The URL root path.
 pub const SSE_API_ROOT_PATH: &str = "events";
@@ -80,12 +78,11 @@ pub enum SseData {
     /// The given block has been added to the linear chain and stored locally.
     BlockAdded {
         block_hash: BlockHash,
-        block: Box<JsonBlock>,
+        block: Box<Block>,
     },
     /// The given deploy has been newly-accepted by this node.
     DeployAccepted {
         #[schemars(with = "Deploy", description = "a deploy")]
-        // It's an Arc to not create multiple copies of the same deploy for multiple subscribers.
         deploy: Arc<Deploy>,
     },
     /// The given deploy has been executed, committed and forms part of the given block.
@@ -112,8 +109,7 @@ pub enum SseData {
     /// The execution effects produced by a `StepRequest`.
     Step {
         era_id: EraId,
-        #[data_size(skip)]
-        execution_effect: ExecutionEffect,
+        execution_effects: Effects,
     },
     /// The node is about to shut down.
     Shutdown,
@@ -148,10 +144,10 @@ impl SseData {
 
     /// Returns a random `SseData::BlockAdded`.
     pub(super) fn random_block_added(rng: &mut TestRng) -> Self {
-        let block = Block::random(rng);
+        let block = TestBlockBuilder::new().build(rng);
         SseData::BlockAdded {
             block_hash: *block.hash(),
-            block: Box::new(JsonBlock::new(&block, None)),
+            block: Box::new(block.into()),
         }
     }
 
@@ -174,13 +170,13 @@ impl SseData {
             ttl: deploy.header().ttl(),
             dependencies: deploy.header().dependencies().clone(),
             block_hash: Box::new(BlockHash::random(rng)),
-            execution_result: Box::new(rng.gen()),
+            execution_result: Box::new(ExecutionResult::from(ExecutionResultV2::random(rng))),
         }
     }
 
     /// Returns a random `SseData::DeployExpired`
     pub(super) fn random_deploy_expired(rng: &mut TestRng) -> Self {
-        let deploy = testing::create_expired_deploy(Timestamp::now(), rng);
+        let deploy = crate::testing::create_expired_deploy(Timestamp::now(), rng);
         SseData::DeployExpired {
             deploy_hash: *deploy.hash(),
         }
@@ -199,20 +195,20 @@ impl SseData {
     pub(super) fn random_finality_signature(rng: &mut TestRng) -> Self {
         SseData::FinalitySignature(Box::new(FinalitySignature::random_for_block(
             BlockHash::random(rng),
-            rng.gen(),
+            EraId::random(rng),
+            rng,
         )))
     }
 
     /// Returns a random `SseData::Step`.
     pub(super) fn random_step(rng: &mut TestRng) -> Self {
-        let execution_effect = match rng.gen::<ExecutionResult>() {
-            ExecutionResult::Success { effect, .. } | ExecutionResult::Failure { effect, .. } => {
-                effect
-            }
+        let execution_effects = match ExecutionResultV2::random(rng) {
+            ExecutionResultV2::Success { effects, .. }
+            | ExecutionResultV2::Failure { effects, .. } => effects,
         };
         SseData::Step {
             era_id: EraId::new(rng.gen()),
-            execution_effect,
+            execution_effects,
         }
     }
 }

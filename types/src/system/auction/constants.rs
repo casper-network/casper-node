@@ -12,6 +12,10 @@ pub const INITIAL_ERA_END_TIMESTAMP_MILLIS: u64 = 0;
 /// in integer terms, which is then divided by the denominator to obtain the fraction.
 pub const DELEGATION_RATE_DENOMINATOR: DelegationRate = 100;
 
+/// We use one trillion as a block reward unit because it's large enough to allow precise
+/// fractions, and small enough for many block rewards to fit into a u64.
+pub const BLOCK_REWARD: u64 = 1_000_000_000_000;
+
 /// Named constant for `amount`.
 pub const ARG_AMOUNT: &str = "amount";
 /// Named constant for `delegation_rate`.
@@ -52,6 +56,8 @@ pub const ARG_UNBONDING_DELAY: &str = "unbonding_delay";
 pub const ARG_ERA_END_TIMESTAMP_MILLIS: &str = "era_end_timestamp_millis";
 /// Named constant for `evicted_validators`;
 pub const ARG_EVICTED_VALIDATORS: &str = "evicted_validators";
+/// Named constant for `rewards_map`;
+pub const ARG_REWARDS_MAP: &str = "rewards_map";
 
 /// Named constant for method `get_era_validators`.
 pub const METHOD_GET_ERA_VALIDATORS: &str = "get_era_validators";

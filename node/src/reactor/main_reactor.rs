@@ -18,14 +18,17 @@ mod upgrade_shutdown;
 mod upgrading_instruction;
 mod validate;
 
-use std::{collections::BTreeMap, sync::Arc, time::Instant};
+use std::{collections::BTreeMap, convert::TryInto, sync::Arc, time::Instant};
 
 use datasize::DataSize;
 use memory_metrics::MemoryMetrics;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, PublicKey, TimeDiff, Timestamp, U512};
+use casper_types::{
+    Block, BlockHash, BlockV2, Chainspec, ChainspecRawBytes, DeployId, EraId, FinalitySignature,
+    PublicKey, TimeDiff, Timestamp, Transaction, TransactionId, U512,
+};
 
 #[cfg(test)]
 use crate::testing::network::NetworkedReactor;
@@ -36,7 +39,6 @@ use crate::{
         block_validator::{self, BlockValidator},
         consensus::{self, EraSupervisor},
         contract_runtime::ContractRuntime,
-        deploy_acceptor::{self, DeployAcceptor},
         deploy_buffer::{self, DeployBuffer},
         diagnostics_port::DiagnosticsPort,
         event_stream_server::{self, EventStreamServer},
@@ -45,22 +47,23 @@ use crate::{
         network::{self, GossipedAddress, Identity as NetworkIdentity, Network},
         rest_server::RestServer,
         rpc_server::RpcServer,
-        shutdown_trigger::{self, ShutdownTrigger},
+        shutdown_trigger::{self, CompletedBlockInfo, ShutdownTrigger},
         storage::Storage,
         sync_leaper::SyncLeaper,
+        transaction_acceptor::{self, TransactionAcceptor},
         upgrade_watcher::{self, UpgradeWatcher},
         Component, ValidatorBoundComponent,
     },
     effect::{
         announcements::{
             BlockAccumulatorAnnouncement, ConsensusAnnouncement, ContractRuntimeAnnouncement,
-            ControlAnnouncement, DeployAcceptorAnnouncement, DeployBufferAnnouncement,
-            FetchedNewBlockAnnouncement, FetchedNewFinalitySignatureAnnouncement,
-            GossiperAnnouncement, MetaBlockAnnouncement, PeerBehaviorAnnouncement,
-            RpcServerAnnouncement, UnexecutedBlockAnnouncement, UpgradeWatcherAnnouncement,
+            ControlAnnouncement, DeployBufferAnnouncement, FetchedNewBlockAnnouncement,
+            FetchedNewFinalitySignatureAnnouncement, GossiperAnnouncement, MetaBlockAnnouncement,
+            PeerBehaviorAnnouncement, TransactionAcceptorAnnouncement, UnexecutedBlockAnnouncement,
+            UpgradeWatcherAnnouncement,
         },
         incoming::{NetResponseIncoming, TrieResponseIncoming},
-        requests::ChainspecRawBytesRequest,
+        requests::{AcceptTransactionRequest, ChainspecRawBytesRequest},
         EffectBuilder, EffectExt, Effects, GossipTarget,
     },
     fatal,
@@ -72,8 +75,7 @@ use crate::{
         EventQueueHandle, QueueKind,
     },
     types::{
-        Block, BlockHash, BlockHeader, Chainspec, ChainspecRawBytes, Deploy, FinalitySignature,
-        MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix,
+        ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling, TrieOrChunk, ValidatorMatrix,
     },
     utils::{Source, WithDir},
     NodeRng,
@@ -148,14 +150,14 @@ pub(crate) struct MainReactor {
     block_accumulator: BlockAccumulator,
     block_synchronizer: BlockSynchronizer,
 
-    // deploy handling
-    deploy_acceptor: DeployAcceptor,
+    // transaction handling
+    transaction_acceptor: TransactionAcceptor,
     deploy_buffer: DeployBuffer,
 
     // gossiping components
     address_gossiper: Gossiper<{ GossipedAddress::ID_IS_COMPLETE_ITEM }, GossipedAddress>,
-    deploy_gossiper: Gossiper<{ Deploy::ID_IS_COMPLETE_ITEM }, Deploy>,
-    block_gossiper: Gossiper<{ Block::ID_IS_COMPLETE_ITEM }, Block>,
+    transaction_gossiper: Gossiper<{ Transaction::ID_IS_COMPLETE_ITEM }, Transaction>,
+    block_gossiper: Gossiper<{ BlockV2::ID_IS_COMPLETE_ITEM }, BlockV2>,
     finality_signature_gossiper:
         Gossiper<{ FinalitySignature::ID_IS_COMPLETE_ITEM }, FinalitySignature>,
 
@@ -180,13 +182,15 @@ pub(crate) struct MainReactor {
     //   control logic
     state: ReactorState,
     max_attempts: usize,
-    switch_block_header: Option<BlockHeader>,
 
     last_progress: Timestamp,
     attempts: usize,
     idle_tolerance: TimeDiff,
     control_logic_default_delay: TimeDiff,
-    sync_to_genesis: bool,
+    shutdown_for_upgrade_timeout: TimeDiff,
+    switched_to_shutdown_for_upgrade: Timestamp,
+    upgrade_timeout: TimeDiff,
+    sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
 }
 
@@ -267,7 +271,7 @@ impl reactor::Reactor for MainReactor {
                     // era by enqueuing all finalized blocks starting from the
                     // first one in that era, blocks which should have already
                     // been executed and marked complete in storage.
-                    error!(
+                    warn!(
                         block_height,
                         "Finalized block enqueued for execution, but a complete \
                         block header with the same height is not present in storage."
@@ -306,17 +310,6 @@ impl reactor::Reactor for MainReactor {
                 MainEvent::RpcServer,
                 self.rpc_server.handle_event(effect_builder, rng, event),
             ),
-            MainEvent::RpcServerAnnouncement(RpcServerAnnouncement::DeployReceived {
-                deploy,
-                responder,
-            }) => {
-                let event = deploy_acceptor::Event::Accept {
-                    deploy,
-                    source: Source::Client,
-                    maybe_responder: responder,
-                };
-                self.dispatch_event(effect_builder, rng, MainEvent::DeployAcceptor(event))
-            }
             MainEvent::RestServer(event) => reactor::wrap_effects(
                 MainEvent::RestServer,
                 self.rest_server.handle_event(effect_builder, rng, event),
@@ -496,7 +489,8 @@ impl reactor::Reactor for MainReactor {
             ) => {
                 debug!(
                     "notifying finality signature gossiper to start gossiping for: {} , {}",
-                    finality_signature.block_hash, finality_signature.public_key,
+                    finality_signature.block_hash(),
+                    finality_signature.public_key(),
                 );
                 let mut effects = reactor::wrap_effects(
                     MainEvent::FinalitySignatureGossiper,
@@ -570,17 +564,24 @@ impl reactor::Reactor for MainReactor {
                 _gossiped_block_id,
             )) => Effects::new(),
             MainEvent::BlockFetcherAnnouncement(FetchedNewBlockAnnouncement { block, peer }) => {
-                reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
-                        effect_builder,
-                        rng,
-                        block_accumulator::Event::ReceivedBlock {
-                            block,
-                            sender: peer,
-                        },
-                    ),
-                )
+                // The block accumulator shouldn't concern itself with historical blocks that are
+                // being fetched. If the block is not convertible to the current version it means
+                // that it is surely a historical block.
+                if let Ok(block) = (*block).clone().try_into() {
+                    reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::ReceivedBlock {
+                                block: Arc::new(block),
+                                sender: peer,
+                            },
+                        ),
+                    )
+                } else {
+                    Effects::new()
+                }
             }
 
             MainEvent::FinalitySignatureIncoming(incoming) => {
@@ -589,9 +590,9 @@ impl reactor::Reactor for MainReactor {
                 let finality_signature = incoming.message;
                 debug!(
                     "FinalitySignatureIncoming({},{},{},{})",
-                    finality_signature.era_id,
-                    finality_signature.block_hash,
-                    finality_signature.public_key,
+                    finality_signature.era_id(),
+                    finality_signature.block_hash(),
+                    finality_signature.public_key(),
                     sender
                 );
                 let block_accumulator_event = block_accumulator::Event::ReceivedFinalitySignature {
@@ -628,8 +629,8 @@ impl reactor::Reactor for MainReactor {
                     effect_builder,
                     rng,
                     block_accumulator::Event::RegisterPeer {
-                        block_hash: gossiped_finality_signature_id.block_hash,
-                        era_id: Some(gossiped_finality_signature_id.era_id),
+                        block_hash: *gossiped_finality_signature_id.block_hash(),
+                        era_id: Some(gossiped_finality_signature_id.era_id()),
                         sender,
                     },
                 ),
@@ -678,13 +679,37 @@ impl reactor::Reactor for MainReactor {
             ),
 
             // DEPLOYS
-            MainEvent::DeployAcceptor(event) => reactor::wrap_effects(
-                MainEvent::DeployAcceptor,
-                self.deploy_acceptor
+            MainEvent::TransactionAcceptor(event) => reactor::wrap_effects(
+                MainEvent::TransactionAcceptor,
+                self.transaction_acceptor
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::DeployAcceptorAnnouncement(
-                DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+            MainEvent::AcceptTransactionRequest(AcceptTransactionRequest {
+                transaction,
+                speculative_exec_at_block,
+                responder,
+            }) => {
+                let source = if let Some(block) = speculative_exec_at_block {
+                    Source::SpeculativeExec(block)
+                } else {
+                    Source::Client
+                };
+                let event = transaction_acceptor::Event::Accept {
+                    transaction,
+                    source,
+                    maybe_responder: Some(responder),
+                };
+                reactor::wrap_effects(
+                    MainEvent::TransactionAcceptor,
+                    self.transaction_acceptor
+                        .handle_event(effect_builder, rng, event),
+                )
+            }
+            MainEvent::TransactionAcceptorAnnouncement(
+                TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                    transaction,
+                    source,
+                },
             ) => {
                 let mut effects = Effects::new();
 
@@ -695,8 +720,11 @@ impl reactor::Reactor for MainReactor {
                         effects.extend(self.fetchers.dispatch_fetcher_event(
                             effect_builder,
                             rng,
-                            MainEvent::DeployAcceptorAnnouncement(
-                                DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source },
+                            MainEvent::TransactionAcceptorAnnouncement(
+                                TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                                    transaction,
+                                    source,
+                                },
                             ),
                         ));
                     }
@@ -705,74 +733,100 @@ impl reactor::Reactor for MainReactor {
                         effects.extend(self.dispatch_event(
                             effect_builder,
                             rng,
-                            MainEvent::DeployGossiper(gossiper::Event::ItemReceived {
-                                item_id: deploy.gossip_id(),
+                            MainEvent::TransactionGossiper(gossiper::Event::ItemReceived {
+                                item_id: transaction.gossip_id(),
                                 source,
-                                target: deploy.gossip_target(),
+                                target: transaction.gossip_target(),
                             }),
                         ));
                         // notify event stream
-                        effects.extend(self.dispatch_event(
-                            effect_builder,
-                            rng,
-                            MainEvent::EventStreamServer(
-                                event_stream_server::Event::DeployAccepted(deploy),
-                            ),
-                        ));
+                        match &*transaction {
+                            Transaction::Deploy(deploy) => {
+                                effects.extend(self.dispatch_event(
+                                    effect_builder,
+                                    rng,
+                                    MainEvent::EventStreamServer(
+                                        event_stream_server::Event::DeployAccepted(Arc::new(
+                                            deploy.clone(),
+                                        )),
+                                    ),
+                                ));
+                            }
+                            Transaction::V1(_txn) => {
+                                todo!("avoid match on `transaction` once sse handles transactions");
+                            }
+                        }
+                    }
+                    Source::SpeculativeExec(_) => {
+                        error!(
+                            %transaction,
+                            "transaction acceptor should not announce speculative exec transactions"
+                        );
                     }
                 }
 
                 effects
             }
-            MainEvent::DeployAcceptorAnnouncement(DeployAcceptorAnnouncement::InvalidDeploy {
-                deploy: _,
-                source: _,
-            }) => Effects::new(),
-            MainEvent::DeployGossiper(event) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
+            MainEvent::TransactionAcceptorAnnouncement(
+                TransactionAcceptorAnnouncement::InvalidTransaction {
+                    transaction: _,
+                    source: _,
+                },
+            ) => Effects::new(),
+            MainEvent::TransactionGossiper(event) => reactor::wrap_effects(
+                MainEvent::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, event),
             ),
-            MainEvent::DeployGossiperIncoming(incoming) => reactor::wrap_effects(
-                MainEvent::DeployGossiper,
-                self.deploy_gossiper
+            MainEvent::TransactionGossiperIncoming(incoming) => reactor::wrap_effects(
+                MainEvent::TransactionGossiper,
+                self.transaction_gossiper
                     .handle_event(effect_builder, rng, incoming.into()),
             ),
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::GossipReceived {
                 ..
             }) => {
                 // Ignore the announcement.
                 Effects::new()
             }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewCompleteItem(
                 gossiped_deploy_id,
             )) => {
-                error!(%gossiped_deploy_id, "gossiper should not announce new deploy");
+                error!(%gossiped_deploy_id, "gossiper should not announce new transaction");
                 Effects::new()
             }
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
+            MainEvent::TransactionGossiperAnnouncement(GossiperAnnouncement::NewItemBody {
                 item,
                 sender,
             }) => reactor::wrap_effects(
-                MainEvent::DeployAcceptor,
-                self.deploy_acceptor.handle_event(
+                MainEvent::TransactionAcceptor,
+                self.transaction_acceptor.handle_event(
                     effect_builder,
                     rng,
-                    deploy_acceptor::Event::Accept {
-                        deploy: item,
+                    transaction_acceptor::Event::Accept {
+                        transaction: *item,
                         source: Source::PeerGossiped(sender),
                         maybe_responder: None,
                     },
                 ),
             ),
-            MainEvent::DeployGossiperAnnouncement(GossiperAnnouncement::FinishedGossiping(
-                gossiped_deploy_id,
-            )) => {
-                let reactor_event = MainEvent::DeployBuffer(
-                    deploy_buffer::Event::ReceiveDeployGossiped(gossiped_deploy_id),
-                );
-                self.dispatch_event(effect_builder, rng, reactor_event)
-            }
+            MainEvent::TransactionGossiperAnnouncement(
+                GossiperAnnouncement::FinishedGossiping(gossiped_txn_id),
+            ) => match gossiped_txn_id {
+                TransactionId::Deploy {
+                    deploy_hash,
+                    approvals_hash,
+                } => {
+                    let deploy_id = DeployId::new(deploy_hash, approvals_hash);
+                    let reactor_event = MainEvent::DeployBuffer(
+                        deploy_buffer::Event::ReceiveDeployGossiped(deploy_id),
+                    );
+                    self.dispatch_event(effect_builder, rng, reactor_event)
+                }
+                TransactionId::V1 { .. } => {
+                    todo!("avoid match `gossiped_txn_id` once deploy buffer handles transactions");
+                }
+            },
             MainEvent::DeployBuffer(event) => reactor::wrap_effects(
                 MainEvent::DeployBuffer,
                 self.deploy_buffer.handle_event(effect_builder, rng, event),
@@ -801,15 +855,12 @@ impl reactor::Reactor for MainReactor {
                     .handle_event(effect_builder, rng, req.into()),
             ),
             MainEvent::ContractRuntimeAnnouncement(
-                ContractRuntimeAnnouncement::CommitStepSuccess {
-                    era_id,
-                    execution_effect,
-                },
+                ContractRuntimeAnnouncement::CommitStepSuccess { era_id, effects },
             ) => {
                 let reactor_event =
                     MainEvent::EventStreamServer(event_stream_server::Event::Step {
                         era_id,
-                        execution_effect,
+                        execution_effects: effects,
                     });
                 self.dispatch_event(effect_builder, rng, reactor_event)
             }
@@ -1008,33 +1059,16 @@ impl reactor::Reactor for MainReactor {
             protocol_version,
             chainspec.protocol_config.activation_point.era_id(),
             &chainspec.network_config.name,
-            chainspec.deploy_config.max_ttl,
+            chainspec.transaction_config.max_ttl.into(),
             chainspec.core_config.recent_era_count(),
             Some(registry),
             config.node.force_resync,
         )?;
 
-        let max_delegators_per_validator =
-            if chainspec.core_config.max_delegators_per_validator == 0 {
-                None
-            } else {
-                Some(chainspec.core_config.max_delegators_per_validator)
-            };
-
         let contract_runtime = ContractRuntime::new(
-            protocol_version,
             storage.root_path(),
             &config.contract_runtime,
-            chainspec.wasm_config,
-            chainspec.system_costs_config,
-            chainspec.core_config.max_associated_keys,
-            chainspec.core_config.max_runtime_call_stack_height,
-            chainspec.core_config.minimum_delegation_amount,
-            chainspec.protocol_config.activation_point,
-            chainspec.core_config.prune_batch_size,
-            chainspec.core_config.strict_argument_checking,
-            chainspec.core_config.vesting_schedule_period.millis(),
-            max_delegators_per_validator,
+            chainspec.clone(),
             registry,
         )?;
 
@@ -1080,13 +1114,13 @@ impl reactor::Reactor for MainReactor {
         let fetchers = Fetchers::new(&config.fetcher, registry)?;
 
         // gossipers
-        let block_gossiper = Gossiper::<{ Block::ID_IS_COMPLETE_ITEM }, _>::new(
+        let block_gossiper = Gossiper::<{ BlockV2::ID_IS_COMPLETE_ITEM }, _>::new(
             "block_gossiper",
             config.gossip,
             registry,
         )?;
-        let deploy_gossiper = Gossiper::<{ Deploy::ID_IS_COMPLETE_ITEM }, _>::new(
-            "deploy_gossiper",
+        let transaction_gossiper = Gossiper::<{ Transaction::ID_IS_COMPLETE_ITEM }, _>::new(
+            "transaction_gossiper",
             config.gossip,
             registry,
         )?;
@@ -1126,9 +1160,9 @@ impl reactor::Reactor for MainReactor {
         let block_validator = BlockValidator::new(Arc::clone(&chainspec));
         let upgrade_watcher =
             UpgradeWatcher::new(chainspec.as_ref(), config.upgrade_watcher, &root_dir)?;
-        let deploy_acceptor = DeployAcceptor::new(chainspec.as_ref(), registry)?;
+        let transaction_acceptor = TransactionAcceptor::new(chainspec.as_ref(), registry)?;
         let deploy_buffer =
-            DeployBuffer::new(chainspec.deploy_config, config.deploy_buffer, registry)?;
+            DeployBuffer::new(chainspec.transaction_config, config.deploy_buffer, registry)?;
 
         let reactor = MainReactor {
             chainspec,
@@ -1142,11 +1176,11 @@ impl reactor::Reactor for MainReactor {
             rpc_server,
             rest_server,
             event_stream_server,
-            deploy_acceptor,
+            transaction_acceptor,
             fetchers,
 
             block_gossiper,
-            deploy_gossiper,
+            transaction_gossiper,
             finality_signature_gossiper,
             sync_leaper,
             deploy_buffer,
@@ -1169,9 +1203,11 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            switch_block_header: None,
-            sync_to_genesis: config.node.sync_to_genesis,
+            sync_handling: config.node.sync_handling,
             signature_gossip_tracker: SignatureGossipTracker::new(),
+            shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
+            switched_to_shutdown_for_upgrade: Timestamp::from(0),
+            upgrade_timeout: config.node.upgrade_timeout,
         };
         info!("MainReactor: instantiated");
         let effects = effect_builder
@@ -1216,19 +1252,15 @@ impl MainReactor {
         &mut self,
         effect_builder: EffectBuilder<MainEvent>,
         rng: &mut NodeRng,
-        MetaBlock {
-            block,
-            execution_results,
-            mut state,
-        }: MetaBlock,
+        mut meta_block: MetaBlock,
     ) -> Effects<MainEvent> {
         debug!(
             "MetaBlock: handling meta block {} {} {:?}",
-            block.height(),
-            block.hash(),
-            state
+            meta_block.height(),
+            meta_block.hash(),
+            meta_block.state()
         );
-        if !state.is_stored() {
+        if !meta_block.state().is_stored() {
             return fatal!(
                 effect_builder,
                 "MetaBlock: block should be stored after execution or accumulation"
@@ -1238,50 +1270,248 @@ impl MainReactor {
 
         let mut effects = Effects::new();
 
-        if state.register_as_sent_to_deploy_buffer().was_updated() {
+        if meta_block
+            .mut_state()
+            .register_as_sent_to_deploy_buffer()
+            .was_updated()
+        {
             debug!(
                 "MetaBlock: notifying deploy buffer: {} {}",
-                block.height(),
-                block.hash(),
+                meta_block.height(),
+                meta_block.hash(),
             );
-            effects.extend(reactor::wrap_effects(
-                MainEvent::DeployBuffer,
-                self.deploy_buffer.handle_event(
-                    effect_builder,
-                    rng,
-                    deploy_buffer::Event::Block(Arc::clone(&block)),
-                ),
-            ));
-        }
 
-        if state.register_updated_validator_matrix().was_updated() {
-            if let Some(validator_weights) = block.header().next_era_validator_weights() {
-                let era_id = block.header().era_id();
-                let next_era_id = era_id.successor();
-                debug!(
-                    "MetaBlock: updating validator matrix: {} {} {} {}",
-                    block.height(),
-                    block.hash(),
-                    era_id,
-                    next_era_id
-                );
-                effects.extend(self.update_validator_weights(
-                    effect_builder,
-                    rng,
-                    next_era_id,
-                    validator_weights.clone(),
-                ));
+            match &meta_block {
+                MetaBlock::Forward(fwd_meta_block) => {
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::DeployBuffer,
+                        self.deploy_buffer.handle_event(
+                            effect_builder,
+                            rng,
+                            deploy_buffer::Event::Block(Arc::clone(&fwd_meta_block.block)),
+                        ),
+                    ));
+                }
+                MetaBlock::Historical(historical_meta_block) => {
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::DeployBuffer,
+                        self.deploy_buffer.handle_event(
+                            effect_builder,
+                            rng,
+                            deploy_buffer::Event::VersionedBlock(Arc::clone(
+                                &historical_meta_block.block,
+                            )),
+                        ),
+                    ));
+                }
             }
         }
 
-        // Validators gossip the block as soon as they deem it valid, but non-validators
-        // only gossip once the block is marked complete.
-        if let Some(true) = self
-            .validator_matrix
-            .is_self_validator_in_era(block.header().era_id())
+        if let MetaBlock::Forward(forward_meta_block) = &meta_block {
+            let block = forward_meta_block.block.clone();
+            if meta_block
+                .mut_state()
+                .register_updated_validator_matrix()
+                .was_updated()
+            {
+                if let Some(validator_weights) = block.header().next_era_validator_weights() {
+                    let era_id = block.era_id();
+                    let next_era_id = era_id.successor();
+                    debug!(
+                        "MetaBlock: updating validator matrix: {} {} {} {}",
+                        block.height(),
+                        block.hash(),
+                        era_id,
+                        next_era_id
+                    );
+                    effects.extend(self.update_validator_weights(
+                        effect_builder,
+                        rng,
+                        next_era_id,
+                        validator_weights.clone(),
+                    ));
+                }
+            }
+
+            // Validators gossip the block as soon as they deem it valid, but non-validators
+            // only gossip once the block is marked complete.
+            if let Some(true) = self
+                .validator_matrix
+                .is_self_validator_in_era(block.era_id())
+            {
+                debug!(
+                    "MetaBlock: updating validator gossip state: {} {}",
+                    block.height(),
+                    block.hash(),
+                );
+                self.update_meta_block_gossip_state(
+                    effect_builder,
+                    rng,
+                    block.hash(),
+                    block.gossip_target(),
+                    meta_block.mut_state(),
+                    &mut effects,
+                );
+            }
+
+            if !meta_block.state().is_executed() {
+                debug!(
+                    "MetaBlock: unexecuted block: {} {}",
+                    block.height(),
+                    block.hash(),
+                );
+                // We've done as much as we can on a valid but un-executed block.
+                return effects;
+            }
+
+            if meta_block
+                .mut_state()
+                .register_we_have_tried_to_sign()
+                .was_updated()
+            {
+                // When this node is a validator in this era, sign and announce.
+                if let Some(finality_signature) = self
+                    .validator_matrix
+                    .create_finality_signature(block.header())
+                {
+                    debug!(
+                        %finality_signature,
+                        "MetaBlock: registering finality signature: {} {}",
+                        block.height(),
+                        block.hash(),
+                    );
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Storage,
+                        effect_builder
+                            .put_finality_signature_to_storage(finality_signature.clone())
+                            .ignore(),
+                    ));
+
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::BlockAccumulator,
+                        self.block_accumulator.handle_event(
+                            effect_builder,
+                            rng,
+                            block_accumulator::Event::CreatedFinalitySignature {
+                                finality_signature: Box::new(finality_signature.clone()),
+                            },
+                        ),
+                    ));
+
+                    let era_id = finality_signature.era_id();
+                    let payload = Message::FinalitySignature(Box::new(finality_signature));
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Network,
+                        effect_builder
+                            .broadcast_message_to_validators(payload, era_id)
+                            .ignore(),
+                    ));
+                }
+            }
+        }
+
+        if meta_block
+            .mut_state()
+            .register_as_consensus_notified()
+            .was_updated()
         {
             debug!(
-                "MetaBlock: updating validator gossip state: {} {}",
+                "MetaBlock: notifying consensus: {} {}",
+                meta_block.height(),
+                meta_block.hash(),
+            );
+
+            match &meta_block {
+                MetaBlock::Forward(fwd_meta_block) => {
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Consensus,
+                        self.consensus.handle_event(
+                            effect_builder,
+                            rng,
+                            consensus::Event::BlockAdded {
+                                header: Box::new(fwd_meta_block.block.header().clone().into()),
+                                header_hash: *fwd_meta_block.block.hash(),
+                            },
+                        ),
+                    ));
+                }
+                MetaBlock::Historical(historical_meta_block) => {
+                    // Header type is the same for now so we can use the same `BlockAdded` event;
+                    // When the header will be versioned, a new event will be needed for the
+                    // consensus component.
+                    effects.extend(reactor::wrap_effects(
+                        MainEvent::Consensus,
+                        self.consensus.handle_event(
+                            effect_builder,
+                            rng,
+                            consensus::Event::BlockAdded {
+                                header: Box::new(historical_meta_block.block.clone_header()),
+                                header_hash: *historical_meta_block.block.hash(),
+                            },
+                        ),
+                    ));
+                }
+            }
+        }
+
+        if let MetaBlock::Forward(forward_meta_block) = &meta_block {
+            let block = forward_meta_block.block.clone();
+
+            if meta_block
+                .mut_state()
+                .register_as_accumulator_notified()
+                .was_updated()
+            {
+                debug!(
+                    "MetaBlock: notifying accumulator: {} {}",
+                    block.height(),
+                    block.hash(),
+                );
+                let meta_block = ForwardMetaBlock {
+                    block,
+                    execution_results: meta_block.execution_results().clone(),
+                    state: *meta_block.state(),
+                };
+                effects.extend(reactor::wrap_effects(
+                    MainEvent::BlockAccumulator,
+                    self.block_accumulator.handle_event(
+                        effect_builder,
+                        rng,
+                        block_accumulator::Event::ExecutedBlock { meta_block },
+                    ),
+                ));
+                // We've done as much as we can for now, we need to wait for the block
+                // accumulator to mark the block complete before proceeding further.
+                return effects;
+            }
+        }
+
+        // We *always* want to initialize the contract runtime with the highest complete block.
+        // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
+        // the immediate switch block is stored and *also* marked complete.
+        // This will allow the contract runtime to initialize properly (see
+        // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
+        // `KeepUp`.
+        if !meta_block.state().is_marked_complete() {
+            error!(
+                block_hash = ?meta_block.hash(),
+                state = ?meta_block.state(),
+                "should be a complete block after passing to accumulator"
+            );
+        } else {
+            debug!(
+                "MetaBlock: block is marked complete: {} {}",
+                meta_block.height(),
+                meta_block.hash(),
+            );
+        }
+
+        if let MetaBlock::Forward(forward_meta_block) = &meta_block {
+            let block = forward_meta_block.block.clone();
+
+            debug!(
+                "MetaBlock: update gossip state: {} {}",
                 block.height(),
                 block.hash(),
             );
@@ -1290,187 +1520,47 @@ impl MainReactor {
                 rng,
                 block.hash(),
                 block.gossip_target(),
-                &mut state,
+                meta_block.mut_state(),
                 &mut effects,
             );
-        }
 
-        if !state.is_executed() {
-            debug!(
-                "MetaBlock: unexecuted block: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            // We've done as much as we can on a valid but un-executed block.
-            return effects;
-        }
-
-        if state.register_we_have_tried_to_sign().was_updated() {
-            // When this node is a validator in this era, sign and announce.
-            if let Some(finality_signature) = self
-                .validator_matrix
-                .create_finality_signature(block.header())
+            if meta_block
+                .mut_state()
+                .register_as_synchronizer_notified()
+                .was_updated()
             {
                 debug!(
-                    %finality_signature,
-                    "MetaBlock: registering finality signature: {} {}",
+                    "MetaBlock: notifying block synchronizer: {} {}",
                     block.height(),
                     block.hash(),
                 );
-
                 effects.extend(reactor::wrap_effects(
-                    MainEvent::Storage,
-                    effect_builder
-                        .put_finality_signature_to_storage(finality_signature.clone())
-                        .ignore(),
-                ));
-
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::BlockAccumulator,
-                    self.block_accumulator.handle_event(
+                    MainEvent::BlockSynchronizer,
+                    self.block_synchronizer.handle_event(
                         effect_builder,
                         rng,
-                        block_accumulator::Event::CreatedFinalitySignature {
-                            finality_signature: Box::new(finality_signature.clone()),
-                        },
+                        block_synchronizer::Event::MarkBlockExecuted(*block.hash()),
                     ),
                 ));
-
-                let era_id = finality_signature.era_id;
-                let payload = Message::FinalitySignature(Box::new(finality_signature));
-                effects.extend(reactor::wrap_effects(
-                    MainEvent::Network,
-                    effect_builder
-                        .broadcast_message_to_validators(payload, era_id)
-                        .ignore(),
-                ));
             }
-        }
-
-        if state.register_as_consensus_notified().was_updated() {
-            debug!(
-                "MetaBlock: notifying consensus: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            effects.extend(reactor::wrap_effects(
-                MainEvent::Consensus,
-                self.consensus.handle_event(
-                    effect_builder,
-                    rng,
-                    consensus::Event::BlockAdded {
-                        header: Box::new(block.header().clone()),
-                        header_hash: *block.hash(),
-                    },
-                ),
-            ));
-        }
-
-        if state.register_as_accumulator_notified().was_updated() {
-            debug!(
-                "MetaBlock: notifying accumulator: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            let meta_block = MetaBlock {
-                block,
-                execution_results,
-                state,
-            };
-            effects.extend(reactor::wrap_effects(
-                MainEvent::BlockAccumulator,
-                self.block_accumulator.handle_event(
-                    effect_builder,
-                    rng,
-                    block_accumulator::Event::ExecutedBlock { meta_block },
-                ),
-            ));
-            // We've done as much as we can for now, we need to wait for the block
-            // accumulator to mark the block complete before proceeding further.
-            return effects;
-        }
-
-        // Set the current switch block only after the block is marked complete.
-        // We *always* want to initialize the contract runtime with the highest complete block.
-        // In case of an upgrade, we want the reactor to hold off in the `Upgrading` state until
-        // the immediate switch block is stored and *also* marked complete.
-        // This will allow the contract runtime to initialize properly (see
-        // [`refresh_contract_runtime`]) when the reactor is transitioning from `CatchUp` to
-        // `KeepUp`.
-        if state.is_marked_complete() {
-            debug!(
-                "MetaBlock: marked complete: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            if block.header().is_switch_block() {
-                match self
-                    .switch_block_header
-                    .as_ref()
-                    .map(|header| header.height())
-                {
-                    Some(current_height) => {
-                        if block.height() > current_height {
-                            self.switch_block_header = Some(block.header().clone());
-                        }
-                    }
-                    None => {
-                        self.switch_block_header = Some(block.header().clone());
-                    }
-                }
-            } else {
-                self.switch_block_header = None;
-            }
-        } else {
-            error!(
-                block = %*block,
-                ?state,
-                "should be a complete block after passing to accumulator"
-            );
-        }
-
-        debug!(
-            "MetaBlock: update gossip state: {} {}",
-            block.height(),
-            block.hash(),
-        );
-        self.update_meta_block_gossip_state(
-            effect_builder,
-            rng,
-            block.hash(),
-            block.gossip_target(),
-            &mut state,
-            &mut effects,
-        );
-
-        if state.register_as_synchronizer_notified().was_updated() {
-            debug!(
-                "MetaBlock: notifying block synchronizer: {} {}",
-                block.height(),
-                block.hash(),
-            );
-            effects.extend(reactor::wrap_effects(
-                MainEvent::BlockSynchronizer,
-                self.block_synchronizer.handle_event(
-                    effect_builder,
-                    rng,
-                    block_synchronizer::Event::MarkBlockExecuted(*block.hash()),
-                ),
-            ));
         }
 
         debug_assert!(
-            state.verify_complete(),
+            meta_block.state().verify_complete(),
             "meta block {} at height {} has invalid state: {:?}",
-            block.hash(),
-            block.height(),
-            state
+            meta_block.hash(),
+            meta_block.height(),
+            meta_block.state()
         );
 
-        if state.register_all_actions_done().was_already_registered() {
+        if meta_block
+            .mut_state()
+            .register_all_actions_done()
+            .was_already_registered()
+        {
             error!(
-                block = %*block,
-                ?state,
+                block_hash = ?meta_block.hash(),
+                state = ?meta_block.state(),
                 "duplicate meta block announcement emitted"
             );
             return effects;
@@ -1478,23 +1568,28 @@ impl MainReactor {
 
         debug!(
             "MetaBlock: notifying event stream: {} {}",
-            block.height(),
-            block.hash(),
+            meta_block.height(),
+            meta_block.hash(),
         );
+        let versioned_block: Arc<Block> = match &meta_block {
+            MetaBlock::Forward(fwd_meta_block) => Arc::new((*fwd_meta_block.block).clone().into()),
+            MetaBlock::Historical(historical_meta_block) => historical_meta_block.block.clone(),
+        };
         effects.extend(reactor::wrap_effects(
             MainEvent::EventStreamServer,
             self.event_stream_server.handle_event(
                 effect_builder,
                 rng,
-                event_stream_server::Event::BlockAdded(Arc::clone(&block)),
+                event_stream_server::Event::BlockAdded(Arc::clone(&versioned_block)),
             ),
         ));
 
-        for (deploy_hash, deploy_header, execution_result) in execution_results {
+        for (deploy_hash, deploy_header, execution_result) in meta_block.execution_results().clone()
+        {
             let event = event_stream_server::Event::DeployProcessed {
                 deploy_hash,
                 deploy_header: Box::new(deploy_header),
-                block_hash: *block.hash(),
+                block_hash: meta_block.hash(),
                 execution_result: Box::new(execution_result),
             };
             effects.extend(reactor::wrap_effects(
@@ -1506,17 +1601,22 @@ impl MainReactor {
 
         debug!(
             "MetaBlock: notifying shutdown watcher: {} {}",
-            block.height(),
-            block.hash(),
+            meta_block.height(),
+            meta_block.hash(),
         );
         effects.extend(reactor::wrap_effects(
             MainEvent::ShutdownTrigger,
             self.shutdown_trigger.handle_event(
                 effect_builder,
                 rng,
-                shutdown_trigger::Event::CompletedBlock(Arc::clone(&block)),
+                shutdown_trigger::Event::CompletedBlock(CompletedBlockInfo::new(
+                    meta_block.height(),
+                    meta_block.era_id(),
+                    meta_block.is_switch_block(),
+                )),
             ),
         ));
+
         effects
     }
 

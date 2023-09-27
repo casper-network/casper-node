@@ -3,17 +3,14 @@ use casper_engine_test_support::{
     DEFAULT_GAS_PRICE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_execution_engine::{
-    core::{
-        engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
-        execution,
-    },
-    shared::system_config::DEFAULT_WASMLESS_TRANSFER_COST,
+    engine_state::{Error, ExecuteRequest, WASMLESS_TRANSFER_FIXED_GAS_PRICE},
+    execution,
 };
 use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{handle_payment, mint},
-    ApiError, Gas, Motes, RuntimeArgs, U512,
+    ApiError, Gas, Motes, RuntimeArgs, DEFAULT_WASMLESS_TRANSFER_COST, U512,
 };
 
 const PRIORITIZED_GAS_PRICE: u64 = DEFAULT_GAS_PRICE * 7;
@@ -34,7 +31,7 @@ fn should_charge_for_user_error(
         Motes::from_gas(transfer_cost, WASMLESS_TRANSFER_FIXED_GAS_PRICE).expect("gas overflow");
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let main_purse = default_account.main_purse();
     let purse_balance_before = builder.get_purse_balance(main_purse);
@@ -154,7 +151,7 @@ fn should_properly_charge_fixed_cost_with_nondefault_gas_price() {
 
     let mut builder = setup();
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let main_purse = default_account.main_purse();
     let purse_balance_before = builder.get_purse_balance(main_purse);
@@ -208,7 +205,7 @@ fn should_charge_for_wasmless_transfer_missing_args() {
 fn should_charge_for_wasmless_transfer_invalid_purse() {
     let mut builder = setup();
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
     let main_purse = default_account.main_purse();
 

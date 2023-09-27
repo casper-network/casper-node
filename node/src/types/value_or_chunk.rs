@@ -1,15 +1,15 @@
 use std::fmt::{self, Debug, Display, Formatter};
 
-use casper_storage::global_state::storage::trie::TrieRaw;
-use casper_types::ExecutionResult;
 use datasize::DataSize;
 use hex_fmt::HexFmt;
 use once_cell::sync::OnceCell;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use casper_hashing::{
-    ChunkWithProof, ChunkWithProofVerificationError, Digest, MerkleConstructionError,
+use casper_storage::global_state::trie::TrieRaw;
+use casper_types::{
+    execution::ExecutionResult, ChunkWithProof, ChunkWithProofVerificationError, Digest,
+    MerkleConstructionError,
 };
 
 use super::Chunkable;
@@ -216,8 +216,7 @@ impl Display for TrieOrChunkId {
 
 #[cfg(test)]
 mod tests {
-    use casper_hashing::ChunkWithProof;
-    use casper_types::bytesrepr::Bytes;
+    use casper_types::{bytesrepr::Bytes, ChunkWithProof};
 
     use super::ValueOrChunk;
 

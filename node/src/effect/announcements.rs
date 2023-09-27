@@ -14,12 +14,14 @@ use datasize::DataSize;
 use itertools::Itertools;
 use serde::Serialize;
 
-use casper_types::{EraId, ExecutionEffect, PublicKey, Timestamp, U512};
+use casper_types::{
+    execution::Effects, Block, DeployHash, EraId, FinalitySignature, PublicKey, Timestamp,
+    Transaction, U512,
+};
 
 use crate::{
     components::{
         consensus::{ClContext, ProposedBlock},
-        deploy_acceptor::Error,
         diagnostics_port::FileSerializer,
         fetcher::FetchItem,
         gossiper::GossipItem,
@@ -27,7 +29,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     effect::Responder,
-    types::{Block, Deploy, DeployHash, FinalitySignature, FinalizedBlock, MetaBlock, NodeId},
+    types::{FinalizedBlock, MetaBlock, NodeId},
     utils::Source,
 };
 
@@ -126,8 +128,8 @@ impl Display for MetaBlockAnnouncement {
         write!(
             f,
             "announcement for meta block {} at height {}",
-            self.0.block.hash(),
-            self.0.block.height(),
+            self.0.hash(),
+            self.0.height(),
         )
     }
 }
@@ -166,63 +168,46 @@ impl QueueDumpFormat {
     }
 }
 
-/// An RPC API server announcement.
+/// A `TransactionAcceptor` announcement.
 #[derive(Debug, Serialize)]
-#[must_use]
-pub(crate) enum RpcServerAnnouncement {
-    /// A new deploy received.
-    DeployReceived {
-        /// The received deploy.
-        deploy: Box<Deploy>,
-        /// A client responder in the case where a client submits a deploy.
-        responder: Option<Responder<Result<(), Error>>>,
-    },
-}
-
-impl Display for RpcServerAnnouncement {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            RpcServerAnnouncement::DeployReceived { deploy, .. } => {
-                write!(formatter, "api server received {}", deploy.hash())
-            }
-        }
-    }
-}
-
-/// A `DeployAcceptor` announcement.
-#[derive(Debug, Serialize)]
-pub(crate) enum DeployAcceptorAnnouncement {
-    /// A deploy which wasn't previously stored on this node has been accepted and stored.
-    AcceptedNewDeploy {
-        /// The new deploy.
-        deploy: Box<Deploy>,
-        /// The source (peer or client) of the deploy.
+pub(crate) enum TransactionAcceptorAnnouncement {
+    /// A transaction which wasn't previously stored on this node has been accepted and stored.
+    AcceptedNewTransaction {
+        /// The new transaction.
+        transaction: Arc<Transaction>,
+        /// The source (peer or client) of the transaction.
         source: Source,
     },
 
-    /// An invalid deploy was received.
-    InvalidDeploy {
-        /// The invalid deploy.
-        deploy: Box<Deploy>,
-        /// The source (peer or client) of the deploy.
+    /// An invalid transaction was received.
+    InvalidTransaction {
+        /// The invalid transaction.
+        transaction: Transaction,
+        /// The source (peer or client) of the transaction.
         source: Source,
     },
 }
 
-impl Display for DeployAcceptorAnnouncement {
+impl Display for TransactionAcceptorAnnouncement {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            DeployAcceptorAnnouncement::AcceptedNewDeploy { deploy, source } => write!(
+            TransactionAcceptorAnnouncement::AcceptedNewTransaction {
+                transaction,
+                source,
+            } => write!(
                 formatter,
-                "accepted new deploy {} from {}",
-                deploy.hash(),
+                "accepted new transaction {} from {}",
+                transaction.hash(),
                 source
             ),
-            DeployAcceptorAnnouncement::InvalidDeploy { deploy, source } => {
+            TransactionAcceptorAnnouncement::InvalidTransaction {
+                transaction,
+                source,
+            } => {
                 write!(
                     formatter,
-                    "invalid deploy {} from {}",
-                    deploy.hash(),
+                    "invalid transaction {} from {}",
+                    transaction.hash(),
                     source
                 )
             }
@@ -369,7 +354,7 @@ pub(crate) enum ContractRuntimeAnnouncement {
         /// The era id in which the step was committed to global state.
         era_id: EraId,
         /// The operations and transforms committed to global state.
-        execution_effect: ExecutionEffect,
+        effects: Effects,
     },
     /// New era validators.
     UpcomingEraValidators {

@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::{format, string::String, vec::Vec};
 use core::{
     array::TryFromSliceError,
@@ -21,109 +18,12 @@ use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Seria
 use crate::{
     account::AccountHash,
     bytesrepr::{self, FromBytes, ToBytes},
-    checksummed_hex, CLType, CLTyped, URef, U512,
+    checksummed_hex, serde_helpers, CLType, CLTyped, DeployHash, URef, U512,
 };
 
-/// The length of a deploy hash.
-pub const DEPLOY_HASH_LENGTH: usize = 32;
 /// The length of a transfer address.
 pub const TRANSFER_ADDR_LENGTH: usize = 32;
 pub(super) const TRANSFER_ADDR_FORMATTED_STRING_PREFIX: &str = "transfer-";
-
-/// A newtype wrapping a <code>[u8; [DEPLOY_HASH_LENGTH]]</code> which is the raw bytes of the
-/// deploy hash.
-#[derive(Default, PartialOrd, Ord, PartialEq, Eq, Hash, Clone, Copy)]
-#[cfg_attr(feature = "datasize", derive(DataSize))]
-pub struct DeployHash([u8; DEPLOY_HASH_LENGTH]);
-
-impl DeployHash {
-    /// Constructs a new `DeployHash` instance from the raw bytes of a deploy hash.
-    pub const fn new(value: [u8; DEPLOY_HASH_LENGTH]) -> DeployHash {
-        DeployHash(value)
-    }
-
-    /// Returns the raw bytes of the deploy hash as an array.
-    pub fn value(&self) -> [u8; DEPLOY_HASH_LENGTH] {
-        self.0
-    }
-
-    /// Returns the raw bytes of the deploy hash as a `slice`.
-    pub fn as_bytes(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-#[cfg(feature = "json-schema")]
-impl JsonSchema for DeployHash {
-    fn schema_name() -> String {
-        String::from("DeployHash")
-    }
-
-    fn json_schema(gen: &mut SchemaGenerator) -> Schema {
-        let schema = gen.subschema_for::<String>();
-        let mut schema_object = schema.into_object();
-        schema_object.metadata().description = Some("Hex-encoded deploy hash.".to_string());
-        schema_object.into()
-    }
-}
-
-impl ToBytes for DeployHash {
-    fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
-        self.0.to_bytes()
-    }
-
-    fn serialized_length(&self) -> usize {
-        self.0.serialized_length()
-    }
-
-    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), bytesrepr::Error> {
-        self.0.write_bytes(writer)?;
-        Ok(())
-    }
-}
-
-impl FromBytes for DeployHash {
-    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
-        <[u8; DEPLOY_HASH_LENGTH]>::from_bytes(bytes)
-            .map(|(inner, remainder)| (DeployHash(inner), remainder))
-    }
-}
-
-impl Serialize for DeployHash {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        if serializer.is_human_readable() {
-            base16::encode_lower(&self.0).serialize(serializer)
-        } else {
-            self.0.serialize(serializer)
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for DeployHash {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let bytes = if deserializer.is_human_readable() {
-            let hex_string = String::deserialize(deserializer)?;
-            let vec_bytes =
-                checksummed_hex::decode(hex_string.as_bytes()).map_err(SerdeError::custom)?;
-            <[u8; DEPLOY_HASH_LENGTH]>::try_from(vec_bytes.as_ref()).map_err(SerdeError::custom)?
-        } else {
-            <[u8; DEPLOY_HASH_LENGTH]>::deserialize(deserializer)?
-        };
-        Ok(DeployHash(bytes))
-    }
-}
-
-impl Debug for DeployHash {
-    fn fmt(&self, formatter: &mut Formatter) -> fmt::Result {
-        write!(formatter, "DeployHash({})", base16::encode_lower(&self.0))
-    }
-}
-
-impl Distribution<DeployHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DeployHash {
-        DeployHash::new(rng.gen())
-    }
-}
 
 /// Represents a transfer from one purse to another
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Serialize, Deserialize, Default)]
@@ -132,6 +32,14 @@ impl Distribution<DeployHash> for Standard {
 #[serde(deny_unknown_fields)]
 pub struct Transfer {
     /// Deploy that created the transfer
+    #[serde(with = "serde_helpers::deploy_hash_as_array")]
+    #[cfg_attr(
+        feature = "json-schema",
+        schemars(
+            with = "DeployHash",
+            description = "Hex-encoded Deploy hash of Deploy that created the transfer."
+        )
+    )]
     pub deploy_hash: DeployHash,
     /// Account from which transfer was executed
     pub from: AccountHash,

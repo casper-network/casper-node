@@ -1,4 +1,4 @@
-//! A tool to update versions of all published CasperLabs packages.
+//! A tool to update versions of all published Casper packages.
 
 #![warn(unused, missing_copy_implementations, missing_docs)]
 #![deny(
@@ -230,7 +230,7 @@ fn get_args() -> Args {
 fn main() {
     let rust_packages = [
         Package::cargo("types", &regex_data::types::DEPENDENT_FILES),
-        Package::cargo("hashing", &regex_data::hashing::DEPENDENT_FILES),
+        Package::cargo("storage", &regex_data::storage::DEPENDENT_FILES),
         Package::cargo(
             "execution_engine",
             &regex_data::execution_engine::DEPENDENT_FILES,

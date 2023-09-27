@@ -6,7 +6,7 @@ use casper_contract::{
     unwrap_or_revert::UnwrapOrRevert,
 };
 use casper_types::{
-    contracts::Parameters, AccessRights, CLType, CLValue, EntryPoint, EntryPointAccess,
+    addressable_entity::Parameters, AccessRights, CLType, CLValue, EntryPoint, EntryPointAccess,
     EntryPointType, EntryPoints, URef,
 };
 

@@ -2,20 +2,27 @@ use std::time::Duration;
 use tracing::{debug, info, warn};
 
 use crate::{
-    components::consensus::ChainspecConsensusExt,
+    components::{
+        block_accumulator::{SyncIdentifier, SyncInstruction},
+        consensus::ChainspecConsensusExt,
+    },
     effect::{EffectBuilder, Effects},
     reactor::{
         self,
-        main_reactor::{keep_up::synced_to_ttl, MainEvent, MainReactor},
+        main_reactor::{MainEvent, MainReactor},
     },
     storage::HighestOrphanedBlockResult,
+    types::MaxTtl,
     NodeRng,
 };
+
+/// Cranking delay when encountered a non-switch block when checking the validator status.
+const VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK: Duration = Duration::from_secs(2);
 
 pub(super) enum ValidateInstruction {
     Do(Duration, Effects<MainEvent>),
     CheckLater(String, Duration),
-    NonSwitchBlock,
+    CatchUp,
     KeepUp,
     ShutdownForUpgrade,
     Fatal(String),
@@ -35,9 +42,41 @@ impl MainReactor {
                 self.control_logic_default_delay.into(),
             );
         }
-        if self.switch_block_header.is_none() {
-            // validate status is only checked at switch blocks
-            return ValidateInstruction::NonSwitchBlock;
+
+        match self.storage.read_highest_complete_block() {
+            Ok(Some(highest_complete_block)) => {
+                // If we're lagging behind the rest of the network, fall back out of Validate mode.
+                let sync_identifier = SyncIdentifier::LocalTip(
+                    *highest_complete_block.hash(),
+                    highest_complete_block.height(),
+                    highest_complete_block.era_id(),
+                );
+
+                if let SyncInstruction::Leap { .. } =
+                    self.block_accumulator.sync_instruction(sync_identifier)
+                {
+                    return ValidateInstruction::CatchUp;
+                }
+
+                if !highest_complete_block.is_switch_block() {
+                    return ValidateInstruction::CheckLater(
+                        "tip is not a switch block, don't change from validate state".to_string(),
+                        VALIDATION_STATUS_DELAY_FOR_NON_SWITCH_BLOCK,
+                    );
+                }
+            }
+            Ok(None) => {
+                return ValidateInstruction::CheckLater(
+                    "no complete block found in storage".to_string(),
+                    self.control_logic_default_delay.into(),
+                );
+            }
+            Err(error) => {
+                return ValidateInstruction::Fatal(format!(
+                    "Could not read highest complete block from storage due to storage error: {}",
+                    error
+                ));
+            }
         }
 
         if self.should_shutdown_for_upgrade() {
@@ -91,15 +130,6 @@ impl MainReactor {
             "{}: highest_switch_block_header", self.state
         );
 
-        if let Some(current_era) = self.consensus.current_era() {
-            debug!(state = %self.state,
-                era = current_era.value(),
-                "{}: consensus current_era", self.state);
-            if highest_switch_block_header.next_block_era_id() <= current_era {
-                return Ok(Some(Effects::new()));
-            }
-        }
-
         let highest_era_weights = match highest_switch_block_header.next_era_validator_weights() {
             None => {
                 return Err(format!(
@@ -110,9 +140,9 @@ impl MainReactor {
             Some(weights) => weights,
         };
         if !highest_era_weights.contains_key(self.consensus.public_key()) {
-            info!(
-                "{}: highest_era_weights does not contain signing_public_key",
-                self.state
+            debug!(
+                era = highest_switch_block_header.era_id().successor().value(),
+                "{}: this is not a validating node in this era", self.state
             );
             return Ok(None);
         }
@@ -120,11 +150,11 @@ impl MainReactor {
         if let HighestOrphanedBlockResult::Orphan(highest_orphaned_block_header) =
             self.storage.get_highest_orphaned_block_header()
         {
-            if synced_to_ttl(
-                highest_switch_block_header,
+            let max_ttl: MaxTtl = self.chainspec.transaction_config.max_ttl.into();
+            if max_ttl.synced_to_ttl(
+                highest_switch_block_header.timestamp(),
                 &highest_orphaned_block_header,
-                self.chainspec.deploy_config.max_ttl,
-            )? {
+            ) {
                 debug!(%self.state,"{}: sufficient deploy TTL awareness to safely participate in consensus", self.state);
             } else {
                 info!(

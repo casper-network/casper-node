@@ -1,8 +1,5 @@
 //! RPCs related to the block chain.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 mod era_summary;
 
 use std::{clone::Clone, num::ParseIntError, str};
@@ -12,9 +9,11 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_execution_engine::core::engine_state::{self, QueryResult};
-use casper_hashing::Digest;
-use casper_types::{Key, ProtocolVersion, Transfer};
+use casper_execution_engine::engine_state::{self, QueryResult};
+use casper_types::{
+    Block, BlockHash, BlockHeaderV2, Digest, DigestError, JsonBlockWithSignatures, Key,
+    ProtocolVersion, Transfer,
+};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
@@ -24,46 +23,46 @@ use crate::{
     effect::EffectBuilder,
     reactor::QueueKind,
     rpcs::{common, state},
-    types::{Block, BlockHash, BlockWithMetadata, JsonBlock},
+    types::SignedBlock,
 };
 pub use era_summary::EraSummary;
 use era_summary::ERA_SUMMARY;
 
 static GET_BLOCK_PARAMS: Lazy<GetBlockParams> = Lazy::new(|| GetBlockParams {
-    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+    block_identifier: BlockIdentifier::Hash(*JsonBlockWithSignatures::example().block.hash()),
 });
 static GET_BLOCK_RESULT: Lazy<GetBlockResult> = Lazy::new(|| GetBlockResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-    block: Some(JsonBlock::doc_example().clone()),
+    block_with_signatures: Some(JsonBlockWithSignatures::example().clone()),
 });
 static GET_BLOCK_TRANSFERS_PARAMS: Lazy<GetBlockTransfersParams> =
     Lazy::new(|| GetBlockTransfersParams {
-        block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+        block_identifier: BlockIdentifier::Hash(*BlockHash::example()),
     });
 static GET_BLOCK_TRANSFERS_RESULT: Lazy<GetBlockTransfersResult> =
     Lazy::new(|| GetBlockTransfersResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        block_hash: Some(*Block::doc_example().hash()),
+        block_hash: Some(*BlockHash::example()),
         transfers: Some(vec![Transfer::default()]),
     });
 static GET_STATE_ROOT_HASH_PARAMS: Lazy<GetStateRootHashParams> =
     Lazy::new(|| GetStateRootHashParams {
-        block_identifier: BlockIdentifier::Height(Block::doc_example().header().height()),
+        block_identifier: BlockIdentifier::Height(BlockHeaderV2::example().height()),
     });
 static GET_STATE_ROOT_HASH_RESULT: Lazy<GetStateRootHashResult> =
     Lazy::new(|| GetStateRootHashResult {
         api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
-        state_root_hash: Some(*Block::doc_example().header().state_root_hash()),
+        state_root_hash: Some(*BlockHeaderV2::example().state_root_hash()),
     });
 static GET_ERA_INFO_PARAMS: Lazy<GetEraInfoParams> = Lazy::new(|| GetEraInfoParams {
-    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+    block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });
 static GET_ERA_INFO_RESULT: Lazy<GetEraInfoResult> = Lazy::new(|| GetEraInfoResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
     era_summary: Some(ERA_SUMMARY.clone()),
 });
 static GET_ERA_SUMMARY_PARAMS: Lazy<GetEraSummaryParams> = Lazy::new(|| GetEraSummaryParams {
-    block_identifier: BlockIdentifier::Hash(*Block::doc_example().hash()),
+    block_identifier: BlockIdentifier::Hash(ERA_SUMMARY.block_hash),
 });
 static GET_ERA_SUMMARY_RESULT: Lazy<GetEraSummaryResult> = Lazy::new(|| GetEraSummaryResult {
     api_version: DOCS_EXAMPLE_PROTOCOL_VERSION,
@@ -112,7 +111,7 @@ pub enum ParseBlockIdentifierError {
     ParseIntError(ParseIntError),
     /// Couldn't parse a blake2bhash.
     #[error("Unable to parse digest from string. {0}")]
-    FromHexError(casper_hashing::Error),
+    FromHexError(DigestError),
 }
 
 /// Params for "chain_get_block" RPC request.
@@ -137,7 +136,7 @@ pub struct GetBlockResult {
     #[schemars(with = "String")]
     pub api_version: ProtocolVersion,
     /// The block, if found.
-    pub block: Option<JsonBlock>,
+    pub block_with_signatures: Option<JsonBlockWithSignatures>,
 }
 
 impl DocExample for GetBlockResult {
@@ -165,21 +164,22 @@ impl RpcWithOptionalParams for GetBlock {
 
         // Get the block.
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
-        let BlockWithMetadata {
+        let SignedBlock {
             block,
             block_signatures,
-        } = get_block_with_metadata(
+        } = get_signed_block(
             maybe_block_id,
             only_from_available_block_range,
             effect_builder,
         )
         .await?;
-        let json_block = JsonBlock::new(&block, Some(block_signatures));
+
+        let json_block = JsonBlockWithSignatures::new(block, Some(block_signatures));
 
         // Return the result.
         let result = Self::ResponseResult {
             api_version,
-            block: Some(json_block),
+            block_with_signatures: Some(json_block),
         };
         Ok(result)
     }
@@ -398,7 +398,7 @@ impl RpcWithOptionalParams for GetEraInfoBySwitchBlock {
         )
         .await?;
 
-        if !block.header().is_switch_block() {
+        if !block.is_switch_block() {
             return Ok(Self::ResponseResult {
                 api_version,
                 era_summary: None,
@@ -461,6 +461,7 @@ impl RpcWithOptionalParams for GetEraSummary {
     ) -> Result<Self::ResponseResult, Error> {
         let maybe_block_id = maybe_params.map(|params| params.block_identifier);
         let block = common::get_block(maybe_block_id, true, effect_builder).await?;
+
         let era_summary = get_era_summary(effect_builder, &block).await?;
         let result = Self::ResponseResult {
             api_version,
@@ -470,25 +471,31 @@ impl RpcWithOptionalParams for GetEraSummary {
     }
 }
 
-pub(super) async fn get_block_with_metadata<REv: ReactorEventT>(
+pub(super) async fn get_signed_block<REv: ReactorEventT>(
     maybe_id: Option<BlockIdentifier>,
     only_from_available_block_range: bool,
     effect_builder: EffectBuilder<REv>,
-) -> Result<BlockWithMetadata, Error> {
-    // Get the block from storage or the latest from the linear chain.
-    let maybe_result = effect_builder
-        .make_request(
-            |responder| RpcRequest::GetBlock {
-                maybe_id,
-                only_from_available_block_range,
-                responder,
-            },
-            QueueKind::Api,
-        )
-        .await;
+) -> Result<SignedBlock, Error> {
+    let maybe_result = match maybe_id {
+        Some(BlockIdentifier::Hash(hash)) => {
+            effect_builder
+                .get_signed_block_from_storage(hash, only_from_available_block_range)
+                .await
+        }
+        Some(BlockIdentifier::Height(height)) => {
+            effect_builder
+                .get_signed_block_at_height_from_storage(height, only_from_available_block_range)
+                .await
+        }
+        None => {
+            effect_builder
+                .get_highest_signed_block_from_storage(only_from_available_block_range)
+                .await
+        }
+    };
 
-    if let Some(block_with_metadata) = maybe_result {
-        return Ok(*block_with_metadata);
+    if let Some(signed_block) = maybe_result {
+        return Ok(signed_block);
     }
 
     // TODO: Potential optimization: We might want to make the `GetBlock` actually return the
@@ -546,7 +553,7 @@ async fn get_era_summary<REv: ReactorEventT>(
         let (stored_value, merkle_proof) = common::encode_query_success(value, proofs)?;
         Ok(EraSummary {
             block_hash: *block.hash(),
-            era_id: block.header().era_id(),
+            era_id: block.era_id(),
             stored_value,
             state_root_hash: *block.state_root_hash(),
             merkle_proof,
@@ -573,7 +580,7 @@ async fn get_era_summary<REv: ReactorEventT>(
         .make_request(
             |responder| RpcRequest::QueryGlobalState {
                 state_root_hash: *block.state_root_hash(),
-                base_key: Key::EraInfo(block.header().era_id()),
+                base_key: Key::EraInfo(block.era_id()),
                 path: vec![],
                 responder,
             },

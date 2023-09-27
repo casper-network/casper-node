@@ -1,28 +1,20 @@
 //! RPCs related to accounts.
 
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::str;
 
 use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, info};
+use tracing::debug;
 
-use casper_types::ProtocolVersion;
+use casper_types::{Deploy, DeployHash, ProtocolVersion, Transaction};
 
 use super::{
     docs::{DocExample, DOCS_EXAMPLE_PROTOCOL_VERSION},
-    Error, ReactorEventT, RpcRequest, RpcWithParams,
+    Error, ReactorEventT, RpcWithParams,
 };
-use crate::{
-    components::rpc_server::rpcs::ErrorCode,
-    effect::EffectBuilder,
-    reactor::QueueKind,
-    types::{Deploy, DeployHash},
-};
+use crate::{components::rpc_server::rpcs::ErrorCode, effect::EffectBuilder};
 
 static PUT_DEPLOY_PARAMS: Lazy<PutDeployParams> = Lazy::new(|| PutDeployParams {
     deploy: Deploy::doc_example().clone(),
@@ -79,18 +71,11 @@ impl RpcWithParams for PutDeploy {
     ) -> Result<Self::ResponseResult, Error> {
         let deploy_hash = *params.deploy.hash();
 
-        // Submit the new deploy to be announced.
-        let put_deploy_result = effect_builder
-            .make_request(
-                |responder| RpcRequest::SubmitDeploy {
-                    deploy: Box::new(params.deploy),
-                    responder,
-                },
-                QueueKind::Api,
-            )
+        let accept_transaction_result = effect_builder
+            .try_accept_transaction(Transaction::from(params.deploy), None)
             .await;
 
-        match put_deploy_result {
+        match accept_transaction_result {
             Ok(_) => {
                 debug!(%deploy_hash, "deploy was stored");
                 let result = Self::ResponseResult {
@@ -100,7 +85,7 @@ impl RpcWithParams for PutDeploy {
                 Ok(result)
             }
             Err(error) => {
-                info!(
+                debug!(
                     %deploy_hash,
                     %error,
                     "the deploy submitted by the client was invalid",

@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::engine_state::ExecuteRequest;
+use casper_execution_engine::engine_state::ExecuteRequest;
 use casper_types::{
     runtime_args, system::standard_payment::ARG_AMOUNT, ContractHash, ContractPackageHash,
     RuntimeArgs,
@@ -31,7 +31,9 @@ fn setup() -> (LmdbWasmTestBuilder, ContractPackageHash, ContractHash) {
         .expect_success()
         .commit();
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
 
     let contract_package_hash_key = account
         .named_keys()
@@ -63,19 +65,21 @@ fn test(request_builder: impl FnOnce(ContractPackageHash, ContractHash) -> Execu
 
     builder.exec(exec_request).expect_success().commit();
 
-    let account = builder.get_account(*DEFAULT_ACCOUNT_ADDR).unwrap();
+    let account = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .unwrap();
     let contract = builder
-        .get_contract(contract_hash)
+        .get_addressable_entity(contract_hash)
         .expect("should have contract");
 
     assert!(
-        contract.named_keys().contains_key(NEW_KEY_NAME),
+        contract.named_keys().contains(NEW_KEY_NAME),
         "expected {} in {:?}",
         NEW_KEY_NAME,
         contract.named_keys()
     );
     assert!(
-        !account.named_keys().contains_key(NEW_KEY_NAME),
+        !account.named_keys().contains(NEW_KEY_NAME),
         "unexpected {} in {:?}",
         NEW_KEY_NAME,
         contract.named_keys()

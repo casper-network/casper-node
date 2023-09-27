@@ -4,28 +4,47 @@
 //! detects a specific spec has been triggered. If so, it instructs the system to shut down through
 //! a [`ControlAnnouncement`].
 
-use std::{fmt::Display, mem, sync::Arc};
+use std::{fmt::Display, mem};
 
 use datasize::DataSize;
 use derive_more::From;
 use serde::Serialize;
 use tracing::{info, trace};
 
+use casper_types::EraId;
+
 use crate::{
     effect::{
         announcements::ControlAnnouncement, requests::SetNodeStopRequest, EffectBuilder, EffectExt,
         Effects,
     },
-    types::{Block, NodeRng},
+    types::NodeRng,
 };
 
 use super::{diagnostics_port::StopAtSpec, Component};
+
+#[derive(DataSize, Debug, Serialize)]
+pub(crate) struct CompletedBlockInfo {
+    height: u64,
+    era: EraId,
+    is_switch_block: bool,
+}
+
+impl CompletedBlockInfo {
+    pub(crate) fn new(height: u64, era: EraId, is_switch_block: bool) -> Self {
+        Self {
+            height,
+            era,
+            is_switch_block,
+        }
+    }
+}
 
 /// The shutdown trigger component's event.
 #[derive(DataSize, Debug, From, Serialize)]
 pub(crate) enum Event {
     /// An announcement that a block has been completed.
-    CompletedBlock(Arc<Block>),
+    CompletedBlock(CompletedBlockInfo),
     /// A request to trigger a shutdown.
     #[from]
     SetNodeStopRequest(SetNodeStopRequest),
@@ -34,8 +53,12 @@ pub(crate) enum Event {
 impl Display for Event {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Event::CompletedBlock(block) => {
-                write!(f, "completed block: {}", block)
+            Event::CompletedBlock(block_info) => {
+                write!(
+                    f,
+                    "completed block: height {}, era {}, switch_block {}",
+                    block_info.height, block_info.era, block_info.is_switch_block
+                )
             }
             Event::SetNodeStopRequest(inner) => {
                 write!(f, "set node stop request: {}", inner)
@@ -81,11 +104,11 @@ where
         event: Self::Event,
     ) -> Effects<Self::Event> {
         match event {
-            Event::CompletedBlock(block) => {
+            Event::CompletedBlock(block_info) => {
                 // We ignore every block that is older than one we already possess.
                 let prev_height = self.highest_block_height_seen.unwrap_or_default();
-                if block.height() > prev_height {
-                    self.highest_block_height_seen = Some(block.height());
+                if block_info.height > prev_height {
+                    self.highest_block_height_seen = Some(block_info.height);
                 }
 
                 // Once the updating is done, check if we need to emit shutdown announcements.
@@ -97,36 +120,36 @@ where
                 };
 
                 let should_shutdown = match active_spec {
-                    StopAtSpec::BlockHeight(trigger_height) => block.height() >= trigger_height,
-                    StopAtSpec::EraId(trigger_era_id) => block.header().era_id() >= trigger_era_id,
+                    StopAtSpec::BlockHeight(trigger_height) => block_info.height >= trigger_height,
+                    StopAtSpec::EraId(trigger_era_id) => block_info.era >= trigger_era_id,
                     StopAtSpec::Immediately => {
                         // Immediate stops are handled when the request is received.
                         false
                     }
                     StopAtSpec::NextBlock => {
                         // Any block that is newer than one we already saw is a "next" block.
-                        block.height() > prev_height
+                        block_info.height > prev_height
                     }
                     StopAtSpec::EndOfCurrentEra => {
                         // We require that the block we just finished is a switch block.
-                        block.height() > prev_height && block.header().is_switch_block()
+                        block_info.height > prev_height && block_info.is_switch_block
                     }
                 };
 
                 if should_shutdown {
                     info!(
-                        block_height = block.height(),
-                        block_era = block.header().era_id().value(),
-                        is_switch_block = block.header().is_switch_block(),
+                        block_height = block_info.height,
+                        block_era = block_info.era.value(),
+                        is_switch_block = block_info.is_switch_block,
                         %active_spec,
                         "shutdown triggered due to fulfilled stop-at spec"
                     );
                     effect_builder.announce_user_shutdown_request().ignore()
                 } else {
                     trace!(
-                        block_height = block.height(),
-                        block_era = block.header().era_id().value(),
-                        is_switch_block = block.header().is_switch_block(),
+                        block_height = block_info.height,
+                        block_era = block_info.era.value(),
+                        is_switch_block = block_info.is_switch_block,
                         %active_spec,
                         "not shutting down"
                     );

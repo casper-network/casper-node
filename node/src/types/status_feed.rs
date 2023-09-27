@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::{
     collections::BTreeMap,
     net::{IpAddr, Ipv4Addr, SocketAddr},
@@ -11,8 +8,10 @@ use once_cell::sync::Lazy;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use casper_hashing::Digest;
-use casper_types::{EraId, ProtocolVersion, PublicKey, TimeDiff, Timestamp};
+use casper_types::{
+    ActivationPoint, Block, BlockHash, Digest, EraId, ProtocolVersion, PublicKey, TimeDiff,
+    Timestamp,
+};
 
 use crate::{
     components::{
@@ -21,7 +20,7 @@ use crate::{
         upgrade_watcher::NextUpgrade,
     },
     reactor::main_reactor::ReactorState,
-    types::{ActivationPoint, Block, BlockHash, NodeId, PeersMap},
+    types::{NodeId, PeersMap},
 };
 
 use super::AvailableBlockRange;
@@ -43,10 +42,10 @@ static GET_STATUS_RESULT: Lazy<GetStatusResult> = Lazy::new(|| {
     let mut peers = BTreeMap::new();
     peers.insert(*node_id, socket_addr.to_string());
     let status_feed = StatusFeed {
-        last_added_block: Some(Block::doc_example().clone()),
+        last_added_block: Some(Block::example().clone()),
         peers,
         chainspec_info: ChainspecInfo::doc_example().clone(),
-        our_public_signing_key: Some(PublicKey::doc_example().clone()),
+        our_public_signing_key: Some(PublicKey::example().clone()),
         round_length: Some(TimeDiff::from_millis(1 << 16)),
         version: crate::VERSION_STRING.as_str(),
         node_uptime: Duration::from_secs(13),
@@ -160,13 +159,18 @@ pub struct MinimalBlockInfo {
 
 impl From<Block> for MinimalBlockInfo {
     fn from(block: Block) -> Self {
+        let proposer = match &block {
+            Block::V1(v1) => v1.proposer().clone(),
+            Block::V2(v2) => v2.proposer().clone(),
+        };
+
         MinimalBlockInfo {
             hash: *block.hash(),
-            timestamp: block.header().timestamp(),
-            era_id: block.header().era_id(),
-            height: block.header().height(),
-            state_root_hash: *block.header().state_root_hash(),
-            creator: block.body().proposer().clone(),
+            timestamp: block.timestamp(),
+            era_id: block.era_id(),
+            height: block.height(),
+            state_root_hash: *block.state_root_hash(),
+            creator: proposer,
         }
     }
 }

@@ -153,26 +153,24 @@ mod tests {
         time::Instant,
     };
 
-    use casper_types::{testing::TestRng, ProtocolVersion};
     use rand::seq::SliceRandom;
+
+    use casper_types::{testing::TestRng, BlockHash, BlockHeader, BlockV2, TestBlockBuilder};
 
     use crate::{
         components::sync_leaper::{
             leap_activity::LeapActivity, tests::make_test_sync_leap, LeapActivityError, LeapState,
             PeerState,
         },
-        types::{Block, BlockHash, BlockHeader, NodeId, SyncLeap, SyncLeapIdentifier},
+        types::{NodeId, SyncLeap, SyncLeapIdentifier},
     };
 
-    fn make_random_block_with_height(rng: &mut TestRng, height: u64) -> Block {
-        Block::random_with_specifics(
-            rng,
-            0.into(),
-            height,
-            ProtocolVersion::default(),
-            false,
-            None,
-        )
+    fn make_random_block_with_height(rng: &mut TestRng, height: u64) -> BlockV2 {
+        TestBlockBuilder::new()
+            .era(0)
+            .height(height)
+            .switch_block(false)
+            .build(rng)
     }
 
     fn make_sync_leap_with_trusted_block_header(trusted_block_header: BlockHeader) -> SyncLeap {
@@ -250,7 +248,8 @@ mod tests {
             .iter()
             .map(|height| {
                 let block = make_random_block_with_height(&mut rng, *height);
-                let sync_leap = make_sync_leap_with_trusted_block_header(block.header().clone());
+                let sync_leap =
+                    make_sync_leap_with_trusted_block_header(block.header().clone().into());
                 (
                     NodeId::random(&mut rng),
                     PeerState::Fetched(Box::new(sync_leap)),
@@ -260,7 +259,8 @@ mod tests {
 
         // Add another peer with the best response.
         let block = make_random_block_with_height(&mut rng, 500);
-        let best_sync_leap = make_sync_leap_with_trusted_block_header(block.header().clone());
+        let best_sync_leap =
+            make_sync_leap_with_trusted_block_header(block.header().clone().into());
         let peer_1_best_node_id = NodeId::random(&mut rng);
         peers_with_sync_leaps.insert(
             peer_1_best_node_id,
@@ -281,7 +281,8 @@ mod tests {
 
         // Add two more peers with even better response.
         let block = make_random_block_with_height(&mut rng, 1000);
-        let best_sync_leap = make_sync_leap_with_trusted_block_header(block.header().clone());
+        let best_sync_leap =
+            make_sync_leap_with_trusted_block_header(block.header().clone().into());
         let peer_2_best_node_id = NodeId::random(&mut rng);
         let peer_3_best_node_id = NodeId::random(&mut rng);
         leap_activity.peers.extend(
@@ -312,7 +313,8 @@ mod tests {
 
         // Add two more peers with worse response.
         let block = make_random_block_with_height(&mut rng, 1);
-        let worse_sync_leap = make_sync_leap_with_trusted_block_header(block.header().clone());
+        let worse_sync_leap =
+            make_sync_leap_with_trusted_block_header(block.header().clone().into());
         let peer_3_worse_node_id = NodeId::random(&mut rng);
         let peer_4_worse_node_id = NodeId::random(&mut rng);
         leap_activity.peers.extend(

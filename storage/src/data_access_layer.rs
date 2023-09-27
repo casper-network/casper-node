@@ -1,12 +1,9 @@
-use casper_types::EraId;
+use casper_types::{execution::Effects, Digest, EraId};
 
 use crate::global_state::{
-    shared,
-    storage::{
-        state::{CommitProvider, StateProvider},
-        trie::TrieRaw,
-        trie_store::operations::DeleteResult,
-    },
+    state::{CommitProvider, StateProvider},
+    trie::TrieRaw,
+    trie_store::operations::PruneResult,
 };
 
 pub struct Block {
@@ -51,48 +48,32 @@ where
 
     type Reader = S::Reader;
 
-    fn checkout(
-        &self,
-        state_hash: casper_hashing::Digest,
-    ) -> Result<Option<Self::Reader>, Self::Error> {
+    fn checkout(&self, state_hash: Digest) -> Result<Option<Self::Reader>, Self::Error> {
         self.state.checkout(state_hash)
     }
 
-    fn empty_root(&self) -> casper_hashing::Digest {
+    fn empty_root(&self) -> Digest {
         self.state.empty_root()
     }
 
-    fn get_trie_full(
-        &self,
-        correlation_id: shared::CorrelationId,
-        trie_key: &casper_hashing::Digest,
-    ) -> Result<Option<TrieRaw>, Self::Error> {
-        self.state.get_trie_full(correlation_id, trie_key)
+    fn get_trie_full(&self, trie_key: &Digest) -> Result<Option<TrieRaw>, Self::Error> {
+        self.state.get_trie_full(trie_key)
     }
 
-    fn put_trie(
-        &self,
-        correlation_id: shared::CorrelationId,
-        trie: &[u8],
-    ) -> Result<casper_hashing::Digest, Self::Error> {
-        self.state.put_trie(correlation_id, trie)
+    fn put_trie(&self, trie: &[u8]) -> Result<Digest, Self::Error> {
+        self.state.put_trie(trie)
     }
 
-    fn missing_children(
-        &self,
-        correlation_id: shared::CorrelationId,
-        trie_raw: &[u8],
-    ) -> Result<Vec<casper_hashing::Digest>, Self::Error> {
-        self.state.missing_children(correlation_id, trie_raw)
+    fn missing_children(&self, trie_raw: &[u8]) -> Result<Vec<Digest>, Self::Error> {
+        self.state.missing_children(trie_raw)
     }
 
-    fn delete_keys(
+    fn prune_keys(
         &self,
-        correlation_id: shared::CorrelationId,
-        root: casper_hashing::Digest,
-        keys_to_delete: &[casper_types::Key],
-    ) -> Result<DeleteResult, Self::Error> {
-        self.state.delete_keys(correlation_id, root, keys_to_delete)
+        root: Digest,
+        keys_to_prune: &[casper_types::Key],
+    ) -> Result<PruneResult, Self::Error> {
+        self.state.prune_keys(root, keys_to_prune)
     }
 }
 
@@ -100,12 +81,7 @@ impl<S> CommitProvider for DataAccessLayer<S>
 where
     S: CommitProvider,
 {
-    fn commit(
-        &self,
-        correlation_id: shared::CorrelationId,
-        state_hash: casper_hashing::Digest,
-        effects: shared::AdditiveMap<casper_types::Key, shared::transform::Transform>,
-    ) -> Result<casper_hashing::Digest, Self::Error> {
-        self.state.commit(correlation_id, state_hash, effects)
+    fn commit(&self, state_hash: Digest, effects: Effects) -> Result<Digest, Self::Error> {
+        self.state.commit(state_hash, effects)
     }
 }

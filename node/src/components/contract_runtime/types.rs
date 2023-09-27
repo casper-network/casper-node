@@ -2,13 +2,13 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use datasize::DataSize;
 
-use casper_execution_engine::{
-    core::engine_state::GetEraValidatorsRequest, shared::execution_journal::ExecutionJournal,
+use casper_execution_engine::engine_state::GetEraValidatorsRequest;
+use casper_types::{
+    execution::{Effects, ExecutionResult},
+    BlockV2, DeployHash, DeployHeader, Digest, EraId, ProtocolVersion, PublicKey, U512,
 };
-use casper_hashing::Digest;
-use casper_types::{EraId, ExecutionResult, ProtocolVersion, PublicKey, U512};
 
-use crate::types::{ApprovalsHashes, Block, DeployHash, DeployHeader};
+use crate::types::ApprovalsHashes;
 
 /// Request for validator weights for a specific era.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,11 +107,11 @@ impl From<EraValidatorsRequest> for GetEraValidatorsRequest {
 
 /// Effects from running step and the next era validators that are gathered when an era ends.
 #[derive(Clone, Debug, DataSize)]
-pub(crate) struct StepEffectAndUpcomingEraValidators {
+pub(crate) struct StepEffectsAndUpcomingEraValidators {
     /// Validator sets for all upcoming eras that have already been determined.
     pub(crate) upcoming_era_validators: BTreeMap<EraId, BTreeMap<PublicKey, U512>>,
-    /// An [`ExecutionJournal`] created by an era ending.
-    pub(crate) step_execution_journal: ExecutionJournal,
+    /// An [`Effects`] created by an era ending.
+    pub(crate) step_effects: Effects,
 }
 
 #[doc(hidden)]
@@ -120,12 +120,12 @@ pub(crate) struct StepEffectAndUpcomingEraValidators {
 #[derive(Clone, Debug, DataSize)]
 pub struct BlockAndExecutionResults {
     /// The [`Block`] the contract runtime executed.
-    pub(crate) block: Arc<Block>,
+    pub(crate) block: Arc<BlockV2>,
     /// The [`ApprovalsHashes`] for the deploys in this block.
     pub(crate) approvals_hashes: Box<ApprovalsHashes>,
     /// The results from executing the deploys in the block.
     pub(crate) execution_results: Vec<(DeployHash, DeployHeader, ExecutionResult)>,
-    /// The [`ExecutionJournal`] and the upcoming validator sets determined by the `step`
-    pub(crate) maybe_step_effect_and_upcoming_era_validators:
-        Option<StepEffectAndUpcomingEraValidators>,
+    /// The [`Effects`] and the upcoming validator sets determined by the `step`
+    pub(crate) maybe_step_effects_and_upcoming_era_validators:
+        Option<StepEffectsAndUpcomingEraValidators>,
 }

@@ -10,6 +10,37 @@ All notable changes to this project will be documented in this file.  The format
 [comment]: <> (Security:   in case of vulnerabilities)
 
 
+
+## Unreleased
+
+### Added
+* New environment variable `CL_EVENT_QUEUE_DUMP_THRESHOLD` to enable dumping of queue event counts to log when a certain threshold is exceeded.
+
+### Fixed
+* Now possible to build outside a git repository context (e.g. from a source tarball). In such cases, the node's build version (as reported vie status endpoints) will not contain a trailing git short hash.
+
+### Changed
+* The `state_identifier` parameter of the `query_global_state` JSON-RPC method is now optional. If no `state_identifier` is specified, the highest complete block known to the node will be used to fulfill the request.
+
+
+
+## 1.5.2
+
+### Added
+* Added the `cors_origin` config option under the `[rest_server]`, `[rpc_server]`, `[event_stream_server]` and `[speculative_exec_server]` sections to allow configuration of the CORS Origin.
+
+
+
+## 1.5.1
+
+### Added
+* Added the `upgrade_timeout` config option under the `[node]` section.
+
+### Changed
+* `speculative_exec` server now routes deploys to `DeployAcceptor` for more comprehensive validation, including cryptographic verification of signatures.
+
+
+
 ## 1.5.0-rc.1
 
 ### Added
@@ -152,26 +183,10 @@ All notable changes to this project will be documented in this file.  The format
 
 ## 1.4.8
 
-### Changed
-* Update `casper-execution-engine`.
+### Added
+* Add an `identity` option to load existing network identity certificates signed by a CA.
 
 
-
-## 1.4.7
-
-### Changed
-* Update `casper-execution-engine` and three `openssl` crates to latest versions.
-
-
-
-## 1.4.6
-
-### Changed
-* Update dependencies to make use of scratch global state in the contract runtime.
-
-
-
-## 1.4.8
 
 ### Changed
 * Update `casper-execution-engine`.

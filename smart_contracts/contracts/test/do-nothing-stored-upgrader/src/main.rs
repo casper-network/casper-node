@@ -12,7 +12,7 @@ use casper_contract::{
 use core::convert::TryInto;
 
 use casper_types::{
-    contracts::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
+    addressable_entity::{EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys},
     CLType, CLTyped, ContractPackageHash, Key, Parameter, URef,
 };
 

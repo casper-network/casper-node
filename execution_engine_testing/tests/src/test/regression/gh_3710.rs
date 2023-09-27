@@ -1,20 +1,18 @@
 use std::{collections::BTreeSet, convert::TryInto, fmt, iter::FromIterator};
 
 use casper_engine_test_support::{
-    ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, UpgradeRequestBuilder,
-    WasmTestBuilder, DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY,
-    PRODUCTION_RUN_GENESIS_REQUEST,
+    ExecuteRequestBuilder, LmdbWasmTestBuilder, StepRequestBuilder, WasmTestBuilder,
+    DEFAULT_ACCOUNT_PUBLIC_KEY, DEFAULT_PROPOSER_PUBLIC_KEY, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{self, PruneConfig, PruneResult},
     execution,
 };
-use casper_hashing::Digest;
-use casper_storage::global_state::storage::state::{CommitProvider, StateProvider};
+use casper_storage::global_state::state::{CommitProvider, StateProvider};
 use casper_types::{
     runtime_args,
     system::auction::{self, DelegationRate},
-    EraId, Key, KeyTag, ProtocolVersion, PublicKey, RuntimeArgs, U512,
+    Digest, EraId, Key, KeyTag, ProtocolVersion, PublicKey, U512,
 };
 
 use crate::lmdb_fixture;
@@ -22,89 +20,6 @@ use crate::lmdb_fixture;
 const FIXTURE_N_ERAS: usize = 10;
 
 const GH_3710_FIXTURE: &str = "gh_3710";
-
-#[ignore]
-#[test]
-fn gh_3710_should_copy_latest_era_info_to_stable_key_at_upgrade_point() {
-    let (mut builder, lmdb_fixture_state, _temp_dir) =
-        lmdb_fixture::builder_from_global_state_fixture(GH_3710_FIXTURE);
-
-    let auction_delay: u64 = lmdb_fixture_state
-        .genesis_request
-        .get("ee_config")
-        .expect("should have ee_config")
-        .get("auction_delay")
-        .expect("should have auction delay")
-        .as_i64()
-        .expect("auction delay should be integer")
-        .try_into()
-        .expect("auction delay should be positive");
-
-    let last_expected_era_info = EraId::new(auction_delay + FIXTURE_N_ERAS as u64);
-    let first_era_after_protocol_upgrade = last_expected_era_info.successor();
-
-    let pre_upgrade_state_root_hash = builder.get_post_state_hash();
-
-    let previous_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let current_protocol_version = lmdb_fixture_state.genesis_protocol_version();
-
-    let new_protocol_version = ProtocolVersion::from_parts(
-        current_protocol_version.value().major,
-        current_protocol_version.value().minor,
-        current_protocol_version.value().patch + 1,
-    );
-
-    let era_info_keys_before_upgrade = builder
-        .get_keys(KeyTag::EraInfo)
-        .expect("should return all the era info keys");
-
-    assert_eq!(
-        era_info_keys_before_upgrade.len(),
-        auction_delay as usize + 1 + FIXTURE_N_ERAS,
-    );
-
-    let mut upgrade_request = {
-        UpgradeRequestBuilder::new()
-            .with_current_protocol_version(previous_protocol_version)
-            .with_new_protocol_version(new_protocol_version)
-            .with_activation_point(first_era_after_protocol_upgrade)
-            .build()
-    };
-
-    builder
-        .upgrade_with_upgrade_request(*builder.get_engine_state().config(), &mut upgrade_request)
-        .expect_upgrade_success();
-
-    let upgrade_result = builder.get_upgrade_result(0).expect("result");
-
-    let upgrade_success = upgrade_result.as_ref().expect("success");
-    assert_eq!(
-        upgrade_success.post_state_hash,
-        builder.get_post_state_hash(),
-        "sanity check"
-    );
-
-    let era_info_keys_after_upgrade = builder
-        .get_keys(KeyTag::EraInfo)
-        .expect("should return all the era info keys");
-
-    assert_eq!(era_info_keys_after_upgrade, era_info_keys_before_upgrade);
-
-    let last_era_info_value = builder
-        .query(
-            Some(pre_upgrade_state_root_hash),
-            Key::EraInfo(last_expected_era_info),
-            &[],
-        )
-        .expect("should query pre-upgrade stored value");
-
-    let era_summary = builder
-        .query(None, Key::EraSummary, &[])
-        .expect("should query stable key after the upgrade");
-
-    assert_eq!(last_era_info_value, era_summary);
-}
 
 #[ignore]
 #[test]
@@ -257,8 +172,12 @@ where
     }
 }
 
-fn distribute_rewards<S>(builder: &mut WasmTestBuilder<S>, block_height: u64, proposer: &PublicKey)
-where
+fn distribute_rewards<S>(
+    builder: &mut WasmTestBuilder<S>,
+    block_height: u64,
+    proposer: &PublicKey,
+    amount: U512,
+) where
     S: StateProvider + CommitProvider,
     engine_state::Error: From<S::Error>,
     S::Error: Into<execution::Error> + fmt::Debug,
@@ -267,7 +186,7 @@ where
         .distribute(
             None,
             ProtocolVersion::V1_0_0,
-            proposer.clone(),
+            &IntoIterator::into_iter([(proposer.clone(), amount)]).collect(),
             block_height,
             0,
         )
@@ -281,7 +200,7 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
     builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
 
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
-    distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 1, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
 
     let era_info_keys = builder.get_keys(KeyTag::EraInfo).unwrap();
     assert_eq!(era_info_keys, Vec::new());
@@ -294,7 +213,7 @@ fn gh_3710_should_produce_era_summary_in_a_step() {
 
     // Reward another validator to observe that the summary changes.
     add_validator_and_wait_for_rotation(&mut builder, &DEFAULT_PROPOSER_PUBLIC_KEY);
-    distribute_rewards(&mut builder, 2, &DEFAULT_PROPOSER_PUBLIC_KEY);
+    distribute_rewards(&mut builder, 2, &DEFAULT_PROPOSER_PUBLIC_KEY, 1.into());
 
     let era_summary_2 = builder
         .query(None, Key::EraSummary, &[])
@@ -341,7 +260,7 @@ mod fixture {
             super::add_validator_and_wait_for_rotation(builder, &DEFAULT_ACCOUNT_PUBLIC_KEY);
 
             // N more eras that pays out rewards
-            super::distribute_rewards(builder, 0, &DEFAULT_ACCOUNT_PUBLIC_KEY);
+            super::distribute_rewards(builder, 0, &DEFAULT_ACCOUNT_PUBLIC_KEY, 0.into());
 
             let last_era_info = EraId::new(builder.get_auction_delay() + FIXTURE_N_ERAS as u64);
             let last_era_info_key = Key::EraInfo(last_era_info);

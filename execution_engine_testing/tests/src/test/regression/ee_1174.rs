@@ -3,14 +3,14 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 
-use casper_execution_engine::core::{engine_state::Error, execution};
+use casper_execution_engine::{engine_state::Error, execution};
 use casper_types::{
     runtime_args,
     system::{
         self,
         auction::{self, DelegationRate},
     },
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const LARGE_DELEGATION_RATE: DelegationRate = 101;

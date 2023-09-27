@@ -5,15 +5,14 @@ use std::{
 
 use derive_more::From;
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, BalanceResult, GetBidsResult, GetEraValidatorsError, QueryResult,
 };
-use casper_types::{system::auction::EraValidators, Transfer};
+use casper_types::{system::auction::EraValidators, BlockHash, Transfer};
 
 use crate::{
     effect::{requests::RpcRequest, Responder},
-    rpcs::chain::BlockIdentifier,
-    types::{BlockHash, BlockWithMetadata, Deploy, DeployHash, DeployMetadataExt, NodeId},
+    types::NodeId,
 };
 
 #[derive(Debug, From)]
@@ -21,11 +20,6 @@ pub(crate) enum Event {
     Initialize,
     #[from]
     RpcRequest(RpcRequest),
-    GetBlockResult {
-        maybe_id: Option<BlockIdentifier>,
-        result: Option<Box<BlockWithMetadata>>,
-        main_responder: Responder<Option<Box<BlockWithMetadata>>>,
-    },
     GetBlockTransfersResult {
         block_hash: BlockHash,
         result: Option<Vec<Transfer>>,
@@ -43,11 +37,6 @@ pub(crate) enum Event {
         result: Result<GetBidsResult, engine_state::Error>,
         main_responder: Responder<Result<GetBidsResult, engine_state::Error>>,
     },
-    GetDeployResult {
-        hash: DeployHash,
-        result: Option<Box<(Deploy, DeployMetadataExt)>>,
-        main_responder: Responder<Option<Box<(Deploy, DeployMetadataExt)>>>,
-    },
     GetPeersResult {
         peers: BTreeMap<NodeId, String>,
         main_responder: Responder<BTreeMap<NodeId, String>>,
@@ -63,21 +52,6 @@ impl Display for Event {
         match self {
             Event::Initialize => write!(formatter, "initialize"),
             Event::RpcRequest(request) => write!(formatter, "{}", request),
-            Event::GetBlockResult {
-                maybe_id: Some(BlockIdentifier::Hash(hash)),
-                result,
-                ..
-            } => write!(formatter, "get block result for {}: {:?}", hash, result),
-            Event::GetBlockResult {
-                maybe_id: Some(BlockIdentifier::Height(height)),
-                result,
-                ..
-            } => write!(formatter, "get block result for {}: {:?}", height, result),
-            Event::GetBlockResult {
-                maybe_id: None,
-                result,
-                ..
-            } => write!(formatter, "get latest block result: {:?}", result),
             Event::GetBlockTransfersResult {
                 block_hash, result, ..
             } => write!(
@@ -96,9 +70,6 @@ impl Display for Event {
             }
             Event::GetBalanceResult { result, .. } => {
                 write!(formatter, "balance result: {:?}", result)
-            }
-            Event::GetDeployResult { hash, result, .. } => {
-                write!(formatter, "get deploy result for {}: {:?}", hash, result)
             }
             Event::GetPeersResult { peers, .. } => write!(formatter, "get peers: {}", peers.len()),
         }

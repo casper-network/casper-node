@@ -4,15 +4,13 @@ use num::Zero;
 use once_cell::sync::Lazy;
 
 use casper_types::{
-    system::auction::DelegationRate, Motes, PublicKey, SecretKey, TimeDiff, Timestamp, U512,
+    system::auction::DelegationRate, AccountConfig, AccountsConfig, ActivationPoint, Chainspec,
+    ChainspecRawBytes, Motes, PublicKey, SecretKey, TimeDiff, Timestamp, ValidatorConfig, U512,
 };
 
 use crate::{
     tls::{KeyFingerprint, Sha512},
-    types::{
-        chainspec::{AccountConfig, AccountsConfig, ValidatorConfig},
-        ActivationPoint, Chainspec, ChainspecRawBytes, NodeId,
-    },
+    types::NodeId,
     utils::Loadable,
 };
 
@@ -57,7 +55,9 @@ where
         })
         .collect();
     let delegators = vec![];
-    chainspec.network_config.accounts_config = AccountsConfig::new(accounts, delegators);
+    let administrators = vec![];
+    chainspec.network_config.accounts_config =
+        AccountsConfig::new(accounts, delegators, administrators);
     chainspec.protocol_config.activation_point = ActivationPoint::Genesis(Timestamp::now());
 
     // Every era has exactly two blocks.

@@ -4,26 +4,19 @@ use datasize::DataSize;
 use itertools::Itertools;
 use tracing::{debug, error, warn};
 
-use casper_types::{EraId, PublicKey, Timestamp};
-
-use crate::{
-    components::{
-        block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
-        fetcher::{EmptyValidationMetadata, FetchItem},
-    },
-    types::{
-        ActivationPoint, BlockHash, BlockSignatures, EraValidatorWeights, FinalitySignature,
-        MetaBlock, NodeId, SignatureWeight,
-    },
+use casper_types::{
+    ActivationPoint, BlockHash, BlockSignatures, EraId, FinalitySignature, PublicKey, Timestamp,
 };
 
-#[cfg(test)]
-use rand::Rng as _;
+use crate::{
+    components::block_accumulator::error::{Bogusness, Error as AcceptorError, InvalidGossipError},
+    types::{EraValidatorWeights, ForwardMetaBlock, NodeId, SignatureWeight},
+};
 
 #[derive(DataSize, Debug)]
 pub(super) struct BlockAcceptor {
     block_hash: BlockHash,
-    meta_block: Option<MetaBlock>,
+    meta_block: Option<ForwardMetaBlock>,
     signatures: BTreeMap<PublicKey, (FinalitySignature, BTreeSet<NodeId>)>,
     peers: BTreeSet<NodeId>,
     last_progress: Timestamp,
@@ -34,14 +27,14 @@ pub(super) struct BlockAcceptor {
 #[allow(clippy::large_enum_variant)]
 pub(super) enum ShouldStore {
     SufficientlySignedBlock {
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         block_signatures: BlockSignatures,
     },
     CompletedBlock {
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         block_signatures: BlockSignatures,
     },
-    MarkComplete(MetaBlock),
+    MarkComplete(ForwardMetaBlock),
     SingleSignature(FinalitySignature),
     Nothing,
 }
@@ -71,7 +64,7 @@ impl BlockAcceptor {
 
     pub(super) fn register_block(
         &mut self,
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         peer: Option<NodeId>,
     ) -> Result<(), AcceptorError> {
         if self.block_hash() != *meta_block.block.hash() {
@@ -81,21 +74,21 @@ impl BlockAcceptor {
             });
         }
 
-        if let Err(error) = meta_block.block.validate(&EmptyValidationMetadata) {
+        // Verify is needed for the cases when the block comes from the gossiper. It it came here
+        // from the fetcher it'll already be verified.
+        if let Err(error) = meta_block.block.verify() {
             warn!(%error, "received invalid block");
             // TODO[RC]: Consider renaming `InvalidGossip` and/or restructuring the errors
-            match peer {
-                Some(node_id) => {
-                    return Err(AcceptorError::InvalidGossip(Box::new(
-                        InvalidGossipError::Block {
-                            block_hash: *meta_block.block.hash(),
-                            peer: node_id,
-                            validation_error: error,
-                        },
-                    )))
-                }
-                None => return Err(AcceptorError::InvalidConfiguration),
-            }
+            return match peer {
+                Some(node_id) => Err(AcceptorError::InvalidGossip(Box::new(
+                    InvalidGossipError::Block {
+                        block_hash: *meta_block.block.hash(),
+                        peer: node_id,
+                        validation_error: error,
+                    },
+                ))),
+                None => Err(AcceptorError::InvalidConfiguration),
+            };
         }
 
         if let Some(node_id) = peer {
@@ -121,10 +114,10 @@ impl BlockAcceptor {
         peer: Option<NodeId>,
         validator_slots: u32,
     ) -> Result<Option<FinalitySignature>, AcceptorError> {
-        if self.block_hash != finality_signature.block_hash {
+        if self.block_hash != *finality_signature.block_hash() {
             return Err(AcceptorError::BlockHashMismatch {
                 expected: self.block_hash,
-                actual: finality_signature.block_hash,
+                actual: *finality_signature.block_hash(),
             });
         }
         if let Some(node_id) = peer {
@@ -137,18 +130,16 @@ impl BlockAcceptor {
         }
         if let Err(error) = finality_signature.is_verified() {
             warn!(%error, "received invalid finality signature");
-            match peer {
-                Some(node_id) => {
-                    return Err(AcceptorError::InvalidGossip(Box::new(
-                        InvalidGossipError::FinalitySignature {
-                            block_hash: finality_signature.block_hash,
-                            peer: node_id,
-                            validation_error: error,
-                        },
-                    )))
-                }
-                None => return Err(AcceptorError::InvalidConfiguration),
-            }
+            return match peer {
+                Some(node_id) => Err(AcceptorError::InvalidGossip(Box::new(
+                    InvalidGossipError::FinalitySignature {
+                        block_hash: *finality_signature.block_hash(),
+                        peer: node_id,
+                        validation_error: error,
+                    },
+                ))),
+                None => Err(AcceptorError::InvalidConfiguration),
+            };
         }
 
         let had_sufficient_finality = self.has_sufficient_finality();
@@ -160,7 +151,7 @@ impl BlockAcceptor {
                 self.register_peer(node_id);
             }
             self.signatures
-                .entry(finality_signature.public_key.clone())
+                .entry(finality_signature.public_key().clone())
                 .and_modify(|(_, senders)| senders.extend(peer))
                 .or_insert_with(|| (finality_signature, peer.into_iter().collect()));
             return Ok(None);
@@ -169,33 +160,33 @@ impl BlockAcceptor {
         if let Some(meta_block) = &self.meta_block {
             // if the signature's era does not match the block's era
             // it's malicious / bogus / invalid.
-            if meta_block.block.header().era_id() != finality_signature.era_id {
-                match peer {
-                    Some(node_id) => {
-                        return Err(AcceptorError::EraMismatch {
-                            block_hash: finality_signature.block_hash,
-                            expected: meta_block.block.header().era_id(),
-                            actual: finality_signature.era_id,
-                            peer: node_id,
-                        });
-                    }
-                    None => return Err(AcceptorError::InvalidConfiguration),
-                }
+            if meta_block.block.era_id() != finality_signature.era_id() {
+                return match peer {
+                    Some(node_id) => Err(AcceptorError::EraMismatch {
+                        block_hash: *finality_signature.block_hash(),
+                        expected: meta_block.block.era_id(),
+                        actual: finality_signature.era_id(),
+                        peer: node_id,
+                    }),
+                    None => Err(AcceptorError::InvalidConfiguration),
+                };
             }
         } else {
             // should have block if self.has_sufficient_finality()
             return Err(AcceptorError::SufficientFinalityWithoutBlock {
-                block_hash: finality_signature.block_hash,
+                block_hash: *finality_signature.block_hash(),
             });
         }
 
         if let Some(node_id) = peer {
             self.register_peer(node_id);
         }
-        let is_new = !self.signatures.contains_key(&finality_signature.public_key);
+        let is_new = !self
+            .signatures
+            .contains_key(finality_signature.public_key());
 
         self.signatures
-            .entry(finality_signature.public_key.clone())
+            .entry(finality_signature.public_key().clone())
             .and_modify(|(_, senders)| senders.extend(peer))
             .or_insert_with(|| (finality_signature.clone(), peer.into_iter().collect()));
 
@@ -249,13 +240,10 @@ impl BlockAcceptor {
         if SignatureWeight::Strict == signature_weight {
             self.touch();
             if let Some(meta_block) = self.meta_block.as_mut() {
-                let mut block_signatures = BlockSignatures::new(
-                    *meta_block.block.hash(),
-                    meta_block.block.header().era_id(),
-                );
+                let mut block_signatures =
+                    BlockSignatures::new(*meta_block.block.hash(), meta_block.block.era_id());
                 self.signatures.values().for_each(|(signature, _)| {
-                    block_signatures
-                        .insert_proof(signature.public_key.clone(), signature.signature);
+                    block_signatures.insert_signature(signature.clone());
                 });
                 if meta_block
                     .state
@@ -338,10 +326,10 @@ impl BlockAcceptor {
 
     pub(super) fn era_id(&self) -> Option<EraId> {
         if let Some(meta_block) = &self.meta_block {
-            return Some(meta_block.block.header().era_id());
+            return Some(meta_block.block.era_id());
         }
         if let Some((finality_signature, _)) = self.signatures.values().next() {
-            return Some(finality_signature.era_id);
+            return Some(finality_signature.era_id());
         }
         None
     }
@@ -349,7 +337,7 @@ impl BlockAcceptor {
     pub(super) fn block_height(&self) -> Option<u64> {
         self.meta_block
             .as_ref()
-            .map(|meta_block| meta_block.block.header().height())
+            .map(|meta_block| meta_block.block.height())
     }
 
     pub(super) fn block_hash(&self) -> BlockHash {
@@ -406,7 +394,7 @@ impl BlockAcceptor {
             let bogus_validators = self
                 .signatures
                 .iter()
-                .filter(|(_, (v, _))| v.era_id != meta_block.block.header().era_id())
+                .filter(|(_, (v, _))| v.era_id() != meta_block.block.era_id())
                 .map(|(k, _)| k.clone())
                 .collect_vec();
 
@@ -461,7 +449,7 @@ impl BlockAcceptor {
             .map_or(false, |meta_block| meta_block.state.is_executed())
     }
 
-    pub(super) fn meta_block(&self) -> Option<MetaBlock> {
+    pub(super) fn meta_block(&self) -> Option<ForwardMetaBlock> {
         self.meta_block.clone()
     }
 
@@ -469,7 +457,7 @@ impl BlockAcceptor {
         self.last_progress = last_progress;
     }
 
-    pub(super) fn set_meta_block(&mut self, meta_block: Option<MetaBlock>) {
+    pub(super) fn set_meta_block(&mut self, meta_block: Option<ForwardMetaBlock>) {
         self.meta_block = meta_block;
     }
 
@@ -509,7 +497,7 @@ mod tests {
         // Insert only the peer to check:
         signatures.insert(
             PublicKey::random(rng),
-            (random_finality_signature(rng), {
+            (FinalitySignature::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(peer_to_check);
                 nodes
@@ -518,7 +506,7 @@ mod tests {
         // Insert an unrelated peer:
         signatures.insert(
             PublicKey::random(rng),
-            (random_finality_signature(rng), {
+            (FinalitySignature::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(NodeId::random(rng));
                 nodes
@@ -527,7 +515,7 @@ mod tests {
         // Insert both the peer to check and an unrelated one:
         signatures.insert(
             PublicKey::random(rng),
-            (random_finality_signature(rng), {
+            (FinalitySignature::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(NodeId::random(rng));
                 nodes.insert(peer_to_check);
@@ -544,7 +532,7 @@ mod tests {
         // Let's insert once again both the peer to check and an unrelated one:
         signatures.insert(
             PublicKey::random(rng),
-            (random_finality_signature(rng), {
+            (FinalitySignature::random(rng), {
                 let mut nodes = BTreeSet::new();
                 nodes.insert(NodeId::random(rng));
                 nodes.insert(peer_to_check);
@@ -558,9 +546,5 @@ mod tests {
             Err(AcceptorError::TooManySignatures { peer, limit })
                 if peer == peer_to_check && limit == max_signatures
         ));
-    }
-
-    fn random_finality_signature(rng: &mut TestRng) -> FinalitySignature {
-        FinalitySignature::random_for_block(BlockHash::random(rng), rng.gen())
     }
 }

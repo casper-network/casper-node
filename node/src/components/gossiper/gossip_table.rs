@@ -12,8 +12,10 @@ use datasize::DataSize;
 use fake_instant::FakeClock as Instant;
 use tracing::{error, trace, warn};
 
+use casper_types::DisplayIter;
+
 use super::Config;
-use crate::{effect::GossipTarget, types::NodeId, utils::DisplayIter};
+use crate::{effect::GossipTarget, types::NodeId};
 
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum GossipAction {
@@ -542,10 +544,10 @@ mod tests {
 
     use rand::Rng;
 
-    use casper_types::{testing::TestRng, TimeDiff};
+    use casper_types::{testing::TestRng, DisplayIter, TimeDiff};
 
     use super::{super::config::DEFAULT_FINISHED_ENTRY_DURATION, *};
-    use crate::{logging, utils::DisplayIter};
+    use crate::logging;
 
     const EXPECTED_DEFAULT_INFECTION_TARGET: usize = 3;
     const EXPECTED_DEFAULT_ATTEMPTED_TO_INFECT_LIMIT: usize = 15;

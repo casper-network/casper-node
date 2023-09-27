@@ -2,7 +2,7 @@ use casper_engine_test_support::{
     utils, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_PAYMENT,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{account::AccountHash, runtime_args, Key, RuntimeArgs, StoredValue, U512};
+use casper_types::{account::AccountHash, runtime_args, Key, U512};
 
 const CONTRACT_CREATE: &str = "ee_572_regression_create.wasm";
 const CONTRACT_ESCALATE: &str = "ee_572_regression_escalate.wasm";
@@ -59,10 +59,9 @@ fn should_run_ee_572_regression() {
     builder.exec(exec_request_3).expect_success().commit();
 
     let contract: Key = {
-        let account = match builder.query(None, Key::Account(ACCOUNT_1_ADDR), &[]) {
-            Ok(StoredValue::Account(account)) => account,
-            _ => panic!("Could not find account at: {:?}", ACCOUNT_1_ADDR),
-        };
+        let account = builder
+            .get_entity_by_account_hash(ACCOUNT_1_ADDR)
+            .expect("must have default contract package");
         *account
             .named_keys()
             .get(CREATE)

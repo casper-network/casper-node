@@ -1,6 +1,3 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use std::fmt::{self, Display, Formatter};
 
 use schemars::JsonSchema;

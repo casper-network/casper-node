@@ -22,7 +22,10 @@ use itertools::Itertools;
 use prometheus::Registry;
 use tracing::{debug, error, info, warn};
 
-use casper_types::{EraId, TimeDiff, Timestamp};
+use casper_types::{
+    ActivationPoint, Block, BlockHash, BlockSignatures, EraId, FinalitySignature, TimeDiff,
+    Timestamp,
+};
 
 use crate::{
     components::{
@@ -44,10 +47,7 @@ use crate::{
         EffectBuilder, EffectExt, Effects,
     },
     fatal,
-    types::{
-        ActivationPoint, BlockHash, BlockSignatures, FinalitySignature, MetaBlock, MetaBlockState,
-        NodeId, ValidatorMatrix,
-    },
+    types::{ForwardMetaBlock, MetaBlock, MetaBlockState, NodeId, ValidatorMatrix},
     NodeRng,
 };
 
@@ -145,13 +145,14 @@ impl BlockAccumulator {
     pub(crate) fn sync_instruction(&mut self, sync_identifier: SyncIdentifier) -> SyncInstruction {
         let block_hash = sync_identifier.block_hash();
         let leap_instruction = self.leap_instruction(&sync_identifier);
+        debug!(?leap_instruction, "BlockAccumulator");
         if let Some((block_height, era_id)) = sync_identifier.block_height_and_era() {
             self.register_local_tip(block_height, era_id);
         }
         if leap_instruction.should_leap() {
             return SyncInstruction::Leap { block_hash };
         }
-        match sync_identifier.block_hash_to_sync(self.next_synchable_block_hash(block_hash)) {
+        match sync_identifier.block_hash_to_sync(self.next_syncable_block_hash(block_hash)) {
             Some(block_hash_to_sync) => {
                 self.reset_last_progress();
                 SyncInstruction::BlockSync {
@@ -160,8 +161,8 @@ impl BlockAccumulator {
             }
             None => {
                 if self.is_stale() {
-                    debug!(%block_hash, "BlockAccumulator: leap because stale gossip");
-                    SyncInstruction::Leap { block_hash }
+                    debug!(%block_hash, "BlockAccumulator: when not in Validate leap because stale gossip");
+                    SyncInstruction::LeapIntervalElapsed { block_hash }
                 } else {
                     SyncInstruction::CaughtUp { block_hash }
                 }
@@ -184,6 +185,7 @@ impl BlockAccumulator {
         if new_local_tip {
             self.purge();
             self.local_tip = Some(LocalTipIdentifier::new(height, era_id));
+            self.reset_last_progress();
             info!(local_tip=?self.local_tip, "new local tip detected");
         }
     }
@@ -260,7 +262,7 @@ impl BlockAccumulator {
     fn register_block<REv>(
         &mut self,
         effect_builder: EffectBuilder<REv>,
-        meta_block: MetaBlock,
+        meta_block: ForwardMetaBlock,
         sender: Option<NodeId>,
     ) -> Effects<Event>
     where
@@ -272,8 +274,8 @@ impl BlockAccumulator {
     {
         let block_hash = meta_block.block.hash();
         debug!(%block_hash, "registering block");
-        let era_id = meta_block.block.header().era_id();
-        let block_height = meta_block.block.header().height();
+        let era_id = meta_block.block.era_id();
+        let block_height = meta_block.block.height();
         if self
             .local_tip
             .as_ref()
@@ -374,16 +376,16 @@ impl BlockAccumulator {
             + From<FatalAnnouncement>
             + Send,
     {
-        let block_hash = finality_signature.block_hash;
-        let era_id = finality_signature.era_id;
-        self.upsert_acceptor(block_hash, Some(era_id), sender);
+        let block_hash = finality_signature.block_hash();
+        let era_id = finality_signature.era_id();
+        self.upsert_acceptor(*block_hash, Some(era_id), sender);
 
-        let acceptor = match self.block_acceptors.get_mut(&block_hash) {
+        let acceptor = match self.block_acceptors.get_mut(block_hash) {
             Some(acceptor) => acceptor,
             // When there is no acceptor for it, this function returns
             // early, ignoring the signature.
             None => {
-                warn!(%finality_signature, "no acceptor to receive finality_signature");
+                debug!(%finality_signature, "no acceptor to receive finality_signature");
                 return Effects::new();
             }
         };
@@ -477,7 +479,7 @@ impl BlockAccumulator {
     fn register_stored<REv>(
         &self,
         effect_builder: EffectBuilder<REv>,
-        maybe_meta_block: Option<MetaBlock>,
+        maybe_meta_block: Option<ForwardMetaBlock>,
         maybe_block_signatures: Option<BlockSignatures>,
     ) -> Effects<Event>
     where
@@ -488,7 +490,11 @@ impl BlockAccumulator {
     {
         let mut effects = Effects::new();
         if let Some(meta_block) = maybe_meta_block {
-            effects.extend(effect_builder.announce_meta_block(meta_block).ignore());
+            effects.extend(
+                effect_builder
+                    .announce_meta_block(meta_block.into())
+                    .ignore(),
+            );
         };
         if let Some(block_signatures) = maybe_block_signatures {
             for finality_signature in block_signatures.finality_signatures() {
@@ -590,7 +596,7 @@ impl BlockAccumulator {
         }
     }
 
-    fn next_synchable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
+    fn next_syncable_block_hash(&self, parent_block_hash: BlockHash) -> Option<BlockHash> {
         let child_hash = self.block_children.get(&parent_block_hash)?;
         let block_acceptor = self.block_acceptors.get(child_hash)?;
         if block_acceptor.has_sufficient_finality() {
@@ -651,15 +657,17 @@ impl BlockAccumulator {
             .set(self.block_children.len().try_into().unwrap_or(i64::MIN));
     }
 
-    fn update_block_children(&mut self, meta_block: &MetaBlock) {
-        if let Some(parent_hash) = meta_block.block.parent() {
-            if self
-                .block_children
-                .insert(*parent_hash, *meta_block.block.hash())
-                .is_none()
-            {
-                self.metrics.known_child_blocks.inc();
-            }
+    fn update_block_children(&mut self, meta_block: &ForwardMetaBlock) {
+        if meta_block.block.is_genesis() {
+            return;
+        }
+        let parent_hash = meta_block.block.parent_hash();
+        if self
+            .block_children
+            .insert(*parent_hash, *meta_block.block.hash())
+            .is_none()
+        {
+            self.metrics.known_child_blocks.inc();
         }
     }
 
@@ -687,8 +695,9 @@ impl BlockAccumulator {
                 // The block wasn't executed yet, so we just put it to storage. An `ExecutedBlock`
                 // event will then re-trigger this flow and eventually mark it complete.
                 let cloned_signatures = block_signatures.clone();
+                let block: Block = (*meta_block.block).clone().into();
                 effect_builder
-                    .put_block_to_storage(Arc::clone(&meta_block.block))
+                    .put_block_to_storage(Arc::new(block))
                     .then(move |_| effect_builder.put_signatures_to_storage(cloned_signatures))
                     .event(move |_| Event::Stored {
                         maybe_meta_block: Some(meta_block),
@@ -728,8 +737,8 @@ impl BlockAccumulator {
             ShouldStore::SingleSignature(signature) => {
                 debug!(%signature, "storing finality signature");
                 let mut block_signatures =
-                    BlockSignatures::new(signature.block_hash, signature.era_id);
-                block_signatures.insert_proof(signature.public_key.clone(), signature.signature);
+                    BlockSignatures::new(*signature.block_hash(), signature.era_id());
+                block_signatures.insert_signature(signature.clone());
                 effect_builder
                     .put_finality_signature_to_storage(signature)
                     .event(move |_| Event::Stored {
@@ -801,7 +810,10 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 Effects::new()
             }
             Event::ReceivedBlock { block, sender } => {
-                let meta_block = MetaBlock::new(block, vec![], MetaBlockState::new());
+                let meta_block: ForwardMetaBlock =
+                    MetaBlock::new_forward(block, vec![], MetaBlockState::new())
+                        .try_into()
+                        .unwrap();
                 self.register_block(effect_builder, meta_block, Some(sender))
             }
             Event::CreatedFinalitySignature { finality_signature } => {
@@ -815,8 +827,8 @@ impl<REv: ReactorEvent> Component<REv> for BlockAccumulator {
                 self.register_finality_signature(effect_builder, *finality_signature, Some(sender))
             }
             Event::ExecutedBlock { meta_block } => {
-                let height = meta_block.block.header().height();
-                let era_id = meta_block.block.header().era_id();
+                let height = meta_block.block.height();
+                let era_id = meta_block.block.era_id();
                 let effects = self.register_block(effect_builder, meta_block, None);
                 self.register_local_tip(height, era_id);
                 effects

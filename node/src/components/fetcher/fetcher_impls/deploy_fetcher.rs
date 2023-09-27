@@ -2,12 +2,42 @@ use std::{collections::HashMap, time::Duration};
 
 use async_trait::async_trait;
 use futures::FutureExt;
+use tracing::error;
+
+use casper_types::{
+    Deploy, DeployApprovalsHash, DeployConfigurationFailure, DeployId, Digest, Transaction,
+    TransactionId,
+};
 
 use crate::{
-    components::fetcher::{metrics::Metrics, Fetcher, ItemFetcher, ItemHandle, StoringState},
+    components::fetcher::{
+        metrics::Metrics, EmptyValidationMetadata, FetchItem, Fetcher, ItemFetcher, ItemHandle,
+        StoringState, Tag,
+    },
     effect::{requests::StorageRequest, EffectBuilder},
-    types::{Deploy, DeployId, FinalizedApprovals, NodeId},
+    types::{FinalizedApprovals, NodeId},
 };
+
+impl FetchItem for Deploy {
+    type Id = DeployId;
+    type ValidationError = DeployConfigurationFailure;
+    type ValidationMetadata = EmptyValidationMetadata;
+
+    const TAG: Tag = Tag::Deploy;
+
+    fn fetch_id(&self) -> Self::Id {
+        let deploy_hash = *self.hash();
+        let approvals_hash = self.compute_approvals_hash().unwrap_or_else(|error| {
+            error!(%error, "failed to serialize approvals");
+            DeployApprovalsHash::from(Digest::default())
+        });
+        DeployId::new(deploy_hash, approvals_hash)
+    }
+
+    fn validate(&self, _metadata: &EmptyValidationMetadata) -> Result<(), Self::ValidationError> {
+        self.is_valid()
+    }
+}
 
 #[async_trait]
 impl ItemFetcher<Deploy> for Fetcher<Deploy> {
@@ -29,7 +59,18 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
         effect_builder: EffectBuilder<REv>,
         id: DeployId,
     ) -> Option<Deploy> {
-        effect_builder.get_stored_deploy(id).await
+        effect_builder
+            .get_stored_transaction(TransactionId::from(id))
+            .await
+            .map(|txn| match txn {
+                Transaction::Deploy(deploy) => deploy,
+                Transaction::V1(_) => {
+                    todo!(
+                        "unreachable, but this code path will be removed as part of \
+                        https://github.com/casper-network/roadmap/issues/189"
+                    )
+                }
+            })
     }
 
     fn put_to_storage<'a, REv: From<StorageRequest> + Send>(
@@ -38,17 +79,18 @@ impl ItemFetcher<Deploy> for Fetcher<Deploy> {
     ) -> StoringState<'a, Deploy> {
         StoringState::Enqueued(
             async move {
+                let transaction = Transaction::from(item);
                 let is_new = effect_builder
-                    .put_deploy_to_storage(Box::new(item.clone()))
+                    .put_transaction_to_storage(transaction.clone())
                     .await;
-                // If `is_new` is `false`, the deploy was previously stored, and the incoming
-                // deploy could have a different set of approvals to the one already stored.
+                // If `is_new` is `false`, the transaction was previously stored, and the incoming
+                // transaction could have a different set of approvals to the one already stored.
                 // We can treat the incoming approvals as finalized and now try and store them.
                 if !is_new {
                     effect_builder
                         .store_finalized_approvals(
-                            *item.hash(),
-                            FinalizedApprovals::new(item.approvals().clone()),
+                            transaction.hash(),
+                            FinalizedApprovals::new(&transaction),
                         )
                         .await;
                 }

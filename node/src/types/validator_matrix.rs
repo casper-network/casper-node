@@ -13,9 +13,7 @@ use serde::Serialize;
 use static_assertions::const_assert;
 use tracing::info;
 
-use casper_types::{EraId, PublicKey, SecretKey, U512};
-
-use super::{BlockHeader, FinalitySignature};
+use casper_types::{BlockHeaderV2, EraId, FinalitySignature, PublicKey, SecretKey, U512};
 
 const MAX_VALIDATOR_MATRIX_ENTRIES: usize = 6;
 const_assert!(MAX_VALIDATOR_MATRIX_ENTRIES % 2 == 0);
@@ -96,6 +94,17 @@ impl ValidatorMatrix {
             auction_delay: 1,
             retrograde_latch: None,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn public_keys(&self, era_id: &EraId) -> Vec<PublicKey> {
+        let mut ret = vec![];
+        if let Some(evw) = self.read_inner().get(era_id) {
+            for validator_public_key in evw.validator_public_keys() {
+                ret.push(validator_public_key.clone());
+            }
+        }
+        ret
     }
 
     // Register the era of the highest orphaned block.
@@ -257,7 +266,7 @@ impl ValidatorMatrix {
 
     pub(crate) fn create_finality_signature(
         &self,
-        block_header: &BlockHeader,
+        block_header: &BlockHeaderV2,
     ) -> Option<FinalitySignature> {
         if self
             .is_self_validator_in_era(block_header.era_id())
@@ -267,7 +276,6 @@ impl ValidatorMatrix {
                 block_header.block_hash(),
                 block_header.era_id(),
                 &self.secret_signing_key,
-                self.public_signing_key.clone(),
             ));
         }
         None
@@ -279,6 +287,11 @@ impl ValidatorMatrix {
 
     pub(crate) fn eras(&self) -> Vec<EraId> {
         self.read_inner().keys().copied().collect_vec()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn purge_era_validators(&mut self, era_id: &EraId) {
+        self.inner.write().unwrap().remove(era_id);
     }
 }
 

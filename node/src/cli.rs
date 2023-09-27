@@ -20,13 +20,15 @@ use structopt::StructOpt;
 use toml::{value::Table, Value};
 use tracing::info;
 
+use casper_types::{Chainspec, ChainspecRawBytes};
+
 use crate::{
-    components::network::Identity as NetworkIdentity,
+    components::network::{within_message_size_limit_tolerance, Identity as NetworkIdentity},
     logging,
     reactor::{main_reactor, Runner},
     setup_signal_hooks,
-    types::{Chainspec, ChainspecRawBytes, ExitCode},
-    utils::{Loadable, WithDir},
+    types::ExitCode,
+    utils::{chain_specification::validate_chainspec, Loadable, WithDir},
 };
 
 // We override the standard allocator to gather metrics and tune the allocator via th MALLOC_CONF
@@ -168,8 +170,14 @@ impl Cli {
                     "node starting up"
                 );
 
-                if !chainspec.is_valid() {
+                if !validate_chainspec(&chainspec) {
                     bail!("invalid chainspec");
+                }
+
+                if !within_message_size_limit_tolerance(&chainspec) {
+                    // Ensure the size of the largest message generated under these
+                    // chainspec settings does not exceed the configured message size limit.
+                    bail!("chainspec configured message limit not within tolerance");
                 }
 
                 let network_identity = NetworkIdentity::from_config(WithDir::new(

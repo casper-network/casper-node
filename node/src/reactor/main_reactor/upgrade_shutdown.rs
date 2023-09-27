@@ -3,10 +3,12 @@ use std::{collections::HashMap, time::Duration};
 use datasize::DataSize;
 use tracing::debug;
 
+use casper_types::{BlockHash, FinalitySignatureId};
+
 use crate::{
     effect::{announcements::ControlAnnouncement, EffectBuilder, EffectExt, Effects},
     reactor::main_reactor::{MainEvent, MainReactor},
-    types::{BlockHash, EraValidatorWeights, FinalitySignatureId},
+    types::EraValidatorWeights,
 };
 
 use casper_types::EraId;
@@ -29,17 +31,17 @@ impl SignatureGossipTracker {
 
     pub(super) fn register_signature(&mut self, signature_id: Box<FinalitySignatureId>) {
         // ignore the signature if it's from an older era
-        if signature_id.era_id < self.era_id {
+        if signature_id.era_id() < self.era_id {
             return;
         }
         // if we registered a signature in a higher era, reset the cache
-        if signature_id.era_id > self.era_id {
-            self.era_id = signature_id.era_id;
+        if signature_id.era_id() > self.era_id {
+            self.era_id = signature_id.era_id();
             self.finished_gossiping = Default::default();
         }
         // record that the signature has finished gossiping
         self.finished_gossiping
-            .entry(signature_id.block_hash)
+            .entry(*signature_id.block_hash())
             .or_default()
             .push(*signature_id);
     }
@@ -57,7 +59,7 @@ impl SignatureGossipTracker {
             .iter()
             .all(|(block_hash, signatures)| {
                 let gossiped_weight_sufficient = validator_weights
-                    .signature_weight(signatures.iter().map(|sig_id| &sig_id.public_key))
+                    .signature_weight(signatures.iter().map(|sig_id| sig_id.public_key()))
                     .is_sufficient(true);
                 debug!(
                     %gossiped_weight_sufficient,
@@ -80,6 +82,9 @@ impl MainReactor {
         &self,
         effect_builder: EffectBuilder<MainEvent>,
     ) -> UpgradeShutdownInstruction {
+        if self.switched_to_shutdown_for_upgrade.elapsed() > self.shutdown_for_upgrade_timeout {
+            return self.schedule_shutdown_for_upgrade(effect_builder);
+        }
         let recent_switch_block_headers = match self.storage.read_highest_switch_block_headers(1) {
             Ok(headers) => headers,
             Err(error) => {
@@ -114,17 +119,24 @@ impl MainReactor {
             .signature_gossip_tracker
             .finished_gossiping_enough(validator_weights);
         if finished_gossiping_enough {
-            // Allow a delay to acquire more finality signatures
-            let effects = effect_builder
-                .set_timeout(DELAY_BEFORE_SHUTDOWN)
-                .event(|_| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade));
-            // should not need to crank the control logic again as the reactor will shutdown
-            UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
+            self.schedule_shutdown_for_upgrade(effect_builder)
         } else {
             UpgradeShutdownInstruction::CheckLater(
                 "waiting for completion of gossiping signatures".to_string(),
                 DELAY_BEFORE_SHUTDOWN,
             )
         }
+    }
+
+    fn schedule_shutdown_for_upgrade(
+        &self,
+        effect_builder: EffectBuilder<MainEvent>,
+    ) -> UpgradeShutdownInstruction {
+        // Allow a delay to acquire more finality signatures
+        let effects = effect_builder
+            .set_timeout(DELAY_BEFORE_SHUTDOWN)
+            .event(|_| MainEvent::ControlAnnouncement(ControlAnnouncement::ShutdownForUpgrade));
+        // should not need to crank the control logic again as the reactor will shutdown
+        UpgradeShutdownInstruction::Do(DELAY_BEFORE_SHUTDOWN, effects)
     }
 }

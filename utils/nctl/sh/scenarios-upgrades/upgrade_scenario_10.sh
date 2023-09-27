@@ -166,25 +166,6 @@ function _step_06()
 }
 
 
-#######################################
-# Returns auction info at a block
-# identifier.
-# Globals:
-#   NCTL - path to nctl home directory.
-# Arguments:
-#   Node ordinal identifier.
-#   Block identifier.
-######################################
-function get_auction_state_at_block_1() {
-    local NODE_ID=${1}
-    local BLOCK_ID=${2:-""}
-
-    $(get_path_to_client) get-auction-info \
-        --node-address "$(get_node_address_rpc "$NODE_ID")" \
-        --block-identifier 1 \
-        | jq '.result.auction_state'
-}
-
 # ----------------------------------------------------------------
 # ENTRY POINT
 # ----------------------------------------------------------------

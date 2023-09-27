@@ -6,10 +6,12 @@ use std::{
 use datasize::DataSize;
 use derive_more::From;
 
+use casper_types::{Block, BlockV2, Deploy, DeployId};
+
 use crate::{
     components::consensus::{ClContext, ProposedBlock},
     effect::requests::DeployBufferRequest,
-    types::{Block, Deploy, DeployId, FinalizedBlock},
+    types::FinalizedBlock,
 };
 
 #[derive(Debug, From, DataSize)]
@@ -20,7 +22,8 @@ pub(crate) enum Event {
     ReceiveDeployGossiped(DeployId),
     StoredDeploy(DeployId, Option<Box<Deploy>>),
     BlockProposed(Box<ProposedBlock<ClContext>>),
-    Block(Arc<Block>),
+    Block(Arc<BlockV2>),
+    VersionedBlock(Arc<Block>),
     BlockFinalized(Box<FinalizedBlock>),
     Expire,
 }
@@ -52,11 +55,14 @@ impl Display for Event {
                 write!(
                     formatter,
                     "finalized block at height {}",
-                    finalized_block.height()
+                    finalized_block.height
                 )
             }
             Event::Block(_) => {
                 write!(formatter, "block")
+            }
+            Event::VersionedBlock(_) => {
+                write!(formatter, "versioned block")
             }
             Event::Expire => {
                 write!(formatter, "expire deploys")

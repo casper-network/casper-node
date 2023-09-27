@@ -3,16 +3,19 @@ use std::{
     sync::Arc,
 };
 
-use casper_types::{EraId, ExecutionEffect, ExecutionResult, PublicKey, Timestamp};
 use itertools::Itertools;
 
-use crate::types::{Block, BlockHash, Deploy, DeployHash, DeployHeader, FinalitySignature};
+use casper_types::{
+    execution::{Effects, ExecutionResult},
+    Block, BlockHash, Deploy, DeployHash, DeployHeader, EraId, FinalitySignature, PublicKey,
+    Timestamp,
+};
 
 #[derive(Debug)]
 pub enum Event {
     Initialize,
     BlockAdded(Arc<Block>),
-    DeployAccepted(Box<Deploy>),
+    DeployAccepted(Arc<Deploy>),
     DeployProcessed {
         deploy_hash: DeployHash,
         deploy_header: Box<DeployHeader>,
@@ -28,7 +31,7 @@ pub enum Event {
     FinalitySignature(Box<FinalitySignature>),
     Step {
         era_id: EraId,
-        execution_effect: ExecutionEffect,
+        execution_effects: Effects,
     },
 }
 

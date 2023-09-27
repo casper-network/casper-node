@@ -39,6 +39,7 @@ function clean_up() {
             tar -cvzf "${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz * > /dev/null 2>&1
             aws s3 cp ./"${DRONE_BUILD_NUMBER}"_nctl_dump.tar.gz s3://nctl.casperlabs.io/nightly-logs/ > /dev/null 2>&1
             log "Download the dump file: curl -O https://s3.us-east-2.amazonaws.com/nctl.casperlabs.io/nightly-logs/${DRONE_BUILD_NUMBER}_nctl_dump.tar.gz"
+            log "\nextra log lines to push\ndownload instructions above\nserver license expired banner\n"
             popd
         fi
     fi
@@ -222,6 +223,14 @@ function do_await_era_change() {
     local ERA_COUNT=${1:-"1"}
     log_step "awaiting $ERA_COUNT eras…"
     nctl-await-n-eras offset="$ERA_COUNT" sleep_interval='5.0'
+}
+
+function do_await_era_change_with_timeout() {
+    # allow chain height to grow
+    local ERA_COUNT=${1:-"1"}
+    local TIME_OUT=${2:-''}
+    log_step "awaiting $ERA_COUNT eras…"
+    nctl-await-n-eras offset="$ERA_COUNT" sleep_interval='5.0' timeout="$TIME_OUT"
 }
 
 function check_current_era {
@@ -578,4 +587,29 @@ function delegate_to() {
         amount="$AMOUNT" \
         delegator="$ACCOUNT_ID" \
         validator="$NODE_ID"
+}
+
+function assert_chain_stalled() {
+    # Fucntion checks that the two remaining node's LFB checked
+    # n-seconds apart doesnt progress
+    log_step "ensuring chain stalled"
+    local SLEEP_TIME=${1}
+    # Sleep 5 seconds to allow for final message propagation.
+    sleep 5
+    local LFB_1_PRE=$(do_read_lfb_hash 1)
+    local LFB_2_PRE=$(do_read_lfb_hash 2)
+    log "Sleeping ${SLEEP_TIME}s..."
+    sleep $SLEEP_TIME
+    local LFB_1_POST=$(do_read_lfb_hash 1)
+    local LFB_2_POST=$(do_read_lfb_hash 2)
+
+    if [ "$LFB_1_PRE" != "$LFB_1_POST" ] && [ "$LFB_2_PRE" != "$LFB_2_POST" ]; then
+       log "Error: Chain progressed."
+       exit 1
+    else
+        STALLED_LFB=$LFB_1_POST
+        log "node-1 LFB: $LFB_1_PRE = $LFB_1_POST"
+        log "node-2 LFB: $LFB_2_PRE = $LFB_2_POST"
+        log "Stall successfully detected, continuing..."
+    fi
 }

@@ -1,17 +1,11 @@
-// TODO - remove once schemars stops causing warning.
-#![allow(clippy::field_reassign_with_default)]
-
 use alloc::vec::Vec;
 use core::{
+    fmt::{self, Display, Formatter},
     ops::{Add, AddAssign, Div, Mul, Rem, Shl, Shr, Sub, SubAssign},
     time::Duration,
 };
 #[cfg(any(feature = "std", test))]
-use std::{
-    fmt::{self, Display, Formatter},
-    str::FromStr,
-    time::SystemTime,
-};
+use std::{str::FromStr, time::SystemTime};
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -28,6 +22,10 @@ use crate::bytesrepr::{self, FromBytes, ToBytes};
 
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
+
+/// Example timestamp equal to 2020-11-17T00:39:24.072Z.
+#[cfg(feature = "json-schema")]
+const TIMESTAMP: Timestamp = Timestamp(1_605_573_564_072);
 
 /// A timestamp type, representing a concrete moment in time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -88,29 +86,38 @@ impl Timestamp {
     pub fn trailing_zeros(&self) -> u8 {
         self.0.trailing_zeros() as u8
     }
-}
 
-#[cfg(any(feature = "testing", test))]
-impl Timestamp {
-    /// Generates a random instance using a `TestRng`.
+    // This method is not intended to be used by third party crates.
+    #[doc(hidden)]
+    #[cfg(feature = "json-schema")]
+    pub fn example() -> &'static Self {
+        &TIMESTAMP
+    }
+
+    /// Returns a random `Timestamp`.
+    #[cfg(any(feature = "testing", test))]
     pub fn random(rng: &mut TestRng) -> Self {
         Timestamp(1_596_763_000_000 + rng.gen_range(200_000..1_000_000))
     }
 
     /// Checked subtraction for timestamps
+    #[cfg(any(feature = "testing", test))]
     pub fn checked_sub(self, other: TimeDiff) -> Option<Timestamp> {
         self.0.checked_sub(other.0).map(Timestamp)
     }
 }
 
-#[cfg(any(feature = "std", test))]
 impl Display for Timestamp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(self.0)) {
+        #[cfg(any(feature = "std", test))]
+        return match SystemTime::UNIX_EPOCH.checked_add(Duration::from_millis(self.0)) {
             Some(system_time) => write!(f, "{}", humantime::format_rfc3339_millis(system_time))
                 .or_else(|e| write!(f, "Invalid timestamp: {}: {}", e, self.0)),
             None => write!(f, "invalid Timestamp: {} ms after the Unix epoch", self.0),
-        }
+        };
+
+        #[cfg(not(any(feature = "std", test)))]
+        write!(f, "timestamp({}ms)", self.0)
     }
 }
 
@@ -143,7 +150,7 @@ impl AddAssign<TimeDiff> for Timestamp {
 }
 
 #[cfg(any(feature = "testing", test))]
-impl std::ops::Sub<TimeDiff> for Timestamp {
+impl Sub<TimeDiff> for Timestamp {
     type Output = Timestamp;
 
     fn sub(self, diff: TimeDiff) -> Timestamp {
@@ -237,10 +244,13 @@ impl From<u64> for Timestamp {
 )]
 pub struct TimeDiff(u64);
 
-#[cfg(any(feature = "std", test))]
 impl Display for TimeDiff {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}", humantime::format_duration(Duration::from(*self)))
+        #[cfg(any(feature = "std", test))]
+        return write!(f, "{}", humantime::format_duration(Duration::from(*self)));
+
+        #[cfg(not(any(feature = "std", test)))]
+        write!(f, "time diff({}ms)", self.0)
     }
 }
 

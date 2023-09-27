@@ -1,11 +1,12 @@
-use casper_execution_engine::shared::storage_costs::StorageCosts;
 use num_traits::cast::AsPrimitive;
 
 use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_types::{contracts::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, U512};
+use casper_types::{
+    package::CONTRACT_INITIAL_VERSION, runtime_args, RuntimeArgs, StorageCosts, U512,
+};
 
 const ARG_TARGET: &str = "target_contract";
 const ARG_GAS_AMOUNT: &str = "gas_amount";
@@ -199,7 +200,7 @@ fn expensive_subcall_should_cost_more() {
         .commit();
 
     let account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account");
 
     let expensive_calculation_contract_hash = account

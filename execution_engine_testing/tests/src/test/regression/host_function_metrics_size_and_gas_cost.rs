@@ -4,7 +4,7 @@ use casper_engine_test_support::{
     utils, DeployItemBuilder, ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     DEFAULT_PAYMENT, MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state::{self, ExecuteRequest},
     execution,
 };
@@ -13,7 +13,7 @@ use casper_types::{
     bytesrepr::Bytes,
     runtime_args,
     system::standard_payment,
-    ApiError, RuntimeArgs, U512,
+    ApiError, U512,
 };
 
 const CONTRACT_HOST_FUNCTION_METRICS: &str = "host_function_metrics.wasm";
@@ -22,7 +22,7 @@ const CONTRACT_TRANSFER_TO_ACCOUNT_U512: &str = "transfer_to_account_u512.wasm";
 // This value is not systemic, as code is added the size of WASM will increase,
 // you can change this value to reflect the increase in WASM size.
 const HOST_FUNCTION_METRICS_STANDARD_SIZE: usize = 97_569;
-const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 375_298_466_170;
+const HOST_FUNCTION_METRICS_STANDARD_GAS_COST: u64 = 347_080_271_020;
 
 /// Acceptable size regression/improvement in percentage.
 const SIZE_MARGIN: usize = 5;

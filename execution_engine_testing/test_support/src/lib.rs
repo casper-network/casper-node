@@ -2,12 +2,13 @@
 
 #![doc(html_root_url = "https://docs.rs/casper-engine-test-support/5.0.0")]
 #![doc(
-    html_favicon_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Favicon_RGB_50px.png",
-    html_logo_url = "https://raw.githubusercontent.com/CasperLabs/casper-node/master/images/CasperLabs_Logo_Symbol_RGB.png",
-    test(attr(forbid(warnings)))
+    html_favicon_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon_48.png",
+    html_logo_url = "https://raw.githubusercontent.com/casper-network/casper-node/blob/dev/images/Casper_Logo_Favicon.png",
+    test(attr(deny(warnings)))
 )]
 #![warn(missing_docs)]
-mod additive_map_diff;
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+
 /// Utility methods for running the auction in a test or bench context.
 pub mod auction;
 mod chainspec_config;
@@ -26,38 +27,36 @@ use once_cell::sync::Lazy;
 
 #[doc(inline)]
 #[allow(deprecated)]
-pub use casper_execution_engine::core::engine_state::engine_config::{
+pub use casper_execution_engine::engine_state::engine_config::{
     DEFAULT_MAX_ASSOCIATED_KEYS, DEFAULT_MAX_RUNTIME_CALL_STACK_HEIGHT,
     DEFAULT_MAX_STORED_VALUE_SIZE, DEFAULT_MINIMUM_DELEGATION_AMOUNT,
 };
-use casper_execution_engine::{
-    core::engine_state::{
-        ChainspecRegistry, ExecConfig, GenesisAccount, GenesisConfig, RunGenesisRequest,
-    },
-    shared::{system_config::SystemConfig, wasm_config::WasmConfig},
+use casper_execution_engine::engine_state::{
+    engine_config::{DEFAULT_FEE_HANDLING, DEFAULT_REFUND_HANDLING},
+    genesis::ExecConfigBuilder,
+    ExecConfig, GenesisConfig, RunGenesisRequest,
 };
-use casper_hashing::Digest;
-use casper_types::{account::AccountHash, Motes, ProtocolVersion, PublicKey, SecretKey, U512};
+use casper_types::{
+    account::AccountHash, ChainspecRegistry, Digest, GenesisAccount, Motes, ProtocolVersion,
+    PublicKey, SecretKey, SystemConfig, WasmConfig, U512,
+};
 
-use crate::chainspec_config::PRODUCTION_PATH;
-pub use additive_map_diff::AdditiveMapDiff;
 pub use chainspec_config::ChainspecConfig;
+use chainspec_config::PRODUCTION_PATH;
 pub use deploy_item_builder::DeployItemBuilder;
 pub use execute_request_builder::ExecuteRequestBuilder;
 pub use step_request_builder::StepRequestBuilder;
 pub use upgrade_request_builder::UpgradeRequestBuilder;
 pub use wasm_test_builder::{LmdbWasmTestBuilder, WasmTestBuilder};
 
-const DAY_MILLIS: u64 = 24 * 60 * 60 * 1000;
-
 /// Default number of validator slots.
 pub const DEFAULT_VALIDATOR_SLOTS: u32 = 5;
 /// Default auction delay.
 pub const DEFAULT_AUCTION_DELAY: u64 = 1;
-/// Default lock-in period of 90 days
-pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 90 * DAY_MILLIS;
-/// Default length of total vesting schedule of 91 days.
-pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 91 * DAY_MILLIS;
+/// Default lock-in period is currently zero.
+pub const DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS: u64 = 0;
+/// Default length of total vesting schedule is currently zero.
+pub const DEFAULT_VESTING_SCHEDULE_PERIOD_MILLIS: u64 = 0;
 
 /// Default number of eras that need to pass to be able to withdraw unbonded funds.
 pub const DEFAULT_UNBONDING_DELAY: u64 = 7;
@@ -135,19 +134,22 @@ pub static DEFAULT_PAYMENT: Lazy<U512> = Lazy::new(|| U512::from(1_500_000_000_0
 pub static DEFAULT_WASM_CONFIG: Lazy<WasmConfig> = Lazy::new(WasmConfig::default);
 /// Default [`SystemConfig`].
 pub static DEFAULT_SYSTEM_CONFIG: Lazy<SystemConfig> = Lazy::new(SystemConfig::default);
+
 /// Default [`ExecConfig`].
 pub static DEFAULT_EXEC_CONFIG: Lazy<ExecConfig> = Lazy::new(|| {
-    ExecConfig::new(
-        DEFAULT_ACCOUNTS.clone(),
-        *DEFAULT_WASM_CONFIG,
-        *DEFAULT_SYSTEM_CONFIG,
-        DEFAULT_VALIDATOR_SLOTS,
-        DEFAULT_AUCTION_DELAY,
-        DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS,
-        DEFAULT_ROUND_SEIGNIORAGE_RATE,
-        DEFAULT_UNBONDING_DELAY,
-        DEFAULT_GENESIS_TIMESTAMP_MILLIS,
-    )
+    ExecConfigBuilder::default()
+        .with_accounts(DEFAULT_ACCOUNTS.clone())
+        .with_wasm_config(*DEFAULT_WASM_CONFIG)
+        .with_system_config(*DEFAULT_SYSTEM_CONFIG)
+        .with_validator_slots(DEFAULT_VALIDATOR_SLOTS)
+        .with_auction_delay(DEFAULT_AUCTION_DELAY)
+        .with_locked_funds_period_millis(DEFAULT_LOCKED_FUNDS_PERIOD_MILLIS)
+        .with_round_seigniorage_rate(DEFAULT_ROUND_SEIGNIORAGE_RATE)
+        .with_unbonding_delay(DEFAULT_UNBONDING_DELAY)
+        .with_genesis_timestamp_millis(DEFAULT_GENESIS_TIMESTAMP_MILLIS)
+        .with_refund_handling(DEFAULT_REFUND_HANDLING)
+        .with_fee_handling(DEFAULT_FEE_HANDLING)
+        .build()
 });
 /// Default [`GenesisConfig`].
 pub static DEFAULT_GENESIS_CONFIG: Lazy<GenesisConfig> = Lazy::new(|| {

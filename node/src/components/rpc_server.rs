@@ -24,32 +24,28 @@ use datasize::DataSize;
 use futures::join;
 use tracing::{error, info, warn};
 
-use casper_execution_engine::core::engine_state::{
+use casper_execution_engine::engine_state::{
     self, BalanceRequest, BalanceResult, GetBidsRequest, GetEraValidatorsError, QueryRequest,
     QueryResult,
 };
-use casper_hashing::Digest;
-use casper_types::{system::auction::EraValidators, ExecutionResult, Key, ProtocolVersion, URef};
+use casper_types::{system::auction::EraValidators, Digest, Key, ProtocolVersion, URef};
 
-use self::rpcs::chain::BlockIdentifier;
 use super::Component;
 use crate::{
     components::{
         contract_runtime::EraValidatorsRequest, ComponentState, InitializedComponent,
         PortBoundComponent,
     },
-    contract_runtime::SpeculativeExecutionState,
     effect::{
-        announcements::RpcServerAnnouncement,
         requests::{
-            BlockSynchronizerRequest, ChainspecRawBytesRequest, ConsensusRequest,
-            ContractRuntimeRequest, MetricsRequest, NetworkInfoRequest, ReactorStatusRequest,
-            RpcRequest, StorageRequest, UpgradeWatcherRequest,
+            AcceptTransactionRequest, BlockSynchronizerRequest, ChainspecRawBytesRequest,
+            ConsensusRequest, ContractRuntimeRequest, MetricsRequest, NetworkInfoRequest,
+            ReactorStatusRequest, RpcRequest, StorageRequest, UpgradeWatcherRequest,
         },
         EffectBuilder, EffectExt, Effects, Responder,
     },
     reactor::main_reactor::MainEvent,
-    types::{BlockHeader, ChainspecInfo, Deploy, StatusFeed},
+    types::{ChainspecInfo, StatusFeed},
     utils::{self, ListeningError},
     NodeRng,
 };
@@ -63,7 +59,7 @@ const COMPONENT_NAME: &str = "rpc_server";
 pub(crate) trait ReactorEventT:
     From<Event>
     + From<RpcRequest>
-    + From<RpcServerAnnouncement>
+    + From<AcceptTransactionRequest>
     + From<ChainspecRawBytesRequest>
     + From<UpgradeWatcherRequest>
     + From<ContractRuntimeRequest>
@@ -80,7 +76,7 @@ pub(crate) trait ReactorEventT:
 impl<REv> ReactorEventT for REv where
     REv: From<Event>
         + From<RpcRequest>
-        + From<RpcServerAnnouncement>
+        + From<AcceptTransactionRequest>
         + From<ChainspecRawBytesRequest>
         + From<UpgradeWatcherRequest>
         + From<ContractRuntimeRequest>
@@ -186,27 +182,6 @@ impl RpcServer {
                 main_responder: responder,
             })
     }
-
-    fn handle_execute_deploy<REv: ReactorEventT>(
-        &mut self,
-        effect_builder: EffectBuilder<REv>,
-        block_header: BlockHeader,
-        deploy: Deploy,
-        responder: Responder<Result<Option<ExecutionResult>, engine_state::Error>>,
-    ) -> Effects<Event> {
-        async move {
-            let execution_prestate = SpeculativeExecutionState {
-                state_root_hash: *block_header.state_root_hash(),
-                block_time: block_header.timestamp(),
-                protocol_version: block_header.protocol_version(),
-            };
-            let result = effect_builder
-                .speculative_execute_deploy(execution_prestate, deploy)
-                .await;
-            responder.respond(result).await
-        }
-        .ignore()
-    }
 }
 
 impl<REv> Component<REv> for RpcServer
@@ -246,12 +221,10 @@ where
                     effects
                 }
                 Event::RpcRequest(_)
-                | Event::GetBlockResult { .. }
                 | Event::GetBlockTransfersResult { .. }
                 | Event::QueryGlobalStateResult { .. }
                 | Event::QueryEraValidatorsResult { .. }
                 | Event::GetBidsResult { .. }
-                | Event::GetDeployResult { .. }
                 | Event::GetPeersResult { .. }
                 | Event::GetBalanceResult { .. } => {
                     warn!(
@@ -271,45 +244,6 @@ where
                     );
                     Effects::new()
                 }
-                Event::RpcRequest(RpcRequest::SubmitDeploy { deploy, responder }) => effect_builder
-                    .announce_deploy_received(deploy, Some(responder))
-                    .ignore(),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: Some(BlockIdentifier::Hash(hash)),
-                    only_from_available_block_range,
-                    responder,
-                }) => effect_builder
-                    .get_block_with_metadata_from_storage(hash, only_from_available_block_range)
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: Some(BlockIdentifier::Hash(hash)),
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: Some(BlockIdentifier::Height(height)),
-                    only_from_available_block_range,
-                    responder,
-                }) => effect_builder
-                    .get_block_at_height_with_metadata_from_storage(
-                        height,
-                        only_from_available_block_range,
-                    )
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: Some(BlockIdentifier::Height(height)),
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
-                Event::RpcRequest(RpcRequest::GetBlock {
-                    maybe_id: None,
-                    only_from_available_block_range: _,
-                    responder,
-                }) => effect_builder
-                    .get_highest_block_with_metadata_from_storage()
-                    .event(move |result| Event::GetBlockResult {
-                        maybe_id: None,
-                        result: result.map(Box::new),
-                        main_responder: responder,
-                    }),
                 Event::RpcRequest(RpcRequest::GetBlockTransfers {
                     block_hash,
                     responder,
@@ -355,26 +289,6 @@ where
                 }) => {
                     self.handle_get_balance(effect_builder, state_root_hash, purse_uref, responder)
                 }
-                Event::RpcRequest(RpcRequest::GetDeploy {
-                    hash,
-                    responder,
-                    finalized_approvals,
-                }) => effect_builder
-                    .get_deploy_and_metadata_from_storage(hash)
-                    .event(move |result| Event::GetDeployResult {
-                        hash,
-                        result: result.map(|(deploy_with_finalized_approvals, metadata_ext)| {
-                            Box::new(if finalized_approvals {
-                                (deploy_with_finalized_approvals.into_naive(), metadata_ext)
-                            } else {
-                                (
-                                    deploy_with_finalized_approvals.discard_finalized_approvals(),
-                                    metadata_ext,
-                                )
-                            })
-                        }),
-                        main_responder: responder,
-                    }),
                 Event::RpcRequest(RpcRequest::GetPeers { responder }) => effect_builder
                     .network_peers()
                     .event(move |peers| Event::GetPeersResult {
@@ -436,26 +350,6 @@ where
                         .await
                 }
                 .ignore(),
-                Event::RpcRequest(RpcRequest::SpeculativeDeployExecute {
-                    block_header,
-                    deploy,
-                    responder,
-                }) => {
-                    return match self.speculative_exec {
-                        Some(_) => self.handle_execute_deploy(
-                            effect_builder,
-                            *block_header,
-                            *deploy,
-                            responder,
-                        ),
-                        None => Effects::new(),
-                    }
-                }
-                Event::GetBlockResult {
-                    maybe_id: _,
-                    result,
-                    main_responder,
-                } => main_responder.respond(result).ignore(),
                 Event::GetBlockTransfersResult {
                     block_hash: _,
                     result,
@@ -470,11 +364,6 @@ where
                     main_responder,
                 } => main_responder.respond(result).ignore(),
                 Event::GetBidsResult {
-                    result,
-                    main_responder,
-                } => main_responder.respond(result).ignore(),
-                Event::GetDeployResult {
-                    hash: _,
                     result,
                     main_responder,
                 } => main_responder.respond(result).ignore(),
@@ -537,6 +426,7 @@ where
                 self.api_version,
                 cfg.qps_limit,
                 cfg.max_body_bytes,
+                cfg.cors_origin.clone(),
             ));
             Some(())
         } else {
@@ -551,6 +441,7 @@ where
             self.api_version,
             cfg.qps_limit,
             cfg.max_body_bytes,
+            cfg.cors_origin.clone(),
         ));
 
         Ok(Effects::new())
@@ -559,16 +450,39 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
+    use regex::Regex;
     use schemars::schema_for_value;
 
     use crate::{rpcs::docs::OPEN_RPC_SCHEMA, testing::assert_schema};
 
     #[test]
-    fn schema() {
+    fn json_schema_check() {
         let schema_path = format!(
-            "{}/../resources/test/rpc_schema_hashing.json",
+            "{}/../resources/test/rpc_schema.json",
             env!("CARGO_MANIFEST_DIR")
         );
-        assert_schema(schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
+        assert_schema(&schema_path, schema_for_value!(OPEN_RPC_SCHEMA.clone()));
+        let schema = fs::read_to_string(&schema_path).unwrap();
+
+        // Check for the following pattern in the JSON as this points to a byte array or vec (e.g.
+        // a hash digest) not being represented as a hex-encoded string:
+        //
+        // ```json
+        // "type": "array",
+        // "items": {
+        //   "type": "integer",
+        //   "format": "uint8",
+        //   "minimum": 0.0
+        // },
+        // ```
+        let regex = Regex::new(
+            r#"\s*"type":\s*"array",\s*"items":\s*\{\s*"type":\s*"integer",\s*"format":\s*"uint8",\s*"minimum":\s*0\.0\s*\},"#
+        ).unwrap();
+        assert!(
+            !regex.is_match(&schema),
+            "seems like a byte array is not hex-encoded"
+        );
     }
 }

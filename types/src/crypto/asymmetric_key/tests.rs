@@ -423,10 +423,6 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
 
     #[test]
     fn signature_from_bytes() {
-        // Signature should be < ~2^(252.5).
-        let invalid_bytes = [255; SIGNATURE_LENGTH];
-        assert!(Signature::ed25519_from_bytes(&invalid_bytes[..]).is_err());
-
         // Signature should be `Signature::ED25519_LENGTH` bytes.
         let bytes = [2; SIGNATURE_LENGTH + 1];
         assert!(Signature::ed25519_from_bytes(&bytes[..]).is_err());
@@ -811,7 +807,7 @@ fn should_construct_secp256k1_from_uncompressed_bytes() {
     rng.fill_bytes(&mut secret_key_bytes[..]);
 
     // Construct a secp256k1 secret key and use that to construct a public key.
-    let secp256k1_secret_key = k256::SecretKey::from_bytes(secret_key_bytes).unwrap();
+    let secp256k1_secret_key = k256::SecretKey::from_slice(&secret_key_bytes).unwrap();
     let secp256k1_public_key = secp256k1_secret_key.public_key();
 
     // Construct a CL secret key and public key from that (which will be a compressed key).

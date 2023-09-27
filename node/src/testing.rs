@@ -4,7 +4,7 @@
 //! `casper-node` library.
 
 mod condition_check_reactor;
-mod fake_deploy_acceptor;
+mod fake_transaction_acceptor;
 pub(crate) mod filter_reactor;
 pub(crate) mod network;
 pub(crate) mod test_clock;
@@ -32,7 +32,7 @@ use tempfile::TempDir;
 use tokio::runtime::{self, Runtime};
 use tracing::{debug, warn};
 
-use casper_types::{testing::TestRng, TimeDiff, Timestamp};
+use casper_types::{testing::TestRng, Deploy, TimeDiff, Timestamp};
 
 use crate::{
     components::Component,
@@ -44,10 +44,9 @@ use crate::{
     logging,
     protocol::Message,
     reactor::{EventQueueHandle, QueueKind, ReactorEvent, Scheduler},
-    types::Deploy,
 };
 pub(crate) use condition_check_reactor::ConditionCheckReactor;
-pub(crate) use fake_deploy_acceptor::FakeDeployAcceptor;
+pub(crate) use fake_transaction_acceptor::FakeTransactionAcceptor;
 
 /// Time to wait (at most) for a `fatal` to resolve before considering the dropping of a responder a
 /// problem.
@@ -138,7 +137,7 @@ pub(crate) struct ComponentHarnessBuilder<REv: 'static> {
     _phantom: PhantomData<REv>,
 }
 
-impl<REv: 'static> ComponentHarnessBuilder<REv> {
+impl<REv: 'static + Debug> ComponentHarnessBuilder<REv> {
     /// Builds a component harness instance.
     ///
     /// # Panics
@@ -174,7 +173,7 @@ impl<REv: 'static> ComponentHarnessBuilder<REv> {
 
         let rng = self.rng.unwrap_or_else(TestRng::new);
 
-        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights())));
+        let scheduler = Box::leak(Box::new(Scheduler::new(QueueKind::weights(), None)));
         let event_queue_handle = EventQueueHandle::without_shutdown(scheduler);
         let effect_builder = EffectBuilder::new(event_queue_handle);
         let runtime = runtime::Builder::new_multi_thread()
@@ -314,7 +313,7 @@ impl<REv: 'static> ComponentHarness<REv> {
     }
 }
 
-impl<REv: 'static> Default for ComponentHarness<REv> {
+impl<REv: 'static + Debug> Default for ComponentHarness<REv> {
     fn default() -> Self {
         Self::builder().build()
     }
@@ -398,9 +397,8 @@ pub(crate) fn create_not_expired_deploy(now: Timestamp, test_rng: &mut TestRng) 
 /// Assert that the file at `schema_path` matches the provided `RootSchema`, which can be derived
 /// from `schemars::schema_for!` or `schemars::schema_for_value!`, for example. This method will
 /// create a temporary file with the actual schema and print the location if it fails.
-#[track_caller]
-pub fn assert_schema(schema_path: String, actual_schema: RootSchema) {
-    let expected_schema = fs::read_to_string(&schema_path).unwrap();
+pub fn assert_schema(schema_path: &str, actual_schema: RootSchema) {
+    let expected_schema = fs::read_to_string(schema_path).unwrap();
     let expected_schema: Value = serde_json::from_str(&expected_schema).unwrap();
     let actual_schema = serde_json::to_string_pretty(&actual_schema).unwrap();
     let mut temp_file = tempfile::Builder::new()

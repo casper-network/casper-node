@@ -12,21 +12,27 @@ use serde::{
 };
 use strum::EnumDiscriminants;
 
-use casper_hashing::Digest;
 #[cfg(test)]
 use casper_types::testing::TestRng;
-use casper_types::{crypto, AsymmetricType, ProtocolVersion, PublicKey, SecretKey, Signature};
+use casper_types::{
+    crypto, AsymmetricType, Chainspec, Digest, ProtocolVersion, PublicKey, SecretKey, Signature,
+};
 
 use super::{counting_format::ConnectionId, health::Nonce, BincodeFormat};
 use crate::{
     effect::EffectBuilder,
     protocol,
-    types::{Chainspec, NodeId},
+    types::NodeId,
     utils::{
         opt_display::OptDisplay,
         specimen::{Cache, LargestSpecimen, SizeEstimator},
     },
 };
+
+use tracing::warn;
+
+// Additional overhead accounted for (eg. lower level networking packet encapsulation).
+const NETWORK_MESSAGE_LIMIT_SAFETY_MARGIN: usize = 256;
 
 /// The default protocol version to use in absence of one in the protocol version field.
 #[inline]
@@ -319,8 +325,8 @@ pub(crate) enum MessageKind {
     Protocol,
     /// Messages directly related to consensus.
     Consensus,
-    /// Deploys being gossiped.
-    DeployGossip,
+    /// Transactions being gossiped.
+    TransactionGossip,
     /// Blocks being gossiped.
     BlockGossip,
     /// Finality signatures being gossiped.
@@ -342,7 +348,7 @@ impl Display for MessageKind {
         match self {
             MessageKind::Protocol => f.write_str("protocol"),
             MessageKind::Consensus => f.write_str("consensus"),
-            MessageKind::DeployGossip => f.write_str("deploy_gossip"),
+            MessageKind::TransactionGossip => f.write_str("transaction_gossip"),
             MessageKind::BlockGossip => f.write_str("block_gossip"),
             MessageKind::FinalitySignatureGossip => f.write_str("finality_signature_gossip"),
             MessageKind::AddressGossip => f.write_str("address_gossip"),
@@ -408,24 +414,30 @@ pub(crate) trait FromIncoming<P> {
 /// The default implementation sets all weights to zero.
 #[derive(DataSize, Debug, Default, Clone, Deserialize, Serialize)]
 pub struct EstimatorWeights {
-    /// Weight to attach to consensus traffic.
     pub consensus: u32,
-    /// Weight to attach to gossiper traffic.
-    pub gossip: u32,
-    /// Weight to attach to finality signatures traffic.
-    pub finality_signatures: u32,
-    /// Weight to attach to deploy requests.
+    pub block_gossip: u32,
+    pub transaction_gossip: u32,
+    pub finality_signature_gossip: u32,
+    pub address_gossip: u32,
+    pub finality_signature_broadcasts: u32,
     pub deploy_requests: u32,
-    /// Weight to attach to deploy responses.
     pub deploy_responses: u32,
-    /// Weight to attach to block requests.
+    pub legacy_deploy_requests: u32,
+    pub legacy_deploy_responses: u32,
     pub block_requests: u32,
-    /// Weight to attach to block responses.
     pub block_responses: u32,
-    /// Weight to attach to trie requests.
+    pub block_header_requests: u32,
+    pub block_header_responses: u32,
     pub trie_requests: u32,
-    /// Weight to attach to trie responses.
     pub trie_responses: u32,
+    pub finality_signature_requests: u32,
+    pub finality_signature_responses: u32,
+    pub sync_leap_requests: u32,
+    pub sync_leap_responses: u32,
+    pub approvals_hashes_requests: u32,
+    pub approvals_hashes_responses: u32,
+    pub execution_results_requests: u32,
+    pub execution_results_responses: u32,
 }
 
 mod specimen_support {
@@ -503,8 +515,8 @@ impl<'a> NetworkMessageEstimator<'a> {
             "network_name_limit" => self.chainspec.network_config.name.len() as i64,
             // These limits are making deploys bigger than they actually are, since many items
             // have both a `contract_name` and an `entry_point`. We accept 2X as an upper bound.
-            "contract_name_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
-            "entry_point_limit" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "contract_name_limit" => self.chainspec.transaction_config.max_transaction_size as i64,
+            "entry_point_limit" => self.chainspec.transaction_config.max_transaction_size as i64,
             "recent_era_count" => {
                 (self.chainspec.core_config.unbonding_delay
                     - self.chainspec.core_config.auction_delay) as i64
@@ -518,18 +530,21 @@ impl<'a> NetworkMessageEstimator<'a> {
                 .minimum_block_time
                 .millis()
                 .max(1) as i64,
-            "max_deploy_size" => self.chainspec.deploy_config.max_deploy_size as i64,
+            "max_deploy_size" => self.chainspec.transaction_config.max_transaction_size as i64,
             "approvals_hashes" => {
-                (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count) as i64
+                (self.chainspec.transaction_config.block_max_deploy_count
+                    + self.chainspec.transaction_config.block_max_native_count)
+                    as i64
             }
-            "max_deploys_per_block" => self.chainspec.deploy_config.block_max_deploy_count as i64,
+            "max_deploys_per_block" => {
+                self.chainspec.transaction_config.block_max_deploy_count as i64
+            }
             "max_transfers_per_block" => {
-                self.chainspec.deploy_config.block_max_transfer_count as i64
+                self.chainspec.transaction_config.block_max_native_count as i64
             }
             "average_approvals_per_deploy_in_block" => {
-                let max_total_deploys = (self.chainspec.deploy_config.block_max_deploy_count
-                    + self.chainspec.deploy_config.block_max_transfer_count)
+                let max_total_deploys = (self.chainspec.transaction_config.block_max_deploy_count
+                    + self.chainspec.transaction_config.block_max_native_count)
                     as i64;
 
                 // Note: The +1 is to overestimate, as depending on the serialization format chosen,
@@ -538,7 +553,8 @@ impl<'a> NetworkMessageEstimator<'a> {
                 //       in a smaller size if variable size integer encoding it used. In a format
                 //       using separators without trailing separators (e.g. commas in JSON),
                 //       spreading out will reduce the total number of bytes.
-                ((self.chainspec.deploy_config.block_max_approval_count as i64 + max_total_deploys
+                ((self.chainspec.transaction_config.block_max_approval_count as i64
+                    + max_total_deploys
                     - 1)
                     / max_total_deploys)
                     .max(0)
@@ -571,15 +587,28 @@ where
 }
 
 /// Creates a serialized specimen of the largest possible networking message.
-pub(crate) fn generate_largest_message(chainspec: &Chainspec) -> Message<protocol::Message> {
+fn generate_largest_message(chainspec: &Chainspec) -> Message<protocol::Message> {
     let estimator = &NetworkMessageEstimator::new(chainspec);
     let cache = &mut Cache::default();
 
     Message::largest_specimen(estimator, cache)
 }
 
-pub(crate) fn generate_largest_serialized_message(chainspec: &Chainspec) -> Vec<u8> {
-    serialize_net_message(&generate_largest_message(chainspec))
+/// Enforces chainspec configured message size limit.
+pub(crate) fn within_message_size_limit_tolerance(chainspec: &Chainspec) -> bool {
+    // Ensure the size of the largest message generated under these chainspec settings does not
+    // exceed the configured message size limit.
+    let configured_maximum = chainspec.network_config.maximum_net_message_size as usize;
+    let serialized = serialize_net_message(&generate_largest_message(chainspec));
+    let calculated_length = serialized.len();
+    let within_tolerance =
+        calculated_length + NETWORK_MESSAGE_LIMIT_SAFETY_MARGIN <= configured_maximum;
+    if false == within_tolerance {
+        warn!(calculated_length, configured_maximum,
+                "config value [network][maximum_net_message_size] is too small to accommodate the maximum message size",
+            );
+    }
+    within_tolerance
 }
 
 impl<'a> SizeEstimator for NetworkMessageEstimator<'a> {

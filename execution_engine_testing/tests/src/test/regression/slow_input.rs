@@ -4,11 +4,11 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR,
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::{
-    core::{engine_state::Error, execution},
-    shared::opcode_costs::DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
+use casper_execution_engine::{engine_state::Error, execution};
+use casper_types::{
+    addressable_entity::DEFAULT_ENTRY_POINT_NAME, Gas, RuntimeArgs,
+    DEFAULT_CONTROL_FLOW_BR_TABLE_MULTIPLIER,
 };
-use casper_types::{contracts::DEFAULT_ENTRY_POINT_NAME, Gas, RuntimeArgs};
 
 use walrus::{ir::BinaryOp, FunctionBuilder, InstrSeqBuilder, Module, ModuleConfig, ValType};
 

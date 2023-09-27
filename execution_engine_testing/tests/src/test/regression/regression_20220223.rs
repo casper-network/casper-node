@@ -5,7 +5,7 @@ use casper_engine_test_support::{
     ExecuteRequestBuilder, LmdbWasmTestBuilder, DEFAULT_ACCOUNT_ADDR, DEFAULT_ACCOUNT_PUBLIC_KEY,
     MINIMUM_ACCOUNT_CREATION_BALANCE, PRODUCTION_RUN_GENESIS_REQUEST,
 };
-use casper_execution_engine::core::{
+use casper_execution_engine::{
     engine_state, engine_state::engine_config::DEFAULT_MINIMUM_DELEGATION_AMOUNT, execution,
 };
 use casper_types::{
@@ -17,7 +17,7 @@ use casper_types::{
         DelegationRate, ARG_AMOUNT, ARG_DELEGATION_RATE, ARG_DELEGATOR, ARG_PUBLIC_KEY,
         ARG_VALIDATOR,
     },
-    PublicKey, RuntimeArgs, SecretKey, U512,
+    PublicKey, SecretKey, U512,
 };
 
 const CONTRACT_TRANSFER_TO_ACCOUNT: &str = "transfer_to_account_u512.wasm";
@@ -241,10 +241,13 @@ fn should_fail_to_mint_transfer_over_the_limit() {
     let mut builder = setup();
 
     let default_account = builder
-        .get_account(*DEFAULT_ACCOUNT_ADDR)
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should have default account");
 
-    let test_purse_2 = default_account.named_keys()[TEST_PURSE]
+    let test_purse_2 = default_account
+        .named_keys()
+        .get(TEST_PURSE)
+        .unwrap()
         .into_uref()
         .expect("should have test purse 2");
 
