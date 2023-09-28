@@ -396,6 +396,24 @@ pub enum ApiError {
     /// }
     /// ```
     User(u16),
+    /// The message topic is already registered.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(41), ApiError::MessageTopicAlreadyRegistered);
+    /// ```
+    MessageTopicAlreadyRegistered,
+    /// The message topic is not registered.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(42), ApiError::MessageTopicNotRegistered);
+    /// ```
+    MessageTopicNotRegistered,
+    /// The message topic is full and cannot accept new messages.
+    /// ```
+    /// # use casper_types::ApiError;
+    /// assert_eq!(ApiError::from(43), ApiError::MessageTopicFull);
+    /// ```
+    MessageTopicFull,
 }
 
 impl From<bytesrepr::Error> for ApiError {
@@ -542,6 +560,9 @@ impl From<ApiError> for u32 {
             ApiError::MissingSystemContractHash => 38,
             ApiError::ExceededRecursionDepth => 39,
             ApiError::NonRepresentableSerialization => 40,
+            ApiError::MessageTopicAlreadyRegistered => 41,
+            ApiError::MessageTopicNotRegistered => 42,
+            ApiError::MessageTopicFull => 43,
             ApiError::AuctionError(value) => AUCTION_ERROR_OFFSET + u32::from(value),
             ApiError::ContractHeader(value) => HEADER_ERROR_OFFSET + u32::from(value),
             ApiError::Mint(value) => MINT_ERROR_OFFSET + u32::from(value),
@@ -594,6 +615,9 @@ impl From<u32> for ApiError {
             38 => ApiError::MissingSystemContractHash,
             39 => ApiError::ExceededRecursionDepth,
             40 => ApiError::NonRepresentableSerialization,
+            41 => ApiError::MessageTopicAlreadyRegistered,
+            42 => ApiError::MessageTopicNotRegistered,
+            43 => ApiError::MessageTopicFull,
             USER_ERROR_MIN..=USER_ERROR_MAX => ApiError::User(value as u16),
             HP_ERROR_MIN..=HP_ERROR_MAX => ApiError::HandlePayment(value as u8),
             MINT_ERROR_MIN..=MINT_ERROR_MAX => ApiError::Mint(value as u8),
@@ -652,6 +676,13 @@ impl Debug for ApiError {
             ApiError::NonRepresentableSerialization => {
                 write!(f, "ApiError::NonRepresentableSerialization")?
             }
+            ApiError::MessageTopicAlreadyRegistered => {
+                write!(f, "ApiError::MessageTopicAlreadyRegistered")?
+            }
+            ApiError::MessageTopicNotRegistered => {
+                write!(f, "ApiError::MessageTopicNotRegistered")?
+            }
+            ApiError::MessageTopicFull => write!(f, "ApiError::MessageTopicFull")?,
             ApiError::ExceededRecursionDepth => write!(f, "ApiError::ExceededRecursionDepth")?,
             ApiError::AuctionError(value) => write!(
                 f,
@@ -871,5 +902,8 @@ mod tests {
         round_trip(Err(ApiError::User(u16::MAX)));
         round_trip(Err(ApiError::AuctionError(0)));
         round_trip(Err(ApiError::AuctionError(u8::MAX)));
+        round_trip(Err(ApiError::MessageTopicAlreadyRegistered));
+        round_trip(Err(ApiError::MessageTopicNotRegistered));
+        round_trip(Err(ApiError::MessageTopicFull));
     }
 }

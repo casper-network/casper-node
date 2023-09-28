@@ -15,6 +15,7 @@ use proptest::{
 use crate::{
     account::{self, action_thresholds::gens::account_action_thresholds_arb, AccountHash},
     addressable_entity::{NamedKeys, Parameters, Weight},
+    contract_messages::{MessageSummary, MessageTopicSummary},
     crypto::gens::public_key_arb_no_system,
     package::{ContractPackageStatus, ContractVersionKey, ContractVersions, Groups},
     system::auction::{
@@ -620,6 +621,14 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
     collection::vec(unbonding_arb(), size)
 }
 
+fn message_topic_summary_arb() -> impl Strategy<Value = MessageTopicSummary> {
+    any::<u32>().prop_map(|message_count| MessageTopicSummary { message_count })
+}
+
+fn message_summary_arb() -> impl Strategy<Value = MessageSummary> {
+    u8_slice_32().prop_map(MessageSummary)
+}
+
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
@@ -635,7 +644,9 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
-        unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
+        unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
+        message_topic_summary_arb().prop_map(StoredValue::MessageTopic),
+        message_summary_arb().prop_map(StoredValue::Message),
     ]
     .prop_map(|stored_value|
         // The following match statement is here only to make sure
@@ -654,5 +665,7 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Unbonding(_) => stored_value,
             StoredValue::AddressableEntity(_) => stored_value,
             StoredValue::BidKind(_) => stored_value,
+            StoredValue::MessageTopic(_) => stored_value,
+            StoredValue::Message(_) => stored_value,
         })
 }

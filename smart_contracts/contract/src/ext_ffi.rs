@@ -805,4 +805,33 @@ extern "C" {
         contract_hash_ptr: *const u8,
         contract_hash_size: usize,
     ) -> i32;
+    /// Manages a message topic.
+    ///
+    /// # Arguments
+    ///
+    /// * `topic_name_ptr` - pointer to a `str` containing the name of the message topic.
+    /// * `topic_name_size` - size of the topic string.
+    /// * `operation_ptr` - pointer to the management operation to be performed for the specified
+    ///   topic.
+    /// * `operation_ptr_size` - size of the operation.
+    pub fn casper_manage_message_topic(
+        topic_name_ptr: *const u8,
+        topic_name_size: usize,
+        operation_ptr: *const u8,
+        operation_size: usize,
+    ) -> i32;
+    /// Emits a new message on the specified topic.
+    ///
+    /// # Arguments
+    ///
+    /// * `topic_name_ptr` - pointer to a `str` containing the name of the topic to be registered.
+    /// * `topic_name_size` - size of the topic string.
+    /// * `message_ptr` - pointer pointer to serialized message payload.
+    /// * `message_size` - size of the serialized message payload.
+    pub fn casper_emit_message(
+        topic_name_ptr: *const u8,
+        topic_name_size: usize,
+        message_ptr: *const u8,
+        message_size: usize,
+    ) -> i32;
 }

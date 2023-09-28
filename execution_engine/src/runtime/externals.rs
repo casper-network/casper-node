@@ -8,6 +8,7 @@ use casper_types::{
     addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, ToBytes},
+    contract_messages::MessageTopicOperation,
     crypto,
     package::{ContractPackageKind, ContractPackageStatus},
     system::auction::EraInfo,
@@ -1104,6 +1105,81 @@ where
 
                 let result = self.enable_contract_version(contract_package_hash, contract_hash)?;
 
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+            FunctionIndex::ManageMessageTopic => {
+                // args(0) = pointer to the topic name in wasm memory
+                // args(1) = size of the topic name string in wasm memory
+                // args(2) = pointer to the operation to be performed for the specified topic
+                // args(3) = size of the operation
+                let (topic_name_ptr, topic_name_size, operation_ptr, operation_size) =
+                    Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.manage_message_topic,
+                    [
+                        topic_name_ptr,
+                        topic_name_size,
+                        operation_ptr,
+                        operation_size,
+                    ],
+                )?;
+
+                self.context
+                    .engine_config()
+                    .wasm_config()
+                    .messages_limits()
+                    .topic_name_size_within_limits(topic_name_size)
+                    .map_err(|e| Trap::from(Error::FailedTopicRegistration(e)))?;
+                let topic_name = self.string_from_mem(topic_name_ptr, topic_name_size)?;
+
+                if operation_size as usize > MessageTopicOperation::max_serialized_len() {
+                    return Err(Trap::from(Error::InvalidMessageTopicOperation));
+                }
+                let topic_operation = self
+                    .t_from_mem(operation_ptr, operation_size)
+                    .map_err(|_e| Trap::from(Error::InvalidMessageTopicOperation))?;
+
+                // don't allow managing topics for accounts.
+                if let Key::Account(_) = self.context.get_entity_address() {
+                    return Err(Trap::from(Error::InvalidContext));
+                }
+
+                let result = match topic_operation {
+                    MessageTopicOperation::Add => self.register_message_topic(topic_name)?,
+                };
+
+                Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
+            }
+            FunctionIndex::EmitMessage => {
+                // args(0) = pointer to the message kind name in wasm memory
+                // args(1) = size of the name string in wasm memory
+                // args(2) = pointer to the message contents
+                // args(3) = size of the message contents
+                let (topic_name_ptr, topic_name_size, message_ptr, message_size) =
+                    Args::parse(args)?;
+                self.charge_host_function_call(
+                    &host_function_costs.emit_message,
+                    [topic_name_ptr, topic_name_size, message_ptr, message_size],
+                )?;
+
+                self.context
+                    .engine_config()
+                    .wasm_config()
+                    .messages_limits()
+                    .topic_name_size_within_limits(topic_name_size)
+                    .map_err(|e| Trap::from(Error::CannotEmitMessage(e)))?;
+
+                self.context
+                    .engine_config()
+                    .wasm_config()
+                    .messages_limits()
+                    .message_size_within_limits(message_size)
+                    .map_err(|e| Trap::from(Error::CannotEmitMessage(e)))?;
+
+                let topic_name = self.string_from_mem(topic_name_ptr, topic_name_size)?;
+                let message = self.t_from_mem(message_ptr, message_size)?;
+
+                let result = self.emit_message(topic_name, message)?;
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
         }

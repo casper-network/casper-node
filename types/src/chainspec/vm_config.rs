@@ -2,6 +2,7 @@ mod auction_costs;
 mod chainspec_registry;
 mod handle_payment_costs;
 mod host_function_costs;
+mod messages_limits;
 mod mint_costs;
 mod opcode_costs;
 mod standard_payment_costs;
@@ -17,6 +18,7 @@ pub use host_function_costs::{
     Cost as HostFunctionCost, HostFunction, HostFunctionCosts,
     DEFAULT_HOST_FUNCTION_NEW_DICTIONARY, DEFAULT_NEW_DICTIONARY_COST,
 };
+pub use messages_limits::{Error as MessagesLimitsError, MessagesLimits};
 pub use mint_costs::{MintCosts, DEFAULT_TRANSFER_COST};
 pub use opcode_costs::{BrTableCost, ControlFlowCosts, OpcodeCosts};
 #[cfg(any(feature = "testing", test))]

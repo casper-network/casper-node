@@ -31,6 +31,10 @@ use casper_types::{
         DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
+    contract_messages::{
+        Message, MessageAddr, MessagePayload, MessageSummary, MessageTopicSummary,
+    },
+    crypto,
     package::{ContractPackageKind, ContractPackageStatus},
     system::{
         self,
@@ -3222,5 +3226,70 @@ where
             Some(_) => Err(Error::UnexpectedStoredValueVariant),
             None => Err(Error::InvalidContract(contract_hash)),
         }
+    }
+
+    fn register_message_topic(&mut self, topic_name: String) -> Result<Result<(), ApiError>, Trap> {
+        let entity_addr = self
+            .context
+            .get_entity_address()
+            .into_hash()
+            .ok_or(Error::InvalidContext)?;
+
+        let topic_digest: [u8; 32] = crypto::blake2b(topic_name);
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_digest));
+
+        // Check if topic is already registered.
+        if self.context.read_gs(&topic_key)?.is_some() {
+            return Ok(Err(ApiError::MessageTopicAlreadyRegistered));
+        }
+
+        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0));
+        self.context.metered_write_gs_unsafe(topic_key, summary)?;
+
+        Ok(Ok(()))
+    }
+
+    fn emit_message(
+        &mut self,
+        topic_name: String,
+        message: MessagePayload,
+    ) -> Result<Result<(), ApiError>, Trap> {
+        let entity_addr = self
+            .context
+            .get_entity_address()
+            .into_hash()
+            .ok_or(Error::InvalidContext)?;
+
+        let topic_digest: [u8; 32] = crypto::blake2b(AsRef::<[u8]>::as_ref(&topic_name));
+        let topic_key = Key::Message(MessageAddr::new_topic_addr(entity_addr, topic_digest));
+
+        // Check if the topic exists and get the summary.
+        let current_topic_summary = if let Some(StoredValue::MessageTopic(message_summary)) =
+            self.context.read_gs(&topic_key)?
+        {
+            message_summary
+        } else {
+            return Ok(Err(ApiError::MessageTopicNotRegistered));
+        };
+
+        let message_index = current_topic_summary.message_count();
+
+        let new_topic_summary =
+            StoredValue::MessageTopic(MessageTopicSummary::new(message_index + 1));
+
+        let message_key = Key::message(entity_addr, topic_digest, message_index);
+
+        let message_digest = StoredValue::Message(MessageSummary(crypto::blake2b(
+            message.to_bytes().map_err(Error::BytesRepr)?,
+        )));
+
+        self.context.metered_emit_message(
+            topic_key,
+            new_topic_summary,
+            message_key,
+            message_digest,
+            Message::new(entity_addr, message, topic_name, message_index),
+        )?;
+        Ok(Ok(()))
     }
 }

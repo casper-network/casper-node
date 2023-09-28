@@ -22,6 +22,7 @@ use casper_types::{
         UpdateKeyFailure, Weight,
     },
     bytesrepr::ToBytes,
+    contract_messages::Message,
     execution::Effects,
     package::ContractPackageKind,
     system::auction::{BidKind, EraInfo},
@@ -330,8 +331,8 @@ where
                 error!("should not remove the checksum registry key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
-            Key::MessageTopic(_) => {
-                error!("should not remove the message keys");
+            Key::Message(_) => {
+                error!("should not remove the message key");
                 Err(Error::RemoveKeyFailure(RemoveKeyFailure::PermissionDenied))
             }
             bid_key @ Key::BidAddr(_) => {
@@ -657,6 +658,11 @@ where
         self.tracking_copy.borrow().effects()
     }
 
+    /// Returns a copy of the current messages of a tracking copy.
+    pub fn messages(&self) -> Vec<Message> {
+        self.tracking_copy.borrow().messages()
+    }
+
     /// Returns list of transfers.
     pub fn transfers(&self) -> &Vec<TransferAddr> {
         &self.transfers
@@ -725,6 +731,8 @@ where
             StoredValue::BidKind(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
             StoredValue::Unbonding(_) => Ok(()),
+            StoredValue::MessageTopic(_) => Ok(()),
+            StoredValue::Message(_) => Ok(()),
         }
     }
 
@@ -804,7 +812,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
-            | Key::MessageTopic(_) => true,
+            | Key::Message(_) => true,
         }
     }
 
@@ -827,7 +835,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
-            | Key::MessageTopic(_) => false,
+            | Key::Message(_) => false,
         }
     }
 
@@ -850,7 +858,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_)
-            | Key::MessageTopic(_) => false,
+            | Key::Message(_) => false,
         }
     }
 
@@ -942,6 +950,49 @@ where
         self.tracking_copy
             .borrow_mut()
             .write(key.into(), stored_value);
+        Ok(())
+    }
+
+    /// Emits message and writes message summary to global state with a measurement.
+    pub(crate) fn metered_emit_message<V>(
+        &mut self,
+        topic_key: Key,
+        topic_value: V,
+        message_key: Key,
+        message_value: V,
+        message: Message,
+    ) -> Result<(), Error>
+    where
+        V: Into<StoredValue>,
+    {
+        let topic_value = topic_value.into();
+        let message_value = message_value.into();
+
+        match topic_value {
+            StoredValue::MessageTopic(_) => {}
+            _ => {
+                return Err(Error::UnexpectedStoredValueVariant);
+            }
+        }
+
+        match message_value {
+            StoredValue::Message(_) => {}
+            _ => {
+                return Err(Error::UnexpectedStoredValueVariant);
+            }
+        }
+
+        // Charge for amount as measured by serialized length
+        let bytes_count = topic_value.serialized_length() + message_value.serialized_length();
+        self.charge_gas_storage(bytes_count)?;
+
+        self.tracking_copy.borrow_mut().emit_message(
+            topic_key,
+            topic_value,
+            message_key,
+            message_value,
+            message,
+        );
         Ok(())
     }
 

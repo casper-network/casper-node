@@ -9,7 +9,7 @@ use casper_types::{
     execution::TransformError,
     package::ContractPackageKind,
     system, AccessRights, ApiError, CLType, CLValueError, ContractHash, ContractPackageHash,
-    ContractVersionKey, ContractWasmHash, Key, StoredValueTypeMismatch, URef,
+    ContractVersionKey, ContractWasmHash, Key, MessagesLimitsError, StoredValueTypeMismatch, URef,
 };
 
 use crate::{
@@ -191,6 +191,15 @@ pub enum Error {
     /// Failed to transfer tokens on a private chain.
     #[error("Failed to transfer with unrestricted transfers disabled")]
     DisabledUnrestrictedTransfers,
+    /// Failed to register a message topic due to config limits.
+    #[error("Failed to register a message topic: {0}")]
+    FailedTopicRegistration(MessagesLimitsError),
+    /// Message was not emitted.
+    #[error("Failed to emit a message on topic: {0}")]
+    CannotEmitMessage(MessagesLimitsError),
+    /// Invalid message topic operation.
+    #[error("The requested operation is invalid for a message topic")]
+    InvalidMessageTopicOperation,
 }
 
 impl From<PreprocessingError> for Error {

@@ -295,6 +295,10 @@ pub struct HostFunctionCosts {
     pub random_bytes: HostFunction<[Cost; 2]>,
     /// Cost of calling the `enable_contract_version` host function.
     pub enable_contract_version: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `casper_manage_message_topic` host function.
+    pub manage_message_topic: HostFunction<[Cost; 4]>,
+    /// Cost of calling the `casper_emit_message` host function.
+    pub emit_message: HostFunction<[Cost; 4]>,
 }
 
 impl Default for HostFunctionCosts {
@@ -427,6 +431,8 @@ impl Default for HostFunctionCosts {
             blake2b: HostFunction::default(),
             random_bytes: HostFunction::default(),
             enable_contract_version: HostFunction::default(),
+            manage_message_topic: HostFunction::default(),
+            emit_message: HostFunction::default(),
         }
     }
 }
@@ -478,6 +484,8 @@ impl ToBytes for HostFunctionCosts {
         ret.append(&mut self.blake2b.to_bytes()?);
         ret.append(&mut self.random_bytes.to_bytes()?);
         ret.append(&mut self.enable_contract_version.to_bytes()?);
+        ret.append(&mut self.manage_message_topic.to_bytes()?);
+        ret.append(&mut self.emit_message.to_bytes()?);
         Ok(ret)
     }
 
@@ -526,6 +534,8 @@ impl ToBytes for HostFunctionCosts {
             + self.blake2b.serialized_length()
             + self.random_bytes.serialized_length()
             + self.enable_contract_version.serialized_length()
+            + self.manage_message_topic.serialized_length()
+            + self.emit_message.serialized_length()
     }
 }
 
@@ -575,6 +585,8 @@ impl FromBytes for HostFunctionCosts {
         let (blake2b, rem) = FromBytes::from_bytes(rem)?;
         let (random_bytes, rem) = FromBytes::from_bytes(rem)?;
         let (enable_contract_version, rem) = FromBytes::from_bytes(rem)?;
+        let (manage_message_topic, rem) = FromBytes::from_bytes(rem)?;
+        let (emit_message, rem) = FromBytes::from_bytes(rem)?;
         Ok((
             HostFunctionCosts {
                 read_value,
@@ -621,6 +633,8 @@ impl FromBytes for HostFunctionCosts {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                manage_message_topic,
+                emit_message,
             },
             rem,
         ))
@@ -674,6 +688,8 @@ impl Distribution<HostFunctionCosts> for Standard {
             blake2b: rng.gen(),
             random_bytes: rng.gen(),
             enable_contract_version: rng.gen(),
+            manage_message_topic: rng.gen(),
+            emit_message: rng.gen(),
         }
     }
 }
@@ -737,6 +753,8 @@ pub mod gens {
             blake2b in host_function_cost_arb(),
             random_bytes in host_function_cost_arb(),
             enable_contract_version in host_function_cost_arb(),
+            manage_message_topic in host_function_cost_arb(),
+            emit_message in host_function_cost_arb(),
         ) -> HostFunctionCosts {
             HostFunctionCosts {
                 read_value,
@@ -783,6 +801,8 @@ pub mod gens {
                 blake2b,
                 random_bytes,
                 enable_contract_version,
+                manage_message_topic,
+                emit_message,
             }
         }
     }
