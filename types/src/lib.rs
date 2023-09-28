@@ -28,7 +28,10 @@ mod block_time;
 pub mod bytesrepr;
 pub mod checksummed_hex;
 mod cl_type;
+#[cfg(not(any(feature = "sdk")))]
 mod cl_value;
+#[cfg(feature = "sdk")]
+pub mod cl_value;
 mod contract_wasm;
 pub mod contracts;
 pub mod crypto;
@@ -66,6 +69,8 @@ pub use access_rights::{
 pub use api_error::ApiError;
 pub use block_time::{BlockTime, BLOCKTIME_SERIALIZED_LENGTH};
 pub use cl_type::{named_key_type, CLType, CLTyped};
+#[cfg(feature = "sdk")]
+pub use cl_value::cl_value_to_json;
 pub use cl_value::{CLTypeMismatch, CLValue, CLValueError};
 pub use contract_wasm::{ContractWasm, ContractWasmHash};
 #[doc(inline)]

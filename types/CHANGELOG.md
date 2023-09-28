@@ -17,6 +17,9 @@ All notable changes to this project will be documented in this file.  The format
 * Update `ed25519-dalek` to version 2.0.0 as mitigation for [RUSTSEC-2022-0093](https://rustsec.org/advisories/RUSTSEC-2022-0093)
 
 
+### Changed
+
+- Add "sdk" feature config checks to compile to wasm
 
 ## 3.0.0
 

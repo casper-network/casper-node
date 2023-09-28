@@ -82,6 +82,7 @@ fn known_secret_key_to_pem(expected_key: &SecretKey, known_key_pem: &str, expect
     assert_eq!(expected_tag, decoded.tag());
 }
 
+#[cfg(not(any(feature = "sdk")))]
 fn secret_key_file_roundtrip(secret_key: SecretKey) {
     let tempdir = tempfile::tempdir().unwrap();
     let path = tempdir.path().join("test_secret_key.pem");
@@ -140,6 +141,7 @@ fn known_public_key_to_pem(known_key_hex: &str, known_key_pem: &str) {
     assert_eq!(key_bytes, Into::<Vec<u8>>::into(decoded));
 }
 
+#[cfg(not(any(feature = "sdk")))]
 fn public_key_file_roundtrip(public_key: PublicKey) {
     let tempdir = tempfile::tempdir().unwrap();
     let path = tempdir.path().join("test_public_key.pem");
@@ -341,6 +343,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
         super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, ED25519_TAG);
     }
 
+    #[cfg(not(any(feature = "sdk")))]
     #[test]
     fn secret_key_to_and_from_file() {
         let mut rng = TestRng::new();
@@ -397,6 +400,7 @@ MCowBQYDK2VwAyEAGb9ECWmEzf6FQbrBZ9w7lshQhqowtrbLDFw4rXAxZuE=
         super::known_public_key_to_pem(KNOWN_KEY_HEX, KNOWN_KEY_PEM);
     }
 
+    #[cfg(not(any(feature = "sdk")))]
     #[test]
     fn public_key_to_and_from_file() {
         let mut rng = TestRng::new();
@@ -583,6 +587,7 @@ Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         super::known_secret_key_to_pem(&expected_key, KNOWN_KEY_PEM, SECP256K1_TAG);
     }
 
+    #[cfg(not(any(feature = "sdk")))]
     #[test]
     fn secret_key_to_and_from_file() {
         let mut rng = TestRng::new();
@@ -640,6 +645,7 @@ kv+kBR5u4ISEAkuc2TFWQHX0Yj9oTB9fx9+vvQdxJOhMtu46kGo0Uw==
         super::known_public_key_to_pem(KNOWN_KEY_HEX, KNOWN_KEY_PEM);
     }
 
+    #[cfg(not(any(feature = "sdk")))]
     #[test]
     fn public_key_to_and_from_file() {
         let mut rng = TestRng::new();

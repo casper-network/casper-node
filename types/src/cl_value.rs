@@ -1,3 +1,4 @@
+//! CLvalue type
 // TODO - remove once schemars stops causing warning.
 #![allow(clippy::field_reassign_with_default)]
 
@@ -17,6 +18,9 @@ use crate::{
 };
 
 mod jsonrepr;
+
+#[cfg(feature = "sdk")]
+pub use jsonrepr::cl_value_to_json;
 
 /// Error while converting a [`CLValue`] into a given type.
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]

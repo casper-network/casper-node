@@ -53,11 +53,13 @@ use crate::{
     crypto::Error,
     CLType, CLTyped, Tagged,
 };
+
 #[cfg(any(feature = "std", test))]
-use crate::{
-    crypto::ErrorExt,
-    file_utils::{read_file, write_file, write_private_file},
-};
+use crate::crypto::ErrorExt;
+
+#[cfg(any(feature = "std", test))]
+#[cfg(not(any(feature = "sdk")))]
+use crate::file_utils::{read_file, write_file, write_private_file};
 
 #[cfg(any(feature = "testing", test))]
 pub mod gens;
@@ -245,14 +247,31 @@ impl SecretKey {
     }
 
     /// Attempts to write the key bytes to the configured file path.
+    #[allow(unused_variables)]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
-        write_private_file(file, self.to_pem()?).map_err(ErrorExt::SecretKeySave)
+        #[cfg(not(any(feature = "sdk")))]
+        {
+            write_private_file(file, self.to_pem()?).map_err(ErrorExt::SecretKeySave)
+        }
+        #[cfg(feature = "sdk")]
+        {
+            Ok(())
+        }
     }
 
     /// Attempts to read the key bytes from configured file path.
+    #[allow(unused_variables)]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
-        let data = read_file(file).map_err(ErrorExt::SecretKeyLoad)?;
-        Self::from_pem(data)
+        #[cfg(not(any(feature = "sdk")))]
+        {
+            let data = read_file(file).map_err(ErrorExt::SecretKeyLoad)?;
+            Self::from_pem(data)
+        }
+        #[cfg(feature = "sdk")]
+        {
+            let data = vec![];
+            Self::from_pem(data)
+        }
     }
 
     /// DER encodes a key.
@@ -526,14 +545,31 @@ impl PublicKey {
     }
 
     /// Attempts to write the key bytes to the configured file path.
+    #[allow(unused_variables)]
     pub fn to_file<P: AsRef<Path>>(&self, file: P) -> Result<(), ErrorExt> {
-        write_file(file, self.to_pem()?).map_err(ErrorExt::PublicKeySave)
+        #[cfg(not(any(feature = "sdk")))]
+        {
+            write_file(file, self.to_pem()?).map_err(ErrorExt::PublicKeySave)
+        }
+        #[cfg(feature = "sdk")]
+        {
+            Ok(())
+        }
     }
 
     /// Attempts to read the key bytes from configured file path.
+    #[allow(unused_variables)]
     pub fn from_file<P: AsRef<Path>>(file: P) -> Result<Self, ErrorExt> {
-        let data = read_file(file).map_err(ErrorExt::PublicKeyLoad)?;
-        Self::from_pem(data)
+        #[cfg(not(any(feature = "sdk")))]
+        {
+            let data = read_file(file).map_err(ErrorExt::PublicKeyLoad)?;
+            Self::from_pem(data)
+        }
+        #[cfg(feature = "sdk")]
+        {
+            let data = vec![];
+            Self::from_pem(data)
+        }
     }
 
     /// DER encodes a key.
