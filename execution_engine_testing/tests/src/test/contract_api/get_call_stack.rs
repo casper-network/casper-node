@@ -313,7 +313,7 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                         ContractAddress::ContractPackageHash(current_contract_package_hash),
                     ..
                 }),
-                CallStackElement::StoredContract {
+                CallStackElement::AddressableEntity {
                     package_hash: contract_package_hash,
                     ..
                 },
@@ -327,43 +327,45 @@ fn assert_call_stack_matches_calls(call_stack: Vec<CallStackElement>, calls: &[C
                     contract_address: ContractAddress::ContractHash(current_contract_hash),
                     ..
                 }),
-                CallStackElement::StoredContract { contract_hash, .. },
+                CallStackElement::AddressableEntity {
+                    entity_hash: contract_hash,
+                    ..
+                },
             ) if *entry_point_type == EntryPointType::Contract
                 && *contract_hash == *current_contract_hash => {}
 
-            // Versioned Call with EntryPointType::Session
-            (
-                Some(Call {
-                    entry_point_type,
-                    contract_address:
-                        ContractAddress::ContractPackageHash(current_contract_package_hash),
-                    ..
-                }),
-                CallStackElement::StoredSession {
-                    account_hash,
-                    package_hash: contract_package_hash,
-                    ..
-                },
-            ) if *entry_point_type == EntryPointType::Session
-                && *account_hash == *DEFAULT_ACCOUNT_ADDR
-                && *contract_package_hash == *current_contract_package_hash => {}
-
-            // Unversioned Call with EntryPointType::Session
-            (
-                Some(Call {
-                    entry_point_type,
-                    contract_address: ContractAddress::ContractHash(current_contract_hash),
-                    ..
-                }),
-                CallStackElement::StoredSession {
-                    account_hash,
-                    contract_hash,
-                    ..
-                },
-            ) if *entry_point_type == EntryPointType::Session
-                && *account_hash == *DEFAULT_ACCOUNT_ADDR
-                && *contract_hash == *current_contract_hash => {}
-
+            // // Versioned Call with EntryPointType::Session
+            // (
+            //     Some(Call {
+            //         entry_point_type,
+            //         contract_address:
+            //             ContractAddress::ContractPackageHash(current_contract_package_hash),
+            //         ..
+            //     }),
+            //     CallStackElement::StoredSession {
+            //         account_hash,
+            //         package_hash: contract_package_hash,
+            //         ..
+            //     },
+            // ) if *entry_point_type == EntryPointType::Session
+            //     && *account_hash == *DEFAULT_ACCOUNT_ADDR
+            //     && *contract_package_hash == *current_contract_package_hash => {}
+            //
+            // // Unversioned Call with EntryPointType::Session
+            // (
+            //     Some(Call {
+            //         entry_point_type,
+            //         contract_address: ContractAddress::ContractHash(current_contract_hash),
+            //         ..
+            //     }),
+            //     CallStackElement::StoredSession {
+            //         account_hash,
+            //         contract_hash,
+            //         ..
+            //     },
+            // ) if *entry_point_type == EntryPointType::Session
+            //     && *account_hash == *DEFAULT_ACCOUNT_ADDR
+            //     && *contract_hash == *current_contract_hash => {}
             _ => panic!(
                 "call stack element {:#?} didn't match expected call {:#?} at index {}, {:#?}",
                 expected_call_stack_element, maybe_call, index, call_stack,

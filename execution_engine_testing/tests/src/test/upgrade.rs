@@ -24,6 +24,7 @@ const PURSE_HOLDER_STORED_CONTRACT_NAME: &str = "purse_holder_stored";
 const PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME: &str = "purse_holder_stored_upgrader";
 const UPGRADE_THRESHOLD_CONTRACT_NAME: &str = "upgrade_threshold.wasm";
 const UPGRADE_THRESHOLD_UPGRADER: &str = "upgrade_threshold_upgrader.wasm";
+const UPGRADE_SESSION_LOGIC: &str = "upgrade_session_logic.wasm";
 const ENTRY_FUNCTION_NAME: &str = "delegate";
 const DO_NOTHING_CONTRACT_NAME: &str = "do_nothing_package_hash";
 const DO_NOTHING_HASH_KEY_NAME: &str = "do_nothing_hash";
@@ -1265,4 +1266,58 @@ fn should_correctly_migrate_contract_when_invoked_by_contract_name() {
 #[test]
 fn should_correctly_migrate_and_upgrade_with_upgrader() {
     call_and_migrate_purse_holder_contract(InvocationType::ByUpgrader)
+}
+
+#[ignore]
+#[test]
+fn should_add_session_version_and_execute_in_correct_context() {
+    let mut builder = LmdbWasmTestBuilder::default();
+
+    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
+
+    let add_session_logic_request = ExecuteRequestBuilder::standard(
+        *DEFAULT_ACCOUNT_ADDR,
+        UPGRADE_SESSION_LOGIC,
+        runtime_args! {},
+    )
+    .build();
+
+    builder
+        .exec(add_session_logic_request)
+        .expect_success()
+        .commit();
+
+    let default_entity = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have entity");
+
+    let entry_points = default_entity.entry_points();
+
+    assert!(entry_points.has_entry_point("add"));
+    assert!(entry_points.has_entry_point("remove"));
+
+    let entity_hash = builder
+        .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have entity hash for the default account");
+
+    let session_invocation = ExecuteRequestBuilder::contract_call_by_hash(
+        *DEFAULT_ACCOUNT_ADDR,
+        entity_hash,
+        "add",
+        runtime_args! {
+            PURSE_NAME_ARG_NAME => "foo_purse".to_string()
+        },
+    )
+    .build();
+
+    builder.exec(session_invocation).expect_success().commit();
+
+    let purse_uref = builder
+        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
+        .expect("must have entity")
+        .named_keys()
+        .get("foo_purse")
+        .expect("must have named key entry")
+        .into_uref()
+        .expect("must convert to URef");
 }

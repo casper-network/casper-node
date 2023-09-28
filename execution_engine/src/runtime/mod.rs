@@ -1131,7 +1131,7 @@ where
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
-        let (contract, entity_hash, package) = match identifier {
+        let (entity, entity_hash, package) = match identifier {
             CallContractIdentifier::Contract {
                 contract_hash: entity_hash,
             } => {
@@ -1171,17 +1171,7 @@ where
                 contract_package_hash,
                 version,
             } => {
-                let package_key = Key::from(contract_package_hash);
-                let package: Package = match self.context.read_gs_typed(&package_key) {
-                    Ok(package) => package,
-                    Err(Error::KeyNotFound(_)) => {
-                        let contract_package: ContractPackage = self
-                            .context
-                            .read_gs_typed(&Key::Hash(contract_package_hash.value()))?;
-                        contract_package.into()
-                    }
-                    Err(error) => return Err(error),
-                };
+                let package = self.context.get_package(contract_package_hash)?;
 
                 let contract_version_key = match version {
                     Some(version) => EntityVersionKey::new(
@@ -1222,7 +1212,17 @@ where
             return Err(Error::InvalidContext);
         }
 
-        let entry_point = contract
+        let protocol_version = self.context.protocol_version();
+
+        // Check for major version compatibility before calling
+        if !entity.is_compatible_protocol_version(protocol_version) {
+            return Err(Error::IncompatibleProtocolMajorVersion {
+                actual: entity.protocol_version().value().major,
+                expected: protocol_version.value().major,
+            });
+        }
+
+        let entry_point = entity
             .entry_point(entry_point_name)
             .cloned()
             .ok_or_else(|| Error::NoSuchMethod(entry_point_name.to_owned()))?;
@@ -1280,76 +1280,32 @@ where
             package.get_package_kind(),
             &entry_point,
         )?;
-        let protocol_version = self.context.protocol_version();
 
-        // Check for major version compatibility before calling
-        if !contract.is_compatible_protocol_version(protocol_version) {
-            return Err(Error::IncompatibleProtocolMajorVersion {
-                actual: contract.protocol_version().value().major,
-                expected: protocol_version.value().major,
-            });
-        }
+        let entry_point_type = entry_point.entry_point_type();
 
-        if let EntryPointType::Session = entry_point.entry_point_type() {
+        if entry_point_type.is_invalid_context() {
             return Err(Error::InvalidContext);
         }
-
-        let package_kind_tag = package.get_package_kind().tag();
-
-        let (mut named_keys, mut access_rights) = match entry_point.entry_point_type() {
-            EntryPointType::Session => (
-                self.context.entity().named_keys().clone(),
-                self.context
-                    .entity()
-                    .extract_access_rights(package_kind_tag, entity_hash),
-            ),
-            EntryPointType::Contract | EntryPointType::Install => (
-                contract.named_keys().clone(),
-                contract.extract_access_rights(package_kind_tag, entity_hash),
-            ),
+        let (should_attenuate_urefs, should_validate_urefs) = {
+            // Determines if this call originated from the system account based on a first
+            // element of the call stack.
+            let is_system_account =
+                self.context.get_caller() == PublicKey::System.to_account_hash();
+            // Is the immediate caller a system contract, such as when the auction calls the mint.
+            let is_caller_system_contract =
+                self.is_system_contract(self.context.access_rights().context_key())?;
+            // Checks if the contract we're about to call is a system contract.
+            let is_calling_system_contract = self.is_system_contract(context_key)?;
+            // uref attenuation is necessary in the following circumstances:
+            //   the originating account (aka the caller) is not the system account and
+            //   the immediate caller is either a normal account or a normal contract and
+            //   the target contract about to be called is a normal contract
+            let should_attenuate_urefs =
+                !is_system_account && !is_caller_system_contract && !is_calling_system_contract;
+            let should_validate_urefs = !is_caller_system_contract || !is_calling_system_contract;
+            (should_attenuate_urefs, should_validate_urefs)
         };
-
-        let stack = {
-            let mut stack = self.try_get_stack()?.clone();
-
-            let call_stack_element = match entry_point.entry_point_type() {
-                EntryPointType::Session => {
-                    let account_hash = self.context().get_caller();
-
-                    CallStackElement::stored_session(
-                        account_hash,
-                        contract.package_hash(),
-                        entity_hash,
-                    )
-                }
-                EntryPointType::Contract => {
-                    CallStackElement::stored_contract(contract.package_hash(), entity_hash)
-                }
-                EntryPointType::Install => {
-                    CallStackElement::stored_contract(contract.package_hash(), entity_hash)
-                }
-            };
-            stack.push(call_stack_element)?;
-
-            stack
-        };
-
-        // Determines if this call originated from the system account based on a first
-        // element of the call stack.
-        let is_system_account = self.context.get_caller() == PublicKey::System.to_account_hash();
-        // Is the immediate caller a system contract, such as when the auction calls the mint.
-        let is_caller_system_contract =
-            self.is_system_contract(self.context.access_rights().context_key())?;
-        // Checks if the contract we're about to call is a system contract.
-        let is_calling_system_contract = self.is_system_contract(context_key)?;
-        // uref attenuation is necessary in the following circumstances:
-        //   the originating account (aka the caller) is not the system account and
-        //   the immediate caller is either a normal account or a normal contract and
-        //   the target contract about to be called is a normal contract
-        let should_attenuate_urefs =
-            !is_system_account && !is_caller_system_contract && !is_calling_system_contract;
-
-        let context_args = if should_attenuate_urefs {
+        let runtime_args = if should_attenuate_urefs {
             // Main purse URefs should be attenuated only when a non-system contract is executed by
             // a non-system account to avoid possible phishing attack scenarios.
             utils::attenuate_uref_in_args(
@@ -1363,9 +1319,9 @@ where
 
         let extended_access_rights = {
             let mut all_urefs = vec![];
-            for arg in context_args.to_values() {
+            for arg in runtime_args.to_values() {
                 let urefs = utils::extract_urefs(arg)?;
-                if !is_caller_system_contract || !is_calling_system_contract {
+                if should_validate_urefs {
                     for uref in &urefs {
                         self.context.validate_uref(uref)?;
                     }
@@ -1375,40 +1331,59 @@ where
             all_urefs
         };
 
-        access_rights.extend(&extended_access_rights);
+        let access_rights = {
+            let package_kind_tag = package.get_package_kind().tag();
+            let mut access_rights = entity.extract_access_rights(package_kind_tag, entity_hash);
+            access_rights.extend(&extended_access_rights);
+            access_rights
+        };
+
+        let stack = {
+            let mut stack = self.try_get_stack()?.clone();
+
+            stack.push(CallStackElement::stored_contract(
+                entity.package_hash(),
+                entity_hash,
+            ))?;
+
+            stack
+        };
 
         if let PackageKind::System(system_contract_type) = package.get_package_kind() {
+            let entry_point_name = entry_point.name();
+
             match system_contract_type {
                 SystemEntityType::Mint => {
                     return self.call_host_mint(
-                        entry_point.name(),
-                        &context_args,
+                        entry_point_name,
+                        &runtime_args,
                         access_rights,
                         stack,
                     );
                 }
                 SystemEntityType::HandlePayment => {
                     return self.call_host_handle_payment(
-                        entry_point.name(),
-                        &context_args,
+                        entry_point_name,
+                        &runtime_args,
                         access_rights,
                         stack,
                     );
                 }
-                SystemEntityType::StandardPayment => {}
                 SystemEntityType::Auction => {
                     return self.call_host_auction(
-                        entry_point.name(),
-                        &context_args,
+                        entry_point_name,
+                        &runtime_args,
                         access_rights,
                         stack,
                     );
                 }
+                // Not callable
+                SystemEntityType::StandardPayment => {}
             }
         }
 
         let module: Module = {
-            let byte_code_addr = contract.byte_code_addr();
+            let byte_code_addr = entity.byte_code_addr();
 
             let byte_code_key = match package.get_package_kind() {
                 PackageKind::System(_) | PackageKind::Account(_) => {
@@ -1421,88 +1396,69 @@ where
 
             let byte_code: ByteCode = match self.context.read_gs(&byte_code_key)? {
                 Some(StoredValue::ByteCode(byte_code)) => byte_code,
-                Some(_) => return Err(Error::InvalidByteCode(contract.byte_code_hash())),
+                Some(_) => return Err(Error::InvalidByteCode(entity.byte_code_hash())),
                 None => return Err(Error::KeyNotFound(byte_code_key)),
             };
 
             parity_wasm::deserialize_buffer(byte_code.bytes())?
         };
 
+        let mut named_keys = entity.take_named_keys();
+
         let context = self.context.new_from_self(
             context_key,
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
-            context_args,
+            runtime_args,
         );
-        let protocol_version = self.context.protocol_version();
+
         let (instance, memory) = utils::instance_and_memory(
             module.clone(),
-            protocol_version,
+            self.context.protocol_version(),
             self.context.engine_config(),
         )?;
         let runtime = &mut Runtime::new_invocation_runtime(self, context, module, memory, stack);
-
         let result = instance.invoke_export(entry_point.name(), &[], runtime);
-
         // The `runtime`'s context was initialized with our counter from before the call and any gas
         // charged by the sub-call was added to its counter - so let's copy the correct value of the
         // counter from there to our counter.
         self.context.set_gas_counter(runtime.context.gas_counter());
+        let transfers = self.context.transfers_mut();
+        *transfers = runtime.context.transfers().to_owned();
 
-        {
-            let transfers = self.context.transfers_mut();
-            *transfers = runtime.context.transfers().to_owned();
-        }
-
-        let error = match result {
-            Err(error) => error,
-            // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but did
-            // not explicitly call `runtime::ret()`.  Treat as though the execution returned the
-            // unit type `()` as per Rust functions which don't specify a return value.
+        return match result {
             Ok(_) => {
-                if self.context.entry_point_type() == EntryPointType::Session
-                    && runtime.context.entry_point_type() == EntryPointType::Session
-                {
-                    // Overwrites parent's named keys with child's new named key but only when
-                    // running session code.
-                    *self.context.named_keys_mut() = runtime.context.named_keys().clone();
-                }
+                // If `Ok` and the `host_buffer` is `None`, the contract's execution succeeded but did
+                // not explicitly call `runtime::ret()`.  Treat as though the execution returned the
+                // unit type `()` as per Rust functions which don't specify a return value.
                 self.context
                     .set_remaining_spending_limit(runtime.context.remaining_spending_limit());
-                return Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?));
+                Ok(runtime.take_host_buffer().unwrap_or(CLValue::from_t(())?))
+            }
+            Err(error) => {
+                if let Some(host_error) = error.as_host_error() {
+                    // If the "error" was in fact a trap caused by calling `ret` then this is normal
+                    // operation and we should return the value captured in the Runtime result field.
+                    let downcasted_error = host_error.downcast_ref::<Error>();
+                    match downcasted_error {
+                        Some(Error::Ret(ref ret_urefs)) => {
+                            // Insert extra urefs returned from call.
+                            // Those returned URef's are guaranteed to be valid as they were already
+                            // validated in the `ret` call inside context we ret from.
+                            self.context.access_rights_extend(ret_urefs);
+
+                            // Stored contracts are expected to always call a `ret` function, otherwise it's
+                            // an error.
+                            return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
+                        }
+                        Some(error) => return Err(error.clone()),
+                        None => return Err(Error::Interpreter(host_error.to_string())),
+                    }
+                }
+                Err(Error::Interpreter(error.into()))
             }
         };
-
-        if let Some(host_error) = error.as_host_error() {
-            // If the "error" was in fact a trap caused by calling `ret` then this is normal
-            // operation and we should return the value captured in the Runtime result field.
-            let downcasted_error = host_error.downcast_ref::<Error>();
-            match downcasted_error {
-                Some(Error::Ret(ref ret_urefs)) => {
-                    // Insert extra urefs returned from call.
-                    // Those returned URef's are guaranteed to be valid as they were already
-                    // validated in the `ret` call inside context we ret from.
-                    self.context.access_rights_extend(ret_urefs);
-
-                    if self.context.entry_point_type() == EntryPointType::Session
-                        && runtime.context.entry_point_type() == EntryPointType::Session
-                    {
-                        // Overwrites parent's named keys with child's new named keys but only when
-                        // running session code.
-                        *self.context.named_keys_mut() = runtime.context.named_keys().clone();
-                    }
-
-                    // Stored contracts are expected to always call a `ret` function, otherwise it's
-                    // an error.
-                    return runtime.take_host_buffer().ok_or(Error::ExpectedReturnValue);
-                }
-                Some(error) => return Err(error.clone()),
-                None => return Err(Error::Interpreter(host_error.to_string())),
-            }
-        }
-
-        Err(Error::Interpreter(error.into()))
     }
 
     fn call_contract_host_buffer(
@@ -1755,7 +1711,10 @@ where
                 return Err(Error::UnexpectedKeyVariant(self.context.get_entity_key()));
             };
 
-        let entity = self.context.entity();
+        let entity = self.context.entity().clone();
+
+        let updated_session_entity =
+            entity.update_session_entity(ByteCodeHash::new(byte_code_hash), entry_points);
 
         self.context.metered_write_gs_unsafe(
             Key::ByteCode((ByteCodeKind::V1CasperWasm, byte_code_hash)),
@@ -1766,7 +1725,7 @@ where
 
         self.context.metered_write_gs_unsafe(
             Key::AddressableEntity((package_kind.tag(), entity_hash.value())),
-            entity.clone(),
+            updated_session_entity,
         )?;
 
         self.context
@@ -3228,10 +3187,10 @@ where
                 // This case can happen during genesis where we're setting up purses for accounts.
                 Ok(account_hash == &PublicKey::System.to_account_hash())
             }
-            CallStackElement::StoredSession { contract_hash, .. }
-            | CallStackElement::StoredContract { contract_hash, .. } => {
-                Ok(self.context.is_system_addressable_entity(contract_hash)?)
-            }
+            CallStackElement::AddressableEntity {
+                entity_hash: contract_hash,
+                ..
+            } => Ok(self.context.is_system_addressable_entity(contract_hash)?),
         }
     }
 

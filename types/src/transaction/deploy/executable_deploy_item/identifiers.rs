@@ -1,15 +1,6 @@
 use alloc::{string::String, vec::Vec};
 use core::fmt::{self, Display, Formatter};
 
-#[cfg(feature = "datasize")]
-use datasize::DataSize;
-use hex_fmt::HexFmt;
-#[cfg(any(feature = "testing", test))]
-use rand::Rng;
-#[cfg(feature = "json-schema")]
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-
 #[cfg(any(feature = "testing", test))]
 use crate::testing::TestRng;
 use crate::{
@@ -18,6 +9,14 @@ use crate::{
 };
 #[cfg(doc)]
 use crate::{DirectCallV1, ExecutableDeployItem};
+#[cfg(feature = "datasize")]
+use datasize::DataSize;
+use hex_fmt::HexFmt;
+#[cfg(any(feature = "testing", test))]
+use rand::Rng;
+#[cfg(feature = "json-schema")]
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 const CONTRACT_PACKAGE_ID_HASH_TAG: u8 = 0;
 const CONTRACT_PACKAGE_ID_NAME_TAG: u8 = 1;

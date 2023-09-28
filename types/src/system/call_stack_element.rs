@@ -16,8 +16,6 @@ use crate::{
 pub enum CallStackElementTag {
     /// Session tag.
     Session = 0,
-    /// StoredSession tag.
-    StoredSession,
     /// StoredContract tag.
     StoredContract,
 }
@@ -30,21 +28,21 @@ pub enum CallStackElement {
         /// The account hash of the caller
         account_hash: AccountHash,
     },
-    /// Effectively an EntryPointType::Session - stored access to a session.
-    StoredSession {
-        /// The account hash of the caller
-        account_hash: AccountHash,
+    // /// Effectively an EntryPointType::Session - stored access to a session.
+    // StoredSession {
+    //     /// The account hash of the caller
+    //     account_hash: AccountHash,
+    //     /// The package hash
+    //     package_hash: PackageHash,
+    //     /// The contract hash
+    //     contract_hash: AddressableEntityHash,
+    // },
+    /// AddressableEntity
+    AddressableEntity {
         /// The package hash
         package_hash: PackageHash,
-        /// The contract hash
-        contract_hash: AddressableEntityHash,
-    },
-    /// Contract
-    StoredContract {
-        /// The package hash
-        package_hash: PackageHash,
-        /// The contract hash
-        contract_hash: AddressableEntityHash,
+        /// The entity hash
+        entity_hash: AddressableEntityHash,
     },
 }
 
@@ -61,32 +59,32 @@ impl CallStackElement {
         package_hash: PackageHash,
         contract_hash: AddressableEntityHash,
     ) -> Self {
-        CallStackElement::StoredContract {
+        CallStackElement::AddressableEntity {
             package_hash,
-            contract_hash,
+            entity_hash: contract_hash,
         }
     }
 
-    /// Creates a [`'CallStackElement::StoredSession`]. This represents a call into a contract with
-    /// `EntryPointType::Session`.
-    pub fn stored_session(
-        account_hash: AccountHash,
-        package_hash: PackageHash,
-        contract_hash: AddressableEntityHash,
-    ) -> Self {
-        CallStackElement::StoredSession {
-            account_hash,
-            package_hash,
-            contract_hash,
-        }
-    }
+    // /// Creates a [`'CallStackElement::StoredSession`]. This represents a call into a contract with
+    // /// `EntryPointType::Session`.
+    // pub fn stored_session(
+    //     account_hash: AccountHash,
+    //     package_hash: PackageHash,
+    //     contract_hash: AddressableEntityHash,
+    // ) -> Self {
+    //     CallStackElement::StoredSession {
+    //         account_hash,
+    //         package_hash,
+    //         contract_hash,
+    //     }
+    // }
 
     /// Gets the tag from self.
     pub fn tag(&self) -> CallStackElementTag {
         match self {
             CallStackElement::Session { .. } => CallStackElementTag::Session,
-            CallStackElement::StoredSession { .. } => CallStackElementTag::StoredSession,
-            CallStackElement::StoredContract { .. } => CallStackElementTag::StoredContract,
+
+            CallStackElement::AddressableEntity { .. } => CallStackElementTag::StoredContract,
         }
     }
 
@@ -94,8 +92,11 @@ impl CallStackElement {
     pub fn contract_hash(&self) -> Option<&AddressableEntityHash> {
         match self {
             CallStackElement::Session { .. } => None,
-            CallStackElement::StoredSession { contract_hash, .. }
-            | CallStackElement::StoredContract { contract_hash, .. } => Some(contract_hash),
+
+            CallStackElement::AddressableEntity {
+                entity_hash: contract_hash,
+                ..
+            } => Some(contract_hash),
         }
     }
 }
@@ -108,18 +109,10 @@ impl ToBytes for CallStackElement {
             CallStackElement::Session { account_hash } => {
                 result.append(&mut account_hash.to_bytes()?)
             }
-            CallStackElement::StoredSession {
-                account_hash,
+
+            CallStackElement::AddressableEntity {
                 package_hash,
-                contract_hash,
-            } => {
-                result.append(&mut account_hash.to_bytes()?);
-                result.append(&mut package_hash.to_bytes()?);
-                result.append(&mut contract_hash.to_bytes()?);
-            }
-            CallStackElement::StoredContract {
-                package_hash,
-                contract_hash,
+                entity_hash: contract_hash,
             } => {
                 result.append(&mut package_hash.to_bytes()?);
                 result.append(&mut contract_hash.to_bytes()?);
@@ -132,18 +125,9 @@ impl ToBytes for CallStackElement {
         U8_SERIALIZED_LENGTH
             + match self {
                 CallStackElement::Session { account_hash } => account_hash.serialized_length(),
-                CallStackElement::StoredSession {
-                    account_hash,
+                CallStackElement::AddressableEntity {
                     package_hash,
-                    contract_hash,
-                } => {
-                    account_hash.serialized_length()
-                        + package_hash.serialized_length()
-                        + contract_hash.serialized_length()
-                }
-                CallStackElement::StoredContract {
-                    package_hash,
-                    contract_hash,
+                    entity_hash: contract_hash,
                 } => package_hash.serialized_length() + contract_hash.serialized_length(),
             }
     }
@@ -158,26 +142,13 @@ impl FromBytes for CallStackElement {
                 let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
                 Ok((CallStackElement::Session { account_hash }, remainder))
             }
-            CallStackElementTag::StoredSession => {
-                let (account_hash, remainder) = AccountHash::from_bytes(remainder)?;
-                let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
-                let (contract_hash, remainder) = AddressableEntityHash::from_bytes(remainder)?;
-                Ok((
-                    CallStackElement::StoredSession {
-                        account_hash,
-                        package_hash,
-                        contract_hash,
-                    },
-                    remainder,
-                ))
-            }
             CallStackElementTag::StoredContract => {
                 let (package_hash, remainder) = PackageHash::from_bytes(remainder)?;
                 let (contract_hash, remainder) = AddressableEntityHash::from_bytes(remainder)?;
                 Ok((
-                    CallStackElement::StoredContract {
+                    CallStackElement::AddressableEntity {
                         package_hash,
-                        contract_hash,
+                        entity_hash: contract_hash,
                     },
                     remainder,
                 ))

@@ -66,7 +66,7 @@ pub enum Error {
     /// Execution exceeded the gas limit.
     #[error("Out of gas error")]
     GasLimit,
-    /// A stored smart contract incorrectly called a ret function.
+    /// A stored smart contract called a ret function.
     #[error("Return")]
     Ret(Vec<URef>),
     /// Error using WASM host function resolver.

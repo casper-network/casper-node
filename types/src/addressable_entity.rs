@@ -963,6 +963,23 @@ impl AddressableEntity {
         let entity_key = Key::AddressableEntity((package_kind_tag, entity_hash.value()));
         ContextAccessRights::new(entity_key, urefs_iter)
     }
+
+    pub fn update_session_entity(
+        self,
+        byte_code_hash: ByteCodeHash,
+        entry_points: EntryPoints,
+    ) -> Self {
+        Self {
+            package_hash: self.package_hash,
+            byte_code_hash,
+            named_keys: self.named_keys,
+            entry_points,
+            protocol_version: self.protocol_version,
+            main_purse: self.main_purse,
+            associated_keys: self.associated_keys,
+            action_thresholds: self.action_thresholds,
+        }
+    }
 }
 
 impl ToBytes for AddressableEntity {
@@ -1104,6 +1121,14 @@ impl EntryPointType {
     /// Get the bit pattern.
     pub fn bits(self) -> u8 {
         self as u8
+    }
+
+    /// Returns true if entry point type is invalid for the context.
+    pub fn is_invalid_context(&self) -> bool {
+        match self {
+            EntryPointType::Session => true,
+            EntryPointType::Contract | EntryPointType::Install => false,
+        }
     }
 }
 

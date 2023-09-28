@@ -511,17 +511,7 @@ extern "C" {
     /// # Arguments
     /// * `entry_points_ptr` - pointer to serialized [`casper_types::EntryPoints`]
     /// * `entry_points_size` - size of serialized [`casper_types::EntryPoints`]
-    /// * `output_ptr` - pointer to a memory where host assigned contract hash is set to
-    /// * `output_size` - size of memory area that host can write to
-    /// * `bytes_written_ptr` - pointer to a value where host will set a number of bytes written to
-    ///   the `output_size` pointer
-    pub fn casper_add_session_logic(
-        entry_points_ptr: *const u8,
-        entry_points_size: usize,
-        output_ptr: *mut u8,
-        output_size: usize,
-        bytes_written_ptr: *mut usize,
-    ) -> i32;
+    pub fn casper_add_session_logic(entry_points_ptr: *const u8, entry_points_size: usize) -> i32;
     /// Adds a new version to a package.
     ///
     /// # Arguments
@@ -545,7 +535,6 @@ extern "C" {
         named_keys_size: usize,
         output_ptr: *mut u8,
         output_size: usize,
-        // bytes_written_ptr: *mut usize,
     ) -> i32;
     /// Disables contract in a contract package. Returns non-zero standard error for a failure,
     /// otherwise a zero indicates success.
