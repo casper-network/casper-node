@@ -490,18 +490,18 @@ steps:
     AWS_SECRET_ACCESS_KEY:
       from_secret: put-drone-aws-sk
   commands:
-  - bash -c ./ci/nightly-test.sh
+  - timeout 4.5h bash -c ./ci/nightly-test.sh
 
 - name: notify
   image: plugins/slack
   settings:
     webhook:
       from_secret: slack_webhook_nightly
-    template:
-    - |
-      Nightly Test Run Status: *{{ uppercasefirst build.status }}*
+    template: >
+      {{#success build.status}} ✔  Nightly Test Run Status:  {{ else }} :x: Nightly Test Run Status: Timeout - {{/success}} {{ uppercasefirst build.status }}
       Author: {{ build.author }}
       Drone Build: <{{ build.link }}|#{{ build.number }}>
+      Branch: <https://github.com/{{ repo.owner }}/{{ repo.name }}/commits/{{ build.branch }}|{{ build.branch }}>
       Commit Link: <https://github.com/{{repo.owner}}/{{repo.name}}/commit/{{build.commit}}|{{ truncate build.commit 10 }}>
   when:
     status:
