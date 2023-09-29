@@ -94,6 +94,7 @@ const KEY_CHAINSPEC_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
 const KEY_CHECKSUM_REGISTRY_SERIALIZED_LENGTH: usize =
     KEY_ID_SERIALIZED_LENGTH + PADDING_BYTES.len();
+const KEY_CONTEXT_SERIALIZED_LENGTH: usize = KEY_ID_SERIALIZED_LENGTH + KEY_HASH_LENGTH * 2;
 
 const MAX_SERIALIZED_LENGTH: usize = KEY_DELEGATOR_BID_SERIALIZED_LENGTH;
 
@@ -123,6 +124,7 @@ pub enum KeyTag {
     ChainspecRegistry = 13,
     ChecksumRegistry = 14,
     BidAddr = 15,
+    Context = 16,
 }
 
 impl Display for KeyTag {
@@ -144,7 +146,55 @@ impl Display for KeyTag {
             KeyTag::ChainspecRegistry => write!(f, "ChainspecRegistry"),
             KeyTag::ChecksumRegistry => write!(f, "ChecksumRegistry"),
             KeyTag::BidAddr => write!(f, "BidAddr"),
+            KeyTag::Context => write!(f, "Context"),
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+pub struct Context {
+    owner: ContractHash,
+    key_hash: [u8; 32],
+}
+
+impl Context {
+    pub fn new(owner: ContractHash, key_hash: [u8; 32]) -> Self {
+        Context { owner, key_hash }
+    }
+
+    pub fn owner(&self) -> ContractHash {
+        self.owner
+    }
+
+    pub fn key_hash(&self) -> [u8; 32] {
+        self.key_hash
+    }
+}
+
+impl ToBytes for Context {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        self.owner.write_bytes(writer)?;
+        self.key_hash.write_bytes(writer)?;
+        Ok(())
+    }
+
+    fn serialized_length(&self) -> usize {
+        KEY_CONTEXT_SERIALIZED_LENGTH
+    }
+}
+
+impl FromBytes for Context {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        let (owner, bytes) = FromBytes::from_bytes(bytes)?;
+        let (key_hash, bytes) = FromBytes::from_bytes(bytes)?;
+        Ok((Context { owner, key_hash }, bytes))
     }
 }
 
@@ -187,6 +237,8 @@ pub enum Key {
     ChecksumRegistry,
     /// A `Key` under which we store bid information
     BidAddr(BidAddr),
+    /// A `Key` under which we store context about the owner and an udnerlying key hash.
+    Context(Context),
 }
 
 #[cfg(feature = "json-schema")]
@@ -328,6 +380,7 @@ impl Key {
             Key::ChainspecRegistry => String::from("Key::ChainspecRegistry"),
             Key::ChecksumRegistry => String::from("Key::ChecksumRegistry"),
             Key::BidAddr(_) => String::from("Key::BidAddr"),
+            Key::Context(_) => String::from("Key::Context"),
         }
     }
 
@@ -413,6 +466,13 @@ impl Key {
             }
             Key::BidAddr(bid_addr) => {
                 format!("{}{}", BID_ADDR_PREFIX, bid_addr)
+            }
+            Key::Context(context) => {
+                format!(
+                    "{}{}",
+                    base16::encode_lower(&context.owner),
+                    base16::encode_lower(&context.key_hash)
+                )
             }
         }
     }
@@ -758,6 +818,12 @@ impl Display for Key {
                 )
             }
             Key::BidAddr(bid_addr) => write!(f, "Key::BidAddr({})", bid_addr),
+            Key::Context(context) => write!(
+                f,
+                "Key::Context({}{})",
+                base16::encode_lower(&context.owner),
+                base16::encode_lower(&context.key_hash)
+            ),
         }
     }
 }
@@ -787,6 +853,7 @@ impl Tagged<KeyTag> for Key {
             Key::ChainspecRegistry => KeyTag::ChainspecRegistry,
             Key::ChecksumRegistry => KeyTag::ChecksumRegistry,
             Key::BidAddr(_) => KeyTag::BidAddr,
+            Key::Context(_) => KeyTag::Context,
         }
     }
 }
@@ -866,6 +933,7 @@ impl ToBytes for Key {
                     KEY_ID_SERIALIZED_LENGTH + bid_addr.serialized_length()
                 }
             },
+            Key::Context(_) => KEY_CONTEXT_SERIALIZED_LENGTH,
         }
     }
 
@@ -895,6 +963,7 @@ impl ToBytes for Key {
                 }
                 BidAddrTag::Validator | BidAddrTag::Delegator => bid_addr.write_bytes(writer),
             },
+            Key::Context(context) => context.write_bytes(writer),
         }
     }
 }
@@ -993,6 +1062,7 @@ fn please_add_to_distribution_impl(key: Key) {
         Key::ChainspecRegistry => unimplemented!(),
         Key::ChecksumRegistry => unimplemented!(),
         Key::BidAddr(_) => unimplemented!(),
+        Key::Context(_) => unimplemented!(),
     }
 }
 
@@ -1043,6 +1113,7 @@ mod serde_helpers {
         ChainspecRegistry,
         ChecksumRegistry,
         BidAddr(&'a BidAddr),
+        Context(&'a Context),
     }
 
     #[derive(Deserialize)]
@@ -1085,6 +1156,7 @@ mod serde_helpers {
                 Key::ChainspecRegistry => BinarySerHelper::ChainspecRegistry,
                 Key::ChecksumRegistry => BinarySerHelper::ChecksumRegistry,
                 Key::BidAddr(bid_addr) => BinarySerHelper::BidAddr(bid_addr),
+                Key::Context(context) => BinarySerHelper::Context(context),
             }
         }
     }

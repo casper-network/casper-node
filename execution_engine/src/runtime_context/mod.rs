@@ -711,6 +711,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_) => true,
+            Key::Context(context) => self.entity_address == context.owner(),
         }
     }
 
@@ -733,6 +734,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_) => false,
+            Key::Context(context) => self.entity_address == context.owner(),
         }
     }
 
@@ -755,6 +757,7 @@ where
             | Key::ChainspecRegistry
             | Key::ChecksumRegistry
             | Key::BidAddr(_) => false,
+            Key::Context(context) => self.entity_address == context.owner(),
         }
     }
 
