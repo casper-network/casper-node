@@ -1720,7 +1720,7 @@ where
                 // Todo potentially could be moved to Executor::Exec
                 executor.exec_standard_payment(
                     payment_args,
-                    entity_hash.into(),
+                    entity_hash,
                     &entity,
                     package_kind.clone(),
                     &mut payment_named_keys,

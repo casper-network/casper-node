@@ -79,7 +79,7 @@ impl Executor {
         let context = self.create_runtime_context(
             named_keys,
             entity,
-            Key::from(contract_hash),
+            contract_hash,
             authorization_keys,
             access_rights,
             package_kind,
@@ -141,7 +141,7 @@ impl Executor {
     pub(crate) fn exec_standard_payment<R>(
         &self,
         payment_args: RuntimeArgs,
-        payment_base_key: Key,
+        payment_base_key: ContractHash,
         entity: &AddressableEntity,
         package_kind: ContractPackageKind,
         payment_named_keys: &mut NamedKeys,
@@ -289,12 +289,11 @@ impl Executor {
 
         let mut named_keys = contract.named_keys().clone();
         let access_rights = contract.extract_access_rights(contract_hash);
-        let entity_address = Key::from(contract_hash);
 
         let runtime_context = self.create_runtime_context(
             &mut named_keys,
             entity,
-            entity_address,
+            contract_hash,
             authorization_keys,
             access_rights,
             package_kind,
@@ -353,7 +352,7 @@ impl Executor {
         &self,
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: Key,
+        entity_address: ContractHash,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: ContractPackageKind,

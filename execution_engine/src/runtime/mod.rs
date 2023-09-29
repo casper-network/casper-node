@@ -474,12 +474,8 @@ where
     }
 
     /// Checks if a [`Key`] is a system contract.
-    fn is_system_contract(&self, key: Key) -> Result<bool, Error> {
-        let contract_hash = match key.into_hash() {
-            Some(contract_hash_bytes) => ContractHash::new(contract_hash_bytes),
-            None => return Ok(false),
-        };
-
+    #[inline]
+    fn is_system_contract(&self, contract_hash: ContractHash) -> Result<bool, Error> {
         self.context.is_system_contract(&contract_hash)
     }
 
@@ -529,12 +525,11 @@ where
         let gas_counter = self.gas_counter();
 
         let mint_hash = self.context.get_system_contract(MINT)?;
-        let base_key = Key::from(mint_hash);
         let mint_contract = self.context.state().borrow_mut().get_contract(mint_hash)?;
         let mut named_keys = mint_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            base_key,
+            mint_hash,
             EntryPointType::Contract,
             &mut named_keys,
             access_rights,
@@ -656,7 +651,6 @@ where
         let gas_counter = self.gas_counter();
 
         let handle_payment_hash = self.context.get_system_contract(HANDLE_PAYMENT)?;
-        let base_key = Key::from(handle_payment_hash);
         let handle_payment_contract = self
             .context
             .state()
@@ -665,7 +659,7 @@ where
         let mut named_keys = handle_payment_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            base_key,
+            handle_payment_hash,
             EntryPointType::Contract,
             &mut named_keys,
             access_rights,
@@ -766,7 +760,6 @@ where
         let gas_counter = self.gas_counter();
 
         let auction_hash = self.context.get_system_contract(AUCTION)?;
-        let entity_address = Key::from(auction_hash);
         let auction_contract = self
             .context
             .state()
@@ -775,7 +768,7 @@ where
         let mut named_keys = auction_contract.named_keys().to_owned();
 
         let runtime_context = self.context.new_from_self(
-            entity_address,
+            auction_hash,
             EntryPointType::Contract,
             &mut named_keys,
             access_rights,
@@ -1077,7 +1070,7 @@ where
         &self,
         contract_hash: ContractHash,
         entry_point: &EntryPoint,
-    ) -> Result<Key, Error> {
+    ) -> Result<ContractHash, Error> {
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
@@ -1094,10 +1087,10 @@ where
                 Ok(self.context.get_entity_address())
             }
             (EntryPointType::Session, EntryPointType::Contract)
-            | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash.into()),
+            | (EntryPointType::Contract, EntryPointType::Contract) => Ok(contract_hash),
             _ => {
                 // Any other combination (installer, normal, etc.) is a contract context.
-                Ok(contract_hash.into())
+                Ok(contract_hash)
             }
         }
     }
@@ -1126,14 +1119,14 @@ where
     ) -> Result<CLValue, Error> {
         let (contract, contract_hash, contract_package) = match identifier {
             CallContractIdentifier::Contract { contract_hash } => {
-                let contract_key = contract_hash.into();
-                let contract: AddressableEntity = self.context.read_gs_typed(&contract_key)?;
+                let contract: AddressableEntity =
+                    self.context.read_gs_typed(&Key::from(contract_hash))?;
                 let contract_package_key = Key::from(contract.contract_package_hash());
                 let contract_package: Package =
                     self.context.read_gs_typed(&contract_package_key)?;
 
                 // System contract hashes are disabled at upgrade point
-                let is_calling_system_contract = self.is_system_contract(contract_key)?;
+                let is_calling_system_contract = self.is_system_contract(contract_hash)?;
 
                 // Check if provided contract hash is disabled
                 let is_contract_enabled = contract_package.is_contract_enabled(&contract_hash);
@@ -1237,7 +1230,8 @@ where
 
         // if session the caller's context
         // else the called contract's context
-        let context_key = self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
+        let context_contract_hash =
+            self.get_context_key_for_contract_call(contract_hash, &entry_point)?;
         let protocol_version = self.context.protocol_version();
 
         // Check for major version compatibility before calling
@@ -1293,7 +1287,7 @@ where
         let is_caller_system_contract =
             self.is_system_contract(self.context.access_rights().context_key())?;
         // Checks if the contract we're about to call is a system contract.
-        let is_calling_system_contract = self.is_system_contract(context_key)?;
+        let is_calling_system_contract = self.is_system_contract(context_contract_hash)?;
         // uref attenuation is necessary in the following circumstances:
         //   the originating account (aka the caller) is not the system account and
         //   the immediate caller is either a normal account or a normal contract and
@@ -1367,14 +1361,14 @@ where
             let contract_wasm: ContractWasm = match self.context.read_gs(&wasm_key)? {
                 Some(StoredValue::ContractWasm(contract_wasm)) => contract_wasm,
                 Some(_) => return Err(Error::InvalidContractWasm(contract.contract_wasm_hash())),
-                None => return Err(Error::KeyNotFound(context_key)),
+                None => return Err(Error::KeyNotFound(Key::from(context_contract_hash))),
             };
 
             parity_wasm::deserialize_buffer(contract_wasm.bytes())?
         };
 
         let context = self.context.new_from_self(
-            context_key,
+            context_contract_hash,
             entry_point.entry_point_type(),
             &mut named_keys,
             access_rights,
@@ -1889,7 +1883,7 @@ where
         amount: U512,
         id: Option<u64>,
     ) -> Result<(), Error> {
-        if self.context.get_entity_address() != Key::from(self.context.get_system_contract(MINT)?) {
+        if self.context.get_entity_address() != self.context.get_system_contract(MINT)? {
             return Err(Error::InvalidContext);
         }
 
@@ -1919,9 +1913,7 @@ where
             return Err(Error::InvalidContext);
         }
 
-        if self.context.get_entity_address()
-            != Key::from(self.context.get_system_contract(AUCTION)?)
-        {
+        if self.context.get_entity_address() != self.context.get_system_contract(AUCTION)? {
             return Err(Error::InvalidContext);
         }
 

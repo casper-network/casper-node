@@ -13,7 +13,7 @@ use rand::{
 };
 use serde::{de::Error as SerdeError, Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::{bytesrepr, Key, URef, URefAddr};
+use crate::{bytesrepr, ContractHash, URef, URefAddr};
 
 /// The number of bytes in a serialized [`AccessRights`].
 pub const ACCESS_RIGHTS_SERIALIZED_LENGTH: usize = 1;
@@ -157,16 +157,19 @@ pub enum GrantedAccess {
 /// Access rights for a given runtime context.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ContextAccessRights {
-    context_key: Key,
+    context_contract_hash: ContractHash,
     access_rights: BTreeMap<URefAddr, AccessRights>,
 }
 
 impl ContextAccessRights {
     /// Creates a new instance of access rights from an iterator of URefs merging any duplicates,
     /// taking the union of their rights.
-    pub fn new<T: IntoIterator<Item = URef>>(context_key: Key, uref_iter: T) -> Self {
+    pub fn new<T: IntoIterator<Item = URef>>(
+        context_contract_hash: ContractHash,
+        uref_iter: T,
+    ) -> Self {
         let mut context_access_rights = ContextAccessRights {
-            context_key,
+            context_contract_hash,
             access_rights: BTreeMap::new(),
         };
         context_access_rights.do_extend(uref_iter);
@@ -174,8 +177,8 @@ impl ContextAccessRights {
     }
 
     /// Returns the current context key.
-    pub fn context_key(&self) -> Key {
-        self.context_key
+    pub fn context_key(&self) -> ContractHash {
+        self.context_contract_hash
     }
 
     /// Extends the current access rights from a given set of URefs.
@@ -247,8 +250,8 @@ mod tests {
     use super::*;
     use crate::UREF_ADDR_LENGTH;
 
+    const CONTRACT_HASH: ContractHash = ContractHash::new([1u8; 32]);
     const UREF_ADDRESS: [u8; UREF_ADDR_LENGTH] = [1; UREF_ADDR_LENGTH];
-    const KEY: Key = Key::URef(URef::new(UREF_ADDRESS, AccessRights::empty()));
     const UREF_NO_PERMISSIONS: URef = URef::new(UREF_ADDRESS, AccessRights::empty());
     const UREF_READ: URef = URef::new(UREF_ADDRESS, AccessRights::READ);
     const UREF_ADD: URef = URef::new(UREF_ADDRESS, AccessRights::ADD);
@@ -303,7 +306,7 @@ mod tests {
 
     #[test]
     fn should_check_has_access_rights_to_uref() {
-        let context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let context_rights = ContextAccessRights::new(CONTRACT_HASH, vec![UREF_READ_ADD]);
         assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD));
         assert!(context_rights.has_access_rights_to_uref(&UREF_READ));
         assert!(context_rights.has_access_rights_to_uref(&UREF_ADD));
@@ -312,7 +315,7 @@ mod tests {
 
     #[test]
     fn should_check_does_not_have_access_rights_to_uref() {
-        let context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let context_rights = ContextAccessRights::new(CONTRACT_HASH, vec![UREF_READ_ADD]);
         assert!(!context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
         assert!(!context_rights
             .has_access_rights_to_uref(&URef::new([2; UREF_ADDR_LENGTH], AccessRights::empty())));
@@ -321,7 +324,7 @@ mod tests {
     #[test]
     fn should_extend_access_rights() {
         // Start with uref with no permissions.
-        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_NO_PERMISSIONS]);
+        let mut context_rights = ContextAccessRights::new(CONTRACT_HASH, vec![UREF_NO_PERMISSIONS]);
         let mut expected_rights = BTreeMap::new();
         expected_rights.insert(UREF_ADDRESS, AccessRights::empty());
         assert_eq!(context_rights.access_rights, expected_rights);
@@ -343,8 +346,10 @@ mod tests {
 
     #[test]
     fn should_perform_union_of_access_rights_in_new() {
-        let context_rights =
-            ContextAccessRights::new(KEY, vec![UREF_NO_PERMISSIONS, UREF_READ, UREF_ADD]);
+        let context_rights = ContextAccessRights::new(
+            CONTRACT_HASH,
+            vec![UREF_NO_PERMISSIONS, UREF_READ, UREF_ADD],
+        );
 
         // Expect the three discrete URefs' rights to be unioned into READ_ADD.
         let mut expected_rights = BTreeMap::new();
@@ -354,7 +359,7 @@ mod tests {
 
     #[test]
     fn should_grant_access_rights() {
-        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD]);
+        let mut context_rights = ContextAccessRights::new(CONTRACT_HASH, vec![UREF_READ_ADD]);
         let granted_access = context_rights.grant_access(UREF_READ);
         assert_eq!(granted_access, GrantedAccess::PreExisting);
         let granted_access = context_rights.grant_access(UREF_READ_ADD_WRITE);
@@ -380,7 +385,7 @@ mod tests {
 
     #[test]
     fn should_remove_access_rights() {
-        let mut context_rights = ContextAccessRights::new(KEY, vec![UREF_READ_ADD_WRITE]);
+        let mut context_rights = ContextAccessRights::new(CONTRACT_HASH, vec![UREF_READ_ADD_WRITE]);
         assert!(context_rights.has_access_rights_to_uref(&UREF_READ_ADD_WRITE));
 
         // Strip write access from the context rights.

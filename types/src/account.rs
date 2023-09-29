@@ -10,7 +10,6 @@ mod weight;
 use serde::{Deserialize, Serialize};
 
 use alloc::{collections::BTreeSet, vec::Vec};
-use core::iter;
 
 #[cfg(feature = "datasize")]
 use datasize::DataSize;
@@ -33,7 +32,7 @@ use crate::{
         AddKeyFailure, NamedKeys, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
     },
     bytesrepr::{self, FromBytes, ToBytes},
-    crypto, AccessRights, ContextAccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
+    crypto, AccessRights, Key, URef, BLAKE2B_DIGEST_LENGTH,
 };
 #[cfg(feature = "json-schema")]
 use crate::{PublicKey, SecretKey};
@@ -107,16 +106,6 @@ impl Account {
             associated_keys,
             action_thresholds,
         )
-    }
-
-    /// Extracts the access rights from the named keys and main purse of the account.
-    pub fn extract_access_rights(&self) -> ContextAccessRights {
-        let urefs_iter = self
-            .named_keys
-            .keys()
-            .filter_map(|key| key.as_uref().copied())
-            .chain(iter::once(self.main_purse));
-        ContextAccessRights::new(Key::from(self.account_hash), urefs_iter)
     }
 
     /// Appends named keys to an account's named_keys field.
@@ -848,31 +837,6 @@ hash",
         account
             .update_associated_key(key_1, Weight::new(1))
             .expect("should work");
-    }
-
-    #[test]
-    fn should_extract_access_rights() {
-        const MAIN_PURSE: URef = URef::new([2; 32], AccessRights::READ_ADD_WRITE);
-        const OTHER_UREF: URef = URef::new([3; 32], AccessRights::READ);
-
-        let account_hash = AccountHash::new([1u8; 32]);
-        let mut named_keys = NamedKeys::new();
-        named_keys.insert("a".to_string(), Key::URef(OTHER_UREF));
-        let associated_keys = AssociatedKeys::new(account_hash, Weight::new(1));
-        let account = Account::new(
-            account_hash,
-            named_keys,
-            MAIN_PURSE,
-            associated_keys,
-            ActionThresholds::new(Weight::new(1), Weight::new(1))
-                .expect("should create thresholds"),
-        );
-
-        let actual_access_rights = account.extract_access_rights();
-
-        let expected_access_rights =
-            ContextAccessRights::new(Key::from(account_hash), vec![MAIN_PURSE, OTHER_UREF]);
-        assert_eq!(actual_access_rights, expected_access_rights)
     }
 }
 

@@ -913,7 +913,7 @@ impl AddressableEntity {
             .keys()
             .filter_map(|key| key.as_uref().copied())
             .chain(iter::once(self.main_purse));
-        ContextAccessRights::new(contract_hash.into(), urefs_iter)
+        ContextAccessRights::new(contract_hash, urefs_iter)
     }
 }
 
