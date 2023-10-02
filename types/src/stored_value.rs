@@ -697,6 +697,8 @@ mod serde_helpers {
         AddressableEntity(AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(BidKind),
+        /// Variant that stores a [`Context`] and a [`Lifetime`] of the [`crate::URef`].
+        URef(Context, Lifetime),
     }
 
     impl<'a> From<&'a StoredValue> for BinarySerHelper<'a> {
@@ -742,6 +744,7 @@ mod serde_helpers {
                     StoredValue::AddressableEntity(payload)
                 }
                 BinaryDeserHelper::BidKind(payload) => StoredValue::BidKind(payload),
+                BinaryDeserHelper::URef(context, lifetime) => StoredValue::URef(context, lifetime),
             }
         }
     }
