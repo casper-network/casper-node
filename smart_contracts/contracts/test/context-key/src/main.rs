@@ -7,7 +7,7 @@ use casper_contract::{
     contract_api::{runtime, storage},
     unwrap_or_revert::UnwrapOrRevert,
 };
-use casper_types::{ContractHash, Digest, Key, KEY_HASH_LENGTH};
+use casper_types::{ContractHash, Digest, Key};
 
 fn get_entity_hash() -> ContractHash {
     storage::read_from_key::<Key>(Key::from(runtime::get_caller()))
