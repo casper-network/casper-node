@@ -162,6 +162,11 @@ impl TransformKind {
                     let found = "Unbonding".to_string();
                     Err(StoredValueTypeMismatch::new(expected, found).into())
                 }
+                StoredValue::URef(_, _) => {
+                    let expected = "Contract or Account".to_string();
+                    let found = "URef".to_string();
+                    Err(StoredValueTypeMismatch::new(expected, found).into())
+                }
             },
             TransformKind::Failure(error) => Err(error),
         }

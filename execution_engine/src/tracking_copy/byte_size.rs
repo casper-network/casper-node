@@ -40,6 +40,9 @@ impl ByteSize for StoredValue {
                 StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
                 StoredValue::Withdraw(withdraw_purses) => withdraw_purses.serialized_length(),
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
+                StoredValue::URef(context, lifetime) => {
+                    context.serialized_length() + lifetime.serialized_length()
+                }
             }
     }
 }

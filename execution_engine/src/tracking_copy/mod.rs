@@ -563,6 +563,9 @@ impl<R: StateReader<Key, StoredValue>> TrackingCopy<R> {
                 StoredValue::Unbonding(_) => {
                     return Ok(query.into_not_found_result("UnbondingPurses value found."));
                 }
+                StoredValue::URef(_, _) => {
+                    return Ok(query.into_not_found_result("URef value found."));
+                }
             }
         }
     }

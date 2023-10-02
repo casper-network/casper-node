@@ -4,12 +4,13 @@ use alloc::{collections::BTreeSet, string::String, vec, vec::Vec};
 use core::{convert::From, mem::MaybeUninit};
 
 use casper_types::{
+    account::ACCOUNT_HASH_LENGTH,
     addressable_entity::{EntryPoints, NamedKeys},
     api_error,
     bytesrepr::{self, FromBytes, ToBytes},
     package::ContractVersion,
-    AccessRights, ApiError, CLTyped, CLValue, ContractHash, ContractPackageHash, HashAddr, Key,
-    URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, UREF_SERIALIZED_LENGTH,
+    AccessRights, ApiError, CLTyped, CLValue, Context, ContractHash, ContractPackageHash, Digest,
+    HashAddr, Key, URef, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, UREF_SERIALIZED_LENGTH,
 };
 
 use crate::{
@@ -51,7 +52,11 @@ pub fn read_or_revert<T: CLTyped + FromBytes>(uref: URef) -> T {
 
 /// Writes `value` under `uref` in the global state.
 pub fn write<T: CLTyped + ToBytes>(uref: URef, value: T) {
-    let key = Key::from(uref);
+    write_to_key(Key::from(uref), value)
+}
+
+/// Writes `value` under `key` in the global state.
+pub fn write_to_key<T: CLTyped + ToBytes>(key: Key, value: T) {
     let (key_ptr, key_size, _bytes1) = contract_api::to_ptr(key);
 
     let cl_value = CLValue::from_t(value).unwrap_or_revert();
@@ -504,4 +509,23 @@ pub fn named_dictionary_put<V: CLTyped + ToBytes>(
     value: V,
 ) {
     dictionary_put(get_named_uref(dictionary_name), dictionary_item_key, value)
+}
+
+/// Creates a new context key with the given key-value pair.
+pub fn new_context_key<T: CLTyped + ToBytes>(key: &[u8], init: T) -> Context {
+    let mut owner = [0u8; ACCOUNT_HASH_LENGTH];
+    let mut key_hash = [0u8; KEY_HASH_LENGTH];
+    let cl_value = CLValue::from_t(init).unwrap_or_revert();
+    let (cl_value_ptr, cl_value_size, _cl_value_bytes) = contract_api::to_ptr(cl_value);
+    unsafe {
+        ext_ffi::casper_new_context_key(
+            key.as_ptr(),
+            key.len(),
+            cl_value_ptr,
+            cl_value_size,
+            owner.as_mut_ptr(),
+            key_hash.as_mut_ptr(),
+        );
+    };
+    Context::new(ContractHash::new(owner), Digest::from(key_hash))
 }

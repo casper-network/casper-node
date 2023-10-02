@@ -22,9 +22,9 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
-    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, CLType, CLValue, Context, ContractHash, ContractWasm, Digest,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
+    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -35,6 +35,7 @@ use crate::{
     contracts::Contract,
     deploy_info::gens::{deploy_hash_arb, transfer_addr_arb},
     package::ContractPackageKind,
+    stored_value::Lifetime,
     system::auction::{Bid, BidAddr, BidKind, ValidatorBid},
 };
 pub use crate::{deploy_info::gens::deploy_info_arb, transfer::gens::transfer_arb};
@@ -115,6 +116,10 @@ pub fn colliding_key_arb() -> impl Strategy<Value = Key> {
         u2_slice_32().prop_map(|bytes| Key::Transfer(TransferAddr::new(bytes))),
         u2_slice_32().prop_map(Key::Dictionary),
     ]
+}
+
+pub fn contract_hash_arb() -> impl Strategy<Value = ContractHash> {
+    u8_slice_32().prop_map(ContractHash::new)
 }
 
 pub fn account_hash_arb() -> impl Strategy<Value = AccountHash> {
@@ -620,6 +625,18 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
     collection::vec(unbonding_arb(), size)
 }
 
+fn context_arb() -> impl Strategy<Value = Context> {
+    (contract_hash_arb(), u8_slice_32())
+        .prop_map(|(contract_hash, key_hash)| Context::new(contract_hash, Digest::from(key_hash)))
+}
+
+fn lifetime_arb() -> impl Strategy<Value = Lifetime> {
+    prop_oneof![
+        era_id_arb().prop_map(Lifetime::Finite),
+        Just(Lifetime::Indefinite),
+    ]
+}
+
 pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
     prop_oneof![
         cl_value_arb().prop_map(StoredValue::CLValue),
@@ -635,7 +652,9 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
         validator_bid_arb().prop_map(StoredValue::BidKind),
         delegator_bid_arb().prop_map(StoredValue::BidKind),
         withdraws_arb(1..50).prop_map(StoredValue::Withdraw),
-        unbondings_arb(1..50).prop_map(StoredValue::Unbonding)
+        unbondings_arb(1..50).prop_map(StoredValue::Unbonding),
+        (context_arb(), lifetime_arb())
+            .prop_map(|(context, lifetime)| StoredValue::URef(context, lifetime))
     ]
     .prop_map(|stored_value|
         // The following match statement is here only to make sure
@@ -654,5 +673,6 @@ pub fn stored_value_arb() -> impl Strategy<Value = StoredValue> {
             StoredValue::Unbonding(_) => stored_value,
             StoredValue::AddressableEntity(_) => stored_value,
             StoredValue::BidKind(_) => stored_value,
+            StoredValue::URef(_,_) => stored_value,
         })
 }

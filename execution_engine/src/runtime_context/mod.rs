@@ -632,6 +632,7 @@ where
             StoredValue::BidKind(_) => Ok(()),
             StoredValue::Withdraw(_) => Ok(()),
             StoredValue::Unbonding(_) => Ok(()),
+            StoredValue::URef(_, _) => Ok(()),
         }
     }
 

@@ -1106,6 +1106,33 @@ where
 
                 Ok(Some(RuntimeValue::I32(api_error::i32_from(result))))
             }
+            FunctionIndex::NewContextKey => {
+                // args(0) = pointer to the key value
+                // args(1) = size of the key value
+                // args(2) = pointer to data to be associated with the key
+                // args(3) = size of data to be associated with the key
+                // args(4) = out pointer to have the owner contract hash written to
+                // args(5) = out pointer to have the key hash written to
+                let (key_ptr, key_size, value_ptr, value_size, owner_out_ptr, key_hash_out_ptr): (
+                    _,
+                    u32,
+                    _,
+                    _,
+                    _,
+                    _,
+                ) = Args::parse(args)?;
+
+                // TODO: add a charge
+                self.new_context_key(
+                    key_ptr,
+                    key_size as usize,
+                    value_ptr,
+                    value_size,
+                    owner_out_ptr,
+                    key_hash_out_ptr,
+                )?;
+                Ok(None)
+            }
         }
     }
 }

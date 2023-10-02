@@ -1,0 +1,16 @@
+[package]
+name = "context-key"
+version = "0.1.0"
+authors = ["Jacek Malec <jacek@casperlabs.io>", "Michał Papierski <michal@casperlabs.io>"]
+edition = "2018"
+
+[[bin]]
+name = "context_key"
+path = "src/main.rs"
+bench = false
+doctest = false
+test = false
+
+[dependencies]
+casper-contract = { path = "../../../contract" }
+casper-types = { path = "../../../../types" }

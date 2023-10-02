@@ -20,7 +20,7 @@ use crate::{
     contracts::Contract,
     package::Package,
     system::auction::{Bid, BidKind, EraInfo, UnbondingPurse, WithdrawPurse},
-    AddressableEntity, CLValue, ContractWasm, DeployInfo, Transfer,
+    AddressableEntity, CLValue, Context, ContractWasm, DeployInfo, EraId, Transfer,
 };
 pub use type_mismatch::TypeMismatch;
 
@@ -40,6 +40,7 @@ enum Tag {
     Unbonding = 10,
     AddressableEntity = 11,
     BidKind = 12,
+    URef = 13,
 }
 
 /// A value stored in Global State.
@@ -78,6 +79,8 @@ pub enum StoredValue {
     AddressableEntity(AddressableEntity),
     /// Variant that stores [`BidKind`].
     BidKind(BidKind),
+    /// Variant that stores a [`Context`] and a [`Lifetime`] of the [`crate::URef`].
+    URef(Context, Lifetime),
 }
 
 impl StoredValue {
@@ -309,6 +312,7 @@ impl StoredValue {
             StoredValue::Unbonding(_) => "Unbonding".to_string(),
             StoredValue::AddressableEntity(_) => "AddressableEntity".to_string(),
             StoredValue::BidKind(_) => "BidKind".to_string(),
+            StoredValue::URef(_, _) => "URef".to_string(),
         }
     }
 
@@ -327,6 +331,7 @@ impl StoredValue {
             StoredValue::Unbonding(_) => Tag::Unbonding,
             StoredValue::AddressableEntity(_) => Tag::AddressableEntity,
             StoredValue::BidKind(_) => Tag::BidKind,
+            StoredValue::URef(_, _) => Tag::URef,
         }
     }
 }
@@ -544,6 +549,9 @@ impl ToBytes for StoredValue {
                 StoredValue::Unbonding(unbonding_purses) => unbonding_purses.serialized_length(),
                 StoredValue::AddressableEntity(entity) => entity.serialized_length(),
                 StoredValue::BidKind(bid_kind) => bid_kind.serialized_length(),
+                StoredValue::URef(context, lifetime) => {
+                    context.serialized_length() + lifetime.serialized_length()
+                }
             }
     }
 
@@ -565,6 +573,10 @@ impl ToBytes for StoredValue {
             StoredValue::Unbonding(unbonding_purses) => unbonding_purses.write_bytes(writer)?,
             StoredValue::AddressableEntity(entity) => entity.write_bytes(writer)?,
             StoredValue::BidKind(bid_kind) => bid_kind.write_bytes(writer)?,
+            StoredValue::URef(context, lifetime) => {
+                context.write_bytes(writer)?;
+                lifetime.write_bytes(writer)?;
+            }
         };
         Ok(())
     }
@@ -612,6 +624,11 @@ impl FromBytes for StoredValue {
             }
             tag if tag == Tag::AddressableEntity as u8 => AddressableEntity::from_bytes(remainder)
                 .map(|(entity, remainder)| (StoredValue::AddressableEntity(entity), remainder)),
+            tag if tag == Tag::URef as u8 => {
+                let (context, remainder) = Context::from_bytes(remainder)?;
+                let (lifetime, remainder) = Lifetime::from_bytes(remainder)?;
+                Ok((StoredValue::URef(context, lifetime), remainder))
+            }
             _ => Err(Error::Formatting),
         }
     }
@@ -648,6 +665,8 @@ mod serde_helpers {
         AddressableEntity(&'a AddressableEntity),
         /// Variant that stores [`BidKind`].
         BidKind(&'a BidKind),
+        /// Variant that stores a [`Context`] and a [`Lifetime`] of the [`crate::URef`].
+        URef(&'a Context, &'a Lifetime),
     }
 
     #[derive(Deserialize)]
@@ -698,6 +717,7 @@ mod serde_helpers {
                     BinarySerHelper::AddressableEntity(payload)
                 }
                 StoredValue::BidKind(payload) => BinarySerHelper::BidKind(payload),
+                StoredValue::URef(context, lifetime) => BinarySerHelper::URef(context, lifetime),
             }
         }
     }
@@ -749,6 +769,57 @@ impl<'de> Deserialize<'de> for StoredValue {
             let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
             bytesrepr::deserialize::<StoredValue>(bytes)
                 .map_err(|error| de::Error::custom(format!("{:?}", error)))
+        }
+    }
+}
+
+/// Lifetime of a value stored behind a [`crate::URef`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
+pub enum Lifetime {
+    /// Indefinite lifetime.
+    Indefinite,
+    /// Finite lifetime ending at a specific [`EraId`].
+    Finite(EraId),
+}
+
+impl ToBytes for Lifetime {
+    fn to_bytes(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = bytesrepr::allocate_buffer(self)?;
+        self.write_bytes(&mut buffer)?;
+        Ok(buffer)
+    }
+
+    fn serialized_length(&self) -> usize {
+        U8_SERIALIZED_LENGTH
+            + match self {
+                Lifetime::Indefinite => 0,
+                Lifetime::Finite(era_id) => era_id.serialized_length(),
+            }
+    }
+
+    fn write_bytes(&self, writer: &mut Vec<u8>) -> Result<(), Error> {
+        match self {
+            Lifetime::Indefinite => writer.push(0),
+            Lifetime::Finite(era_id) => {
+                writer.push(1);
+                era_id.write_bytes(writer)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl FromBytes for Lifetime {
+    fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), Error> {
+        match u8::from_bytes(bytes)? {
+            (0, remainder) => Ok((Lifetime::Indefinite, remainder)),
+            (1, remainder) => {
+                let (era_id, remainder) = EraId::from_bytes(remainder)?;
+                Ok((Lifetime::Finite(era_id), remainder))
+            }
+            _ => Err(Error::Formatting),
         }
     }
 }

@@ -151,23 +151,28 @@ impl Display for KeyTag {
     }
 }
 
+/// Context key containing a hash of the owner of the key and a key to be associated with a value.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "datasize", derive(DataSize))]
+#[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Context {
     owner: ContractHash,
-    key_hash: [u8; 32],
+    key_hash: Digest,
 }
 
 impl Context {
-    pub fn new(owner: ContractHash, key_hash: [u8; 32]) -> Self {
+    /// Creates a new `Context` instance.
+    pub fn new(owner: ContractHash, key_hash: Digest) -> Self {
         Context { owner, key_hash }
     }
 
+    /// Returns the contract hash of the owner of the context.
     pub fn owner(&self) -> ContractHash {
         self.owner
     }
 
-    pub fn key_hash(&self) -> [u8; 32] {
+    /// Returns the key hash of the context.
+    pub fn key_hash(&self) -> Digest {
         self.key_hash
     }
 }
@@ -237,7 +242,7 @@ pub enum Key {
     ChecksumRegistry,
     /// A `Key` under which we store bid information
     BidAddr(BidAddr),
-    /// A `Key` under which we store context about the owner and an udnerlying key hash.
+    /// A `Key` under which we store context about the owner and an underlying key hash.
     Context(Context),
 }
 

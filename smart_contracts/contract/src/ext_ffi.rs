@@ -805,4 +805,27 @@ extern "C" {
         contract_hash_ptr: *const u8,
         contract_hash_size: usize,
     ) -> i32;
+
+    /// This function causes the runtime to generate a new `Context` key, with
+    /// the provided key-value pair stored under it in the global state. This operations results in
+    /// a 32-byte hash of the entity owning the context being written to the `key_hash_out_ptr`
+    /// address and a 32-byte hash of the provided key to the `key_hash_out_ptr`. Note that
+    /// data corruption is possible if not enough memory is allocated for the pointers.
+    ///
+    /// # Arguments
+    ///
+    /// * `key_ptr` - pointer to the offset in wasm memory where the new `URef` will be written
+    /// * `key_ptr` - pointer to bytes representing the key to be included in the `Context`
+    /// * `value_ptr` - pointer to bytes representing the value to write under the new `Context` key
+    /// * `value_size` - size of the value (in bytes)
+    /// * `owner_out_ptr` - pointer to the offset in wasm memory where owner hash will be written
+    /// * `key_hash_out_ptr` - pointer to the offset in wasm memory where key hash will be written
+    pub fn casper_new_context_key(
+        key_ptr: *const u8,
+        key_size: usize,
+        value_ptr: *const u8,
+        value_size: usize,
+        owner_out_ptr: *mut u8,
+        key_hash_out_ptr: *mut u8,
+    );
 }

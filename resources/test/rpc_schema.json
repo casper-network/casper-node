@@ -4115,6 +4115,29 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              {
+                "description": "Variant that stores a [`Context`] and a [`Lifetime`] of the [`crate::URef`].",
+                "type": "object",
+                "required": [
+                  "URef"
+                ],
+                "properties": {
+                  "URef": {
+                    "type": "array",
+                    "items": [
+                      {
+                        "$ref": "#/components/schemas/Context"
+                      },
+                      {
+                        "$ref": "#/components/schemas/Lifetime"
+                      }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2
+                  }
+                },
+                "additionalProperties": false
               }
             ]
           },
@@ -4593,6 +4616,47 @@
                 "$ref": "#/components/schemas/ActionThresholds"
               }
             }
+          },
+          "Context": {
+            "description": "Context key containing a hash of the owner of the key and a key to be associated with a value.",
+            "type": "object",
+            "required": [
+              "key_hash",
+              "owner"
+            ],
+            "properties": {
+              "owner": {
+                "$ref": "#/components/schemas/ContractHash"
+              },
+              "key_hash": {
+                "$ref": "#/components/schemas/Digest"
+              }
+            }
+          },
+          "Lifetime": {
+            "description": "Lifetime of a value stored behind a [`crate::URef`].",
+            "oneOf": [
+              {
+                "description": "Indefinite lifetime.",
+                "type": "string",
+                "enum": [
+                  "Indefinite"
+                ]
+              },
+              {
+                "description": "Finite lifetime ending at a specific [`EraId`].",
+                "type": "object",
+                "required": [
+                  "Finite"
+                ],
+                "properties": {
+                  "Finite": {
+                    "$ref": "#/components/schemas/EraId"
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
           },
           "GlobalStateIdentifier": {
             "description": "Identifier for possible ways to query Global State",

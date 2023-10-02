@@ -1,15 +1,4 @@
 //! This module contains executor state of the WASM code.
-mod args;
-mod auction_internal;
-mod externals;
-mod handle_payment_internal;
-mod host_function_flag;
-mod mint_internal;
-pub mod stack;
-mod standard_payment_internal;
-mod utils;
-mod wasm_prep;
-
 use std::{
     cmp,
     collections::{BTreeMap, BTreeSet},
@@ -38,11 +27,16 @@ use casper_types::{
         handle_payment, mint, standard_payment, CallStackElement, SystemContractType, AUCTION,
         HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
-    AccessRights, ApiError, CLTyped, CLValue, ContextAccessRights, ContractPackageHash,
-    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Gas,
+    AccessRights, ApiError, CLTyped, CLValue, Context, ContextAccessRights, ContractPackageHash,
+    ContractVersion, ContractVersionKey, ContractVersions, ContractWasm, DeployHash, Digest, Gas,
     GrantedAccess, Group, Groups, HostFunction, HostFunctionCost, Key, NamedArg, Package, Phase,
     PublicKey, RuntimeArgs, StoredValue, Transfer, TransferResult, TransferredTo, URef,
     DICTIONARY_ITEM_KEY_MAX_LENGTH, U512,
+};
+pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
+pub use wasm_prep::{
+    PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
+    DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
 };
 
 use crate::{
@@ -56,11 +50,17 @@ use crate::{
     },
     tracking_copy::TrackingCopyExt,
 };
-pub use stack::{RuntimeStack, RuntimeStackFrame, RuntimeStackOverflow};
-pub use wasm_prep::{
-    PreprocessingError, WasmValidationError, DEFAULT_BR_TABLE_MAX_SIZE, DEFAULT_MAX_GLOBALS,
-    DEFAULT_MAX_PARAMETER_COUNT, DEFAULT_MAX_TABLE_SIZE,
-};
+
+mod args;
+mod auction_internal;
+mod externals;
+mod handle_payment_internal;
+mod host_function_flag;
+mod mint_internal;
+pub mod stack;
+mod standard_payment_internal;
+mod utils;
+mod wasm_prep;
 
 enum CallContractIdentifier {
     Contract {
@@ -1857,6 +1857,36 @@ where
         self.try_get_memory()?
             .set(uref_ptr, &uref.into_bytes().map_err(Error::BytesRepr)?)
             .map_err(|e| Error::Interpreter(e.into()).into())
+    }
+
+    fn new_context_key(
+        &mut self,
+        key_ptr: u32,
+        key_size: usize,
+        value_ptr: u32,
+        value_size: u32,
+        owner_ptr: u32,
+        key_hash_ptr: u32,
+    ) -> Result<(), Trap> {
+        let memory = self.try_get_memory()?;
+        let key = memory
+            .get(key_ptr, key_size)
+            .map_err(|e| Error::Interpreter(e.into()))?;
+
+        let owner = self.context.get_entity_address();
+        let key_hash = Digest::hash(key);
+
+        memory
+            .set(owner_ptr, &owner.value())
+            .map_err(|e| Error::Interpreter(e.into()))?;
+        memory
+            .set(key_hash_ptr, &key_hash.value())
+            .map_err(|e| Error::Interpreter(e.into()))?;
+
+        let cl_value = self.cl_value_from_mem(value_ptr, value_size)?; // read initial value from memory
+        self.context
+            .metered_write_gs(Key::Context(Context::new(owner, key_hash)), cl_value)?;
+        Ok(())
     }
 
     /// Writes `value` under `key` in GlobalState.
