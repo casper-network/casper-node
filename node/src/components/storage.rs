@@ -2981,20 +2981,26 @@ fn initialize_block_metadata_db(
     block_metadata_db: &Database,
     deleted_block_hashes: &HashSet<&[u8]>,
 ) -> Result<(), FatalStorageError> {
-    info!("initializing block metadata database");
-    let mut txn = env.begin_rw_txn()?;
-    let mut cursor = txn.open_rw_cursor(*block_metadata_db)?;
+    let block_count_to_be_deleted = deleted_block_hashes.len();
+    info!(
+        block_count_to_be_deleted,
+        "initializing block metadata database"
+    );
 
-    for row in cursor.iter() {
-        let (raw_key, _) = row?;
-        if deleted_block_hashes.contains(raw_key) {
-            cursor.del(WriteFlags::empty())?;
-            continue;
+    if !deleted_block_hashes.is_empty() {
+        let mut txn = env.begin_rw_txn()?;
+        let mut cursor = txn.open_rw_cursor(*block_metadata_db)?;
+
+        for row in cursor.iter() {
+            let (raw_key, _) = row?;
+            if deleted_block_hashes.contains(raw_key) {
+                cursor.del(WriteFlags::empty())?;
+                continue;
+            }
         }
+        drop(cursor);
+        txn.commit()?;
     }
-
-    drop(cursor);
-    txn.commit()?;
 
     info!("block metadata database initialized");
     Ok(())
@@ -3006,15 +3012,20 @@ fn initialize_deploy_metadata_db(
     deploy_metadata_db: &Database,
     deleted_deploy_hashes: &HashSet<DeployHash>,
 ) -> Result<(), LmdbExtError> {
-    info!("initializing deploy metadata database");
+    let deploy_count_to_be_deleted = deleted_deploy_hashes.len();
+    info!(
+        deploy_count_to_be_deleted,
+        "initializing deploy metadata database"
+    );
 
-    let mut txn = env.begin_rw_txn()?;
-    deleted_deploy_hashes.iter().for_each(|deleted_deploy_hash| {
+    if !deleted_deploy_hashes.is_empty() {
+        let mut txn = env.begin_rw_txn()?;
+        deleted_deploy_hashes.iter().for_each(|deleted_deploy_hash| {
         if txn.del(*deploy_metadata_db, deleted_deploy_hash, None).is_err() {
             debug!(%deleted_deploy_hash, "not purging from 'deploy_metadata_db' because not existing");
-        }
-    });
-    txn.commit()?;
+        }});
+        txn.commit()?;
+    }
 
     info!("deploy metadata database initialized");
     Ok(())
