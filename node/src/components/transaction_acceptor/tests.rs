@@ -395,7 +395,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingContractAtHash => {
                         let body = TransactionV1Kind::new_stored_contract_by_hash(
-                            ContractHash::default(),
+                            AddressableEntityHash::default(),
                             "call".to_string(),
                             RuntimeArgs::new(),
                         );
@@ -408,7 +408,7 @@ impl TestScenario {
                     }
                     ContractScenario::MissingEntryPoint => {
                         let body = TransactionV1Kind::new_stored_contract_by_hash(
-                            ContractHash::default(),
+                            AddressableEntityHash::default(),
                             "non-existent-entry-point".to_string(),
                             RuntimeArgs::new(),
                         );

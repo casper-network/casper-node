@@ -25,10 +25,10 @@ use casper_types::{
     execution::Effects,
     package::ContractPackageKind,
     system::auction::EraInfo,
-    AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContextAccessRights, ContractHash,
-    ContractPackageHash, DeployHash, EntryPointType, Gas, GrantedAccess, Key, KeyTag, Package,
-    Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer, TransferAddr, URef,
-    URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
+    AccessRights, AddressableEntity, AddressableEntityHash, BlockTime, CLType, CLValue,
+    ContextAccessRights, ContractPackageHash, DeployHash, EntryPointType, Gas, GrantedAccess, Key,
+    KeyTag, Package, Phase, ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Transfer,
+    TransferAddr, URef, URefAddr, DICTIONARY_ITEM_KEY_MAX_LENGTH, KEY_HASH_LENGTH, U512,
 };
 
 use crate::{
@@ -66,7 +66,7 @@ pub struct RuntimeContext<'a, R> {
     // Original account/contract for read only tasks taken before execution
     entity: &'a AddressableEntity,
     // Key pointing to the entity we are currently running
-    entity_address: ContractHash,
+    entity_address: AddressableEntityHash,
     package_kind: ContractPackageKind,
     account_hash: AccountHash,
 }
@@ -83,7 +83,7 @@ where
     pub fn new(
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: ContractHash,
+        entity_address: AddressableEntityHash,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: ContractPackageKind,
@@ -130,7 +130,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub fn new_from_self(
         &self,
-        entity_address: ContractHash,
+        entity_address: AddressableEntityHash,
         entry_point_type: EntryPointType,
         named_keys: &'a mut NamedKeys,
         access_rights: ContextAccessRights,
@@ -312,7 +312,7 @@ where
     ///
     /// This could be either a [`Key::Account`] or a [`Key::Hash`] depending on the entry point
     /// type.
-    pub fn get_entity_address(&self) -> ContractHash {
+    pub fn get_entity_address(&self) -> AddressableEntityHash {
         self.entity_address
     }
 
@@ -785,7 +785,10 @@ where
     }
 
     /// Checks if we are calling a system contract.
-    pub(crate) fn is_system_contract(&self, contract_hash: &ContractHash) -> Result<bool, Error> {
+    pub(crate) fn is_system_contract(
+        &self,
+        contract_hash: &AddressableEntityHash,
+    ) -> Result<bool, Error> {
         Ok(self
             .system_contract_registry()?
             .has_contract_hash(contract_hash))
@@ -1064,7 +1067,7 @@ where
     pub(crate) fn get_entity_address_for_account_hash(
         &mut self,
         account_hash: AccountHash,
-    ) -> Result<ContractHash, Error> {
+    ) -> Result<AddressableEntityHash, Error> {
         let cl_value = self.read_gs_typed::<CLValue>(&Key::Account(account_hash))?;
         let key = CLValue::into_t::<Key>(cl_value).map_err(Error::CLValue)?;
         key.into_contract_hash()
@@ -1092,7 +1095,7 @@ where
     }
 
     /// Checks if the account context is valid.
-    fn is_valid_context(&self, entity_address: ContractHash) -> bool {
+    fn is_valid_context(&self, entity_address: AddressableEntityHash) -> bool {
         self.get_entity_address() == entity_address
     }
 
@@ -1192,7 +1195,7 @@ where
     }
 
     /// Gets system contract by name.
-    pub(crate) fn get_system_contract(&self, name: &str) -> Result<ContractHash, Error> {
+    pub(crate) fn get_system_contract(&self, name: &str) -> Result<AddressableEntityHash, Error> {
         let registry = self.system_contract_registry()?;
         let hash = registry.get(name).ok_or_else(|| {
             error!("Missing system contract hash: {}", name);

@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::string::String;
 
 use casper_contract::{self, contract_api::runtime, unwrap_or_revert::UnwrapOrRevert};
-use casper_types::{ContractHash, Key, RuntimeArgs};
+use casper_types::{AddressableEntityHash, Key, RuntimeArgs};
 
 const CONTRACT_HASH_NAME: &str = "contract_stored";
 
@@ -14,7 +14,7 @@ const CONTRACT_HASH_NAME: &str = "contract_stored";
 pub extern "C" fn call() {
     let contract_hash = runtime::get_key(CONTRACT_HASH_NAME)
         .and_then(Key::into_hash)
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap_or_revert();
 
     let entry_point: String = runtime::get_named_arg("entry_point");

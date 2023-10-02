@@ -6,8 +6,8 @@ extern crate alloc;
 
 use casper_contract::contract_api::{runtime, storage};
 use casper_types::{
-    runtime_args, CLType, CLTyped, ContractHash, EntryPoint, EntryPointAccess, EntryPointType,
-    EntryPoints, Parameter,
+    runtime_args, AddressableEntityHash, CLType, CLTyped, EntryPoint, EntryPointAccess,
+    EntryPointType, EntryPoints, Parameter,
 };
 
 const RECURSE_ENTRYPOINT: &str = "recurse";
@@ -19,7 +19,7 @@ pub extern "C" fn call() {
     let mut entry_points = EntryPoints::new();
     entry_points.add_entry_point(EntryPoint::new(
         RECURSE_ENTRYPOINT,
-        vec![Parameter::new(ARG_TARGET, ContractHash::cl_type())],
+        vec![Parameter::new(ARG_TARGET, AddressableEntityHash::cl_type())],
         CLType::Unit,
         EntryPointAccess::Public,
         EntryPointType::Contract,
@@ -33,7 +33,7 @@ pub extern "C" fn call() {
 
 #[no_mangle]
 pub extern "C" fn recurse() {
-    let target: ContractHash = runtime::get_named_arg(ARG_TARGET);
+    let target: AddressableEntityHash = runtime::get_named_arg(ARG_TARGET);
     runtime::call_contract(
         target,
         RECURSE_ENTRYPOINT,

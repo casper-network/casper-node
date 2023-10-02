@@ -7,7 +7,7 @@ use casper_types::{
     bytesrepr::FromBytes,
     package::ContractPackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    AddressableEntity, BlockTime, CLTyped, ContextAccessRights, ContractHash, DeployHash,
+    AddressableEntity, AddressableEntityHash, BlockTime, CLTyped, ContextAccessRights, DeployHash,
     EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, U512,
 };
 
@@ -45,7 +45,7 @@ impl Executor {
         &self,
         execution_kind: ExecutionKind,
         args: RuntimeArgs,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entity: &AddressableEntity,
         package_kind: ContractPackageKind,
         named_keys: &mut NamedKeys,
@@ -141,7 +141,7 @@ impl Executor {
     pub(crate) fn exec_standard_payment<R>(
         &self,
         payment_args: RuntimeArgs,
-        payment_base_key: ContractHash,
+        payment_base_key: AddressableEntityHash,
         entity: &AddressableEntity,
         package_kind: ContractPackageKind,
         payment_named_keys: &mut NamedKeys,
@@ -352,7 +352,7 @@ impl Executor {
         &self,
         named_keys: &'a mut NamedKeys,
         entity: &'a AddressableEntity,
-        entity_address: ContractHash,
+        entity_address: AddressableEntityHash,
         authorization_keys: BTreeSet<AccountHash>,
         access_rights: ContextAccessRights,
         package_kind: ContractPackageKind,

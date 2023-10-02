@@ -3,13 +3,13 @@
 
 use auction::DelegationRate;
 use casper_contract::contract_api::{runtime, system};
-use casper_types::{runtime_args, system::auction, ContractHash, PublicKey, U512};
+use casper_types::{runtime_args, system::auction, AddressableEntityHash, PublicKey, U512};
 
 const ARG_AMOUNT: &str = "amount";
 const ARG_PUBLIC_KEY: &str = "public_key";
 const DELEGATION_RATE: DelegationRate = 42;
 
-fn add_bid(contract_hash: ContractHash, public_key: PublicKey, bond_amount: U512) {
+fn add_bid(contract_hash: AddressableEntityHash, public_key: PublicKey, bond_amount: U512) {
     let runtime_args = runtime_args! {
         auction::ARG_PUBLIC_KEY => public_key,
         auction::ARG_DELEGATION_RATE => DELEGATION_RATE,
@@ -18,7 +18,11 @@ fn add_bid(contract_hash: ContractHash, public_key: PublicKey, bond_amount: U512
     runtime::call_contract::<U512>(contract_hash, auction::METHOD_ADD_BID, runtime_args);
 }
 
-fn withdraw_bid(contract_hash: ContractHash, public_key: PublicKey, unbond_amount: U512) -> U512 {
+fn withdraw_bid(
+    contract_hash: AddressableEntityHash,
+    public_key: PublicKey,
+    unbond_amount: U512,
+) -> U512 {
     let args = runtime_args! {
         auction::ARG_AMOUNT => unbond_amount,
         auction::ARG_PUBLIC_KEY => public_key,

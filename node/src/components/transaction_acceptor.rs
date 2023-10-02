@@ -12,7 +12,7 @@ use tracing::{debug, error, trace};
 use casper_execution_engine::engine_state::{BalanceRequest, MAX_PAYMENT};
 use casper_types::{
     account::AccountHash, addressable_entity::AddressableEntity, package::Package,
-    system::auction::ARG_AMOUNT, BlockHeader, Chainspec, ContractHash, ContractIdentifier,
+    system::auction::ARG_AMOUNT, AddressableEntityHash, BlockHeader, Chainspec, ContractIdentifier,
     ContractPackageHash, ContractPackageIdentifier, ContractVersion, ContractVersionKey,
     DirectCallV1, ExecutableDeployItem, ExecutableDeployItemIdentifier, Key, ProtocolVersion,
     Transaction, TransactionConfig, TransactionV1Kind, UserlandTransactionV1, U512,
@@ -456,7 +456,7 @@ impl TransactionAcceptor {
         block_header: Box<BlockHeader>,
     ) -> Effects<Event> {
         enum NextStep {
-            GetContract(ContractHash),
+            GetContract(AddressableEntityHash),
             GetPackage(ContractPackageHash, Option<ContractVersion>),
             CryptoValidation,
         }
@@ -534,7 +534,7 @@ impl TransactionAcceptor {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         maybe_contract: Option<AddressableEntity>,
     ) -> Effects<Event> {
         let contract = match maybe_contract {

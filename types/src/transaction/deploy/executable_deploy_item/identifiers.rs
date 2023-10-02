@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::testing::TestRng;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    ContractHash, ContractPackageHash, ContractVersion,
+    AddressableEntityHash, ContractPackageHash, ContractVersion,
 };
 #[cfg(doc)]
 use crate::{DirectCallV1, ExecutableDeployItem};
@@ -39,7 +39,7 @@ pub enum ExecutableDeployItemIdentifier {
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum ContractIdentifier {
     /// The contract object within the deploy item is identified by its hash.
-    Hash(ContractHash),
+    Hash(AddressableEntityHash),
     /// The contract object within the deploy item is identified by name.
     Name(String),
 }

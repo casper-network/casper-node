@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 
 use casper_types::{
     bytesrepr::{self, FromBytes, ToBytes},
-    CLType, CLTyped, ContractHash,
+    AddressableEntityHash, CLType, CLTyped,
 };
 
 /// The system contract registry.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Debug, DataSize)]
-pub struct SystemContractRegistry(BTreeMap<String, ContractHash>);
+pub struct SystemContractRegistry(BTreeMap<String, AddressableEntityHash>);
 
 impl SystemContractRegistry {
     /// Returns a new `SystemContractRegistry`.
@@ -22,17 +22,17 @@ impl SystemContractRegistry {
     }
 
     /// Inserts a contract's details into the registry.
-    pub fn insert(&mut self, contract_name: String, contract_hash: ContractHash) {
+    pub fn insert(&mut self, contract_name: String, contract_hash: AddressableEntityHash) {
         self.0.insert(contract_name, contract_hash);
     }
 
     /// Gets a contract's hash from the registry.
-    pub fn get(&self, contract_name: &str) -> Option<&ContractHash> {
+    pub fn get(&self, contract_name: &str) -> Option<&AddressableEntityHash> {
         self.0.get(contract_name)
     }
 
     /// Returns `true` if the given contract hash exists as a value in the registry.
-    pub fn has_contract_hash(&self, contract_hash: &ContractHash) -> bool {
+    pub fn has_contract_hash(&self, contract_hash: &AddressableEntityHash) -> bool {
         self.0
             .values()
             .any(|system_contract_hash| system_contract_hash == contract_hash)
@@ -58,7 +58,7 @@ impl FromBytes for SystemContractRegistry {
 
 impl CLTyped for SystemContractRegistry {
     fn cl_type() -> CLType {
-        BTreeMap::<String, ContractHash>::cl_type()
+        BTreeMap::<String, AddressableEntityHash>::cl_type()
     }
 }
 
@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn bytesrepr_roundtrip() {
         let mut system_contract_registry = SystemContractRegistry::new();
-        system_contract_registry.insert("a".to_string(), ContractHash::new([9; 32]));
+        system_contract_registry.insert("a".to_string(), AddressableEntityHash::new([9; 32]));
         bytesrepr::test_serialization_roundtrip(&system_contract_registry);
     }
 }

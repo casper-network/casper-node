@@ -12,7 +12,7 @@ use casper_types::{
     account::AccountHash,
     runtime_args,
     system::{auction, auction::DelegationRate, mint},
-    AccessRights, CLTyped, CLValue, ContractHash, ContractPackageHash, Digest, EraId, Key,
+    AccessRights, AddressableEntityHash, CLTyped, CLValue, ContractPackageHash, Digest, EraId, Key,
     ProtocolVersion, RuntimeArgs, StoredValue, StoredValueTypeMismatch, URef, U512,
 };
 
@@ -124,7 +124,7 @@ fn gh_1470_call_contract_should_verify_group_access() {
         .unwrap();
     let contract_hash = contract_hash_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash_key = account
         .named_keys()
@@ -328,7 +328,7 @@ fn gh_1470_call_contract_should_ignore_optional_args() {
         .unwrap();
     let contract_hash = contract_hash_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash_key = account
         .named_keys()
@@ -394,7 +394,7 @@ fn gh_1470_call_contract_should_not_accept_extra_args() {
         .unwrap();
     let contract_hash = contract_hash_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash_key = account
         .named_keys()
@@ -460,7 +460,7 @@ fn gh_1470_call_contract_should_verify_wrong_argument_types() {
         .unwrap();
     let contract_hash = contract_hash_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash_key = account
         .named_keys()
@@ -566,7 +566,7 @@ fn gh_1470_call_contract_should_verify_wrong_optional_argument_types() {
         .unwrap();
     let contract_hash = contract_hash_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash_key = account
         .named_keys()

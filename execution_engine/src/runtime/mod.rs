@@ -25,10 +25,10 @@ use casper_storage::global_state::state::StateReader;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{
-        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity, AssociatedKeys,
-        ContractHash, EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, NamedKeys,
-        Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure, Weight,
-        DEFAULT_ENTRY_POINT_NAME,
+        self, ActionThresholds, ActionType, AddKeyFailure, AddressableEntity,
+        AddressableEntityHash, AssociatedKeys, EntryPoint, EntryPointAccess, EntryPointType,
+        EntryPoints, NamedKeys, Parameter, RemoveKeyFailure, SetThresholdFailure, UpdateKeyFailure,
+        Weight, DEFAULT_ENTRY_POINT_NAME,
     },
     bytesrepr::{self, Bytes, FromBytes, ToBytes},
     package::{ContractPackageKind, ContractPackageStatus},
@@ -64,7 +64,7 @@ pub use wasm_prep::{
 
 enum CallContractIdentifier {
     Contract {
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     },
     ContractPackage {
         contract_package_hash: ContractPackageHash,
@@ -475,7 +475,7 @@ where
 
     /// Checks if a [`Key`] is a system contract.
     #[inline]
-    fn is_system_contract(&self, contract_hash: ContractHash) -> Result<bool, Error> {
+    fn is_system_contract(&self, contract_hash: AddressableEntityHash) -> Result<bool, Error> {
         self.context.is_system_contract(&contract_hash)
     }
 
@@ -978,7 +978,7 @@ where
     /// Call a contract by pushing a stack element onto the frame.
     pub(crate) fn call_contract_with_stack(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point_name: &str,
         args: RuntimeArgs,
         stack: RuntimeStack,
@@ -1039,7 +1039,7 @@ where
     /// Calls contract living under a `key`, with supplied `args`.
     pub fn call_contract(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point_name: &str,
         args: RuntimeArgs,
     ) -> Result<CLValue, Error> {
@@ -1068,9 +1068,9 @@ where
 
     fn get_context_key_for_contract_call(
         &self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point: &EntryPoint,
-    ) -> Result<ContractHash, Error> {
+    ) -> Result<AddressableEntityHash, Error> {
         let current = self.context.entry_point_type();
         let next = entry_point.entry_point_type();
         match (current, next) {
@@ -1446,7 +1446,7 @@ where
 
     fn call_contract_host_buffer(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point_name: &str,
         args_bytes: Vec<u8>,
         result_size_ptr: u32,
@@ -1794,7 +1794,7 @@ where
     fn disable_contract_version(
         &mut self,
         contract_package_hash: ContractPackageHash,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, Error> {
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
@@ -1819,7 +1819,7 @@ where
     fn enable_contract_version(
         &mut self,
         contract_package_hash: ContractPackageHash,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<Result<(), ApiError>, Error> {
         let contract_package_key = contract_package_hash.into();
         self.context.validate_key(&contract_package_key)?;
@@ -2130,28 +2130,28 @@ where
     /// Looks up the public mint contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_mint_contract(&self) -> Result<ContractHash, Error> {
+    fn get_mint_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(MINT)
     }
 
     /// Looks up the public handle payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_handle_payment_contract(&self) -> Result<ContractHash, Error> {
+    fn get_handle_payment_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(HANDLE_PAYMENT)
     }
 
     /// Looks up the public standard payment contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_standard_payment_contract(&self) -> Result<ContractHash, Error> {
+    fn get_standard_payment_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(STANDARD_PAYMENT)
     }
 
     /// Looks up the public auction contract key in the context's protocol data.
     ///
     /// Returned URef is already attenuated depending on the calling account.
-    fn get_auction_contract(&self) -> Result<ContractHash, Error> {
+    fn get_auction_contract(&self) -> Result<AddressableEntityHash, Error> {
         self.context.get_system_contract(AUCTION)
     }
 
@@ -2159,7 +2159,7 @@ where
     /// contract key
     fn mint_read_base_round_reward(
         &mut self,
-        mint_contract_hash: ContractHash,
+        mint_contract_hash: AddressableEntityHash,
     ) -> Result<U512, Error> {
         let gas_counter = self.gas_counter();
         let call_result = self.call_contract(
@@ -2175,7 +2175,11 @@ where
 
     /// Calls the `mint` method on the mint contract at the given mint
     /// contract key
-    fn mint_mint(&mut self, mint_contract_hash: ContractHash, amount: U512) -> Result<URef, Error> {
+    fn mint_mint(
+        &mut self,
+        mint_contract_hash: AddressableEntityHash,
+        amount: U512,
+    ) -> Result<URef, Error> {
         let gas_counter = self.gas_counter();
         let runtime_args = {
             let mut runtime_args = RuntimeArgs::new();
@@ -2193,7 +2197,7 @@ where
     /// contract key
     fn mint_reduce_total_supply(
         &mut self,
-        mint_contract_hash: ContractHash,
+        mint_contract_hash: AddressableEntityHash,
         amount: U512,
     ) -> Result<(), Error> {
         let gas_counter = self.gas_counter();
@@ -2215,7 +2219,7 @@ where
 
     /// Calls the "create" method on the mint contract at the given mint
     /// contract key
-    fn mint_create(&mut self, mint_contract_hash: ContractHash) -> Result<URef, Error> {
+    fn mint_create(&mut self, mint_contract_hash: AddressableEntityHash) -> Result<URef, Error> {
         let result =
             self.call_contract(mint_contract_hash, mint::METHOD_CREATE, RuntimeArgs::new());
         let purse = result?.into_t()?;
@@ -2231,7 +2235,7 @@ where
     /// contract key
     fn mint_transfer(
         &mut self,
-        mint_contract_hash: ContractHash,
+        mint_contract_hash: AddressableEntityHash,
         to: Option<AccountHash>,
         source: URef,
         target: URef,
@@ -2311,7 +2315,7 @@ where
             Ok(()) => {
                 let protocol_version = self.context.protocol_version();
                 let contract_wasm_hash = *ACCOUNT_WASM_HASH;
-                let contract_hash = ContractHash::new(self.context.new_hash_address()?);
+                let contract_hash = AddressableEntityHash::new(self.context.new_hash_address()?);
                 let contract_package_hash =
                     ContractPackageHash::new(self.context.new_hash_address()?);
                 let main_purse = target_purse;
@@ -2428,12 +2432,13 @@ where
             Some(StoredValue::CLValue(account)) => {
                 // Attenuate the target main purse
                 let contract_key = CLValue::into_t::<Key>(account)?;
-                let contract_hash =
-                    if let Some(contract_hash) = contract_key.into_hash().map(ContractHash::new) {
-                        contract_hash
-                    } else {
-                        return Err(Error::UnexpectedKeyVariant(contract_key));
-                    };
+                let contract_hash = if let Some(contract_hash) =
+                    contract_key.into_hash().map(AddressableEntityHash::new)
+                {
+                    contract_hash
+                } else {
+                    return Err(Error::UnexpectedKeyVariant(contract_key));
+                };
                 let target_uref = if let Some(StoredValue::AddressableEntity(contract)) =
                     self.context.read_gs(&contract_hash.into())?
                 {
@@ -2598,14 +2603,14 @@ where
         dest_ptr: u32,
         _dest_size: u32,
     ) -> Result<Result<(), ApiError>, Trap> {
-        let contract_hash: ContractHash = match SystemContractType::try_from(system_contract_index)
-        {
-            Ok(SystemContractType::Mint) => self.get_mint_contract()?,
-            Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract()?,
-            Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract()?,
-            Ok(SystemContractType::Auction) => self.get_auction_contract()?,
-            Err(error) => return Ok(Err(error)),
-        };
+        let contract_hash: AddressableEntityHash =
+            match SystemContractType::try_from(system_contract_index) {
+                Ok(SystemContractType::Mint) => self.get_mint_contract()?,
+                Ok(SystemContractType::HandlePayment) => self.get_handle_payment_contract()?,
+                Ok(SystemContractType::StandardPayment) => self.get_standard_payment_contract()?,
+                Ok(SystemContractType::Auction) => self.get_auction_contract()?,
+                Err(error) => return Ok(Err(error)),
+            };
 
         match self.try_get_memory()?.set(dest_ptr, contract_hash.as_ref()) {
             Ok(_) => Ok(Ok(())),
@@ -3169,7 +3174,7 @@ where
 
     pub(crate) fn migrate_contract_and_contract_package(
         &mut self,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
     ) -> Result<(), Error> {
         let contract_key: Key = contract_hash.into();
         let maybe_legacy_contract = self.context.read_gs(&contract_key)?;

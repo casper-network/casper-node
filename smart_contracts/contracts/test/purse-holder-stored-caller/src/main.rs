@@ -6,7 +6,7 @@ extern crate alloc;
 use alloc::string::String;
 
 use casper_contract::contract_api::{runtime, storage};
-use casper_types::{runtime_args, ContractHash, RuntimeArgs};
+use casper_types::{runtime_args, AddressableEntityHash, RuntimeArgs};
 
 const METHOD_VERSION: &str = "version";
 const HASH_KEY_NAME: &str = "purse_holder";
@@ -19,14 +19,14 @@ pub extern "C" fn call() {
 
     match entry_point_name.as_str() {
         METHOD_VERSION => {
-            let contract_hash: ContractHash = runtime::get_named_arg(HASH_KEY_NAME);
+            let contract_hash: AddressableEntityHash = runtime::get_named_arg(HASH_KEY_NAME);
             let version: String =
                 runtime::call_contract(contract_hash, &entry_point_name, RuntimeArgs::default());
             let version_key = storage::new_uref(version).into();
             runtime::put_key(METHOD_VERSION, version_key);
         }
         _ => {
-            let contract_hash: ContractHash = runtime::get_named_arg(HASH_KEY_NAME);
+            let contract_hash: AddressableEntityHash = runtime::get_named_arg(HASH_KEY_NAME);
             let purse_name: String = runtime::get_named_arg(PURSE_NAME);
 
             let args = runtime_args! {

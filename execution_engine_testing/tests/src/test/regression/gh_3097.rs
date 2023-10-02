@@ -3,7 +3,7 @@ use casper_engine_test_support::{
     PRODUCTION_RUN_GENESIS_REQUEST,
 };
 use casper_types::{
-    runtime_args, ContractHash, ContractPackageHash, ContractVersionKey, RuntimeArgs,
+    runtime_args, AddressableEntityHash, ContractPackageHash, ContractVersionKey, RuntimeArgs,
 };
 use gh_1470_regression::CONTRACT_PACKAGE_HASH_NAME;
 
@@ -46,14 +46,14 @@ fn should_run_regression() {
         .get(DISABLED_CONTRACT_HASH_KEY)
         .unwrap()
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap();
     let enabled_contract_hash = account
         .named_keys()
         .get(ENABLED_CONTRACT_HASH_KEY)
         .unwrap()
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .unwrap();
     let contract_package_hash = account
         .named_keys()

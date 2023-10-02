@@ -22,8 +22,8 @@ use casper_types::{
         mint,
         standard_payment::{self, ARG_AMOUNT},
     },
-    ApiError, CLType, CLValue, ContractHash, ContractPackageHash, GenesisAccount, Key, Package,
-    RuntimeArgs, U512,
+    AddressableEntityHash, ApiError, CLType, CLValue, ContractPackageHash, GenesisAccount, Key,
+    Package, RuntimeArgs, U512,
 };
 use tempfile::TempDir;
 
@@ -484,7 +484,7 @@ fn administrator_account_should_disable_any_contract_used_as_session() {
         .unwrap();
     let stored_contract_hash = stored_contract_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
     let do_nothing_contract_package_key = {
@@ -680,7 +680,7 @@ fn administrator_account_should_disable_any_contract_used_as_payment() {
         .unwrap();
     let stored_contract_hash = stored_contract_key
         .into_hash()
-        .map(ContractHash::new)
+        .map(AddressableEntityHash::new)
         .expect("should have stored contract hash");
 
     let test_payment_stored_package_key = {
@@ -935,7 +935,7 @@ fn should_not_allow_delegate_on_private_chain() {
 
 fn make_call_contract_session_request(
     account_hash: AccountHash,
-    contract_hash: ContractHash,
+    contract_hash: AddressableEntityHash,
     entrypoint: &str,
     arguments: RuntimeArgs,
 ) -> ExecuteRequest {

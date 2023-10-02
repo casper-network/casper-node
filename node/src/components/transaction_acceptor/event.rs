@@ -3,7 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use serde::Serialize;
 
 use casper_types::{
-    addressable_entity::AddressableEntity, package::Package, BlockHeader, ContractHash,
+    addressable_entity::AddressableEntity, package::Package, AddressableEntityHash, BlockHeader,
     ContractPackageHash, ContractVersion, Timestamp, Transaction, U512,
 };
 
@@ -79,7 +79,7 @@ pub(crate) enum Event {
         event_metadata: Box<EventMetadata>,
         block_header: Box<BlockHeader>,
         is_payment: bool,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         maybe_contract: Option<AddressableEntity>,
     },
     /// The result of querying global state for a `Package` to verify the executable logic.

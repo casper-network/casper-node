@@ -12,7 +12,7 @@ use casper_types::{
     package::{ContractVersion, CONTRACT_INITIAL_VERSION},
     runtime_args,
     system::mint,
-    AddressableEntity, ApiError, ContractHash, EraId, ProtocolVersion, RuntimeArgs, U512,
+    AddressableEntity, AddressableEntityHash, ApiError, EraId, ProtocolVersion, RuntimeArgs, U512,
 };
 
 const ACCOUNT_1_ADDR: AccountHash = AccountHash::new([42u8; 32]);
@@ -48,7 +48,7 @@ fn make_upgrade_request(new_protocol_version: ProtocolVersion) -> UpgradeRequest
 
 fn store_payment_to_account_context(
     builder: &mut LmdbWasmTestBuilder,
-) -> (AddressableEntity, ContractHash) {
+) -> (AddressableEntity, AddressableEntityHash) {
     // store payment contract
     let exec_request = ExecuteRequestBuilder::standard(
         *DEFAULT_ACCOUNT_ADDR,

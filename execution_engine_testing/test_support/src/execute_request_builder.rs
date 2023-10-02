@@ -6,8 +6,8 @@ use casper_execution_engine::engine_state::{
     deploy_item::DeployItem, execute_request::ExecuteRequest,
 };
 use casper_types::{
-    account::AccountHash, runtime_args, ContractHash, ContractPackageHash, ContractVersion,
-    ProtocolVersion, RuntimeArgs,
+    account::AccountHash, runtime_args, AddressableEntityHash, ContractPackageHash,
+    ContractVersion, ProtocolVersion, RuntimeArgs,
 };
 
 use crate::{DeployItemBuilder, DEFAULT_BLOCK_TIME, DEFAULT_PAYMENT, DEFAULT_PROPOSER_PUBLIC_KEY};
@@ -113,7 +113,7 @@ impl ExecuteRequestBuilder {
     /// Returns an [`ExecuteRequest`] that will call a stored contract by hash.
     pub fn contract_call_by_hash(
         sender: AccountHash,
-        contract_hash: ContractHash,
+        contract_hash: AddressableEntityHash,
         entry_point: &str,
         args: RuntimeArgs,
     ) -> Self {

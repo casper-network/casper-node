@@ -41,7 +41,7 @@ use super::AccountAndSecretKey;
 use crate::bytesrepr::Bytes;
 
 #[cfg(any(all(feature = "std", feature = "testing"), test))]
-use crate::ContractHash;
+use crate::AddressableEntityHash;
 use crate::{
     bytesrepr::{self, FromBytes, ToBytes},
     crypto, Digest, DisplayIter, PublicKey, SecretKey, TimeDiff, Timestamp,
@@ -949,7 +949,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn withdraw_bid(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         public_key: PublicKey,
         amount: U512,
         timestamp: Timestamp,
@@ -985,7 +985,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn delegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1023,7 +1023,7 @@ impl Deploy {
     #[cfg(any(all(feature = "std", feature = "testing"), test))]
     pub fn undelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         amount: U512,
@@ -1062,7 +1062,7 @@ impl Deploy {
     #[allow(clippy::too_many_arguments)]
     pub fn redelegate(
         chain_name: String,
-        auction_contract_hash: ContractHash,
+        auction_contract_hash: AddressableEntityHash,
         validator_public_key: PublicKey,
         delegator_public_key: PublicKey,
         redelegate_validator_public_key: PublicKey,
@@ -1515,7 +1515,7 @@ mod tests {
                 expected_chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );
@@ -1546,7 +1546,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );
@@ -1582,7 +1582,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );
@@ -1616,7 +1616,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );
@@ -1661,7 +1661,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             ),
             Err(DeployConfigurationFailure::MissingPaymentAmount)
         );
@@ -1708,7 +1708,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             ),
             Err(DeployConfigurationFailure::FailedToParsePaymentAmount)
         );
@@ -1761,7 +1761,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             ),
             Err(expected_error)
         );
@@ -1815,7 +1815,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             )
         )
     }
@@ -1838,7 +1838,7 @@ mod tests {
         assert_eq!(
             Err(DeployConfigurationFailure::ExcessiveApprovals {
                 got: deploy.approvals.len() as u32,
-                max_associated_keys: (deploy.approvals.len() - 1) as u32
+                max_associated_keys: (deploy.approvals.len() - 1) as u32,
             }),
             deploy.is_config_compliant(chain_name, &config, max_associated_keys, current_timestamp)
         )
@@ -1869,7 +1869,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             )
         )
     }
@@ -1903,7 +1903,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             )
         )
     }
@@ -1943,7 +1943,7 @@ mod tests {
                 chain_name,
                 &config,
                 DEFAULT_MAX_ASSOCIATED_KEYS,
-                current_timestamp
+                current_timestamp,
             )
         )
     }
