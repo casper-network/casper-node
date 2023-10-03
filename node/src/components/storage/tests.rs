@@ -1,9 +1,9 @@
 //! Unit tests for the storage component.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fs::{self, File},
-    iter,
+    iter::{self, FromIterator},
     rc::Rc,
     sync::Arc,
 };
@@ -18,8 +18,8 @@ use casper_types::{
 };
 
 use super::{
-    move_storage_files_to_network_subdir, should_move_storage_files_to_network_subdir, Config,
-    Storage,
+    initialize_block_metadata_db, move_storage_files_to_network_subdir,
+    should_move_storage_files_to_network_subdir, Config, Storage,
 };
 use crate::{
     components::fetcher::{FetchItem, FetchResponse},
@@ -1848,4 +1848,123 @@ fn unbonding_purse_serialization_roundtrip() {
 
     // Explicitly assert that the `new_validator` is not `None`
     assert!(deserialized.new_validator().is_some())
+}
+
+// Clippy complains because there's a `OnceCell` in `FinalitySignature`, hence it should not be used
+// as a key in `BTreeSet`. However, we don't change the content of the cell during the course of the
+// test so there's no risk the hash or order of keys will change.
+#[allow(clippy::mutable_key_type)]
+fn assert_signatures(storage: &Storage, block_hash: BlockHash, expected: Vec<FinalitySignature>) {
+    let mut txn = storage.env.begin_ro_txn().unwrap();
+    let actual = storage
+        .get_block_signatures(&mut txn, &block_hash)
+        .expect("should be able to read signatures");
+    let actual = actual.map_or(BTreeSet::new(), |signatures| {
+        signatures.finality_signatures().collect()
+    });
+    let expected: BTreeSet<_> = expected.into_iter().collect();
+    assert_eq!(actual, expected);
+}
+
+#[test]
+fn should_initialize_block_metadata_db() {
+    let mut harness = ComponentHarness::default();
+    let mut storage = storage_fixture(&harness);
+
+    let block_1 = Block::random(&mut harness.rng);
+    let fs_1_1 =
+        FinalitySignature::random_for_block(*block_1.hash(), block_1.header().era_id().into());
+    let fs_1_2 =
+        FinalitySignature::random_for_block(*block_1.hash(), block_1.header().era_id().into());
+
+    let block_2 = Block::random(&mut harness.rng);
+    let fs_2_1 =
+        FinalitySignature::random_for_block(*block_2.hash(), block_2.header().era_id().into());
+    let fs_2_2 =
+        FinalitySignature::random_for_block(*block_2.hash(), block_2.header().era_id().into());
+
+    let block_3 = Block::random(&mut harness.rng);
+    let fs_3_1 =
+        FinalitySignature::random_for_block(*block_3.hash(), block_3.header().era_id().into());
+    let fs_3_2 =
+        FinalitySignature::random_for_block(*block_3.hash(), block_3.header().era_id().into());
+
+    let block_4 = Block::random(&mut harness.rng);
+
+    let _ = storage.put_finality_signature(Box::new(fs_1_1.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_1_2.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_2_1.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_2_2.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_3_1.clone()));
+    let _ = storage.put_finality_signature(Box::new(fs_3_2.clone()));
+
+    assert_signatures(
+        &storage,
+        *block_1.hash(),
+        vec![fs_1_1.clone(), fs_1_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.clone(), fs_2_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.clone(), fs_3_2.clone()],
+    );
+    assert_signatures(&storage, *block_4.hash(), vec![]);
+
+    // Purging empty set of blocks should not change state.
+    let to_be_purged = HashSet::new();
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![fs_1_1, fs_1_2]);
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.clone(), fs_2_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.clone(), fs_3_2.clone()],
+    );
+
+    // Purging for block_1 should leave sigs for block_2 and block_3 intact.
+    let to_be_purged = HashSet::from_iter([block_1.hash().as_ref()]);
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![]);
+    assert_signatures(
+        &storage,
+        *block_2.hash(),
+        vec![fs_2_1.clone(), fs_2_2.clone()],
+    );
+    assert_signatures(
+        &storage,
+        *block_3.hash(),
+        vec![fs_3_1.clone(), fs_3_2.clone()],
+    );
+    assert_signatures(&storage, *block_4.hash(), vec![]);
+
+    // Purging for block_4 (which has no signatures) should not modify state.
+    let to_be_purged = HashSet::from_iter([block_4.hash().as_ref()]);
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![]);
+    assert_signatures(&storage, *block_2.hash(), vec![fs_2_1, fs_2_2]);
+    assert_signatures(&storage, *block_3.hash(), vec![fs_3_1, fs_3_2]);
+    assert_signatures(&storage, *block_4.hash(), vec![]);
+
+    // Purging for all blocks should leave no signatures.
+    let to_be_purged = HashSet::from_iter([
+        block_1.hash().as_ref(),
+        block_2.hash().as_ref(),
+        block_3.hash().as_ref(),
+        block_4.hash().as_ref(),
+    ]);
+
+    let _ = initialize_block_metadata_db(&storage.env, &storage.block_metadata_db, &to_be_purged);
+    assert_signatures(&storage, *block_1.hash(), vec![]);
+    assert_signatures(&storage, *block_2.hash(), vec![]);
+    assert_signatures(&storage, *block_3.hash(), vec![]);
+    assert_signatures(&storage, *block_4.hash(), vec![]);
 }
