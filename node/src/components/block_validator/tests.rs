@@ -43,7 +43,7 @@ struct MockReactor {
 impl MockReactor {
     fn new() -> Self {
         MockReactor {
-            scheduler: utils::leak(Scheduler::new(QueueKind::weights())),
+            scheduler: utils::leak(Scheduler::new(QueueKind::weights(), None)),
         }
     }
 

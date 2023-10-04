@@ -74,7 +74,9 @@ use crate::{
         main_reactor::{fetchers::Fetchers, upgrade_shutdown::SignatureGossipTracker},
         EventQueueHandle, QueueKind,
     },
-    types::{ForwardMetaBlock, MetaBlock, MetaBlockState, TrieOrChunk, ValidatorMatrix},
+    types::{
+        ForwardMetaBlock, MetaBlock, MetaBlockState, SyncHandling, TrieOrChunk, ValidatorMatrix,
+    },
     utils::{Source, WithDir},
     NodeRng,
 };
@@ -188,7 +190,7 @@ pub(crate) struct MainReactor {
     shutdown_for_upgrade_timeout: TimeDiff,
     switched_to_shutdown_for_upgrade: Timestamp,
     upgrade_timeout: TimeDiff,
-    sync_to_genesis: bool,
+    sync_handling: SyncHandling,
     signature_gossip_tracker: SignatureGossipTracker,
 }
 
@@ -1224,7 +1226,7 @@ impl reactor::Reactor for MainReactor {
             control_logic_default_delay: config.node.control_logic_default_delay,
             trusted_hash,
             validator_matrix,
-            sync_to_genesis: config.node.sync_to_genesis,
+            sync_handling: config.node.sync_handling,
             signature_gossip_tracker: SignatureGossipTracker::new(),
             shutdown_for_upgrade_timeout: config.node.shutdown_for_upgrade_timeout,
             switched_to_shutdown_for_upgrade: Timestamp::from(0),
