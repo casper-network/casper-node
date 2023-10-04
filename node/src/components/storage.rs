@@ -3000,6 +3000,11 @@ fn initialize_block_metadata_db(
             let (raw_key, _) = row?;
             if deleted_block_hashes.contains(raw_key) {
                 cursor.del(WriteFlags::empty())?;
+                let digest = Digest::try_from(raw_key);
+                debug!(
+                    "purged metadata for block {}",
+                    digest.map_or("<unknown>".to_string(), |digest| digest.to_string())
+                );
                 continue;
             }
         }
