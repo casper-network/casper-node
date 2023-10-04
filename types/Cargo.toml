@@ -106,7 +106,7 @@ std = [
 testing = ["proptest", "proptest-derive", "rand/default", "rand_pcg", "strum"]
 # DEPRECATED - use "testing" instead of "gens".
 gens = ["testing"]
-sdk = []
+sdk = ["getrandom/js"]
 
 [[bench]]
 name = "bytesrepr_bench"
