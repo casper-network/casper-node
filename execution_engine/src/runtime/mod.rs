@@ -3243,7 +3243,8 @@ where
             return Ok(Err(ApiError::MessageTopicAlreadyRegistered));
         }
 
-        let summary = StoredValue::MessageTopic(MessageTopicSummary::new(0));
+        let summary =
+            StoredValue::MessageTopic(MessageTopicSummary::new(0, self.context.get_blocktime()));
         self.context.metered_write_gs_unsafe(topic_key, summary)?;
 
         Ok(Ok(()))
@@ -3272,10 +3273,21 @@ where
             return Ok(Err(ApiError::MessageTopicNotRegistered));
         };
 
-        let message_index = current_topic_summary.message_count();
+        let current_blocktime = self.context.get_blocktime();
+        let message_index = if current_topic_summary.blocktime() != current_blocktime {
+            for index in 1..current_topic_summary.message_count() {
+                self.context
+                    .prune_gs_unsafe(Key::message(entity_addr, topic_digest, index));
+            }
+            0
+        } else {
+            current_topic_summary.message_count()
+        };
 
-        let new_topic_summary =
-            StoredValue::MessageTopic(MessageTopicSummary::new(message_index + 1));
+        let new_topic_summary = StoredValue::MessageTopic(MessageTopicSummary::new(
+            message_index + 1,
+            current_blocktime,
+        ));
 
         let message_key = Key::message(entity_addr, topic_digest, message_index);
 

@@ -23,9 +23,9 @@ use crate::{
         DELEGATION_RATE_DENOMINATOR,
     },
     transfer::TransferAddr,
-    AccessRights, AddressableEntity, CLType, CLValue, ContractHash, ContractWasm, EntryPoint,
-    EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg, Package, Parameter,
-    Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
+    AccessRights, AddressableEntity, BlockTime, CLType, CLValue, ContractHash, ContractWasm,
+    EntryPoint, EntryPointAccess, EntryPointType, EntryPoints, EraId, Group, Key, NamedArg,
+    Package, Parameter, Phase, ProtocolVersion, SemVer, StoredValue, URef, U128, U256, U512,
 };
 
 use crate::{
@@ -622,7 +622,10 @@ fn unbondings_arb(size: impl Into<SizeRange>) -> impl Strategy<Value = Vec<Unbon
 }
 
 fn message_topic_summary_arb() -> impl Strategy<Value = MessageTopicSummary> {
-    any::<u32>().prop_map(|message_count| MessageTopicSummary { message_count })
+    (any::<u32>(), any::<u64>()).prop_map(|(message_count, blocktime)| MessageTopicSummary {
+        message_count,
+        blocktime: BlockTime::new(blocktime),
+    })
 }
 
 fn message_summary_arb() -> impl Strategy<Value = MessageSummary> {

@@ -3689,14 +3689,7 @@
             "properties": {
               "entity_addr": {
                 "description": "The identity of the entity that produced the message.",
-                "type": "array",
-                "items": {
-                  "type": "integer",
-                  "format": "uint8",
-                  "minimum": 0.0
-                },
-                "maxItems": 32,
-                "minItems": 32
+                "type": "string"
               },
               "message": {
                 "description": "Message payload",
@@ -4707,6 +4700,7 @@
             "description": "Summary of a message topic that will be stored in global state.",
             "type": "object",
             "required": [
+              "blocktime",
               "message_count"
             ],
             "properties": {
@@ -4715,8 +4709,22 @@
                 "type": "integer",
                 "format": "uint32",
                 "minimum": 0.0
+              },
+              "blocktime": {
+                "description": "Block timestamp in which these messages were emitted.",
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/BlockTime"
+                  }
+                ]
               }
             }
+          },
+          "BlockTime": {
+            "description": "A newtype wrapping a [`u64`] which represents the block time.",
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 0.0
           },
           "MessageSummary": {
             "description": "Message summary as a formatted string.",

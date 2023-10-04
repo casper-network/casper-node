@@ -2,7 +2,7 @@
 use crate::{
     alloc::string::ToString,
     bytesrepr::{self, FromBytes, ToBytes, U8_SERIALIZED_LENGTH},
-    checksummed_hex, HashAddr, KEY_HASH_LENGTH,
+    checksummed_hex, BlockTime, HashAddr, KEY_HASH_LENGTH,
 };
 
 use core::convert::TryFrom;
@@ -269,17 +269,27 @@ impl Distribution<MessageAddr> for Standard {
 pub struct MessageTopicSummary {
     /// Number of messages in this topic.
     pub(crate) message_count: u32,
+    /// Block timestamp in which these messages were emitted.
+    pub(crate) blocktime: BlockTime,
 }
 
 impl MessageTopicSummary {
     /// Creates a new topic summary.
-    pub fn new(message_count: u32) -> Self {
-        Self { message_count }
+    pub fn new(message_count: u32, blocktime: BlockTime) -> Self {
+        Self {
+            message_count,
+            blocktime,
+        }
     }
 
     /// Returns the number of messages that were sent on this topic.
     pub fn message_count(&self) -> u32 {
         self.message_count
+    }
+
+    /// Returns the block time.
+    pub fn blocktime(&self) -> BlockTime {
+        self.blocktime
     }
 }
 
@@ -287,18 +297,26 @@ impl ToBytes for MessageTopicSummary {
     fn to_bytes(&self) -> Result<Vec<u8>, bytesrepr::Error> {
         let mut buffer = bytesrepr::allocate_buffer(self)?;
         buffer.append(&mut self.message_count.to_bytes()?);
+        buffer.append(&mut self.blocktime.to_bytes()?);
         Ok(buffer)
     }
 
     fn serialized_length(&self) -> usize {
-        self.message_count.serialized_length()
+        self.message_count.serialized_length() + self.blocktime.serialized_length()
     }
 }
 
 impl FromBytes for MessageTopicSummary {
     fn from_bytes(bytes: &[u8]) -> Result<(Self, &[u8]), bytesrepr::Error> {
         let (message_count, rem) = FromBytes::from_bytes(bytes)?;
-        Ok((MessageTopicSummary { message_count }, rem))
+        let (blocktime, rem) = FromBytes::from_bytes(rem)?;
+        Ok((
+            MessageTopicSummary {
+                message_count,
+                blocktime,
+            },
+            rem,
+        ))
     }
 }
 
@@ -371,6 +389,7 @@ impl FromBytes for MessagePayload {
 #[cfg_attr(feature = "json-schema", derive(JsonSchema))]
 pub struct Message {
     /// The identity of the entity that produced the message.
+    #[cfg_attr(feature = "json-schema", schemars(with = "String"))]
     entity_addr: HashAddr,
     /// Message payload
     message: MessagePayload,
@@ -482,7 +501,7 @@ mod tests {
             MessageAddr::new_topic_addr([1; KEY_HASH_LENGTH], [2; MESSAGE_TOPIC_HASH_LENGTH]);
         bytesrepr::test_serialization_roundtrip(&message_addr);
 
-        let topic_summary = MessageTopicSummary::new(100);
+        let topic_summary = MessageTopicSummary::new(100, BlockTime::new(1000));
         bytesrepr::test_serialization_roundtrip(&topic_summary);
 
         let string_message_payload =
