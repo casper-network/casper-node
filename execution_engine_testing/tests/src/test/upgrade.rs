@@ -90,8 +90,19 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
+    let entity_hash = account_1
+        .named_keys()
+        .get(DO_NOTHING_HASH_KEY_NAME)
+        .expect("must have do-nothing-hash")
+        .into_entity_hash()
+        .unwrap();
+
+    let entity = builder
+        .get_addressable_entity(entity_hash)
+        .expect("must have entity");
+
     assert!(
-        account_1.named_keys().get(PURSE_1).is_none(),
+        entity.named_keys().get(PURSE_1).is_none(),
         "purse should not exist",
     );
 
@@ -133,8 +144,19 @@ fn should_upgrade_do_nothing_to_do_something_version_hash_call() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
+    let entity_hash = account_1
+        .named_keys()
+        .get("end of upgrade")
+        .expect("must have do-nothing-hash")
+        .into_entity_hash()
+        .unwrap();
+
+    let entity = builder
+        .get_addressable_entity(entity_hash)
+        .expect("must have entity");
+
     assert!(
-        account_1.named_keys().get(PURSE_1).is_some(),
+        entity.named_keys().get(PURSE_1).is_some(),
         "purse should exist",
     );
 }
@@ -177,7 +199,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .named_keys()
         .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_entity_addr()
+        .into_package_addr()
         .expect("should have hash");
 
     // Calling initial stored version from contract package hash, should have no effects
@@ -199,8 +221,19 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
+    let entity_hash = account_1
+        .named_keys()
+        .get(DO_NOTHING_HASH_KEY_NAME)
+        .expect("must have do-nothing-hash")
+        .into_entity_hash()
+        .unwrap();
+
+    let entity = builder
+        .get_addressable_entity(entity_hash)
+        .expect("must have entity");
+
     assert!(
-        account_1.named_keys().get(PURSE_1).is_none(),
+        entity.named_keys().get(PURSE_1).is_none(),
         "purse should not exist",
     );
 
@@ -223,7 +256,7 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .named_keys()
         .get(DO_NOTHING_CONTRACT_NAME)
         .expect("should have key of do_nothing_hash")
-        .into_entity_addr()
+        .into_package_addr()
         .expect("should have hash");
 
     // Calling upgraded stored version, expecting purse creation
@@ -246,8 +279,19 @@ fn should_upgrade_do_nothing_to_do_something_contract_call() {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("should get account 1");
 
+    let entity_hash = account_1
+        .named_keys()
+        .get("end of upgrade")
+        .expect("must have do-nothing-hash")
+        .into_entity_hash()
+        .unwrap();
+
+    let entity = builder
+        .get_addressable_entity(entity_hash)
+        .expect("must have entity");
+
     assert!(
-        account_1.named_keys().get(PURSE_1).is_some(),
+        entity.named_keys().get(PURSE_1).is_some(),
         "purse should exist",
     );
 }
@@ -383,7 +427,7 @@ fn should_support_extending_functionality() {
         .named_keys()
         .get(HASH_KEY_NAME)
         .expect("should have stored uref")
-        .into_entity_addr()
+        .into_package_addr()
         .expect("should have hash");
 
     let stored_hash = account
@@ -660,163 +704,6 @@ fn should_fail_upgrade_for_locked_contract() {
 
 #[ignore]
 #[test]
-fn should_only_allow_upgrade_based_on_action_threshold() {
-    const ACCESS_UREF: &str = "access_uref";
-    const SHARING_HASH_KEY_NAME: &str = "ret_uref_contract_hash";
-    const ENTRY_POINT_INSERT_UREF: &str = "insert_uref";
-    const ENTRY_POINT_PUT_UREF: &str = "put_uref";
-
-    const ARG_CONTRACT_HASH: &str = "contract_hash";
-    const ARG_NAME: &str = "name";
-    const NAMED_KEY_ENTRY: &str = "purse_holder_access";
-
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    let mut rng = TestRng::new();
-    let entity_public_key = PublicKey::random(&mut rng);
-    let entity_account_hash = entity_public_key.to_account_hash();
-
-    let transfer_request = {
-        let transfer_args = runtime_args! {
-            mint::ARG_AMOUNT => U512::from(MINIMUM_ACCOUNT_CREATION_BALANCE),
-            mint::ARG_TARGET => entity_account_hash,
-            mint::ARG_ID => Option::<u64>::None,
-        };
-
-        ExecuteRequestBuilder::transfer(*DEFAULT_ACCOUNT_ADDR, transfer_args).build()
-    };
-
-    builder.exec(transfer_request).expect_success().commit();
-
-    // store contract
-    {
-        let exec_request = {
-            let contract_name = format!("{}.wasm", PURSE_HOLDER_STORED_CONTRACT_NAME);
-            ExecuteRequestBuilder::standard(
-                *DEFAULT_ACCOUNT_ADDR,
-                &contract_name,
-                runtime_args! {
-                    ARG_IS_LOCKED => false,
-                },
-            )
-            .build()
-        };
-
-        builder.exec(exec_request).expect_success().commit();
-    }
-
-    let entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("should have account");
-
-    let access_uref = *entity
-        .named_keys()
-        .get(ACCESS_KEY_NAME)
-        .expect("must have access URef")
-        .as_uref()
-        .expect("must convert to URef");
-
-    let stored_package_hash: PackageHash = entity
-        .named_keys()
-        .get(HASH_KEY_NAME)
-        .expect("should have stored package hash")
-        .into_package_addr()
-        .expect("should have hash")
-        .into();
-
-    let contract_package = builder
-        .get_package(stored_package_hash)
-        .expect("should get package hash");
-
-    assert!(!contract_package.is_locked());
-
-    let session_name = format!("{}.wasm", RET_UREF_NAME);
-    let exec_request =
-        ExecuteRequestBuilder::standard(entity_account_hash, &session_name, runtime_args! {})
-            .build();
-
-    builder.exec(exec_request).expect_success().commit();
-
-    let other_entity = builder
-        .get_entity_by_account_hash(entity_account_hash)
-        .expect("should have entity");
-
-    let uref_sharing_contract_hash = other_entity
-        .named_keys()
-        .get(SHARING_HASH_KEY_NAME)
-        .expect("must have named key entry")
-        .into_entity_addr()
-        .map(AddressableEntityHash::new)
-        .expect("must convert to hash");
-
-    let put_access_uref = ExecuteRequestBuilder::contract_call_by_hash(
-        *DEFAULT_ACCOUNT_ADDR,
-        uref_sharing_contract_hash,
-        ENTRY_POINT_PUT_UREF,
-        runtime_args! {
-            ACCESS_UREF => access_uref
-        },
-    )
-    .build();
-
-    builder.exec(put_access_uref).expect_success().commit();
-
-    let insert_access_uref = ExecuteRequestBuilder::contract_call_by_hash(
-        entity_account_hash,
-        uref_sharing_contract_hash,
-        ENTRY_POINT_INSERT_UREF,
-        runtime_args! {
-            ARG_CONTRACT_HASH => uref_sharing_contract_hash,
-            ARG_NAME => NAMED_KEY_ENTRY.to_string()
-        },
-    )
-    .build();
-
-    builder.exec(insert_access_uref).expect_success().commit();
-
-    let other_entity = builder
-        .get_entity_by_account_hash(entity_account_hash)
-        .expect("should have entity");
-
-    assert!(other_entity.named_keys().contains("purse_holder_access"));
-
-    let exec_request = {
-        let contract_name = format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME);
-        ExecuteRequestBuilder::standard(
-            entity_account_hash,
-            &contract_name,
-            runtime_args! {
-                ARG_CONTRACT_PACKAGE => stored_package_hash,
-            },
-        )
-        .build()
-    };
-
-    assert!(builder.exec(exec_request).is_error());
-
-    builder.assert_error(engine_state::Error::Exec(
-        Error::UpgradeAuthorizationFailure,
-    ));
-
-    let exec_request = {
-        let contract_name = format!("{}.wasm", PURSE_HOLDER_STORED_UPGRADER_CONTRACT_NAME);
-        ExecuteRequestBuilder::standard(
-            *DEFAULT_ACCOUNT_ADDR,
-            &contract_name,
-            runtime_args! {
-                ARG_CONTRACT_PACKAGE => stored_package_hash,
-            },
-        )
-        .build()
-    };
-
-    builder.exec(exec_request).expect_success().commit();
-}
-
-#[ignore]
-#[test]
 fn should_only_upgrade_if_threshold_is_met() {
     const CONTRACT_HASH_NAME: &str = "contract_hash_name";
     const PACKAGE_HASH_KEY_NAME: &str = "contract_package_hash";
@@ -858,7 +745,7 @@ fn should_only_upgrade_if_threshold_is_met() {
         .named_keys()
         .get(PACKAGE_HASH_KEY_NAME)
         .expect("must have named key entry for package hash")
-        .into_entity_addr()
+        .into_package_addr()
         .map(PackageHash::new)
         .expect("must get package hash");
 
@@ -1208,12 +1095,17 @@ fn call_and_migrate_purse_holder_contract(invocation_type: InvocationType) {
         .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
         .expect("must have default entity");
 
-    let updated_hash = updated_entity
+    let updated_key = updated_entity
         .named_keys()
         .get(PURSE_HOLDER_STORED_CONTRACT_NAME)
-        .map(|holder_key| holder_key.into_entity_hash())
-        .unwrap()
-        .expect("must convert to hash");
+        .expect("must have updated entity");
+
+    let updated_hash = if let InvocationType::ByUpgrader = invocation_type {
+        updated_key.into_entity_hash()
+    } else {
+        updated_key.into_hash_addr().map(AddressableEntityHash::new)
+    }
+    .expect("must get entity hash");
 
     let updated_purse_entity = builder
         .get_addressable_entity(updated_hash)
@@ -1266,58 +1158,4 @@ fn should_correctly_migrate_contract_when_invoked_by_contract_name() {
 #[test]
 fn should_correctly_migrate_and_upgrade_with_upgrader() {
     call_and_migrate_purse_holder_contract(InvocationType::ByUpgrader)
-}
-
-#[ignore]
-#[test]
-fn should_add_session_version_and_execute_in_correct_context() {
-    let mut builder = LmdbWasmTestBuilder::default();
-
-    builder.run_genesis(&PRODUCTION_RUN_GENESIS_REQUEST);
-
-    let add_session_logic_request = ExecuteRequestBuilder::standard(
-        *DEFAULT_ACCOUNT_ADDR,
-        UPGRADE_SESSION_LOGIC,
-        runtime_args! {},
-    )
-    .build();
-
-    builder
-        .exec(add_session_logic_request)
-        .expect_success()
-        .commit();
-
-    let default_entity = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("must have entity");
-
-    let entry_points = default_entity.entry_points();
-
-    assert!(entry_points.has_entry_point("add"));
-    assert!(entry_points.has_entry_point("remove"));
-
-    let entity_hash = builder
-        .get_entity_hash_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("must have entity hash for the default account");
-
-    let session_invocation = ExecuteRequestBuilder::contract_call_by_hash(
-        *DEFAULT_ACCOUNT_ADDR,
-        entity_hash,
-        "add",
-        runtime_args! {
-            PURSE_NAME_ARG_NAME => "foo_purse".to_string()
-        },
-    )
-    .build();
-
-    builder.exec(session_invocation).expect_success().commit();
-
-    let purse_uref = builder
-        .get_entity_by_account_hash(*DEFAULT_ACCOUNT_ADDR)
-        .expect("must have entity")
-        .named_keys()
-        .get("foo_purse")
-        .expect("must have named key entry")
-        .into_uref()
-        .expect("must convert to URef");
 }

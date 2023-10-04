@@ -599,6 +599,8 @@ where
                 let result: Result<(), mint::Error> =
                     mint_runtime.transfer(maybe_to, source, target, amount, id);
 
+                println!("{:?}", result);
+
                 CLValue::from_t(result).map_err(Self::reverter)
             })(),
             // Type: `fn read_base_round_reward() -> Result<U512, Error>`
@@ -1829,19 +1831,23 @@ where
 
             let action_thresholds = previous_entity.action_thresholds().clone();
 
-            // Check if the calling entity must be grandfathered into the new
-            // addressable entity format
-            if self.context.validate_uref(&package.access_key()).is_ok() {
-                previous_entity.add_associated_key(
-                    self.context.get_caller(),
-                    *action_thresholds.upgrade_management(),
-                )?;
-            }
-
-            let mut associated_keys = previous_entity.associated_keys().clone();
+            let associated_keys = previous_entity.associated_keys().clone();
 
             if !previous_entity.can_upgrade_with(self.context.authorization_keys()) {
-                return Err(Error::UpgradeAuthorizationFailure);
+                // Check if the calling entity must be grandfathered into the new
+                // addressable entity format
+                let account_hash = self.context.get_caller();
+
+                if self.context.validate_uref(&package.access_key()).is_ok()
+                    && !associated_keys.contains_key(&account_hash)
+                {
+                    previous_entity.add_associated_key(
+                        account_hash,
+                        *action_thresholds.upgrade_management(),
+                    )?;
+                } else {
+                    return Err(Error::UpgradeAuthorizationFailure);
+                }
             }
 
             let main_purse = if !requires_purse_creation {
@@ -1849,6 +1855,9 @@ where
             } else {
                 previous_entity.main_purse()
             };
+
+            let associated_keys = previous_entity.associated_keys().clone();
+
             let previous_named_keys = previous_entity.take_named_keys();
 
             return Ok((

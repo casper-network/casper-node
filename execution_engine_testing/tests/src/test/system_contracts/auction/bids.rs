@@ -181,8 +181,6 @@ fn should_add_new_bid() {
 
     builder.run_genesis(&run_genesis_request);
 
-    println!("{}", *BID_ACCOUNT_1_ADDR);
-
     let exec_request_1 = ExecuteRequestBuilder::standard(
         *BID_ACCOUNT_1_ADDR,
         CONTRACT_ADD_BID,

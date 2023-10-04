@@ -19,6 +19,7 @@ mod transfer;
 pub mod upgrade;
 
 use itertools::Itertools;
+use std::convert::Infallible;
 use std::{
     cell::RefCell,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -44,6 +45,7 @@ use casper_storage::{
     },
 };
 use casper_types::package::PackageKindTag;
+use casper_types::system::mint::ARG_AMOUNT;
 use casper_types::{
     account::{Account, AccountHash},
     addressable_entity::{AssociatedKeys, NamedKeys},
@@ -62,7 +64,7 @@ use casper_types::{
         AUCTION, HANDLE_PAYMENT, MINT, STANDARD_PAYMENT,
     },
     AccessRights, AddressableEntity, AddressableEntityHash, ApiError, BlockTime, ByteCodeHash,
-    CLValue, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
+    CLValue, CLValueError, ChainspecRegistry, DeployHash, DeployInfo, Digest, EntryPoints, EraId,
     ExecutableDeployItem, FeeHandling, Gas, Key, KeyTag, Motes, Package, PackageHash, Phase,
     ProtocolVersion, PublicKey, RuntimeArgs, StoredValue, Tagged, URef, UpgradeConfig, U512,
 };
@@ -1122,7 +1124,6 @@ where
 
         // All wasmless transfer preconditions are met.
         // Any error that occurs in logic below this point would result in a charge for user error.
-
         let mut runtime_args_builder =
             TransferRuntimeArgsBuilder::new(deploy_item.session.args().clone());
 
@@ -1690,6 +1691,26 @@ where
         // [`ExecutionResultBuilder`] handles merging of multiple execution results
         let mut execution_result_builder = execution_result::ExecutionResultBuilder::new();
 
+        let rewards_target_purse =
+            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
+                Ok(target_purse) => target_purse,
+                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
+            };
+
+        let rewards_target_purse_balance_key = {
+            // Get reward purse Key from handle payment contract
+            // payment_code_spec_6: system contract validity
+            match tracking_copy
+                .borrow_mut()
+                .get_purse_balance_key(rewards_target_purse.into())
+            {
+                Ok(key) => key,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(error.into()));
+                }
+            }
+        };
+
         // Execute provided payment code
         let payment_result = {
             // payment_code_spec_1: init pay environment w/ gas limit == (max_payment_cost /
@@ -1724,13 +1745,10 @@ where
 
             if payment.is_standard_payment(phase) {
                 // Todo potentially could be moved to Executor::Exec
-                executor.exec_standard_payment(
+                match executor.exec_standard_payment_via_mint(
                     payment_args,
-                    entity_key,
                     &entity,
                     package_kind.clone(),
-                    &mut payment_named_keys,
-                    payment_access_rights,
                     authorization_keys.clone(),
                     account_hash,
                     blocktime,
@@ -1738,9 +1756,13 @@ where
                     payment_gas_limit,
                     protocol_version,
                     Rc::clone(&tracking_copy),
-                    phase,
-                    payment_stack,
-                )
+                    self.config.max_runtime_call_stack_height() as usize,
+                ) {
+                    Ok(payment_result) => payment_result,
+                    Err(error) => {
+                        return Ok(ExecutionResult::precondition_failure(error));
+                    }
+                }
             } else {
                 let payment_execution_kind = match ExecutionKind::new(
                     Rc::clone(&tracking_copy),
@@ -1775,26 +1797,6 @@ where
             }
         };
         log_execution_result("payment result", &payment_result);
-
-        let rewards_target_purse =
-            match self.get_rewards_purse(protocol_version, proposer, prestate_hash) {
-                Ok(target_purse) => target_purse,
-                Err(error) => return Ok(ExecutionResult::precondition_failure(error)),
-            };
-
-        let rewards_target_purse_balance_key = {
-            // Get reward purse Key from handle payment contract
-            // payment_code_spec_6: system contract validity
-            match tracking_copy
-                .borrow_mut()
-                .get_purse_balance_key(rewards_target_purse.into())
-            {
-                Ok(key) => key,
-                Err(error) => {
-                    return Ok(ExecutionResult::precondition_failure(error.into()));
-                }
-            }
-        };
 
         // If provided wasm file was malformed, we should charge.
         if should_charge_for_errors_in_wasm(&payment_result) {

@@ -1,18 +1,32 @@
+use std::convert::{Infallible, TryFrom};
 use std::{cell::RefCell, collections::BTreeSet, rc::Rc};
 
 use casper_storage::global_state::state::StateReader;
+use casper_types::package::PackageKindTag;
+use casper_types::system::handle_payment::METHOD_GET_PAYMENT_PURSE;
+use casper_types::system::SystemEntityType;
 use casper_types::{
     account::AccountHash,
     addressable_entity::NamedKeys,
     bytesrepr::FromBytes,
     package::PackageKind,
     system::{auction, handle_payment, mint, AUCTION, HANDLE_PAYMENT, MINT},
-    AddressableEntity, AddressableEntityHash, BlockTime, CLTyped, ContextAccessRights, DeployHash,
-    EntryPointType, Gas, Key, Phase, ProtocolVersion, RuntimeArgs, StoredValue, Tagged, U512,
+    AddressableEntity, AddressableEntityHash, ApiError, BlockTime, CLTyped, CLValue, CLValueError,
+    ContextAccessRights, DeployHash, EntryPointType, Gas, Key, Motes, Phase, ProtocolVersion,
+    RuntimeArgs, StoredValue, Tagged, URef, U512,
 };
 
+use crate::engine_state::{
+    SystemContractRegistry, TransferArgs, WASMLESS_TRANSFER_FIXED_GAS_PRICE,
+};
+
+use crate::system::handle_payment::HandlePayment;
+
+use crate::system::standard_payment::handle_payment_provider::HandlePaymentProvider;
 use crate::{
-    engine_state::{execution_kind::ExecutionKind, EngineConfig, ExecutionResult},
+    engine_state::{
+        execution_kind::ExecutionKind, EngineConfig, Error as EngineStateError, ExecutionResult,
+    },
     execution::{address_generator::AddressGenerator, Error},
     runtime::{Runtime, RuntimeStack},
     runtime_context::RuntimeContext,
@@ -391,6 +405,187 @@ impl Executor {
             transfers,
             remaining_spending_limit,
             entry_point_type,
+        )
+    }
+
+    /// Executes standard payment code natively.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn exec_standard_payment_via_mint<R>(
+        &self,
+        payment_args: RuntimeArgs,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
+        authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        payment_gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        max_stack_height: usize,
+    ) -> Result<ExecutionResult, EngineStateError>
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        let payment_amount: U512 = match try_get_amount(&payment_args) {
+            Ok(payment_amount) => payment_amount,
+            Err(error) => {
+                return Ok(ExecutionResult::precondition_failure(error.into()));
+            }
+        };
+
+        let get_payment_purse_stack = RuntimeStack::new_system_call_stack(max_stack_height);
+
+        let (maybe_purse, get_payment_result) = self.get_payment_purse_for_standard_payment(
+            &entity,
+            package_kind.clone(),
+            authorization_keys.clone(),
+            account_hash,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+            get_payment_purse_stack,
+        );
+
+        if let Some(_) = get_payment_result.as_error() {
+            return Ok(get_payment_result);
+        }
+
+        let payment_purse = match maybe_purse {
+            Some(payment_purse) => payment_purse,
+            None => return Err(EngineStateError::reverter(ApiError::HandlePayment(12))),
+        };
+
+        let runtime_args = {
+            let transfer_args = TransferArgs::new(
+                None,
+                entity.main_purse(),
+                payment_purse,
+                payment_amount,
+                None,
+            );
+
+            let runtime_args = match RuntimeArgs::try_from(transfer_args) {
+                Ok(runtime_args) => runtime_args,
+                Err(error) => {
+                    return Ok(ExecutionResult::precondition_failure(
+                        Error::CLValue(error).into(),
+                    ))
+                }
+            };
+
+            runtime_args
+        };
+
+        let transfer_stack = RuntimeStack::new_system_call_stack(max_stack_height);
+
+        let (transfer_result, payment_result) = self.invoke_mint_to_transfer(
+            runtime_args,
+            entity,
+            package_kind,
+            authorization_keys,
+            account_hash,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+            transfer_stack,
+            payment_amount,
+        );
+
+        if let Some(_) = payment_result.as_error() {
+            return Ok(payment_result);
+        }
+
+        let transfer_result = match transfer_result {
+            Some(Ok(())) => Ok(()),
+            Some(Err(mint_error)) => match mint::Error::try_from(mint_error) {
+                Ok(mint_error) => Err(EngineStateError::reverter(mint_error)),
+                Err(_) => Err(EngineStateError::reverter(ApiError::Transfer)),
+            },
+            None => Err(EngineStateError::reverter(ApiError::Transfer)),
+        };
+
+        if let Err(engine_error) = transfer_result {
+            return Err(engine_error);
+        }
+
+        Ok(payment_result)
+    }
+
+    pub(crate) fn get_payment_purse_for_standard_payment<R>(
+        &self,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
+        authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        payment_gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        stack: RuntimeStack,
+    ) -> (Option<URef>, ExecutionResult)
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        self.call_system_contract(
+            DirectSystemContractCall::GetPaymentPurse,
+            RuntimeArgs::new(),
+            &entity,
+            package_kind,
+            authorization_keys,
+            account_hash,
+            blocktime,
+            deploy_hash,
+            payment_gas_limit,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+            Phase::Payment,
+            stack,
+            U512::zero(),
+        )
+    }
+
+    pub(crate) fn invoke_mint_to_transfer<R>(
+        &self,
+        runtime_args: RuntimeArgs,
+        entity: &AddressableEntity,
+        package_kind: PackageKind,
+        authorization_keys: BTreeSet<AccountHash>,
+        account_hash: AccountHash,
+        blocktime: BlockTime,
+        deploy_hash: DeployHash,
+        gas_limit: Gas,
+        protocol_version: ProtocolVersion,
+        tracking_copy: Rc<RefCell<TrackingCopy<R>>>,
+        stack: RuntimeStack,
+        spending_limit: U512,
+    ) -> (Option<Result<(), u8>>, ExecutionResult)
+    where
+        R: StateReader<Key, StoredValue>,
+        R::Error: Into<Error>,
+    {
+        self.call_system_contract(
+            DirectSystemContractCall::Transfer,
+            runtime_args,
+            &entity,
+            package_kind,
+            authorization_keys,
+            account_hash,
+            blocktime,
+            deploy_hash,
+            gas_limit,
+            protocol_version,
+            Rc::clone(&tracking_copy),
+            Phase::Payment,
+            stack,
+            spending_limit,
         )
     }
 }

@@ -884,6 +884,7 @@ where
         let prev = self.gas_counter();
         let gas_limit = self.gas_limit();
         let is_system = self.package_kind.is_system();
+
         // gas charge overflow protection
         match prev.checked_add(gas.cost(is_system)) {
             None => {
@@ -891,6 +892,7 @@ where
                 Err(Error::GasLimit)
             }
             Some(val) if val > gas_limit => {
+                println!("Val/limit {}/{}", val, gas_limit);
                 self.set_gas_counter(gas_limit);
                 Err(Error::GasLimit)
             }
